@@ -13,6 +13,15 @@ Professional Audio/Video automation system designed specifically for sports bars
 - **Real-time Event System** - Live updates and status monitoring
 - **Preset Management** - One-click activation of complex AV scenarios
 
+### 🆕 Sports Content Discovery & Deep Linking
+- **Multi-Platform Sports Content Discovery** - Fetch live and upcoming sports from Prime Video, ESPN+, Paramount+, Peacock, and Apple TV+
+- **Intelligent Deep Linking** - Direct launch to specific games on Fire TV and other streaming devices
+- **Real-time Sports Schedule API** - Integration with API-Sports.io and SportsDataIO for comprehensive sports data
+- **Smart Content Recommendations** - AI-powered suggestions based on live games, trending content, and user preferences
+- **Sports-Specific Dashboard** - Dedicated interface for employees to easily find and launch specific games
+- **Advanced Search & Filtering** - Search by team, league, sport, or streaming provider
+- **Live Game Notifications** - Real-time updates for currently live sports events
+
 ### Sports Bar Specific Features
 - **Big Game Mode** - All TVs to main feed with high volume
 - **Multi-Game Mode** - Different games on different zones
@@ -38,14 +47,24 @@ Sports Bar TV Controller/
 ├── core/
 │   ├── av_manager.py           # Coordination layer with bi-directional sync
 │   └── event_bus.py            # Pub-sub event system
+├── services/                   # 🆕 Sports content discovery services
+│   ├── sports_schedule_service.py    # Sports API integration
+│   ├── deep_link_builder.py          # Deep link generation
+│   ├── content_discovery_manager.py  # Content orchestration
+│   └── __init__.py
 ├── config/
-│   └── mappings.yaml           # Configuration for device mappings
+│   ├── mappings.yaml           # Configuration for device mappings
+│   └── sports_config.yaml      # 🆕 Sports content configuration
 ├── ui/
 │   ├── dashboard.py            # Flask web dashboard
+│   ├── sports_content_dashboard.py   # 🆕 Sports content interface
 │   └── templates/              # Web interface templates
+│       └── sports_dashboard.html     # 🆕 Sports content UI
 ├── frontend/
 │   ├── RoomLayout.js           # React component for room control
 │   └── RoomLayout.css          # Styling for the interface
+├── tests/                      # 🆕 Unit tests
+│   └── test_sports_services.py # Sports service tests
 └── main.py                     # Main application entry point
 ```
 
@@ -69,10 +88,14 @@ Sports Bar TV Controller/
    pip install -r requirements.txt
    ```
 
-3. **Configure your devices**
+3. **Configure your devices and sports APIs**
    ```bash
    cp config/mappings.yaml.example config/mappings.yaml
    # Edit config/mappings.yaml with your device IP addresses and mappings
+   
+   # Configure sports content discovery (optional but recommended)
+   export API_SPORTS_KEY="your_api_sports_key"
+   export SPORTSDATA_IO_KEY="your_sportsdata_io_key"
    ```
 
 4. **Run the system**
@@ -80,8 +103,9 @@ Sports Bar TV Controller/
    python main.py
    ```
 
-5. **Access the dashboard**
-   Open your browser to `http://localhost:5000`
+5. **Access the dashboards**
+   - Main AV Control Dashboard: `http://localhost:5000`
+   - Sports Content Discovery: `http://localhost:5000/sports`
 
 ### Docker Deployment
 
@@ -96,6 +120,131 @@ docker-compose logs -f sportsbar-controller
 
 # Stop services
 docker-compose down
+```
+
+## 🏈 Sports Content Discovery
+
+### Overview
+
+The Sports Content Discovery system allows employees to easily find and launch specific sports content across multiple streaming platforms without manually navigating through apps. This feature is particularly valuable for sports bars that need to quickly switch to specific games during busy periods.
+
+### Supported Streaming Services
+
+- **Prime Video** - Thursday Night Football, NFL content
+- **ESPN+** - NBA, MLB, NHL, MLS, College Sports
+- **Paramount+** - UEFA Champions League, NFL on CBS, College Football
+- **Peacock** - Premier League, Olympics, WWE
+- **Apple TV+** - MLS Season Pass, MLB Friday Night Baseball
+
+### Key Features
+
+#### 🔍 Smart Content Discovery
+- **Live Games**: Automatically detects currently live sports events
+- **Upcoming Games**: Shows games starting within the next 24 hours
+- **Trending Content**: AI-powered recommendations based on popularity and timing
+- **Prime Time Games**: Highlights evening games (6 PM - 11 PM)
+- **Weekend Games**: Special focus on Saturday and Sunday games
+
+#### 🔗 Deep Linking Technology
+- **Fire TV Integration**: Direct launch to specific content on Amazon Fire TV devices
+- **Universal Deep Links**: Support for multiple streaming platforms
+- **Intelligent Fallbacks**: Graceful handling when content is unavailable
+- **Validation System**: Ensures deep links are properly formatted
+
+#### 🎯 Advanced Search & Filtering
+- **Team Search**: Find games by team name (e.g., "Patriots", "Lakers")
+- **League Search**: Filter by league (NFL, NBA, MLB, NHL, etc.)
+- **Sport Search**: Browse by sport type
+- **Provider Search**: Filter by streaming service
+- **Real-time Results**: Instant search with auto-complete
+
+#### 📊 Analytics & Insights
+- **Usage Statistics**: Track most-launched content
+- **Performance Metrics**: Monitor API response times
+- **Content Availability**: Real-time status of streaming services
+- **Employee Usage**: Track which games are most popular
+
+### Sports Content Dashboard
+
+Access the sports dashboard at `http://localhost:5000/sports` to:
+
+1. **View Live Games** - See all currently live sports with one-click launch
+2. **Browse Upcoming Games** - Plan ahead with upcoming game schedules
+3. **Search Content** - Quickly find specific teams or games
+4. **Launch Content** - Direct launch to Fire TV with confirmation dialog
+5. **Monitor Status** - View system statistics and service health
+
+### API Integration
+
+The system integrates with multiple sports data providers:
+
+#### API-Sports.io
+- **Coverage**: 100+ sports leagues worldwide
+- **Update Frequency**: Real-time updates every 15 seconds
+- **Features**: Live scores, fixtures, team information
+- **Free Tier**: 100 requests per day
+
+#### SportsDataIO
+- **Coverage**: Major US sports (NFL, NBA, MLB, NHL)
+- **Features**: Live feeds, projections, advanced statistics
+- **Update Frequency**: Real-time during games
+- **Enterprise Grade**: High reliability and performance
+
+### Configuration
+
+Sports content discovery is configured via `config/sports_config.yaml`:
+
+```yaml
+# API Configuration
+sports_api:
+  api_keys:
+    api_sports: "${API_SPORTS_KEY}"
+    sportsdata_io: "${SPORTSDATA_IO_KEY}"
+  cache_duration_minutes: 30
+
+# Streaming Providers
+streaming_providers:
+  prime_video:
+    enabled: true
+    priority: 100
+  espn_plus:
+    enabled: true
+    priority: 90
+
+# Content Discovery Settings
+content_discovery:
+  default_results:
+    live: 10
+    upcoming: 20
+    search: 15
+```
+
+### Environment Variables
+
+Set these environment variables for API access:
+
+```bash
+# Required for comprehensive sports data
+export API_SPORTS_KEY="your_api_sports_key"
+export SPORTSDATA_IO_KEY="your_sportsdata_io_key"
+
+# Optional for enhanced ESPN integration
+export ESPN_API_KEY="your_espn_api_key"
+```
+
+### Deep Link Examples
+
+The system generates platform-specific deep links:
+
+```bash
+# Prime Video Thursday Night Football
+amzns://apps/android?asin=B00ZV9RDKK#Intent;action=android.intent.action.VIEW;S.contentId=tnf_12345;end
+
+# ESPN+ NBA Game
+amzns://apps/android?asin=B00KQPQHPQ#Intent;action=android.intent.action.VIEW;S.contentId=nba_game_67890;end
+
+# Paramount+ Champions League
+amzns://apps/android?asin=B08KQZXHPX#Intent;action=android.intent.action.VIEW;S.contentId=ucl_match_54321;end
 ```
 
 ## ⚙️ Configuration

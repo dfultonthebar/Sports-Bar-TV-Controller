@@ -13,6 +13,7 @@ import signal
 import threading
 import time
 from pathlib import Path
+from typing import Dict, Any
 
 # Add project root to Python path
 project_root = Path(__file__).parent
@@ -20,7 +21,9 @@ sys.path.insert(0, str(project_root))
 
 from core.av_manager import AVManager
 from ui.dashboard import SportsBarDashboard, create_dashboard_templates
+from ui.sports_content_dashboard import SportsContentDashboard
 from core.event_bus import event_bus
+from services.content_discovery_manager import ContentDiscoveryManager
 
 # Configure logging
 logging.basicConfig(
@@ -43,10 +46,13 @@ class SportsBarController:
     - Event Bus for real-time communication
     """
     
-    def __init__(self, config_path: str = "config/mappings.yaml"):
+    def __init__(self, config_path: str = "config/mappings.yaml", sports_config_path: str = "config/sports_config.yaml"):
         self.config_path = config_path
+        self.sports_config_path = sports_config_path
         self.av_manager = None
         self.dashboard = None
+        self.sports_dashboard = None
+        self.content_manager = None
         self.running = False
         
         # Create necessary directories
@@ -60,7 +66,9 @@ class SportsBarController:
             "logs",
             "config", 
             "ui/templates",
-            "ui/static"
+            "ui/static",
+            "services",
+            "tests"
         ]
         
         for directory in directories:
@@ -75,11 +83,23 @@ class SportsBarController:
             self.av_manager = AVManager(self.config_path)
             self.av_manager.initialize_devices()
             
+            # Load sports configuration
+            sports_config = self._load_sports_config()
+            
+            # Initialize Content Discovery Manager
+            self.content_manager = ContentDiscoveryManager(sports_config)
+            
             # Create dashboard templates
             create_dashboard_templates()
             
-            # Initialize Dashboard
+            # Initialize Main Dashboard
             self.dashboard = SportsBarDashboard(self.av_manager)
+            
+            # Initialize Sports Content Dashboard
+            self.sports_dashboard = SportsContentDashboard(self.content_manager)
+            
+            # Register sports dashboard blueprint
+            self.dashboard.app.register_blueprint(self.sports_dashboard.get_blueprint())
             
             logger.info("All components initialized successfully")
             return True
@@ -152,6 +172,67 @@ class SportsBarController:
         event_bus.clear_history()
         
         logger.info("Sports Bar Controller stopped")
+    
+    def _load_sports_config(self) -> Dict[str, Any]:
+        """Load sports configuration from YAML file"""
+        import yaml
+        import os
+        
+        try:
+            # Try to load from file
+            if os.path.exists(self.sports_config_path):
+                with open(self.sports_config_path, 'r') as f:
+                    config = yaml.safe_load(f)
+                    
+                # Replace environment variables
+                config = self._replace_env_vars(config)
+                return config
+            else:
+                logger.warning(f"Sports config file not found: {self.sports_config_path}")
+                # Return default configuration
+                return self._get_default_sports_config()
+                
+        except Exception as e:
+            logger.error(f"Error loading sports config: {e}")
+            return self._get_default_sports_config()
+    
+    def _replace_env_vars(self, config: Any) -> Any:
+        """Replace environment variables in configuration"""
+        import os
+        import re
+        
+        if isinstance(config, dict):
+            return {k: self._replace_env_vars(v) for k, v in config.items()}
+        elif isinstance(config, list):
+            return [self._replace_env_vars(item) for item in config]
+        elif isinstance(config, str):
+            # Replace ${VAR_NAME} with environment variable
+            pattern = r'\$\{([^}]+)\}'
+            matches = re.findall(pattern, config)
+            for match in matches:
+                env_value = os.getenv(match, '')
+                config = config.replace(f'${{{match}}}', env_value)
+            return config
+        else:
+            return config
+    
+    def _get_default_sports_config(self) -> Dict[str, Any]:
+        """Get default sports configuration"""
+        return {
+            'sports_api': {
+                'cache_duration_minutes': 30,
+                'api_keys': {},
+                'timeout_seconds': 30
+            },
+            'content_discovery': {
+                'default_results': {
+                    'live': 10,
+                    'upcoming': 20,
+                    'search': 15,
+                    'featured': 8
+                }
+            }
+        }
 
 def main():
     """Main entry point"""
