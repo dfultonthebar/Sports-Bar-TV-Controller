@@ -16,6 +16,7 @@ from pathlib import Path
 from core.av_manager import AVManager
 from core.event_bus import event_bus, EventType, Event
 from backend.label_manager import label_bp, create_label_templates
+from backend.atlas_label_manager import atlas_label_bp, create_atlas_label_templates
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +51,7 @@ class SportsBarDashboard:
         
         # Register blueprints
         self.app.register_blueprint(label_bp)
+        self.app.register_blueprint(atlas_label_bp)
         
         # Setup routes
         self._setup_routes()

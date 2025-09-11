@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Bar AV Control Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            color: #FFD700;
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            color: #87CEEB;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .dashboard-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            transition: all 0.3s;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .dashboard-card:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+        }
+        
+        .dashboard-card h2 {
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            color: #FFD700;
+        }
+        
+        .dashboard-card p {
+            margin-bottom: 20px;
+            color: #B0C4DE;
+            line-height: 1.6;
+        }
+        
+        .card-button {
+            background: linear-gradient(45deg, #4169E1, #1E90FF);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .card-button:hover {
+            background: linear-gradient(45deg, #1E90FF, #00BFFF);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .card-button.wolfpack {
+            background: linear-gradient(45deg, #32CD32, #228B22);
+        }
+        
+        .card-button.wolfpack:hover {
+            background: linear-gradient(45deg, #228B22, #006400);
+        }
+        
+        .card-button.atlas {
+            background: linear-gradient(45deg, #FF8C00, #FF6347);
+        }
+        
+        .card-button.atlas:hover {
+            background: linear-gradient(45deg, #FF6347, #DC143C);
+        }
+        
+        .status-section {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .status-section h3 {
+            color: #FFD700;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .status-item {
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .status-item h4 {
+            color: #87CEEB;
+            margin-bottom: 8px;
+        }
+        
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #98FB98;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            color: #B0C4DE;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard-card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏟️ Sports Bar AV Control Dashboard</h1>
+            <p>Professional Audio/Video Management System</p>
+        </div>
+        
+        <div class="status-section">
+            <h3>📊 System Status</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <h4>Wolfpack Matrix</h4>
+                    <div class="status-value" id="wolfpack-status">Connected</div>
+                </div>
+                <div class="status-item">
+                    <h4>Atlas Audio</h4>
+                    <div class="status-value" id="atlas-status">Connected</div>
+                </div>
+                <div class="status-item">
+                    <h4>Active Presets</h4>
+                    <div class="status-value" id="active-presets">3</div>
+                </div>
+                <div class="status-item">
+                    <h4>Last Updated</h4>
+                    <div class="status-value" id="last-updated">Just now</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <h2>🎛️ Wolfpack Matrix Control</h2>
+                <p>Manage video routing, input/output labels, and visual mapping for your 36x36 Wolfpack video matrix system.</p>
+                <a href="/labels/" class="card-button wolfpack">Configure Video Labels</a>
+            </div>
+            
+            <div class="dashboard-card">
+                <h2>🎵 Atlas Audio Control</h2>
+                <p>Configure audio input sources and zone labels for your Atlas Atmosphere DSP system with hardware sync capabilities.</p>
+                <a href="/atlas/labels/" class="card-button atlas">Configure Audio Labels</a>
+            </div>
+            
+            <div class="dashboard-card">
+                <h2>⚡ Preset Management</h2>
+                <p>Create and manage preset configurations for different events and scenarios in your sports bar.</p>
+                <button class="card-button" onclick="managePresets()">Manage Presets</button>
+            </div>
+            
+            <div class="dashboard-card">
+                <h2>📱 Real-time Control</h2>
+                <p>Live control interface for immediate audio/video adjustments during events and games.</p>
+                <button class="card-button" onclick="openLiveControl()">Live Control</button>
+            </div>
+            
+            <div class="dashboard-card">
+                <h2>📈 System Monitoring</h2>
+                <p>Monitor system performance, connection status, and device health in real-time.</p>
+                <button class="card-button" onclick="openMonitoring()">View Monitoring</button>
+            </div>
+            
+            <div class="dashboard-card">
+                <h2>⚙️ System Settings</h2>
+                <p>Configure device connections, network settings, and system preferences.</p>
+                <button class="card-button" onclick="openSettings()">System Settings</button>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2024 Sports Bar AV Control System | Professional Audio/Video Management</p>
+        </div>
+    </div>
+    
+    <script>
+        // Load system status
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update status displays
+                updateStatusDisplay(data);
+            } catch (error) {
+                console.error('Failed to load system status:', error);
+            }
+        }
+        
+        function updateStatusDisplay(data) {
+            // Update status values based on API response
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function managePresets() {
+            alert('Preset management interface would be implemented here');
+        }
+        
+        function openLiveControl() {
+            alert('Live control interface would be implemented here');
+        }
+        
+        function openMonitoring() {
+            alert('System monitoring interface would be implemented here');
+        }
+        
+        function openSettings() {
+            alert('System settings interface would be implemented here');
+        }
+        
+        // Load status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSystemStatus();
+            
+            // Refresh status every 30 seconds
+            setInterval(loadSystemStatus, 30000);
+        });
+    </script>
+</body>
+</html>
