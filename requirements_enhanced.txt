@@ -1,0 +1,34 @@
+
+# Core dependencies
+requests>=2.31.0
+pyyaml>=6.0
+websocket-client>=1.6.0
+flask>=2.3.0
+
+# Device control dependencies
+pyserial>=3.5
+socket
+
+# Fire Cube ADB control (optional - requires Android SDK)
+# adb-shell>=0.4.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Logging and monitoring
+colorlog>=6.7.0
+
+# Web dashboard dependencies
+jinja2>=3.1.0
+werkzeug>=2.3.0
+
+# Optional: For advanced IR code learning
+# python-lirc>=1.2.0
+
+# Optional: For DMX lighting control (future enhancement)
+# pyartnet>=0.8.0
+
+# Optional: For advanced audio processing
+# numpy>=1.24.0
+# scipy>=1.10.0

@@ -1,0 +1,38 @@
+
+{
+  "devices": {
+    "wolfpack": {
+      "enabled": true,
+      "ip_address": "192.168.1.100",
+      "port": 23,
+      "timeout": 5
+    },
+    "atlas": {
+      "enabled": true,
+      "ip_address": "192.168.1.101",
+      "username": "admin",
+      "password": "password"
+    },
+    "dbx_zonepro": {
+      "enabled": true,
+      "ip_address": "192.168.1.102",
+      "port": 23
+    },
+    "global_cache": {
+      "enabled": true,
+      "ip_address": "192.168.1.103",
+      "port": 4998
+    },
+    "fire_cube": {
+      "enabled": true,
+      "ip_address": "192.168.1.104",
+      "use_adb": true
+    }
+  },
+  "test_settings": {
+    "connection_timeout": 10,
+    "command_timeout": 5,
+    "monitoring_duration": 30,
+    "retry_attempts": 3
+  }
+}
