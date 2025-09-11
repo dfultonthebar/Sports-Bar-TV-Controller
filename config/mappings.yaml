@@ -44,8 +44,68 @@ mappings:
     audio_zone: 6
     name: "VIP Section"
     description: "VIP seating area"
+  
+  - video_output: 7
+    audio_zone: 7
+    name: "Bar Back TV 1"
+    description: "Behind bar display 1"
+  
+  - video_output: 8
+    audio_zone: 8
+    name: "Bar Back TV 2"
+    description: "Behind bar display 2"
+  
+  - video_output: 9
+    audio_zone: 9
+    name: "Corner Booth TV"
+    description: "Corner booth seating area"
+  
+  - video_output: 10
+    audio_zone: 10
+    name: "Window Booth TV"
+    description: "Window booth seating area"
+  
+  - video_output: 11
+    audio_zone: 11
+    name: "High Top TV 1"
+    description: "High top table area 1"
+  
+  - video_output: 12
+    audio_zone: 12
+    name: "High Top TV 2"
+    description: "High top table area 2"
+  
+  - video_output: 13
+    audio_zone: 13
+    name: "Dance Floor TV"
+    description: "Dance floor area display"
+  
+  - video_output: 14
+    audio_zone: 14
+    name: "Kitchen Display"
+    description: "Kitchen order display"
+  
+  - video_output: 15
+    audio_zone: 15
+    name: "Staff Office TV"
+    description: "Staff office area"
+  
+  - video_output: 16
+    audio_zone: 16
+    name: "Manager Office TV"
+    description: "Manager office"
+  
+  - video_output: 17
+    audio_zone: 17
+    name: "Break Room TV"
+    description: "Employee break room"
+  
+  - video_output: 18
+    audio_zone: 18
+    name: "Entry TV"
+    description: "Main entrance display"
 
-# Input/Source Definitions
+# Input/Source Definitions - Enhanced for 36x36 Matrix
 inputs:
   video:
     1: "ESPN HD"
@@ -56,6 +116,34 @@ inputs:
     6: "Weather Channel"
     7: "Music Videos"
     8: "Menu Channel"
+    9: "ESPN 2"
+    10: "Fox Sports 2"
+    11: "CBS Sports"
+    12: "TNT"
+    13: "TBS"
+    14: "USA Network"
+    15: "Discovery"
+    16: "History Channel"
+    17: "Food Network"
+    18: "HGTV"
+    19: "Comedy Central"
+    20: "MTV"
+    21: "VH1"
+    22: "Bravo"
+    23: "E!"
+    24: "Lifetime"
+    25: "A&E"
+    26: "FX"
+    27: "AMC"
+    28: "Syfy"
+    29: "National Geographic"
+    30: "Animal Planet"
+    31: "Travel Channel"
+    32: "Golf Channel"
+    33: "MLB Network"
+    34: "NFL Network"
+    35: "NBA TV"
+    36: "NHL Network"
   
   audio:
     1: "ESPN Audio"
@@ -66,6 +154,34 @@ inputs:
     6: "Weather Audio"
     7: "Background Music"
     8: "Ambient/Menu Audio"
+    9: "ESPN 2 Audio"
+    10: "Fox Sports 2 Audio"
+    11: "CBS Sports Audio"
+    12: "TNT Audio"
+    13: "TBS Audio"
+    14: "USA Network Audio"
+    15: "Discovery Audio"
+    16: "History Audio"
+    17: "Food Network Audio"
+    18: "HGTV Audio"
+    19: "Comedy Central Audio"
+    20: "MTV Audio"
+    21: "VH1 Audio"
+    22: "Bravo Audio"
+    23: "E! Audio"
+    24: "Lifetime Audio"
+    25: "A&E Audio"
+    26: "FX Audio"
+    27: "AMC Audio"
+    28: "Syfy Audio"
+    29: "Nat Geo Audio"
+    30: "Animal Planet Audio"
+    31: "Travel Audio"
+    32: "Golf Audio"
+    33: "MLB Audio"
+    34: "NFL Audio"
+    35: "NBA Audio"
+    36: "NHL Audio"
 
 # Preset Configurations
 presets:

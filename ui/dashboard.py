@@ -15,6 +15,7 @@ from pathlib import Path
 
 from core.av_manager import AVManager
 from core.event_bus import event_bus, EventType, Event
+from backend.label_manager import label_bp, create_label_templates
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +47,9 @@ class SportsBarDashboard:
         
         # Initialize SocketIO
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        
+        # Register blueprints
+        self.app.register_blueprint(label_bp)
         
         # Setup routes
         self._setup_routes()
@@ -123,6 +127,12 @@ class SportsBarDashboard:
                 output = data.get('output')
                 input_num = data.get('input')
                 
+                # Validate input/output ranges for 36x36 matrix
+                if not (1 <= input_num <= 36):
+                    return jsonify({'error': f'Invalid input number: {input_num}. Must be 1-36'}), 400
+                if not (1 <= output <= 36):
+                    return jsonify({'error': f'Invalid output number: {output}. Must be 1-36'}), 400
+                
                 success = False
                 if self.av_manager.wolfpack and self.av_manager.wolfpack.connected:
                     success = self.av_manager.wolfpack.switch_input_to_output(input_num, output)
@@ -130,6 +140,64 @@ class SportsBarDashboard:
                 return jsonify({'success': success})
             except Exception as e:
                 logger.error(f"Manual route API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/labels')
+        def get_labels():
+            """Get all input/output labels"""
+            try:
+                labels = {}
+                if self.av_manager.wolfpack:
+                    labels = self.av_manager.wolfpack.get_all_labels()
+                return jsonify(labels)
+            except Exception as e:
+                logger.error(f"Labels API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/labels/input/<int:input_num>', methods=['PUT'])
+        def update_input_label(input_num):
+            """Update input label"""
+            try:
+                data = request.get_json()
+                label = data.get('label', '').strip()
+                
+                if not label:
+                    return jsonify({'error': 'Label cannot be empty'}), 400
+                
+                if not (1 <= input_num <= 36):
+                    return jsonify({'error': 'Input number must be between 1 and 36'}), 400
+                
+                if self.av_manager.wolfpack:
+                    self.av_manager.wolfpack.set_input_label(input_num, label)
+                    return jsonify({'success': True, 'input': input_num, 'label': label})
+                else:
+                    return jsonify({'error': 'Wolfpack controller not available'}), 500
+                
+            except Exception as e:
+                logger.error(f"Update input label API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/labels/output/<int:output_num>', methods=['PUT'])
+        def update_output_label(output_num):
+            """Update output label"""
+            try:
+                data = request.get_json()
+                label = data.get('label', '').strip()
+                
+                if not label:
+                    return jsonify({'error': 'Label cannot be empty'}), 400
+                
+                if not (1 <= output_num <= 36):
+                    return jsonify({'error': 'Output number must be between 1 and 36'}), 400
+                
+                if self.av_manager.wolfpack:
+                    self.av_manager.wolfpack.set_output_label(output_num, label)
+                    return jsonify({'success': True, 'output': output_num, 'label': label})
+                else:
+                    return jsonify({'error': 'Wolfpack controller not available'}), 500
+                
+            except Exception as e:
+                logger.error(f"Update output label API error: {e}")
                 return jsonify({'error': str(e)}), 500
         
         @self.app.route('/api/volume', methods=['POST'])
@@ -495,6 +563,14 @@ def create_dashboard_templates():
         <div class="header">
             <h1>🏈 Sports Bar AV Control</h1>
             <p>Professional Audio/Video Management System</p>
+            <div style="margin-top: 15px;">
+                <a href="/labels/" target="_blank" style="color: #44ff44; text-decoration: none; font-weight: bold; padding: 8px 16px; background: rgba(255,255,255,0.1); border-radius: 5px; margin-right: 10px;">
+                    🎛️ Label Editor
+                </a>
+                <a href="/labels/visual-map" target="_blank" style="color: #44ff44; text-decoration: none; font-weight: bold; padding: 8px 16px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                    🗺️ Visual Map
+                </a>
+            </div>
         </div>
         
         <div class="status-bar">
@@ -588,8 +664,69 @@ def create_dashboard_templates():
             });
         }
         
-        // Update TV controls
+        // Update TV controls with dynamic labels
         function updateTVControls(mappings, routes) {
+            const tvControls = document.getElementById('tv-controls');
+            tvControls.innerHTML = '';
+            
+            // Load labels first
+            fetch('/api/labels')
+                .then(response => response.json())
+                .then(labels => {
+                    Object.values(mappings).forEach(mapping => {
+                        const tvCard = document.createElement('div');
+                        tvCard.className = 'tv-card';
+                        
+                        const currentVideoInput = routes.video[mapping.video_output] || 'Unknown';
+                        const currentAudioRoute = routes.audio[mapping.audio_zone] || {};
+                        
+                        // Generate input options dynamically from labels
+                        let inputOptions = '';
+                        for (let i = 1; i <= 36; i++) {
+                            const inputLabel = labels.inputs && labels.inputs[i.toString()] ? labels.inputs[i.toString()] : `Input ${i}`;
+                            const selected = currentVideoInput == i ? 'selected' : '';
+                            inputOptions += `<option value="${i}" ${selected}>${i}: ${inputLabel}</option>`;
+                        }
+                        
+                        // Use custom output label if available
+                        const outputLabel = labels.outputs && labels.outputs[mapping.video_output.toString()] ? 
+                                          labels.outputs[mapping.video_output.toString()] : mapping.name;
+                        
+                        tvCard.innerHTML = `
+                            <h3>${outputLabel}</h3>
+                            <div class="control-group">
+                                <label>Video Input:</label>
+                                <select onchange="changeVideoInput(${mapping.video_output}, this.value)">
+                                    ${inputOptions}
+                                </select>
+                            </div>
+                            <div class="control-group">
+                                <label>Volume:</label>
+                                <input type="range" min="0" max="1" step="0.1" 
+                                       value="${currentAudioRoute.volume || 0.5}"
+                                       onchange="changeVolume(${mapping.audio_zone}, this.value)">
+                                <div class="volume-display">${Math.round((currentAudioRoute.volume || 0.5) * 100)}%</div>
+                            </div>
+                            <div class="control-group">
+                                <button class="mute-button ${currentAudioRoute.muted ? 'muted' : ''}"
+                                        onclick="toggleMute(${mapping.audio_zone}, ${!currentAudioRoute.muted})">
+                                    ${currentAudioRoute.muted ? 'UNMUTE' : 'MUTE'}
+                                </button>
+                            </div>
+                        `;
+                        
+                        tvControls.appendChild(tvCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('Failed to load labels:', error);
+                    // Fallback to original behavior with all 36 inputs
+                    updateTVControlsFallback(mappings, routes);
+                });
+        }
+        
+        // Fallback TV controls update without labels
+        function updateTVControlsFallback(mappings, routes) {
             const tvControls = document.getElementById('tv-controls');
             tvControls.innerHTML = '';
             
@@ -600,19 +737,19 @@ def create_dashboard_templates():
                 const currentVideoInput = routes.video[mapping.video_output] || 'Unknown';
                 const currentAudioRoute = routes.audio[mapping.audio_zone] || {};
                 
+                // Generate all 36 input options
+                let inputOptions = '';
+                for (let i = 1; i <= 36; i++) {
+                    const selected = currentVideoInput == i ? 'selected' : '';
+                    inputOptions += `<option value="${i}" ${selected}>Input ${i}</option>`;
+                }
+                
                 tvCard.innerHTML = `
                     <h3>${mapping.name}</h3>
                     <div class="control-group">
                         <label>Video Input:</label>
                         <select onchange="changeVideoInput(${mapping.video_output}, this.value)">
-                            <option value="1" ${currentVideoInput == 1 ? 'selected' : ''}>ESPN HD</option>
-                            <option value="2" ${currentVideoInput == 2 ? 'selected' : ''}>Fox Sports 1</option>
-                            <option value="3" ${currentVideoInput == 3 ? 'selected' : ''}>NBC Sports</option>
-                            <option value="4" ${currentVideoInput == 4 ? 'selected' : ''}>Local Broadcast</option>
-                            <option value="5" ${currentVideoInput == 5 ? 'selected' : ''}>CNN</option>
-                            <option value="6" ${currentVideoInput == 6 ? 'selected' : ''}>Weather Channel</option>
-                            <option value="7" ${currentVideoInput == 7 ? 'selected' : ''}>Music Videos</option>
-                            <option value="8" ${currentVideoInput == 8 ? 'selected' : ''}>Menu Channel</option>
+                            ${inputOptions}
                         </select>
                     </div>
                     <div class="control-group">
