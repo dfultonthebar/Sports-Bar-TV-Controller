@@ -7,7 +7,7 @@ Creates platform-specific deep links for Fire TV and other devices
 
 import logging
 import urllib.parse
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from enum import Enum
 from dataclasses import dataclass
 
