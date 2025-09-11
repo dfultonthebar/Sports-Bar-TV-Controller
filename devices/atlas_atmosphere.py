@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 import websocket
 from contextlib import contextmanager
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,112 @@ class AtmosphereSource:
     name: str
     active: bool = False
 
+class AtlasLabelManager:
+    """
+    Label Management System for Atlas Atmosphere Audio Controller
+    Handles CRUD operations for input/output labels and hardware sync
+    """
+    
+    def __init__(self, labels_file: str = "config/atlas_labels.json"):
+        self.labels_file = labels_file
+        self.labels_data = {}
+        self.load_labels()
+    
+    def load_labels(self):
+        """Load labels from file"""
+        try:
+            if Path(self.labels_file).exists():
+                with open(self.labels_file, 'r') as f:
+                    self.labels_data = json.load(f)
+            else:
+                self.create_default_labels()
+                self.save_labels()
+        except Exception as e:
+            logger.error(f"Failed to load Atlas labels: {e}")
+            self.create_default_labels()
+    
+    def create_default_labels(self):
+        """Create default labels structure for Atlas Atmosphere"""
+        self.labels_data = {
+            'inputs': {str(i): f"Audio Input {i}" for i in range(1, 17)},  # 16 audio inputs
+            'outputs': {str(i): f"Zone {i}" for i in range(1, 9)},  # 8 audio zones
+            'device_info': {
+                'model': 'Atlas Atmosphere',
+                'total_inputs': 16,
+                'total_outputs': 8,
+                'last_updated': '',
+                'hardware_sync_enabled': True
+            }
+        }
+    
+    def save_labels(self):
+        """Save labels to file"""
+        try:
+            Path(self.labels_file).parent.mkdir(parents=True, exist_ok=True)
+            self.labels_data['device_info']['last_updated'] = time.strftime('%Y-%m-%d %H:%M:%S')
+            with open(self.labels_file, 'w') as f:
+                json.dump(self.labels_data, f, indent=2)
+            logger.info(f"Saved Atlas labels to {self.labels_file}")
+        except Exception as e:
+            logger.error(f"Failed to save Atlas labels: {e}")
+    
+    def get_all_labels(self) -> Dict[str, Any]:
+        """Get all labels"""
+        return self.labels_data.copy()
+    
+    def update_input_label(self, input_num: int, label: str):
+        """Update input label"""
+        if 1 <= input_num <= 16:
+            self.labels_data['inputs'][str(input_num)] = label
+            self.save_labels()
+            return True
+        return False
+    
+    def update_output_label(self, output_num: int, label: str):
+        """Update output label (zone)"""
+        if 1 <= output_num <= 8:
+            self.labels_data['outputs'][str(output_num)] = label
+            self.save_labels()
+            return True
+        return False
+    
+    def bulk_update_labels(self, input_labels: Dict[str, str] = None, output_labels: Dict[str, str] = None):
+        """Bulk update labels"""
+        if input_labels:
+            for input_num, label in input_labels.items():
+                if 1 <= int(input_num) <= 16:
+                    self.labels_data['inputs'][input_num] = label
+        if output_labels:
+            for output_num, label in output_labels.items():
+                if 1 <= int(output_num) <= 8:
+                    self.labels_data['outputs'][output_num] = label
+        self.save_labels()
+    
+    def get_input_label(self, input_num: int) -> str:
+        """Get input label"""
+        return self.labels_data['inputs'].get(str(input_num), f"Audio Input {input_num}")
+    
+    def get_output_label(self, output_num: int) -> str:
+        """Get output label (zone)"""
+        return self.labels_data['outputs'].get(str(output_num), f"Zone {output_num}")
+    
+    def export_labels_for_hardware(self) -> Dict[str, Any]:
+        """Export labels in format suitable for Atlas hardware upload"""
+        return {
+            'device_labels': {
+                'inputs': [
+                    {'id': i, 'label': self.get_input_label(i)} 
+                    for i in range(1, 17)
+                ],
+                'outputs': [
+                    {'id': i, 'label': self.get_output_label(i)} 
+                    for i in range(1, 9)
+                ]
+            },
+            'timestamp': time.time(),
+            'device_model': 'Atlas Atmosphere'
+        }
+
 class AtlasAtmosphereController:
     """
     Professional Atlas Atmosphere Audio Controller
@@ -56,7 +163,7 @@ class AtlasAtmosphereController:
     - Game mode and chill mode automation
     """
     
-    def __init__(self, host: str, port: int = 80, timeout: int = 5):
+    def __init__(self, host: str, port: int = 80, timeout: int = 5, labels_file: str = "config/atlas_labels.json"):
         self.host = host
         self.port = port
         self.timeout = timeout
@@ -71,6 +178,9 @@ class AtlasAtmosphereController:
         self.ws_thread = None
         self.event_callbacks = []
         self.connected = False
+        
+        # Initialize label manager
+        self.label_manager = AtlasLabelManager(labels_file)
         
         logger.info(f"Initialized Atlas Atmosphere controller for {host}:{port}")
     
@@ -374,6 +484,103 @@ class AtlasAtmosphereController:
     def get_all_sources(self) -> Dict[int, AtmosphereSource]:
         """Get all sources"""
         return self.sources.copy()
+    
+    # Label Management Methods
+    def get_labels(self) -> Dict[str, Any]:
+        """Get all input/output labels"""
+        return self.label_manager.get_all_labels()
+    
+    def update_input_label(self, input_num: int, label: str) -> bool:
+        """Update input label"""
+        return self.label_manager.update_input_label(input_num, label)
+    
+    def update_output_label(self, output_num: int, label: str) -> bool:
+        """Update output label (zone)"""
+        return self.label_manager.update_output_label(output_num, label)
+    
+    def bulk_update_labels(self, input_labels: Dict[str, str] = None, output_labels: Dict[str, str] = None):
+        """Bulk update labels"""
+        self.label_manager.bulk_update_labels(input_labels, output_labels)
+    
+    def upload_labels_to_hardware(self) -> bool:
+        """
+        Upload labels to Atlas hardware via API
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            labels_data = self.label_manager.export_labels_for_hardware()
+            
+            # Upload input labels
+            for input_data in labels_data['device_labels']['inputs']:
+                response = requests.put(
+                    f"{self.base_url}/inputs/{input_data['id']}/label",
+                    json={'label': input_data['label']},
+                    timeout=self.timeout
+                )
+                if response.status_code != 200:
+                    logger.error(f"Failed to upload input {input_data['id']} label: HTTP {response.status_code}")
+                    return False
+            
+            # Upload output labels (zones)
+            for output_data in labels_data['device_labels']['outputs']:
+                response = requests.put(
+                    f"{self.base_url}/zones/{output_data['id']}/label",
+                    json={'label': output_data['label']},
+                    timeout=self.timeout
+                )
+                if response.status_code != 200:
+                    logger.error(f"Failed to upload zone {output_data['id']} label: HTTP {response.status_code}")
+                    return False
+            
+            logger.info("Successfully uploaded all labels to Atlas hardware")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to upload labels to hardware: {e}")
+            return False
+    
+    def sync_labels_from_hardware(self) -> bool:
+        """
+        Sync labels from Atlas hardware
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get input labels from hardware
+            input_labels = {}
+            for i in range(1, 17):
+                response = requests.get(f"{self.base_url}/inputs/{i}/label", timeout=self.timeout)
+                if response.status_code == 200:
+                    data = response.json()
+                    input_labels[str(i)] = data.get('label', f'Audio Input {i}')
+            
+            # Get output labels (zones) from hardware
+            output_labels = {}
+            for i in range(1, 9):
+                response = requests.get(f"{self.base_url}/zones/{i}/label", timeout=self.timeout)
+                if response.status_code == 200:
+                    data = response.json()
+                    output_labels[str(i)] = data.get('label', f'Zone {i}')
+            
+            # Update local labels
+            self.label_manager.bulk_update_labels(input_labels, output_labels)
+            logger.info("Successfully synced labels from Atlas hardware")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to sync labels from hardware: {e}")
+            return False
+    
+    def get_input_label(self, input_num: int) -> str:
+        """Get input label"""
+        return self.label_manager.get_input_label(input_num)
+    
+    def get_output_label(self, output_num: int) -> str:
+        """Get output label (zone)"""
+        return self.label_manager.get_output_label(output_num)
 
 # Sports Bar Automation Examples
 class SportsBarAtmosphereAutomation:
