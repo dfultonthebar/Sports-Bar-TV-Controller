@@ -1,13 +1,29 @@
+"""
+Legacy FastAPI Server - Deprecated
+This file is kept for backward compatibility but is no longer the main entry point.
+Use main.py in the project root for the new modular architecture.
+"""
+
 import asyncio, json, os
 from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel
 
-# Import drivers
-from devices.atlas import AtlasAZM8
-from devices.wolfpack import WolfPackMatrix
-from devices.global_cache import GlobalCacheITach
-from devices.dbx import DBXZonePro
-from devices.artnet import ArtNetDMX
+# Legacy imports - these are now replaced by the new modular architecture
+# from devices.atlas import AtlasAZM8
+# from devices.wolfpack import WolfPackMatrix
+# from devices.global_cache import GlobalCacheITach
+# from devices.dbx import DBXZonePro
+# from devices.artnet import ArtNetDMX
+
+# Import new modular components
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from devices.wolfpack_controller import WolfpackController
+from devices.atlas_atmosphere import AtlasAtmosphereController
+from core.av_manager import AVManager
 
 LAYOUT_FILE = "layout.json"
 

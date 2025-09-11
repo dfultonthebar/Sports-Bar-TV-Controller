@@ -1,8 +1,14 @@
 {
-  "devices": [
+  "note": "This config file is deprecated. Use config/mappings.yaml for the new modular architecture.",
+  "legacy_devices": [
     { "name": "Main Audio DSP", "type": "atlas_azm8", "host": "192.168.1.50" },
     { "name": "Video Matrix", "type": "wolfpack_matrix", "host": "192.168.1.70" },
     { "name": "Lighting Gateway", "type": "artnet_dmx", "host": "192.168.1.100" },
     { "name": "IR Blaster", "type": "global_cache_itach", "host": "192.168.1.60" }
-  ]
+  ],
+  "migration_info": {
+    "new_config_location": "config/mappings.yaml",
+    "new_main_entry": "main.py",
+    "architecture": "modular"
+  }
 }
