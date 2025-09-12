@@ -15,6 +15,7 @@ from pathlib import Path
 
 from core.av_manager import AVManager
 from core.event_bus import event_bus, EventType, Event
+from core.network_config import NetworkConfigManager
 from backend.label_manager import label_bp, create_label_templates
 from backend.atlas_label_manager import atlas_label_bp, create_atlas_label_templates
 
@@ -39,6 +40,9 @@ class SportsBarDashboard:
         self.av_manager = av_manager
         self.host = host
         self.port = port
+        
+        # Initialize network config manager
+        self.network_manager = NetworkConfigManager()
         
         # Initialize Flask app
         self.app = Flask(__name__, 
@@ -68,7 +72,22 @@ class SportsBarDashboard:
         @self.app.route('/')
         def index():
             """Main dashboard page"""
-            return render_template('dashboard.html')
+            return render_template('main_dashboard.html')
+        
+        @self.app.route('/audio')
+        def audio_interface():
+            """Audio interface page"""
+            return render_template('audio_interface.html')
+        
+        @self.app.route('/admin')
+        def backend_admin():
+            """Backend admin landing page"""
+            return render_template('backend_admin.html')
+        
+        @self.app.route('/admin/network')
+        def network_config():
+            """Network configuration page"""
+            return render_template('network_config.html')
         
         @self.app.route('/api/status')
         def get_status():
@@ -234,6 +253,132 @@ class SportsBarDashboard:
                 return jsonify({'success': success})
             except Exception as e:
                 logger.error(f"Mute API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        # Network Configuration API endpoints
+        @self.app.route('/api/network/vlans')
+        def get_vlans():
+            """Get all VLAN configurations"""
+            try:
+                vlans = self.network_manager.get_all_vlans()
+                status = self.network_manager.get_network_status()
+                return jsonify({
+                    'vlans': {vlan_id: {
+                        'vlan_id': vlan.vlan_id,
+                        'name': vlan.name,
+                        'subnet': vlan.subnet,
+                        'gateway': vlan.gateway,
+                        'dns_servers': vlan.dns_servers,
+                        'enabled': vlan.enabled,
+                        'description': vlan.description
+                    } for vlan_id, vlan in vlans.items()},
+                    'status': status
+                })
+            except Exception as e:
+                logger.error(f"Get VLANs API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/network/vlans', methods=['POST'])
+        def add_vlan():
+            """Add new VLAN configuration"""
+            try:
+                from core.network_config import VLANConfig
+                data = request.get_json()
+                
+                vlan_config = VLANConfig(
+                    vlan_id=data['vlan_id'],
+                    name=data['name'],
+                    subnet=data['subnet'],
+                    gateway=data['gateway'],
+                    dns_servers=data['dns_servers'],
+                    enabled=data.get('enabled', True),
+                    description=data.get('description', '')
+                )
+                
+                success = self.network_manager.add_vlan(vlan_config)
+                return jsonify({'success': success})
+            except Exception as e:
+                logger.error(f"Add VLAN API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/network/vlans/<int:vlan_id>', methods=['PUT'])
+        def update_vlan(vlan_id):
+            """Update VLAN configuration"""
+            try:
+                from core.network_config import VLANConfig
+                data = request.get_json()
+                
+                vlan_config = VLANConfig(
+                    vlan_id=data['vlan_id'],
+                    name=data['name'],
+                    subnet=data['subnet'],
+                    gateway=data['gateway'],
+                    dns_servers=data['dns_servers'],
+                    enabled=data.get('enabled', True),
+                    description=data.get('description', '')
+                )
+                
+                success = self.network_manager.update_vlan(vlan_id, vlan_config)
+                return jsonify({'success': success})
+            except Exception as e:
+                logger.error(f"Update VLAN API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/network/vlans/<int:vlan_id>', methods=['DELETE'])
+        def delete_vlan(vlan_id):
+            """Delete VLAN configuration"""
+            try:
+                success = self.network_manager.delete_vlan(vlan_id)
+                return jsonify({'success': success})
+            except Exception as e:
+                logger.error(f"Delete VLAN API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        # Additional API endpoints for new features
+        @self.app.route('/api/remote_command', methods=['POST'])
+        def send_remote_command():
+            """Send remote control command"""
+            try:
+                data = request.get_json()
+                remote_type = data.get('remote_type')
+                command = data.get('command')
+                
+                # Mock implementation - in real system, this would send IR commands
+                logger.info(f"Remote command: {remote_type} - {command}")
+                return jsonify({'success': True})
+            except Exception as e:
+                logger.error(f"Remote command API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/audio_route', methods=['POST'])
+        def route_audio():
+            """Route audio source to zone"""
+            try:
+                data = request.get_json()
+                zone_id = data.get('zone_id')
+                source_id = data.get('source_id')
+                
+                success = False
+                if self.av_manager.atmosphere and self.av_manager.atmosphere.connected:
+                    success = self.av_manager.atmosphere.route_source_to_zone(source_id, zone_id)
+                
+                return jsonify({'success': success})
+            except Exception as e:
+                logger.error(f"Audio route API error: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/audio_preset', methods=['POST'])
+        def recall_audio_preset():
+            """Recall audio preset"""
+            try:
+                data = request.get_json()
+                preset_name = data.get('preset_name')
+                
+                # Mock implementation - in real system, this would recall audio presets
+                logger.info(f"Audio preset recalled: {preset_name}")
+                return jsonify({'success': True})
+            except Exception as e:
+                logger.error(f"Audio preset API error: {e}")
                 return jsonify({'error': str(e)}), 500
     
     def _setup_socketio_events(self):

@@ -1,0 +1,846 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Bar TV Controller - Main Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .navbar {
+            background: rgba(0,0,0,0.3);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .navbar .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .navbar .logo {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        .navbar .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .navbar .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .navbar .nav-links a:hover,
+        .navbar .nav-links a.active {
+            background: rgba(255,255,255,0.2);
+            color: #FFD700;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .dashboard-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .dashboard-header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            color: #FFD700;
+        }
+        
+        .dashboard-header p {
+            font-size: 1.3em;
+            color: #87CEEB;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .tv-layout-section {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+        }
+        
+        .tv-layout-section h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .tv-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .tv-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        
+        .tv-card:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+            transform: translateY(-2px);
+        }
+        
+        .tv-card h3 {
+            color: #FFD700;
+            margin-bottom: 10px;
+        }
+        
+        .tv-card .current-input {
+            color: #98FB98;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .tv-card select {
+            width: 100%;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+        }
+        
+        .control-panel {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+        }
+        
+        .control-panel h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .preset-btn {
+            background: linear-gradient(45deg, #4169E1, #1E90FF);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .preset-btn:hover {
+            background: linear-gradient(45deg, #1E90FF, #00BFFF);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .preset-btn.big-game {
+            background: linear-gradient(45deg, #FF6347, #DC143C);
+        }
+        
+        .preset-btn.big-game:hover {
+            background: linear-gradient(45deg, #DC143C, #B22222);
+        }
+        
+        .preset-btn.multi-game {
+            background: linear-gradient(45deg, #32CD32, #228B22);
+        }
+        
+        .preset-btn.multi-game:hover {
+            background: linear-gradient(45deg, #228B22, #006400);
+        }
+        
+        .sync-control {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .sync-control h3 {
+            color: #87CEEB;
+            margin-bottom: 15px;
+        }
+        
+        .sync-toggle {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            background: #ccc;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #44ff44;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(30px);
+        }
+        
+        .tv-guide-section {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .tv-guide-section h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .tv-guide-embed {
+            width: 100%;
+            height: 400px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .remote-controls-section {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+        }
+        
+        .remote-controls-section h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .remote-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .remote-tab {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .remote-tab.active {
+            background: #4169E1;
+            color: white;
+        }
+        
+        .remote-content {
+            display: none;
+        }
+        
+        .remote-content.active {
+            display: block;
+        }
+        
+        .remote-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        
+        .remote-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .remote-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .status-item {
+            text-align: center;
+        }
+        
+        .status-item h4 {
+            color: #87CEEB;
+            margin-bottom: 8px;
+        }
+        
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #98FB98;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .navbar .nav-links {
+                gap: 15px;
+            }
+            
+            .navbar .nav-links a {
+                padding: 8px 12px;
+                font-size: 0.9em;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard-header h1 {
+                font-size: 2em;
+            }
+            
+            .tv-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .navbar .container {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .navbar .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">🏈 Sports Bar TV Controller</div>
+            <div class="nav-links">
+                <a href="/" class="active">Main Dashboard</a>
+                <a href="/audio">Audio Control</a>
+                <a href="/admin">Backend Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>Main Dashboard</h1>
+            <p>TV Layout, Guide & Remote Controls</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-grid">
+                <div class="status-item">
+                    <h4><span class="status-indicator" id="wolfpack-status"></span>Video Matrix</h4>
+                    <div class="status-value" id="wolfpack-status-text">Connecting...</div>
+                </div>
+                <div class="status-item">
+                    <h4><span class="status-indicator" id="atmosphere-status"></span>Audio Processor</h4>
+                    <div class="status-value" id="atmosphere-status-text">Connecting...</div>
+                </div>
+                <div class="status-item">
+                    <h4>Active Presets</h4>
+                    <div class="status-value" id="active-presets">0</div>
+                </div>
+                <div class="status-item">
+                    <h4>Last Updated</h4>
+                    <div class="status-value" id="last-updated">Just now</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="tv-layout-section">
+                <h2>📺 TV Layout & Control</h2>
+                <div class="tv-grid" id="tv-grid">
+                    <!-- TV cards will be populated here -->
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <h2>🎛️ Quick Controls</h2>
+                
+                <div class="sync-control">
+                    <h3>Bi-Directional Sync</h3>
+                    <div class="sync-toggle">
+                        <span>Sync Mode:</span>
+                        <div class="toggle-switch" id="sync-toggle">
+                            <div class="toggle-slider"></div>
+                        </div>
+                        <span id="sync-status">OFF</span>
+                    </div>
+                </div>
+
+                <div class="preset-buttons">
+                    <button class="preset-btn big-game" onclick="recallPreset(1)">
+                        🏆 Big Game Mode
+                    </button>
+                    <button class="preset-btn multi-game" onclick="recallPreset(2)">
+                        📺 Multi-Game Mode
+                    </button>
+                    <button class="preset-btn" onclick="recallPreset(3)">
+                        🎵 Chill Mode
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tv-guide-section">
+            <h2>📋 TV Guide</h2>
+            <iframe class="tv-guide-embed" 
+                    src="https://www.tvguide.com/listings/" 
+                    title="TV Guide">
+            </iframe>
+        </div>
+
+        <div class="remote-controls-section">
+            <h2>📱 Remote Controls</h2>
+            
+            <div class="remote-tabs">
+                <button class="remote-tab active" onclick="showRemote('cable')">Cable/Satellite</button>
+                <button class="remote-tab" onclick="showRemote('directv')">DirectTV</button>
+                <button class="remote-tab" onclick="showRemote('amazon')">Amazon Fire TV</button>
+            </div>
+
+            <div id="cable-remote" class="remote-content active">
+                <div class="remote-grid">
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'power')">PWR</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'guide')">GUIDE</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'menu')">MENU</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'up')">▲</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'ok')">OK</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'down')">▼</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'left')">◄</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'back')">BACK</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'right')">►</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'ch_up')">CH+</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'vol_up')">VOL+</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'mute')">MUTE</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'ch_down')">CH-</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'vol_down')">VOL-</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('cable', 'exit')">EXIT</button>
+                </div>
+            </div>
+
+            <div id="directv-remote" class="remote-content">
+                <div class="remote-grid">
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'power')">PWR</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'guide')">GUIDE</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'list')">LIST</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'up')">▲</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'select')">SELECT</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'down')">▼</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'left')">◄</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'exit')">EXIT</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'right')">►</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'ch_up')">CH+</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'vol_up')">VOL+</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'mute')">MUTE</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'ch_down')">CH-</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'vol_down')">VOL-</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('directv', 'info')">INFO</button>
+                </div>
+            </div>
+
+            <div id="amazon-remote" class="remote-content">
+                <div class="remote-grid">
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'power')">PWR</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'home')">HOME</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'menu')">MENU</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'up')">▲</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'select')">SELECT</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'down')">▼</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'left')">◄</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'back')">BACK</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'right')">►</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'rewind')">⏪</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'play_pause')">⏯️</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'fast_forward')">⏩</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'vol_up')">VOL+</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'mute')">MUTE</button>
+                    <button class="remote-btn" onclick="sendRemoteCommand('amazon', 'vol_down')">VOL-</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        let currentStatus = {};
+        let currentRemote = 'cable';
+        
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to main dashboard');
+            socket.emit('request_status');
+        });
+        
+        socket.on('status_update', function(data) {
+            currentStatus = data;
+            updateDashboard(data);
+        });
+        
+        socket.on('av_event', function(event) {
+            console.log('AV Event:', event);
+            showNotification(`${event.source}: ${event.type}`, 'info');
+        });
+        
+        // Update dashboard with current status
+        function updateDashboard(status) {
+            updateStatusIndicators(status.system_status);
+            updateTVGrid(status.mappings, status.current_routes);
+            updateSyncToggle(status.system_status.sync_enabled);
+            updateLastUpdated();
+        }
+        
+        // Update status indicators
+        function updateStatusIndicators(systemStatus) {
+            const wolfpackStatus = document.getElementById('wolfpack-status');
+            const atmosphereStatus = document.getElementById('atmosphere-status');
+            const wolfpackText = document.getElementById('wolfpack-status-text');
+            const atmosphereText = document.getElementById('atmosphere-status-text');
+            
+            wolfpackStatus.className = 'status-indicator' + 
+                (systemStatus.wolfpack_connected ? ' connected' : '');
+            wolfpackText.textContent = systemStatus.wolfpack_connected ? 'Connected' : 'Disconnected';
+            
+            atmosphereStatus.className = 'status-indicator' + 
+                (systemStatus.atmosphere_connected ? ' connected' : '');
+            atmosphereText.textContent = systemStatus.atmosphere_connected ? 'Connected' : 'Disconnected';
+            
+            document.getElementById('active-presets').textContent = systemStatus.presets_count || 0;
+        }
+        
+        // Update TV grid
+        function updateTVGrid(mappings, routes) {
+            const tvGrid = document.getElementById('tv-grid');
+            tvGrid.innerHTML = '';
+            
+            // Load labels first
+            fetch('/api/labels')
+                .then(response => response.json())
+                .then(labels => {
+                    Object.values(mappings || {}).forEach(mapping => {
+                        const tvCard = document.createElement('div');
+                        tvCard.className = 'tv-card';
+                        
+                        const currentVideoInput = routes?.video?.[mapping.video_output] || 'Unknown';
+                        
+                        // Generate input options
+                        let inputOptions = '';
+                        for (let i = 1; i <= 36; i++) {
+                            const inputLabel = labels.inputs?.[i.toString()] || `Input ${i}`;
+                            const selected = currentVideoInput == i ? 'selected' : '';
+                            inputOptions += `<option value="${i}" ${selected}>${i}: ${inputLabel}</option>`;
+                        }
+                        
+                        // Use custom output label if available
+                        const outputLabel = labels.outputs?.[mapping.video_output.toString()] || 
+                                          mapping.name || `TV ${mapping.video_output}`;
+                        
+                        tvCard.innerHTML = `
+                            <h3>${outputLabel}</h3>
+                            <div class="current-input">
+                                Current: ${labels.inputs?.[currentVideoInput.toString()] || `Input ${currentVideoInput}`}
+                            </div>
+                            <select onchange="changeVideoInput(${mapping.video_output}, this.value)">
+                                ${inputOptions}
+                            </select>
+                        `;
+                        
+                        tvGrid.appendChild(tvCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('Failed to load labels:', error);
+                    // Fallback without labels
+                    updateTVGridFallback(mappings, routes);
+                });
+        }
+        
+        // Fallback TV grid update
+        function updateTVGridFallback(mappings, routes) {
+            const tvGrid = document.getElementById('tv-grid');
+            tvGrid.innerHTML = '';
+            
+            Object.values(mappings || {}).forEach(mapping => {
+                const tvCard = document.createElement('div');
+                tvCard.className = 'tv-card';
+                
+                const currentVideoInput = routes?.video?.[mapping.video_output] || 'Unknown';
+                
+                let inputOptions = '';
+                for (let i = 1; i <= 36; i++) {
+                    const selected = currentVideoInput == i ? 'selected' : '';
+                    inputOptions += `<option value="${i}" ${selected}>Input ${i}</option>`;
+                }
+                
+                tvCard.innerHTML = `
+                    <h3>${mapping.name || `TV ${mapping.video_output}`}</h3>
+                    <div class="current-input">Current: Input ${currentVideoInput}</div>
+                    <select onchange="changeVideoInput(${mapping.video_output}, this.value)">
+                        ${inputOptions}
+                    </select>
+                `;
+                
+                tvGrid.appendChild(tvCard);
+            });
+        }
+        
+        // Update sync toggle
+        function updateSyncToggle(syncEnabled) {
+            const syncToggle = document.getElementById('sync-toggle');
+            const syncStatus = document.getElementById('sync-status');
+            
+            syncToggle.className = 'toggle-switch' + (syncEnabled ? ' active' : '');
+            syncStatus.textContent = syncEnabled ? 'ON' : 'OFF';
+        }
+        
+        // Update last updated time
+        function updateLastUpdated() {
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // Control functions
+        function recallPreset(presetId) {
+            fetch(`/api/preset/${presetId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification(`Preset ${presetId} activated`, 'success');
+                    } else {
+                        showNotification('Failed to activate preset', 'error');
+                    }
+                });
+        }
+        
+        function changeVideoInput(output, input) {
+            fetch('/api/manual_route', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ output: parseInt(output), input: parseInt(input) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    showNotification('Failed to change video input', 'error');
+                }
+            });
+        }
+        
+        // Remote control functions
+        function showRemote(remoteType) {
+            // Hide all remote contents
+            document.querySelectorAll('.remote-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.remote-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected remote
+            document.getElementById(`${remoteType}-remote`).classList.add('active');
+            event.target.classList.add('active');
+            
+            currentRemote = remoteType;
+        }
+        
+        function sendRemoteCommand(remoteType, command) {
+            fetch('/api/remote_command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    remote_type: remoteType, 
+                    command: command 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`${remoteType.toUpperCase()}: ${command}`, 'info');
+                } else {
+                    showNotification('Failed to send remote command', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Remote command error:', error);
+                showNotification('Remote command error', 'error');
+            });
+        }
+        
+        // Sync toggle handler
+        document.getElementById('sync-toggle').onclick = function() {
+            const currentSync = currentStatus.system_status?.sync_enabled || false;
+            fetch('/api/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: !currentSync })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`Sync ${data.sync_enabled ? 'enabled' : 'disabled'}`, 'info');
+                } else {
+                    showNotification('Failed to toggle sync', 'error');
+                }
+            });
+        };
+        
+        // Notification system
+        function showNotification(message, type) {
+            console.log(`${type.toUpperCase()}: ${message}`);
+            
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 5px;
+                z-index: 1000;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease-out;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+        
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
