@@ -1,0 +1,183 @@
+
+# Sports Content Discovery Configuration
+# Configuration for streaming services, APIs, and content discovery
+
+# API Configuration
+sports_api:
+  # Cache settings
+  cache_duration_minutes: 30
+  
+  # API Keys (set these as environment variables)
+  api_keys:
+    api_sports: "${API_SPORTS_KEY}"  # API-Sports.io key
+    sportsdata_io: "${SPORTSDATA_IO_KEY}"  # SportsDataIO key
+    espn_api: "${ESPN_API_KEY}"  # ESPN API key (if available)
+    
+  # Rate limiting
+  rate_limits:
+    api_sports: 100  # requests per day for free tier
+    sportsdata_io: 1000  # requests per month
+    
+  # Request timeouts
+  timeout_seconds: 30
+
+# Streaming Provider Configuration
+streaming_providers:
+  prime_video:
+    enabled: true
+    priority: 100
+    sports:
+      - "Thursday Night Football"
+      - "NFL"
+    deep_link_scheme: "aiv"
+    
+  espn_plus:
+    enabled: true
+    priority: 90
+    sports:
+      - "NBA"
+      - "MLB" 
+      - "NHL"
+      - "MLS"
+      - "College Sports"
+    deep_link_scheme: "espn"
+    
+  paramount_plus:
+    enabled: true
+    priority: 80
+    sports:
+      - "UEFA Champions League"
+      - "NFL on CBS"
+      - "College Football"
+    deep_link_scheme: "paramountplus"
+    
+  peacock:
+    enabled: true
+    priority: 75
+    sports:
+      - "Premier League"
+      - "Olympics"
+      - "WWE"
+    deep_link_scheme: "peacocktv"
+    
+  apple_tv:
+    enabled: true
+    priority: 70
+    sports:
+      - "MLS Season Pass"
+      - "MLB Friday Night Baseball"
+    deep_link_scheme: "appletv"
+
+# Sports Priority Configuration
+sports_priorities:
+  football: 100
+  basketball: 90
+  baseball: 80
+  hockey: 70
+  soccer: 85
+  tennis: 60
+  golf: 50
+  mma: 65
+  boxing: 65
+  wrestling: 55
+
+# League Priority Configuration  
+league_priorities:
+  # Football
+  NFL: 100
+  NCAA_FOOTBALL: 85
+  
+  # Basketball
+  NBA: 95
+  NCAA_BASKETBALL: 80
+  WNBA: 70
+  
+  # Baseball
+  MLB: 90
+  NCAA_BASEBALL: 60
+  
+  # Hockey
+  NHL: 85
+  NCAA_HOCKEY: 55
+  
+  # Soccer
+  MLS: 80
+  PREMIER_LEAGUE: 90
+  CHAMPIONS_LEAGUE: 95
+  WORLD_CUP: 100
+  
+  # Other
+  UFC: 75
+  WWE: 60
+  PGA: 55
+
+# Content Discovery Settings
+content_discovery:
+  # Default number of results
+  default_results:
+    live: 10
+    upcoming: 20
+    search: 15
+    featured: 8
+    
+  # Time windows
+  upcoming_hours_default: 24
+  prime_time_start: 18  # 6 PM
+  prime_time_end: 23    # 11 PM
+  
+  # Weekend days (0=Monday, 6=Sunday)
+  weekend_days: [5, 6]  # Saturday, Sunday
+  
+  # Preferred sports for trending content
+  trending_sports:
+    - "football"
+    - "basketball" 
+    - "baseball"
+    - "hockey"
+    
+  # Search boost factors
+  search_boosts:
+    exact_team_match: 50
+    league_match: 30
+    sport_match: 20
+    live_bonus: 100
+    prime_time_bonus: 25
+    weekend_bonus: 15
+
+# Fire TV Integration
+fire_tv:
+  # Default platform for deep links
+  default_platform: "fire_tv"
+  
+  # App ASINs for Fire TV
+  app_asins:
+    prime_video: "B00ZV9RDKK"
+    espn: "B00KQPQHPQ" 
+    paramount_plus: "B08KQZXHPX"
+    peacock: "B087MHQZX1"
+    netflix: "B00DBYBNZA"
+    
+  # Package names
+  package_names:
+    prime_video: "com.amazon.avod.thirdpartyclient"
+    espn: "com.espn.score_center"
+    paramount_plus: "com.cbs.ott"
+    peacock: "com.peacocktv.peacockandroid"
+    netflix: "com.netflix.ninja"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_api_requests: true
+  log_deep_links: true
+  log_cache_hits: false
+
+# Feature Flags
+features:
+  enable_caching: true
+  enable_search: true
+  enable_deep_linking: true
+  enable_live_updates: true
+  enable_recommendations: true
+  enable_analytics: false  # Future feature
+

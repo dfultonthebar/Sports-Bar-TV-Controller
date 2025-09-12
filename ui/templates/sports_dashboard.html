@@ -1,0 +1,594 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Content Discovery - Sports Bar TV Controller</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1a472a;
+            --secondary-color: #2d5a3d;
+            --accent-color: #4caf50;
+            --live-color: #ff4444;
+            --upcoming-color: #ff9800;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: rgba(26, 71, 42, 0.95) !important;
+            backdrop-filter: blur(10px);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .live-indicator {
+            background: var(--live-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .upcoming-indicator {
+            background: var(--upcoming-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .provider-badge {
+            background: var(--accent-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.7em;
+            text-transform: uppercase;
+        }
+
+        .launch-btn {
+            background: linear-gradient(45deg, var(--accent-color), #66bb6a);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .launch-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        .search-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            padding: 10px 20px;
+            margin-bottom: 30px;
+        }
+
+        .search-input {
+            background: transparent;
+            border: none;
+            color: white;
+            width: 100%;
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .category-tabs {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 5px;
+            margin-bottom: 30px;
+        }
+
+        .category-tab {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            margin: 0 5px;
+        }
+
+        .category-tab.active {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .stats-bar {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+
+        .stat-item {
+            flex: 1;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .team-vs {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .game-time {
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        .priority-high {
+            border-left: 4px solid var(--live-color);
+        }
+
+        .priority-medium {
+            border-left: 4px solid var(--upcoming-color);
+        }
+
+        .priority-low {
+            border-left: 4px solid var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-tv me-2"></i>
+                Sports Bar TV Controller
+            </a>
+            <span class="navbar-text">
+                <i class="fas fa-satellite-dish me-2"></i>
+                Sports Content Discovery
+            </span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-number" id="live-count">0</div>
+                <div class="stat-label">Live Games</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="upcoming-count">0</div>
+                <div class="stat-label">Upcoming Today</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="provider-count">5</div>
+                <div class="stat-label">Streaming Services</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="sport-count">5</div>
+                <div class="stat-label">Sports Covered</div>
+            </div>
+        </div>
+
+        <!-- Search Container -->
+        <div class="search-container">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-search me-3"></i>
+                <input type="text" class="search-input" id="search-input" 
+                       placeholder="Search for teams, leagues, or sports...">
+                <button class="btn btn-link text-white" id="clear-search">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="category-tabs text-center">
+            <button class="category-tab active" data-category="live">
+                <i class="fas fa-circle text-danger me-2"></i>Live Now
+            </button>
+            <button class="category-tab" data-category="upcoming">
+                <i class="fas fa-clock me-2"></i>Upcoming
+            </button>
+            <button class="category-tab" data-category="trending">
+                <i class="fas fa-fire me-2"></i>Trending
+            </button>
+            <button class="category-tab" data-category="prime_time">
+                <i class="fas fa-star me-2"></i>Prime Time
+            </button>
+            <button class="category-tab" data-category="weekend">
+                <i class="fas fa-calendar-weekend me-2"></i>Weekend
+            </button>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div class="loading-spinner" id="loading-spinner">
+            <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3">Loading sports content...</p>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid" id="content-grid">
+            <!-- Content cards will be dynamically loaded here -->
+        </div>
+
+        <!-- No Results Message -->
+        <div class="text-center" id="no-results" style="display: none;">
+            <i class="fas fa-search fa-3x mb-3 opacity-50"></i>
+            <h4>No content found</h4>
+            <p class="opacity-75">Try adjusting your search or check back later for new content.</p>
+        </div>
+    </div>
+
+    <!-- Launch Confirmation Modal -->
+    <div class="modal fade" id="launchModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Launch Content</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to launch this content on the Fire TV?</p>
+                    <div id="launch-content-details"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="confirm-launch">Launch Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class SportsContentDashboard {
+            constructor() {
+                this.currentCategory = 'live';
+                this.searchTimeout = null;
+                this.currentDeepLink = null;
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadContent();
+                this.loadStats();
+                
+                // Auto-refresh live content every 30 seconds
+                setInterval(() => {
+                    if (this.currentCategory === 'live') {
+                        this.loadContent();
+                    }
+                }, 30000);
+            }
+
+            bindEvents() {
+                // Category tabs
+                document.querySelectorAll('.category-tab').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        this.switchCategory(e.target.dataset.category);
+                    });
+                });
+
+                // Search input
+                const searchInput = document.getElementById('search-input');
+                searchInput.addEventListener('input', (e) => {
+                    clearTimeout(this.searchTimeout);
+                    this.searchTimeout = setTimeout(() => {
+                        this.performSearch(e.target.value);
+                    }, 500);
+                });
+
+                // Clear search
+                document.getElementById('clear-search').addEventListener('click', () => {
+                    searchInput.value = '';
+                    this.loadContent();
+                });
+
+                // Launch confirmation
+                document.getElementById('confirm-launch').addEventListener('click', () => {
+                    this.confirmLaunch();
+                });
+            }
+
+            switchCategory(category) {
+                // Update active tab
+                document.querySelectorAll('.category-tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                document.querySelector(`[data-category="${category}"]`).classList.add('active');
+
+                this.currentCategory = category;
+                this.loadContent();
+            }
+
+            async loadContent() {
+                this.showLoading();
+                
+                try {
+                    let url;
+                    switch (this.currentCategory) {
+                        case 'live':
+                            url = '/sports/api/live?limit=20';
+                            break;
+                        case 'upcoming':
+                            url = '/sports/api/upcoming?hours=24&limit=20';
+                            break;
+                        default:
+                            url = `/sports/api/featured/${this.currentCategory}?limit=20`;
+                    }
+
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.renderContent(data.data);
+                        this.updateStats(data.data);
+                    } else {
+                        this.showError(data.error);
+                    }
+                } catch (error) {
+                    this.showError('Failed to load content: ' + error.message);
+                } finally {
+                    this.hideLoading();
+                }
+            }
+
+            async performSearch(query) {
+                if (!query.trim()) {
+                    this.loadContent();
+                    return;
+                }
+
+                this.showLoading();
+
+                try {
+                    const response = await fetch(`/sports/api/search?q=${encodeURIComponent(query)}&limit=20`);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.renderContent(data.data);
+                    } else {
+                        this.showError(data.error);
+                    }
+                } catch (error) {
+                    this.showError('Search failed: ' + error.message);
+                } finally {
+                    this.hideLoading();
+                }
+            }
+
+            renderContent(content) {
+                const grid = document.getElementById('content-grid');
+                const noResults = document.getElementById('no-results');
+
+                if (!content || content.length === 0) {
+                    grid.innerHTML = '';
+                    noResults.style.display = 'block';
+                    return;
+                }
+
+                noResults.style.display = 'none';
+                
+                grid.innerHTML = content.map(item => this.createContentCard(item)).join('');
+
+                // Bind launch buttons
+                document.querySelectorAll('.launch-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const deepLink = e.target.dataset.deepLink;
+                        const title = e.target.dataset.title;
+                        this.showLaunchModal(deepLink, title);
+                    });
+                });
+            }
+
+            createContentCard(item) {
+                const startTime = new Date(item.start_time);
+                const now = new Date();
+                const isToday = startTime.toDateString() === now.toDateString();
+                
+                let timeDisplay;
+                if (item.is_live) {
+                    timeDisplay = '<span class="live-indicator"><i class="fas fa-circle me-1"></i>LIVE</span>';
+                } else if (isToday) {
+                    timeDisplay = `<span class="upcoming-indicator">${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+                } else {
+                    timeDisplay = `<span class="game-time">${startTime.toLocaleDateString()} ${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>`;
+                }
+
+                const priorityClass = item.priority > 80 ? 'priority-high' : 
+                                    item.priority > 50 ? 'priority-medium' : 'priority-low';
+
+                return `
+                    <div class="card ${priorityClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="provider-badge">${item.provider.replace('_', ' ')}</span>
+                                ${timeDisplay}
+                            </div>
+                            
+                            <div class="team-vs">
+                                ${item.home_team} vs ${item.away_team}
+                            </div>
+                            
+                            <p class="card-text">
+                                <small class="text-muted">
+                                    <i class="fas fa-trophy me-1"></i>${item.league} • ${item.sport}
+                                </small>
+                            </p>
+                            
+                            <p class="card-text">${item.reason}</p>
+                            
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    Priority: ${item.priority}
+                                </small>
+                                <button class="launch-btn" 
+                                        data-deep-link="${item.deep_link}"
+                                        data-title="${item.title}">
+                                    <i class="fas fa-play me-2"></i>Launch
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            showLaunchModal(deepLink, title) {
+                this.currentDeepLink = deepLink;
+                document.getElementById('launch-content-details').innerHTML = `
+                    <strong>${title}</strong><br>
+                    <small class="text-muted">Deep Link: ${deepLink}</small>
+                `;
+                
+                const modal = new bootstrap.Modal(document.getElementById('launchModal'));
+                modal.show();
+            }
+
+            async confirmLaunch() {
+                if (!this.currentDeepLink) return;
+
+                try {
+                    const response = await fetch('/sports/api/launch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            deep_link: this.currentDeepLink
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showSuccess('Content launched successfully!');
+                    } else {
+                        this.showError(data.error);
+                    }
+                } catch (error) {
+                    this.showError('Launch failed: ' + error.message);
+                }
+
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('launchModal'));
+                modal.hide();
+            }
+
+            async loadStats() {
+                try {
+                    const response = await fetch('/sports/api/stats');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        document.getElementById('provider-count').textContent = data.data.total_providers;
+                        document.getElementById('sport-count').textContent = data.data.supported_sports.length;
+                    }
+                } catch (error) {
+                    console.error('Failed to load stats:', error);
+                }
+            }
+
+            updateStats(content) {
+                const liveCount = content.filter(item => item.is_live).length;
+                const upcomingToday = content.filter(item => {
+                    const startTime = new Date(item.start_time);
+                    const today = new Date();
+                    return startTime.toDateString() === today.toDateString() && !item.is_live;
+                }).length;
+
+                document.getElementById('live-count').textContent = liveCount;
+                document.getElementById('upcoming-count').textContent = upcomingToday;
+            }
+
+            showLoading() {
+                document.getElementById('loading-spinner').style.display = 'block';
+                document.getElementById('content-grid').style.opacity = '0.5';
+            }
+
+            hideLoading() {
+                document.getElementById('loading-spinner').style.display = 'none';
+                document.getElementById('content-grid').style.opacity = '1';
+            }
+
+            showError(message) {
+                // Simple error display - could be enhanced with toast notifications
+                console.error(message);
+                alert('Error: ' + message);
+            }
+
+            showSuccess(message) {
+                // Simple success display - could be enhanced with toast notifications
+                console.log(message);
+                alert(message);
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new SportsContentDashboard();
+        });
+    </script>
+</body>
+</html>
+
