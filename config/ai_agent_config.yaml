@@ -1,0 +1,151 @@
+# AI Agent Configuration for Sports Bar TV Controller
+# This file configures the intelligent monitoring, error analysis, and automation system
+
+ai_agent:
+  # Enable/disable the AI agent system
+  enabled: true
+  
+  # Log monitoring configuration
+  monitor_config:
+    # Directories to monitor for log files
+    log_directories:
+      - "logs/"
+      - "backend/logs/"
+      - "/var/log/sportsbar/"  # Optional system logs
+    
+    # Rate limiting to prevent alert spam
+    rate_limit_minutes: 5
+    max_occurrences_per_window: 5
+    
+    # How long to keep event history
+    history_hours: 24
+    
+    # How often to check for new log content (seconds)
+    monitor_interval: 5
+    
+    # File patterns to exclude from monitoring
+    exclude_patterns:
+      - ".*\\.tmp$"
+      - ".*\\.lock$"
+      - ".*debug\\.log$"
+    
+    # Custom error patterns (in addition to built-in ones)
+    custom_patterns:
+      - name: "custom_api_timeout"
+        pattern: "API.*timeout.*exceeded"
+        severity: "MEDIUM"
+        description: "Custom API timeout detected"
+        suggested_action: "Check API endpoint availability"
+  
+  # Error analysis configuration
+  analyzer_config:
+    # Enable LLM-powered analysis (requires API keys)
+    llm_enabled: false
+    llm_model: "gpt-3.5-turbo"  # or "claude-3-sonnet", etc.
+    
+    # Automatic fix implementation
+    auto_fix_enabled: true
+    auto_fix_risk_threshold: "MEDIUM"  # LOW, MEDIUM, HIGH
+    
+    # Confidence threshold for automated actions
+    min_confidence_for_auto_fix: 0.7
+  
+  # Task automation configuration
+  task_config:
+    # Maximum number of concurrent tasks
+    max_concurrent_tasks: 5
+    
+    # Task timeout in seconds
+    task_timeout_seconds: 300
+    
+    # Content discovery refresh interval
+    content_refresh_minutes: 15
+    
+    # Task priorities (1-10, higher = more important)
+    task_priorities:
+      content_discovery: 5
+      system_maintenance: 3
+      device_check: 7
+      log_analysis: 4
+      preset_optimization: 2
+  
+  # System management configuration
+  health_check_interval_minutes: 15
+  maintenance_interval_hours: 24
+  
+  # Alert configuration
+  alerts:
+    # Enable different alert types
+    email_alerts: false
+    webhook_alerts: false
+    log_alerts: true
+    
+    # Alert thresholds
+    critical_error_threshold: 1    # Send alert after 1 critical error
+    high_error_threshold: 3        # Send alert after 3 high-severity errors
+    warning_threshold: 10          # Send alert after 10 warnings
+    
+    # Alert destinations (when enabled)
+    email:
+      smtp_server: "smtp.gmail.com"
+      smtp_port: 587
+      username: "${EMAIL_USERNAME}"
+      password: "${EMAIL_PASSWORD}"
+      recipients:
+        - "admin@sportsbar.com"
+        - "tech@sportsbar.com"
+    
+    webhook:
+      url: "${WEBHOOK_URL}"
+      headers:
+        Authorization: "Bearer ${WEBHOOK_TOKEN}"
+  
+  # Performance and resource limits
+  performance:
+    # Maximum memory usage for AI agent (MB)
+    max_memory_mb: 1024
+    
+    # Maximum log file size to process (MB)
+    max_log_file_mb: 100
+    
+    # Maximum number of events to keep in memory
+    max_events_in_memory: 1000
+    
+    # CPU usage limits
+    max_cpu_percent: 50
+  
+  # Integration settings
+  integrations:
+    # Prometheus metrics (if enabled)
+    prometheus:
+      enabled: false
+      port: 9090
+      metrics_prefix: "sportsbar_ai_"
+    
+    # External monitoring systems
+    external_monitoring:
+      enabled: false
+      endpoint: "${MONITORING_ENDPOINT}"
+      api_key: "${MONITORING_API_KEY}"
+  
+  # Development and debugging
+  debug:
+    # Enable debug logging
+    debug_mode: false
+    
+    # Save detailed analysis results
+    save_analysis_details: true
+    
+    # Enable performance profiling
+    enable_profiling: false
+    
+    # Test mode (don't actually implement fixes)
+    test_mode: false
+
+# Environment variable examples:
+# export EMAIL_USERNAME="your-email@gmail.com"
+# export EMAIL_PASSWORD="your-app-password"
+# export WEBHOOK_URL="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+# export WEBHOOK_TOKEN="your-webhook-token"
+# export MONITORING_ENDPOINT="https://your-monitoring-system.com/api"
+# export MONITORING_API_KEY="your-monitoring-api-key"

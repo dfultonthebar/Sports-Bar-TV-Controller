@@ -13,6 +13,15 @@ Professional Audio/Video automation system designed specifically for sports bars
 - **Real-time Event System** - Live updates and status monitoring
 - **Preset Management** - One-click activation of complex AV scenarios
 
+### 🤖 AI Agent System (NEW!)
+- **Real-time Log Monitoring** - Continuous monitoring of system logs with intelligent pattern detection
+- **AI-Powered Error Analysis** - Automatic error classification, root cause analysis, and fix suggestions
+- **Automated System Management** - Self-healing capabilities with safe automated fixes
+- **Intelligent Task Automation** - Automated content discovery, system maintenance, and optimization
+- **Predictive Health Monitoring** - Proactive system health assessment and issue prevention
+- **Smart Alerting System** - Context-aware alerts with actionable recommendations
+- **Performance Analytics** - System performance tracking and optimization suggestions
+
 ### 🆕 Sports Content Discovery & Deep Linking
 - **Multi-Platform Sports Content Discovery** - Fetch live and upcoming sports from Prime Video, ESPN+, Paramount+, Peacock, and Apple TV+
 - **Intelligent Deep Linking** - Direct launch to specific games on Fire TV and other streaming devices
@@ -40,6 +49,14 @@ Professional Audio/Video automation system designed specifically for sports bars
 
 ```
 Sports Bar TV Controller/
+├── agent/                      # 🤖 AI Agent System (NEW!)
+│   ├── __init__.py             # AI agent package initialization
+│   ├── monitor.py              # Real-time log monitoring with pattern detection
+│   ├── analyzer.py             # AI-powered error analysis and fix suggestions
+│   ├── tasks.py                # Intelligent task automation and content discovery
+│   ├── system_manager.py       # Central AI system coordination and management
+│   ├── requirements.txt        # AI agent specific dependencies
+│   └── README.md               # AI agent documentation
 ├── devices/                    # Device control modules
 │   ├── wolfpack_controller.py  # Wolfpack video matrix driver
 │   ├── atlas_atmosphere.py     # Atlas DSP audio processor driver
@@ -54,15 +71,20 @@ Sports Bar TV Controller/
 │   └── __init__.py
 ├── config/
 │   ├── mappings.yaml           # Configuration for device mappings
-│   └── sports_config.yaml      # 🆕 Sports content configuration
+│   ├── sports_config.yaml      # 🆕 Sports content configuration
+│   └── ai_agent_config.yaml    # 🤖 AI agent configuration (NEW!)
 ├── ui/
 │   ├── dashboard.py            # Flask web dashboard
 │   ├── sports_content_dashboard.py   # 🆕 Sports content interface
+│   ├── ai_agent_dashboard.py   # 🤖 AI agent monitoring dashboard (NEW!)
 │   └── templates/              # Web interface templates
-│       └── sports_dashboard.html     # 🆕 Sports content UI
+│       ├── sports_dashboard.html     # 🆕 Sports content UI
+│       └── ai_agent_dashboard.html   # 🤖 AI agent UI (NEW!)
 ├── frontend/
 │   ├── RoomLayout.js           # React component for room control
 │   └── RoomLayout.css          # Styling for the interface
+├── docs/                       # 🤖 Documentation (NEW!)
+│   └── HARDWARE_REQUIREMENTS.md # Hardware specs for AI agent system
 ├── tests/                      # 🆕 Unit tests
 │   └── test_sports_services.py # Sports service tests
 └── main.py                     # Main application entry point
@@ -106,6 +128,7 @@ Sports Bar TV Controller/
 5. **Access the dashboards**
    - Main AV Control Dashboard: `http://localhost:5000`
    - Sports Content Discovery: `http://localhost:5000/sports`
+   - AI Agent Dashboard: `http://localhost:5000/ai-agent` 🤖
 
 ### Docker Deployment
 
@@ -121,6 +144,113 @@ docker-compose logs -f sportsbar-controller
 # Stop services
 docker-compose down
 ```
+
+## 🤖 AI Agent System
+
+### Overview
+
+The AI Agent System provides intelligent monitoring, automated error analysis, and self-healing capabilities for the Sports Bar TV Controller. It continuously monitors system logs, detects issues, analyzes problems, and can automatically implement safe fixes without human intervention.
+
+### Key Capabilities
+
+#### 🔍 Real-time Log Monitoring
+- **Continuous Monitoring**: Watches all system log files in real-time using advanced file system monitoring
+- **Pattern Detection**: Identifies error patterns, connection issues, API failures, and device problems
+- **Smart Filtering**: Rate limiting and deduplication to prevent alert spam
+- **Multi-directory Support**: Monitors multiple log directories simultaneously
+
+#### 🧠 AI-Powered Error Analysis
+- **Intelligent Classification**: Automatically categorizes errors by type and severity
+- **Root Cause Analysis**: Determines likely causes of system issues using pattern matching and context analysis
+- **Fix Suggestions**: Provides specific, actionable fix recommendations with risk assessment
+- **Confidence Scoring**: Rates the reliability of analysis and suggestions
+
+#### 🔧 Automated System Management
+- **Self-Healing**: Automatically implements low-risk fixes without human intervention
+- **Safe Operations**: Risk assessment prevents dangerous automated changes
+- **Rollback Capability**: Can undo changes if they don't resolve issues
+- **Manual Override**: Operators can disable automation or approve high-risk fixes
+
+#### 📋 Intelligent Task Automation
+- **Content Discovery**: Automated sports content discovery and recommendation
+- **System Maintenance**: Routine cleanup, health checks, and optimization
+- **Device Monitoring**: Continuous device connectivity and status monitoring
+- **Performance Analytics**: System performance tracking and optimization suggestions
+
+### AI Agent Dashboard
+
+Access the AI Agent dashboard at `http://localhost:5000/ai-agent` to:
+
+1. **Monitor System Health** - Real-time system health overview with health score
+2. **View Recent Events** - Browse recent log events and system activities
+3. **Track Agent Actions** - See what the AI agent has done automatically
+4. **Manage Tasks** - View active tasks and trigger manual operations
+5. **Analyze Errors** - Review error analyses and implement suggested fixes
+6. **Configure Settings** - Adjust AI agent behavior and thresholds
+
+### Configuration
+
+The AI agent is configured via `config/ai_agent_config.yaml`:
+
+```yaml
+ai_agent:
+  enabled: true
+  
+  # Log monitoring settings
+  monitor_config:
+    log_directories:
+      - "logs/"
+      - "backend/logs/"
+    rate_limit_minutes: 5
+    max_occurrences_per_window: 5
+    
+  # Error analysis settings
+  analyzer_config:
+    auto_fix_enabled: true
+    auto_fix_risk_threshold: "MEDIUM"
+    
+  # System management settings
+  health_check_interval_minutes: 15
+  maintenance_interval_hours: 24
+```
+
+### Hardware Requirements
+
+The AI agent system has specific hardware requirements depending on the scale of deployment:
+
+- **Small Setup (8 TVs)**: 16 GB RAM, 6-core CPU, integrated graphics
+- **Medium Setup (20 TVs)**: 32 GB RAM, 8-core CPU, optional GPU for future LLM
+- **Large Setup (50+ TVs)**: 64 GB RAM, 12+ core CPU, dedicated GPU for local LLM
+
+See [Hardware Requirements](docs/HARDWARE_REQUIREMENTS.md) for detailed specifications.
+
+### Automated Fixes
+
+The AI agent can automatically implement various types of fixes:
+
+#### Low-Risk (Automatic)
+- Configuration adjustments
+- Cache cleanup and log rotation
+- Service health checks
+- Network diagnostics
+
+#### Medium-Risk (Configurable)
+- Service restarts
+- Device reconnection attempts
+- Resource cleanup operations
+- Configuration reloads
+
+#### High-Risk (Manual Only)
+- System reboots
+- Major configuration changes
+- Hardware interventions
+
+### Future Enhancements
+
+- **LLM Integration**: Advanced natural language processing for error analysis
+- **Machine Learning**: Pattern recognition and predictive maintenance
+- **Advanced Automation**: More sophisticated automated fixes
+- **External Integrations**: REST API for monitoring systems
 
 ## 🏈 Sports Content Discovery
 

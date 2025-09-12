@@ -1,0 +1,23 @@
+
+# AI Agent System Requirements
+
+# Core dependencies
+watchdog>=3.0.0          # File system monitoring
+psutil>=5.9.0           # System resource monitoring
+aiohttp>=3.8.0          # Async HTTP client
+pyyaml>=6.0             # YAML configuration parsing
+python-dateutil>=2.8.0  # Date/time utilities
+
+# Optional LLM integration (for future use)
+# openai>=1.0.0          # OpenAI API client
+# anthropic>=0.3.0       # Anthropic Claude API client
+# transformers>=4.21.0   # Hugging Face transformers
+
+# Development and testing
+pytest>=7.0.0           # Testing framework
+pytest-asyncio>=0.21.0  # Async testing support
+pytest-cov>=4.0.0       # Coverage reporting
+
+# Logging and monitoring
+structlog>=22.0.0       # Structured logging
+prometheus-client>=0.15.0  # Metrics collection (optional)
