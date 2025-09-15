@@ -1,0 +1,47 @@
+=== SPORTS BAR TV CONTROLLER - UI ROUTES AND ENDPOINTS ===
+
+MAIN DASHBOARD (Port 5000):
+- GET  /                    - Main dashboard interface
+- GET  /toggle_sync         - Toggle synchronization
+- GET  /preset/<name>       - Load preset configuration
+- POST /switch_av           - Switch AV configuration
+- GET  /api/status          - System status API
+- GET  /api/inputs          - Available inputs API
+- GET  /api/outputs         - Available outputs API
+
+AI AGENT DASHBOARD (Port 5000/ai):
+- GET  /ai/                 - AI Agent dashboard interface
+- GET  /ai/api/status       - AI system status
+- GET  /ai/api/metrics      - Performance metrics
+- GET  /ai/api/events       - System events
+- POST /ai/api/logs/clear   - Clear system logs
+- GET  /ai/api/actions      - Available actions
+- GET  /ai/api/tasks        - Task management
+- POST /ai/api/tasks/trigger - Trigger tasks
+- GET  /ai/api/analyses     - System analyses
+- POST /ai/api/fix/<analysis_id> - Apply fixes
+- GET  /ai/logs             - Logs interface
+- GET  /ai/tasks            - Tasks interface
+- GET  /ai/analyses         - Analyses interface
+- GET  /ai/settings         - Settings interface
+- POST /ai/settings         - Update settings
+
+SPORTS CONTENT DASHBOARD (Port 5000/sports):
+- GET  /sports/             - Sports content interface
+- GET  /sports/api/live     - Live sports content
+- GET  /sports/api/upcoming - Upcoming sports events
+- GET  /sports/api/search   - Search sports content
+- GET  /sports/api/featured/<category> - Featured content
+- GET  /sports/api/launch   - Launch content
+- GET  /sports/api/stats    - Sports statistics
+
+BACKEND API ENDPOINTS (FastAPI):
+- POST /audio/{device}/zone/{zone_id}/volume - Audio volume control
+- POST /audio/{device}/zone/{zone_id}/mute   - Audio mute control
+- POST /video/{device}/route                 - Video routing
+- POST /lighting/{device}/scene/{scene_id}   - Lighting control
+- POST /ir/{device}/send                     - IR command sending
+- GET  /layout                               - Get layout configuration
+- POST /layout/save                          - Save layout configuration
+- WS   /ws                                   - WebSocket connection
+

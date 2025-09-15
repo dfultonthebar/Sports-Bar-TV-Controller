@@ -698,6 +698,23 @@ class GitHubAutoManager:
         
         return workflow_results
 
+class GitHubAutomation:
+    """Simple wrapper class for GitHub automation functionality"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get automation status"""
+        return {
+            "status": "ready",
+            "features": [
+                "File analysis and correction",
+                "Branch merging",
+                "Pull request management"
+            ]
+        }
+
 # Example usage and testing
 if __name__ == "__main__":
     async def main():
