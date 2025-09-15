@@ -27,6 +27,12 @@ from core.event_bus import event_bus
 from services.content_discovery_manager import ContentDiscoveryManager
 from agent.system_manager import SystemManager
 
+# Import new backend enhancements
+from backend import (
+    TVDiscoveryService, SubnetManager, CableBoxManager, 
+    ChatInterfaceManager, GitHubAutoManager, GitHubRepository
+)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +64,13 @@ class SportsBarController:
         self.content_manager = None
         self.ai_system_manager = None
         self.running = False
+        
+        # Initialize new backend services
+        self.tv_discovery = TVDiscoveryService()
+        self.subnet_manager = SubnetManager()
+        self.cable_box_manager = CableBoxManager()
+        self.chat_interface = ChatInterfaceManager()
+        self.github_manager = None  # Will be initialized if needed
         
         # Create necessary directories
         self._create_directories()

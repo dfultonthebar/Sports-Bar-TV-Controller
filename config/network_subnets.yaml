@@ -1,0 +1,58 @@
+subnets:
+  hardware_control:
+    description: AV switches, controllers, IR blasters, audio equipment
+    dhcp_enabled: false
+    dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+    end_ip: 192.168.1.100
+    gateway: 192.168.1.1
+    name: hardware_control
+    purpose: av_hardware
+    reserved_ips:
+    - 192.168.1.80
+    - 192.168.1.81
+    start_ip: 192.168.1.80
+    vlan_id: null
+  input_devices:
+    description: Cable boxes, streaming devices, media players
+    dhcp_enabled: true
+    dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+    end_ip: 192.168.1.60
+    gateway: 192.168.1.1
+    name: input_devices
+    purpose: input_sources
+    reserved_ips: []
+    start_ip: 192.168.1.40
+    vlan_id: null
+  management:
+    description: Network management, monitoring, and control systems
+    dhcp_enabled: false
+    dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+    end_ip: 192.168.1.220
+    gateway: 192.168.1.1
+    name: management
+    purpose: management
+    reserved_ips:
+    - 192.168.1.200
+    - 192.168.1.201
+    start_ip: 192.168.1.200
+    vlan_id: null
+  tv_devices:
+    description: Smart TVs and display devices
+    dhcp_enabled: true
+    dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+    end_ip: 192.168.1.32
+    gateway: 192.168.1.1
+    name: tv_devices
+    purpose: tv_control
+    reserved_ips:
+    - 192.168.1.1
+    start_ip: 192.168.1.1
+    vlan_id: null
