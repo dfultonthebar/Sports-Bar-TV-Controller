@@ -135,6 +135,33 @@ class AIAgentDashboard:
                 logger.error(f"Error getting log events: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
         
+        @self.blueprint.route('/api/logs/clear', methods=['POST'])
+        def api_clear_logs():
+            """API endpoint to clear log events"""
+            try:
+                # Clear logs from the log monitor
+                if hasattr(self.system_manager.log_monitor, 'clear_logs'):
+                    cleared_count = self.system_manager.log_monitor.clear_logs()
+                else:
+                    # Fallback: clear the events list if the method doesn't exist
+                    if hasattr(self.system_manager.log_monitor, 'events'):
+                        cleared_count = len(self.system_manager.log_monitor.events)
+                        self.system_manager.log_monitor.events.clear()
+                    else:
+                        cleared_count = 0
+                
+                logger.info(f"Cleared {cleared_count} log events via AI dashboard")
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Successfully cleared {cleared_count} log events',
+                    'cleared_count': cleared_count
+                })
+                
+            except Exception as e:
+                logger.error(f"Error clearing log events: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+        
         @self.blueprint.route('/api/actions')
         def api_actions():
             """API endpoint for recent agent actions"""

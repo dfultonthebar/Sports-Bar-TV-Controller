@@ -465,6 +465,23 @@ class LogMonitor:
             "active_patterns": len(self.error_patterns)
         }
     
+    def clear_logs(self) -> int:
+        """Clear all stored log events and reset statistics"""
+        cleared_count = len(self.event_history)
+        
+        # Clear event history
+        self.event_history.clear()
+        
+        # Reset error counts and last seen errors
+        self.error_counts.clear()
+        self.last_seen_errors.clear()
+        
+        # Clear rate limits
+        self.rate_limits.clear()
+        
+        logger.info(f"Cleared {cleared_count} log events and reset statistics")
+        return cleared_count
+    
     def get_system_health(self) -> Dict[str, Any]:
         """Get system health based on recent events"""
         recent_errors = self.get_recent_events(hours=1, level="ERROR")
