@@ -1,49 +1,90 @@
-
-# AV System Configuration
-# Maps Wolfpack video outputs to Atlas Atmosphere audio zones
-# and video inputs to audio sources
-
-output_to_zone_map:
-  1: zone_1  # Main Bar TV → Main Bar speakers
-  2: zone_2  # Patio TV → Patio speakers  
-  3: zone_3  # Dining TV → Dining speakers
-  4: zone_4  # Private Room TV → Private Room speakers
-
-input_to_source_map:
-  1: source_sports_espn    # ESPN video source → ESPN audio source
-  2: source_sports_fox     # FOX Sports → FOX Sports audio
-  3: source_menu_channel   # Digital menu → Menu channel audio
-  4: source_music_stream   # Music HDMI → Music audio input
-
+devices:
+  atmosphere:
+    host: 192.168.1.50
+    port: 80
+  wolfpack:
+    host: 192.168.1.70
+    port: 5000
+mappings:
+- audio_zone: 1
+  name: TV 1
+  video_output: 1
+- audio_zone: 2
+  name: TV 2
+  video_output: 2
+- audio_zone: 3
+  name: TV 3
+  video_output: 3
+- audio_zone: 4
+  name: TV 4
+  video_output: 4
 presets:
-  big_game:
-    description: "All TVs to ESPN, high volume for big games"
-    routes:
-      - {input: 1, output: 1, volume: 0.85}  # Main Bar
-      - {input: 1, output: 2, volume: 0.85}  # Patio
-      - {input: 1, output: 3, volume: 0.80}  # Dining
-      - {input: 1, output: 4, volume: 0.75}  # Private Room
-
-  chill:
-    description: "Menu channel and background music, quiet atmosphere"
-    routes:
-      - {input: 3, output: 1, volume: 0.30}  # Menu on Main Bar
-      - {input: 3, output: 2, volume: 0.30}  # Menu on Patio
-      - {input: 4, output: 3, volume: 0.25}  # Music in Dining
-      - {input: 4, output: 4, volume: 0.20}  # Music in Private Room
-
-  multi_game:
-    description: "Different games on different TVs"
-    routes:
-      - {input: 1, output: 1, volume: 0.75}  # ESPN on Main Bar
-      - {input: 2, output: 2, volume: 0.75}  # FOX Sports on Patio
-      - {input: 1, output: 3, volume: 0.60}  # ESPN on Dining (lower)
-      - {input: 2, output: 4, volume: 0.70}  # FOX Sports on Private Room
-
-  closing:
-    description: "Closing time - menu channel, very low volume"
-    routes:
-      - {input: 3, output: 1, volume: 0.20}  # Menu everywhere
-      - {input: 3, output: 2, volume: 0.20}
-      - {input: 3, output: 3, volume: 0.15}
-      - {input: 3, output: 4, volume: 0.15}
+- audio_mutes:
+    1: false
+    2: false
+    3: false
+    4: false
+  audio_routes:
+    1: 1
+    2: 1
+    3: 1
+    4: 1
+  audio_volumes:
+    1: 0.8
+    2: 0.8
+    3: 0.8
+    4: 0.8
+  description: All TVs to main ESPN feed, high volume
+  id: 1
+  name: Big Game Mode
+  video_routes:
+    1: 1
+    2: 1
+    3: 1
+    4: 1
+- audio_mutes:
+    1: false
+    2: false
+    3: false
+    4: false
+  audio_routes:
+    1: 1
+    2: 2
+    3: 3
+    4: 4
+  audio_volumes:
+    1: 0.7
+    2: 0.7
+    3: 0.7
+    4: 0.6
+  description: Different games on different TV zones
+  id: 2
+  name: Multi-Game Mode
+  video_routes:
+    1: 1
+    2: 2
+    3: 3
+    4: 4
+- audio_mutes:
+    1: false
+    2: false
+    3: false
+    4: false
+  audio_routes:
+    1: 8
+    2: 8
+    3: 8
+    4: 8
+  audio_volumes:
+    1: 0.3
+    2: 0.3
+    3: 0.3
+    4: 0.3
+  description: Menu channel everywhere, background music
+  id: 3
+  name: Chill Mode
+  video_routes:
+    1: 8
+    2: 8
+    3: 8
+    4: 8

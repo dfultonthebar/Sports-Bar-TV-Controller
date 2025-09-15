@@ -1,0 +1,37 @@
+{
+  "inputs": {
+    "1": "Audio Input 1",
+    "2": "Audio Input 2",
+    "3": "Audio Input 3",
+    "4": "Audio Input 4",
+    "5": "Audio Input 5",
+    "6": "Audio Input 6",
+    "7": "Audio Input 7",
+    "8": "Audio Input 8",
+    "9": "Audio Input 9",
+    "10": "Audio Input 10",
+    "11": "Audio Input 11",
+    "12": "Audio Input 12",
+    "13": "Audio Input 13",
+    "14": "Audio Input 14",
+    "15": "Audio Input 15",
+    "16": "Audio Input 16"
+  },
+  "outputs": {
+    "1": "Zone 1",
+    "2": "Zone 2",
+    "3": "Zone 3",
+    "4": "Zone 4",
+    "5": "Zone 5",
+    "6": "Zone 6",
+    "7": "Zone 7",
+    "8": "Zone 8"
+  },
+  "device_info": {
+    "model": "Atlas Atmosphere",
+    "total_inputs": 16,
+    "total_outputs": 8,
+    "last_updated": "2025-09-15 22:31:29",
+    "hardware_sync_enabled": true
+  }
+}
