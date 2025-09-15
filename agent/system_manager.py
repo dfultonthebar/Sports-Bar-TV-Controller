@@ -20,6 +20,12 @@ from .monitor import LogMonitor, LogEvent
 from .analyzer import ErrorAnalyzer, ErrorAnalysis
 from .tasks import TaskAutomator, Task
 
+# Import enhanced AI monitor components
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from ai_monitor import RuleEngine, InstallationMonitor, GitConflictResolver, ActionExecutor
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -55,7 +61,7 @@ class SystemManager:
         self.config = config or {}
         self.project_root = Path(__file__).parent.parent
         
-        # Initialize components
+        # Initialize existing components
         self.log_monitor = LogMonitor(
             log_directories=self.config.get("log_directories", ["logs/", "backend/logs/"]),
             config=self.config.get("monitor_config", {})
@@ -66,6 +72,56 @@ class SystemManager:
         self.task_automator = TaskAutomator(
             config=self.config.get("task_config", {})
         )
+        
+        # Initialize enhanced AI monitor components
+        try:
+            # Load installation rules configuration
+            rules_config_path = self.project_root / "config" / "rules" / "installation_rules.yaml"
+            
+            # Initialize rule engine
+            self.rule_engine = RuleEngine(
+                rules_config_path=str(rules_config_path) if rules_config_path.exists() else None
+            )
+            
+            # Initialize action executor
+            self.action_executor = ActionExecutor(
+                config={
+                    "repo_path": str(self.project_root),
+                    "safety": self.config.get("safety_config", {}),
+                    "dry_run_mode": self.config.get("dry_run_mode", False),
+                    "max_concurrent_actions": self.config.get("max_concurrent_actions", 3)
+                }
+            )
+            
+            # Initialize git conflict resolver
+            self.git_conflict_resolver = GitConflictResolver(
+                repo_path=str(self.project_root),
+                config=self.config.get("git_config", {})
+            )
+            
+            # Initialize installation monitor
+            self.installation_monitor = InstallationMonitor(
+                rule_engine=self.rule_engine,
+                config={
+                    "repo_path": str(self.project_root),
+                    "log_directories": self.config.get("log_directories", ["logs/", "backend/logs/"])
+                }
+            )
+            
+            # Connect rule engine to action executor
+            self.rule_engine.action_executor = self.action_executor
+            
+            self.enhanced_monitoring_enabled = True
+            logger.info("Enhanced AI monitoring system initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize enhanced AI monitoring: {e}")
+            self.enhanced_monitoring_enabled = False
+            # Fallback to basic monitoring
+            self.rule_engine = None
+            self.action_executor = None
+            self.git_conflict_resolver = None
+            self.installation_monitor = None
         
         # System state
         self.running = False
@@ -104,6 +160,14 @@ class SystemManager:
         # Start log monitoring
         self.log_monitor.start_monitoring()
         
+        # Start enhanced monitoring if available
+        if self.enhanced_monitoring_enabled and self.installation_monitor:
+            try:
+                self.installation_monitor.start()
+                logger.info("Enhanced installation monitoring started")
+            except Exception as e:
+                logger.error(f"Failed to start enhanced monitoring: {e}")
+        
         # Start management loop
         self.management_thread = threading.Thread(target=self._management_loop, daemon=True)
         self.management_thread.start()
@@ -124,6 +188,14 @@ class SystemManager:
         
         # Stop log monitoring
         self.log_monitor.stop_monitoring()
+        
+        # Stop enhanced monitoring if available
+        if self.enhanced_monitoring_enabled and self.installation_monitor:
+            try:
+                self.installation_monitor.stop()
+                logger.info("Enhanced installation monitoring stopped")
+            except Exception as e:
+                logger.error(f"Error stopping enhanced monitoring: {e}")
         
         # Wait for management thread
         if self.management_thread and self.management_thread.is_alive():
@@ -611,3 +683,153 @@ class SystemManager:
         except Exception as e:
             logger.error(f"Error triggering manual task: {e}")
             raise
+    
+    # Enhanced AI Monitor Methods
+    
+    def get_installation_status(self) -> Dict[str, Any]:
+        """Get current installation monitoring status"""
+        if not self.enhanced_monitoring_enabled or not self.installation_monitor:
+            return {"enabled": False, "message": "Enhanced monitoring not available"}
+        
+        try:
+            return {
+                "enabled": True,
+                "active_installations": len(self.installation_monitor.get_active_installations()),
+                "statistics": self.installation_monitor.get_installation_statistics(),
+                "rule_engine_stats": self.rule_engine.get_rule_statistics() if self.rule_engine else {},
+                "action_executor_stats": self.action_executor.get_execution_statistics() if self.action_executor else {}
+            }
+        except Exception as e:
+            logger.error(f"Error getting installation status: {e}")
+            return {"enabled": True, "error": str(e)}
+    
+    def get_git_conflict_status(self) -> Dict[str, Any]:
+        """Get current git conflict status"""
+        if not self.enhanced_monitoring_enabled or not self.git_conflict_resolver:
+            return {"enabled": False, "message": "Git conflict resolver not available"}
+        
+        try:
+            return self.git_conflict_resolver.get_conflict_summary()
+        except Exception as e:
+            logger.error(f"Error getting git conflict status: {e}")
+            return {"enabled": True, "error": str(e)}
+    
+    async def resolve_git_conflicts(self) -> Dict[str, Any]:
+        """Manually trigger git conflict resolution"""
+        if not self.enhanced_monitoring_enabled or not self.git_conflict_resolver:
+            return {"success": False, "message": "Git conflict resolver not available"}
+        
+        try:
+            conflicts = self.git_conflict_resolver.detect_conflicts()
+            if not conflicts:
+                return {"success": True, "message": "No conflicts detected", "conflicts_resolved": 0}
+            
+            resolutions = await self.git_conflict_resolver.resolve_conflicts(conflicts)
+            successful_resolutions = [r for r in resolutions if r.success]
+            
+            # Record action
+            action = AgentAction(
+                action_id=f"git_conflict_resolution_{int(datetime.now().timestamp())}",
+                timestamp=datetime.now(),
+                action_type="git_conflict_resolution",
+                description=f"Resolved {len(successful_resolutions)} of {len(conflicts)} git conflicts",
+                trigger="manual_request",
+                parameters={"total_conflicts": len(conflicts), "resolved_conflicts": len(successful_resolutions)},
+                success=len(successful_resolutions) > 0
+            )
+            self.action_history.append(action)
+            
+            return {
+                "success": True,
+                "total_conflicts": len(conflicts),
+                "conflicts_resolved": len(successful_resolutions),
+                "conflicts_failed": len(conflicts) - len(successful_resolutions),
+                "resolutions": [
+                    {
+                        "file_path": r.file_path,
+                        "success": r.success,
+                        "strategy": r.strategy_used.value,
+                        "error": r.error_message
+                    }
+                    for r in resolutions
+                ]
+            }
+        
+        except Exception as e:
+            logger.error(f"Error resolving git conflicts: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def trigger_installation_health_check(self) -> Dict[str, Any]:
+        """Manually trigger installation health check"""
+        if not self.enhanced_monitoring_enabled or not self.installation_monitor:
+            return {"success": False, "message": "Installation monitor not available"}
+        
+        try:
+            return self.installation_monitor.trigger_manual_installation_check()
+        except Exception as e:
+            logger.error(f"Error triggering installation health check: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def get_rule_engine_status(self) -> Dict[str, Any]:
+        """Get rule engine status and statistics"""
+        if not self.enhanced_monitoring_enabled or not self.rule_engine:
+            return {"enabled": False, "message": "Rule engine not available"}
+        
+        try:
+            stats = self.rule_engine.get_rule_statistics()
+            return {
+                "enabled": True,
+                "running": self.rule_engine.running,
+                "statistics": stats
+            }
+        except Exception as e:
+            logger.error(f"Error getting rule engine status: {e}")
+            return {"enabled": True, "error": str(e)}
+    
+    def enable_rule(self, rule_id: str) -> Dict[str, Any]:
+        """Enable a specific rule"""
+        if not self.enhanced_monitoring_enabled or not self.rule_engine:
+            return {"success": False, "message": "Rule engine not available"}
+        
+        try:
+            self.rule_engine.enable_rule(rule_id)
+            return {"success": True, "message": f"Rule {rule_id} enabled"}
+        except Exception as e:
+            logger.error(f"Error enabling rule {rule_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def disable_rule(self, rule_id: str) -> Dict[str, Any]:
+        """Disable a specific rule"""
+        if not self.enhanced_monitoring_enabled or not self.rule_engine:
+            return {"success": False, "message": "Rule engine not available"}
+        
+        try:
+            self.rule_engine.disable_rule(rule_id)
+            return {"success": True, "message": f"Rule {rule_id} disabled"}
+        except Exception as e:
+            logger.error(f"Error disabling rule {rule_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def enable_dry_run_mode(self) -> Dict[str, Any]:
+        """Enable dry run mode for action executor"""
+        if not self.enhanced_monitoring_enabled or not self.action_executor:
+            return {"success": False, "message": "Action executor not available"}
+        
+        try:
+            self.action_executor.enable_dry_run_mode()
+            return {"success": True, "message": "Dry run mode enabled"}
+        except Exception as e:
+            logger.error(f"Error enabling dry run mode: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def disable_dry_run_mode(self) -> Dict[str, Any]:
+        """Disable dry run mode for action executor"""
+        if not self.enhanced_monitoring_enabled or not self.action_executor:
+            return {"success": False, "message": "Action executor not available"}
+        
+        try:
+            self.action_executor.disable_dry_run_mode()
+            return {"success": True, "message": "Dry run mode disabled"}
+        except Exception as e:
+            logger.error(f"Error disabling dry run mode: {e}")
+            return {"success": False, "error": str(e)}
