@@ -3,6 +3,17 @@
 # Sports Bar TV Controller - Enhanced Installation Script with AI Monitoring
 # This script installs all dependencies and sets up the system for production use
 # AI Chat Interface is installed FIRST for real-time monitoring and troubleshooting
+#
+# Git Update Behavior Control:
+# Set GIT_UPDATE_MODE environment variable to control how git conflicts are handled:
+#   - "prompt" (default): Interactive prompts for conflict resolution
+#   - "keep_local": Always keep local configurations, skip git updates
+#   - "update_from_github": Always update from GitHub, backup and overwrite local changes
+#
+# Examples:
+#   sudo ./install.sh                                    # Interactive mode (default)
+#   sudo GIT_UPDATE_MODE=keep_local ./install.sh         # Keep local configs
+#   sudo GIT_UPDATE_MODE=update_from_github ./install.sh # Force GitHub update
 
 set -e  # Exit on any error
 
@@ -581,6 +592,155 @@ setup_user_and_dirs() {
     log "Directory structure created"
 }
 
+# Handle git repository updates with merge conflict resolution
+handle_git_update() {
+    local update_mode="${GIT_UPDATE_MODE:-prompt}"
+    local backup_dir="/tmp/sportsbar-config-backup-$(date +%Y%m%d-%H%M%S)"
+    
+    log "Checking for local changes..."
+    
+    # Check if there are uncommitted changes
+    if ! sudo -u "$SERVICE_USER" git diff --quiet || ! sudo -u "$SERVICE_USER" git diff --cached --quiet; then
+        warn "Local changes detected in repository"
+        
+        # Backup important configuration files
+        log "Creating backup of local configurations..."
+        mkdir -p "$backup_dir"
+        
+        # Backup configuration files if they exist
+        for config_file in "config/mappings.yaml" "config/settings.json" ".env" "config/devices.yaml"; do
+            if [[ -f "$config_file" ]]; then
+                cp "$config_file" "$backup_dir/" 2>/dev/null || true
+                log "Backed up: $config_file"
+            fi
+        done
+        
+        # Handle based on update mode
+        case "$update_mode" in
+            "keep_local")
+                log "Keeping local configurations (skipping git pull)"
+                warn "Repository not updated - using existing local version"
+                return 0
+                ;;
+            "update_from_github")
+                log "Updating from GitHub (local changes will be overwritten)"
+                sudo -u "$SERVICE_USER" git stash push -m "Auto-stash before installation update $(date)"
+                ;;
+            "prompt"|*)
+                if [[ -t 0 ]] && [[ "$update_mode" == "prompt" ]]; then
+                    # Interactive mode - prompt user
+                    echo ""
+                    warn "Local changes detected! Choose how to proceed:"
+                    echo "1) Keep local configurations (skip update)"
+                    echo "2) Update from GitHub (backup and overwrite local changes)"
+                    echo "3) Show differences and decide"
+                    echo ""
+                    read -p "Enter choice (1-3) [default: 1]: " choice
+                    choice=${choice:-1}
+                    
+                    case "$choice" in
+                        1)
+                            log "User chose to keep local configurations"
+                            return 0
+                            ;;
+                        2)
+                            log "User chose to update from GitHub"
+                            sudo -u "$SERVICE_USER" git stash push -m "User-requested stash before update $(date)"
+                            ;;
+                        3)
+                            log "Showing differences..."
+                            sudo -u "$SERVICE_USER" git diff --name-status
+                            echo ""
+                            read -p "Proceed with GitHub update? (y/N): " proceed
+                            if [[ "$proceed" =~ ^[Yy]$ ]]; then
+                                sudo -u "$SERVICE_USER" git stash push -m "User-approved stash after review $(date)"
+                            else
+                                log "User chose to keep local version"
+                                return 0
+                            fi
+                            ;;
+                        *)
+                            log "Invalid choice, keeping local configurations"
+                            return 0
+                            ;;
+                    esac
+                else
+                    # Non-interactive mode - default to keeping local
+                    log "Non-interactive mode: keeping local configurations"
+                    warn "Set GIT_UPDATE_MODE=update_from_github to force update"
+                    return 0
+                fi
+                ;;
+        esac
+    fi
+    
+    # Fetch latest changes
+    log "Fetching latest changes from GitHub..."
+    if ! sudo -u "$SERVICE_USER" git fetch origin main; then
+        error "Failed to fetch from GitHub repository"
+        return 1
+    fi
+    
+    # Check if we're behind
+    local behind_count=$(sudo -u "$SERVICE_USER" git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+    if [[ "$behind_count" -eq 0 ]]; then
+        log "Repository is already up to date"
+        return 0
+    fi
+    
+    log "Repository is $behind_count commits behind, updating..."
+    
+    # Attempt to pull with merge strategy
+    if sudo -u "$SERVICE_USER" git pull origin main; then
+        log "Successfully updated repository"
+        
+        # Restore backed up configs if they don't conflict
+        if [[ -d "$backup_dir" ]]; then
+            log "Restoring non-conflicting configuration files..."
+            for backup_file in "$backup_dir"/*; do
+                if [[ -f "$backup_file" ]]; then
+                    filename=$(basename "$backup_file")
+                    if [[ ! -f "$filename" ]] || ! sudo -u "$SERVICE_USER" git diff --quiet HEAD~1 HEAD -- "$filename" 2>/dev/null; then
+                        cp "$backup_file" "$filename" 2>/dev/null || true
+                        log "Restored: $filename"
+                    fi
+                fi
+            done
+        fi
+    else
+        # Pull failed, likely due to merge conflicts
+        error_code=$?
+        warn "Git pull failed (exit code: $error_code)"
+        
+        # Reset to clean state and try again
+        log "Attempting to resolve conflicts automatically..."
+        sudo -u "$SERVICE_USER" git reset --hard HEAD
+        
+        if sudo -u "$SERVICE_USER" git pull origin main; then
+            log "Successfully updated after reset"
+            
+            # Restore all backed up configs
+            if [[ -d "$backup_dir" ]]; then
+                log "Restoring backed up configuration files..."
+                cp "$backup_dir"/* . 2>/dev/null || true
+                log "Configuration files restored from backup"
+            fi
+        else
+            error "Failed to update repository even after reset. Manual intervention required."
+            log "Backup of configurations available at: $backup_dir"
+            return 1
+        fi
+    fi
+    
+    # Clean up backup if successful
+    if [[ -d "$backup_dir" ]]; then
+        rm -rf "$backup_dir" 2>/dev/null || true
+    fi
+    
+    log "Repository update completed successfully"
+    return 0
+}
+
 # Clone and setup application
 setup_application() {
     log "Setting up Sports Bar TV Controller application..."
@@ -591,9 +751,11 @@ setup_application() {
         cd "$INSTALL_DIR"
         sudo -u "$SERVICE_USER" git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git app
     else
-        log "Repository already exists, pulling latest changes..."
+        log "Repository already exists, updating from GitHub..."
         cd "$INSTALL_DIR/app"
-        sudo -u "$SERVICE_USER" git pull origin main
+        
+        # Handle git merge conflicts intelligently
+        handle_git_update
     fi
     
     cd "$INSTALL_DIR/app"
