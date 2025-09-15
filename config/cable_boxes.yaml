@@ -1,0 +1,12 @@
+cable_boxes:
+  main_cable_box:
+    brand: Generic
+    channel_map: {}
+    global_cache_ip: 192.168.1.80
+    global_cache_port: 1
+    ip_address: ''
+    ir_codes: {}
+    last_channel: ''
+    model: Cable Box
+    name: main_cable_box
+    power_state: false
