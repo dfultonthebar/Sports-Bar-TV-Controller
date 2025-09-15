@@ -1091,11 +1091,639 @@ EOF
     log "Startup script created"
 }
 
+# Setup AI-to-AI Communication Bridge
+setup_ai_bridge() {
+    ai_log "=== SETTING UP AI-TO-AI COMMUNICATION BRIDGE ==="
+    
+    # Create AI bridge directories
+    mkdir -p /opt/ai-bridge/{bridge,config,logs,temp}
+    mkdir -p /var/log/ai-bridge
+    
+    # Create AI Bridge Communication Server
+    cat > /opt/ai-bridge/bridge/ai_bridge.py << 'EOF'
+#!/usr/bin/env python3
+"""
+AI-to-AI Communication Bridge
+Facilitates communication between different AI systems during installation
+"""
+
+import asyncio
+import json
+import logging
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Any
+import aiohttp
+from aiohttp import web
+import websockets
+
+# Configuration
+AI_BRIDGE_PORT = 3003
+AI_WEBSOCKET_PORT = 3004
+LOG_FILE = "/var/log/ai-bridge/bridge.log"
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('ai_bridge')
+
+class AIBridge:
+    def __init__(self):
+        self.connected_agents = {}
+        self.message_queue = []
+        self.installation_state = {
+            'phase': 'initializing',
+            'progress': 0,
+            'components': {
+                'ai_monitor': {'status': 'pending', 'progress': 0},
+                'ai_bridge': {'status': 'active', 'progress': 100},
+                'api_config': {'status': 'pending', 'progress': 0},
+                'tv_controller': {'status': 'pending', 'progress': 0}
+            },
+            'errors': [],
+            'warnings': []
+        }
+    
+    async def register_agent(self, agent_id: str, agent_info: Dict):
+        """Register a new AI agent"""
+        self.connected_agents[agent_id] = {
+            'info': agent_info,
+            'last_seen': datetime.now(),
+            'status': 'active'
+        }
+        logger.info(f"AI Agent registered: {agent_id}")
+        await self.broadcast_message({
+            'type': 'agent_registered',
+            'agent_id': agent_id,
+            'agent_info': agent_info
+        })
+    
+    async def broadcast_message(self, message: Dict):
+        """Broadcast message to all connected agents"""
+        message['timestamp'] = datetime.now().isoformat()
+        message['bridge_id'] = 'ai_bridge_main'
+        
+        self.message_queue.append(message)
+        logger.info(f"Broadcasting: {message.get('type', 'unknown')}")
+        
+        # Keep only last 1000 messages
+        if len(self.message_queue) > 1000:
+            self.message_queue = self.message_queue[-1000:]
+    
+    async def update_installation_progress(self, component: str, status: str, progress: int, details: str = ""):
+        """Update installation progress for a component"""
+        if component in self.installation_state['components']:
+            self.installation_state['components'][component].update({
+                'status': status,
+                'progress': progress,
+                'last_update': datetime.now().isoformat(),
+                'details': details
+            })
+            
+            # Calculate overall progress
+            total_progress = sum(comp['progress'] for comp in self.installation_state['components'].values())
+            self.installation_state['progress'] = total_progress // len(self.installation_state['components'])
+            
+            await self.broadcast_message({
+                'type': 'installation_progress',
+                'component': component,
+                'status': status,
+                'progress': progress,
+                'overall_progress': self.installation_state['progress'],
+                'details': details
+            })
+    
+    async def handle_ai_request(self, request):
+        """Handle AI agent requests"""
+        try:
+            data = await request.json()
+            action = data.get('action')
+            
+            if action == 'register':
+                agent_id = data.get('agent_id')
+                agent_info = data.get('agent_info', {})
+                await self.register_agent(agent_id, agent_info)
+                return web.json_response({'success': True, 'message': 'Agent registered'})
+            
+            elif action == 'update_progress':
+                component = data.get('component')
+                status = data.get('status')
+                progress = data.get('progress', 0)
+                details = data.get('details', '')
+                await self.update_installation_progress(component, status, progress, details)
+                return web.json_response({'success': True})
+            
+            elif action == 'get_status':
+                return web.json_response({
+                    'success': True,
+                    'installation_state': self.installation_state,
+                    'connected_agents': len(self.connected_agents),
+                    'message_count': len(self.message_queue)
+                })
+            
+            elif action == 'get_messages':
+                limit = data.get('limit', 50)
+                messages = self.message_queue[-limit:] if limit > 0 else self.message_queue
+                return web.json_response({
+                    'success': True,
+                    'messages': messages
+                })
+            
+            else:
+                return web.json_response({'success': False, 'error': 'Unknown action'}, status=400)
+                
+        except Exception as e:
+            logger.error(f"Error handling AI request: {e}")
+            return web.json_response({'success': False, 'error': str(e)}, status=500)
+    
+    async def websocket_handler(self, websocket, path):
+        """Handle WebSocket connections for real-time updates"""
+        try:
+            logger.info(f"WebSocket connection established: {websocket.remote_address}")
+            
+            # Send current state
+            await websocket.send(json.dumps({
+                'type': 'initial_state',
+                'installation_state': self.installation_state,
+                'connected_agents': len(self.connected_agents)
+            }))
+            
+            # Keep connection alive and send updates
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    if data.get('type') == 'ping':
+                        await websocket.send(json.dumps({'type': 'pong'}))
+                except json.JSONDecodeError:
+                    logger.warning("Invalid JSON received via WebSocket")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("WebSocket connection closed")
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+    
+    async def start_bridge(self):
+        """Start the AI bridge server"""
+        # HTTP API server
+        app = web.Application()
+        app.router.add_post('/ai/request', self.handle_ai_request)
+        app.router.add_get('/ai/status', lambda req: self.handle_ai_request(req))
+        
+        # Start HTTP server
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, 'localhost', AI_BRIDGE_PORT)
+        await site.start()
+        
+        logger.info(f"AI Bridge HTTP API started on port {AI_BRIDGE_PORT}")
+        
+        # Start WebSocket server
+        websocket_server = websockets.serve(
+            self.websocket_handler, 
+            'localhost', 
+            AI_WEBSOCKET_PORT
+        )
+        
+        logger.info(f"AI Bridge WebSocket server started on port {AI_WEBSOCKET_PORT}")
+        
+        # Register self as active
+        await self.update_installation_progress('ai_bridge', 'active', 100, 'AI Bridge operational')
+        
+        # Keep running
+        await asyncio.gather(
+            websocket_server,
+            asyncio.sleep(float('inf'))  # Keep running forever
+        )
+
+async def main():
+    """Main function to start AI Bridge"""
+    bridge = AIBridge()
+    try:
+        await bridge.start_bridge()
+    except KeyboardInterrupt:
+        logger.info("AI Bridge shutting down...")
+    except Exception as e:
+        logger.error(f"AI Bridge error: {e}")
+
+if __name__ == '__main__':
+    asyncio.run(main())
+EOF
+
+    # Install Python dependencies for AI bridge
+    python3 -m pip install aiohttp websockets
+
+    # Create AI Bridge systemd service
+    cat > /etc/systemd/system/ai-bridge.service << EOF
+[Unit]
+Description=AI-to-AI Communication Bridge
+After=network.target ai-monitor.service
+Wants=ai-monitor.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-bridge/bridge
+Environment=PYTHONPATH=/opt/ai-bridge
+ExecStart=/usr/bin/python3 ai_bridge.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start AI bridge service
+    systemctl daemon-reload
+    systemctl enable ai-bridge
+    systemctl start ai-bridge
+    
+    # Wait for service to start
+    sleep 3
+    
+    ai_log "AI-to-AI Communication Bridge is now active!"
+    ai_log "🔗 Bridge API: http://localhost:3003"
+    ai_log "🔗 Bridge WebSocket: ws://localhost:3004"
+    
+    # Test the connection
+    if nc -z localhost 3003 2>/dev/null; then
+        ai_log "✅ AI Bridge HTTP API is accessible"
+    else
+        ai_log "⚠️ AI Bridge HTTP API may not be fully ready yet"
+    fi
+}
+
+# Setup API Configuration Interface
+setup_api_config_interface() {
+    ai_log "=== SETTING UP API CONFIGURATION INTERFACE ==="
+    
+    # Create API config directories
+    mkdir -p /opt/api-config/{interface,config,templates,logs}
+    mkdir -p /var/log/api-config
+    
+    # Create API Configuration Interface
+    cat > /opt/api-config/interface/config_server.py << 'EOF'
+#!/usr/bin/env python3
+"""
+API Configuration Interface
+Provides a web interface for configuring various APIs used by the system
+"""
+
+import json
+import os
+import yaml
+from pathlib import Path
+from flask import Flask, render_template_string, request, jsonify, redirect, url_for
+import requests
+
+app = Flask(__name__)
+app.secret_key = 'api-config-secret-key-change-in-production'
+
+# Configuration
+API_CONFIG_PORT = 3005
+CONFIG_DIR = Path('/opt/api-config/config')
+SPORTSBAR_CONFIG_DIR = Path('/opt/sportsbar/app/config')
+
+# Ensure directories exist
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+SPORTSBAR_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Default API configurations
+DEFAULT_APIS = {
+    'sports_api': {
+        'name': 'Sports API',
+        'description': 'API for sports data and scores',
+        'url': 'https://api-sports.io',
+        'key': '',
+        'enabled': False,
+        'test_endpoint': '/v1/sports'
+    },
+    'weather_api': {
+        'name': 'Weather API',
+        'description': 'Weather information for location-based content',
+        'url': 'https://api.openweathermap.org',
+        'key': '',
+        'enabled': False,
+        'test_endpoint': '/data/2.5/weather'
+    },
+    'news_api': {
+        'name': 'News API',
+        'description': 'News feeds for sports and general content',
+        'url': 'https://newsapi.org',
+        'key': '',
+        'enabled': False,
+        'test_endpoint': '/v2/top-headlines'
+    },
+    'streaming_api': {
+        'name': 'Streaming API',
+        'description': 'Streaming service integration',
+        'url': 'https://api.streaming-service.com',
+        'key': '',
+        'enabled': False,
+        'test_endpoint': '/v1/channels'
+    }
+}
+
+def load_api_config():
+    """Load API configuration from file"""
+    config_file = CONFIG_DIR / 'api_config.json'
+    if config_file.exists():
+        with open(config_file, 'r') as f:
+            return json.load(f)
+    return DEFAULT_APIS.copy()
+
+def save_api_config(config):
+    """Save API configuration to file"""
+    config_file = CONFIG_DIR / 'api_config.json'
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    # Also save to sportsbar config directory
+    sportsbar_config_file = SPORTSBAR_CONFIG_DIR / 'api_config.json'
+    with open(sportsbar_config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+
+def test_api_connection(api_config):
+    """Test API connection"""
+    try:
+        url = api_config['url'] + api_config['test_endpoint']
+        headers = {}
+        
+        if api_config['key']:
+            # Common API key header patterns
+            headers['X-API-Key'] = api_config['key']
+            headers['Authorization'] = f"Bearer {api_config['key']}"
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        return {
+            'success': response.status_code < 400,
+            'status_code': response.status_code,
+            'message': f"HTTP {response.status_code}"
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            'success': False,
+            'status_code': 0,
+            'message': str(e)
+        }
+
+@app.route('/')
+def index():
+    """Main configuration interface"""
+    config = load_api_config()
+    
+    html_template = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔧 API Configuration Interface</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #fff; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #ff6b35; font-size: 2.5em; margin-bottom: 10px; }
+        .api-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .api-card { background: #2d2d2d; border-radius: 10px; padding: 20px; border: 2px solid #444; }
+        .api-card.enabled { border-color: #00ff88; }
+        .api-card.disabled { border-color: #ff4444; }
+        .api-header { display: flex; justify-content: between; align-items: center; margin-bottom: 15px; }
+        .api-name { font-size: 1.3em; font-weight: bold; }
+        .api-status { padding: 5px 10px; border-radius: 5px; font-size: 0.8em; }
+        .status-enabled { background: #00ff88; color: #000; }
+        .status-disabled { background: #ff4444; color: #fff; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #ccc; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #555; background: #333; color: #fff; border-radius: 5px; }
+        .form-group textarea { height: 60px; resize: vertical; }
+        .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        .btn-primary { background: #ff6b35; color: #fff; }
+        .btn-success { background: #00ff88; color: #000; }
+        .btn-danger { background: #ff4444; color: #fff; }
+        .btn-secondary { background: #666; color: #fff; }
+        .btn:hover { opacity: 0.8; }
+        .test-result { margin-top: 10px; padding: 10px; border-radius: 5px; }
+        .test-success { background: #00ff88; color: #000; }
+        .test-error { background: #ff4444; color: #fff; }
+        .actions { text-align: center; margin-top: 30px; }
+        .description { color: #aaa; font-size: 0.9em; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 API Configuration Interface</h1>
+            <p>Configure external APIs for the Sports Bar TV Controller system</p>
+        </div>
+        
+        <div class="api-grid">
+            {% for api_id, api in config.items() %}
+            <div class="api-card {{ 'enabled' if api.enabled else 'disabled' }}">
+                <div class="api-header">
+                    <div class="api-name">{{ api.name }}</div>
+                    <div class="api-status {{ 'status-enabled' if api.enabled else 'status-disabled' }}">
+                        {{ 'ENABLED' if api.enabled else 'DISABLED' }}
+                    </div>
+                </div>
+                
+                <div class="description">{{ api.description }}</div>
+                
+                <form method="POST" action="/update/{{ api_id }}">
+                    <div class="form-group">
+                        <label>API URL:</label>
+                        <input type="url" name="url" value="{{ api.url }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>API Key:</label>
+                        <input type="password" name="key" value="{{ api.key }}" placeholder="Enter API key">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Test Endpoint:</label>
+                        <input type="text" name="test_endpoint" value="{{ api.test_endpoint }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="enabled" {{ 'checked' if api.enabled else '' }}>
+                            Enable this API
+                        </label>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <button type="submit" class="btn btn-primary">Update Configuration</button>
+                        <button type="button" class="btn btn-secondary" onclick="testAPI('{{ api_id }}')">Test Connection</button>
+                    </div>
+                </form>
+                
+                <div id="test-result-{{ api_id }}" class="test-result" style="display: none;"></div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="actions">
+            <button class="btn btn-success" onclick="saveAllConfigs()">💾 Save All Configurations</button>
+            <button class="btn btn-secondary" onclick="exportConfig()">📤 Export Configuration</button>
+            <button class="btn btn-secondary" onclick="location.reload()">🔄 Refresh</button>
+        </div>
+    </div>
+
+    <script>
+        function testAPI(apiId) {
+            const resultDiv = document.getElementById('test-result-' + apiId);
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '🔄 Testing connection...';
+            resultDiv.className = 'test-result';
+            
+            fetch('/test/' + apiId, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        resultDiv.innerHTML = '✅ Connection successful! ' + data.message;
+                        resultDiv.className = 'test-result test-success';
+                    } else {
+                        resultDiv.innerHTML = '❌ Connection failed: ' + data.message;
+                        resultDiv.className = 'test-result test-error';
+                    }
+                })
+                .catch(e => {
+                    resultDiv.innerHTML = '❌ Test failed: ' + e.message;
+                    resultDiv.className = 'test-result test-error';
+                });
+        }
+        
+        function saveAllConfigs() {
+            alert('All configurations will be saved automatically when you update individual APIs.');
+        }
+        
+        function exportConfig() {
+            fetch('/export')
+                .then(r => r.json())
+                .then(data => {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'api-config.json';
+                    a.click();
+                });
+        }
+    </script>
+</body>
+</html>
+    '''
+    
+    return render_template_string(html_template, config=config)
+
+@app.route('/update/<api_id>', methods=['POST'])
+def update_api(api_id):
+    """Update API configuration"""
+    config = load_api_config()
+    
+    if api_id in config:
+        config[api_id].update({
+            'url': request.form.get('url', ''),
+            'key': request.form.get('key', ''),
+            'test_endpoint': request.form.get('test_endpoint', ''),
+            'enabled': 'enabled' in request.form
+        })
+        
+        save_api_config(config)
+    
+    return redirect(url_for('index'))
+
+@app.route('/test/<api_id>', methods=['POST'])
+def test_api(api_id):
+    """Test API connection"""
+    config = load_api_config()
+    
+    if api_id not in config:
+        return jsonify({'success': False, 'message': 'API not found'})
+    
+    result = test_api_connection(config[api_id])
+    return jsonify(result)
+
+@app.route('/export')
+def export_config():
+    """Export configuration"""
+    config = load_api_config()
+    return jsonify(config)
+
+if __name__ == '__main__':
+    print(f"🔧 API Configuration Interface starting on port {API_CONFIG_PORT}")
+    print(f"🌐 Access at: http://localhost:{API_CONFIG_PORT}")
+    app.run(host='0.0.0.0', port=API_CONFIG_PORT, debug=False)
+EOF
+
+    # Install Python dependencies for API config interface
+    python3 -m pip install flask requests pyyaml
+
+    # Create API Config systemd service
+    cat > /etc/systemd/system/api-config.service << EOF
+[Unit]
+Description=API Configuration Interface
+After=network.target ai-bridge.service
+Wants=ai-bridge.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/api-config/interface
+Environment=PYTHONPATH=/opt/api-config
+ExecStart=/usr/bin/python3 config_server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start API config service
+    systemctl daemon-reload
+    systemctl enable api-config
+    systemctl start api-config
+    
+    # Wait for service to start
+    sleep 3
+    
+    ai_log "API Configuration Interface is now active!"
+    ai_log "🔧 Config Interface: http://localhost:3005"
+    
+    # Test the connection
+    if nc -z localhost 3005 2>/dev/null; then
+        ai_log "✅ API Configuration Interface is accessible"
+    else
+        ai_log "⚠️ API Configuration Interface may not be fully ready yet"
+    fi
+    
+    # Notify AI bridge about progress
+    if command -v curl >/dev/null 2>&1 && nc -z localhost 3003 2>/dev/null; then
+        curl -s -X POST "http://localhost:3003/ai/request" \
+            -H "Content-Type: application/json" \
+            -d '{"action":"update_progress","component":"api_config","status":"active","progress":100,"details":"API Configuration Interface operational"}' \
+            >/dev/null 2>&1 || true
+    fi
+}
+
 # Main installation function
 main() {
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║          🤖 AI-ENHANCED INSTALLATION STARTING 🤖             ║${NC}"
     echo -e "${CYAN}║     Sports Bar TV Controller with Real-time AI Monitoring   ║${NC}"
+    echo -e "${CYAN}║              AI COMPONENTS INSTALLED FIRST                   ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     
     log "Starting AI-Enhanced Sports Bar TV Controller installation..."
@@ -1108,14 +1736,33 @@ main() {
     apt-get update -y >/dev/null 2>&1
     apt-get install -y curl wget netcat-openbsd >/dev/null 2>&1
     
-    # Setup AI monitoring system FIRST
-    setup_ai_chat_interface
+    # === AI COMPONENTS INSTALLATION PHASE ===
+    ai_log "🤖 === PHASE 1: AI COMPONENTS INSTALLATION ==="
     
+    # 1. Setup AI monitoring system FIRST
+    ai_log "🚀 Step 1/3: Setting up AI Monitoring System..."
+    setup_ai_chat_interface
     ai_log "✅ AI Chat Interface is now monitoring the installation process!"
     ai_log "🌐 You can view real-time progress at: http://localhost:$AI_CHAT_PORT"
     
-    # Now proceed with regular installation with AI monitoring
-    log "Proceeding with system installation under AI supervision..."
+    # 2. Setup AI-to-AI Communication Bridge
+    ai_log "🚀 Step 2/3: Setting up AI-to-AI Communication Bridge..."
+    setup_ai_bridge
+    ai_log "✅ AI Communication Bridge is now active!"
+    
+    # 3. Setup API Configuration Interface
+    ai_log "🚀 Step 3/3: Setting up API Configuration Interface..."
+    setup_api_config_interface
+    ai_log "✅ API Configuration Interface is now active!"
+    
+    ai_log "🎉 === AI COMPONENTS INSTALLATION COMPLETED === 🎉"
+    ai_log "🤖 All AI systems are now operational and monitoring the installation!"
+    
+    # === TV CONTROLLER COMPONENTS INSTALLATION PHASE ===
+    ai_log "📺 === PHASE 2: TV CONTROLLER COMPONENTS INSTALLATION ==="
+    
+    # Now proceed with TV controller installation with full AI monitoring
+    log "Proceeding with TV Controller system installation under full AI supervision..."
     check_system
     update_system
     install_python
@@ -1135,39 +1782,54 @@ main() {
     
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║                    🎯 INSTALLATION COMPLETE! 🎯              ║${NC}"
-    echo -e "${GREEN}║          AI Monitoring System Successfully Deployed          ║${NC}"
+    echo -e "${GREEN}║          AI-FIRST ARCHITECTURE SUCCESSFULLY DEPLOYED         ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     
     info ""
-    info "🤖 AI MONITORING SYSTEM:"
+    info "🤖 AI SYSTEMS (INSTALLED FIRST - NOW ACTIVE):"
     info "   • AI Chat Interface: http://localhost:$AI_CHAT_PORT"
+    info "   • AI Communication Bridge: http://localhost:3003"
+    info "   • API Configuration Interface: http://localhost:3005"
     info "   • Real-time monitoring: ACTIVE"
     info "   • Auto-fix capabilities: ENABLED"
-    info "   • Service status: systemctl status ai-monitor"
+    info "   • Inter-AI communication: ENABLED"
+    info ""
+    info "📺 TV CONTROLLER SYSTEM:"
+    info "   • Main dashboard: http://$(hostname -I | awk '{print $1}')"
+    info "   • Backend API: http://$(hostname -I | awk '{print $1}'):8000"
+    info "   • Service status: systemctl status sportsbar-controller"
+    info ""
+    info "🔧 CONFIGURATION INTERFACES:"
+    info "   • API Configuration: http://localhost:3005"
+    info "   • TV Controller Config: $INSTALL_DIR/app/config/mappings.yaml"
     info ""
     info "📋 NEXT STEPS:"
-    info "1. Edit configuration: $INSTALL_DIR/app/config/mappings.yaml"
-    info "2. Configure sports APIs (optional): export API_SPORTS_KEY=your_key"
-    info "3. Start services: systemctl start sportsbar-controller"
-    info "4. Check status: systemctl status sportsbar-controller"
+    info "1. Configure APIs via web interface: http://localhost:3005"
+    info "2. Edit TV controller config: $INSTALL_DIR/app/config/mappings.yaml"
+    info "3. Start TV controller services: systemctl start sportsbar-controller"
+    info "4. Monitor installation with AI: http://localhost:$AI_CHAT_PORT"
     info "5. Access main dashboard: http://$(hostname -I | awk '{print $1}')"
-    info "6. Monitor with AI: http://$(hostname -I | awk '{print $1}'):$AI_CHAT_PORT"
     info ""
     info "📚 For detailed configuration, see: $INSTALL_DIR/app/docs/INSTALLATION.md"
     info ""
     
-    # Show service status including AI monitor
-    log "Current service status:"
+    # Show service status including all AI services
+    log "Current AI and system service status:"
     systemctl status ai-monitor --no-pager -l || true
+    systemctl status ai-bridge --no-pager -l || true
+    systemctl status api-config --no-pager -l || true
     systemctl status redis-server --no-pager -l || true
     systemctl status nginx --no-pager -l || true
     
-    ai_log "🔄 AI Monitor will continue running to assist with any post-installation issues"
+    ai_log "🔄 All AI systems will continue running to assist with ongoing operations"
+    ai_log "🤖 AI-first architecture ensures intelligent monitoring and management"
     warn "Please reboot the system to ensure all services start correctly"
     
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║  🤖 AI Assistant remains active for ongoing support! 🤖     ║${NC}"
-    echo -e "${CYAN}║     Access anytime at: http://localhost:$AI_CHAT_PORT        ║${NC}"
+    echo -e "${CYAN}║  🤖 AI-FIRST INSTALLATION COMPLETE - ALL SYSTEMS ACTIVE! 🤖 ║${NC}"
+    echo -e "${CYAN}║     AI Monitor: http://localhost:$AI_CHAT_PORT               ║${NC}"
+    echo -e "${CYAN}║     AI Bridge: http://localhost:3003                        ║${NC}"
+    echo -e "${CYAN}║     API Config: http://localhost:3005                       ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
 }
 
