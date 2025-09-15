@@ -516,6 +516,25 @@ class ChatAssistant:
             for session_id, session in self.active_sessions.items()
         }
 
+class ChatInterface:
+    """Simple chat interface for basic interactions"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.messages = []
+    
+    def add_message(self, message: ChatMessage):
+        """Add a message to the chat interface"""
+        self.messages.append(message)
+    
+    def get_messages(self) -> List[ChatMessage]:
+        """Get all messages"""
+        return self.messages
+    
+    def clear_messages(self):
+        """Clear all messages"""
+        self.messages.clear()
+
 class ChatInterfaceManager:
     """High-level manager for the chat interface system"""
     

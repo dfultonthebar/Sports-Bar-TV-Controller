@@ -1,4 +1,15 @@
 subnets:
+  TV Network:
+    description: Dedicated network for smart TVs
+    dhcp_enabled: true
+    dns_servers: []
+    end_ip: 192.168.10.50
+    gateway: null
+    name: TV Network
+    purpose: smart_tvs
+    reserved_ips: []
+    start_ip: 192.168.10.1
+    vlan_id: 10
   hardware_control:
     description: AV switches, controllers, IR blasters, audio equipment
     dhcp_enabled: false

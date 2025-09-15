@@ -15,10 +15,10 @@ This module provides:
 - Distributed code generation and review
 """
 
-from .core.ai_bridge import AIBridge
+from .core.ai_bridge import AIBridge, AITask, TaskPriority
 from .core.task_coordinator import TaskCoordinator
 from .core.collaboration_engine import CollaborationEngine
-from .providers.base_provider import BaseAIProvider
+from .providers.base_provider import BaseAIProvider, TaskType
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
 from .providers.grok_provider import GrokProvider
@@ -28,6 +28,9 @@ __author__ = "Sports Bar TV Controller AI System"
 
 __all__ = [
     "AIBridge",
+    "AITask",
+    "TaskType", 
+    "TaskPriority",
     "TaskCoordinator", 
     "CollaborationEngine",
     "BaseAIProvider",
