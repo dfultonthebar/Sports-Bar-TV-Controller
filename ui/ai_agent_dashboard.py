@@ -16,6 +16,7 @@ from agent.system_manager import SystemManager
 from agent.monitor import LogEvent
 from agent.analyzer import ErrorAnalysis
 from agent.tasks import Task
+from ui.ai_api_config_manager import AIAPIConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,10 @@ class AIAgentDashboard:
     def __init__(self, system_manager: SystemManager):
         self.system_manager = system_manager
         self.blueprint = Blueprint('ai_agent', __name__, url_prefix='/ai-agent')
+        
+        # Initialize API configuration manager
+        self.api_config_manager = AIAPIConfigManager()
+        
         self._setup_routes()
     
     def _setup_routes(self):
@@ -394,6 +399,10 @@ class AIAgentDashboard:
     def get_blueprint(self) -> Blueprint:
         """Get the Flask blueprint for the AI agent dashboard"""
         return self.blueprint
+    
+    def get_api_config_blueprint(self) -> Blueprint:
+        """Get the Flask blueprint for the API configuration manager"""
+        return self.api_config_manager.get_blueprint()
 
 def create_ai_dashboard_templates():
     """Create HTML templates for the AI agent dashboard"""
@@ -460,6 +469,7 @@ def create_ai_dashboard_templates():
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="/"><i class="fas fa-tv"></i> Main Dashboard</a>
                 <a class="nav-link" href="/sports"><i class="fas fa-football-ball"></i> Sports Content</a>
+                <a class="nav-link" href="/ai-agent/api-config"><i class="fas fa-key"></i> API Config</a>
             </div>
         </div>
     </nav>
@@ -475,6 +485,44 @@ def create_ai_dashboard_templates():
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+        <!-- Navigation Tabs -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/ai-agent/">
+                            <i class="fas fa-tachometer-alt"></i> Overview
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/api-config">
+                            <i class="fas fa-key"></i> API Configuration
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/logs">
+                            <i class="fas fa-file-alt"></i> Logs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/tasks">
+                            <i class="fas fa-tasks"></i> Tasks
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/analyses">
+                            <i class="fas fa-chart-line"></i> Analyses
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/settings">
+                            <i class="fas fa-cog"></i> Settings
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
 
         <!-- System Status Overview -->
         <div class="row mb-4">

@@ -127,6 +127,7 @@ class SportsBarController:
             # Register dashboard blueprints
             self.dashboard.app.register_blueprint(self.sports_dashboard.get_blueprint())
             self.dashboard.app.register_blueprint(self.ai_dashboard.get_blueprint())
+            self.dashboard.app.register_blueprint(self.ai_dashboard.get_api_config_blueprint())
             
             logger.info("All components initialized successfully")
             return True
