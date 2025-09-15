@@ -513,5 +513,11 @@ DASHBOARD_TEMPLATE = """
 </html>
 """
 
+def create_dashboard_templates():
+    """Create dashboard templates - placeholder function for compatibility"""
+    # This function is called during initialization but doesn't need to do anything
+    # as the templates are already defined as string constants in this module
+    pass
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
