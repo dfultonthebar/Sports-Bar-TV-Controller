@@ -107,9 +107,36 @@ Sports Bar TV Controller/
    - Main AV Control Dashboard: `http://localhost:5000`
    - Sports Content Discovery: `http://localhost:5000/sports`
 
+### Production Installation
+
+For production deployment on Ubuntu/Debian systems, use the automated installer:
+
+```bash
+# Download and run the installation script
+sudo bash scripts/install.sh
+```
+
+The installer will:
+- Install all system dependencies (Python, Node.js, Nginx, Redis)
+- Create system users including a "Controller" user with sudo permissions
+- Set up systemd services for automatic startup
+- Configure Nginx reverse proxy
+- Set up firewall rules and log rotation
+- Create the complete directory structure
+
+**Default Credentials:**
+- **Controller User**: `Controller` / `6809233DjD$$$`
+- **Service User**: `sportsbar` (system service account)
+
+After installation:
+1. Configure your devices in `/opt/sportsbar/app/config/mappings.yaml`
+2. Set up sports API keys (optional): `export API_SPORTS_KEY=your_key`
+3. Start the services: `sudo systemctl start sportsbar-controller`
+4. Access the dashboard: `http://your-server-ip`
+
 ### Docker Deployment
 
-For production deployment:
+For containerized deployment:
 
 ```bash
 # Build and start all services

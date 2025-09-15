@@ -186,6 +186,22 @@ ufw allow from 192.168.100.0/24 to any port 8002
 
 3. **Follow the prompts** and wait for completion (15-30 minutes)
 
+The automated installer will:
+- Install all system dependencies (Python 3.11, Node.js 18, Nginx, Redis)
+- Create system users:
+  - **Controller user**: `Controller` with password `6809233DjD$$$` and sudo permissions
+  - **Service user**: `sportsbar` (system service account)
+- Set up systemd services for automatic startup
+- Configure Nginx reverse proxy with security headers
+- Set up firewall rules (UFW) with appropriate port access
+- Configure log rotation for system maintenance
+- Create complete directory structure in `/opt/sportsbar/`
+
+**Post-Installation Access:**
+- **Web Dashboard**: `http://your-server-ip` (port 80)
+- **SSH Access**: Use the `Controller` user for system administration
+- **Service Management**: `sudo systemctl status sportsbar-controller`
+
 ### Method 2: Manual Installation
 
 1. **Clone the repository**:
