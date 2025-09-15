@@ -1,0 +1,333 @@
+
+# Enhanced AI Installation Monitor Rules Configuration
+# This file defines the rules for proactive installation monitoring and automated fixes
+
+installation_monitoring:
+  enabled: true
+  auto_fix_enabled: true
+  risk_threshold: "MEDIUM"  # LOW, MEDIUM, HIGH, CRITICAL
+  backup_before_fix: true
+  max_concurrent_actions: 3
+  dry_run_mode: false
+
+git_monitoring:
+  enabled: true
+  conflict_resolution: "automatic"
+  backup_before_fix: true
+  safe_file_patterns:
+    - "*.md"
+    - "*.txt"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.ini"
+    - "*.cfg"
+  dangerous_file_patterns:
+    - "*.py"
+    - "*.js"
+    - "*.ts"
+    - "*.java"
+    - "*.cpp"
+    - "*.c"
+    - "*.h"
+
+safety_settings:
+  max_file_size_mb: 100
+  protected_paths:
+    - "/etc"
+    - "/usr"
+    - "/var"
+    - "/boot"
+    - "/sys"
+    - "/proc"
+  dangerous_commands:
+    - "rm -rf /"
+    - "format"
+    - "fdisk"
+    - "mkfs"
+    - "dd if="
+    - "shutdown"
+    - "reboot"
+
+rules:
+  # Git Conflict Resolution Rules
+  - rule_id: "git_merge_conflict"
+    name: "Git Merge Conflict Detection"
+    description: "Detects and resolves git merge conflicts automatically"
+    event_pattern: "CONFLICT.*Merge conflict in"
+    enabled: true
+    priority: 9
+    cooldown_minutes: 2
+    max_executions_per_hour: 10
+    conditions:
+      - type: "event_type"
+        value: "error"
+    actions:
+      - action_id: "resolve_merge_conflict"
+        action_type: "git_command"
+        description: "Attempt automatic merge conflict resolution"
+        commands:
+          - "git status --porcelain"
+          - "git diff --name-only --diff-filter=U"
+        risk_level: "MEDIUM"
+        timeout_seconds: 60
+        rollback_commands:
+          - "git merge --abort"
+        prerequisites:
+          - "command_exists:git"
+
+  - rule_id: "branch_diverged"
+    name: "Branch Divergence Handler"
+    description: "Handles diverged branches during git operations"
+    event_pattern: "Your branch and.*have diverged"
+    enabled: true
+    priority: 8
+    cooldown_minutes: 5
+    actions:
+      - action_id: "resolve_branch_divergence"
+        action_type: "git_command"
+        description: "Resolve branch divergence with rebase"
+        commands:
+          - "git fetch origin"
+          - "git rebase origin/main"
+        risk_level: "MEDIUM"
+        timeout_seconds: 120
+        rollback_commands:
+          - "git rebase --abort"
+
+  - rule_id: "git_auth_failure"
+    name: "Git Authentication Failure"
+    description: "Handles git authentication failures"
+    event_pattern: "Authentication failed.*git|Permission denied.*git"
+    enabled: true
+    priority: 7
+    actions:
+      - action_id: "check_git_credentials"
+        action_type: "system_command"
+        description: "Check and refresh git credentials"
+        commands:
+          - "git config --list | grep user"
+          - "ssh -T git@github.com"
+        risk_level: "LOW"
+        timeout_seconds: 30
+
+  # Build Process Rules
+  - rule_id: "build_failure"
+    name: "Build Process Failure"
+    description: "Handles build process failures"
+    event_pattern: "Build failed|compilation error|npm ERR!"
+    enabled: true
+    priority: 6
+    actions:
+      - action_id: "clean_and_rebuild"
+        action_type: "system_command"
+        description: "Clean build artifacts and retry build"
+        commands:
+          - "rm -rf node_modules package-lock.json"
+          - "npm cache clean --force"
+          - "npm install"
+        risk_level: "MEDIUM"
+        timeout_seconds: 300
+
+  - rule_id: "dependency_conflict"
+    name: "Dependency Conflict Resolution"
+    description: "Resolves package dependency conflicts"
+    event_pattern: "CONFLICT.*package.*version|dependency.*conflict"
+    enabled: true
+    priority: 6
+    actions:
+      - action_id: "resolve_dependencies"
+        action_type: "system_command"
+        description: "Resolve dependency conflicts"
+        commands:
+          - "npm audit fix"
+          - "pip install --upgrade --force-reinstall -r requirements.txt"
+        risk_level: "MEDIUM"
+        timeout_seconds: 180
+
+  # System Resource Rules
+  - rule_id: "port_binding_failure"
+    name: "Port Binding Failure"
+    description: "Handles port already in use errors"
+    event_pattern: "Address already in use.*port|EADDRINUSE"
+    enabled: true
+    priority: 7
+    actions:
+      - action_id: "kill_port_process"
+        action_type: "system_command"
+        description: "Kill process using the port and restart service"
+        commands:
+          - "lsof -ti:8000 | xargs kill -9"
+          - "sleep 2"
+        risk_level: "MEDIUM"
+        timeout_seconds: 30
+
+  - rule_id: "service_startup_failure"
+    name: "Service Startup Failure"
+    description: "Handles service startup failures"
+    event_pattern: "Failed to start|Service.*failed|systemctl.*failed"
+    enabled: true
+    priority: 8
+    actions:
+      - action_id: "restart_service"
+        action_type: "service_operation"
+        description: "Restart failed service"
+        commands:
+          - "systemctl daemon-reload"
+          - "systemctl restart sportsbar-controller"
+        risk_level: "MEDIUM"
+        timeout_seconds: 60
+        parameters:
+          service_name: "sportsbar-controller"
+
+  - rule_id: "disk_space_low"
+    name: "Low Disk Space Handler"
+    description: "Handles low disk space issues"
+    event_pattern: "No space left on device|Disk.*full"
+    enabled: true
+    priority: 9
+    actions:
+      - action_id: "cleanup_disk_space"
+        action_type: "system_command"
+        description: "Clean up disk space"
+        commands:
+          - "docker system prune -f"
+          - "rm -rf /tmp/*"
+          - "find /var/log -name '*.log' -mtime +7 -delete"
+        risk_level: "LOW"
+        timeout_seconds: 120
+
+  - rule_id: "memory_exhaustion"
+    name: "Memory Exhaustion Handler"
+    description: "Handles out of memory errors"
+    event_pattern: "Out of memory|OOM|Memory.*exhausted"
+    enabled: true
+    priority: 10
+    actions:
+      - action_id: "free_memory"
+        action_type: "system_command"
+        description: "Free up system memory"
+        commands:
+          - "sync"
+          - "echo 3 > /proc/sys/vm/drop_caches"
+          - "systemctl restart sportsbar-controller"
+        risk_level: "HIGH"
+        timeout_seconds: 60
+
+  # Installation Process Rules
+  - rule_id: "installation_timeout"
+    name: "Installation Timeout Handler"
+    description: "Handles installation timeouts"
+    event_pattern: "Installation.*timeout|Process.*timed out"
+    enabled: true
+    priority: 5
+    conditions:
+      - type: "time_range"
+        start_hour: 0
+        end_hour: 23
+    actions:
+      - action_id: "restart_installation"
+        action_type: "system_command"
+        description: "Kill and restart installation process"
+        commands:
+          - "pkill -f 'npm install'"
+          - "pkill -f 'pip install'"
+          - "sleep 5"
+        risk_level: "MEDIUM"
+        timeout_seconds: 30
+
+  - rule_id: "missing_file_error"
+    name: "Missing File Error Handler"
+    description: "Handles missing file errors during installation"
+    event_pattern: "No such file or directory|File not found|Missing.*file"
+    enabled: true
+    priority: 6
+    actions:
+      - action_id: "regenerate_missing_files"
+        action_type: "file_operation"
+        description: "Attempt to regenerate missing files"
+        files_to_modify:
+          - "frontend/public/index.html"
+          - "package.json"
+        risk_level: "LOW"
+        timeout_seconds: 30
+
+  # Network and Connectivity Rules
+  - rule_id: "network_timeout"
+    name: "Network Timeout Handler"
+    description: "Handles network timeouts during installation"
+    event_pattern: "Network.*timeout|Connection.*timed out|Request timeout"
+    enabled: true
+    priority: 4
+    actions:
+      - action_id: "retry_with_backoff"
+        action_type: "system_command"
+        description: "Retry operation with exponential backoff"
+        commands:
+          - "sleep 5"
+          - "ping -c 3 8.8.8.8"
+        risk_level: "LOW"
+        timeout_seconds: 30
+
+  - rule_id: "dns_resolution_failure"
+    name: "DNS Resolution Failure"
+    description: "Handles DNS resolution failures"
+    event_pattern: "DNS.*resolution.*failed|Name or service not known"
+    enabled: true
+    priority: 5
+    actions:
+      - action_id: "fix_dns_resolution"
+        action_type: "system_command"
+        description: "Fix DNS resolution issues"
+        commands:
+          - "systemctl restart systemd-resolved"
+          - "nslookup github.com"
+        risk_level: "MEDIUM"
+        timeout_seconds: 30
+
+# Rule Chains - Define sequences of rules that should be executed together
+rule_chains:
+  git_conflict_resolution:
+    - "git_merge_conflict"
+    - "branch_diverged"
+    - "git_auth_failure"
+  
+  installation_recovery:
+    - "installation_timeout"
+    - "missing_file_error"
+    - "build_failure"
+    - "dependency_conflict"
+  
+  system_resource_management:
+    - "disk_space_low"
+    - "memory_exhaustion"
+    - "port_binding_failure"
+    - "service_startup_failure"
+
+# Conditional Rules - Rules that apply only under certain conditions
+conditional_rules:
+  development_environment:
+    condition: "environment == 'development'"
+    rules:
+      - "git_merge_conflict"
+      - "build_failure"
+    auto_fix_enabled: true
+    risk_threshold: "HIGH"
+  
+  production_environment:
+    condition: "environment == 'production'"
+    rules:
+      - "service_startup_failure"
+      - "memory_exhaustion"
+      - "disk_space_low"
+    auto_fix_enabled: false
+    risk_threshold: "LOW"
+
+# Learning and Adaptation Settings
+adaptive_settings:
+  enabled: true
+  success_rate_tracking: true
+  failure_pattern_learning: true
+  rule_optimization: true
+  confidence_threshold: 0.8
+  learning_window_hours: 168  # 1 week
