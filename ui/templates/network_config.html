@@ -1,0 +1,874 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Configuration - Sports Bar TV Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .navbar {
+            background: rgba(0,0,0,0.3);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .navbar .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .navbar .logo {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        .navbar .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .navbar .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .navbar .nav-links a:hover {
+            background: rgba(255,255,255,0.2);
+            color: #FFD700;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .network-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .network-header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            color: #FFD700;
+        }
+        
+        .network-header p {
+            font-size: 1.3em;
+            color: #87CEEB;
+        }
+        
+        .network-status {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .network-status h2 {
+            color: #FFD700;
+            margin-bottom: 15px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .status-item {
+            text-align: center;
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .status-item h4 {
+            color: #87CEEB;
+            margin-bottom: 8px;
+        }
+        
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #98FB98;
+        }
+        
+        .vlan-management {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .vlan-list {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+        }
+        
+        .vlan-list h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+        }
+        
+        .vlan-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+        
+        .vlan-card:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+        }
+        
+        .vlan-card h3 {
+            color: #FFD700;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .vlan-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .vlan-info div {
+            font-size: 0.9em;
+        }
+        
+        .vlan-info strong {
+            color: #87CEEB;
+        }
+        
+        .vlan-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-edit {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-edit:hover {
+            background: #45a049;
+        }
+        
+        .btn-delete {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-delete:hover {
+            background: #da190b;
+        }
+        
+        .btn-toggle {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .btn-toggle:hover {
+            background: #e68900;
+        }
+        
+        .vlan-form {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+            height: fit-content;
+        }
+        
+        .vlan-form h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #87CEEB;
+            font-weight: bold;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .form-group textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        
+        .dns-servers {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .dns-server-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .dns-server-input input {
+            flex: 1;
+        }
+        
+        .btn-remove-dns {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .btn-add-dns {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #4169E1, #1E90FF);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(45deg, #1E90FF, #00BFFF);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .enabled-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+        
+        .disabled-badge {
+            background: #f44336;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+        
+        @media (max-width: 1024px) {
+            .vlan-management {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .network-header h1 {
+                font-size: 2em;
+            }
+            
+            .navbar .container {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .navbar .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">🌐 Network Configuration</div>
+            <div class="nav-links">
+                <a href="/">Main Dashboard</a>
+                <a href="/audio">Audio Control</a>
+                <a href="/admin">Backend Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="network-header">
+            <h1>Network Configuration</h1>
+            <p>VLAN Management & Network Settings</p>
+        </div>
+
+        <div class="network-status">
+            <h2>📊 Network Status</h2>
+            <div class="status-grid">
+                <div class="status-item">
+                    <h4>Total VLANs</h4>
+                    <div class="status-value" id="total-vlans">0</div>
+                </div>
+                <div class="status-item">
+                    <h4>Enabled VLANs</h4>
+                    <div class="status-value" id="enabled-vlans">0</div>
+                </div>
+                <div class="status-item">
+                    <h4>Default VLAN</h4>
+                    <div class="status-value" id="default-vlan">--</div>
+                </div>
+                <div class="status-item">
+                    <h4>Management Interface</h4>
+                    <div class="status-value" id="management-interface">eth0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="vlan-management">
+            <div class="vlan-list">
+                <h2>VLAN Configuration</h2>
+                <div id="vlan-cards">
+                    <!-- VLAN cards will be populated here -->
+                </div>
+            </div>
+
+            <div class="vlan-form">
+                <h2 id="form-title">Add New VLAN</h2>
+                <form id="vlan-form">
+                    <div class="form-group">
+                        <label for="vlan-id">VLAN ID</label>
+                        <input type="number" id="vlan-id" min="1" max="4094" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="vlan-name">VLAN Name</label>
+                        <input type="text" id="vlan-name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="subnet">Subnet (CIDR)</label>
+                        <input type="text" id="subnet" placeholder="192.168.10.0/24" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gateway">Gateway IP</label>
+                        <input type="text" id="gateway" placeholder="192.168.10.1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>DNS Servers</label>
+                        <div class="dns-servers" id="dns-servers">
+                            <div class="dns-server-input">
+                                <input type="text" placeholder="8.8.8.8" required>
+                                <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+                            </div>
+                            <div class="dns-server-input">
+                                <input type="text" placeholder="8.8.4.4" required>
+                                <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-add-dns" onclick="addDnsServer()">Add DNS Server</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" placeholder="Optional description for this VLAN"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="enabled" checked style="width: auto; margin-right: 10px;">
+                            Enable this VLAN
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">Save VLAN</button>
+                        <button type="button" class="btn-secondary" onclick="resetForm()">Reset Form</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let vlans = {};
+        let editingVlanId = null;
+
+        // Load VLANs on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadVlans();
+            
+            // Setup form submission
+            document.getElementById('vlan-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveVlan();
+            });
+        });
+
+        // Load VLANs from server
+        function loadVlans() {
+            fetch('/api/network/vlans')
+                .then(response => response.json())
+                .then(data => {
+                    vlans = data.vlans || {};
+                    updateVlanDisplay();
+                    updateNetworkStatus(data.status);
+                })
+                .catch(error => {
+                    console.error('Failed to load VLANs:', error);
+                    // Load mock data for demonstration
+                    loadMockVlans();
+                });
+        }
+
+        // Load mock VLANs for demonstration
+        function loadMockVlans() {
+            vlans = {
+                10: {
+                    vlan_id: 10,
+                    name: "Management",
+                    subnet: "192.168.10.0/24",
+                    gateway: "192.168.10.1",
+                    dns_servers: ["8.8.8.8", "8.8.4.4"],
+                    enabled: true,
+                    description: "Management network for AV equipment"
+                },
+                20: {
+                    vlan_id: 20,
+                    name: "AV_Control",
+                    subnet: "192.168.20.0/24",
+                    gateway: "192.168.20.1",
+                    dns_servers: ["192.168.20.1", "8.8.8.8"],
+                    enabled: true,
+                    description: "AV control and automation network"
+                },
+                30: {
+                    vlan_id: 30,
+                    name: "Guest_WiFi",
+                    subnet: "192.168.30.0/24",
+                    gateway: "192.168.30.1",
+                    dns_servers: ["1.1.1.1", "1.0.0.1"],
+                    enabled: false,
+                    description: "Guest WiFi network"
+                }
+            };
+            
+            updateVlanDisplay();
+            updateNetworkStatus({
+                total_vlans: 3,
+                enabled_vlans: 2,
+                default_vlan: 10,
+                management_interface: "eth0"
+            });
+        }
+
+        // Update VLAN display
+        function updateVlanDisplay() {
+            const vlanCards = document.getElementById('vlan-cards');
+            vlanCards.innerHTML = '';
+
+            Object.values(vlans).forEach(vlan => {
+                const vlanCard = document.createElement('div');
+                vlanCard.className = 'vlan-card';
+                
+                vlanCard.innerHTML = `
+                    <h3>
+                        VLAN ${vlan.vlan_id} - ${vlan.name}
+                        <span class="${vlan.enabled ? 'enabled-badge' : 'disabled-badge'}">
+                            ${vlan.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                    </h3>
+                    <div class="vlan-info">
+                        <div><strong>Subnet:</strong> ${vlan.subnet}</div>
+                        <div><strong>Gateway:</strong> ${vlan.gateway}</div>
+                        <div><strong>DNS:</strong> ${vlan.dns_servers.join(', ')}</div>
+                        <div><strong>Description:</strong> ${vlan.description || 'N/A'}</div>
+                    </div>
+                    <div class="vlan-actions">
+                        <button class="btn btn-edit" onclick="editVlan(${vlan.vlan_id})">Edit</button>
+                        <button class="btn btn-toggle" onclick="toggleVlan(${vlan.vlan_id})">
+                            ${vlan.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-delete" onclick="deleteVlan(${vlan.vlan_id})">Delete</button>
+                    </div>
+                `;
+                
+                vlanCards.appendChild(vlanCard);
+            });
+        }
+
+        // Update network status
+        function updateNetworkStatus(status) {
+            document.getElementById('total-vlans').textContent = status.total_vlans || 0;
+            document.getElementById('enabled-vlans').textContent = status.enabled_vlans || 0;
+            document.getElementById('default-vlan').textContent = status.default_vlan || '--';
+            document.getElementById('management-interface').textContent = status.management_interface || 'eth0';
+        }
+
+        // Edit VLAN
+        function editVlan(vlanId) {
+            const vlan = vlans[vlanId];
+            if (!vlan) return;
+
+            editingVlanId = vlanId;
+            document.getElementById('form-title').textContent = `Edit VLAN ${vlanId}`;
+            
+            // Populate form
+            document.getElementById('vlan-id').value = vlan.vlan_id;
+            document.getElementById('vlan-id').disabled = true; // Don't allow changing VLAN ID
+            document.getElementById('vlan-name').value = vlan.name;
+            document.getElementById('subnet').value = vlan.subnet;
+            document.getElementById('gateway').value = vlan.gateway;
+            document.getElementById('description').value = vlan.description || '';
+            document.getElementById('enabled').checked = vlan.enabled;
+
+            // Populate DNS servers
+            const dnsContainer = document.getElementById('dns-servers');
+            dnsContainer.innerHTML = '';
+            
+            vlan.dns_servers.forEach(dns => {
+                const dnsInput = document.createElement('div');
+                dnsInput.className = 'dns-server-input';
+                dnsInput.innerHTML = `
+                    <input type="text" value="${dns}" required>
+                    <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+                `;
+                dnsContainer.appendChild(dnsInput);
+            });
+
+            // Scroll to form
+            document.querySelector('.vlan-form').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Toggle VLAN enabled/disabled
+        function toggleVlan(vlanId) {
+            const vlan = vlans[vlanId];
+            if (!vlan) return;
+
+            vlan.enabled = !vlan.enabled;
+            
+            // Send to server
+            fetch(`/api/network/vlans/${vlanId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(vlan)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateVlanDisplay();
+                    showNotification(`VLAN ${vlanId} ${vlan.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    // Revert on failure
+                    vlan.enabled = !vlan.enabled;
+                    showNotification('Failed to update VLAN', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Toggle VLAN error:', error);
+                vlan.enabled = !vlan.enabled; // Revert
+                showNotification('Failed to update VLAN', 'error');
+            });
+        }
+
+        // Delete VLAN
+        function deleteVlan(vlanId) {
+            if (!confirm(`Are you sure you want to delete VLAN ${vlanId}?`)) {
+                return;
+            }
+
+            fetch(`/api/network/vlans/${vlanId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    delete vlans[vlanId];
+                    updateVlanDisplay();
+                    showNotification(`VLAN ${vlanId} deleted`, 'success');
+                } else {
+                    showNotification('Failed to delete VLAN', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Delete VLAN error:', error);
+                showNotification('Failed to delete VLAN', 'error');
+            });
+        }
+
+        // Save VLAN (add or update)
+        function saveVlan() {
+            const formData = {
+                vlan_id: parseInt(document.getElementById('vlan-id').value),
+                name: document.getElementById('vlan-name').value,
+                subnet: document.getElementById('subnet').value,
+                gateway: document.getElementById('gateway').value,
+                description: document.getElementById('description').value,
+                enabled: document.getElementById('enabled').checked,
+                dns_servers: []
+            };
+
+            // Collect DNS servers
+            const dnsInputs = document.querySelectorAll('#dns-servers input');
+            dnsInputs.forEach(input => {
+                if (input.value.trim()) {
+                    formData.dns_servers.push(input.value.trim());
+                }
+            });
+
+            if (formData.dns_servers.length === 0) {
+                showNotification('At least one DNS server is required', 'error');
+                return;
+            }
+
+            // Validate form data
+            if (!validateVlanData(formData)) {
+                return;
+            }
+
+            const isEditing = editingVlanId !== null;
+            const url = isEditing ? `/api/network/vlans/${editingVlanId}` : '/api/network/vlans';
+            const method = isEditing ? 'PUT' : 'POST';
+
+            fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    vlans[formData.vlan_id] = formData;
+                    updateVlanDisplay();
+                    resetForm();
+                    showNotification(`VLAN ${formData.vlan_id} ${isEditing ? 'updated' : 'created'}`, 'success');
+                } else {
+                    showNotification(data.error || 'Failed to save VLAN', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Save VLAN error:', error);
+                showNotification('Failed to save VLAN', 'error');
+            });
+        }
+
+        // Validate VLAN data
+        function validateVlanData(data) {
+            // Validate VLAN ID
+            if (data.vlan_id < 1 || data.vlan_id > 4094) {
+                showNotification('VLAN ID must be between 1 and 4094', 'error');
+                return false;
+            }
+
+            // Check for duplicate VLAN ID (only when adding new)
+            if (editingVlanId === null && vlans[data.vlan_id]) {
+                showNotification(`VLAN ${data.vlan_id} already exists`, 'error');
+                return false;
+            }
+
+            // Validate subnet format (basic check)
+            if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/.test(data.subnet)) {
+                showNotification('Invalid subnet format. Use CIDR notation (e.g., 192.168.1.0/24)', 'error');
+                return false;
+            }
+
+            // Validate gateway IP format
+            if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(data.gateway)) {
+                showNotification('Invalid gateway IP format', 'error');
+                return false;
+            }
+
+            // Validate DNS servers
+            for (let dns of data.dns_servers) {
+                if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(dns)) {
+                    showNotification(`Invalid DNS server IP: ${dns}`, 'error');
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('vlan-form').reset();
+            document.getElementById('form-title').textContent = 'Add New VLAN';
+            document.getElementById('vlan-id').disabled = false;
+            editingVlanId = null;
+
+            // Reset DNS servers to default
+            const dnsContainer = document.getElementById('dns-servers');
+            dnsContainer.innerHTML = `
+                <div class="dns-server-input">
+                    <input type="text" placeholder="8.8.8.8" required>
+                    <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+                </div>
+                <div class="dns-server-input">
+                    <input type="text" placeholder="8.8.4.4" required>
+                    <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+                </div>
+            `;
+        }
+
+        // Add DNS server input
+        function addDnsServer() {
+            const dnsContainer = document.getElementById('dns-servers');
+            const dnsInput = document.createElement('div');
+            dnsInput.className = 'dns-server-input';
+            dnsInput.innerHTML = `
+                <input type="text" placeholder="DNS Server IP" required>
+                <button type="button" class="btn-remove-dns" onclick="removeDnsServer(this)">Remove</button>
+            `;
+            dnsContainer.appendChild(dnsInput);
+        }
+
+        // Remove DNS server input
+        function removeDnsServer(button) {
+            const dnsContainer = document.getElementById('dns-servers');
+            if (dnsContainer.children.length > 1) {
+                button.parentElement.remove();
+            } else {
+                showNotification('At least one DNS server is required', 'warning');
+            }
+        }
+
+        // Notification system
+        function showNotification(message, type) {
+            console.log(`${type.toUpperCase()}: ${message}`);
+            
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#4CAF50' : 
+                           type === 'error' ? '#f44336' : 
+                           type === 'warning' ? '#ff9800' : '#2196F3'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 5px;
+                z-index: 1000;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease-out;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => {
+                    if (document.body.contains(notification)) {
+                        document.body.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

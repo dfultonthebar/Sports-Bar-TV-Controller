@@ -2,11 +2,27 @@
 """
 Flask Web Dashboard for Sports Bar AV Control
 Features sync toggle, preset controls, and per-TV manual switching
+Enhanced with AI Agent System capabilities
 """
 from flask import Flask, render_template_string, request, redirect, url_for, jsonify
-from core.event_bus import event_bus
+from flask_socketio import SocketIO, emit
+from core.event_bus import event_bus, EventType, Event
 import json
+import logging
 
+# Try to import AI Agent System components, fall back to basic imports if not available
+try:
+    from core.av_manager import AVManager
+    from core.network_config import NetworkConfigManager
+    from backend.label_manager import label_bp, create_label_templates
+    from backend.atlas_label_manager import atlas_label_bp, create_atlas_label_templates
+    AI_AGENT_AVAILABLE = True
+except ImportError:
+    AI_AGENT_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app for backward compatibility
 app = Flask(__name__)
 
 # Shared AV state
@@ -18,7 +34,60 @@ shared_state = {
     "presets": {}
 }
 
-# Subscribe to AV updates
+# AI Agent System Dashboard Class (when available)
+if AI_AGENT_AVAILABLE:
+    class SportsBarDashboard:
+        """
+        Sports Bar AV Control Dashboard with AI Agent System
+        
+        Features:
+        - Real-time AV route display
+        - Preset trigger buttons (Big Game, Chill, Multi-Game)
+        - Sync mode toggle (ON/OFF control)
+        - Per-TV manual controls with dropdowns
+        - Responsive design for tablets/touchscreens
+        - WebSocket real-time updates
+        - AI Agent System integration
+        """
+        
+        def __init__(self, av_manager: AVManager, host: str = "0.0.0.0", port: int = 5000):
+            self.av_manager = av_manager
+            self.host = host
+            self.port = port
+            
+            # Initialize network config manager
+            self.network_manager = NetworkConfigManager()
+            
+            # Initialize Flask app
+            self.app = Flask(__name__, 
+                            template_folder='templates',
+                            static_folder='static')
+            self.app.config['SECRET_KEY'] = 'sportsbar_av_control_2024'
+            
+            # Initialize SocketIO
+            self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+            
+            # Register blueprints
+            self.app.register_blueprint(label_bp)
+            self.app.register_blueprint(atlas_label_bp)
+            
+            # Setup routes
+            self._setup_routes()
+            self._setup_socketio_events()
+            
+            # Subscribe to event bus
+            event_bus.subscribe_all(self._handle_av_event)
+            
+            logger.info(f"AI Agent Dashboard initialized on {host}:{port}")
+        
+        def run(self, debug: bool = False):
+            """Run the dashboard server"""
+            logger.info(f"Starting Sports Bar Dashboard on {self.host}:{self.port}")
+            self.socketio.run(self.app, host=self.host, port=self.port, debug=debug)
+        
+        # ... (AI Agent System methods would be implemented here)
+
+# Backward compatibility event handler
 def handle_event(event):
     """Handle events from AV Manager"""
     if event["type"] == "route_update":

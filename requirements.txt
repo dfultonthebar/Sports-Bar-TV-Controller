@@ -50,6 +50,10 @@ colorlog>=6.7.0
 # Optional: System monitoring
 watchdog>=3.0.0
 
+# AI Agent System Dependencies
+structlog>=22.0.0       # Structured logging for AI agent
+prometheus-client>=0.15.0  # Metrics collection (optional)
+
 # Backend Enhancement Dependencies
 # Network scanning and discovery
 scapy>=2.5.0

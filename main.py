@@ -22,8 +22,10 @@ sys.path.insert(0, str(project_root))
 from core.av_manager import AVManager
 from ui.dashboard import SportsBarDashboard, create_dashboard_templates
 from ui.sports_content_dashboard import SportsContentDashboard
+from ui.ai_agent_dashboard import AIAgentDashboard, create_ai_dashboard_templates
 from core.event_bus import event_bus
 from services.content_discovery_manager import ContentDiscoveryManager
+from agent.system_manager import SystemManager
 
 # Import new backend enhancements
 from backend import (
@@ -58,7 +60,9 @@ class SportsBarController:
         self.av_manager = None
         self.dashboard = None
         self.sports_dashboard = None
+        self.ai_dashboard = None
         self.content_manager = None
+        self.ai_system_manager = None
         self.running = False
         
         # Initialize new backend services
@@ -81,7 +85,8 @@ class SportsBarController:
             "ui/templates",
             "ui/static",
             "services",
-            "tests"
+            "tests",
+            "agent"
         ]
         
         for directory in directories:
@@ -102,8 +107,13 @@ class SportsBarController:
             # Initialize Content Discovery Manager
             self.content_manager = ContentDiscoveryManager(sports_config)
             
+            # Initialize AI System Manager
+            ai_config = self._load_ai_config()
+            self.ai_system_manager = SystemManager(ai_config)
+            
             # Create dashboard templates
             create_dashboard_templates()
+            create_ai_dashboard_templates()
             
             # Initialize Main Dashboard
             self.dashboard = SportsBarDashboard(self.av_manager)
@@ -111,8 +121,12 @@ class SportsBarController:
             # Initialize Sports Content Dashboard
             self.sports_dashboard = SportsContentDashboard(self.content_manager)
             
-            # Register sports dashboard blueprint
+            # Initialize AI Agent Dashboard
+            self.ai_dashboard = AIAgentDashboard(self.ai_system_manager)
+            
+            # Register dashboard blueprints
             self.dashboard.app.register_blueprint(self.sports_dashboard.get_blueprint())
+            self.dashboard.app.register_blueprint(self.ai_dashboard.get_blueprint())
             
             logger.info("All components initialized successfully")
             return True
@@ -130,6 +144,15 @@ class SportsBarController:
         try:
             self.running = True
             logger.info("Starting Sports Bar Controller system...")
+            
+            # Start AI System Manager in a separate thread
+            if self.ai_system_manager:
+                ai_thread = threading.Thread(
+                    target=self._start_ai_system_delayed,
+                    daemon=True
+                )
+                ai_thread.start()
+                logger.info("AI System Manager starting...")
             
             # Connect to devices in a separate thread
             device_thread = threading.Thread(
@@ -152,6 +175,16 @@ class SportsBarController:
             logger.error(f"System error: {e}")
         finally:
             self.stop()
+    
+    def _start_ai_system_delayed(self):
+        """Start AI system with a delay to allow other components to initialize"""
+        time.sleep(2)  # Give other components time to start
+        
+        try:
+            asyncio.run(self.ai_system_manager.start())
+            logger.info("AI System Manager started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start AI System Manager: {e}")
     
     def _connect_devices_delayed(self):
         """Connect to devices with a delay to allow dashboard to start"""
@@ -176,6 +209,11 @@ class SportsBarController:
         
         logger.info("Stopping Sports Bar Controller system...")
         self.running = False
+        
+        # Stop AI System Manager
+        if self.ai_system_manager:
+            asyncio.run(self.ai_system_manager.stop())
+            logger.info("AI System Manager stopped")
         
         # Disconnect from devices
         if self.av_manager:
@@ -245,6 +283,56 @@ class SportsBarController:
                     'featured': 8
                 }
             }
+        }
+    
+    def _load_ai_config(self) -> Dict[str, Any]:
+        """Load AI agent configuration"""
+        import yaml
+        import os
+        
+        ai_config_path = "config/ai_agent_config.yaml"
+        
+        try:
+            # Try to load from file
+            if os.path.exists(ai_config_path):
+                with open(ai_config_path, 'r') as f:
+                    config = yaml.safe_load(f)
+                    
+                # Replace environment variables
+                config = self._replace_env_vars(config)
+                return config.get('ai_agent', {})
+            else:
+                logger.info(f"AI config file not found: {ai_config_path}, using defaults")
+                # Return default configuration
+                return self._get_default_ai_config()
+                
+        except Exception as e:
+            logger.error(f"Error loading AI config: {e}")
+            return self._get_default_ai_config()
+    
+    def _get_default_ai_config(self) -> Dict[str, Any]:
+        """Get default AI agent configuration"""
+        return {
+            'enabled': True,
+            'log_directories': ['logs/', 'backend/logs/'],
+            'monitor_config': {
+                'rate_limit_minutes': 5,
+                'max_occurrences_per_window': 5,
+                'history_hours': 24,
+                'monitor_interval': 5
+            },
+            'analyzer_config': {
+                'llm_enabled': False,
+                'auto_fix_enabled': True,
+                'auto_fix_risk_threshold': 'MEDIUM'
+            },
+            'task_config': {
+                'max_concurrent_tasks': 5,
+                'task_timeout_seconds': 300,
+                'content_refresh_minutes': 15
+            },
+            'health_check_interval_minutes': 15,
+            'maintenance_interval_hours': 24
         }
 
 def main():

@@ -1,0 +1,790 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Bar TV Controller - Audio Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #2d1b69 0%, #11998e 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .navbar {
+            background: rgba(0,0,0,0.3);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .navbar .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .navbar .logo {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        .navbar .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .navbar .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .navbar .nav-links a:hover,
+        .navbar .nav-links a.active {
+            background: rgba(255,255,255,0.2);
+            color: #FFD700;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .audio-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .audio-header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            color: #FFD700;
+        }
+        
+        .audio-header p {
+            font-size: 1.3em;
+            color: #87CEEB;
+        }
+        
+        .audio-status {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .audio-status h2 {
+            color: #FFD700;
+            margin-bottom: 15px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .status-item {
+            text-align: center;
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .status-item h4 {
+            color: #87CEEB;
+            margin-bottom: 8px;
+        }
+        
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #98FB98;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+        
+        .audio-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .zone-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+            transition: all 0.3s;
+        }
+        
+        .zone-card:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+            transform: translateY(-2px);
+        }
+        
+        .zone-card h3 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            text-align: center;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #87CEEB;
+        }
+        
+        .control-group select {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .volume-control {
+            margin-bottom: 20px;
+        }
+        
+        .volume-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.3);
+            outline: none;
+            -webkit-appearance: none;
+            margin-bottom: 10px;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #FFD700;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .volume-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #FFD700;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .volume-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .volume-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #98FB98;
+        }
+        
+        .volume-db {
+            font-size: 0.9em;
+            color: #87CEEB;
+        }
+        
+        .mute-button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .mute-button:hover {
+            background: linear-gradient(45deg, #ee5a52, #dc4545);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .mute-button.muted {
+            background: linear-gradient(45deg, #666, #555);
+        }
+        
+        .mute-button.muted:hover {
+            background: linear-gradient(45deg, #555, #444);
+        }
+        
+        .master-controls {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .master-controls h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .master-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .master-btn {
+            background: linear-gradient(45deg, #4169E1, #1E90FF);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .master-btn:hover {
+            background: linear-gradient(45deg, #1E90FF, #00BFFF);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .master-btn.danger {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+        }
+        
+        .master-btn.danger:hover {
+            background: linear-gradient(45deg, #ee5a52, #dc4545);
+        }
+        
+        .audio-presets {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 30px;
+            border-radius: 15px;
+        }
+        
+        .audio-presets h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .preset-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .preset-card:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: #FFD700;
+            transform: translateY(-2px);
+        }
+        
+        .preset-card h3 {
+            color: #FFD700;
+            margin-bottom: 10px;
+        }
+        
+        .preset-card p {
+            color: #87CEEB;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 1024px) {
+            .audio-controls {
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .audio-header h1 {
+                font-size: 2em;
+            }
+            
+            .audio-controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .navbar .container {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .navbar .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">🎵 Sports Bar Audio Control</div>
+            <div class="nav-links">
+                <a href="/">Main Dashboard</a>
+                <a href="/audio" class="active">Audio Control</a>
+                <a href="/admin">Backend Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="audio-header">
+            <h1>Audio Interface</h1>
+            <p>Source Selection & Volume Control</p>
+        </div>
+
+        <div class="audio-status">
+            <h2>📊 Audio System Status</h2>
+            <div class="status-grid">
+                <div class="status-item">
+                    <h4><span class="status-indicator" id="atmosphere-status"></span>Atlas Atmosphere</h4>
+                    <div class="status-value" id="atmosphere-status-text">Connecting...</div>
+                </div>
+                <div class="status-item">
+                    <h4>Active Zones</h4>
+                    <div class="status-value" id="active-zones">0</div>
+                </div>
+                <div class="status-item">
+                    <h4>Master Volume</h4>
+                    <div class="status-value" id="master-volume">--</div>
+                </div>
+                <div class="status-item">
+                    <h4>Last Updated</h4>
+                    <div class="status-value" id="last-updated">Just now</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="master-controls">
+            <h2>🎛️ Master Controls</h2>
+            <div class="master-buttons">
+                <button class="master-btn" onclick="setAllVolume(0.5)">Set All 50%</button>
+                <button class="master-btn" onclick="setAllVolume(0.7)">Set All 70%</button>
+                <button class="master-btn danger" onclick="muteAll(true)">Mute All</button>
+                <button class="master-btn" onclick="muteAll(false)">Unmute All</button>
+            </div>
+        </div>
+
+        <div class="audio-controls" id="audio-controls">
+            <!-- Audio zone controls will be populated here -->
+        </div>
+
+        <div class="audio-presets">
+            <h2>🎵 Audio Presets</h2>
+            <div class="preset-grid">
+                <div class="preset-card" onclick="recallAudioPreset('game_day')">
+                    <h3>🏈 Game Day</h3>
+                    <p>High volume for all zones, sports audio sources</p>
+                </div>
+                <div class="preset-card" onclick="recallAudioPreset('background_music')">
+                    <h3>🎶 Background Music</h3>
+                    <p>Low volume music in all zones</p>
+                </div>
+                <div class="preset-card" onclick="recallAudioPreset('quiet_hours')">
+                    <h3>🔇 Quiet Hours</h3>
+                    <p>Minimal volume for late hours</p>
+                </div>
+                <div class="preset-card" onclick="recallAudioPreset('party_mode')">
+                    <h3>🎉 Party Mode</h3>
+                    <p>High energy music throughout venue</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        let currentStatus = {};
+        let audioSources = {};
+        
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to audio interface');
+            socket.emit('request_status');
+            loadAudioSources();
+        });
+        
+        socket.on('status_update', function(data) {
+            currentStatus = data;
+            updateAudioInterface(data);
+        });
+        
+        socket.on('av_event', function(event) {
+            console.log('Audio Event:', event);
+            if (event.type === 'AUDIO_ROUTE_CHANGED' || event.type === 'VOLUME_CHANGED') {
+                showNotification(`Audio: ${event.type}`, 'info');
+            }
+        });
+        
+        // Load audio sources
+        function loadAudioSources() {
+            // Mock audio sources - in real implementation, this would come from Atlas API
+            audioSources = {
+                1: 'ESPN Feed',
+                2: 'Fox Sports',
+                3: 'Local News',
+                4: 'Music Stream 1',
+                5: 'Music Stream 2',
+                6: 'Satellite Radio',
+                7: 'Bluetooth Input',
+                8: 'Background Music'
+            };
+        }
+        
+        // Update audio interface
+        function updateAudioInterface(status) {
+            updateAudioStatus(status.system_status);
+            updateAudioControls(status.mappings, status.current_routes);
+            updateLastUpdated();
+        }
+        
+        // Update audio status
+        function updateAudioStatus(systemStatus) {
+            const atmosphereStatus = document.getElementById('atmosphere-status');
+            const atmosphereText = document.getElementById('atmosphere-status-text');
+            
+            atmosphereStatus.className = 'status-indicator' + 
+                (systemStatus.atmosphere_connected ? ' connected' : '');
+            atmosphereText.textContent = systemStatus.atmosphere_connected ? 'Connected' : 'Disconnected';
+            
+            // Count active zones
+            let activeZones = 0;
+            if (status.current_routes && status.current_routes.audio) {
+                activeZones = Object.keys(status.current_routes.audio).length;
+            }
+            document.getElementById('active-zones').textContent = activeZones;
+        }
+        
+        // Update audio controls
+        function updateAudioControls(mappings, routes) {
+            const audioControls = document.getElementById('audio-controls');
+            audioControls.innerHTML = '';
+            
+            Object.values(mappings || {}).forEach(mapping => {
+                const zoneCard = document.createElement('div');
+                zoneCard.className = 'zone-card';
+                
+                const currentAudioRoute = routes?.audio?.[mapping.audio_zone] || {};
+                const currentSource = currentAudioRoute.source || 1;
+                const currentVolume = currentAudioRoute.volume || 0.5;
+                const isMuted = currentAudioRoute.muted || false;
+                
+                // Generate source options
+                let sourceOptions = '';
+                Object.entries(audioSources).forEach(([sourceId, sourceName]) => {
+                    const selected = currentSource == sourceId ? 'selected' : '';
+                    sourceOptions += `<option value="${sourceId}" ${selected}>${sourceId}: ${sourceName}</option>`;
+                });
+                
+                const volumePercent = Math.round(currentVolume * 100);
+                const volumeDb = Math.round((currentVolume - 1) * 60); // Rough dB conversion
+                
+                zoneCard.innerHTML = `
+                    <h3>Zone ${mapping.audio_zone}</h3>
+                    
+                    <div class="control-group">
+                        <label>Audio Source:</label>
+                        <select onchange="changeAudioSource(${mapping.audio_zone}, this.value)">
+                            ${sourceOptions}
+                        </select>
+                    </div>
+                    
+                    <div class="volume-control">
+                        <label>Volume Control:</label>
+                        <div class="volume-display">
+                            <span class="volume-value">${volumePercent}%</span>
+                            <span class="volume-db">${volumeDb} dB</span>
+                        </div>
+                        <input type="range" 
+                               class="volume-slider" 
+                               min="0" 
+                               max="1" 
+                               step="0.01" 
+                               value="${currentVolume}"
+                               onchange="changeVolume(${mapping.audio_zone}, this.value)"
+                               oninput="updateVolumeDisplay(this, ${mapping.audio_zone})">
+                    </div>
+                    
+                    <button class="mute-button ${isMuted ? 'muted' : ''}"
+                            onclick="toggleMute(${mapping.audio_zone}, ${!isMuted})">
+                        ${isMuted ? '🔊 UNMUTE' : '🔇 MUTE'}
+                    </button>
+                `;
+                
+                audioControls.appendChild(zoneCard);
+            });
+        }
+        
+        // Update volume display in real-time
+        function updateVolumeDisplay(slider, zoneId) {
+            const volumePercent = Math.round(slider.value * 100);
+            const volumeDb = Math.round((slider.value - 1) * 60);
+            
+            const zoneCard = slider.closest('.zone-card');
+            const volumeValue = zoneCard.querySelector('.volume-value');
+            const volumeDbSpan = zoneCard.querySelector('.volume-db');
+            
+            volumeValue.textContent = `${volumePercent}%`;
+            volumeDbSpan.textContent = `${volumeDb} dB`;
+        }
+        
+        // Update last updated time
+        function updateLastUpdated() {
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // Audio control functions
+        function changeAudioSource(zoneId, sourceId) {
+            fetch('/api/audio_route', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    zone_id: parseInt(zoneId), 
+                    source_id: parseInt(sourceId) 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`Zone ${zoneId}: ${audioSources[sourceId]}`, 'success');
+                } else {
+                    showNotification('Failed to change audio source', 'error');
+                }
+            });
+        }
+        
+        function changeVolume(zoneId, volume) {
+            fetch('/api/volume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    zone_id: parseInt(zoneId), 
+                    volume: parseFloat(volume) 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    showNotification('Failed to change volume', 'error');
+                }
+            });
+        }
+        
+        function toggleMute(zoneId, muted) {
+            fetch('/api/mute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    zone_id: parseInt(zoneId), 
+                    muted: muted 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`Zone ${zoneId} ${muted ? 'muted' : 'unmuted'}`, 'info');
+                } else {
+                    showNotification('Failed to toggle mute', 'error');
+                }
+            });
+        }
+        
+        // Master control functions
+        function setAllVolume(volume) {
+            const zones = Object.keys(currentStatus.mappings || {});
+            let promises = [];
+            
+            zones.forEach(zoneOutput => {
+                const mapping = currentStatus.mappings[zoneOutput];
+                promises.push(
+                    fetch('/api/volume', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            zone_id: mapping.audio_zone, 
+                            volume: volume 
+                        })
+                    })
+                );
+            });
+            
+            Promise.all(promises)
+                .then(responses => Promise.all(responses.map(r => r.json())))
+                .then(results => {
+                    const success = results.every(r => r.success);
+                    if (success) {
+                        showNotification(`All zones set to ${Math.round(volume * 100)}%`, 'success');
+                    } else {
+                        showNotification('Some zones failed to update', 'warning');
+                    }
+                });
+        }
+        
+        function muteAll(muted) {
+            const zones = Object.keys(currentStatus.mappings || {});
+            let promises = [];
+            
+            zones.forEach(zoneOutput => {
+                const mapping = currentStatus.mappings[zoneOutput];
+                promises.push(
+                    fetch('/api/mute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            zone_id: mapping.audio_zone, 
+                            muted: muted 
+                        })
+                    })
+                );
+            });
+            
+            Promise.all(promises)
+                .then(responses => Promise.all(responses.map(r => r.json())))
+                .then(results => {
+                    const success = results.every(r => r.success);
+                    if (success) {
+                        showNotification(`All zones ${muted ? 'muted' : 'unmuted'}`, 'success');
+                    } else {
+                        showNotification('Some zones failed to update', 'warning');
+                    }
+                });
+        }
+        
+        function recallAudioPreset(presetName) {
+            fetch('/api/audio_preset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ preset_name: presetName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`Audio preset "${presetName}" activated`, 'success');
+                } else {
+                    showNotification('Failed to activate audio preset', 'error');
+                }
+            });
+        }
+        
+        // Notification system
+        function showNotification(message, type) {
+            console.log(`${type.toUpperCase()}: ${message}`);
+            
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#4CAF50' : 
+                           type === 'error' ? '#f44336' : 
+                           type === 'warning' ? '#ff9800' : '#2196F3'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 5px;
+                z-index: 1000;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease-out;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => {
+                    if (document.body.contains(notification)) {
+                        document.body.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
