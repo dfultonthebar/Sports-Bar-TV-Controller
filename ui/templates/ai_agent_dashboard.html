@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,100 +8,134 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body {
-            background-color: #f8f9fa;
+        .health-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
         }
+        .health-healthy { background-color: #28a745; }
+        .health-warning { background-color: #ffc107; }
+        .health-critical { background-color: #dc3545; }
+        .health-degraded { background-color: #fd7e14; }
+        
         .metric-card {
             transition: transform 0.2s;
         }
         .metric-card:hover {
             transform: translateY(-2px);
         }
+        
         .log-event {
             border-left: 4px solid #dee2e6;
-            padding: 8px 12px;
-            margin-bottom: 8px;
-            background: #f8f9fa;
+            margin-bottom: 10px;
+            padding: 10px;
         }
-        .log-event.error {
-            border-left-color: #dc3545;
-        }
-        .log-event.warning {
-            border-left-color: #ffc107;
-        }
-        .log-event.info {
-            border-left-color: #0dcaf0;
-        }
+        .log-event.error { border-left-color: #dc3545; }
+        .log-event.warning { border-left-color: #ffc107; }
+        .log-event.info { border-left-color: #17a2b8; }
+        
         .action-item {
-            border-left: 4px solid #dee2e6;
+            border-left: 3px solid #007bff;
             padding: 8px 12px;
             margin-bottom: 8px;
-            background: #f8f9fa;
+            background-color: #f8f9fa;
         }
-        .action-item.success {
-            border-left-color: #198754;
-        }
-        .action-item.failed {
-            border-left-color: #dc3545;
-        }
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        .status-healthy {
-            background-color: #198754;
-        }
-        .status-warning {
-            background-color: #ffc107;
-        }
-        .status-critical {
-            background-color: #dc3545;
-        }
+        .action-item.success { border-left-color: #28a745; }
+        .action-item.failed { border-left-color: #dc3545; }
     </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
                 <i class="fas fa-robot"></i> AI Agent Dashboard
             </a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('main.dashboard') }}">
-                    <i class="fas fa-home"></i> Main Dashboard
-                </a>
+                <a class="nav-link" href="/"><i class="fas fa-tv"></i> Main Dashboard</a>
+                <a class="nav-link" href="/sports"><i class="fas fa-football-ball"></i> Sports Content</a>
+                <a class="nav-link" href="/ai-agent/api-config"><i class="fas fa-key"></i> API Config</a>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-4">
-        <!-- System Status -->
+    <div class="container-fluid mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Navigation Tabs -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/ai-agent/">
+                            <i class="fas fa-tachometer-alt"></i> Overview
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/api-config">
+                            <i class="fas fa-key"></i> API Configuration
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/logs">
+                            <i class="fas fa-file-alt"></i> Logs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/tasks">
+                            <i class="fas fa-tasks"></i> Tasks
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/analyses">
+                            <i class="fas fa-chart-line"></i> Analyses
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ai-agent/settings">
+                            <i class="fas fa-cog"></i> Settings
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- System Status Overview -->
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-heartbeat"></i> System Status</h5>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
+                    <div class="card-header">
+                        <h5><i class="fas fa-heartbeat"></i> System Health Overview</h5>
                     </div>
                     <div class="card-body">
                         {% if status %}
                             <div class="row">
                                 <div class="col-md-3">
-                                    <h6 class="mb-0">Overall Health</h6>
                                     <div class="d-flex align-items-center">
-                                        <span class="status-indicator status-{{ 'healthy' if status.overall_health == 'healthy' else 'warning' if status.overall_health == 'warning' else 'critical' }}"></span>
-                                        <span class="text-capitalize">{{ status.overall_health }}</span>
+                                        <span class="health-indicator health-{{ status.overall_health.lower() }}"></span>
+                                        <div>
+                                            <h6 class="mb-0">Overall Health</h6>
+                                            <small class="text-muted">{{ status.overall_health }}</small>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="col-md-3">
                                     <h6 class="mb-0">Health Score</h6>
-                                    <span class="h5 text-{{ 'success' if status.health_score > 80 else 'warning' if status.health_score > 60 else 'danger' }}">
-                                        {{ "%.1f"|format(status.health_score) }}%
-                                    </span>
+                                    <div class="progress">
+                                        <div class="progress-bar" style="width: {{ status.health_score }}%">
+                                            {{ "%.1f"|format(status.health_score) }}%
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-3">
                                     <h6 class="mb-0">Active Issues</h6>
@@ -182,16 +217,11 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h6><i class="fas fa-file-alt"></i> Recent Log Events</h6>
-                        <div>
-                            <button class="btn btn-sm btn-outline-danger me-2" onclick="clearLogs()" id="clearLogsBtn">
-                                <i class="fas fa-trash"></i> Clear Logs
-                            </button>
-                            <a href="{{ url_for('ai_agent.logs_viewer') }}" class="btn btn-sm btn-outline-primary">
-                                View All
-                            </a>
-                        </div>
+                        <a href="{{ url_for('ai_agent.logs_viewer') }}" class="btn btn-sm btn-outline-primary">
+                            View All
+                        </a>
                     </div>
-                    <div class="card-body" style="max-height: 400px; overflow-y: auto;" id="logEventsContainer">
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                         {% for event in recent_events[:10] %}
                             <div class="log-event {{ event.level.lower() }}">
                                 <div class="d-flex justify-content-between">
@@ -296,73 +326,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Clear logs functionality
-        function clearLogs() {
-            if (confirm('Are you sure you want to clear all logs? This action cannot be undone.')) {
-                const clearBtn = document.getElementById('clearLogsBtn');
-                const originalText = clearBtn.innerHTML;
-                
-                // Show loading state
-                clearBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing...';
-                clearBtn.disabled = true;
-                
-                fetch('/ai-agent/api/logs/clear', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Clear the log events container
-                        const container = document.getElementById('logEventsContainer');
-                        container.innerHTML = `
-                            <div class="text-center text-muted">
-                                <i class="fas fa-check-circle"></i>
-                                Logs cleared successfully
-                            </div>
-                        `;
-                        
-                        // Show success message
-                        showAlert('Logs cleared successfully!', 'success');
-                    } else {
-                        showAlert('Error clearing logs: ' + data.error, 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showAlert('Error clearing logs: ' + error.message, 'danger');
-                })
-                .finally(() => {
-                    // Restore button state
-                    clearBtn.innerHTML = originalText;
-                    clearBtn.disabled = false;
-                });
-            }
-        }
-        
-        // Show alert function
-        function showAlert(message, type) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            // Insert at the top of the container
-            const container = document.querySelector('.container');
-            container.insertBefore(alertDiv, container.firstChild);
-            
-            // Auto-dismiss after 5 seconds
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.remove();
-                }
-            }, 5000);
-        }
-        
         // Auto-refresh every 30 seconds
         setTimeout(function() {
             location.reload();
@@ -370,3 +333,4 @@
     </script>
 </body>
 </html>
+    
