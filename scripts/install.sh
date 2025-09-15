@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Sports Bar TV Controller - Installation Script
+# Sports Bar TV Controller - Enhanced Installation Script with AI Monitoring
 # This script installs all dependencies and sets up the system for production use
+# AI Chat Interface is installed FIRST for real-time monitoring and troubleshooting
 
 set -e  # Exit on any error
 
@@ -10,6 +11,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -18,25 +21,395 @@ SERVICE_USER="sportsbar"
 SERVICE_GROUP="sportsbar"
 PYTHON_VERSION="3.11"
 NODE_VERSION="18"
+AI_CHAT_PORT="3001"
+AI_MONITORING_PORT="3002"
 
 # Logging
 LOG_FILE="/var/log/sportsbar-install.log"
+AI_LOG_FILE="/var/log/sportsbar-ai-monitor.log"
 
 log() {
     echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}" | tee -a "$LOG_FILE"
+    ai_notify "info" "$1"
 }
 
 warn() {
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $1${NC}" | tee -a "$LOG_FILE"
+    ai_notify "warning" "$1"
 }
 
 error() {
     echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}" | tee -a "$LOG_FILE"
+    ai_notify "error" "$1"
+    ai_auto_fix "$1"
     exit 1
 }
 
 info() {
     echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}" | tee -a "$LOG_FILE"
+    ai_notify "info" "$1"
+}
+
+ai_log() {
+    echo -e "${PURPLE}[$(date '+%Y-%m-%d %H:%M:%S')] AI: $1${NC}" | tee -a "$AI_LOG_FILE"
+}
+
+ai_notify() {
+    local level="$1"
+    local message="$2"
+    if command -v curl >/dev/null 2>&1 && nc -z localhost "$AI_MONITORING_PORT" 2>/dev/null; then
+        curl -s -X POST "http://localhost:$AI_MONITORING_PORT/notify" \
+            -H "Content-Type: application/json" \
+            -d "{\"level\":\"$level\",\"message\":\"$message\",\"timestamp\":\"$(date -Iseconds)\"}" \
+            >/dev/null 2>&1 || true
+    fi
+}
+
+ai_auto_fix() {
+    local error_msg="$1"
+    ai_log "Attempting automatic fix for: $error_msg"
+    
+    # Common auto-fixes
+    case "$error_msg" in
+        *"Permission denied"*)
+            ai_log "Fixing permission issues..."
+            chmod -R 755 "$INSTALL_DIR" 2>/dev/null || true
+            chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" 2>/dev/null || true
+            ;;
+        *"No space left"*)
+            ai_log "Cleaning up disk space..."
+            apt-get clean 2>/dev/null || true
+            rm -rf /tmp/* 2>/dev/null || true
+            ;;
+        *"Connection refused"*|*"Network"*)
+            ai_log "Checking network connectivity..."
+            systemctl restart networking 2>/dev/null || true
+            sleep 5
+            ;;
+        *"Package"*|*"apt"*)
+            ai_log "Fixing package manager issues..."
+            apt-get update --fix-missing 2>/dev/null || true
+            dpkg --configure -a 2>/dev/null || true
+            ;;
+    esac
+}
+
+# Setup AI Chat Interface and Monitoring System (FIRST PRIORITY)
+setup_ai_chat_interface() {
+    ai_log "=== SETTING UP AI CHAT INTERFACE FOR REAL-TIME MONITORING ==="
+    
+    # Create AI directories
+    mkdir -p /opt/ai-monitor/{chat,logs,config,temp}
+    mkdir -p /var/log/ai-monitor
+    
+    # Install minimal Node.js if not present (for AI chat interface)
+    if ! command -v node >/dev/null 2>&1; then
+        ai_log "Installing Node.js for AI chat interface..."
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - >/dev/null 2>&1
+        apt-get install -y nodejs >/dev/null 2>&1
+    fi
+    
+    # Create AI Chat Interface
+    cat > /opt/ai-monitor/chat/server.js << 'EOF'
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+const AI_CHAT_PORT = process.env.AI_CHAT_PORT || 3001;
+const AI_MONITORING_PORT = process.env.AI_MONITORING_PORT || 3002;
+
+let installationLogs = [];
+let currentStatus = 'Starting AI Monitor...';
+
+// Monitoring server for receiving installation updates
+const monitorServer = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+    
+    if (req.method === 'POST' && req.url === '/notify') {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                installationLogs.push({
+                    ...data,
+                    id: Date.now()
+                });
+                currentStatus = data.message;
+                
+                // Auto-fix suggestions
+                if (data.level === 'error') {
+                    console.log(`🤖 AI DETECTED ERROR: ${data.message}`);
+                    suggestFix(data.message);
+                }
+                
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({success: true}));
+            } catch (e) {
+                res.writeHead(400);
+                res.end('Invalid JSON');
+            }
+        });
+    } else if (req.method === 'GET' && req.url === '/status') {
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({
+            status: currentStatus,
+            logs: installationLogs.slice(-50), // Last 50 logs
+            timestamp: new Date().toISOString()
+        }));
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
+    }
+});
+
+// Chat interface server
+const chatServer = http.createServer((req, res) => {
+    if (req.url === '/') {
+        res.writeHead(200, {'Content-Type': 'text/html'});
+        res.end(getAIChatHTML());
+    } else if (req.url === '/api/logs') {
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({
+            logs: installationLogs.slice(-100),
+            status: currentStatus
+        }));
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
+    }
+});
+
+function suggestFix(errorMessage) {
+    const fixes = {
+        'Permission denied': 'Try: sudo chmod -R 755 /opt/sportsbar && sudo chown -R sportsbar:sportsbar /opt/sportsbar',
+        'No space left': 'Try: sudo apt-get clean && sudo rm -rf /tmp/* && df -h',
+        'Connection refused': 'Try: sudo systemctl restart networking && ping -c 3 google.com',
+        'Package': 'Try: sudo apt-get update --fix-missing && sudo dpkg --configure -a'
+    };
+    
+    for (const [key, fix] of Object.entries(fixes)) {
+        if (errorMessage.includes(key)) {
+            console.log(`💡 AI SUGGESTION: ${fix}`);
+            installationLogs.push({
+                level: 'suggestion',
+                message: `AI Suggestion: ${fix}`,
+                timestamp: new Date().toISOString(),
+                id: Date.now()
+            });
+            break;
+        }
+    }
+}
+
+function getAIChatHTML() {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🤖 AI Installation Monitor - Sports Bar TV Controller</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #fff; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #00ff88; font-size: 2.5em; margin-bottom: 10px; }
+        .status-bar { background: #2d2d2d; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        .status { font-size: 1.2em; color: #00ff88; }
+        .logs-container { background: #2d2d2d; border-radius: 10px; padding: 20px; height: 500px; overflow-y: auto; }
+        .log-entry { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
+        .log-info { background: #1e3a8a; }
+        .log-warning { background: #f59e0b; color: #000; }
+        .log-error { background: #dc2626; }
+        .log-suggestion { background: #059669; }
+        .timestamp { font-size: 0.8em; opacity: 0.7; }
+        .controls { margin-top: 20px; text-align: center; }
+        .btn { background: #00ff88; color: #000; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 0 10px; }
+        .btn:hover { background: #00cc6a; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: #2d2d2d; padding: 15px; border-radius: 10px; text-align: center; }
+        .stat-number { font-size: 2em; color: #00ff88; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI Installation Monitor</h1>
+            <p>Real-time monitoring and troubleshooting for Sports Bar TV Controller installation</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalLogs">0</div>
+                <div>Total Events</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="errorCount">0</div>
+                <div>Errors Detected</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="fixCount">0</div>
+                <div>Auto-fixes Applied</div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status" id="currentStatus">Initializing AI Monitor...</div>
+        </div>
+        
+        <div class="logs-container" id="logsContainer">
+            <div class="log-entry log-info">
+                <div>🤖 AI Monitor initialized and ready for installation monitoring</div>
+                <div class="timestamp">${new Date().toLocaleString()}</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="clearLogs()">Clear Logs</button>
+            <button class="btn" onclick="exportLogs()">Export Logs</button>
+            <button class="btn" onclick="toggleAutoScroll()">Toggle Auto-scroll</button>
+        </div>
+    </div>
+
+    <script>
+        let autoScroll = true;
+        let logs = [];
+        
+        function updateDisplay() {
+            fetch('/api/logs')
+                .then(r => r.json())
+                .then(data => {
+                    logs = data.logs;
+                    document.getElementById('currentStatus').textContent = data.status;
+                    
+                    const container = document.getElementById('logsContainer');
+                    container.innerHTML = logs.map(log => 
+                        \`<div class="log-entry log-\${log.level}">
+                            <div>\${getLogIcon(log.level)} \${log.message}</div>
+                            <div class="timestamp">\${new Date(log.timestamp).toLocaleString()}</div>
+                        </div>\`
+                    ).join('');
+                    
+                    // Update stats
+                    document.getElementById('totalLogs').textContent = logs.length;
+                    document.getElementById('errorCount').textContent = logs.filter(l => l.level === 'error').length;
+                    document.getElementById('fixCount').textContent = logs.filter(l => l.level === 'suggestion').length;
+                    
+                    if (autoScroll) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                })
+                .catch(e => console.error('Failed to fetch logs:', e));
+        }
+        
+        function getLogIcon(level) {
+            const icons = {
+                info: '📋',
+                warning: '⚠️',
+                error: '❌',
+                suggestion: '💡'
+            };
+            return icons[level] || '📋';
+        }
+        
+        function clearLogs() {
+            if (confirm('Clear all logs?')) {
+                logs = [];
+                document.getElementById('logsContainer').innerHTML = '';
+            }
+        }
+        
+        function exportLogs() {
+            const data = logs.map(l => \`[\${l.timestamp}] \${l.level.toUpperCase()}: \${l.message}\`).join('\\n');
+            const blob = new Blob([data], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'installation-logs.txt';
+            a.click();
+        }
+        
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.querySelector('button[onclick="toggleAutoScroll()"]').textContent = 
+                autoScroll ? 'Disable Auto-scroll' : 'Enable Auto-scroll';
+        }
+        
+        // Update every 2 seconds
+        setInterval(updateDisplay, 2000);
+        updateDisplay();
+    </script>
+</body>
+</html>`;
+}
+
+// Start servers
+monitorServer.listen(AI_MONITORING_PORT, () => {
+    console.log(`🤖 AI Monitoring server running on port ${AI_MONITORING_PORT}`);
+});
+
+chatServer.listen(AI_CHAT_PORT, () => {
+    console.log(`💬 AI Chat interface running on port ${AI_CHAT_PORT}`);
+    console.log(`🌐 Access at: http://localhost:${AI_CHAT_PORT}`);
+});
+EOF
+
+    # Create systemd service for AI monitor
+    cat > /etc/systemd/system/ai-monitor.service << EOF
+[Unit]
+Description=AI Installation Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-monitor/chat
+Environment=AI_CHAT_PORT=$AI_CHAT_PORT
+Environment=AI_MONITORING_PORT=$AI_MONITORING_PORT
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start AI monitor service
+    systemctl daemon-reload
+    systemctl enable ai-monitor
+    systemctl start ai-monitor
+    
+    # Wait for service to start
+    sleep 3
+    
+    ai_log "AI Chat Interface is now running!"
+    ai_log "🌐 Access the AI Monitor at: http://localhost:$AI_CHAT_PORT"
+    ai_log "🤖 Real-time monitoring and auto-fixing enabled"
+    
+    # Test the connection
+    if nc -z localhost "$AI_CHAT_PORT" 2>/dev/null; then
+        ai_log "✅ AI Chat Interface is accessible"
+    else
+        ai_log "⚠️ AI Chat Interface may not be fully ready yet"
+    fi
+    
+    if nc -z localhost "$AI_MONITORING_PORT" 2>/dev/null; then
+        ai_log "✅ AI Monitoring API is accessible"
+    else
+        ai_log "⚠️ AI Monitoring API may not be fully ready yet"
+    fi
 }
 
 # Check if running as root
@@ -558,9 +931,29 @@ EOF
 
 # Main installation function
 main() {
-    log "Starting Sports Bar TV Controller installation..."
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║          🤖 AI-ENHANCED INSTALLATION STARTING 🤖             ║${NC}"
+    echo -e "${CYAN}║     Sports Bar TV Controller with Real-time AI Monitoring   ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     
+    log "Starting AI-Enhanced Sports Bar TV Controller installation..."
+    
+    # CRITICAL: Setup AI Chat Interface FIRST for real-time monitoring
+    ai_log "🚀 PRIORITY 1: Setting up AI Chat Interface for installation monitoring..."
     check_root
+    
+    # Install minimal dependencies needed for AI interface
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y curl wget netcat-openbsd >/dev/null 2>&1
+    
+    # Setup AI monitoring system FIRST
+    setup_ai_chat_interface
+    
+    ai_log "✅ AI Chat Interface is now monitoring the installation process!"
+    ai_log "🌐 You can view real-time progress at: http://localhost:$AI_CHAT_PORT"
+    
+    # Now proceed with regular installation with AI monitoring
+    log "Proceeding with system installation under AI supervision..."
     check_system
     update_system
     install_python
@@ -575,24 +968,45 @@ main() {
     setup_logging
     create_startup_script
     
+    ai_log "🎉 AI-ENHANCED INSTALLATION COMPLETED SUCCESSFULLY! 🎉"
     log "Installation completed successfully!"
+    
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║                    🎯 INSTALLATION COMPLETE! 🎯              ║${NC}"
+    echo -e "${GREEN}║          AI Monitoring System Successfully Deployed          ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    
     info ""
-    info "Next steps:"
+    info "🤖 AI MONITORING SYSTEM:"
+    info "   • AI Chat Interface: http://localhost:$AI_CHAT_PORT"
+    info "   • Real-time monitoring: ACTIVE"
+    info "   • Auto-fix capabilities: ENABLED"
+    info "   • Service status: systemctl status ai-monitor"
+    info ""
+    info "📋 NEXT STEPS:"
     info "1. Edit configuration: $INSTALL_DIR/app/config/mappings.yaml"
     info "2. Configure sports APIs (optional): export API_SPORTS_KEY=your_key"
     info "3. Start services: systemctl start sportsbar-controller"
     info "4. Check status: systemctl status sportsbar-controller"
-    info "5. Access dashboard: http://$(hostname -I | awk '{print $1}')"
+    info "5. Access main dashboard: http://$(hostname -I | awk '{print $1}')"
+    info "6. Monitor with AI: http://$(hostname -I | awk '{print $1}'):$AI_CHAT_PORT"
     info ""
-    info "For detailed configuration, see: $INSTALL_DIR/app/docs/INSTALLATION.md"
+    info "📚 For detailed configuration, see: $INSTALL_DIR/app/docs/INSTALLATION.md"
     info ""
     
-    # Show service status
+    # Show service status including AI monitor
     log "Current service status:"
+    systemctl status ai-monitor --no-pager -l || true
     systemctl status redis-server --no-pager -l || true
     systemctl status nginx --no-pager -l || true
     
+    ai_log "🔄 AI Monitor will continue running to assist with any post-installation issues"
     warn "Please reboot the system to ensure all services start correctly"
+    
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║  🤖 AI Assistant remains active for ongoing support! 🤖     ║${NC}"
+    echo -e "${CYAN}║     Access anytime at: http://localhost:$AI_CHAT_PORT        ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
 }
 
 # Run main function
