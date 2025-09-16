@@ -1,0 +1,386 @@
+
+# AV System Configuration
+# Sports Bar TV Controller - Device and Routing Configuration
+
+devices:
+  wolfpack:
+    host: "192.168.1.70"
+    port: 5000
+    timeout: 5
+  
+  atmosphere:
+    host: "192.168.1.50"
+    port: 80
+    timeout: 5
+
+# Video Output to Audio Zone Mappings
+mappings:
+  - video_output: 1
+    audio_zone: 1
+    name: "Main Bar TV"
+    description: "Primary viewing area with main bar seating"
+  
+  - video_output: 2
+    audio_zone: 2
+    name: "Patio TV"
+    description: "Outdoor patio area"
+  
+  - video_output: 3
+    audio_zone: 3
+    name: "Dining Room TV"
+    description: "Restaurant dining area"
+  
+  - video_output: 4
+    audio_zone: 4
+    name: "Private Room TV"
+    description: "Private party room"
+  
+  - video_output: 5
+    audio_zone: 5
+    name: "Pool Table Area"
+    description: "Game area with pool tables"
+  
+  - video_output: 6
+    audio_zone: 6
+    name: "VIP Section"
+    description: "VIP seating area"
+  
+  - video_output: 7
+    audio_zone: 7
+    name: "Bar Back TV 1"
+    description: "Behind bar display 1"
+  
+  - video_output: 8
+    audio_zone: 8
+    name: "Bar Back TV 2"
+    description: "Behind bar display 2"
+  
+  - video_output: 9
+    audio_zone: 9
+    name: "Corner Booth TV"
+    description: "Corner booth seating area"
+  
+  - video_output: 10
+    audio_zone: 10
+    name: "Window Booth TV"
+    description: "Window booth seating area"
+  
+  - video_output: 11
+    audio_zone: 11
+    name: "High Top TV 1"
+    description: "High top table area 1"
+  
+  - video_output: 12
+    audio_zone: 12
+    name: "High Top TV 2"
+    description: "High top table area 2"
+  
+  - video_output: 13
+    audio_zone: 13
+    name: "Dance Floor TV"
+    description: "Dance floor area display"
+  
+  - video_output: 14
+    audio_zone: 14
+    name: "Kitchen Display"
+    description: "Kitchen order display"
+  
+  - video_output: 15
+    audio_zone: 15
+    name: "Staff Office TV"
+    description: "Staff office area"
+  
+  - video_output: 16
+    audio_zone: 16
+    name: "Manager Office TV"
+    description: "Manager office"
+  
+  - video_output: 17
+    audio_zone: 17
+    name: "Break Room TV"
+    description: "Employee break room"
+  
+  - video_output: 18
+    audio_zone: 18
+    name: "Entry TV"
+    description: "Main entrance display"
+
+# Input/Source Definitions - Enhanced for 36x36 Matrix
+inputs:
+  video:
+    1: "ESPN HD"
+    2: "Fox Sports 1"
+    3: "NBC Sports"
+    4: "Local Broadcast"
+    5: "CNN"
+    6: "Weather Channel"
+    7: "Music Videos"
+    8: "Menu Channel"
+    9: "ESPN 2"
+    10: "Fox Sports 2"
+    11: "CBS Sports"
+    12: "TNT"
+    13: "TBS"
+    14: "USA Network"
+    15: "Discovery"
+    16: "History Channel"
+    17: "Food Network"
+    18: "HGTV"
+    19: "Comedy Central"
+    20: "MTV"
+    21: "VH1"
+    22: "Bravo"
+    23: "E!"
+    24: "Lifetime"
+    25: "A&E"
+    26: "FX"
+    27: "AMC"
+    28: "Syfy"
+    29: "National Geographic"
+    30: "Animal Planet"
+    31: "Travel Channel"
+    32: "Golf Channel"
+    33: "MLB Network"
+    34: "NFL Network"
+    35: "NBA TV"
+    36: "NHL Network"
+  
+  audio:
+    1: "ESPN Audio"
+    2: "Fox Sports Audio"
+    3: "NBC Sports Audio"
+    4: "Local Audio"
+    5: "CNN Audio"
+    6: "Weather Audio"
+    7: "Background Music"
+    8: "Ambient/Menu Audio"
+    9: "ESPN 2 Audio"
+    10: "Fox Sports 2 Audio"
+    11: "CBS Sports Audio"
+    12: "TNT Audio"
+    13: "TBS Audio"
+    14: "USA Network Audio"
+    15: "Discovery Audio"
+    16: "History Audio"
+    17: "Food Network Audio"
+    18: "HGTV Audio"
+    19: "Comedy Central Audio"
+    20: "MTV Audio"
+    21: "VH1 Audio"
+    22: "Bravo Audio"
+    23: "E! Audio"
+    24: "Lifetime Audio"
+    25: "A&E Audio"
+    26: "FX Audio"
+    27: "AMC Audio"
+    28: "Syfy Audio"
+    29: "Nat Geo Audio"
+    30: "Animal Planet Audio"
+    31: "Travel Audio"
+    32: "Golf Audio"
+    33: "MLB Audio"
+    34: "NFL Audio"
+    35: "NBA Audio"
+    36: "NHL Audio"
+
+# Preset Configurations
+presets:
+  - id: 1
+    name: "Big Game Mode"
+    description: "All TVs to main ESPN feed, high volume for major games"
+    video_routes:
+      1: 1  # Main Bar -> ESPN
+      2: 1  # Patio -> ESPN
+      3: 1  # Dining -> ESPN
+      4: 1  # Private -> ESPN
+      5: 1  # Pool -> ESPN
+      6: 1  # VIP -> ESPN
+    audio_routes:
+      1: 1  # Main Bar -> ESPN Audio
+      2: 1  # Patio -> ESPN Audio
+      3: 1  # Dining -> ESPN Audio
+      4: 1  # Private -> ESPN Audio
+      5: 1  # Pool -> ESPN Audio
+      6: 1  # VIP -> ESPN Audio
+    audio_volumes:
+      1: 0.8  # Main Bar - High
+      2: 0.7  # Patio - Medium-High
+      3: 0.6  # Dining - Medium (conversation friendly)
+      4: 0.8  # Private - High
+      5: 0.7  # Pool - Medium-High
+      6: 0.8  # VIP - High
+    audio_mutes:
+      1: false
+      2: false
+      3: false
+      4: false
+      5: false
+      6: false
+
+  - id: 2
+    name: "Multi-Game Mode"
+    description: "Different games on different TV zones for multiple events"
+    video_routes:
+      1: 1  # Main Bar -> ESPN
+      2: 2  # Patio -> Fox Sports
+      3: 3  # Dining -> NBC Sports
+      4: 4  # Private -> Local
+      5: 1  # Pool -> ESPN (duplicate)
+      6: 2  # VIP -> Fox Sports (duplicate)
+    audio_routes:
+      1: 1  # Main Bar -> ESPN Audio
+      2: 2  # Patio -> Fox Sports Audio
+      3: 3  # Dining -> NBC Sports Audio
+      4: 4  # Private -> Local Audio
+      5: 7  # Pool -> Background Music (no game audio)
+      6: 2  # VIP -> Fox Sports Audio
+    audio_volumes:
+      1: 0.7  # Main Bar
+      2: 0.7  # Patio
+      3: 0.5  # Dining - Lower for conversation
+      4: 0.6  # Private
+      5: 0.4  # Pool - Background only
+      6: 0.7  # VIP
+    audio_mutes:
+      1: false
+      2: false
+      3: false
+      4: false
+      5: false
+      6: false
+
+  - id: 3
+    name: "Chill Mode"
+    description: "Menu channel everywhere with background music for non-game times"
+    video_routes:
+      1: 8  # Main Bar -> Menu
+      2: 8  # Patio -> Menu
+      3: 8  # Dining -> Menu
+      4: 8  # Private -> Menu
+      5: 7  # Pool -> Music Videos
+      6: 8  # VIP -> Menu
+    audio_routes:
+      1: 7  # Main Bar -> Background Music
+      2: 7  # Patio -> Background Music
+      3: 7  # Dining -> Background Music
+      4: 7  # Private -> Background Music
+      5: 7  # Pool -> Background Music
+      6: 7  # VIP -> Background Music
+    audio_volumes:
+      1: 0.3  # Main Bar - Low
+      2: 0.3  # Patio - Low
+      3: 0.3  # Dining - Low
+      4: 0.3  # Private - Low
+      5: 0.4  # Pool - Slightly higher
+      6: 0.3  # VIP - Low
+    audio_mutes:
+      1: false
+      2: false
+      3: false
+      4: false
+      5: false
+      6: false
+
+  - id: 4
+    name: "Closing Time"
+    description: "All systems to standby/off state for end of business"
+    video_routes:
+      1: 8  # All to menu/standby
+      2: 8
+      3: 8
+      4: 8
+      5: 8
+      6: 8
+    audio_routes:
+      1: 8  # All to ambient/off
+      2: 8
+      3: 8
+      4: 8
+      5: 8
+      6: 8
+    audio_volumes:
+      1: 0.1  # Very low
+      2: 0.1
+      3: 0.1
+      4: 0.1
+      5: 0.1
+      6: 0.1
+    audio_mutes:
+      1: true  # Mute all zones
+      2: true
+      3: true
+      4: true
+      5: true
+      6: true
+
+  - id: 5
+    name: "Happy Hour"
+    description: "Mixed content with upbeat atmosphere"
+    video_routes:
+      1: 1  # Main Bar -> ESPN
+      2: 7  # Patio -> Music Videos
+      3: 6  # Dining -> Weather
+      4: 2  # Private -> Fox Sports
+      5: 7  # Pool -> Music Videos
+      6: 1  # VIP -> ESPN
+    audio_routes:
+      1: 1  # Main Bar -> ESPN Audio
+      2: 7  # Patio -> Background Music
+      3: 7  # Dining -> Background Music
+      4: 2  # Private -> Fox Sports Audio
+      5: 7  # Pool -> Background Music
+      6: 1  # VIP -> ESPN Audio
+    audio_volumes:
+      1: 0.6  # Main Bar
+      2: 0.5  # Patio
+      3: 0.4  # Dining
+      4: 0.6  # Private
+      5: 0.5  # Pool
+      6: 0.6  # VIP
+    audio_mutes:
+      1: false
+      2: false
+      3: false
+      4: false
+      5: false
+      6: false
+
+# Sync Configuration
+sync:
+  enabled: true
+  video_to_audio: true  # Video changes trigger audio changes
+  audio_to_video: true  # Audio changes trigger video changes
+  polling_interval: 1   # Seconds between Wolfpack polls
+  
+# Automation Rules
+automation:
+  commercial_detection:
+    enabled: false
+    volume_duck_percentage: 50
+    duck_duration: 30
+  
+  time_based:
+    enabled: true
+    schedules:
+      - name: "Morning Setup"
+        time: "08:00"
+        preset: 3  # Chill Mode
+      - name: "Lunch Rush"
+        time: "11:30"
+        preset: 2  # Multi-Game Mode
+      - name: "Happy Hour"
+        time: "16:00"
+        preset: 5  # Happy Hour
+      - name: "Prime Time"
+        time: "19:00"
+        preset: 1  # Big Game Mode
+      - name: "Closing"
+        time: "23:30"
+        preset: 4  # Closing Time
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "logs/sportsbar_av.log"
+  max_size: "10MB"
+  backup_count: 5

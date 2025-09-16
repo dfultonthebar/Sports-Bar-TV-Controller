@@ -98,18 +98,18 @@ class SportsBarController:
             logger.info("Initializing Sports Bar Controller...")
             
             # Initialize AV Manager
-            self.av_manager = AVManager(self.config_path)
-            self.av_manager.initialize_devices()
+            self. av_manager = AVManager()
+            self.av_manager.start()
             
             # Load sports configuration
             sports_config = self._load_sports_config()
             
             # Initialize Content Discovery Manager
-            self.content_manager = ContentDiscoveryManager(sports_config)
+            self.content_manager = ContentDiscoveryManager()
             
             # Initialize AI System Manager
             ai_config = self._load_ai_config()
-            self.ai_system_manager = SystemManager(ai_config)
+            self.ai_system_manager = SystemManager()
             
             # Create dashboard templates
             create_dashboard_templates()
@@ -125,9 +125,9 @@ class SportsBarController:
             self.ai_dashboard = AIAgentDashboard(self.ai_system_manager)
             
             # Register dashboard blueprints
-            self.dashboard.app.register_blueprint(self.sports_dashboard.get_blueprint())
-            self.dashboard.app.register_blueprint(self.ai_dashboard.get_blueprint())
-            self.dashboard.app.register_blueprint(self.ai_dashboard.get_api_config_blueprint())
+#            self.dashboard.app.register_blueprint(self.sports_dashboard.get_blueprint())
+#            self.dashboard.app.register_blueprint(self.ai_dashboard.get_blueprint())
+#            self.dashboard.app.register_blueprint(self.ai_dashboard.get_api_config_blueprint())
             
             logger.info("All components initialized successfully")
             return True
