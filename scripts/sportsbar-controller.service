@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/Sports-Bar-TV-Controller
+User=%i
+WorkingDirectory=%h/Sports-Bar-TV-Controller
 Environment=PATH=/usr/bin:/usr/local/bin
-Environment=PYTHONPATH=/home/ubuntu/Sports-Bar-TV-Controller
+Environment=PYTHONPATH=%h/Sports-Bar-TV-Controller
 Environment=FLASK_SECRET_KEY=sports-bar-production-key-2024
 Environment=GIT_EXEC_PATH=/usr/bin
 ExecStart=/usr/bin/python3 main.py
