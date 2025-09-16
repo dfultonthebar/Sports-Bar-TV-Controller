@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - Sports Bar TV Controller</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 1rem;
+            gap: 1rem;
+        }
+
+        .chat-messages {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 1rem;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.assistant {
+            align-items: flex-start;
+        }
+
+        .message.system {
+            align-items: center;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 18px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.user .message-content {
+            background: #007bff;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #e9ecef;
+        }
+
+        .message.system .message-content {
+            background: #28a745;
+            color: white;
+            font-style: italic;
+        }
+
+        .message.error .message-content {
+            background: #dc3545;
+            color: white;
+        }
+
+        .message-timestamp {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .chat-input-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .chat-input {
+            flex: 1;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 50px;
+            max-height: 150px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .chat-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            color: #666;
+            font-style: italic;
+            margin-bottom: 1rem;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #666;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .quick-commands {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .quick-command {
+            background: rgba(0, 123, 255, 0.1);
+            color: #007bff;
+            border: 1px solid #007bff;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-command:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.25rem;
+            }
+
+            .chat-container {
+                padding: 0.5rem;
+            }
+
+            .message-content {
+                max-width: 85%;
+            }
+
+            .chat-input-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .chat-buttons {
+                flex-direction: row;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏈 Sports Bar AI Chat</h1>
+        <div class="status-indicator">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connected</span>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+            <div class="quick-commands">
+                <div class="quick-command" onclick="sendQuickCommand('/help')">Help</div>
+                <div class="quick-command" onclick="sendQuickCommand('/status')">System Status</div>
+                <div class="quick-command" onclick="sendQuickCommand('Show me TV controls')">TV Controls</div>
+                <div class="quick-command" onclick="sendQuickCommand('Check audio system')">Audio System</div>
+                <div class="quick-command" onclick="sendQuickCommand('Find sports games')">Sports Games</div>
+            </div>
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <span>AI is typing</span>
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <textarea 
+                id="messageInput" 
+                class="chat-input" 
+                placeholder="Ask me about TV control, audio systems, sports content, or system troubleshooting..."
+                rows="2"
+            ></textarea>
+            <div class="chat-buttons">
+                <button id="sendButton" class="btn btn-primary" onclick="sendMessage()">Send</button>
+                <button id="clearButton" class="btn btn-secondary" onclick="clearChat()">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // DOM elements
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const clearButton = document.getElementById('clearButton');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const typingIndicator = document.getElementById('typingIndicator');
+
+        // Connection status
+        let isConnected = false;
+
+        // Socket event handlers
+        socket.on('connect', function() {
+            isConnected = true;
+            updateConnectionStatus('Connected', '#4CAF50');
+            console.log('Connected to AI Chat Server');
+        });
+
+        socket.on('disconnect', function() {
+            isConnected = false;
+            updateConnectionStatus('Disconnected', '#f44336');
+            console.log('Disconnected from AI Chat Server');
+        });
+
+        socket.on('system_message', function(data) {
+            addMessage(data.message, 'system', data.timestamp);
+        });
+
+        socket.on('message_received', function(data) {
+            // Message echo - already displayed when sent
+        });
+
+        socket.on('ai_response', function(data) {
+            hideTypingIndicator();
+            addMessage(data.message, data.type || 'assistant', data.timestamp);
+        });
+
+        socket.on('error', function(data) {
+            hideTypingIndicator();
+            addMessage(data.message, 'error', new Date().toISOString());
+        });
+
+        socket.on('chat_cleared', function(data) {
+            clearChatMessages();
+            addMessage('Chat history cleared', 'system', data.timestamp);
+        });
+
+        socket.on('system_status', function(data) {
+            const statusMessage = `System Status:\n${JSON.stringify(data, null, 2)}`;
+            addMessage(statusMessage, 'system', new Date().toISOString());
+        });
+
+        // UI functions
+        function updateConnectionStatus(text, color) {
+            statusText.textContent = text;
+            statusDot.style.background = color;
+        }
+
+        function addMessage(content, type, timestamp) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            timestampDiv.textContent = new Date(timestamp).toLocaleTimeString();
+            
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timestampDiv);
+            
+            // Insert before typing indicator
+            chatMessages.insertBefore(messageDiv, typingIndicator);
+            scrollToBottom();
+        }
+
+        function showTypingIndicator() {
+            typingIndicator.style.display = 'flex';
+            scrollToBottom();
+        }
+
+        function hideTypingIndicator() {
+            typingIndicator.style.display = 'none';
+        }
+
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function clearChatMessages() {
+            const messages = chatMessages.querySelectorAll('.message');
+            messages.forEach(message => message.remove());
+        }
+
+        // Message handling
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !isConnected) return;
+
+            // Add user message to chat
+            addMessage(message, 'user', new Date().toISOString());
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Send to server
+            socket.emit('send_message', { message: message });
+        }
+
+        function sendQuickCommand(command) {
+            messageInput.value = command;
+            sendMessage();
+        }
+
+        function clearChat() {
+            if (confirm('Are you sure you want to clear the chat history?')) {
+                socket.emit('clear_chat');
+            }
+        }
+
+        // Event listeners
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+        });
+
+        // Focus input on load
+        window.addEventListener('load', function() {
+            messageInput.focus();
+        });
+    </script>
+</body>
+</html>
