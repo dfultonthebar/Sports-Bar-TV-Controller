@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1>Sports Bar TV Controller Dashboard</h1>
+        <div class="alert alert-info">
+            <strong>Status:</strong> System is running
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>System Status</h5>
+            </div>
+            <div class="card-body">
+                <div id="system-status">Loading...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Connected Devices</h5>
+            </div>
+            <div class="card-body">
+                <div id="device-list">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
