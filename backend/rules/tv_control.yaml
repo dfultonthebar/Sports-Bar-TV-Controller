@@ -1,0 +1,210 @@
+
+# TV Control Rules for Sports Bar TV Controller
+# These rules handle TV-related automation and error handling
+
+rules:
+  - id: tv_connection_failure
+    name: TV Connection Failure
+    description: Triggers when TV connection fails repeatedly
+    category: tv_control
+    tags: [tv, connection, error]
+    enabled: true
+    conditions:
+      - field: tv_errors.connection_failures
+        operator: gt
+        value: 3
+    actions:
+      - type: log
+        parameters:
+          message: "TV connection failures exceeded threshold: {tv_errors.connection_failures}"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Multiple TV connection failures detected. Check network connectivity and TV power status."
+          severity: high
+        priority: 2
+      - type: execute
+        parameters:
+          command: "ping -c 3 {tv.ip_address}"
+        priority: 3
+
+  - id: ir_command_failure
+    name: IR Command Failure
+    description: Triggers when IR commands fail repeatedly
+    category: tv_control
+    tags: [ir, global_cache, error]
+    enabled: true
+    conditions:
+      - field: ir_errors.command_failures
+        operator: gt
+        value: 5
+    actions:
+      - type: log
+        parameters:
+          message: "IR command failures exceeded threshold: {ir_errors.command_failures}"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Multiple IR command failures. Check Global Cache device connectivity and IR blaster positioning."
+          severity: high
+        priority: 2
+      - type: api_call
+        parameters:
+          url: "http://{global_cache.ip_address}:4998"
+          method: GET
+        priority: 3
+
+  - id: tv_discovery_success
+    name: TV Discovery Success
+    description: Triggers when new TVs are discovered
+    category: tv_control
+    tags: [discovery, tv, success]
+    enabled: true
+    conditions:
+      - field: discovery.new_tvs_found
+        operator: gt
+        value: 0
+    actions:
+      - type: log
+        parameters:
+          message: "New TVs discovered: {discovery.new_tvs_found}"
+          level: info
+        priority: 1
+      - type: notification
+        parameters:
+          title: "New TVs Found"
+          message: "{discovery.new_tvs_found} new TV(s) discovered on the network"
+        priority: 2
+
+  - id: cable_box_offline
+    name: Cable Box Offline
+    description: Triggers when cable box becomes unresponsive
+    category: tv_control
+    tags: [cable_box, offline, error]
+    enabled: true
+    conditions:
+      - field: cable_box.status
+        operator: eq
+        value: "offline"
+    actions:
+      - type: log
+        parameters:
+          message: "Cable box {cable_box.name} is offline"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Cable box {cable_box.name} is not responding. Check power and IR connectivity."
+          severity: medium
+        priority: 2
+
+  - id: volume_control_failure
+    name: Volume Control Failure
+    description: Triggers when volume control commands fail
+    category: tv_control
+    tags: [volume, audio, error]
+    enabled: true
+    conditions:
+      - field: audio_errors.volume_failures
+        operator: gt
+        value: 3
+    actions:
+      - type: log
+        parameters:
+          message: "Volume control failures: {audio_errors.volume_failures}"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Volume control is not working properly. Check audio processor connectivity."
+          severity: medium
+        priority: 2
+
+  - id: channel_change_success
+    name: Channel Change Success
+    description: Log successful channel changes for analytics
+    category: tv_control
+    tags: [channel, success, analytics]
+    enabled: true
+    conditions:
+      - field: tv_events.channel_changed
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "Channel changed to {tv_events.new_channel} on TV {tv_events.tv_id}"
+          level: info
+        priority: 1
+
+  - id: input_switching_error
+    name: Input Switching Error
+    description: Triggers when input switching fails
+    category: tv_control
+    tags: [input, switching, error]
+    enabled: true
+    conditions:
+      - field: input_errors.switching_failures
+        operator: gt
+        value: 2
+    actions:
+      - type: log
+        parameters:
+          message: "Input switching failures: {input_errors.switching_failures}"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Input switching is failing. Check video matrix connections and device status."
+          severity: high
+        priority: 2
+      - type: execute
+        parameters:
+          command: "systemctl restart video-matrix-service"
+        priority: 3
+
+  - id: tv_power_state_mismatch
+    name: TV Power State Mismatch
+    description: Triggers when TV power state doesn't match expected state
+    category: tv_control
+    tags: [power, tv, mismatch]
+    enabled: true
+    conditions:
+      - field: tv_status.power_mismatch
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "TV power state mismatch detected for TV {tv_status.tv_id}"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "TV {tv_status.tv_id} power state doesn't match expected state. Manual intervention may be required."
+          severity: medium
+        priority: 2
+
+  - id: global_cache_connectivity
+    name: Global Cache Connectivity Check
+    description: Monitor Global Cache device connectivity
+    category: tv_control
+    tags: [global_cache, connectivity, monitoring]
+    enabled: true
+    conditions:
+      - field: global_cache.last_response_time
+        operator: gt
+        value: 5000  # 5 seconds
+    actions:
+      - type: log
+        parameters:
+          message: "Global Cache response time high: {global_cache.last_response_time}ms"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Global Cache device is responding slowly. Check network connectivity."
+          severity: medium
+        priority: 2

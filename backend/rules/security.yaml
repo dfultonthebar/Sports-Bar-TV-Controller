@@ -1,0 +1,236 @@
+
+# Security Rules for Sports Bar TV Controller
+# These rules handle security-related events and firewall management
+
+rules:
+  - id: suspicious_login_attempts
+    name: Suspicious Login Attempts
+    description: Triggers when multiple failed login attempts are detected
+    category: security
+    tags: [login, security, intrusion]
+    enabled: true
+    conditions:
+      - field: security.failed_login_attempts
+        operator: gt
+        value: 5
+    actions:
+      - type: log
+        parameters:
+          message: "Suspicious login activity: {security.failed_login_attempts} failed attempts from {security.source_ip}"
+          level: error
+        priority: 1
+      - type: firewall_rule
+        parameters:
+          action: deny
+          port: 22
+          source_ip: "{security.source_ip}"
+        priority: 2
+      - type: alert
+        parameters:
+          message: "Blocked IP {security.source_ip} due to suspicious login attempts"
+          severity: high
+        priority: 3
+
+  - id: unauthorized_api_access
+    name: Unauthorized API Access
+    description: Triggers when unauthorized API access is detected
+    category: security
+    tags: [api, security, unauthorized]
+    enabled: true
+    conditions:
+      - field: api.unauthorized_requests
+        operator: gt
+        value: 10
+    actions:
+      - type: log
+        parameters:
+          message: "Unauthorized API access from {api.source_ip}: {api.unauthorized_requests} requests"
+          level: warning
+        priority: 1
+      - type: firewall_rule
+        parameters:
+          action: deny
+          port: 8000
+          source_ip: "{api.source_ip}"
+        priority: 2
+
+  - id: firewall_rule_added
+    name: Firewall Rule Added
+    description: Log when new firewall rules are added
+    category: security
+    tags: [firewall, rules, audit]
+    enabled: true
+    conditions:
+      - field: firewall.rule_added
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "Firewall rule added: {firewall.rule_description}"
+          level: info
+        priority: 1
+
+  - id: port_scan_detection
+    name: Port Scan Detection
+    description: Triggers when port scanning activity is detected
+    category: security
+    tags: [port_scan, security, intrusion]
+    enabled: true
+    conditions:
+      - field: security.port_scan_detected
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "Port scan detected from {security.scanner_ip}"
+          level: error
+        priority: 1
+      - type: firewall_rule
+        parameters:
+          action: deny
+          source_ip: "{security.scanner_ip}"
+        priority: 2
+      - type: alert
+        parameters:
+          message: "Port scanning activity detected and blocked from {security.scanner_ip}"
+          severity: high
+        priority: 3
+
+  - id: ai_service_access_granted
+    name: AI Service Access Granted
+    description: Log when AI service access is granted to new IPs
+    category: security
+    tags: [ai_service, access, audit]
+    enabled: true
+    conditions:
+      - field: ai_service.access_granted
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "AI service access granted to {ai_service.client_ip}"
+          level: info
+        priority: 1
+      - type: firewall_rule
+        parameters:
+          action: allow
+          port: 8001
+          source_ip: "{ai_service.client_ip}"
+        priority: 2
+
+  - id: excessive_bandwidth_usage
+    name: Excessive Bandwidth Usage
+    description: Triggers when bandwidth usage exceeds normal levels
+    category: security
+    tags: [bandwidth, network, monitoring]
+    enabled: true
+    conditions:
+      - field: network.bandwidth_mbps
+        operator: gt
+        value: 100
+    actions:
+      - type: log
+        parameters:
+          message: "High bandwidth usage detected: {network.bandwidth_mbps} Mbps"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Bandwidth usage is unusually high. Check for unauthorized network activity."
+          severity: medium
+        priority: 2
+
+  - id: ssh_key_authentication_failure
+    name: SSH Key Authentication Failure
+    description: Triggers when SSH key authentication fails repeatedly
+    category: security
+    tags: [ssh, authentication, security]
+    enabled: true
+    conditions:
+      - field: ssh.key_auth_failures
+        operator: gt
+        value: 3
+    actions:
+      - type: log
+        parameters:
+          message: "SSH key authentication failures from {ssh.source_ip}: {ssh.key_auth_failures}"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Multiple SSH key authentication failures detected from {ssh.source_ip}"
+          severity: medium
+        priority: 2
+
+  - id: firewall_disabled
+    name: Firewall Disabled
+    description: Triggers when firewall is disabled
+    category: security
+    tags: [firewall, security, critical]
+    enabled: true
+    conditions:
+      - field: firewall.status
+        operator: eq
+        value: "disabled"
+    actions:
+      - type: log
+        parameters:
+          message: "Firewall has been disabled"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "CRITICAL: Firewall has been disabled. System is vulnerable to attacks."
+          severity: critical
+        priority: 2
+      - type: execute
+        parameters:
+          command: "sudo ufw --force enable"
+        priority: 3
+
+  - id: new_device_on_network
+    name: New Device on Network
+    description: Triggers when a new device is detected on the network
+    category: security
+    tags: [network, device, monitoring]
+    enabled: true
+    conditions:
+      - field: network.new_device_detected
+        operator: eq
+        value: true
+    actions:
+      - type: log
+        parameters:
+          message: "New device detected on network: {network.device_mac} at {network.device_ip}"
+          level: info
+        priority: 1
+      - type: notification
+        parameters:
+          title: "New Network Device"
+          message: "Device {network.device_mac} joined the network at {network.device_ip}"
+        priority: 2
+
+  - id: certificate_expiry_warning
+    name: Certificate Expiry Warning
+    description: Triggers when SSL certificates are about to expire
+    category: security
+    tags: [ssl, certificate, expiry]
+    enabled: true
+    conditions:
+      - field: ssl.days_until_expiry
+        operator: lt
+        value: 30
+    actions:
+      - type: log
+        parameters:
+          message: "SSL certificate expires in {ssl.days_until_expiry} days"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "SSL certificate for {ssl.domain} expires in {ssl.days_until_expiry} days. Renewal required."
+          severity: medium
+        priority: 2

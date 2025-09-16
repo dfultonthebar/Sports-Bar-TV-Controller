@@ -1,0 +1,192 @@
+
+# System Monitoring Rules for Sports Bar TV Controller
+# These rules monitor system health and trigger appropriate actions
+
+rules:
+  - id: high_cpu_usage
+    name: High CPU Usage Alert
+    description: Triggers when CPU usage exceeds 85%
+    category: system_health
+    tags: [cpu, performance, alert]
+    enabled: true
+    conditions:
+      - field: system.cpu_percent
+        operator: gt
+        value: 85.0
+    actions:
+      - type: log
+        parameters:
+          message: "High CPU usage detected: {system.cpu_percent}%"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "CPU usage is high at {system.cpu_percent}%. Consider checking running processes."
+          severity: medium
+        priority: 2
+
+  - id: critical_memory_usage
+    name: Critical Memory Usage
+    description: Triggers when memory usage exceeds 90%
+    category: system_health
+    tags: [memory, performance, critical]
+    enabled: true
+    conditions:
+      - field: system.memory_percent
+        operator: gt
+        value: 90.0
+    actions:
+      - type: log
+        parameters:
+          message: "Critical memory usage: {system.memory_percent}%"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Memory usage is critical at {system.memory_percent}%. System may become unstable."
+          severity: high
+        priority: 2
+      - type: notification
+        parameters:
+          title: "Critical Memory Alert"
+          message: "Memory usage: {system.memory_percent}%"
+        priority: 3
+
+  - id: disk_space_warning
+    name: Disk Space Warning
+    description: Triggers when disk usage exceeds 85%
+    category: system_health
+    tags: [disk, storage, warning]
+    enabled: true
+    conditions:
+      - field: system.disk_percent
+        operator: gt
+        value: 85.0
+    actions:
+      - type: log
+        parameters:
+          message: "Disk space warning: {system.disk_percent}% used"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Disk space is running low at {system.disk_percent}%. Consider cleaning up log files."
+          severity: medium
+        priority: 2
+
+  - id: disk_space_critical
+    name: Critical Disk Space
+    description: Triggers when disk usage exceeds 95%
+    category: system_health
+    tags: [disk, storage, critical]
+    enabled: true
+    conditions:
+      - field: system.disk_percent
+        operator: gt
+        value: 95.0
+    actions:
+      - type: log
+        parameters:
+          message: "Critical disk space: {system.disk_percent}% used"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Disk space is critically low at {system.disk_percent}%. Immediate action required."
+          severity: critical
+        priority: 2
+      - type: execute
+        parameters:
+          command: "find /var/log -name '*.log' -mtime +7 -exec rm {} \\;"
+        priority: 3
+
+  - id: service_down_detection
+    name: Service Down Detection
+    description: Triggers when a critical service is not running
+    category: service_health
+    tags: [services, availability, critical]
+    enabled: true
+    conditions:
+      - field: services.nginx.status
+        operator: ne
+        value: "running"
+    actions:
+      - type: log
+        parameters:
+          message: "Critical service nginx is not running"
+          level: error
+        priority: 1
+      - type: service_restart
+        parameters:
+          service: nginx
+        priority: 2
+      - type: alert
+        parameters:
+          message: "Nginx service was down and has been restarted"
+          severity: high
+        priority: 3
+
+  - id: network_connectivity_failure
+    name: Network Connectivity Failure
+    description: Triggers when internet connectivity is lost
+    category: network_health
+    tags: [network, connectivity, critical]
+    enabled: true
+    conditions:
+      - field: network.internet_connectivity
+        operator: eq
+        value: false
+    actions:
+      - type: log
+        parameters:
+          message: "Internet connectivity lost"
+          level: error
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Internet connectivity has been lost. Check network configuration."
+          severity: high
+        priority: 2
+      - type: execute
+        parameters:
+          command: "systemctl restart networking"
+        priority: 3
+
+  - id: high_process_count
+    name: High Process Count
+    description: Triggers when process count exceeds normal levels
+    category: system_health
+    tags: [processes, performance, warning]
+    enabled: true
+    conditions:
+      - field: system.process_count
+        operator: gt
+        value: 300
+    actions:
+      - type: log
+        parameters:
+          message: "High process count detected: {system.process_count}"
+          level: warning
+        priority: 1
+      - type: alert
+        parameters:
+          message: "Process count is high at {system.process_count}. System may be under heavy load."
+          severity: medium
+        priority: 2
+
+  - id: system_uptime_check
+    name: System Uptime Check
+    description: Log system uptime milestones
+    category: system_info
+    tags: [uptime, info]
+    enabled: true
+    conditions:
+      - field: system.uptime_seconds
+        operator: gt
+        value: 86400  # 24 hours
+    actions:
+      - type: log
+        parameters:
+          message: "System uptime: {system.uptime_seconds} seconds"
+          level: info
+        priority: 1
