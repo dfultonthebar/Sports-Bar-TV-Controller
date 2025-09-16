@@ -1,18 +1,27 @@
 [Unit]
 Description=Sports Bar TV Controller
 After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
-User=%i
-WorkingDirectory=%h/Sports-Bar-TV-Controller
-Environment=PATH=/usr/bin:/usr/local/bin
-Environment=PYTHONPATH=%h/Sports-Bar-TV-Controller
-Environment=FLASK_SECRET_KEY=sports-bar-production-key-2024
-Environment=GIT_EXEC_PATH=/usr/bin
-ExecStart=/usr/bin/python3 main.py
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/sportsbar-controller
+Environment=PATH=/opt/sportsbar-controller/venv/bin
+ExecStart=/opt/sportsbar-controller/venv/bin/python main.py --host 0.0.0.0 --port 5000
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sportsbar-controller
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sportsbar-controller
 
 [Install]
 WantedBy=multi-user.target

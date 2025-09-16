@@ -65,12 +65,22 @@ class SportsBarController:
         self.ai_system_manager = None
         self.running = False
         
-        # Initialize new backend services
-        self.tv_discovery = TVDiscoveryService()
-        self.subnet_manager = SubnetManager()
-        self.cable_box_manager = CableBoxManager()
-        self.chat_interface = ChatInterfaceManager()
-        self.github_manager = None  # Will be initialized if needed
+        # Initialize new backend services with error handling
+        try:
+            self.tv_discovery = TVDiscoveryService()
+            self.subnet_manager = SubnetManager()
+            self.cable_box_manager = CableBoxManager()
+            self.chat_interface = ChatInterfaceManager()
+            self.github_manager = None  # Will be initialized if needed
+            logger.info("Backend services initialized successfully")
+        except Exception as e:
+            logger.warning(f"Some backend services failed to initialize: {e}")
+            # Initialize with None values to prevent crashes
+            self.tv_discovery = None
+            self.subnet_manager = None
+            self.cable_box_manager = None
+            self.chat_interface = None
+            self.github_manager = None
         
         # Create necessary directories
         self._create_directories()
