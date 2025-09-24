@@ -45,13 +45,13 @@ fi
 # Install Yarn if not installed
 if ! command -v yarn &> /dev/null; then
     echo "Installing Yarn..."
-    npm install -g yarn
+    sudo npm install -g yarn
 fi
 
 # Install PM2 for process management
 if ! command -v pm2 &> /dev/null; then
     echo "Installing PM2..."
-    npm install -g pm2
+    sudo npm install -g pm2
 fi
 
 echo -e "${YELLOW}📁 Setting up project...${NC}"
