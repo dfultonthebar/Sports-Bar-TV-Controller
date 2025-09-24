@@ -1,0 +1,130 @@
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Equipment {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  brand     String?
+  model     String?
+  location  String?
+  status    String   @default("active")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String
+  filePath     String
+  fileSize     Int
+  mimeType     String
+  content      String?  // Extracted text content for AI processing
+  embeddings   String?  // JSON string of embeddings for vector search
+  uploadedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Grok", "Claude", "OpenAI"
+  provider    String   // e.g., "xai", "anthropic", "openai"
+  keyValue    String   // encrypted API key
+  isActive    Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  title     String?
+  messages  String   // JSON string of messages
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MatrixConfiguration {
+  id               String   @id @default(cuid())
+  name             String   // Configuration name
+  ipAddress        String
+  port             Int      @default(4999)
+  tcpPort          Int      @default(5000)
+  udpPort          Int      @default(4000)
+  protocol         String   @default("TCP")
+  connectionStatus String   @default("disconnected") // connected, disconnected, error
+  lastTested       DateTime?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  inputs   MatrixInput[]
+  outputs  MatrixOutput[]
+}
+
+model MatrixInput {
+  id           String   @id @default(cuid())
+  configId     String
+  channelNumber Int     // 1-32 typically
+  label        String   // User-defined label like "Cable Box 1"
+  inputType    String   @default("HDMI") // HDMI, Component, Composite, etc.
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  configuration MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
+}
+
+model MatrixOutput {
+  id            String   @id @default(cuid())
+  configId      String
+  channelNumber Int      // 1-32 typically
+  label         String   // User-defined label like "Main Bar TV"
+  resolution    String   @default("1080p") // 1080p, 4K, 720p, etc.
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  configuration MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
+}
+
+model MatrixRoute {
+  id        Int      @id @default(autoincrement())
+  inputNum  Int
+  outputNum Int
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model MatrixScene {
+  id          Int      @id @default(autoincrement())
+  sceneNum    Int
+  name        String
+  description String?
+  routes      String   // JSON string of routes
+  createdAt   DateTime @default(now())
+}
