@@ -12,7 +12,20 @@ AI-powered assistant for sports bar AV system management with Wolf Pack Matrix C
 
 ## 🛠️ Quick Deploy on Server
 
-### Method 1: Direct GitHub Clone
+### ✅ Recommended: Fixed Installation Method
+```bash
+# Clone the repository
+git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
+cd Sports-Bar-TV-Controller
+
+# Run the FIXED installer (resolves yarn configuration issues)
+chmod +x install_fixed.sh
+./install_fixed.sh
+```
+
+### Alternative Methods
+
+#### Method 1: Direct GitHub Clone (Original)
 ```bash
 # Clone the repository
 git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
@@ -23,25 +36,30 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### Method 2: One-Line Install
+#### Method 2: One-Line Install (Original)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
 ```
 
+> **Note**: If you encounter "No such file or directory: 'install'" or "'dev'" errors, use the **Fixed Installation Method** above.
+
 ## 📋 Management Commands
 
 ```bash
-# Start the application
-./start.sh
+# Check application status
+./status.sh
+
+# Start the application manually
+yarn dev > server.log 2>&1 &
 
 # Stop the application  
-./stop.sh
+pkill -f "next"
 
 # Restart the application
-./restart.sh
+pkill -f "next" && yarn dev > server.log 2>&1 &
 
 # View logs
-./logs.sh
+tail -f server.log
 
 # Deploy updates from GitHub
 ./deploy.sh
