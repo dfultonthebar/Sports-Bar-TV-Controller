@@ -12,7 +12,30 @@ AI-powered assistant for sports bar AV system management with Wolf Pack Matrix C
 
 ## 🛠️ Quick Deploy on Server
 
-### ✅ Recommended: Fixed Installation Method
+### 🚀 RECOMMENDED: Complete Fresh Installation
+```bash
+# Download the fresh installer
+curl -o fresh_sports_bar_install.sh https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/fresh_install.sh
+chmod +x fresh_sports_bar_install.sh
+
+# Run the fresh installer (clears old install, downloads fresh, installs)
+./fresh_sports_bar_install.sh
+```
+
+### Alternative Installation Methods
+
+#### Method 1: Clone and Fresh Install
+```bash
+# Clone the repository
+git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
+cd Sports-Bar-TV-Controller
+
+# Run the fresh installer (clears and reinstalls)
+chmod +x fresh_install.sh
+./fresh_install.sh
+```
+
+#### Method 2: Fixed Installation (for existing clone)
 ```bash
 # Clone the repository
 git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
@@ -23,25 +46,12 @@ chmod +x install_fixed.sh
 ./install_fixed.sh
 ```
 
-### Alternative Methods
-
-#### Method 1: Direct GitHub Clone (Original)
-```bash
-# Clone the repository
-git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
-cd Sports-Bar-TV-Controller
-
-# Run the installer
-chmod +x install.sh
-./install.sh
-```
-
-#### Method 2: One-Line Install (Original)
+#### Method 3: One-Line Install (Original - may have issues)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
 ```
 
-> **Note**: If you encounter "No such file or directory: 'install'" or "'dev'" errors, use the **Fixed Installation Method** above.
+> **Note**: The **Fresh Installation** method is recommended as it completely clears any previous installations and ensures a clean setup.
 
 ## 📋 Management Commands
 
