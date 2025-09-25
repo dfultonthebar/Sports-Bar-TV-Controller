@@ -1,0 +1,35 @@
+
+{
+  "devices": [
+    {
+      "id": "device_main_directv",
+      "name": "Main DirecTV Box",
+      "brand": "DirecTV",
+      "deviceType": "Satellite Receiver",
+      "inputChannel": 1,
+      "iTachAddress": "192.168.1.100",
+      "codesetId": "1001",
+      "isActive": true
+    },
+    {
+      "id": "device_samsung_tv1",
+      "name": "Samsung TV - Bar Left",
+      "brand": "Samsung",
+      "deviceType": "TV",
+      "inputChannel": 2,
+      "iTachAddress": "192.168.1.100",
+      "codesetId": "2001",
+      "isActive": true
+    },
+    {
+      "id": "device_appletv_private",
+      "name": "Apple TV - Private Room",
+      "brand": "Apple TV",
+      "deviceType": "Streaming Device",
+      "inputChannel": 3,
+      "iTachAddress": "192.168.1.100",
+      "codesetId": "5001",
+      "isActive": true
+    }
+  ]
+}

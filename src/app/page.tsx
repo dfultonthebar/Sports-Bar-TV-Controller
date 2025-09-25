@@ -10,7 +10,8 @@ import GitHubSync from '../components/GitHubSync'
 import FileSystemManager from '../components/FileSystemManager'
 import MatrixControl from '../components/MatrixControl'
 import BartenderInterface from '../components/BartenderInterface'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users } from 'lucide-react'
+import IRDeviceControl from '../components/IRDeviceControl'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio } from 'lucide-react'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('bartender')
@@ -42,6 +43,7 @@ export default function Home() {
                 <nav className="-mb-px flex space-x-8">
                   {[
                     { id: 'bartender', name: 'Bartender Control', icon: Users },
+                    { id: 'ir-control', name: 'IR Device Control', icon: Radio },
                     { id: 'document-upload', name: 'Document Upload', icon: FileText },
                     { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle },
                     { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap },
@@ -70,6 +72,7 @@ export default function Home() {
               {/* Tab Content */}
               <div className="mt-6">
                 {activeTab === 'bartender' && <BartenderInterface />}
+                {activeTab === 'ir-control' && <IRDeviceControl />}
                 {activeTab === 'document-upload' && <DocumentUpload />}
                 {activeTab === 'ai-chat' && <TroubleshootingChat />}
                 {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
