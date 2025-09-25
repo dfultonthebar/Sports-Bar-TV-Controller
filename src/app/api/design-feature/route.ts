@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { EnhancedAIClient, FeatureDesignRequest } from '../../../../lib/enhanced-ai-client'
+import { EnhancedAIClient, FeatureDesignRequest } from '../../../lib/enhanced-ai-client'
 
 export async function POST(request: NextRequest) {
   try {
