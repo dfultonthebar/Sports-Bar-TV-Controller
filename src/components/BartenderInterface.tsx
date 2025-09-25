@@ -105,6 +105,8 @@ export default function BartenderInterface() {
     const file = event.target.files?.[0]
     if (!file) return
 
+    console.log('Uploading file:', file.name, file.type, file.size)
+    
     const formData = new FormData()
     formData.append('file', file)
 
@@ -117,6 +119,9 @@ export default function BartenderInterface() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log('Upload response data:', data)
+        console.log('Setting showAIAnalyzer to true')
+        
         const newLayout = {
           ...tvLayout,
           imageUrl: data.imageUrl
@@ -128,6 +133,7 @@ export default function BartenderInterface() {
         // Always show AI analyzer after upload and set description if available
         if (data.description) {
           setUploadedLayoutDescription(data.description)
+          console.log('Description set:', data.description.length, 'characters')
         }
         // Show AI analyzer for all uploaded layouts
         setShowAIAnalyzer(true)

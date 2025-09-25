@@ -1,0 +1,85 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .upload-area { border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; font-family: monospace; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sports Bar Upload Debug Test</h1>
+        
+        <div class="upload-area">
+            <input type="file" id="fileInput" accept="image/*,application/pdf">
+            <button onclick="testUpload()" id="uploadBtn">Test Upload</button>
+        </div>
+        
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log ${type}`;
+            logEntry.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            logsDiv.appendChild(logEntry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        async function testUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                log('No file selected', 'error');
+                return;
+            }
+            
+            log(`Selected file: ${file.name} (${file.type}, ${file.size} bytes)`);
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                log('Sending upload request...');
+                
+                const response = await fetch('/api/bartender/upload-layout', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                log(`Response status: ${response.status} ${response.statusText}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('Upload successful!', 'success');
+                    log(`Image URL: ${data.imageUrl}`, 'success');
+                    log(`Description length: ${data.description ? data.description.length : 0} chars`, 'success');
+                    
+                    // Test if the uploaded image is accessible
+                    const img = new Image();
+                    img.onload = () => log('✅ Image is accessible via URL', 'success');
+                    img.onerror = () => log('❌ Image is NOT accessible via URL', 'error');
+                    img.src = data.imageUrl;
+                    
+                } else {
+                    const errorText = await response.text();
+                    log(`Upload failed: ${errorText}`, 'error');
+                }
+            } catch (error) {
+                log(`Error during upload: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

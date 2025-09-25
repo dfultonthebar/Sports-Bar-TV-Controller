@@ -17,10 +17,14 @@ async function ensureUploadDir() {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Upload layout API called')
     const formData = await request.formData()
     const file = formData.get('file') as File
     
+    console.log('File received:', file ? file.name : 'No file')
+    
     if (!file) {
+      console.log('No file provided in request')
       return NextResponse.json(
         { error: 'No file uploaded' },
         { status: 400 }
@@ -55,9 +59,11 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await fs.writeFile(filepath, buffer)
+    console.log('File saved to:', filepath)
 
     // Return public URL
     const imageUrl = `/uploads/layouts/${filename}`
+    console.log('Returning imageUrl:', imageUrl)
     
     // For PDF layouts, return the TV location description  
     // In a production system, this would use actual PDF text extraction or image analysis
