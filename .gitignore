@@ -47,6 +47,9 @@ server.log
 dev.db
 prisma/dev.db
 
+# Uploads
+uploads/
+
 # IDE
 .vscode/
 .idea/
