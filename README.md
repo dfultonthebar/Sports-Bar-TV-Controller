@@ -22,6 +22,16 @@ chmod +x fresh_sports_bar_install.sh
 ./fresh_sports_bar_install.sh
 ```
 
+### 🔧 If Installation Fails (Yarn Configuration Issues):
+```bash
+# If the fresh installer fails with yarn errors, use the fix script:
+curl -o fix_and_install.sh https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/fix_and_install.sh
+chmod +x fix_and_install.sh
+
+# Run the fix script (fixes yarn configuration and completes install)
+./fix_and_install.sh
+```
+
 ### Alternative Installation Methods
 
 #### Method 1: Clone and Fresh Install
