@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 interface UploadedFile {
   id: string
@@ -31,9 +31,9 @@ export default function DocumentUpload() {
   }, [])
 
   // Fetch uploaded files on component mount
-  useState(() => {
+  useEffect(() => {
     fetchUploadedFiles()
-  })
+  }, [fetchUploadedFiles])
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()

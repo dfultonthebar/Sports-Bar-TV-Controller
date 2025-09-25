@@ -43,10 +43,19 @@ export async function POST(request: NextRequest) {
     }
 
     const messages = session ? JSON.parse(session.messages || '[]') : []
+    
+    // Add context as system message if available and no messages yet
+    if (context && messages.length === 0) {
+      messages.push({ 
+        role: 'system', 
+        content: `You are an AI assistant for sports bar AV system troubleshooting. Here is relevant context from uploaded documents:\n\n${context}` 
+      })
+    }
+    
     messages.push({ role: 'user', content: message })
 
     // Get AI response
-    const aiResponse = await aiClient.chat(messages, context)
+    const aiResponse = await aiClient.chat(messages)
 
     if (aiResponse.error) {
       return NextResponse.json({
