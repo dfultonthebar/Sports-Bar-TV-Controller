@@ -226,4 +226,81 @@ Please provide a detailed feature specification and implementation guide.`
 
     return this.makeAPICall([systemMessage, userMessage], provider.provider, provider.apiKey)
   }
+
+  async fileSystemAssistant(query: string, context?: string): Promise<AIResponse & { actions?: string[] }> {
+    const provider = await this.getAvailableProvider()
+    if (!provider) {
+      return { error: 'No AI provider configured. Please add an API key.' }
+    }
+
+    const systemMessage = {
+      role: 'system',
+      content: `You are an advanced Sports Bar AI Assistant with file system management capabilities. You can help with:
+
+**Available File System Operations:**
+1. **Script Creation** - Generate and write scripts (bash, python, javascript, etc.)
+2. **File Management** - Create, read, modify, and delete files
+3. **Directory Operations** - Create directories, list contents, navigate structure
+4. **Command Execution** - Run shell commands and scripts
+5. **System Administration** - Manage server processes, configurations
+
+**When responding:**
+- Provide clear, actionable advice
+- Suggest specific commands or file operations when appropriate
+- Reference available file system APIs when relevant
+- Include safety warnings for destructive operations
+- Offer step-by-step instructions
+
+**Safety Guidelines:**
+- Always warn before suggesting destructive operations
+- Recommend backups before major changes
+- Validate file paths and permissions
+- Use secure coding practices
+
+${context ? `\nAdditional Context:\n${context}` : ''}
+
+Focus on practical, implementation-ready solutions for sports bar AV system management.`
+    }
+
+    const userMessage = {
+      role: 'user',
+      content: query
+    }
+
+    const result = await this.makeAPICall([systemMessage, userMessage], provider.provider, provider.apiKey)
+    
+    // Parse response for potential actions
+    const actions: string[] = []
+    if (result.content) {
+      // Look for common file system operations mentioned in the response
+      if (result.content.toLowerCase().includes('create script') || result.content.toLowerCase().includes('write script')) {
+        actions.push('create-script')
+      }
+      if (result.content.toLowerCase().includes('execute') || result.content.toLowerCase().includes('run command')) {
+        actions.push('execute-command')
+      }
+      if (result.content.toLowerCase().includes('create file') || result.content.toLowerCase().includes('write file')) {
+        actions.push('create-file')
+      }
+      if (result.content.toLowerCase().includes('list directory') || result.content.toLowerCase().includes('browse files')) {
+        actions.push('list-directory')
+      }
+    }
+
+    return { ...result, actions }
+  }
+
+  async generateSystemScript(description: string, scriptType: 'bash' | 'python' | 'javascript' = 'bash'): Promise<AIResponse> {
+    return this.generateScript({
+      description,
+      scriptType,
+      requirements: [
+        'Error handling and logging',
+        'Safe execution with validation',
+        'Clear documentation and comments',
+        'Production-ready code quality'
+      ],
+      context: 'Sports Bar AI Assistant system management script'
+    })
+  }
 }
