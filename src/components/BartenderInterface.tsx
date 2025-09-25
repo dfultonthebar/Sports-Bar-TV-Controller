@@ -495,16 +495,41 @@ export default function BartenderInterface() {
             <div className="p-4 h-full">
               {tvLayout.imageUrl ? (
                 <div className="relative w-full h-96 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                  <Image
-                    src={tvLayout.imageUrl}
-                    alt="Bar Layout"
-                    fill
-                    className="object-contain"
-                    onDoubleClick={addTVZone}
-                  />
+                  {tvLayout.imageUrl.toLowerCase().endsWith('.pdf') ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600 p-6">
+                      <svg className="w-16 h-16 mb-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                      </svg>
+                      <h3 className="text-lg font-semibold mb-2 text-center">PDF Layout Uploaded</h3>
+                      <p className="text-center mb-4 text-sm">
+                        PDF files cannot be displayed as interactive layouts. To see your layout with clickable TV zones, please upload an image version (JPG, PNG) of your floor plan.
+                      </p>
+                      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded">
+                        <p className="text-sm text-blue-700">
+                          💡 <strong>Good news!</strong> The AI Layout Analyzer can still work with this PDF. Click the brain icon (🧠) above to analyze your layout!
+                        </p>
+                      </div>
+                      <a 
+                        href={tvLayout.imageUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        📄 View PDF Layout
+                      </a>
+                    </div>
+                  ) : (
+                    <Image
+                      src={tvLayout.imageUrl}
+                      alt="Bar Layout"
+                      fill
+                      className="object-contain"
+                      onDoubleClick={addTVZone}
+                    />
+                  )}
                   
-                  {/* TV Zone Overlays */}
-                  {tvLayout.zones.map((zone) => (
+                  {/* TV Zone Overlays - only show for image files */}
+                  {!tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.zones.map((zone) => (
                     <div
                       key={zone.id}
                       data-output={zone.outputNumber}
@@ -530,10 +555,12 @@ export default function BartenderInterface() {
                     </div>
                   ))}
                   
-                  {/* Instructions overlay */}
-                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    Double-click to add TV zones
-                  </div>
+                  {/* Instructions overlay - only show for image files */}
+                  {!tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && (
+                    <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                      Double-click to add TV zones
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-96 border-2 border-dashed border-gray-300 rounded-lg">
