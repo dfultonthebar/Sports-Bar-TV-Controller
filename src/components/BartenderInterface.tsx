@@ -125,14 +125,12 @@ export default function BartenderInterface() {
         setTVLayout(newLayout)
         await saveTVLayout(newLayout)
         
-        // If PDF was uploaded, extract description for AI analysis
-        if (file.type === 'application/pdf' && data.description) {
+        // Always show AI analyzer after upload and set description if available
+        if (data.description) {
           setUploadedLayoutDescription(data.description)
-          setShowAIAnalyzer(true)
-        } else if (file.name.toLowerCase().includes('layout')) {
-          // For images with "layout" in filename, show AI analyzer
-          setShowAIAnalyzer(true)
         }
+        // Show AI analyzer for all uploaded layouts
+        setShowAIAnalyzer(true)
       } else {
         alert('Failed to upload image')
       }

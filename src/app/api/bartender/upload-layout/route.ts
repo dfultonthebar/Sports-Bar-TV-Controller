@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
     // Return public URL
     const imageUrl = `/uploads/layouts/${filename}`
     
-    // For the Stoneyard Appleton layout, return the known description
+    // For PDF layouts, return the TV location description  
     // In a production system, this would use actual PDF text extraction or image analysis
     let description = ''
-    if (file.name.toLowerCase().includes('stoneyard') || file.name.toLowerCase().includes('appleton') || file.type === 'application/pdf') {
+    if (file.type === 'application/pdf') {
       description = `The image displays a floor plan with 20 numbered markers. The floor plan outlines a large, irregularly shaped area.
 
 Starting from the bottom left of the L-shaped section and moving clockwise:
