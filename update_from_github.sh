@@ -34,6 +34,7 @@ npm install
 # Update database if schema changed
 if [ -f "prisma/schema.prisma" ]; then
     echo "🗄️  Updating database..."
+    source .env 2>/dev/null || true
     npx prisma generate
     npx prisma db push
 fi
