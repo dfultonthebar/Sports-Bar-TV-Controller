@@ -65,3 +65,4 @@ yarn.lock
 
 # PM2
 ecosystem.config.js
+FETCH_HEAD
