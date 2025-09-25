@@ -58,6 +58,7 @@ Thumbs.db
 # Yarn
 .yarn/
 .yarnrc.yml
+yarn.lock
 
 # PM2
 ecosystem.config.js
