@@ -25,6 +25,9 @@ sleep 2
 
 # Pull latest changes
 echo "⬇️  Pulling latest changes from GitHub..."
+# Handle any local database changes that might conflict
+git checkout -- prisma/dev.db 2>/dev/null || true
+git clean -fd uploads/ 2>/dev/null || true
 git pull origin main
 
 # Use npm instead of yarn to avoid version conflicts
