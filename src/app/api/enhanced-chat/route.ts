@@ -80,19 +80,44 @@ export async function POST(request: NextRequest) {
 
 async function searchRelevantDocuments(query: string) {
   try {
+    // Split query into individual keywords
+    const keywords = query.toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 2) // Filter out very short words
+      .slice(0, 10) // Limit to first 10 keywords
+
+    if (keywords.length === 0) return []
+
+    // Create search conditions for each keyword
+    const searchConditions = keywords.flatMap(keyword => [
+      { content: { contains: keyword } },
+      { originalName: { contains: keyword } }
+    ])
+
     const documents = await prisma.document.findMany({
       where: {
-        OR: [
-          { content: { contains: query } },
-          { originalName: { contains: query } },
-          { content: { contains: query.toLowerCase() } },
-          { originalName: { contains: query.toLowerCase() } },
-        ],
+        OR: searchConditions
       },
       take: 5, // Limit to top 5 relevant documents
     })
 
-    return documents
+    // Score documents by number of matching keywords
+    const scoredDocuments = documents.map(doc => {
+      const contentLower = (doc.content || '').toLowerCase()
+      const nameLower = doc.originalName.toLowerCase()
+      
+      const matches = keywords.filter(keyword => 
+        contentLower.includes(keyword) || nameLower.includes(keyword)
+      ).length
+
+      return { ...doc, matchScore: matches }
+    })
+
+    // Sort by match score (highest first) and return
+    return scoredDocuments
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 5)
+
   } catch (error) {
     console.error('Document search error:', error)
     return []
