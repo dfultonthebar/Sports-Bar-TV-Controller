@@ -50,6 +50,7 @@ export class EnhancedAIClient {
       let response: Response
 
       switch (provider) {
+        case 'claude':
         case 'anthropic':
           response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -59,7 +60,7 @@ export class EnhancedAIClient {
               'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-              model: 'claude-3-sonnet-20240229',
+              model: 'claude-3-haiku-20240307',
               max_tokens: 4000,
               messages: messages.map(msg => ({
                 role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -84,6 +85,7 @@ export class EnhancedAIClient {
           })
           break
 
+        case 'grok':
         case 'xai':
           response = await fetch('https://api.x.ai/v1/chat/completions', {
             method: 'POST',
@@ -112,9 +114,11 @@ export class EnhancedAIClient {
       const data = await response.json()
 
       switch (provider) {
+        case 'claude':
         case 'anthropic':
           return { content: data.content?.[0]?.text || 'No response from Claude' }
         case 'openai':
+        case 'grok':
         case 'xai':
           return { content: data.choices?.[0]?.message?.content || 'No response from AI' }
         default:
