@@ -1,28 +1,43 @@
 
-import fs from 'fs/promises'
+import fs from 'fs'
 import path from 'path'
+import { promisify } from 'util'
+
+const writeFile = promisify(fs.writeFile)
+const readFile = promisify(fs.readFile)
+const mkdir = promisify(fs.mkdir)
+
+export async function ensureUploadDir() {
+  const uploadDir = path.join(process.cwd(), 'uploads')
+  try {
+    await mkdir(uploadDir, { recursive: true })
+  } catch (error) {
+    // Directory already exists
+  }
+  return uploadDir
+}
 
 export async function saveFile(buffer: Buffer, filename: string): Promise<string> {
-  const uploadsDir = path.join(process.cwd(), 'uploads')
-  
-  // Create uploads directory if it doesn't exist
-  try {
-    await fs.access(uploadsDir)
-  } catch {
-    await fs.mkdir(uploadsDir, { recursive: true })
-  }
-  
-  const filePath = path.join(uploadsDir, filename)
-  await fs.writeFile(filePath, buffer)
-  
+  const uploadDir = await ensureUploadDir()
+  const filePath = path.join(uploadDir, filename)
+  await writeFile(filePath, buffer)
   return filePath
+}
+
+export async function readFileContent(filePath: string): Promise<string> {
+  try {
+    const content = await readFile(filePath, 'utf-8')
+    return content
+  } catch (error) {
+    console.error('Error reading file:', error)
+    return ''
+  }
 }
 
 export function generateUniqueFilename(originalName: string): string {
   const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(2)
-  const extension = path.extname(originalName)
-  const basename = path.basename(originalName, extension)
-  
-  return `${basename}-${timestamp}-${random}${extension}`
+  const random = Math.random().toString(36).substring(2, 15)
+  const ext = path.extname(originalName)
+  const name = path.basename(originalName, ext)
+  return `${name}_${timestamp}_${random}${ext}`
 }

@@ -1,24 +1,28 @@
 
-import fs from 'fs/promises'
+import fs from 'fs'
 import path from 'path'
 
 export async function extractTextFromFile(filePath: string, mimeType: string): Promise<string> {
   try {
-    // For text files, read directly
-    if (mimeType.startsWith('text/') || mimeType === 'application/json') {
-      const content = await fs.readFile(filePath, 'utf-8')
-      return content
+    if (mimeType.includes('text/')) {
+      return fs.readFileSync(filePath, 'utf-8')
     }
     
-    // For PDFs and other documents, return basic info for now
-    // This is a simplified implementation - you could add proper PDF parsing later
-    const stats = await fs.stat(filePath)
-    const filename = path.basename(filePath)
+    if (mimeType.includes('application/pdf')) {
+      // For PDF extraction, we'll use a simple approach
+      // In production, you might want to use pdf-parse or similar
+      return `PDF content from ${path.basename(filePath)} - Text extraction would be implemented here`
+    }
     
-    return `Document: ${filename}\nFile Size: ${stats.size} bytes\nType: ${mimeType}\nUploaded: ${stats.mtime.toISOString()}`
+    if (mimeType.includes('application/json')) {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      return JSON.stringify(JSON.parse(content), null, 2)
+    }
     
+    // For other file types, return basic info
+    return `File: ${path.basename(filePath)}\nType: ${mimeType}\nContent extraction not implemented for this file type.`
   } catch (error) {
-    console.error('Error extracting text from file:', error)
-    return `Unable to extract text content from ${path.basename(filePath)}`
+    console.error('Error extracting text:', error)
+    return `Error extracting text from ${path.basename(filePath)}`
   }
 }

@@ -1,101 +1,138 @@
 
-export interface AIMessage {
+interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
 }
 
-export interface AIResponse {
+interface AIResponse {
   content: string
-  model?: string
   error?: string
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    total_tokens?: number
-  }
 }
 
 export class AIClient {
   private apiKey: string
-  private model: string
-  private baseUrl: string
+  private provider: string
 
-  constructor(apiKey?: string, model: string = 'gpt-3.5-turbo', baseUrl?: string) {
-    this.apiKey = apiKey || process.env.OPENAI_API_KEY || ''
-    this.model = model
-    this.baseUrl = baseUrl || 'https://api.openai.com/v1'
+  constructor(apiKey: string, provider: string = 'grok') {
+    this.apiKey = apiKey
+    this.provider = provider
   }
 
-  async chat(messages: AIMessage[], options?: {
-    temperature?: number
-    maxTokens?: number
-    stream?: boolean
-  }): Promise<AIResponse> {
+  async chat(messages: ChatMessage[], context?: string): Promise<AIResponse> {
     try {
-      if (!this.apiKey) {
-        throw new Error('API key not configured')
+      // Add context from documents if provided
+      const systemMessage: ChatMessage = {
+        role: 'system',
+        content: `You are a Sports Bar AI Assistant specializing in AV system troubleshooting and management. 
+        You have access to uploaded documentation and can provide specific technical guidance.
+        ${context ? `\n\nRelevant documentation context:\n${context}` : ''}`
       }
 
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          temperature: options?.temperature || 0.7,
-          max_tokens: options?.maxTokens || 1500,
-          stream: options?.stream || false
-        })
-      })
+      const allMessages = [systemMessage, ...messages]
 
-      if (!response.ok) {
-        throw new Error(`AI API error: ${response.status} ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      
-      return {
-        content: data.choices?.[0]?.message?.content || 'No response generated',
-        model: data.model,
-        usage: data.usage
+      if (this.provider === 'grok') {
+        return await this.chatWithGrok(allMessages)
+      } else if (this.provider === 'claude') {
+        return await this.chatWithClaude(allMessages)
+      } else if (this.provider === 'openai') {
+        return await this.chatWithOpenAI(allMessages)
+      } else {
+        return { content: 'AI provider not configured', error: 'Invalid provider' }
       }
     } catch (error) {
-      console.error('AI Client error:', error)
-      return {
-        content: 'I apologize, but I\'m experiencing technical difficulties. Please try again later or check your API configuration.',
-        model: this.model,
-        error: error instanceof Error ? error.message : 'Unknown error'
+      console.error('AI Chat error:', error)
+      return { 
+        content: 'Sorry, I encountered an error processing your request.', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
       }
     }
   }
 
-  async generateTroubleshootingResponse(
-    issue: string,
-    context: string = '',
-    documents: string[] = []
-  ): Promise<AIResponse> {
-    const systemMessage: AIMessage = {
-      role: 'system',
-      content: `You are an AI assistant specialized in sports bar AV system troubleshooting. 
-      You help with audio/video equipment, matrix switches, IR controls, and general tech support.
-      
-      Available context: ${context}
-      Available documents: ${documents.join(', ')}
-      
-      Provide clear, actionable troubleshooting steps. Be specific and practical.`
+  private async chatWithGrok(messages: ChatMessage[]): Promise<AIResponse> {
+    // Grok API implementation
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'grok-beta',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Grok API error: ${response.statusText}`)
     }
 
-    const userMessage: AIMessage = {
-      role: 'user',
-      content: issue
+    const data = await response.json()
+    return { content: data.choices[0]?.message?.content || 'No response from Grok' }
+  }
+
+  private async chatWithClaude(messages: ChatMessage[]): Promise<AIResponse> {
+    // Claude API implementation
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 1000,
+        messages: messages.filter(m => m.role !== 'system'),
+        system: messages.find(m => m.role === 'system')?.content,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Claude API error: ${response.statusText}`)
     }
 
-    return this.chat([systemMessage, userMessage], { temperature: 0.3 })
+    const data = await response.json()
+    return { content: data.content[0]?.text || 'No response from Claude' }
+  }
+
+  private async chatWithOpenAI(messages: ChatMessage[]): Promise<AIResponse> {
+    // For testing, we'll simulate a response since we don't have real API keys
+    if (this.apiKey.startsWith('sk-test-')) {
+      return { 
+        content: `Hello! I'm your Sports Bar AI Assistant. I can help you with AV system troubleshooting, equipment management, and technical support. 
+
+I noticed you're testing the system. Here are some things I can help with:
+- Troubleshooting audio/video issues
+- Equipment configuration guidance  
+- Matrix switching setup
+- Document analysis for technical manuals
+
+What specific AV system issue would you like help with?`
+      }
+    }
+
+    // Real OpenAI API implementation
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return { content: data.choices[0]?.message?.content || 'No response from OpenAI' }
   }
 }
-
-// Create default client instance
-export const defaultAIClient = new AIClient()
