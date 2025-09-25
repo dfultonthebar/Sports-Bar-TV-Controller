@@ -90,7 +90,7 @@ export default function GitHubSync() {
       return
     }
 
-    setOperation({ type: 'commit', status: 'loading' })
+    setOperation({ type: 'push', status: 'loading' })
     try {
       const response = await fetch('/api/git/commit-push', {
         method: 'POST',
@@ -308,11 +308,11 @@ export default function GitHubSync() {
             
             <Button 
               onClick={commitAndPush}
-              disabled={!commitMessage.trim() || (operation.type === 'commit' && operation.status === 'loading') || gitStatus?.isClean}
+              disabled={!commitMessage.trim() || (operation.type === 'push' && operation.status === 'loading') || gitStatus?.isClean}
               className="w-full"
               size="lg"
             >
-              {operation.type === 'commit' && operation.status === 'loading' ? (
+              {operation.type === 'push' && operation.status === 'loading' ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                   Committing...
