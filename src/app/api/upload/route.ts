@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
-import { saveFile, generateUniqueFilename } from '../../../../lib/file-utils'
-import { extractTextFromFile } from '../../../../lib/text-extractor'
+import { prisma } from '../../../lib/db'
+import { saveFile, generateUniqueFilename } from '../../../../../lib/file-utils'
+import { extractTextFromFile } from '../../../../../lib/text-extractor'
 
 export async function POST(request: NextRequest) {
   try {
