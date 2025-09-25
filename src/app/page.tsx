@@ -11,10 +11,11 @@ import FileSystemManager from '../components/FileSystemManager'
 import MatrixControl from '../components/MatrixControl'
 import BartenderInterface from '../components/BartenderInterface'
 import IRDeviceControl from '../components/IRDeviceControl'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio } from 'lucide-react'
+import BartenderRemoteControl from '../components/BartenderRemoteControl'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone } from 'lucide-react'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('bartender')
+  const [activeTab, setActiveTab] = useState('bartender-remote')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900">
@@ -29,9 +30,25 @@ export default function Home() {
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
             Sports Bar AI Assistant
           </h1>
-          <p className="text-xl text-blue-200">
+          <p className="text-xl text-blue-200 mb-4">
             AI-Powered AV System Management & Troubleshooting
           </p>
+          <div className="flex justify-center space-x-4">
+            <a 
+              href="/remote" 
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-all"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Bartender Remote</span>
+            </a>
+            <button
+              onClick={() => setActiveTab('bartender-remote')}
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-all"
+            >
+              <Users className="w-4 h-4" />
+              <span>Management Panel</span>
+            </button>
+          </div>
         </div>
 
         {/* Main Content */}
@@ -42,16 +59,24 @@ export default function Home() {
               <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8">
                   {[
-                    { id: 'bartender', name: 'Bartender Control', icon: Users },
-                    { id: 'ir-control', name: 'IR Device Control', icon: Radio },
-                    { id: 'document-upload', name: 'Document Upload', icon: FileText },
-                    { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle },
-                    { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap },
-                    { id: 'api-keys', name: 'API Keys', icon: Key },
-                    { id: 'github-sync', name: 'GitHub Sync', icon: GitBranch },
-                    { id: 'file-system', name: 'File System', icon: HardDrive },
-                    { id: 'matrix-control', name: 'Matrix Control', icon: Grid },
-                    { id: 'system-enhancement', name: 'System Enhancement', icon: Wrench },
+                    // Bartender Operations
+                    { id: 'bartender-remote', name: 'Remote Control', icon: Smartphone, section: 'operations' },
+                    { id: 'bartender', name: 'Bartender Mgmt', icon: Users, section: 'management' },
+                    
+                    // System Management
+                    { id: 'ir-control', name: 'IR Device Setup', icon: Radio, section: 'management' },
+                    { id: 'matrix-control', name: 'Matrix Control', icon: Grid, section: 'management' },
+                    
+                    // Documentation & Support
+                    { id: 'document-upload', name: 'Document Upload', icon: FileText, section: 'support' },
+                    { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle, section: 'support' },
+                    { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap, section: 'support' },
+                    
+                    // System Administration
+                    { id: 'api-keys', name: 'API Keys', icon: Key, section: 'admin' },
+                    { id: 'github-sync', name: 'GitHub Sync', icon: GitBranch, section: 'admin' },
+                    { id: 'file-system', name: 'File System', icon: HardDrive, section: 'admin' },
+                    { id: 'system-enhancement', name: 'System Enhancement', icon: Wrench, section: 'admin' },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -71,6 +96,7 @@ export default function Home() {
 
               {/* Tab Content */}
               <div className="mt-6">
+                {activeTab === 'bartender-remote' && <BartenderRemoteControl />}
                 {activeTab === 'bartender' && <BartenderInterface />}
                 {activeTab === 'ir-control' && <IRDeviceControl />}
                 {activeTab === 'document-upload' && <DocumentUpload />}
