@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import DocumentUpload from '@/components/DocumentUpload'
-import TroubleshootingChat from '@/components/TroubleshootingChat'
-import SystemEnhancement from '@/components/SystemEnhancement'
-import SimpleMatrixControl from '@/components/matrix/SimpleMatrixControl'
-import { FileText, MessageCircle, Wrench, Grid } from 'lucide-react'
+import DocumentUpload from '../components/DocumentUpload'
+import TroubleshootingChat from '../components/TroubleshootingChat'
+import EnhancedAIChat from '../components/EnhancedAIChat'
+import SystemEnhancement from '../components/SystemEnhancement'
+import ApiKeysManager from '../components/ApiKeysManager'
+import SimpleMatrixControl from '../../components/matrix/SimpleMatrixControl'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap } from 'lucide-react'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('document-upload')
@@ -38,6 +40,8 @@ export default function Home() {
                   {[
                     { id: 'document-upload', name: 'Document Upload', icon: FileText },
                     { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle },
+                    { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap },
+                    { id: 'api-keys', name: 'API Keys', icon: Key },
                     { id: 'matrix-control', name: 'Matrix Control', icon: Grid },
                     { id: 'system-enhancement', name: 'System Enhancement', icon: Wrench },
                   ].map((tab) => (
@@ -61,6 +65,8 @@ export default function Home() {
               <div className="mt-6">
                 {activeTab === 'document-upload' && <DocumentUpload />}
                 {activeTab === 'ai-chat' && <TroubleshootingChat />}
+                {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
+                {activeTab === 'api-keys' && <ApiKeysManager />}
                 {activeTab === 'matrix-control' && <SimpleMatrixControl />}
                 {activeTab === 'system-enhancement' && <SystemEnhancement />}
               </div>
