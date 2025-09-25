@@ -22,8 +22,12 @@ interface MatrixConfig {
   name: string
   ipAddress: string
   port: number
+  tcpPort?: number
+  udpPort?: number
+  protocol?: string
   connectionStatus?: string
   lastTested?: string
+  isActive?: boolean
   inputs: MatrixInput[]
   outputs: MatrixOutput[]
 }
@@ -34,12 +38,16 @@ export default function MatrixControl() {
     name: 'Wolf Pack Matrix',
     ipAddress: '',
     port: 4999,
-    inputs: Array.from({ length: 16 }, (_, i) => ({
+    tcpPort: 5000,
+    udpPort: 4000,
+    protocol: 'TCP',
+    isActive: true,
+    inputs: Array.from({ length: 36 }, (_, i) => ({
       channelNumber: i + 1,
       label: `Input ${i + 1}`,
       inputType: 'HDMI'
     })),
-    outputs: Array.from({ length: 16 }, (_, i) => ({
+    outputs: Array.from({ length: 36 }, (_, i) => ({
       channelNumber: i + 1,
       label: `Output ${i + 1}`,
       resolution: '1080p'
@@ -63,11 +71,33 @@ export default function MatrixControl() {
       const response = await fetch('/api/matrix/config')
       if (response.ok) {
         const data = await response.json()
-        setConfigs(data.configs || [])
-        if (data.configs?.length > 0 && !activeConfigId) {
-          const activeConfig = data.configs[0]
-          setActiveConfigId(activeConfig.id)
-          setCurrentConfig(activeConfig)
+        if (data.config) {
+          // Single config with inputs/outputs
+          const configWithInputsOutputs = {
+            ...data.config,
+            inputs: data.inputs || currentConfig.inputs,
+            outputs: data.outputs || currentConfig.outputs
+          }
+          setConfigs([configWithInputsOutputs])
+          setActiveConfigId(data.config.id)
+          setCurrentConfig(configWithInputsOutputs)
+        } else {
+          // No saved config, ensure we have 36 inputs/outputs
+          if (currentConfig.inputs.length < 36) {
+            setCurrentConfig({
+              ...currentConfig,
+              inputs: Array.from({ length: 36 }, (_, i) => ({
+                channelNumber: i + 1,
+                label: `Input ${i + 1}`,
+                inputType: 'HDMI'
+              })),
+              outputs: Array.from({ length: 36 }, (_, i) => ({
+                channelNumber: i + 1,
+                label: `Output ${i + 1}`,
+                resolution: '1080p'
+              }))
+            })
+          }
         }
       }
     } catch (error) {
@@ -78,15 +108,36 @@ export default function MatrixControl() {
   const saveConfiguration = async () => {
     setIsLoading(true)
     try {
-      const method = activeConfigId ? 'PUT' : 'POST'
-      const body = activeConfigId 
-        ? { ...currentConfig, id: activeConfigId }
-        : currentConfig
+      // Prepare data in the format the API expects
+      const configData = {
+        config: {
+          id: activeConfigId,
+          name: currentConfig.name,
+          ipAddress: currentConfig.ipAddress,
+          port: currentConfig.port,
+          tcpPort: currentConfig.tcpPort || 5000,
+          udpPort: currentConfig.udpPort || 4000,
+          protocol: currentConfig.protocol || 'TCP',
+          isActive: currentConfig.isActive !== false
+        },
+        inputs: currentConfig.inputs.map(input => ({
+          channelNumber: input.channelNumber,
+          label: input.label,
+          inputType: input.inputType,
+          isActive: true
+        })),
+        outputs: currentConfig.outputs.map(output => ({
+          channelNumber: output.channelNumber,
+          label: output.label,
+          resolution: output.resolution,
+          isActive: true
+        }))
+      }
 
       const response = await fetch('/api/matrix/config', {
-        method,
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(configData)
       })
 
       if (response.ok) {
@@ -95,11 +146,12 @@ export default function MatrixControl() {
         setActiveConfigId(data.config.id)
         alert('Configuration saved successfully!')
       } else {
-        throw new Error('Failed to save configuration')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save configuration')
       }
     } catch (error) {
       console.error('Error saving configuration:', error)
-      alert('Error saving configuration')
+      alert('Error saving configuration: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setIsLoading(false)
     }
@@ -313,8 +365,11 @@ export default function MatrixControl() {
         {/* Inputs Section */}
         {activeSection === 'inputs' && (
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Input Channel Labels</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Input Channel Labels (1-36)</h3>
+              <span className="text-sm text-gray-500">Configure all 36 input channels</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
               {currentConfig.inputs.map((input, index) => (
                 <div key={index} className="border border-gray-300 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -348,8 +403,11 @@ export default function MatrixControl() {
         {/* Outputs Section */}
         {activeSection === 'outputs' && (
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Output Channel Labels</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Output Channel Labels (1-36)</h3>
+              <span className="text-sm text-gray-500">Configure all 36 output channels</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
               {currentConfig.outputs.map((output, index) => (
                 <div key={index} className="border border-gray-300 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
