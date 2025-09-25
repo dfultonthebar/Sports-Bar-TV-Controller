@@ -1,6 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+
 // Global Cache IR Database API integration
 const GLOBAL_CACHE_API_BASE = 'https://irdb.globalcache.com:8081'
 

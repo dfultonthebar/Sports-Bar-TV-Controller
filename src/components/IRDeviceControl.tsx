@@ -27,7 +27,13 @@ interface IRDevice {
   brand: string
   deviceType: string
   inputChannel: number
-  iTachAddress: string
+  controlMethod: 'IP' | 'GlobalCache'
+  // For IP control
+  deviceIpAddress?: string
+  ipControlPort?: number
+  // For Global Cache control
+  iTachAddress?: string
+  iTachPort?: number
   codesetId?: string
   isActive: boolean
 }
@@ -81,16 +87,57 @@ const COMMON_COMMANDS: IRCommand[] = [
   { function: 'RECORD', display: 'Record', category: 'playback' }
 ]
 
+// Devices that support IP control
+const IP_CONTROL_DEVICES = {
+  'DirecTV': ['Genie HD DVR', 'Genie Mini', 'HR Series DVR'],
+  'Apple TV': ['Apple TV 4K', 'Apple TV HD'],
+  'Amazon Fire TV': ['Fire TV Stick', 'Fire TV Cube', 'Fire TV'],
+  'Google Chromecast': ['Chromecast with Google TV', 'Chromecast Ultra'],
+  'Roku': ['Roku Ultra', 'Roku Streaming Stick', 'Roku Express'],
+  'NVIDIA Shield': ['Shield TV', 'Shield TV Pro'],
+  'Samsung': ['Smart TV', 'Frame TV', 'QLED TV'],
+  'LG': ['WebOS TV', 'OLED TV', 'NanoCell TV'],
+  'Sony': ['Bravia TV', 'Android TV']
+}
+
+// Devices that typically require IR/Global Cache control
+const IR_ONLY_DEVICES = {
+  'Comcast': ['X1 Cable Box', 'XG1v3', 'Xi6'],
+  'Cox': ['Contour Cable Box', 'Mini Box'],
+  'Charter Spectrum': ['Cable Box', 'HD Receiver'],
+  'Verizon FiOS': ['Set-top Box', 'DVR'],
+  'AT&T U-verse': ['Receiver', 'DVR'],
+  'DISH Network': ['Hopper', 'Joey', 'Wally'],
+  'Generic Cable': ['Cable Box', 'Set-top Box'],
+  'DVD/Blu-ray': ['DVD Player', 'Blu-ray Player'],
+  'Audio Equipment': ['Receiver', 'Amplifier', 'Soundbar']
+}
+
 const DEVICE_BRANDS = [
-  'DirecTV', 'DISH Network', 'Comcast', 'Cox', 'Charter', 'Verizon FiOS',
-  'AT&T U-verse', 'Samsung', 'LG', 'Sony', 'Panasonic', 'Sharp', 'Toshiba',
-  'Apple TV', 'Roku', 'Amazon Fire TV', 'Google Chromecast', 'NVIDIA Shield'
+  ...Object.keys(IP_CONTROL_DEVICES),
+  ...Object.keys(IR_ONLY_DEVICES)
 ]
 
-const DEVICE_TYPES = [
-  'Cable Box', 'Satellite Receiver', 'Streaming Device', 'DVD Player', 
-  'Blu-ray Player', 'Game Console', 'TV', 'Audio Receiver'
-]
+const getDeviceModels = (brand: string): string[] => {
+  return IP_CONTROL_DEVICES[brand as keyof typeof IP_CONTROL_DEVICES] || 
+         IR_ONLY_DEVICES[brand as keyof typeof IR_ONLY_DEVICES] || 
+         []
+}
+
+const getRecommendedControlMethod = (brand: string): 'IP' | 'GlobalCache' => {
+  return IP_CONTROL_DEVICES[brand as keyof typeof IP_CONTROL_DEVICES] ? 'IP' : 'GlobalCache'
+}
+
+// Default ports for IP control
+const DEFAULT_IP_PORTS = {
+  'DirecTV': 8080,
+  'Apple TV': 3689,
+  'Amazon Fire TV': 55443,
+  'Roku': 8060,
+  'Samsung': 8001,
+  'LG': 3000,
+  'Sony': 80
+}
 
 export default function IRDeviceControl() {
   const [devices, setDevices] = useState<IRDevice[]>([])
@@ -101,7 +148,11 @@ export default function IRDeviceControl() {
     brand: '',
     deviceType: '',
     inputChannel: 1,
-    iTachAddress: '192.168.1.100'
+    controlMethod: 'GlobalCache',
+    deviceIpAddress: '',
+    ipControlPort: 8080,
+    iTachAddress: '192.168.1.100',
+    iTachPort: 1
   })
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [availableCodesets, setAvailableCodesets] = useState<any[]>([])
@@ -153,8 +204,19 @@ export default function IRDeviceControl() {
   }
 
   const addDevice = async () => {
-    if (!newDevice.name || !newDevice.brand || !newDevice.deviceType) {
+    if (!newDevice.name || !newDevice.brand || !newDevice.deviceType || !newDevice.controlMethod) {
       alert('Please fill in all required fields')
+      return
+    }
+
+    // Validate based on control method
+    if (newDevice.controlMethod === 'IP' && !newDevice.deviceIpAddress) {
+      alert('Please enter the device IP address')
+      return
+    }
+    
+    if (newDevice.controlMethod === 'GlobalCache' && !newDevice.iTachAddress) {
+      alert('Please enter the iTach IP address')
       return
     }
 
@@ -177,7 +239,11 @@ export default function IRDeviceControl() {
           brand: '',
           deviceType: '',
           inputChannel: 1,
-          iTachAddress: '192.168.1.100'
+          controlMethod: 'GlobalCache',
+          deviceIpAddress: '',
+          ipControlPort: 8080,
+          iTachAddress: '192.168.1.100',
+          iTachPort: 1
         })
       }
     } catch (error) {
@@ -193,14 +259,29 @@ export default function IRDeviceControl() {
     }
 
     try {
-      const response = await fetch('/api/ir-devices/send-command', {
+      const endpoint = selectedDevice.controlMethod === 'IP' 
+        ? '/api/ir-devices/send-ip-command'
+        : '/api/ir-devices/send-command'
+
+      const requestBody = selectedDevice.controlMethod === 'IP' 
+        ? {
+            deviceId: selectedDevice.id,
+            command,
+            deviceIpAddress: selectedDevice.deviceIpAddress,
+            ipControlPort: selectedDevice.ipControlPort,
+            brand: selectedDevice.brand
+          }
+        : {
+            deviceId: selectedDevice.id,
+            command,
+            iTachAddress: selectedDevice.iTachAddress,
+            iTachPort: selectedDevice.iTachPort
+          }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId: selectedDevice.id,
-          command,
-          iTachAddress: selectedDevice.iTachAddress
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (response.ok) {
@@ -211,7 +292,7 @@ export default function IRDeviceControl() {
         alert(`Failed to send command: ${error.message}`)
       }
     } catch (error) {
-      console.error('Failed to send IR command:', error)
+      console.error('Failed to send command:', error)
       alert('Failed to send command')
     }
   }
@@ -353,14 +434,27 @@ export default function IRDeviceControl() {
             >
               <div className="flex items-center justify-between">
                 <Tv className="w-5 h-5 text-gray-600" />
-                <span className={`text-xs px-2 py-1 rounded ${
-                  device.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                }`}>
-                  Ch {device.inputChannel}
-                </span>
+                <div className="flex space-x-1">
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    device.controlMethod === 'IP' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {device.controlMethod === 'IP' ? 'IP' : 'IR'}
+                  </span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    device.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    Ch {device.inputChannel}
+                  </span>
+                </div>
               </div>
               <h4 className="font-medium text-gray-800 mt-2">{device.name}</h4>
               <p className="text-sm text-gray-600">{device.brand} {device.deviceType}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {device.controlMethod === 'IP' 
+                  ? `IP: ${device.deviceIpAddress}:${device.ipControlPort || 'auto'}`
+                  : `iTach: ${device.iTachAddress}:${device.iTachPort || 1}`
+                }
+              </p>
             </button>
           ))}
         </div>
@@ -425,9 +519,20 @@ export default function IRDeviceControl() {
                 <select
                   value={newDevice.brand || ''}
                   onChange={(e) => {
-                    setNewDevice({ ...newDevice, brand: e.target.value })
-                    if (e.target.value && newDevice.deviceType) {
-                      searchCodesets(e.target.value, newDevice.deviceType)
+                    const selectedBrand = e.target.value
+                    const recommendedMethod = getRecommendedControlMethod(selectedBrand)
+                    const defaultPort = DEFAULT_IP_PORTS[selectedBrand as keyof typeof DEFAULT_IP_PORTS] || 8080
+                    
+                    setNewDevice({ 
+                      ...newDevice, 
+                      brand: selectedBrand,
+                      controlMethod: recommendedMethod,
+                      deviceType: '', // Reset device type when brand changes
+                      ipControlPort: defaultPort
+                    })
+                    
+                    if (selectedBrand && newDevice.deviceType) {
+                      searchCodesets(selectedBrand, newDevice.deviceType)
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -440,7 +545,7 @@ export default function IRDeviceControl() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Device Model</label>
                 <select
                   value={newDevice.deviceType || ''}
                   onChange={(e) => {
@@ -450,12 +555,46 @@ export default function IRDeviceControl() {
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!newDevice.brand}
                 >
-                  <option value="">Select Type</option>
-                  {DEVICE_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
+                  <option value="">Select Model</option>
+                  {newDevice.brand && getDeviceModels(newDevice.brand).map(model => (
+                    <option key={model} value={model}>{model}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Control Method</label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="controlMethod"
+                      value="IP"
+                      checked={newDevice.controlMethod === 'IP'}
+                      onChange={(e) => setNewDevice({ ...newDevice, controlMethod: e.target.value as 'IP' | 'GlobalCache' })}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">IP Control</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="controlMethod"
+                      value="GlobalCache"
+                      checked={newDevice.controlMethod === 'GlobalCache'}
+                      onChange={(e) => setNewDevice({ ...newDevice, controlMethod: e.target.value as 'IP' | 'GlobalCache' })}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">Global Cache (IR)</span>
+                  </label>
+                </div>
+                {newDevice.brand && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Recommended: {getRecommendedControlMethod(newDevice.brand)} Control
+                  </p>
+                )}
               </div>
 
               <div>
@@ -470,16 +609,63 @@ export default function IRDeviceControl() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">iTach IP Address</label>
-                <input
-                  type="text"
-                  placeholder="192.168.1.100"
-                  value={newDevice.iTachAddress || ''}
-                  onChange={(e) => setNewDevice({ ...newDevice, iTachAddress: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {/* IP Control Settings */}
+              {newDevice.controlMethod === 'IP' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Device IP Address *</label>
+                    <input
+                      type="text"
+                      placeholder="192.168.1.150"
+                      value={newDevice.deviceIpAddress || ''}
+                      onChange={(e) => setNewDevice({ ...newDevice, deviceIpAddress: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">IP address of the device you want to control</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Control Port</label>
+                    <input
+                      type="number"
+                      placeholder="8080"
+                      value={newDevice.ipControlPort || ''}
+                      onChange={(e) => setNewDevice({ ...newDevice, ipControlPort: parseInt(e.target.value) || undefined })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Port for IP control (auto-detected if left empty)</p>
+                  </div>
+                </>
+              )}
+
+              {/* Global Cache Settings */}
+              {newDevice.controlMethod === 'GlobalCache' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">iTach IP Address *</label>
+                    <input
+                      type="text"
+                      placeholder="192.168.1.100"
+                      value={newDevice.iTachAddress || ''}
+                      onChange={(e) => setNewDevice({ ...newDevice, iTachAddress: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">IP address of your Global Cache iTach device</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">iTach Port</label>
+                    <select
+                      value={newDevice.iTachPort || 1}
+                      onChange={(e) => setNewDevice({ ...newDevice, iTachPort: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={1}>Port 1</option>
+                      <option value={2}>Port 2</option>
+                      <option value={3}>Port 3</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Which port on the iTach device is connected to this device</p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex space-x-3 mt-6">
