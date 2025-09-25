@@ -6,8 +6,9 @@ import TroubleshootingChat from '../components/TroubleshootingChat'
 import EnhancedAIChat from '../components/EnhancedAIChat'
 import SystemEnhancement from '../components/SystemEnhancement'
 import ApiKeysManager from '../components/ApiKeysManager'
+import GitHubSync from '../components/GitHubSync'
 import SimpleMatrixControl from '../../components/matrix/SimpleMatrixControl'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap } from 'lucide-react'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch } from 'lucide-react'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('document-upload')
@@ -42,6 +43,7 @@ export default function Home() {
                     { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle },
                     { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap },
                     { id: 'api-keys', name: 'API Keys', icon: Key },
+                    { id: 'github-sync', name: 'GitHub Sync', icon: GitBranch },
                     { id: 'matrix-control', name: 'Matrix Control', icon: Grid },
                     { id: 'system-enhancement', name: 'System Enhancement', icon: Wrench },
                   ].map((tab) => (
@@ -67,6 +69,7 @@ export default function Home() {
                 {activeTab === 'ai-chat' && <TroubleshootingChat />}
                 {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
                 {activeTab === 'api-keys' && <ApiKeysManager />}
+                {activeTab === 'github-sync' && <GitHubSync />}
                 {activeTab === 'matrix-control' && <SimpleMatrixControl />}
                 {activeTab === 'system-enhancement' && <SystemEnhancement />}
               </div>
