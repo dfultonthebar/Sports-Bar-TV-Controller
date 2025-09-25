@@ -49,6 +49,7 @@ export default function BartenderInterface() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [isRouting, setIsRouting] = useState(false)
+  const [matrixConfig, setMatrixConfig] = useState<any>(null)
 
   useEffect(() => {
     fetchMatrixData()
@@ -74,6 +75,7 @@ export default function BartenderInterface() {
           setInputs(customInputs)
           setOutputs(activeOutputs)
           setConnectionStatus(activeConfig.connectionStatus === 'connected' ? 'connected' : 'disconnected')
+          setMatrixConfig(activeConfig)
         }
       }
     } catch (error) {
@@ -179,6 +181,84 @@ export default function BartenderInterface() {
     }
   }
 
+  // Route selected input to all outputs (Wolf Pack: YAll.)
+  const routeInputToAllOutputs = async () => {
+    if (!selectedInput) {
+      alert('Please select an input source first')
+      return
+    }
+    
+    if (connectionStatus !== 'connected' || !matrixConfig) {
+      alert('Matrix not connected. Please check connection in Matrix Control.')
+      return
+    }
+
+    const input = inputs.find(i => i.id === selectedInput)
+    if (!input) return
+
+    setIsRouting(true)
+    try {
+      const port = matrixConfig.protocol === 'UDP' ? (matrixConfig.udpPort || 4000) : (matrixConfig.tcpPort || 5000)
+      
+      const response = await fetch('/api/matrix/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command: `${input.channelNumber}All.`,
+          ipAddress: matrixConfig.ipAddress,
+          port: port,
+          protocol: matrixConfig.protocol || 'TCP'
+        })
+      })
+
+      if (response.ok) {
+        alert(`Successfully routed ${input.label} to all outputs`)
+      } else {
+        alert('Failed to route to all outputs')
+      }
+    } catch (error) {
+      console.error('Error routing to all outputs:', error)
+      alert('Error routing to all outputs')
+    } finally {
+      setIsRouting(false)
+    }
+  }
+
+  // Reset all channels to one-to-one (Wolf Pack: All1.)
+  const resetToOneToOne = async () => {
+    if (connectionStatus !== 'connected' || !matrixConfig) {
+      alert('Matrix not connected. Please check connection in Matrix Control.')
+      return
+    }
+
+    setIsRouting(true)
+    try {
+      const port = matrixConfig.protocol === 'UDP' ? (matrixConfig.udpPort || 4000) : (matrixConfig.tcpPort || 5000)
+      
+      const response = await fetch('/api/matrix/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command: 'All1.',
+          ipAddress: matrixConfig.ipAddress,
+          port: port,
+          protocol: matrixConfig.protocol || 'TCP'
+        })
+      })
+
+      if (response.ok) {
+        alert('Successfully reset to one-to-one routing (1→1, 2→2, 3→3...)')
+      } else {
+        alert('Failed to reset routing')
+      }
+    } catch (error) {
+      console.error('Error resetting routing:', error)
+      alert('Error resetting routing')
+    } finally {
+      setIsRouting(false)
+    }
+  }
+
   const handleZoneClick = (zone: TVLayoutZone) => {
     if (selectedInput && inputs.length > 0) {
       const input = inputs.find(i => i.id === selectedInput)
@@ -253,31 +333,65 @@ export default function BartenderInterface() {
                   <p className="text-xs mt-1">Configure input labels in Matrix Control.</p>
                 </div>
               ) : (
-                inputs.map((input) => (
-                  <button
-                    key={input.id}
-                    onClick={() => setSelectedInput(selectedInput === input.id ? null : input.id)}
-                    className={`w-full p-3 text-left rounded-lg border-2 transition-all ${
-                      selectedInput === input.id
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
-                        : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-gray-900">{input.label}</div>
-                        <div className="text-sm text-gray-500">
-                          Channel {input.channelNumber} • {input.inputType}
+                <>
+                  {inputs.map((input) => (
+                    <button
+                      key={input.id}
+                      onClick={() => setSelectedInput(selectedInput === input.id ? null : input.id)}
+                      className={`w-full p-3 text-left rounded-lg border-2 transition-all ${
+                        selectedInput === input.id
+                          ? 'border-blue-500 bg-blue-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-gray-900">{input.label}</div>
+                          <div className="text-sm text-gray-500">
+                            Channel {input.channelNumber} • {input.inputType}
+                          </div>
                         </div>
+                        {selectedInput === input.id && (
+                          <div className="text-blue-500">
+                            <Zap className="w-5 h-5" />
+                          </div>
+                        )}
                       </div>
-                      {selectedInput === input.id && (
-                        <div className="text-blue-500">
-                          <Zap className="w-5 h-5" />
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  ))}
+                  
+                  {/* Quick Action Buttons */}
+                  <div className="pt-3 border-t border-gray-200 space-y-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Quick Actions</h4>
+                    
+                    <button
+                      onClick={routeInputToAllOutputs}
+                      disabled={!selectedInput || isRouting || connectionStatus !== 'connected'}
+                      className="w-full px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      <Tv className="w-4 h-4 mr-2" />
+                      Route to All TVs
+                    </button>
+                    
+                    <button
+                      onClick={resetToOneToOne}
+                      disabled={isRouting || connectionStatus !== 'connected'}
+                      className="w-full px-3 py-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Reset to 1:1
+                    </button>
+                    
+                    {selectedInput && (
+                      <button
+                        onClick={() => setSelectedInput(null)}
+                        className="w-full px-3 py-2 text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
