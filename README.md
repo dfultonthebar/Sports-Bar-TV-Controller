@@ -23,8 +23,20 @@ chmod +x fresh_sports_bar_install.sh
 ```
 
 ### 🔧 If Installation Fails (Yarn Configuration Issues):
+
+#### Option A: Improved Fix (Handles Yarn Conflicts)
 ```bash
-# If the fresh installer fails with yarn errors, use the fix script:
+# For yarn global installation conflicts - RECOMMENDED:
+curl -o fix_yarn_properly.sh https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/fix_yarn_properly.sh
+chmod +x fix_yarn_properly.sh
+
+# Run the improved fix script (handles yarn conflicts properly)
+./fix_yarn_properly.sh
+```
+
+#### Option B: Original Fix Script  
+```bash
+# If Option A doesn't work, try the original fix:
 curl -o fix_and_install.sh https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/fix_and_install.sh
 chmod +x fix_and_install.sh
 
