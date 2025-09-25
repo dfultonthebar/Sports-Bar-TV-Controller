@@ -8,11 +8,12 @@ import SystemEnhancement from '../components/SystemEnhancement'
 import ApiKeysManager from '../components/ApiKeysManager'
 import GitHubSync from '../components/GitHubSync'
 import FileSystemManager from '../components/FileSystemManager'
-import SimpleMatrixControl from '../../components/matrix/SimpleMatrixControl'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive } from 'lucide-react'
+import MatrixControl from '../components/MatrixControl'
+import BartenderInterface from '../components/BartenderInterface'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users } from 'lucide-react'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('document-upload')
+  const [activeTab, setActiveTab] = useState('bartender')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900">
@@ -40,6 +41,7 @@ export default function Home() {
               <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8">
                   {[
+                    { id: 'bartender', name: 'Bartender Control', icon: Users },
                     { id: 'document-upload', name: 'Document Upload', icon: FileText },
                     { id: 'ai-chat', name: 'AI Chat', icon: MessageCircle },
                     { id: 'enhanced-ai', name: 'Enhanced AI', icon: Zap },
@@ -67,13 +69,14 @@ export default function Home() {
 
               {/* Tab Content */}
               <div className="mt-6">
+                {activeTab === 'bartender' && <BartenderInterface />}
                 {activeTab === 'document-upload' && <DocumentUpload />}
                 {activeTab === 'ai-chat' && <TroubleshootingChat />}
                 {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
                 {activeTab === 'api-keys' && <ApiKeysManager />}
                 {activeTab === 'github-sync' && <GitHubSync />}
                 {activeTab === 'file-system' && <FileSystemManager />}
-                {activeTab === 'matrix-control' && <SimpleMatrixControl />}
+                {activeTab === 'matrix-control' && <MatrixControl />}
                 {activeTab === 'system-enhancement' && <SystemEnhancement />}
               </div>
             </div>
