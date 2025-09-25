@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/db'
 import { decrypt } from '../../../lib/encryption'
-import { AIClient } from '../../../../../lib/ai-client'
+import { AIClient } from '../../../../lib/ai-client'
 
 export async function POST(request: NextRequest) {
   try {
