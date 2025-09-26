@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import DocumentUpload from '../components/DocumentUpload'
 import TroubleshootingChat from '../components/TroubleshootingChat'
 import EnhancedAIChat from '../components/EnhancedAIChat'
@@ -14,198 +14,280 @@ import IRDeviceControl from '../components/IRDeviceControl'
 import BartenderRemoteControl from '../components/BartenderRemoteControl'
 import AudioZoneControl from '../components/AudioZoneControl'
 import AudioProcessorManager from '../components/AudioProcessorManager'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone, Volume2, Speaker, Settings, ChevronDown, ChevronRight } from 'lucide-react'
+import { 
+  FileText, 
+  MessageCircle, 
+  Wrench, 
+  Grid, 
+  Key, 
+  Zap, 
+  GitBranch, 
+  HardDrive, 
+  Users, 
+  Radio, 
+  Smartphone, 
+  Volume2, 
+  Speaker, 
+  Settings, 
+  MonitorPlay,
+  Wifi,
+  Activity,
+  Clock,
+  Shield,
+  BarChart3
+} from 'lucide-react'
 
 const tabCategories = {
-  operations: {
-    title: 'Daily Operations',
-    icon: Users,
-    color: 'bg-green-500/10 border-green-500/20',
+  quick: {
+    title: 'Quick Access',
+    icon: Zap,
+    color: 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20',
+    priority: true,
     tabs: [
-      { id: 'bartender-remote', name: 'Remote Control', icon: Smartphone, description: 'Quick TV and audio control for bartenders' },
-      { id: 'audio-zones', name: 'Audio Zones', icon: Volume2, description: 'Live audio zone control and monitoring' },
+      { id: 'bartender-remote', name: 'Remote Control', icon: Smartphone, description: 'Instant TV and audio control', color: 'text-emerald-600' },
+      { id: 'audio-zones', name: 'Live Audio', icon: Volume2, description: 'Real-time audio monitoring', color: 'text-emerald-600' },
     ]
   },
-  management: {
-    title: 'AV System Management',
-    icon: Settings,
-    color: 'bg-blue-500/10 border-blue-500/20',
+  control: {
+    title: 'AV Control',
+    icon: MonitorPlay,
+    color: 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20',
+    priority: false,
     tabs: [
-      { id: 'bartender', name: 'Bartender Setup', icon: Users, description: 'Configure bartender interfaces and layouts' },
-      { id: 'matrix-control', name: 'Matrix Control', icon: Grid, description: 'Video matrix routing and configuration' },
-      { id: 'audio-processors', name: 'Audio Processors', icon: Speaker, description: 'Manage AtlasIED audio processors and zones' },
-      { id: 'ir-control', name: 'IR Devices', icon: Radio, description: 'Configure infrared device control' },
+      { id: 'matrix-control', name: 'Video Matrix', icon: Grid, description: 'Video routing & switching', color: 'text-blue-600' },
+      { id: 'audio-processors', name: 'Audio Systems', icon: Speaker, description: 'AtlasIED processor management', color: 'text-blue-600' },
+      { id: 'ir-control', name: 'IR Control', icon: Radio, description: 'Infrared device management', color: 'text-blue-600' },
+    ]
+  },
+  setup: {
+    title: 'Configuration',
+    icon: Settings,
+    color: 'bg-indigo-500/10 border-indigo-500/30 hover:bg-indigo-500/20',
+    priority: false,
+    tabs: [
+      { id: 'bartender', name: 'Staff Interface', icon: Users, description: 'Bartender setup & layout config', color: 'text-indigo-600' },
+      { id: 'document-upload', name: 'Documentation', icon: FileText, description: 'System manuals & guides', color: 'text-indigo-600' },
     ]
   },
   support: {
-    title: 'Documentation & AI Support',
+    title: 'AI Support',
     icon: MessageCircle,
-    color: 'bg-purple-500/10 border-purple-500/20',
+    color: 'bg-purple-500/10 border-purple-500/30 hover:bg-purple-500/20',
+    priority: false,
     tabs: [
-      { id: 'document-upload', name: 'Documents', icon: FileText, description: 'Upload and manage AV documentation' },
-      { id: 'ai-chat', name: 'AI Assistant', icon: MessageCircle, description: 'Get help with troubleshooting and setup' },
-      { id: 'enhanced-ai', name: 'Advanced AI', icon: Zap, description: 'Enhanced AI features and analysis' },
+      { id: 'ai-chat', name: 'AI Assistant', icon: MessageCircle, description: 'Troubleshooting & guidance', color: 'text-purple-600' },
+      { id: 'enhanced-ai', name: 'Advanced AI', icon: Zap, description: 'Enhanced analysis tools', color: 'text-purple-600' },
     ]
   },
   admin: {
-    title: 'System Administration',
-    icon: Wrench,
-    color: 'bg-orange-500/10 border-orange-500/20',
+    title: 'Administration',
+    icon: Shield,
+    color: 'bg-slate-500/10 border-slate-500/30 hover:bg-slate-500/20',
+    priority: false,
     tabs: [
-      { id: 'api-keys', name: 'API Keys', icon: Key, description: 'Manage external service API keys' },
-      { id: 'github-sync', name: 'GitHub Sync', icon: GitBranch, description: 'Sync with GitHub repository' },
-      { id: 'file-system', name: 'File System', icon: HardDrive, description: 'Manage system files and storage' },
-      { id: 'system-enhancement', name: 'System Tools', icon: Wrench, description: 'System maintenance and enhancements' },
+      { id: 'api-keys', name: 'API Management', icon: Key, description: 'External service credentials', color: 'text-slate-600' },
+      { id: 'github-sync', name: 'Version Control', icon: GitBranch, description: 'Code & configuration sync', color: 'text-slate-600' },
+      { id: 'file-system', name: 'File Manager', icon: HardDrive, description: 'System files & storage', color: 'text-slate-600' },
+      { id: 'system-enhancement', name: 'System Tools', icon: Wrench, description: 'Maintenance & optimization', color: 'text-slate-600' },
     ]
   }
 }
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('bartender-remote')
-  const [activeCategory, setActiveCategory] = useState('operations')
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(['operations', 'management'])
+  const [currentTime, setCurrentTime] = useState('')
+  const [systemStatus, setSystemStatus] = useState({
+    online: true,
+    connections: 3,
+    lastUpdate: 'Just now'
+  })
 
-  const toggleCategory = (categoryId: string) => {
-    if (expandedCategories.includes(categoryId)) {
-      setExpandedCategories(expandedCategories.filter(id => id !== categoryId))
-    } else {
-      setExpandedCategories([...expandedCategories, categoryId])
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date()
+      setCurrentTime(now.toLocaleTimeString('en-US', { 
+        hour12: true, 
+        hour: 'numeric', 
+        minute: '2-digit'
+      }))
     }
+    
+    updateTime()
+    const interval = setInterval(updateTime, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const getActiveTabInfo = () => {
+    for (const category of Object.values(tabCategories)) {
+      const tab = category.tabs.find(t => t.id === activeTab)
+      if (tab) return { tab, category }
+    }
+    return null
   }
 
-  const handleTabSelect = (tabId: string, categoryId: string) => {
-    setActiveTab(tabId)
-    setActiveCategory(categoryId)
-    // Auto-expand the category if it's not already
-    if (!expandedCategories.includes(categoryId)) {
-      setExpandedCategories([...expandedCategories, categoryId])
-    }
-  }
+  const activeTabInfo = getActiveTabInfo()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-white/10 backdrop-blur-sm rounded-full p-4 shadow-xl">
-              <span className="text-4xl">🏈</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      
+      {/* Header */}
+      <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl p-2.5 shadow-lg">
+                <span className="text-2xl">🏈</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Sports Bar AI Assistant</h1>
+                <p className="text-sm text-slate-500">Professional AV Management System</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-6">
+              {/* System Status */}
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2 text-sm">
+                  <div className={`w-2 h-2 rounded-full ${systemStatus.online ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className="text-slate-600">
+                    {systemStatus.online ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center space-x-1 text-sm text-slate-500">
+                  <Wifi className="w-4 h-4" />
+                  <span>{systemStatus.connections} devices</span>
+                </div>
+                
+                <div className="flex items-center space-x-1 text-sm text-slate-500">
+                  <Clock className="w-4 h-4" />
+                  <span>{currentTime}</span>
+                </div>
+              </div>
+              
+              {/* Quick Actions */}
+              <div className="flex items-center space-x-2">
+                <a 
+                  href="/remote" 
+                  className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm font-medium"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  <span>Quick Remote</span>
+                </a>
+              </div>
             </div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-            Sports Bar AI Assistant
-          </h1>
-          <p className="text-xl text-blue-200 mb-6">
-            Professional AV System Management & Control
-          </p>
-          <div className="flex justify-center space-x-4">
-            <a 
-              href="/remote" 
-              className="inline-flex items-center space-x-2 px-6 py-3 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              <Smartphone className="w-5 h-5" />
-              <span>Quick Remote</span>
-            </a>
-            <button
-              onClick={() => setActiveTab('bartender-remote')}
-              className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              <Settings className="w-5 h-5" />
-              <span>Full Management</span>
-            </button>
-          </div>
         </div>
+      </header>
 
-        {/* Main Content */}
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            
-            {/* Sidebar Navigation */}
-            <div className="lg:col-span-1">
-              <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl overflow-hidden sticky top-4">
-                <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">System Modules</h2>
-                  <div className="space-y-2">
-                    {Object.entries(tabCategories).map(([categoryId, category]) => (
-                      <div key={categoryId} className={`border rounded-xl ${category.color} overflow-hidden transition-all duration-200`}>
-                        {/* Category Header */}
-                        <button
-                          onClick={() => toggleCategory(categoryId)}
-                          className="w-full flex items-center justify-between p-4 hover:bg-black/5 transition-colors"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <category.icon className="w-5 h-5 text-gray-700" />
-                            <span className="font-medium text-gray-900">{category.title}</span>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Category Navigation */}
+        <div className="mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {Object.entries(tabCategories).map(([categoryId, category]) => (
+              <div key={categoryId} className={`relative group`}>
+                <div className={`
+                  border-2 rounded-2xl p-6 transition-all duration-200 cursor-pointer
+                  ${category.color}
+                  ${category.priority ? 'ring-2 ring-emerald-200' : ''}
+                  transform group-hover:scale-105 group-hover:shadow-lg
+                `}>
+                  <div className="text-center">
+                    <category.icon className="w-8 h-8 mx-auto mb-3 text-slate-700" />
+                    <h3 className="font-semibold text-slate-900 text-sm mb-1">{category.title}</h3>
+                    <p className="text-xs text-slate-600">{category.tabs.length} tools</p>
+                  </div>
+                  
+                  {/* Priority badge */}
+                  {category.priority && (
+                    <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full font-medium shadow-lg">
+                      Quick
+                    </div>
+                  )}
+                </div>
+                
+                {/* Module List */}
+                <div className="absolute top-full left-0 right-0 bg-white rounded-lg shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 mt-2">
+                  <div className="p-4 space-y-2">
+                    {category.tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`w-full text-left p-3 rounded-lg hover:bg-slate-50 transition-colors border border-transparent ${
+                          activeTab === tab.id ? 'bg-blue-50 border-blue-200' : ''
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <tab.icon className={`w-4 h-4 ${tab.color || 'text-slate-600'}`} />
+                          <div>
+                            <div className={`text-sm font-medium ${
+                              activeTab === tab.id ? 'text-blue-700' : 'text-slate-700'
+                            }`}>
+                              {tab.name}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {tab.description}
+                            </div>
                           </div>
-                          {expandedCategories.includes(categoryId) ? 
-                            <ChevronDown className="w-4 h-4 text-gray-500" /> : 
-                            <ChevronRight className="w-4 h-4 text-gray-500" />
-                          }
-                        </button>
-                        
-                        {/* Category Tabs */}
-                        {expandedCategories.includes(categoryId) && (
-                          <div className="border-t border-gray-200/50">
-                            {category.tabs.map((tab) => (
-                              <button
-                                key={tab.id}
-                                onClick={() => handleTabSelect(tab.id, categoryId)}
-                                className={`w-full text-left p-3 pl-6 hover:bg-black/5 transition-colors border-l-3 ${
-                                  activeTab === tab.id 
-                                    ? 'bg-black/10 border-l-blue-500' 
-                                    : 'border-l-transparent'
-                                }`}
-                              >
-                                <div className="flex items-center space-x-3">
-                                  <tab.icon className="w-4 h-4 text-gray-600" />
-                                  <div>
-                                    <div className={`text-sm font-medium ${
-                                      activeTab === tab.id ? 'text-blue-700' : 'text-gray-700'
-                                    }`}>
-                                      {tab.name}
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-1">
-                                      {tab.description}
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      </button>
                     ))}
                   </div>
                 </div>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* Main Content Area */}
-            <div className="lg:col-span-3">
-              <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl overflow-hidden">
-                <div className="p-8">
-                  {/* Active Tab Content */}
-                  <div className="space-y-6">
-                    {activeTab === 'bartender-remote' && <BartenderRemoteControl />}
-                    {activeTab === 'audio-zones' && <AudioZoneControl />}
-                    {activeTab === 'bartender' && <BartenderInterface />}
-                    {activeTab === 'ir-control' && <IRDeviceControl />}
-                    {activeTab === 'document-upload' && <DocumentUpload />}
-                    {activeTab === 'ai-chat' && <TroubleshootingChat />}
-                    {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
-                    {activeTab === 'api-keys' && <ApiKeysManager />}
-                    {activeTab === 'github-sync' && <GitHubSync />}
-                    {activeTab === 'file-system' && <FileSystemManager />}
-                    {activeTab === 'matrix-control' && <MatrixControl />}
-                    {activeTab === 'audio-processors' && <AudioProcessorManager />}
-                    {activeTab === 'system-enhancement' && <SystemEnhancement />}
+        {/* Active Module Display */}
+        {activeTabInfo && (
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+            {/* Module Header */}
+            <div className="bg-gradient-to-r from-slate-50 to-blue-50 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className={`p-2 rounded-lg bg-white shadow-sm`}>
+                    <activeTabInfo.tab.icon className={`w-6 h-6 ${activeTabInfo.tab.color || 'text-slate-600'}`} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{activeTabInfo.tab.name}</h2>
+                    <p className="text-sm text-slate-600">{activeTabInfo.tab.description}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <div className="text-xs text-slate-500 px-3 py-1 bg-white rounded-full border">
+                    {activeTabInfo.category.title}
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Activity className="w-4 h-4 text-green-500" />
+                    <span className="text-sm text-slate-600">Active</span>
                   </div>
                 </div>
               </div>
             </div>
+            
+            {/* Module Content */}
+            <div className="p-6">
+              {activeTab === 'bartender-remote' && <BartenderRemoteControl />}
+              {activeTab === 'audio-zones' && <AudioZoneControl />}
+              {activeTab === 'bartender' && <BartenderInterface />}
+              {activeTab === 'ir-control' && <IRDeviceControl />}
+              {activeTab === 'document-upload' && <DocumentUpload />}
+              {activeTab === 'ai-chat' && <TroubleshootingChat />}
+              {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
+              {activeTab === 'api-keys' && <ApiKeysManager />}
+              {activeTab === 'github-sync' && <GitHubSync />}
+              {activeTab === 'file-system' && <FileSystemManager />}
+              {activeTab === 'matrix-control' && <MatrixControl />}
+              {activeTab === 'audio-processors' && <AudioProcessorManager />}
+              {activeTab === 'system-enhancement' && <SystemEnhancement />}
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   )
 }
