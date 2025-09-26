@@ -36,6 +36,8 @@ interface TVLayout {
   id?: string
   name: string
   imageUrl?: string
+  originalFileUrl?: string
+  fileType?: string
   zones: TVLayoutZone[]
 }
 
@@ -122,9 +124,14 @@ export default function BartenderInterface() {
         console.log('Upload response data:', data)
         console.log('Setting showAIAnalyzer to true')
         
+        // Use converted image for layout display if available (from PDF conversion)
+        const displayImageUrl = data.convertedImageUrl || data.imageUrl
+        
         const newLayout = {
           ...tvLayout,
-          imageUrl: data.imageUrl
+          imageUrl: displayImageUrl,
+          originalFileUrl: data.imageUrl, // Keep reference to original file
+          fileType: data.fileType
         }
         
         setTVLayout(newLayout)
@@ -135,6 +142,12 @@ export default function BartenderInterface() {
           setUploadedLayoutDescription(data.description)
           console.log('Description set:', data.description.length, 'characters')
         }
+        
+        // Show conversion success message for PDFs
+        if (data.fileType === 'application/pdf' && data.convertedImageUrl) {
+          console.log('PDF successfully converted to image for interactive layout')
+        }
+        
         // Show AI analyzer for all uploaded layouts
         setShowAIAnalyzer(true)
       } else {

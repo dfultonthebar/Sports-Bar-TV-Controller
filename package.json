@@ -45,8 +45,10 @@
     "next": "^14.2.33",
     "next-auth": "4.24.11",
     "pdf-parse": "^1.1.1",
+    "pdf2pic": "^3.2.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "sharp": "^0.34.4",
     "tailwind-merge": "^3.3.1",
     "uuid": "^13.0.0",
     "zod": "^3.25.76"

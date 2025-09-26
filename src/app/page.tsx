@@ -12,7 +12,8 @@ import MatrixControl from '../components/MatrixControl'
 import BartenderInterface from '../components/BartenderInterface'
 import IRDeviceControl from '../components/IRDeviceControl'
 import BartenderRemoteControl from '../components/BartenderRemoteControl'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone } from 'lucide-react'
+import AudioZoneControl from '../components/AudioZoneControl'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone, Volume2 } from 'lucide-react'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('bartender-remote')
@@ -61,6 +62,7 @@ export default function Home() {
                   {[
                     // Bartender Operations
                     { id: 'bartender-remote', name: 'Remote Control', icon: Smartphone, section: 'operations' },
+                    { id: 'audio-zones', name: 'Audio Control', icon: Volume2, section: 'operations' },
                     { id: 'bartender', name: 'Bartender Mgmt', icon: Users, section: 'management' },
                     
                     // System Management
@@ -97,6 +99,7 @@ export default function Home() {
               {/* Tab Content */}
               <div className="mt-6">
                 {activeTab === 'bartender-remote' && <BartenderRemoteControl />}
+                {activeTab === 'audio-zones' && <AudioZoneControl />}
                 {activeTab === 'bartender' && <BartenderInterface />}
                 {activeTab === 'ir-control' && <IRDeviceControl />}
                 {activeTab === 'document-upload' && <DocumentUpload />}

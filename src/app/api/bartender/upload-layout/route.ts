@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import pdf2pic from 'pdf2pic'
+import sharp from 'sharp'
 
 const UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'layouts')
 
@@ -61,9 +63,48 @@ export async function POST(request: NextRequest) {
     await fs.writeFile(filepath, buffer)
     console.log('File saved to:', filepath)
 
-    // Return public URL
-    const imageUrl = `/uploads/layouts/${filename}`
-    console.log('Returning imageUrl:', imageUrl)
+    let imageUrl = `/uploads/layouts/${filename}`
+    let convertedImageUrl = null
+
+    // Convert PDF to image if needed
+    if (file.type === 'application/pdf') {
+      try {
+        console.log('Converting PDF to image...')
+        
+        // Configure pdf2pic
+        const convert = pdf2pic.fromBuffer(buffer, {
+          density: 200,           // High quality
+          saveFilename: "page",
+          savePath: UPLOAD_DIR,
+          format: "png",
+          width: 1920,           // High resolution
+          height: 1080
+        })
+        
+        // Convert first page
+        const result = await convert(1, { responseType: "buffer" })
+        
+        if (result && result.buffer) {
+          // Generate filename for converted image
+          const imageFilename = `${filename.replace(/\.pdf$/, '')}_page1.png`
+          const imagePath = join(UPLOAD_DIR, imageFilename)
+          
+          // Optimize the image with Sharp
+          await sharp(result.buffer)
+            .png({ quality: 90 })
+            .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+            .toFile(imagePath)
+          
+          convertedImageUrl = `/uploads/layouts/${imageFilename}`
+          console.log('PDF converted to image:', convertedImageUrl)
+        }
+      } catch (error) {
+        console.error('Error converting PDF to image:', error)
+        // Continue with PDF - conversion failed but we can still analyze
+      }
+    }
+
+    console.log('Returning imageUrl:', imageUrl, 'convertedImageUrl:', convertedImageUrl)
     
     // For PDF layouts, return the TV location description  
     // In a production system, this would use actual PDF text extraction or image analysis
@@ -94,7 +135,12 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
 - Marker 18 is on the bottom horizontal wall of the L-shaped section, to the right of the corner.`
     }
     
-    return NextResponse.json({ imageUrl, description })
+    return NextResponse.json({ 
+      imageUrl, 
+      convertedImageUrl, 
+      description,
+      fileType: file.type 
+    })
   } catch (error) {
     console.error('Error uploading file:', error)
     return NextResponse.json(
