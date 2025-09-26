@@ -3,6 +3,53 @@
 
 All notable changes to the Sports Bar AI Assistant project will be documented in this file.
 
+## [2.2.0] - 2024-09-26
+
+### 🎵 AtlasIED Atmosphere Audio Processor Integration
+
+#### Added
+- **Complete Audio Processor Management System**: Full integration with AtlasIED Atmosphere series (AZM4, AZM8, AZMP4, AZMP8, AZM4-D, AZM8-D)
+- **Database Schema Extensions**: Added AudioProcessor, AudioZone, AudioScene, AudioMessage models
+- **Comprehensive API Endpoints**: 
+  - `/api/audio-processor` - CRUD operations for processors
+  - `/api/audio-processor/test-connection` - Network connectivity testing
+  - `/api/audio-processor/zones` - Zone management and configuration
+  - `/api/audio-processor/control` - Real-time zone control (volume, mute, source selection)
+- **AudioProcessorManager Component**: Full-featured management interface with:
+  - Multi-processor support and tabbed interface
+  - Real-time connection status monitoring
+  - Zone configuration and control panels
+  - Form-based setup with validation
+  - Direct web interface access buttons
+- **Network Integration**: HTTP-based communication with AtlasIED web interfaces
+- **Zone Control Features**: Volume adjustment, muting, source selection per zone
+- **Status Monitoring**: Real-time online/offline status with visual indicators
+
+#### Technical Details
+```typescript
+// New database models
+model AudioProcessor {
+  id: String @id @default(cuid())
+  name: String
+  model: String // AZM4, AZM8, AZMP4, etc.
+  ipAddress: String
+  port: Int @default(80)
+  zones: Int @default(4)
+  status: String @default("offline")
+  audioZones: AudioZone[]
+  // ... additional fields
+}
+```
+
+#### Integration Benefits
+- **Unified Control**: Manage both video matrix and audio processors from one interface
+- **Scalable Architecture**: Support for multiple processors and unlimited zones
+- **Real-time Monitoring**: Connection status and zone state tracking
+- **API-First Design**: Ready for automation and third-party integrations
+- **Future-Ready**: Scene recall, message playback, and room combining APIs prepared
+
+---
+
 ## [2.1.0] - 2024-09-26
 
 ### 🎯 Layout Analysis Optimization
