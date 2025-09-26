@@ -15,6 +15,7 @@ import BartenderRemoteControl from '../components/BartenderRemoteControl'
 import AudioZoneControl from '../components/AudioZoneControl'
 import AudioProcessorManager from '../components/AudioProcessorManager'
 import AtlasProgrammingInterface from '../components/AtlasProgrammingInterface'
+import CECPowerControl from '../components/CECPowerControl'
 import SportsGuide from '../components/SportsGuide'
 import { 
   FileText, 
@@ -38,7 +39,8 @@ import {
   Shield,
   BarChart3,
   Calendar,
-  Tv
+  Tv,
+  Power
 } from 'lucide-react'
 
 const tabCategories = {
@@ -59,6 +61,7 @@ const tabCategories = {
     priority: false,
     tabs: [
       { id: 'matrix-control', name: 'Video Matrix', icon: Grid, description: 'Video routing & switching', color: 'text-blue-600' },
+      { id: 'cec-power', name: 'CEC Power', icon: Power, description: 'TV power control via CEC', color: 'text-blue-600' },
       { id: 'audio-processors', name: 'Audio Systems', icon: Speaker, description: 'AtlasIED processor management', color: 'text-blue-600' },
       { id: 'atlas-programming', name: 'Atlas Programming', icon: Settings, description: 'Comprehensive Atlas I/O programming', color: 'text-blue-600' },
       { id: 'ir-control', name: 'IR Control', icon: Radio, description: 'Infrared device management', color: 'text-blue-600' },
@@ -296,6 +299,7 @@ export default function Home() {
               {activeTab === 'audio-zones' && <AudioZoneControl />}
               {activeTab === 'bartender' && <BartenderInterface />}
               {activeTab === 'ir-control' && <IRDeviceControl />}
+              {activeTab === 'cec-power' && <CECPowerControl />}
               {activeTab === 'document-upload' && <DocumentUpload />}
               {activeTab === 'sports-guide' && <SportsGuide />}
               {activeTab === 'ai-chat' && <TroubleshootingChat />}
