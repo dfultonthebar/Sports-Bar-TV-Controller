@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
-import pdf2pic from 'pdf2pic'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import sharp from 'sharp'
+
+const execAsync = promisify(exec)
 
 const UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'layouts')
 
@@ -71,35 +74,47 @@ export async function POST(request: NextRequest) {
       try {
         console.log('Converting PDF to image...')
         
-        // Configure pdf2pic
-        const convert = pdf2pic.fromBuffer(buffer, {
-          density: 200,           // High quality
-          saveFilename: "page",
-          savePath: UPLOAD_DIR,
-          format: "png",
-          width: 1920,           // High resolution
-          height: 1080
-        })
+        // Create a temporary PDF file for pdftoppm
+        const tempPdfPath = join(UPLOAD_DIR, `temp_${filename}`)
+        await fs.writeFile(tempPdfPath, buffer)
         
-        // Convert first page
-        const result = await convert(1, { responseType: "buffer" })
+        // Use pdftoppm to convert PDF to PNG (first page only)
+        const outputPrefix = join(UPLOAD_DIR, `${filename.replace(/\.pdf$/, '')}_page`)
+        const command = `pdftoppm -png -f 1 -l 1 -r 200 "${tempPdfPath}" "${outputPrefix}"`
         
-        if (result && result.buffer) {
-          // Generate filename for converted image
-          const imageFilename = `${filename.replace(/\.pdf$/, '')}_page1.png`
-          const imagePath = join(UPLOAD_DIR, imageFilename)
+        console.log('Running command:', command)
+        await execAsync(command)
+        
+        // Clean up temp PDF file
+        await fs.unlink(tempPdfPath).catch(err => console.log('Cleanup error:', err))
+        
+        // Find the generated PNG file
+        const generatedFiles = await fs.readdir(UPLOAD_DIR)
+        const imageFile = generatedFiles.find(f => 
+          f.startsWith(`${filename.replace(/\.pdf$/, '')}_page`) && f.endsWith('.png')
+        )
+        
+        if (imageFile) {
+          const imagePath = join(UPLOAD_DIR, imageFile)
+          const optimizedFilename = `${filename.replace(/\.pdf$/, '')}_converted.png`
+          const optimizedPath = join(UPLOAD_DIR, optimizedFilename)
           
           // Optimize the image with Sharp
-          await sharp(result.buffer)
+          await sharp(imagePath)
             .png({ quality: 90 })
             .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
-            .toFile(imagePath)
+            .toFile(optimizedPath)
           
-          convertedImageUrl = `/uploads/layouts/${imageFilename}`
+          // Clean up the original generated file
+          await fs.unlink(imagePath).catch(err => console.log('Cleanup error:', err))
+          
+          convertedImageUrl = `/uploads/layouts/${optimizedFilename}`
           console.log('PDF converted to image:', convertedImageUrl)
         }
       } catch (error) {
         console.error('Error converting PDF to image:', error)
+        console.error('Command output:', error.stdout || 'No stdout')
+        console.error('Command stderr:', error.stderr || 'No stderr')
         // Continue with PDF - conversion failed but we can still analyze
       }
     }
