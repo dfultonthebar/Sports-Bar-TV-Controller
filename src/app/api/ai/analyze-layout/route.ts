@@ -20,21 +20,31 @@ interface LayoutAnalysis {
     label: string
     description: string
     priority: 'high' | 'medium' | 'low'
+    audioOutput?: string
   }[]
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { layoutDescription, matrixOutputs } = await request.json()
+    const { layoutDescription, matrixOutputs, availableOutputs } = await request.json()
     
-    console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs })
+    console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs })
     
     // Parse the AI-analyzed layout description to extract TV locations
     const tvLocations = parseLayoutDescription(layoutDescription)
     console.log('AI Analysis - Parsed Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
-    // Generate intelligent output mappings
-    const suggestions = generateOutputMappings(tvLocations, matrixOutputs)
+    // Get available (active) outputs from matrix configuration
+    let activeOutputs = []
+    if (availableOutputs && Array.isArray(availableOutputs)) {
+      activeOutputs = availableOutputs.filter(output => 
+        output.status === 'active' || !output.status // default to active if no status
+      )
+      console.log('AI Analysis - Active Outputs:', activeOutputs.length, 'of', availableOutputs.length, 'total')
+    }
+    
+    // Generate intelligent output mappings only for active outputs
+    const suggestions = generateOutputMappings(tvLocations, matrixOutputs, activeOutputs)
     console.log('AI Analysis - Generated Suggestions:', suggestions.length, suggestions.slice(0, 3))
     
     const analysis: LayoutAnalysis = {
@@ -165,26 +175,57 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
   return { x, y, wall: wallType }
 }
 
-function generateOutputMappings(locations: TVLocation[], matrixOutputs: number = 36) {
+function generateOutputMappings(locations: TVLocation[], matrixOutputs: number = 36, activeOutputs: any[] = []) {
   const suggestions = []
   
-  // Priority mapping based on location importance
-  const highPriorityAreas = ['main room', 'center', 'bar area']
-  const mediumPriorityAreas = ['corner', 'side']
+  // Get available output numbers (only active ones)
+  let availableOutputNumbers = []
+  if (activeOutputs.length > 0) {
+    availableOutputNumbers = activeOutputs.map(output => output.channelNumber).sort((a, b) => a - b)
+    console.log('Available output numbers (active only):', availableOutputNumbers)
+  } else {
+    // Fallback to all outputs 1-36 if no active output info provided
+    availableOutputNumbers = Array.from({ length: matrixOutputs }, (_, i) => i + 1)
+    console.log('Using all outputs as fallback:', availableOutputNumbers.slice(0, 5), '...')
+  }
   
-  for (const location of locations) {
+  // Limit locations to available outputs to prevent assigning TVs to unused outputs
+  const maxLocations = Math.min(locations.length, availableOutputNumbers.length)
+  const locationsToProcess = locations.slice(0, maxLocations)
+  
+  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} active outputs`)
+  
+  for (let i = 0; i < locationsToProcess.length; i++) {
+    const location = locationsToProcess[i]
     const priority = determineLocationPriority(location)
     
     // Generate smart labels based on position
     const label = generateSmartLabel(location)
     
+    // Use available output numbers in order
+    const outputNumber = availableOutputNumbers[i]
+    
+    // Get audio output info if available
+    let audioOutput = ''
+    if (activeOutputs.length > 0) {
+      const outputConfig = activeOutputs.find(output => output.channelNumber === outputNumber)
+      if (outputConfig && outputConfig.audioOutput) {
+        audioOutput = outputConfig.audioOutput
+      }
+    }
+    
     suggestions.push({
-      outputNumber: location.number, // Start with 1:1 mapping
+      outputNumber: outputNumber,
       tvNumber: location.number,
       label: label,
       description: location.description,
-      priority: priority
+      priority: priority,
+      audioOutput: audioOutput
     })
+  }
+  
+  if (locations.length > availableOutputNumbers.length) {
+    console.log(`Warning: ${locations.length - availableOutputNumbers.length} TV locations could not be assigned due to insufficient active outputs`)
   }
   
   return suggestions

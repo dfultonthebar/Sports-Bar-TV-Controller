@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
           channelNumber: input.channelNumber,
           label: input.label,
           inputType: input.inputType,
-          isActive: input.isActive
+          isActive: input.isActive,
+          status: input.status || 'active'
         }))
       })
     }
@@ -84,7 +85,9 @@ export async function POST(request: NextRequest) {
           channelNumber: output.channelNumber,
           label: output.label,
           resolution: output.resolution,
-          isActive: output.isActive
+          isActive: output.isActive,
+          status: output.status || 'active',
+          audioOutput: output.audioOutput || ''
         }))
       })
     }

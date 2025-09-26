@@ -8,6 +8,7 @@ interface MatrixInput {
   channelNumber: number
   label: string
   inputType: string
+  status: 'active' | 'unused' | 'no' | 'na'
 }
 
 interface MatrixOutput {
@@ -15,6 +16,8 @@ interface MatrixOutput {
   channelNumber: number
   label: string
   resolution: string
+  status: 'active' | 'unused' | 'no' | 'na'
+  audioOutput?: string  // For audio routing to Atlas system
 }
 
 interface MatrixConfig {
@@ -45,12 +48,15 @@ export default function MatrixControl() {
     inputs: Array.from({ length: 36 }, (_, i) => ({
       channelNumber: i + 1,
       label: `Input ${i + 1}`,
-      inputType: 'HDMI'
+      inputType: 'HDMI',
+      status: 'active' as const
     })),
     outputs: Array.from({ length: 36 }, (_, i) => ({
       channelNumber: i + 1,
       label: `Output ${i + 1}`,
-      resolution: '1080p'
+      resolution: '1080p',
+      status: 'active' as const,
+      audioOutput: i < 4 ? `Matrix Audio ${i + 1}` : ''  // First 4 outputs get audio labels
     }))
   })
   const [activeConfigId, setActiveConfigId] = useState<string | null>(null)
@@ -61,6 +67,13 @@ export default function MatrixControl() {
 
   const inputTypes = ['HDMI', 'Component', 'Composite', 'SDI', 'DVI', 'VGA']
   const resolutions = ['720p', '1080p', '4K', '1080i', '480p']
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'unused', label: 'Unused' },
+    { value: 'no', label: 'NO' },
+    { value: 'na', label: 'N/A' }
+  ]
+  const audioOutputOptions = ['', 'Matrix Audio 1', 'Matrix Audio 2', 'Matrix Audio 3', 'Matrix Audio 4']
 
   useEffect(() => {
     fetchConfigurations()
@@ -89,12 +102,15 @@ export default function MatrixControl() {
               inputs: Array.from({ length: 36 }, (_, i) => ({
                 channelNumber: i + 1,
                 label: `Input ${i + 1}`,
-                inputType: 'HDMI'
+                inputType: 'HDMI',
+                status: 'active' as const
               })),
               outputs: Array.from({ length: 36 }, (_, i) => ({
                 channelNumber: i + 1,
                 label: `Output ${i + 1}`,
-                resolution: '1080p'
+                resolution: '1080p',
+                status: 'active' as const,
+                audioOutput: i < 4 ? `Matrix Audio ${i + 1}` : ''
               }))
             })
           }
@@ -124,13 +140,16 @@ export default function MatrixControl() {
           channelNumber: input.channelNumber,
           label: input.label,
           inputType: input.inputType,
-          isActive: true
+          status: input.status || 'active',
+          isActive: input.status === 'active'
         })),
         outputs: currentConfig.outputs.map(output => ({
           channelNumber: output.channelNumber,
           label: output.label,
           resolution: output.resolution,
-          isActive: true
+          status: output.status || 'active',
+          audioOutput: output.audioOutput || '',
+          isActive: output.status === 'active'
         }))
       }
 
@@ -201,13 +220,21 @@ export default function MatrixControl() {
 
   const updateInput = (index: number, field: keyof MatrixInput, value: string) => {
     const newInputs = [...currentConfig.inputs]
-    newInputs[index] = { ...newInputs[index], [field]: value }
+    if (field === 'status') {
+      newInputs[index] = { ...newInputs[index], [field]: value as MatrixInput['status'] }
+    } else {
+      newInputs[index] = { ...newInputs[index], [field]: value }
+    }
     setCurrentConfig({ ...currentConfig, inputs: newInputs })
   }
 
   const updateOutput = (index: number, field: keyof MatrixOutput, value: string) => {
     const newOutputs = [...currentConfig.outputs]
-    newOutputs[index] = { ...newOutputs[index], [field]: value }
+    if (field === 'status') {
+      newOutputs[index] = { ...newOutputs[index], [field]: value as MatrixOutput['status'] }
+    } else {
+      newOutputs[index] = { ...newOutputs[index], [field]: value }
+    }
     setCurrentConfig({ ...currentConfig, outputs: newOutputs })
   }
 
@@ -434,32 +461,57 @@ export default function MatrixControl() {
               <span className="text-sm text-gray-500">Configure all 36 input channels</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-              {currentConfig.inputs.map((input, index) => (
-                <div key={index} className="border border-gray-300 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-gray-900">Input {input.channelNumber}</span>
-                    <span className="text-xs text-gray-500">Ch {input.channelNumber}</span>
+              {currentConfig.inputs.map((input, index) => {
+                const isUnused = input.status && input.status !== 'active';
+                return (
+                  <div key={index} className={`border rounded-lg p-4 ${
+                    isUnused 
+                      ? 'border-red-300 bg-red-50' 
+                      : 'border-gray-300'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-900">Input {input.channelNumber}</span>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-xs text-gray-500">Ch {input.channelNumber}</span>
+                        {isUnused && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            {input.status.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={input.label}
+                        onChange={(e) => updateInput(index, 'label', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={isUnused ? `Unused Input ${input.channelNumber}` : `Input ${input.channelNumber} label`}
+                        disabled={isUnused}
+                      />
+                      <select
+                        value={input.inputType}
+                        onChange={(e) => updateInput(index, 'inputType', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isUnused}
+                      >
+                        {inputTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={input.status || 'active'}
+                        onChange={(e) => updateInput(index, 'status', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {statusOptions.map(status => (
+                          <option key={status.value} value={status.value}>{status.label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={input.label}
-                      onChange={(e) => updateInput(index, 'label', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`Input ${input.channelNumber} label`}
-                    />
-                    <select
-                      value={input.inputType}
-                      onChange={(e) => updateInput(index, 'inputType', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {inputTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -490,11 +542,16 @@ export default function MatrixControl() {
               <div className="flex items-center space-x-2">
                 <span className="text-blue-600">💡</span>
                 <div>
-                  <h4 className="font-medium text-blue-900">Layout Integration</h4>
-                  <p className="text-sm text-blue-700">
-                    Configure output labels to match your TV layout positions. These labels will appear in the bartender interface
-                    and remote control. Click "Import Layout Positions" to auto-map from your uploaded PDF layout.
+                  <h4 className="font-medium text-blue-900">Output Configuration & Audio Routing</h4>
+                  <p className="text-sm text-blue-700 mb-2">
+                    Configure output labels to match your TV layout positions and set up audio routing to your Atlas audio matrix:
                   </p>
+                  <ul className="text-sm text-blue-700 list-disc pl-4 space-y-1">
+                    <li><strong>Layout Labels:</strong> Use descriptive names that match your TV positions (e.g., "Main Bar Left", "Side Area 1")</li>
+                    <li><strong>Audio Routing:</strong> Select Matrix Audio 1-4 for outputs that need audio routed to the Atlas system</li>
+                    <li><strong>Unused Outputs:</strong> Mark unused outputs as "NO", "N/A", or "Unused" so the AI won't try to assign TVs to them</li>
+                    <li><strong>Status:</strong> Only "Active" outputs will be used for TV control and layout mapping</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -502,6 +559,8 @@ export default function MatrixControl() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
               {currentConfig.outputs.map((output, index) => {
                 const hasCustomLabel = output.label && !output.label.match(/^Output \d+$/);
+                const isUnused = output.status && output.status !== 'active';
+                const hasAudioOutput = output.audioOutput && output.audioOutput.trim() !== '';
                 const isLayoutMapped = hasCustomLabel && (
                   output.label.includes('Main Bar') ||
                   output.label.includes('Side Area') ||
@@ -511,24 +570,36 @@ export default function MatrixControl() {
                 
                 return (
                   <div key={index} className={`border rounded-lg p-4 ${
-                    isLayoutMapped 
-                      ? 'border-green-300 bg-green-50' 
-                      : hasCustomLabel 
-                        ? 'border-blue-300 bg-blue-50' 
-                        : 'border-gray-300'
+                    isUnused 
+                      ? 'border-red-300 bg-red-50'
+                      : isLayoutMapped 
+                        ? 'border-green-300 bg-green-50' 
+                        : hasCustomLabel 
+                          ? 'border-blue-300 bg-blue-50' 
+                          : 'border-gray-300'
                   }`}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-gray-900">Output {output.channelNumber}</span>
-                      <div className="flex items-center space-x-1">
+                      <div className="flex items-center space-x-1 flex-wrap">
                         <span className="text-xs text-gray-500">Ch {output.channelNumber}</span>
-                        {isLayoutMapped && (
+                        {isUnused && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            {output.status.toUpperCase()}
+                          </span>
+                        )}
+                        {!isUnused && isLayoutMapped && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             📍 Mapped
                           </span>
                         )}
-                        {hasCustomLabel && !isLayoutMapped && (
+                        {!isUnused && hasCustomLabel && !isLayoutMapped && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             🏷️ Custom
+                          </span>
+                        )}
+                        {!isUnused && hasAudioOutput && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            🔊 Audio
                           </span>
                         )}
                       </div>
@@ -539,17 +610,40 @@ export default function MatrixControl() {
                         value={output.label}
                         onChange={(e) => updateOutput(index, 'label', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={`e.g., Main Bar Left, Side Area 1, Lower Section TV`}
+                        placeholder={isUnused ? `Unused Output ${output.channelNumber}` : `e.g., Main Bar Left, Side Area 1, Lower Section TV`}
+                        disabled={isUnused}
                       />
                       <select
                         value={output.resolution}
                         onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isUnused}
                       >
                         {resolutions.map(res => (
                           <option key={res} value={res}>{res}</option>
                         ))}
                       </select>
+                      <select
+                        value={output.status || 'active'}
+                        onChange={(e) => updateOutput(index, 'status', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {statusOptions.map(status => (
+                          <option key={status.value} value={status.value}>{status.label}</option>
+                        ))}
+                      </select>
+                      {!isUnused && (
+                        <select
+                          value={output.audioOutput || ''}
+                          onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">No Audio Output</option>
+                          {audioOutputOptions.slice(1).map(audio => (
+                            <option key={audio} value={audio}>{audio}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                 );
@@ -558,12 +652,12 @@ export default function MatrixControl() {
 
             {/* Layout Mapping Statistics */}
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">Mapping Status</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <h4 className="font-medium text-gray-900 mb-2">Mapping & Status Overview</h4>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
                     {currentConfig.outputs.filter(o => 
-                      o.label && !o.label.match(/^Output \d+$/) && (
+                      o.status === 'active' && o.label && !o.label.match(/^Output \d+$/) && (
                         o.label.includes('Main Bar') ||
                         o.label.includes('Side Area') ||
                         o.label.includes('Lower Section') ||
@@ -576,21 +670,29 @@ export default function MatrixControl() {
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">
                     {currentConfig.outputs.filter(o => 
-                      o.label && !o.label.match(/^Output \d+$/)
+                      o.status === 'active' && o.label && !o.label.match(/^Output \d+$/)
                     ).length}
                   </div>
-                  <div className="text-gray-600">Custom Labels</div>
+                  <div className="text-gray-600">Active Custom</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-600">
+                  <div className="text-2xl font-bold text-purple-600">
                     {currentConfig.outputs.filter(o => 
-                      o.label && o.label.match(/^Output \d+$/)
+                      o.status === 'active' && o.audioOutput && o.audioOutput.trim() !== ''
                     ).length}
                   </div>
-                  <div className="text-gray-600">Default Labels</div>
+                  <div className="text-gray-600">Audio Outputs</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600">36</div>
+                  <div className="text-2xl font-bold text-red-600">
+                    {currentConfig.outputs.filter(o => 
+                      o.status && o.status !== 'active'
+                    ).length}
+                  </div>
+                  <div className="text-gray-600">Unused</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-gray-600">36</div>
                   <div className="text-gray-600">Total Outputs</div>
                 </div>
               </div>

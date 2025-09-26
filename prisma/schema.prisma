@@ -89,6 +89,7 @@ model MatrixInput {
   channelNumber Int     // 1-32 typically
   label        String   // User-defined label like "Cable Box 1"
   inputType    String   @default("HDMI") // HDMI, Component, Composite, etc.
+  status       String   @default("active") // active, unused, no, na
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -104,6 +105,8 @@ model MatrixOutput {
   channelNumber Int      // 1-32 typically
   label         String   // User-defined label like "Main Bar TV"
   resolution    String   @default("1080p") // 1080p, 4K, 720p, etc.
+  status        String   @default("active") // active, unused, no, na
+  audioOutput   String?  // Matrix Audio 1-4 for routing to Atlas system
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

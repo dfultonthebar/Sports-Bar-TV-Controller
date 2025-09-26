@@ -20,6 +20,7 @@ interface OutputSuggestion {
   label: string
   description: string
   priority: 'high' | 'medium' | 'low'
+  audioOutput?: string
 }
 
 interface LayoutAnalysis {
@@ -70,6 +71,22 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
     setError('')
 
     try {
+      // Fetch current matrix configuration to get available outputs
+      let availableOutputs = []
+      try {
+        const configResponse = await fetch('/api/matrix/config')
+        if (configResponse.ok) {
+          const configData = await configResponse.json()
+          if (configData.outputs) {
+            availableOutputs = configData.outputs
+            console.log('Loaded matrix outputs for AI analysis:', availableOutputs.length)
+          }
+        }
+      } catch (configError) {
+        console.warn('Could not fetch matrix configuration for AI analysis:', configError)
+        // Continue without matrix config - AI will use fallback
+      }
+
       const response = await fetch('/api/ai/analyze-layout', {
         method: 'POST',
         headers: {
@@ -77,7 +94,8 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
         },
         body: JSON.stringify({
           layoutDescription: descriptionToAnalyze,
-          matrixOutputs: 36
+          matrixOutputs: 36,
+          availableOutputs: availableOutputs
         }),
       })
 
