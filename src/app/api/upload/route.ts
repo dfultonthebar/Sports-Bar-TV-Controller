@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/db'
-import { saveFile, generateUniqueFilename } from '../../../../lib/file-utils'
-import { extractTextFromFile } from '../../../../lib/text-extractor'
+import { saveFile, generateUniqueFilename } from '../../../lib/file-utils'
+import { extractTextFromFile } from '../../../lib/text-extractor'
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       const filePath = await saveFile(buffer, uniqueFilename)
       
       // Extract text content for AI processing
-      const textContent = await extractTextFromFile(filePath, file.type)
+      const textExtractionResult = await extractTextFromFile(filePath, file.type)
 
       // Save to database
       const document = await prisma.document.create({
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
           filePath: filePath,
           fileSize: file.size,
           mimeType: file.type,
-          content: textContent,
+          content: textExtractionResult.text,
         },
       })
 

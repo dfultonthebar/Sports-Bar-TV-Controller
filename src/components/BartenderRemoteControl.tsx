@@ -13,7 +13,10 @@ import {
   RotateCcw,
   Settings,
   Wifi,
-  WifiOff
+  WifiOff,
+  Speaker,
+  Play,
+  Pause
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -38,6 +41,34 @@ interface IRDevice {
   iTachAddress?: string
   iTachPort?: number
   codesetId?: string
+  isActive: boolean
+}
+
+interface AudioProcessor {
+  id: string
+  name: string
+  model: string
+  ipAddress: string
+  port: number
+  zones: number
+  status: 'online' | 'offline' | 'error'
+}
+
+interface AudioZone {
+  id: string
+  processorId: string
+  zoneNumber: number
+  name: string
+  description?: string
+  currentSource?: string
+  volume: number
+  muted: boolean
+  enabled: boolean
+}
+
+interface AudioInput {
+  id: string
+  name: string
   isActive: boolean
 }
 
@@ -78,12 +109,38 @@ export default function BartenderRemoteControl() {
   const [loading, setLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
+  
+  // Audio-related state
+  const [audioProcessors, setAudioProcessors] = useState<AudioProcessor[]>([])
+  const [audioZones, setAudioZones] = useState<AudioZone[]>([])
+  const [selectedProcessor, setSelectedProcessor] = useState<AudioProcessor | null>(null)
+  const [selectedAudioZone, setSelectedAudioZone] = useState<AudioZone | null>(null)
+  const [audioInputs] = useState<AudioInput[]>([
+    { id: 'input1', name: 'Input 1', isActive: true },
+    { id: 'input2', name: 'Input 2', isActive: true },
+    { id: 'input3', name: 'Input 3', isActive: true },
+    { id: 'input4', name: 'Input 4', isActive: true },
+    { id: 'matrix1', name: 'Matrix Audio 1', isActive: true },
+    { id: 'matrix2', name: 'Matrix Audio 2', isActive: true },
+    { id: 'matrix3', name: 'Matrix Audio 3', isActive: true },
+    { id: 'matrix4', name: 'Matrix Audio 4', isActive: true },
+    { id: 'streaming', name: 'Streaming Input', isActive: true },
+    { id: 'microphone', name: 'Microphone', isActive: true },
+  ])
+  const [audioCommandStatus, setAudioCommandStatus] = useState<string>('')
 
   useEffect(() => {
     loadInputs()
     loadIRDevices()
     checkConnectionStatus()
+    loadAudioProcessors()
   }, [])
+
+  useEffect(() => {
+    if (selectedProcessor) {
+      loadAudioZones(selectedProcessor.id)
+    }
+  }, [selectedProcessor])
 
   const loadInputs = async () => {
     try {
@@ -195,6 +252,87 @@ export default function BartenderRemoteControl() {
     }
   }
 
+  const loadAudioProcessors = async () => {
+    try {
+      const response = await fetch('/api/audio-processor')
+      if (response.ok) {
+        const data = await response.json()
+        const processors = data.processors || []
+        setAudioProcessors(processors)
+        
+        // Auto-select first online processor
+        const onlineProcessor = processors.find((p: AudioProcessor) => p.status === 'online')
+        if (onlineProcessor && !selectedProcessor) {
+          setSelectedProcessor(onlineProcessor)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading audio processors:', error)
+    }
+  }
+
+  const loadAudioZones = async (processorId: string) => {
+    try {
+      const response = await fetch(`/api/audio-processor/zones?processorId=${processorId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setAudioZones(data.zones || [])
+      }
+    } catch (error) {
+      console.error('Error loading audio zones:', error)
+    }
+  }
+
+  const controlAudioZone = async (action: string, zone: AudioZone, value?: any) => {
+    if (!selectedProcessor) return
+
+    setAudioCommandStatus(`${action} Zone ${zone.zoneNumber}...`)
+
+    try {
+      const response = await fetch('/api/audio-processor/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id,
+          command: {
+            action,
+            zone: zone.zoneNumber,
+            value
+          }
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setAudioCommandStatus(`✓ ${action} Zone ${zone.zoneNumber}`)
+        // Refresh zones to get updated values
+        loadAudioZones(selectedProcessor.id)
+      } else {
+        setAudioCommandStatus(`✗ Failed: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error controlling audio zone:', error)
+      setAudioCommandStatus(`✗ Error controlling zone`)
+    } finally {
+      // Clear status after 3 seconds
+      setTimeout(() => setAudioCommandStatus(''), 3000)
+    }
+  }
+
+  const setZoneSource = async (zone: AudioZone, source: string) => {
+    await controlAudioZone('setSource', zone, source)
+  }
+
+  const adjustZoneVolume = async (zone: AudioZone, volumeChange: number) => {
+    const newVolume = Math.max(0, Math.min(100, zone.volume + volumeChange))
+    await controlAudioZone('volume', zone, newVolume)
+  }
+
+  const toggleZoneMute = async (zone: AudioZone) => {
+    await controlAudioZone('mute', zone, !zone.muted)
+  }
+
   const getInputIcon = (inputType: string) => {
     switch (inputType.toLowerCase()) {
       case 'cable': return '📺'
@@ -223,7 +361,12 @@ export default function BartenderRemoteControl() {
           </div>
           {commandStatus && (
             <div className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full">
-              {commandStatus}
+              TV: {commandStatus}
+            </div>
+          )}
+          {audioCommandStatus && (
+            <div className="px-3 py-1 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-full">
+              Audio: {audioCommandStatus}
             </div>
           )}
         </div>
@@ -367,43 +510,187 @@ export default function BartenderRemoteControl() {
             </div>
           </div>
 
-          {/* Audio Controls (Future) */}
+          {/* Audio Zone Controls */}
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
-              <Radio className="mr-2 w-4 h-4" />
-              Audio
+              <Speaker className="mr-2 w-4 h-4" />
+              Audio Zones
             </h3>
-            <div className="space-y-2">
-              <button
-                disabled
-                className="w-full p-2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-sm opacity-50 cursor-not-allowed"
-              >
-                Zone 1
-              </button>
-              <button
-                disabled
-                className="w-full p-2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-sm opacity-50 cursor-not-allowed"
-              >
-                Zone 2  
-              </button>
-              <p className="text-xs text-gray-500">Coming Soon</p>
-            </div>
+            
+            {/* Processor Selection */}
+            {audioProcessors.length > 0 && (
+              <div className="mb-3">
+                <label className="text-xs text-gray-300 block mb-1">Processor</label>
+                <select
+                  value={selectedProcessor?.id || ''}
+                  onChange={(e) => {
+                    const processor = audioProcessors.find(p => p.id === e.target.value)
+                    setSelectedProcessor(processor || null)
+                  }}
+                  className="w-full p-2 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:border-purple-500"
+                >
+                  <option value="">Select Processor</option>
+                  {audioProcessors.map((processor) => (
+                    <option key={processor.id} value={processor.id}>
+                      {processor.name} ({processor.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedProcessor && audioZones.length > 0 ? (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {audioZones.filter(zone => zone.enabled).map((zone) => (
+                  <div
+                    key={zone.id}
+                    className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                      selectedAudioZone?.id === zone.id
+                        ? 'bg-purple-500/30 border-purple-400 text-white'
+                        : 'bg-slate-700/50 border-slate-600 text-gray-300 hover:bg-slate-700 hover:border-slate-500'
+                    }`}
+                    onClick={() => setSelectedAudioZone(zone)}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-xs">Zone {zone.zoneNumber}: {zone.name}</span>
+                      <div className="flex items-center space-x-1">
+                        {zone.muted && <VolumeX className="w-3 h-3 text-red-400" />}
+                        <span className="text-xs">{zone.volume}%</span>
+                      </div>
+                    </div>
+                    <div className="text-xs opacity-75 flex items-center">
+                      <Play className="w-2 h-2 mr-1" />
+                      {zone.currentSource || 'No Source'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : selectedProcessor ? (
+              <div className="text-center text-gray-400 text-sm py-4">
+                <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No zones configured</p>
+                <p className="text-xs">Set up zones in Audio Manager</p>
+              </div>
+            ) : (
+              <div className="text-center text-gray-400 text-sm py-4">
+                <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No audio processors</p>
+                <p className="text-xs">Configure in Audio Manager</p>
+              </div>
+            )}
           </div>
+
+          {/* Audio Zone Controls */}
+          {selectedAudioZone && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center">
+                <Volume2 className="mr-2 w-4 h-4" />
+                Zone Control
+              </h3>
+              
+              <div className="space-y-3">
+                <div className="text-center">
+                  <div className="text-sm text-gray-300 mb-1">Zone {selectedAudioZone.zoneNumber}</div>
+                  <div className="font-semibold text-white">{selectedAudioZone.name}</div>
+                </div>
+
+                {/* Volume Controls */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">Volume</span>
+                    <span className="text-white font-mono">{selectedAudioZone.volume}%</span>
+                  </div>
+                  <div className="flex space-x-1">
+                    <button
+                      onClick={() => adjustZoneVolume(selectedAudioZone, -5)}
+                      className="flex-1 p-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-all"
+                    >
+                      <ChevronDown className="w-4 h-4 mx-auto" />
+                    </button>
+                    <button
+                      onClick={() => toggleZoneMute(selectedAudioZone)}
+                      className={`flex-1 p-2 rounded text-sm transition-all ${
+                        selectedAudioZone.muted 
+                          ? 'bg-orange-600 hover:bg-orange-500' 
+                          : 'bg-slate-600 hover:bg-slate-500'
+                      } text-white`}
+                    >
+                      {selectedAudioZone.muted ? <Volume2 className="w-4 h-4 mx-auto" /> : <VolumeX className="w-4 h-4 mx-auto" />}
+                    </button>
+                    <button
+                      onClick={() => adjustZoneVolume(selectedAudioZone, 5)}
+                      className="flex-1 p-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm transition-all"
+                    >
+                      <ChevronUp className="w-4 h-4 mx-auto" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Audio Source Selection */}
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-300 block">Audio Source</label>
+                  <select
+                    value={selectedAudioZone.currentSource || ''}
+                    onChange={(e) => setZoneSource(selectedAudioZone, e.target.value)}
+                    className="w-full p-2 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:border-purple-500"
+                  >
+                    <option value="">Select Source</option>
+                    {audioInputs.map((input) => (
+                      <option key={input.id} value={input.name}>
+                        {input.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Quick Actions */}
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3">Actions</h3>
-            <button
-              onClick={() => {
-                setSelectedInput(null)
-                setSelectedDevice(null)
-                setCommandStatus('')
-              }}
-              className="w-full p-2 bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg text-sm hover:bg-gray-500/30 transition-all flex items-center justify-center space-x-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Reset</span>
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setSelectedInput(null)
+                  setSelectedDevice(null)
+                  setCommandStatus('')
+                }}
+                className="w-full p-2 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg text-sm hover:bg-blue-500/30 transition-all flex items-center justify-center space-x-2"
+              >
+                <Tv className="w-4 h-4" />
+                <span>Reset TV</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setSelectedProcessor(null)
+                  setSelectedAudioZone(null)
+                  setAudioCommandStatus('')
+                }}
+                className="w-full p-2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-sm hover:bg-purple-500/30 transition-all flex items-center justify-center space-x-2"
+              >
+                <Speaker className="w-4 h-4" />
+                <span>Reset Audio</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setSelectedInput(null)
+                  setSelectedDevice(null)
+                  setCommandStatus('')
+                  setSelectedProcessor(null)
+                  setSelectedAudioZone(null)
+                  setAudioCommandStatus('')
+                  loadInputs()
+                  loadAudioProcessors()
+                }}
+                className="w-full p-2 bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg text-sm hover:bg-gray-500/30 transition-all flex items-center justify-center space-x-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Reset All</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

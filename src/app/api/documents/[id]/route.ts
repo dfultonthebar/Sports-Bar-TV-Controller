@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../../lib/db'
+import { prisma } from '../../../../lib/db'
 import fs from 'fs'
 
 export async function DELETE(

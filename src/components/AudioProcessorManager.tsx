@@ -73,6 +73,11 @@ export default function AudioProcessorManager() {
   useEffect(() => {
     if (selectedProcessor) {
       fetchZones(selectedProcessor.id)
+      // Reset zone form when switching processors
+      setShowZoneForm(false)
+      setZoneFormData({ zoneNumber: 1, name: '', description: '', currentSource: 'Input 1' })
+    } else {
+      setZones([])
     }
   }, [selectedProcessor])
 
@@ -199,26 +204,53 @@ export default function AudioProcessorManager() {
 
   const addZone = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedProcessor) return
+    if (!selectedProcessor) {
+      showMessage('Please select a processor first', 'error')
+      return
+    }
+
+    // Validate required fields
+    if (!zoneFormData.name.trim()) {
+      showMessage('Zone name is required', 'error')
+      return
+    }
+
+    // Check if zone number already exists
+    const existingZone = zones.find(zone => zone.zoneNumber === zoneFormData.zoneNumber)
+    if (existingZone) {
+      showMessage(`Zone ${zoneFormData.zoneNumber} already exists`, 'error')
+      return
+    }
 
     try {
+      const zoneData = {
+        processorId: selectedProcessor.id,
+        zoneNumber: parseInt(zoneFormData.zoneNumber.toString()),
+        name: zoneFormData.name.trim(),
+        description: zoneFormData.description?.trim() || null,
+        currentSource: zoneFormData.currentSource || 'Input 1',
+        volume: 50,
+        muted: false
+      }
+
+      console.log('Creating zone with data:', zoneData)
+      
       const response = await fetch('/api/audio-processor/zones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processorId: selectedProcessor.id,
-          ...zoneFormData
-        })
+        body: JSON.stringify(zoneData)
       })
 
       if (response.ok) {
         const data = await response.json()
+        console.log('Zone created successfully:', data)
         setZones([...zones, data.zone])
         setShowZoneForm(false)
         setZoneFormData({ zoneNumber: 1, name: '', description: '', currentSource: 'Input 1' })
         showMessage('Audio zone added successfully')
       } else {
         const error = await response.json()
+        console.error('Server error:', error)
         showMessage(error.error || 'Failed to add zone', 'error')
       }
     } catch (error) {
@@ -622,12 +654,23 @@ export default function AudioProcessorManager() {
                                 <label className="text-sm font-medium text-gray-900">Zone Number</label>
                                 <select
                                   value={zoneFormData.zoneNumber}
-                                  onChange={(e) => setZoneFormData({...zoneFormData, zoneNumber: parseInt(e.target.value)})}
+                                  onChange={(e) => {
+                                    const newZoneNumber = parseInt(e.target.value)
+                                    console.log('Zone number changed to:', newZoneNumber)
+                                    setZoneFormData({...zoneFormData, zoneNumber: newZoneNumber})
+                                  }}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                  required
                                 >
-                                  {Array.from({length: selectedProcessor.zones}, (_, i) => i + 1).map(num => (
-                                    <option key={num} value={num}>Zone {num}</option>
-                                  ))}
+                                  {Array.from({length: selectedProcessor.zones}, (_, i) => {
+                                    const zoneNum = i + 1
+                                    const isUsed = zones.some(zone => zone.zoneNumber === zoneNum)
+                                    return (
+                                      <option key={zoneNum} value={zoneNum} disabled={isUsed}>
+                                        Zone {zoneNum} {isUsed ? '(Already exists)' : ''}
+                                      </option>
+                                    )
+                                  })}
                                 </select>
                               </div>
                               <div className="space-y-2">
@@ -635,7 +678,10 @@ export default function AudioProcessorManager() {
                                 <Input
                                   type="text"
                                   value={zoneFormData.name}
-                                  onChange={(e) => setZoneFormData({...zoneFormData, name: e.target.value})}
+                                  onChange={(e) => {
+                                    console.log('Zone name changed to:', e.target.value)
+                                    setZoneFormData({...zoneFormData, name: e.target.value})
+                                  }}
                                   placeholder="Main Dining Area"
                                   required
                                   className="border-gray-300 focus:border-emerald-500"
@@ -648,23 +694,51 @@ export default function AudioProcessorManager() {
                               <Input
                                 type="text"
                                 value={zoneFormData.description}
-                                onChange={(e) => setZoneFormData({...zoneFormData, description: e.target.value})}
+                                onChange={(e) => {
+                                  console.log('Zone description changed to:', e.target.value)
+                                  setZoneFormData({...zoneFormData, description: e.target.value})
+                                }}
                                 placeholder="Main dining area ceiling speakers"
                                 className="border-gray-300 focus:border-emerald-500"
                               />
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-gray-900">Audio Source</label>
+                              <select
+                                value={zoneFormData.currentSource}
+                                onChange={(e) => {
+                                  console.log('Current source changed to:', e.target.value)
+                                  setZoneFormData({...zoneFormData, currentSource: e.target.value})
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              >
+                                <option value="Input 1">Input 1</option>
+                                <option value="Input 2">Input 2</option>
+                                <option value="Input 3">Input 3</option>
+                                <option value="Input 4">Input 4</option>
+                                <option value="Matrix Audio 1">Matrix Audio 1</option>
+                                <option value="Matrix Audio 2">Matrix Audio 2</option>
+                                <option value="Matrix Audio 3">Matrix Audio 3</option>
+                                <option value="Matrix Audio 4">Matrix Audio 4</option>
+                              </select>
                             </div>
                             
                             <div className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
                               <Button
                                 type="submit"
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-initial"
+                                disabled={!zoneFormData.name.trim()}
                               >
                                 <Plus className="h-4 w-4 mr-2" />
                                 Add Zone
                               </Button>
                               <Button
                                 type="button"
-                                onClick={() => setShowZoneForm(false)}
+                                onClick={() => {
+                                  setShowZoneForm(false)
+                                  setZoneFormData({ zoneNumber: 1, name: '', description: '', currentSource: 'Input 1' })
+                                }}
                                 variant="outline"
                                 className="flex-1 sm:flex-initial"
                               >

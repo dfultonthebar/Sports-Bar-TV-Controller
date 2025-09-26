@@ -14,6 +14,7 @@ import IRDeviceControl from '../components/IRDeviceControl'
 import BartenderRemoteControl from '../components/BartenderRemoteControl'
 import AudioZoneControl from '../components/AudioZoneControl'
 import AudioProcessorManager from '../components/AudioProcessorManager'
+import AtlasProgrammingInterface from '../components/AtlasProgrammingInterface'
 import { 
   FileText, 
   MessageCircle, 
@@ -56,6 +57,7 @@ const tabCategories = {
     tabs: [
       { id: 'matrix-control', name: 'Video Matrix', icon: Grid, description: 'Video routing & switching', color: 'text-blue-600' },
       { id: 'audio-processors', name: 'Audio Systems', icon: Speaker, description: 'AtlasIED processor management', color: 'text-blue-600' },
+      { id: 'atlas-programming', name: 'Atlas Programming', icon: Settings, description: 'Comprehensive Atlas I/O programming', color: 'text-blue-600' },
       { id: 'ir-control', name: 'IR Control', icon: Radio, description: 'Infrared device management', color: 'text-blue-600' },
     ]
   },
@@ -283,6 +285,7 @@ export default function Home() {
               {activeTab === 'file-system' && <FileSystemManager />}
               {activeTab === 'matrix-control' && <MatrixControl />}
               {activeTab === 'audio-processors' && <AudioProcessorManager />}
+              {activeTab === 'atlas-programming' && <AtlasProgrammingInterface />}
               {activeTab === 'system-enhancement' && <SystemEnhancement />}
             </div>
           </div>
