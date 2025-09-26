@@ -131,7 +131,7 @@ export default function BartenderInterface() {
           ...tvLayout,
           imageUrl: displayImageUrl,
           originalFileUrl: data.imageUrl, // Keep reference to original file
-          fileType: data.fileType
+          fileType: data.convertedImageUrl ? 'converted_pdf' : data.fileType
         }
         
         setTVLayout(newLayout)
@@ -518,7 +518,7 @@ export default function BartenderInterface() {
             <div className="p-4 h-full">
               {tvLayout.imageUrl ? (
                 <div className="relative w-full h-96 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                  {tvLayout.imageUrl.toLowerCase().endsWith('.pdf') ? (
+                  {(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600 p-6">
                       <svg className="w-16 h-16 mb-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
@@ -574,8 +574,8 @@ export default function BartenderInterface() {
                     />
                   )}
                   
-                  {/* TV Zone Overlays - only show for image files */}
-                  {!tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.zones.map((zone) => (
+                  {/* TV Zone Overlays - only show for image files and converted PDFs */}
+                  {!(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') && tvLayout.zones.map((zone) => (
                     <div
                       key={zone.id}
                       data-output={zone.outputNumber}
@@ -601,8 +601,8 @@ export default function BartenderInterface() {
                     </div>
                   ))}
                   
-                  {/* Instructions overlay - only show for image files */}
-                  {!tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && (
+                  {/* Instructions overlay - only show for image files and converted PDFs */}
+                  {!(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') && (
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                       Double-click to add TV zones
                     </div>
