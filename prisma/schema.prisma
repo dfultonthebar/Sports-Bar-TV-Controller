@@ -146,9 +146,10 @@ model AudioProcessor {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   
-  audioZones    AudioZone[]
-  audioScenes   AudioScene[]
-  audioMessages AudioMessage[]
+  audioZones      AudioZone[]
+  audioScenes     AudioScene[]
+  audioMessages   AudioMessage[]
+  inputMeters     AudioInputMeter[]
 
   @@unique([ipAddress, port])
 }
@@ -200,4 +201,25 @@ model AudioMessage {
   processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
 
   @@unique([processorId, messageId])
+}
+
+model AudioInputMeter {
+  id            String         @id @default(cuid())
+  processorId   String
+  inputNumber   Int            // 0-based index for SourceMeter_X
+  parameterName String         // e.g., "SourceMeter_0"
+  inputName     String?        // User-friendly name like "Live Band Input"
+  currentLevel  Float?         // Current level in dB (-80 to 0)
+  peakLevel     Float?         // Peak level in dB
+  levelPercent  Int?           // Level as percentage (0-100)
+  isActive      Boolean        @default(true)
+  lastUpdate    DateTime?      // Last time level was updated
+  warningThreshold Float       @default(-12.0)  // Yellow warning at -12dB
+  dangerThreshold  Float       @default(-3.0)   // Red danger at -3dB
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, inputNumber])
 }

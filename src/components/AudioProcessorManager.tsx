@@ -4,7 +4,11 @@
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
-import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play } from 'lucide-react'
+import { Input } from './ui/input'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
+import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity } from 'lucide-react'
+import InputLevelMonitor from './InputLevelMonitor'
 
 interface AudioProcessor {
   id: string
@@ -224,160 +228,218 @@ export default function AudioProcessorManager() {
   }
 
   const getStatusBadge = (status: string) => {
-    const colors = {
-      online: 'bg-green-100 text-green-800',
-      offline: 'bg-gray-100 text-gray-800',
-      error: 'bg-red-100 text-red-800'
-    }
-    
-    const icons = {
-      online: Wifi,
-      offline: WifiOff,
-      error: WifiOff
+    const statusConfig = {
+      online: {
+        color: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        icon: CheckCircle
+      },
+      offline: {
+        color: 'bg-gray-100 text-gray-800 border-gray-300',
+        icon: WifiOff
+      },
+      error: {
+        color: 'bg-red-100 text-red-800 border-red-300',
+        icon: AlertCircle
+      }
     }
 
-    const Icon = icons[status as keyof typeof icons] || WifiOff
-    const colorClass = colors[status as keyof typeof colors] || colors.offline
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.offline
+    const Icon = config.icon
 
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${colorClass}`}>
-        <Icon className="h-3 w-3" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
+      <Badge variant="outline" className={`${config.color} border`}>
+        <div className="flex items-center gap-1.5">
+          <Icon className="h-3 w-3" />
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </div>
+      </Badge>
     )
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="space-y-8">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-xl">
+            <Activity className="h-6 w-6 text-blue-600 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold text-gray-900">Audio Processors</h1>
+            <p className="text-lg text-gray-600">Loading audio processor configurations...</p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600">Loading audio processors...</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Message Display */}
       {message && (
-        <div className={`p-4 rounded-lg border ${
+        <div className={`flex items-center gap-3 p-4 rounded-xl border-l-4 ${
           message.type === 'success' 
-            ? 'bg-green-50 border-green-200 text-green-800' 
-            : 'bg-red-50 border-red-200 text-red-800'
+            ? 'bg-emerald-50 border-emerald-400 text-emerald-800' 
+            : 'bg-red-50 border-red-400 text-red-800'
         }`}>
-          {message.text}
+          {message.type === 'success' ? (
+            <CheckCircle className="h-5 w-5 text-emerald-600" />
+          ) : (
+            <AlertCircle className="h-5 w-5 text-red-600" />
+          )}
+          <span className="font-medium">{message.text}</span>
         </div>
       )}
 
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Audio Processors</h2>
-          <p className="text-gray-600">Manage AtlasIED Atmosphere zone controllers</p>
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-xl">
+              <Activity className="h-6 w-6 text-blue-600" />
+            </div>
+            Audio Processors
+          </h1>
+          <p className="text-lg text-gray-600">
+            Manage AtlasIED Atmosphere zone controllers and input monitoring
+          </p>
         </div>
         
-        <button
+        <Button
           onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          size="lg"
+          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-5 w-5 mr-2" />
           Add Processor
-        </button>
+        </Button>
       </div>
 
       {/* Add Processor Form */}
       {showAddForm && (
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Add Audio Processor</CardTitle>
-              <button
+        <Card className="border-2 border-blue-100 shadow-xl">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <CardTitle className="text-xl text-blue-900 flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Add Audio Processor
+                </CardTitle>
+                <CardDescription className="text-blue-700">
+                  Configure a new AtlasIED Atmosphere zone controller
+                </CardDescription>
+              </div>
+              <Button
                 onClick={() => setShowAddForm(false)}
+                variant="ghost"
+                size="sm"
                 className="text-gray-500 hover:text-gray-700"
               >
                 ✕
-              </button>
+              </Button>
             </div>
-            <CardDescription>Add a new AtlasIED Atmosphere audio processor</CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={addProcessor} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <input
+          <CardContent className="p-6">
+            <form onSubmit={addProcessor} className="space-y-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-900 border-b pb-2">Basic Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-900">Processor Name *</label>
+                    <Input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      placeholder="Main Bar Audio"
+                      required
+                      className="border-gray-300 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-900">Model</label>
+                    <select
+                      value={formData.model}
+                      onChange={(e) => setFormData({...formData, model: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="AZM4">AZM4 (4-Zone Controller)</option>
+                      <option value="AZM8">AZM8 (8-Zone Controller)</option>
+                      <option value="AZMP4">AZMP4 (4-Zone + Power Amplifier)</option>
+                      <option value="AZMP8">AZMP8 (8-Zone + Power Amplifier)</option>
+                      <option value="AZM4-D">AZM4-D (4-Zone + Dante Network)</option>
+                      <option value="AZM8-D">AZM8-D (8-Zone + Dante Network)</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-900">Description</label>
+                  <Input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Main Bar Audio"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                  <select
-                    value={formData.model}
-                    onChange={(e) => setFormData({...formData, model: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="AZM4">AZM4 (4-Zone)</option>
-                    <option value="AZM8">AZM8 (8-Zone)</option>
-                    <option value="AZMP4">AZMP4 (4-Zone + Amp)</option>
-                    <option value="AZMP8">AZMP8 (8-Zone + Amp)</option>
-                    <option value="AZM4-D">AZM4-D (4-Zone + Dante)</option>
-                    <option value="AZM8-D">AZM8-D (8-Zone + Dante)</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
-                  <input
-                    type="text"
-                    value={formData.ipAddress}
-                    onChange={(e) => setFormData({...formData, ipAddress: e.target.value})}
-                    placeholder="192.168.1.100"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
-                  <input
-                    type="number"
-                    value={formData.port}
-                    onChange={(e) => setFormData({...formData, port: parseInt(e.target.value)})}
-                    placeholder="80"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    placeholder="Main dining area audio control"
+                    className="border-gray-300 focus:border-blue-500"
                   />
                 </div>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="Main dining area audio control"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              {/* Network Configuration */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-900 border-b pb-2">Network Configuration</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-900">IP Address *</label>
+                    <Input
+                      type="text"
+                      value={formData.ipAddress}
+                      onChange={(e) => setFormData({...formData, ipAddress: e.target.value})}
+                      placeholder="192.168.1.100"
+                      required
+                      className="border-gray-300 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500">Static IP address of the processor</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-900">Port</label>
+                    <Input
+                      type="number"
+                      value={formData.port}
+                      onChange={(e) => setFormData({...formData, port: parseInt(e.target.value)})}
+                      placeholder="80"
+                      min="1"
+                      max="65535"
+                      className="border-gray-300 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500">Usually 80 (HTTP)</p>
+                  </div>
+                </div>
               </div>
               
-              <div className="flex gap-2">
-                <button
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                <Button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className="bg-blue-600 hover:bg-blue-700 text-white flex-1 sm:flex-initial"
                 >
+                  <Plus className="h-4 w-4 mr-2" />
                   Add Processor
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                  variant="outline"
+                  className="flex-1 sm:flex-initial"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           </CardContent>
@@ -385,192 +447,334 @@ export default function AudioProcessorManager() {
       )}
 
       {processors.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-8">
-            <p className="text-gray-500 mb-4">No audio processors configured</p>
-            <p className="text-sm text-gray-400">Add an AtlasIED Atmosphere processor to get started</p>
+        <Card className="border-2 border-dashed border-gray-300">
+          <CardContent className="text-center py-12">
+            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <Activity className="h-12 w-12 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Audio Processors</h3>
+            <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+              Add your first AtlasIED Atmosphere processor to start managing audio zones and monitoring input levels.
+            </p>
+            <Button
+              onClick={() => setShowAddForm(true)}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Your First Processor
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={selectedProcessor?.id || processors[0]?.id} onValueChange={(value) => {
-          const processor = processors.find(p => p.id === value)
-          setSelectedProcessor(processor || null)
-        }}>
-          <TabsList className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="space-y-6">
+          {/* Processor Overview Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {processors.map((processor) => (
-              <TabsTrigger key={processor.id} value={processor.id} className="flex items-center gap-2">
-                <span>{processor.name}</span>
-                {getStatusBadge(processor.status)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {processors.map((processor) => (
-            <TabsContent key={processor.id} value={processor.id} className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        {processor.name}
-                        {getStatusBadge(processor.status)}
-                      </CardTitle>
-                      <CardDescription>
-                        {processor.model} • {processor.ipAddress}:{processor.port} • {processor.zones} zones
-                      </CardDescription>
-                      {processor.description && (
-                        <p className="text-sm text-gray-600 mt-1">{processor.description}</p>
-                      )}
+              <Card 
+                key={processor.id} 
+                className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
+                  selectedProcessor?.id === processor.id 
+                    ? 'border-blue-500 bg-blue-50/50 shadow-lg' 
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => setSelectedProcessor(processor)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="space-y-1">
+                      <h3 className="font-semibold text-gray-900">{processor.name}</h3>
+                      <p className="text-sm text-gray-600">{processor.model}</p>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => testConnection(processor)}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                      >
-                        <Wifi className="h-4 w-4" />
-                        Test Connection
-                      </button>
-                      <button
-                        onClick={() => window.open(`http://${processor.ipAddress}:${processor.port}`, '_blank')}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Web Interface
-                      </button>
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                <CardContent>
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Audio Zones</h3>
-                    <button
-                      onClick={() => setShowZoneForm(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Zone
-                    </button>
-                  </div>
-
-                  {/* Zone Form */}
-                  {showZoneForm && (
-                    <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                      <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-medium">Add New Zone</h4>
-                        <button
-                          onClick={() => setShowZoneForm(false)}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          ✕
-                        </button>
+                    <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
+                      ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
+                      ${processor.status === 'offline' ? 'bg-gray-100 text-gray-800 border-gray-300' : ''}
+                      ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
+                    `}>
+                      <div className="flex items-center gap-1.5">
+                        {processor.status === 'online' && <CheckCircle className="h-3 w-3" />}
+                        {processor.status === 'offline' && <WifiOff className="h-3 w-3" />}
+                        {processor.status === 'error' && <AlertCircle className="h-3 w-3" />}
+                        {processor.status.charAt(0).toUpperCase() + processor.status.slice(1)}
                       </div>
-                      <form onSubmit={addZone} className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Zone Number</label>
-                            <select
-                              value={zoneFormData.zoneNumber}
-                              onChange={(e) => setZoneFormData({...zoneFormData, zoneNumber: parseInt(e.target.value)})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {Array.from({length: processor.zones}, (_, i) => i + 1).map(num => (
-                                <option key={num} value={num}>Zone {num}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                            <input
-                              type="text"
-                              value={zoneFormData.name}
-                              onChange={(e) => setZoneFormData({...zoneFormData, name: e.target.value})}
-                              placeholder="Main Dining"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              required
-                            />
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                          <input
-                            type="text"
-                            value={zoneFormData.description}
-                            onChange={(e) => setZoneFormData({...zoneFormData, description: e.target.value})}
-                            placeholder="Main dining area speakers"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                          >
-                            Add Zone
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowZoneForm(false)}
-                            className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-2 text-xs text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Wifi className="h-3 w-3" />
+                      <span>{processor.ipAddress}:{processor.port}</span>
                     </div>
-                  )}
-
-                  <div className="grid gap-4">
-                    {zones.length === 0 ? (
-                      <p className="text-center text-gray-500 py-8">
-                        No zones configured for this processor
-                      </p>
-                    ) : (
-                      zones.map((zone) => (
-                        <div key={zone.id} className="p-4 border border-gray-200 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h4 className="font-medium">Zone {zone.zoneNumber}: {zone.name}</h4>
-                              <p className="text-sm text-gray-600">
-                                {zone.currentSource} • Volume: {zone.volume}% 
-                                {zone.muted && " • Muted"}
-                              </p>
-                              {zone.description && (
-                                <p className="text-xs text-gray-500">{zone.description}</p>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => controlZone('mute', zone, !zone.muted)}
-                                className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
-                              >
-                                {zone.muted ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                              </button>
-                              <button
-                                onClick={() => controlZone('volume', zone, Math.max(0, zone.volume - 10))}
-                                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                              >
-                                Vol-
-                              </button>
-                              <button
-                                onClick={() => controlZone('volume', zone, Math.min(100, zone.volume + 10))}
-                                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                              >
-                                Vol+
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-3 w-3" />
+                      <span>{processor.zones} audio zones</span>
+                    </div>
+                    {processor.description && (
+                      <p className="text-gray-500 mt-2 line-clamp-2">{processor.description}</p>
                     )}
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-          ))}
-        </Tabs>
+            ))}
+          </div>
+
+          {/* Selected Processor Details */}
+          {selectedProcessor && (
+            <Card className="border-2 border-blue-100 shadow-xl">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <CardTitle className="text-2xl text-blue-900 flex items-center gap-3">
+                      <div className="p-2 bg-blue-200 rounded-lg">
+                        <Activity className="h-6 w-6 text-blue-700" />
+                      </div>
+                      {selectedProcessor.name}
+                    </CardTitle>
+                    <CardDescription className="text-blue-700 text-base">
+                      {selectedProcessor.model} • {selectedProcessor.ipAddress}:{selectedProcessor.port} • {selectedProcessor.zones} zones
+                    </CardDescription>
+                    {selectedProcessor.description && (
+                      <p className="text-sm text-blue-600 mt-1">{selectedProcessor.description}</p>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={() => testConnection(selectedProcessor)}
+                      variant="outline"
+                      size="sm"
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
+                      <Wifi className="h-4 w-4 mr-2" />
+                      Test Connection
+                    </Button>
+                    <Button
+                      onClick={() => window.open(`http://${selectedProcessor.ipAddress}:${selectedProcessor.port}`, '_blank')}
+                      variant="outline"
+                      size="sm"
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Web Interface
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="p-6">
+                <Tabs defaultValue="zones" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="zones" className="flex items-center gap-2">
+                      <Volume2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Audio Zones</span>
+                      <span className="sm:hidden">Zones</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="levels" className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Input Levels</span>
+                      <span className="sm:hidden">Levels</span>
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="zones" className="space-y-6">
+                    {/* Zone Management Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-semibold text-gray-900">Audio Zones</h3>
+                        <p className="text-sm text-gray-600">Configure and control individual audio zones</p>
+                      </div>
+                      <Button
+                        onClick={() => setShowZoneForm(true)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Zone
+                      </Button>
+                    </div>
+
+                    {/* Zone Form */}
+                    {showZoneForm && (
+                      <Card className="border-2 border-emerald-100 bg-emerald-50/50">
+                        <CardHeader className="bg-emerald-50 pb-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <CardTitle className="text-lg text-emerald-900 flex items-center gap-2">
+                                <Volume2 className="h-5 w-5" />
+                                Add New Audio Zone
+                              </CardTitle>
+                              <CardDescription className="text-emerald-700">
+                                Configure a new audio zone for {selectedProcessor.name}
+                              </CardDescription>
+                            </div>
+                            <Button
+                              onClick={() => setShowZoneForm(false)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <form onSubmit={addZone} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-900">Zone Number</label>
+                                <select
+                                  value={zoneFormData.zoneNumber}
+                                  onChange={(e) => setZoneFormData({...zoneFormData, zoneNumber: parseInt(e.target.value)})}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                >
+                                  {Array.from({length: selectedProcessor.zones}, (_, i) => i + 1).map(num => (
+                                    <option key={num} value={num}>Zone {num}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-900">Zone Name *</label>
+                                <Input
+                                  type="text"
+                                  value={zoneFormData.name}
+                                  onChange={(e) => setZoneFormData({...zoneFormData, name: e.target.value})}
+                                  placeholder="Main Dining Area"
+                                  required
+                                  className="border-gray-300 focus:border-emerald-500"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-gray-900">Description</label>
+                              <Input
+                                type="text"
+                                value={zoneFormData.description}
+                                onChange={(e) => setZoneFormData({...zoneFormData, description: e.target.value})}
+                                placeholder="Main dining area ceiling speakers"
+                                className="border-gray-300 focus:border-emerald-500"
+                              />
+                            </div>
+                            
+                            <div className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
+                              <Button
+                                type="submit"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-initial"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Zone
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => setShowZoneForm(false)}
+                                variant="outline"
+                                className="flex-1 sm:flex-initial"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </form>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Zones Grid */}
+                    <div className="space-y-4">
+                      {zones.length === 0 ? (
+                        <Card className="border-2 border-dashed border-gray-300">
+                          <CardContent className="text-center py-8">
+                            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                              <Volume2 className="h-8 w-8 text-gray-400" />
+                            </div>
+                            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Audio Zones</h4>
+                            <p className="text-gray-600 mb-4">
+                              Configure audio zones to start controlling different areas
+                            </p>
+                            <Button
+                              onClick={() => setShowZoneForm(true)}
+                              variant="outline"
+                              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add First Zone
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <div className="grid gap-4">
+                          {zones.map((zone) => (
+                            <Card key={zone.id} className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
+                              <CardContent className="p-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="text-lg font-semibold text-gray-900">
+                                        Zone {zone.zoneNumber}: {zone.name}
+                                      </h4>
+                                      {zone.muted && (
+                                        <Badge variant="secondary" className="bg-red-100 text-red-800 border-red-300">
+                                          <VolumeX className="h-3 w-3 mr-1" />
+                                          Muted
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                                      <span className="flex items-center gap-1">
+                                        <Play className="h-3 w-3" />
+                                        {zone.currentSource}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <Volume2 className="h-3 w-3" />
+                                        Volume: {zone.volume}%
+                                      </span>
+                                    </div>
+                                    {zone.description && (
+                                      <p className="text-sm text-gray-500">{zone.description}</p>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      onClick={() => controlZone('mute', zone, !zone.muted)}
+                                      variant="outline"
+                                      size="sm"
+                                      className={zone.muted ? "bg-red-50 border-red-200 text-red-700 hover:bg-red-100" : ""}
+                                    >
+                                      {zone.muted ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                                    </Button>
+                                    <Button
+                                      onClick={() => controlZone('volume', zone, Math.max(0, zone.volume - 10))}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      Vol-
+                                    </Button>
+                                    <Button
+                                      onClick={() => controlZone('volume', zone, Math.min(100, zone.volume + 10))}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      Vol+
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="levels" className="space-y-6">
+                      <InputLevelMonitor 
+                        processorId={selectedProcessor.id} 
+                        processorName={selectedProcessor.name}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            )}
+        </div>
       )}
     </div>
   )
