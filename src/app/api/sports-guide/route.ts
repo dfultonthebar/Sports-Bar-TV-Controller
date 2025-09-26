@@ -1,6 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// Configure route segment to be dynamic
+export const dynamic = 'force-dynamic'
+
 export interface ChannelInfo {
   id: string
   name: string
