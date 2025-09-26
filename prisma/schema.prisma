@@ -223,3 +223,15 @@ model AudioInputMeter {
 
   @@unique([processorId, inputNumber])
 }
+
+model CECConfiguration {
+  id             String   @id @default(cuid())
+  cecInputChannel Int?    // Wolf Pack input channel where CEC server is connected
+  cecServerIP    String   @default("192.168.1.100")
+  cecPort        Int      @default(8080)
+  isEnabled      Boolean  @default(false)
+  powerOnDelay   Int      @default(2000)  // milliseconds to wait before sending CEC command
+  powerOffDelay  Int      @default(1000)  // milliseconds to wait before sending CEC command
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

@@ -23,6 +23,7 @@ import {
   Speaker
 } from 'lucide-react'
 import Image from 'next/image'
+import CECPowerControl from '../../components/CECPowerControl'
 
 interface MatrixInput {
   id: string
@@ -789,83 +790,7 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
-        {activeTab === 'power' && (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-              <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-                <Power className="mr-2 w-5 h-5" />
-                System Power Control
-              </h2>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white/5 rounded-lg p-4 text-center">
-                  <Power className="w-8 h-8 mx-auto mb-2 text-red-400" />
-                  <h3 className="font-medium text-white mb-2">All TVs</h3>
-                  <div className="space-y-2">
-                    <button className="w-full py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-sm">
-                      Power On All
-                    </button>
-                    <button className="w-full py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-sm">
-                      Power Off All
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-white/5 rounded-lg p-4 text-center">
-                  <Speaker className="w-8 h-8 mx-auto mb-2 text-blue-400" />
-                  <h3 className="font-medium text-white mb-2">Audio System</h3>
-                  <div className="space-y-2">
-                    <button className="w-full py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-sm">
-                      Audio On
-                    </button>
-                    <button className="w-full py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-sm">
-                      Audio Off
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-white/5 rounded-lg p-4 text-center">
-                  <Zap className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
-                  <h3 className="font-medium text-white mb-2">Matrix</h3>
-                  <div className="space-y-2">
-                    <button className="w-full py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-sm">
-                      Matrix On
-                    </button>
-                    <button className="w-full py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-sm">
-                      Matrix Off
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-white/5 rounded-lg p-4 text-center">
-                  <Radio className="w-8 h-8 mx-auto mb-2 text-purple-400" />
-                  <h3 className="font-medium text-white mb-2">Input Devices</h3>
-                  <div className="space-y-2">
-                    <button className="w-full py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-sm">
-                      Devices On
-                    </button>
-                    <button className="w-full py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-sm">
-                      Devices Off
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-white/5 rounded-lg p-4 text-center">
-                  <Settings className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <h3 className="font-medium text-white mb-2">Emergency</h3>
-                  <div className="space-y-2">
-                    <button className="w-full py-2 bg-orange-500/20 text-orange-300 border border-orange-500/30 rounded hover:bg-orange-500/30 transition-colors text-sm">
-                      Full Reset
-                    </button>
-                    <button className="w-full py-2 bg-red-600/20 text-red-300 border border-red-600/30 rounded hover:bg-red-600/30 transition-colors text-sm">
-                      EMERGENCY OFF
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === 'power' && <CECPowerControl />}
       </div>
 
       {/* Bottom Tab Navigation */}
