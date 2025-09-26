@@ -45,10 +45,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size (25MB max for higher quality layouts)
+    if (file.size > 25 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 10MB.' },
+        { error: 'File too large. Maximum size is 25MB.' },
         { status: 400 }
       )
     }
@@ -79,8 +79,9 @@ export async function POST(request: NextRequest) {
         await fs.writeFile(tempPdfPath, buffer)
         
         // Use pdftoppm to convert PDF to PNG (first page only)
+        // Higher DPI (300) for better AI text/marker recognition
         const outputPrefix = join(UPLOAD_DIR, `${filename.replace(/\.pdf$/, '')}_page`)
-        const command = `pdftoppm -png -f 1 -l 1 -r 200 "${tempPdfPath}" "${outputPrefix}"`
+        const command = `pdftoppm -png -f 1 -l 1 -r 300 "${tempPdfPath}" "${outputPrefix}"`
         
         console.log('Running command:', command)
         await execAsync(command)
@@ -99,10 +100,17 @@ export async function POST(request: NextRequest) {
           const optimizedFilename = `${filename.replace(/\.pdf$/, '')}_converted.png`
           const optimizedPath = join(UPLOAD_DIR, optimizedFilename)
           
-          // Optimize the image with Sharp
+          // Optimize the image with Sharp - preserve quality for AI analysis
           await sharp(imagePath)
-            .png({ quality: 90 })
-            .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+            .png({ 
+              quality: 95, // Higher quality for better text/number recognition
+              compressionLevel: 6 // Balanced compression
+            })
+            .resize(2400, 1800, { // Larger size for better AI detail recognition
+              fit: 'inside', 
+              withoutEnlargement: true,
+              kernel: sharp.kernel.lanczos3 // Better quality scaling
+            })
             .toFile(optimizedPath)
           
           // Clean up the original generated file

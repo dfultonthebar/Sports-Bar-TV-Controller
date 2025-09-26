@@ -26,12 +26,12 @@ interface LayoutAnalysis {
 
 export async function POST(request: NextRequest) {
   try {
-    const { layoutDescription, matrixOutputs, availableOutputs } = await request.json()
+    const { layoutDescription, matrixOutputs, availableOutputs, imageUrl } = await request.json()
     
-    console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs })
+    console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs, imageUrl })
     
     // Parse the AI-analyzed layout description to extract TV locations
-    const tvLocations = parseLayoutDescription(layoutDescription)
+    const tvLocations = await parseLayoutDescription(layoutDescription, imageUrl)
     console.log('AI Analysis - Parsed Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
     // Get available (active) outputs from matrix configuration
@@ -65,44 +65,163 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function parseLayoutDescription(description: string): TVLocation[] {
-  // For Stoneyard Appleton layout, we know there are 20 numbered TV locations
-  // Generate them based on the known layout structure
-  const locations: TVLocation[] = []
+async function parseLayoutDescription(description: string, imageUrl?: string): Promise<TVLocation[]> {
+  console.log('Parsing layout description with image:', !!imageUrl)
   
-  // Stoneyard Appleton has 20 TV locations based on the PDF analysis
-  const knownLocations = [
-    { number: 1, description: "Side Area 1 on the vertical wall of the L-shaped section", wall: "left" },
-    { number: 2, description: "TV 2 above Marker 1 on the same vertical wall", wall: "left" },
-    { number: 3, description: "TV 3 above Marker 2 on the same vertical wall", wall: "left" },
-    { number: 4, description: "Side Area 4 on the horizontal wall of the L-shaped section", wall: "top" },
-    { number: 5, description: "Main Bar Right 5 in the top right corner of the main room", wall: "corner" },
-    { number: 6, description: "Main Bar Right 6 on the right vertical wall of the main room", wall: "right" },
-    { number: 7, description: "TV 7 below Marker 6 on the same vertical wall", wall: "right" },
-    { number: 8, description: "TV 8 below Marker 7 on the same vertical wall", wall: "right" },
-    { number: 9, description: "TV 9 below Marker 8 on the same vertical wall", wall: "right" },
-    { number: 10, description: "Lower Section 10 on a small internal wall in the bottom left section", wall: "bottom" },
-    { number: 11, description: "Lower Section 11 on the bottom horizontal wall of the bottom left section", wall: "bottom" },
-    { number: 12, description: "Lower Section 12 on the bottom horizontal wall of the bottom left section", wall: "bottom" },
-    { number: 13, description: "TV 13 on the left vertical wall of the bottom left section", wall: "left" },
-    { number: 14, description: "TV 14 above Marker 13 on the same vertical wall", wall: "left" },
-    { number: 15, description: "TV 15 above Marker 14 on the same vertical wall", wall: "left" },
-    { number: 16, description: "TV 16 on the top horizontal wall of the bottom left section", wall: "top" },
-    { number: 17, description: "TV 17 on the bottom horizontal wall of the L-shaped section", wall: "bottom" },
-    { number: 18, description: "TV 18 on the bottom horizontal wall of the L-shaped section", wall: "bottom" },
-    { number: 19, description: "TV 19 on the top horizontal wall of the main room", wall: "top" },
-    { number: 20, description: "TV 20 on the top horizontal wall of the main room", wall: "top" }
+  // Extract TV/marker numbers from the description using regex
+  const markerRegex = /marker (\d+)/gi
+  const tvRegex = /tv (\d+)/gi
+  const numberedRegex = /(\d+)\s+(?:is|are|located)/gi
+  
+  const foundNumbers = new Set<number>()
+  
+  // Find all mentioned numbers in the description
+  let match
+  while ((match = markerRegex.exec(description)) !== null) {
+    foundNumbers.add(parseInt(match[1]))
+  }
+  
+  while ((match = tvRegex.exec(description)) !== null) {
+    foundNumbers.add(parseInt(match[1]))
+  }
+  
+  while ((match = numberedRegex.exec(description)) !== null) {
+    foundNumbers.add(parseInt(match[1]))
+  }
+  
+  // If no numbers found in description, try to extract from common patterns
+  if (foundNumbers.size === 0) {
+    // Look for patterns like "20 numbered markers", "15 TVs", etc.
+    const countRegex = /(\d+)\s+(?:numbered|markers|tvs|screens|displays)/gi
+    while ((match = countRegex.exec(description)) !== null) {
+      const count = parseInt(match[1])
+      if (count <= 50) { // Reasonable limit for TVs
+        for (let i = 1; i <= count; i++) {
+          foundNumbers.add(i)
+        }
+      }
+    }
+  }
+  
+  const locations: TVLocation[] = []
+  const sortedNumbers = Array.from(foundNumbers).sort((a, b) => a - b)
+  
+  console.log('Found TV/marker numbers:', sortedNumbers)
+  
+  // Parse each number and try to determine its position from the description
+  for (const number of sortedNumbers) {
+    const tvLocation = extractTVLocationFromDescription(description, number)
+    locations.push(tvLocation)
+  }
+  
+  // If still no locations found, create a fallback based on description analysis
+  if (locations.length === 0) {
+    console.log('No specific numbers found, creating fallback locations')
+    // Analyze description for general layout info
+    const estimatedCount = estimateTVCountFromDescription(description)
+    for (let i = 1; i <= estimatedCount; i++) {
+      locations.push({
+        number: i,
+        description: `TV ${i} (estimated from layout)`,
+        position: generateFallbackPosition(i, estimatedCount)
+      })
+    }
+  }
+  
+  console.log('Generated locations:', locations.length)
+  return locations.sort((a, b) => a.number - b.number)
+}
+
+function extractTVLocationFromDescription(description: string, number: number): TVLocation {
+  // Find the context around this specific number
+  const patterns = [
+    new RegExp(`marker\\s+${number}[^.]*?([^.]*?)(?=marker\\s+\\d+|$)`, 'gi'),
+    new RegExp(`tv\\s+${number}[^.]*?([^.]*?)(?=tv\\s+\\d+|$)`, 'gi'),
+    new RegExp(`${number}\\s+is\\s+([^.]*?)(?=\\d+\\s+is|$)`, 'gi')
   ]
   
-  knownLocations.forEach(loc => {
-    locations.push({
-      number: loc.number,
-      description: loc.description,
-      position: extractPositionFromWall(loc.wall, loc.number)
-    })
-  })
+  let locationDesc = `TV ${number} location`
+  let wall = 'center'
   
-  return locations.sort((a, b) => a.number - b.number)
+  for (const pattern of patterns) {
+    const match = pattern.exec(description)
+    if (match && match[1]) {
+      locationDesc = match[1].trim()
+      break
+    }
+  }
+  
+  // Analyze the description to determine wall position
+  const lowerDesc = locationDesc.toLowerCase()
+  if (lowerDesc.includes('left') || lowerDesc.includes('vertical wall') && lowerDesc.includes('left')) {
+    wall = 'left'
+  } else if (lowerDesc.includes('right') || lowerDesc.includes('vertical wall') && lowerDesc.includes('right')) {
+    wall = 'right'
+  } else if (lowerDesc.includes('top') || lowerDesc.includes('upper') || lowerDesc.includes('horizontal wall') && lowerDesc.includes('top')) {
+    wall = 'top'
+  } else if (lowerDesc.includes('bottom') || lowerDesc.includes('lower') || lowerDesc.includes('horizontal wall') && lowerDesc.includes('bottom')) {
+    wall = 'bottom'
+  } else if (lowerDesc.includes('corner')) {
+    wall = 'corner'
+  }
+  
+  return {
+    number,
+    description: locationDesc || `TV ${number}`,
+    position: extractPositionFromWall(wall, number)
+  }
+}
+
+function estimateTVCountFromDescription(description: string): number {
+  // Try to estimate TV count from description
+  const countMatches = description.match(/(\d+)\s+(?:numbered|markers|tvs|screens|displays)/gi)
+  if (countMatches) {
+    const numbers = countMatches.map(match => {
+      const num = parseInt(match.match(/\d+/)?.[0] || '0')
+      return num
+    }).filter(n => n > 0 && n <= 50)
+    
+    if (numbers.length > 0) {
+      return Math.max(...numbers)
+    }
+  }
+  
+  // Count distinct numbers mentioned
+  const numberMatches = description.match(/\b\d+\b/g)
+  if (numberMatches) {
+    const numbersSet = new Set(numberMatches.map(n => parseInt(n)))
+    const uniqueNumbers = Array.from(numbersSet)
+      .filter(n => n > 0 && n <= 50)
+    
+    if (uniqueNumbers.length > 0) {
+      return Math.max(...uniqueNumbers)
+    }
+  }
+  
+  // Fallback: estimate based on description length and complexity
+  if (description.length > 2000) return 20
+  if (description.length > 1000) return 15
+  if (description.length > 500) return 10
+  return 8
+}
+
+function generateFallbackPosition(number: number, total: number): { x: number, y: number, wall: string } {
+  // Generate a reasonable grid layout
+  const cols = Math.ceil(Math.sqrt(total))
+  const rows = Math.ceil(total / cols)
+  
+  const col = (number - 1) % cols
+  const row = Math.floor((number - 1) / cols)
+  
+  const MARGIN = 15
+  const x = MARGIN + (col * (100 - 2 * MARGIN)) / (cols - 1 || 1)
+  const y = MARGIN + (row * (100 - 2 * MARGIN)) / (rows - 1 || 1)
+  
+  return {
+    x: Math.max(MARGIN, Math.min(100 - MARGIN, x)),
+    y: Math.max(MARGIN, Math.min(100 - MARGIN, y)),
+    wall: 'center'
+  }
 }
 
 function extractPositionFromWall(wallType: string, markerNumber: number): { x: number, y: number, wall: string } {
