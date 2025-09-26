@@ -1,0 +1,282 @@
+
+import { NextRequest, NextResponse } from 'next/server'
+
+export interface ChannelInfo {
+  id: string
+  name: string
+  url?: string
+  platforms: string[]
+  type: 'cable' | 'streaming' | 'ota'
+  cost: 'free' | 'subscription' | 'premium'
+  logoUrl?: string
+}
+
+export interface GameListing {
+  id: string
+  league: string
+  homeTeam: string
+  awayTeam: string
+  gameTime: string
+  gameDate: string
+  channel: ChannelInfo
+  description?: string
+  priority?: 'high' | 'medium' | 'low'
+}
+
+const CHANNELS: ChannelInfo[] = [
+  {
+    id: 'espn',
+    name: 'ESPN',
+    platforms: ['DirecTV Ch. 206', 'Spectrum Ch. 300', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/'
+  },
+  {
+    id: 'espn2',
+    name: 'ESPN2',
+    platforms: ['DirecTV Ch. 209', 'Spectrum Ch. 301', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/'
+  },
+  {
+    id: 'fox-sports',
+    name: 'Fox Sports',
+    platforms: ['DirecTV Ch. 219', 'Spectrum Ch. 311', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.foxsports.com/live'
+  },
+  {
+    id: 'nbc-sports',
+    name: 'NBC Sports',
+    platforms: ['DirecTV Ch. 220', 'Spectrum Ch. 312', 'Peacock Premium', 'Hulu Live TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.nbcsports.com/live'
+  },
+  {
+    id: 'cbs-sports',
+    name: 'CBS Sports Network',
+    platforms: ['DirecTV Ch. 221', 'Spectrum Ch. 313', 'Paramount+', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.cbssports.com/live-tv/'
+  },
+  {
+    id: 'tnt',
+    name: 'TNT',
+    platforms: ['DirecTV Ch. 245', 'Spectrum Ch. 32', 'Hulu Live TV', 'YouTube TV', 'Max'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.tntdrama.com/watchtnt'
+  },
+  {
+    id: 'amazon-prime',
+    name: 'Amazon Prime Video',
+    platforms: ['Fire TV', 'Roku', 'Apple TV', 'Smart TVs', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'premium',
+    url: 'https://www.amazon.com/gp/video/storefront'
+  },
+  {
+    id: 'netflix',
+    name: 'Netflix',
+    platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://www.netflix.com'
+  },
+  {
+    id: 'paramount-plus',
+    name: 'Paramount+',
+    platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://www.paramountplus.com'
+  },
+  {
+    id: 'peacock',
+    name: 'Peacock Premium',
+    platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://www.peacocktv.com'
+  },
+  {
+    id: 'apple-tv',
+    name: 'Apple TV+',
+    platforms: ['Apple TV', 'Smart TVs', 'Fire TV', 'Roku', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://tv.apple.com'
+  },
+  {
+    id: 'youtube-tv',
+    name: 'YouTube TV',
+    platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Chromecast', 'Mobile Apps'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://tv.youtube.com'
+  }
+]
+
+// Mock game data generator
+const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
+  const games: GameListing[] = []
+  const today = new Date()
+  
+  const teams = {
+    'nfl': ['Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills', 'Rams'],
+    'nba': ['Lakers', 'Warriors', 'Celtics', 'Nets', 'Bucks', 'Heat', 'Suns', 'Nuggets'],
+    'mlb': ['Yankees', 'Dodgers', 'Red Sox', 'Giants', 'Cubs', 'Astros', 'Phillies', 'Braves'],
+    'nhl': ['Bruins', 'Rangers', 'Blackhawks', 'Kings', 'Penguins', 'Lightning', 'Capitals', 'Avalanche'],
+    'ncaa-fb': ['Alabama', 'Georgia', 'Michigan', 'Ohio State', 'Clemson', 'USC', 'Texas', 'Oklahoma'],
+    'ncaa-bb': ['Duke', 'Kentucky', 'North Carolina', 'Kansas', 'Gonzaga', 'Villanova', 'UCLA', 'Michigan State'],
+    'mls': ['LAFC', 'Atlanta United', 'Seattle Sounders', 'NYCFC', 'Portland Timbers', 'Toronto FC', 'Galaxy', 'Austin FC'],
+    'premier': ['Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Manchester United', 'Tottenham', 'Newcastle', 'Brighton'],
+    'champions': ['Real Madrid', 'Barcelona', 'Bayern Munich', 'PSG', 'Manchester City', 'Liverpool', 'AC Milan', 'Inter Milan'],
+    'la-liga': ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Sevilla', 'Real Betis', 'Villarreal', 'Valencia', 'Athletic Bilbao'],
+    'serie-a': ['Juventus', 'AC Milan', 'Inter Milan', 'Napoli', 'Roma', 'Lazio', 'Atalanta', 'Fiorentina'],
+    'bundesliga': ['Bayern Munich', 'Borussia Dortmund', 'RB Leipzig', 'Bayer Leverkusen', 'Union Berlin', 'Frankfurt', 'Wolfsburg', 'Freiburg']
+  }
+  
+  const leagueNames = {
+    'nfl': 'NFL',
+    'nba': 'NBA', 
+    'mlb': 'MLB',
+    'nhl': 'NHL',
+    'ncaa-fb': 'NCAA Football',
+    'ncaa-bb': 'NCAA Basketball',
+    'mls': 'MLS',
+    'premier': 'Premier League',
+    'champions': 'Champions League',
+    'la-liga': 'La Liga',
+    'serie-a': 'Serie A',
+    'bundesliga': 'Bundesliga'
+  }
+
+  selectedLeagues.forEach(leagueId => {
+    const leagueTeams = teams[leagueId as keyof typeof teams] || ['Team A', 'Team B', 'Team C', 'Team D']
+    const leagueName = leagueNames[leagueId as keyof typeof leagueNames] || leagueId.toUpperCase()
+    
+    // Generate 3-5 games per league
+    const gameCount = Math.floor(Math.random() * 3) + 3
+    
+    for (let i = 0; i < gameCount; i++) {
+      const gameDate = new Date(today)
+      gameDate.setDate(today.getDate() + Math.floor(Math.random() * 7))
+      
+      const homeTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
+      let awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
+      while (awayTeam === homeTeam) {
+        awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
+      }
+      
+      const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
+      
+      const gameHour = Math.floor(Math.random() * 8) + 12 // Games between 12 PM and 8 PM
+      const gameMinute = Math.random() < 0.5 ? '00' : '30'
+      const gameTime = `${gameHour}:${gameMinute} ${gameHour >= 12 ? 'PM' : 'AM'} EST`
+      
+      games.push({
+        id: `${leagueId}-game-${i + 1}`,
+        league: leagueName,
+        homeTeam,
+        awayTeam,
+        gameTime,
+        gameDate: gameDate.toISOString().split('T')[0],
+        channel,
+        description: `${leagueName} regular season matchup`,
+        priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+      })
+    }
+  })
+  
+  // Sort games by date and time
+  return games.sort((a, b) => {
+    const dateA = new Date(`${a.gameDate} ${a.gameTime}`)
+    const dateB = new Date(`${b.gameDate} ${b.gameTime}`)
+    return dateA.getTime() - dateB.getTime()
+  })
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { selectedLeagues } = body
+
+    if (!selectedLeagues || !Array.isArray(selectedLeagues) || selectedLeagues.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No leagues selected' },
+        { status: 400 }
+      )
+    }
+
+    // Generate mock sports guide data
+    const games = generateMockGames(selectedLeagues)
+    
+    const response = {
+      success: true,
+      data: {
+        games,
+        generatedAt: new Date().toISOString(),
+        selectedLeagues,
+        totalGames: games.length,
+        channels: Array.from(new Set(games.map(game => game.channel.name))),
+        summary: {
+          upcomingGames: games.filter(game => {
+            const gameDate = new Date(`${game.gameDate} ${game.gameTime}`)
+            return gameDate > new Date()
+          }).length,
+          platforms: Array.from(new Set(games.flatMap(game => game.channel.platforms))),
+          streamingServices: games.filter(game => game.channel.type === 'streaming').length,
+          cableChannels: games.filter(game => game.channel.type === 'cable').length
+        }
+      }
+    }
+
+    return NextResponse.json(response)
+  } catch (error) {
+    console.error('Error generating sports guide:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to generate sports guide' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    return NextResponse.json({
+      success: true,
+      message: 'Sports Guide API is active',
+      endpoints: {
+        'POST /api/sports-guide': 'Generate sports guide with selected leagues',
+        'GET /api/leagues': 'Get available sports leagues'
+      },
+      availableChannels: CHANNELS.length,
+      supportedLeagues: Object.keys({
+        'nfl': 'NFL',
+        'nba': 'NBA', 
+        'mlb': 'MLB',
+        'nhl': 'NHL',
+        'ncaa-fb': 'NCAA Football',
+        'ncaa-bb': 'NCAA Basketball',
+        'mls': 'MLS',
+        'premier': 'Premier League',
+        'champions': 'Champions League',
+        'la-liga': 'La Liga',
+        'serie-a': 'Serie A',
+        'bundesliga': 'Bundesliga'
+      })
+    })
+  } catch (error) {
+    console.error('Error in sports guide API:', error)
+    return NextResponse.json(
+      { success: false, error: 'API error' },
+      { status: 500 }
+    )
+  }
+}

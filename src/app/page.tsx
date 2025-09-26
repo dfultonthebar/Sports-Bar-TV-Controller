@@ -15,6 +15,7 @@ import BartenderRemoteControl from '../components/BartenderRemoteControl'
 import AudioZoneControl from '../components/AudioZoneControl'
 import AudioProcessorManager from '../components/AudioProcessorManager'
 import AtlasProgrammingInterface from '../components/AtlasProgrammingInterface'
+import SportsGuide from '../components/SportsGuide'
 import { 
   FileText, 
   MessageCircle, 
@@ -35,7 +36,9 @@ import {
   Activity,
   Clock,
   Shield,
-  BarChart3
+  BarChart3,
+  Calendar,
+  Tv
 } from 'lucide-react'
 
 const tabCategories = {
@@ -69,6 +72,15 @@ const tabCategories = {
     tabs: [
       { id: 'bartender', name: 'Staff Interface', icon: Users, description: 'Bartender setup & layout config', color: 'text-indigo-600' },
       { id: 'document-upload', name: 'Documentation', icon: FileText, description: 'System manuals & guides', color: 'text-indigo-600' },
+    ]
+  },
+  content: {
+    title: 'Sports & Entertainment',
+    icon: Calendar,
+    color: 'bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/20',
+    priority: false,
+    tabs: [
+      { id: 'sports-guide', name: 'Sports Guide', icon: Tv, description: 'Find where to watch sports', color: 'text-orange-600' },
     ]
   },
   support: {
@@ -169,6 +181,13 @@ export default function Home() {
               
               {/* Quick Actions */}
               <div className="flex items-center space-x-2">
+                <a 
+                  href="/sports-guide" 
+                  className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-lg hover:from-orange-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm font-medium"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Sports Guide</span>
+                </a>
                 <a 
                   href="/remote" 
                   className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm font-medium"
@@ -278,6 +297,7 @@ export default function Home() {
               {activeTab === 'bartender' && <BartenderInterface />}
               {activeTab === 'ir-control' && <IRDeviceControl />}
               {activeTab === 'document-upload' && <DocumentUpload />}
+              {activeTab === 'sports-guide' && <SportsGuide />}
               {activeTab === 'ai-chat' && <TroubleshootingChat />}
               {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
               {activeTab === 'api-keys' && <ApiKeysManager />}
