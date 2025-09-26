@@ -192,16 +192,57 @@ export default function BartenderRemoteControl() {
     setSelectedDevice(device || null)
     
     setCommandStatus(`Selected Input ${inputNumber}`)
+
+    // Log the operation
+    try {
+      await fetch('/api/logs/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'input_switch',
+          action: 'select_input',
+          device: `Input ${inputNumber}`,
+          details: {
+            inputNumber,
+            deviceName: device?.name || 'Not configured',
+            deviceBrand: device?.brand || 'Unknown',
+            controlMethod: device?.controlMethod || 'None'
+          },
+          success: true
+        })
+      })
+    } catch (error) {
+      console.error('Failed to log input selection:', error)
+    }
   }
 
   const sendIRCommand = async (command: string) => {
     if (!selectedDevice) {
       setCommandStatus('No device selected')
+      // Log failed attempt
+      try {
+        await fetch('/api/logs/operations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'error',
+            action: 'IR command failed - no device selected',
+            details: { command, selectedInput },
+            success: false,
+            errorMessage: 'No device selected'
+          })
+        })
+      } catch (logError) {
+        console.error('Failed to log error:', logError)
+      }
       return
     }
 
     setLoading(true)
     setCommandStatus(`Sending ${command}...`)
+
+    let success = false
+    let errorMessage = ''
 
     try {
       let response;
@@ -232,21 +273,57 @@ export default function BartenderRemoteControl() {
       } else {
         setCommandStatus('Device not configured')
         setLoading(false)
-        return
+        errorMessage = 'Device not configured'
       }
 
-      const result = await response.json()
-      
-      if (response.ok) {
-        setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
-      } else {
-        setCommandStatus(`✗ Failed: ${result.error}`)
+      if (response) {
+        const result = await response.json()
+        
+        if (response.ok) {
+          setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
+          success = true
+        } else {
+          setCommandStatus(`✗ Failed: ${result.error}`)
+          errorMessage = result.error || 'API call failed'
+        }
       }
     } catch (error) {
       console.error('Error sending command:', error)
       setCommandStatus(`✗ Error sending ${command}`)
+      errorMessage = error instanceof Error ? error.message : 'Unknown error'
     } finally {
       setLoading(false)
+
+      // Log the operation with comprehensive details
+      try {
+        const operationType = command.includes('VOL') ? 'volume_change' : 
+                           command.includes('CH') ? 'channel_change' : 
+                           command === 'POWER' ? 'power_control' : 'matrix_control'
+
+        await fetch('/api/logs/operations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: operationType,
+            action: `IR Command: ${command}`,
+            device: selectedDevice.name,
+            details: {
+              command,
+              inputNumber: selectedInput,
+              deviceId: selectedDevice.id,
+              deviceBrand: selectedDevice.brand,
+              controlMethod: selectedDevice.controlMethod,
+              ipAddress: selectedDevice.deviceIpAddress,
+              iTachAddress: selectedDevice.iTachAddress
+            },
+            success,
+            errorMessage: success ? undefined : errorMessage
+          })
+        })
+      } catch (logError) {
+        console.error('Failed to log IR command:', logError)
+      }
+
       // Clear status after 3 seconds
       setTimeout(() => setCommandStatus(''), 3000)
     }
@@ -288,6 +365,9 @@ export default function BartenderRemoteControl() {
 
     setAudioCommandStatus(`${action} Zone ${zone.zoneNumber}...`)
 
+    let success = false
+    let errorMessage = ''
+
     try {
       const response = await fetch('/api/audio-processor/control', {
         method: 'POST',
@@ -306,15 +386,52 @@ export default function BartenderRemoteControl() {
       
       if (result.success) {
         setAudioCommandStatus(`✓ ${action} Zone ${zone.zoneNumber}`)
+        success = true
         // Refresh zones to get updated values
         loadAudioZones(selectedProcessor.id)
       } else {
         setAudioCommandStatus(`✗ Failed: ${result.error}`)
+        errorMessage = result.error || 'Audio control failed'
       }
     } catch (error) {
       console.error('Error controlling audio zone:', error)
       setAudioCommandStatus(`✗ Error controlling zone`)
+      errorMessage = error instanceof Error ? error.message : 'Unknown error'
     } finally {
+      // Log the audio operation
+      try {
+        const operationType = action === 'volume' ? 'volume_change' : 
+                            action === 'mute' ? 'volume_change' : 
+                            action === 'setSource' ? 'input_switch' : 'audio_zone'
+
+        await fetch('/api/logs/operations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: operationType,
+            action: `Audio ${action}`,
+            device: `${selectedProcessor.name} Zone ${zone.zoneNumber}`,
+            details: {
+              processorId: selectedProcessor.id,
+              processorName: selectedProcessor.name,
+              processorModel: selectedProcessor.model,
+              processorIpAddress: selectedProcessor.ipAddress,
+              zoneNumber: zone.zoneNumber,
+              zoneName: zone.name,
+              action,
+              value,
+              previousValue: action === 'volume' ? zone.volume : 
+                           action === 'mute' ? zone.muted : 
+                           action === 'setSource' ? zone.currentSource : null
+            },
+            success,
+            errorMessage: success ? undefined : errorMessage
+          })
+        })
+      } catch (logError) {
+        console.error('Failed to log audio control:', logError)
+      }
+
       // Clear status after 3 seconds
       setTimeout(() => setAudioCommandStatus(''), 3000)
     }
