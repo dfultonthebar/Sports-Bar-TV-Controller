@@ -219,6 +219,70 @@ export default function MatrixControl() {
     }
   }
 
+  const loadLayoutMapping = async () => {
+    try {
+      // Fetch the current TV layout
+      const response = await fetch('/api/bartender/layout')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.layout && data.layout.zones) {
+          const newOutputs = [...currentConfig.outputs]
+          
+          // Map layout zones to outputs
+          data.layout.zones.forEach((zone: any) => {
+            const outputIndex = zone.outputNumber - 1
+            if (outputIndex >= 0 && outputIndex < newOutputs.length) {
+              newOutputs[outputIndex] = {
+                ...newOutputs[outputIndex],
+                label: zone.label || `TV ${zone.outputNumber}`,
+                channelNumber: zone.outputNumber
+              }
+            }
+          })
+          
+          setCurrentConfig({ ...currentConfig, outputs: newOutputs })
+          alert(`Successfully imported ${data.layout.zones.length} TV positions from layout!`)
+        } else {
+          alert('No TV layout found. Please upload and analyze a layout first.')
+        }
+      }
+    } catch (error) {
+      console.error('Error loading layout mapping:', error)
+      alert('Error loading layout mapping. Please try again.')
+    }
+  }
+
+  const generateSampleLabels = () => {
+    const sampleLabels = [
+      // Main bar area (outputs 1-8)
+      'Main Bar Center TV', 'Main Bar Left TV', 'Main Bar Right TV', 'Main Bar Corner',
+      'Main Bar High Left', 'Main Bar High Right', 'Main Bar Side Wall', 'Main Bar Back Wall',
+      
+      // Side areas (outputs 9-16)
+      'Side Area 1', 'Side Area 2', 'Side Area 3', 'Side Area Corner',
+      'Side Wall Left', 'Side Wall Right', 'Side Dining Area', 'Side Booth Area',
+      
+      // Lower sections (outputs 17-24)
+      'Lower Section 1', 'Lower Section 2', 'Lower Section 3', 'Lower Section Corner',
+      'Pool Table Area', 'Gaming Area', 'Lower Dining', 'Lower Booth',
+      
+      // Additional positions (outputs 25-32)
+      'Upper Level 1', 'Upper Level 2', 'Upper Level 3', 'Upper Level 4',
+      'Private Area 1', 'Private Area 2', 'VIP Section 1', 'VIP Section 2',
+      
+      // Extra outputs (33-36)
+      'Outdoor Patio TV', 'Kitchen Display', 'Office TV', 'Backup Display'
+    ]
+
+    const newOutputs = currentConfig.outputs.map((output, index) => ({
+      ...output,
+      label: sampleLabels[index] || `TV ${output.channelNumber}`
+    }))
+
+    setCurrentConfig({ ...currentConfig, outputs: newOutputs })
+    alert('Sample labels applied! Customize them as needed for your layout.')
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="bg-white rounded-lg shadow-lg p-6">
@@ -404,36 +468,132 @@ export default function MatrixControl() {
         {activeSection === 'outputs' && (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Output Channel Labels (1-36)</h3>
-              <span className="text-sm text-gray-500">Configure all 36 output channels</span>
+              <h3 className="text-lg font-semibold text-gray-900">Output Channel Labels & Layout Mapping</h3>
+              <div className="flex space-x-2">
+                <button
+                  onClick={loadLayoutMapping}
+                  className="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 text-sm font-medium"
+                >
+                  📍 Import Layout Positions
+                </button>
+                <button
+                  onClick={generateSampleLabels}
+                  className="bg-gray-600 text-white px-3 py-1 rounded-md hover:bg-gray-700 text-sm font-medium"
+                >
+                  🏷️ Sample Labels
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-              {currentConfig.outputs.map((output, index) => (
-                <div key={index} className="border border-gray-300 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-gray-900">Output {output.channelNumber}</span>
-                    <span className="text-xs text-gray-500">Ch {output.channelNumber}</span>
-                  </div>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={output.label}
-                      onChange={(e) => updateOutput(index, 'label', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`Output ${output.channelNumber} label`}
-                    />
-                    <select
-                      value={output.resolution}
-                      onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {resolutions.map(res => (
-                        <option key={res} value={res}>{res}</option>
-                      ))}
-                    </select>
-                  </div>
+            
+            {/* Layout Integration Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-blue-600">💡</span>
+                <div>
+                  <h4 className="font-medium text-blue-900">Layout Integration</h4>
+                  <p className="text-sm text-blue-700">
+                    Configure output labels to match your TV layout positions. These labels will appear in the bartender interface
+                    and remote control. Click "Import Layout Positions" to auto-map from your uploaded PDF layout.
+                  </p>
                 </div>
-              ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+              {currentConfig.outputs.map((output, index) => {
+                const hasCustomLabel = output.label && !output.label.match(/^Output \d+$/);
+                const isLayoutMapped = hasCustomLabel && (
+                  output.label.includes('Main Bar') ||
+                  output.label.includes('Side Area') ||
+                  output.label.includes('Lower Section') ||
+                  output.label.includes('TV')
+                );
+                
+                return (
+                  <div key={index} className={`border rounded-lg p-4 ${
+                    isLayoutMapped 
+                      ? 'border-green-300 bg-green-50' 
+                      : hasCustomLabel 
+                        ? 'border-blue-300 bg-blue-50' 
+                        : 'border-gray-300'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-900">Output {output.channelNumber}</span>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-xs text-gray-500">Ch {output.channelNumber}</span>
+                        {isLayoutMapped && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            📍 Mapped
+                          </span>
+                        )}
+                        {hasCustomLabel && !isLayoutMapped && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            🏷️ Custom
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={output.label}
+                        onChange={(e) => updateOutput(index, 'label', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={`e.g., Main Bar Left, Side Area 1, Lower Section TV`}
+                      />
+                      <select
+                        value={output.resolution}
+                        onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {resolutions.map(res => (
+                          <option key={res} value={res}>{res}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Layout Mapping Statistics */}
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-2">Mapping Status</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {currentConfig.outputs.filter(o => 
+                      o.label && !o.label.match(/^Output \d+$/) && (
+                        o.label.includes('Main Bar') ||
+                        o.label.includes('Side Area') ||
+                        o.label.includes('Lower Section') ||
+                        o.label.includes('TV')
+                      )
+                    ).length}
+                  </div>
+                  <div className="text-gray-600">Layout Mapped</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {currentConfig.outputs.filter(o => 
+                      o.label && !o.label.match(/^Output \d+$/)
+                    ).length}
+                  </div>
+                  <div className="text-gray-600">Custom Labels</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-gray-600">
+                    {currentConfig.outputs.filter(o => 
+                      o.label && o.label.match(/^Output \d+$/)
+                    ).length}
+                  </div>
+                  <div className="text-gray-600">Default Labels</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">36</div>
+                  <div className="text-gray-600">Total Outputs</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -111,8 +111,11 @@ export default function BartenderRemotePage() {
     loadIRDevices()
     checkConnectionStatus()
     loadTVLayout()
-    fetchMatrixData()
   }, [])
+
+  useEffect(() => {
+    fetchMatrixData()
+  }, [tvLayout.zones.length]) // Re-fetch when layout zones change
 
   const fetchMatrixData = async () => {
     try {
@@ -129,6 +132,22 @@ export default function BartenderRemotePage() {
           setInputs(customInputs)
           setConnectionStatus(activeConfig.connectionStatus === 'connected' ? 'connected' : 'disconnected')
           setMatrixConfig(activeConfig)
+          
+          // Update TV layout zones with matrix output labels
+          if (activeConfig.outputs && tvLayout.zones.length > 0) {
+            const updatedZones = tvLayout.zones.map(zone => {
+              const matchingOutput = activeConfig.outputs.find((output: any) => 
+                output.channelNumber === zone.outputNumber
+              )
+              return {
+                ...zone,
+                label: matchingOutput?.label && !matchingOutput.label.match(/^Output \d+$/) 
+                  ? matchingOutput.label 
+                  : zone.label
+              }
+            })
+            setTVLayout({ ...tvLayout, zones: updatedZones })
+          }
         }
       }
     } catch (error) {
