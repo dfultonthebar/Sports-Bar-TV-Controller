@@ -98,56 +98,69 @@ function parseLayoutDescription(description: string): TVLocation[] {
 function extractPositionFromWall(wallType: string, markerNumber: number): { x: number, y: number, wall: string } {
   let x = 50, y = 50 // default center
   
+  // Minimum distances from edges to prevent corner overlapping
+  const EDGE_MARGIN = 15 // 15% from edges
+  const TV_SPACING = 18    // Minimum spacing between TVs
+  
   switch (wallType) {
     case 'left':
-      x = 8
-      // Distribute left wall TVs vertically
+      x = EDGE_MARGIN
+      // Distribute left wall TVs vertically with proper spacing
       if (markerNumber <= 3) {
-        y = 20 + (markerNumber - 1) * 20 // TVs 1-3 on main left wall
+        y = 25 + (markerNumber - 1) * TV_SPACING // TVs 1-3 on main left wall
       } else if (markerNumber >= 13 && markerNumber <= 15) {
-        y = 60 + (markerNumber - 13) * 15 // TVs 13-15 on bottom left section
+        y = 65 + (markerNumber - 13) * TV_SPACING // TVs 13-15 on bottom left section
       }
       break
       
     case 'right':
-      x = 92
-      // Distribute right wall TVs vertically  
+      x = 100 - EDGE_MARGIN
+      // Distribute right wall TVs vertically with proper spacing
       if (markerNumber >= 6 && markerNumber <= 9) {
-        y = 15 + (markerNumber - 6) * 18 // TVs 6-9 on right wall
+        y = 25 + (markerNumber - 6) * TV_SPACING // TVs 6-9 on right wall
       }
       break
       
     case 'top':
-      y = 8
-      // Distribute top wall TVs horizontally
-      if (markerNumber === 4) { x = 25 } // Side Area 4
-      else if (markerNumber === 16) { x = 15 } // TV 16 
-      else if (markerNumber === 19) { x = 60 } // TV 19
-      else if (markerNumber === 20) { x = 80 } // TV 20
+      y = EDGE_MARGIN
+      // Distribute top wall TVs horizontally with proper spacing
+      if (markerNumber === 4) { x = 30 } // Side Area 4 - moved away from corner
+      else if (markerNumber === 16) { x = 20 } // TV 16 
+      else if (markerNumber === 19) { x = 55 } // TV 19 - center area
+      else if (markerNumber === 20) { x = 75 } // TV 20 - moved away from right corner
       break
       
     case 'bottom':
-      y = 92
-      // Distribute bottom wall TVs horizontally
-      if (markerNumber === 10) { x = 20, y = 75 } // Internal wall
-      else if (markerNumber === 11) { x = 25 }
-      else if (markerNumber === 12) { x = 35 }
-      else if (markerNumber === 17) { x = 45 }
-      else if (markerNumber === 18) { x = 55 }
+      y = 100 - EDGE_MARGIN
+      // Distribute bottom wall TVs horizontally with proper spacing
+      if (markerNumber === 10) { x = 25, y = 72 } // Internal wall - adjusted
+      else if (markerNumber === 11) { x = 30 }
+      else if (markerNumber === 12) { x = 40 }
+      else if (markerNumber === 17) { x = 50 }
+      else if (markerNumber === 18) { x = 60 }
       break
       
     case 'corner':
+      // Corners positioned with safe margins to avoid overlapping
       if (markerNumber === 5) { // Main Bar Right 5
-        x = 85
-        y = 12
+        x = 75 // Moved further from right edge
+        y = 20 // Moved further from top edge
       }
       break
       
     default:
-      // Fallback positioning
-      x = 20 + (markerNumber % 8) * 10
-      y = 20 + Math.floor(markerNumber / 8) * 20
+      // Improved fallback positioning with better spacing
+      const colsPerRow = 6
+      const col = (markerNumber - 1) % colsPerRow
+      const row = Math.floor((markerNumber - 1) / colsPerRow)
+      
+      x = EDGE_MARGIN + (col * (100 - 2 * EDGE_MARGIN)) / (colsPerRow - 1)
+      y = EDGE_MARGIN + (row * (100 - 2 * EDGE_MARGIN)) / 3
   }
+  
+  // Ensure positions stay within valid bounds
+  x = Math.max(EDGE_MARGIN, Math.min(100 - EDGE_MARGIN, x))
+  y = Math.max(EDGE_MARGIN, Math.min(100 - EDGE_MARGIN, y))
   
   return { x, y, wall: wallType }
 }
