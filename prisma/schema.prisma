@@ -132,3 +132,72 @@ model MatrixScene {
   routes      String   // JSON string of routes
   createdAt   DateTime @default(now())
 }
+
+model AudioProcessor {
+  id          String      @id @default(cuid())
+  name        String
+  model       String      // "AZM4", "AZM8", "AZMP4", "AZMP8", etc.
+  ipAddress   String
+  port        Int         @default(80)
+  zones       Int         @default(4)
+  description String?
+  status      String      @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  audioZones    AudioZone[]
+  audioScenes   AudioScene[]
+  audioMessages AudioMessage[]
+
+  @@unique([ipAddress, port])
+}
+
+model AudioZone {
+  id            String         @id @default(cuid())
+  processorId   String
+  zoneNumber    Int
+  name          String
+  description   String?
+  currentSource String?
+  volume        Int            @default(50)
+  muted         Boolean        @default(false)
+  enabled       Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, zoneNumber])
+}
+
+model AudioScene {
+  id          String         @id @default(cuid())
+  processorId String
+  sceneNumber Int
+  name        String
+  description String?
+  settings    String         // JSON string containing zone settings
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, sceneNumber])
+}
+
+model AudioMessage {
+  id          String         @id @default(cuid())
+  processorId String
+  messageId   Int
+  name        String
+  filename    String?
+  duration    Int?           // seconds
+  description String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, messageId])
+}

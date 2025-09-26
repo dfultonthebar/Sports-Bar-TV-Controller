@@ -13,7 +13,8 @@ import BartenderInterface from '../components/BartenderInterface'
 import IRDeviceControl from '../components/IRDeviceControl'
 import BartenderRemoteControl from '../components/BartenderRemoteControl'
 import AudioZoneControl from '../components/AudioZoneControl'
-import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone, Volume2 } from 'lucide-react'
+import AudioProcessorManager from '../components/AudioProcessorManager'
+import { FileText, MessageCircle, Wrench, Grid, Key, Zap, GitBranch, HardDrive, Users, Radio, Smartphone, Volume2, Speaker } from 'lucide-react'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('bartender-remote')
@@ -68,6 +69,7 @@ export default function Home() {
                     // System Management
                     { id: 'ir-control', name: 'IR Device Setup', icon: Radio, section: 'management' },
                     { id: 'matrix-control', name: 'Matrix Control', icon: Grid, section: 'management' },
+                    { id: 'audio-processors', name: 'Audio Processors', icon: Speaker, section: 'management' },
                     
                     // Documentation & Support
                     { id: 'document-upload', name: 'Document Upload', icon: FileText, section: 'support' },
@@ -109,6 +111,7 @@ export default function Home() {
                 {activeTab === 'github-sync' && <GitHubSync />}
                 {activeTab === 'file-system' && <FileSystemManager />}
                 {activeTab === 'matrix-control' && <MatrixControl />}
+                {activeTab === 'audio-processors' && <AudioProcessorManager />}
                 {activeTab === 'system-enhancement' && <SystemEnhancement />}
               </div>
             </div>
