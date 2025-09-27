@@ -14,6 +14,7 @@ interface ApiKey {
 }
 
 const PROVIDERS = [
+  { value: 'abacus', label: 'Abacus AI', description: 'Abacus.AI enhanced models with advanced reasoning' },
   { value: 'grok', label: 'Grok (X.AI)', description: 'X.AI\'s Grok model' },
   { value: 'claude', label: 'Claude (Anthropic)', description: 'Anthropic\'s Claude models' },
   { value: 'openai', label: 'OpenAI', description: 'OpenAI GPT models' },
@@ -336,6 +337,7 @@ export default function ApiKeysManager() {
           How to get API keys:
         </h5>
         <ul className="text-sm text-blue-700 space-y-1">
+          <li>• <strong>Abacus AI:</strong> Visit <a href="https://abacus.ai/app/route-llm-apis" target="_blank" rel="noopener noreferrer" className="underline">abacus.ai/app/route-llm-apis</a> to get your RouteLLM API key</li>
           <li>• <strong>Grok (X.AI):</strong> Visit <a href="https://x.ai" target="_blank" rel="noopener noreferrer" className="underline">x.ai</a> to get your API key</li>
           <li>• <strong>Claude (Anthropic):</strong> Visit <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline">console.anthropic.com</a></li>
           <li>• <strong>OpenAI:</strong> Visit <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com/api-keys</a></li>

@@ -51,13 +51,173 @@ const CHANNELS: ChannelInfo[] = [
     deviceType: 'cable'
   },
   {
+    id: 'espnu',
+    name: 'ESPNU',
+    platforms: ['DirecTV Ch. 208', 'Spectrum Ch. 302', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '208',
+    deviceType: 'cable'
+  },
+  {
+    id: 'espn-news',
+    name: 'ESPN News',
+    platforms: ['DirecTV Ch. 207', 'Spectrum Ch. 303', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '207',
+    deviceType: 'cable'
+  },
+  {
     id: 'fox-sports',
-    name: 'Fox Sports',
+    name: 'Fox Sports 1 (FS1)',
     platforms: ['DirecTV Ch. 219', 'Spectrum Ch. 311', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.foxsports.com/live',
     channelNumber: '219',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'fox-sports2',
+    name: 'Fox Sports 2 (FS2)',
+    platforms: ['DirecTV Ch. 618', 'Spectrum Ch. 312', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.foxsports.com/live',
+    channelNumber: '618',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'big-ten-network',
+    name: 'Big Ten Network',
+    platforms: ['DirecTV Ch. 610', 'Spectrum Ch. 320', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.btn.com/watch/',
+    channelNumber: '610',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'bally-sports',
+    name: 'Bally Sports Regional',
+    platforms: ['DirecTV Ch. 671', 'Spectrum Regional', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.ballysports.com/',
+    channelNumber: '671',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'golf-channel',
+    name: 'Golf Channel',
+    platforms: ['DirecTV Ch. 218', 'Spectrum Ch. 400', 'Hulu Live TV', 'YouTube TV', 'Peacock Premium'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.golfchannel.com/watch',
+    channelNumber: '218',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'nfl-network',
+    name: 'NFL Network',
+    platforms: ['DirecTV Ch. 212', 'Spectrum Ch. 304', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.nfl.com/network/',
+    channelNumber: '212',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'nfl-redzone',
+    name: 'NFL RedZone',
+    platforms: ['DirecTV Ch. 213', 'Spectrum Premium', 'Hulu Live TV', 'YouTube TV'],
+    type: 'cable',
+    cost: 'premium',
+    url: 'https://www.nfl.com/redzone/',
+    channelNumber: '213',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'nba-tv',
+    name: 'NBA TV',
+    platforms: ['DirecTV Ch. 216', 'Spectrum Ch. 305', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.nba.com/watch/',
+    channelNumber: '216',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'mlb-network',
+    name: 'MLB Network',
+    platforms: ['DirecTV Ch. 213', 'Spectrum Ch. 306', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.mlb.com/network',
+    channelNumber: '213',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'nhl-network',
+    name: 'NHL Network',
+    platforms: ['DirecTV Ch. 215', 'Spectrum Ch. 307', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.nhl.com/tv',
+    channelNumber: '215',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'sec-network',
+    name: 'SEC Network',
+    platforms: ['DirecTV Ch. 611', 'Spectrum Ch. 321', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '611',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'acc-network',
+    name: 'ACC Network',
+    platforms: ['DirecTV Ch. 612', 'Spectrum Ch. 322', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '612',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'pac12-network',
+    name: 'Pac-12 Network',
+    platforms: ['DirecTV Ch. 613', 'Spectrum Ch. 323', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://pac-12.com/live',
+    channelNumber: '613',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'tennis-channel',
+    name: 'Tennis Channel',
+    platforms: ['DirecTV Ch. 217', 'Spectrum Ch. 401', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.tennischannel.com/watch',
+    channelNumber: '217',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'olympic-channel',
+    name: 'Olympic Channel',
+    platforms: ['DirecTV Ch. 388', 'Spectrum Ch. 402', 'FuboTV', 'Peacock Premium'],
+    type: 'cable',
+    cost: 'subscription',
+    url: 'https://www.olympicchannel.com/',
+    channelNumber: '388',
     deviceType: 'satellite'
   },
   {

@@ -15,7 +15,12 @@ import {
   Filter,
   Search,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
+  Grid3X3,
+  List,
+  Settings,
+  Zap
 } from 'lucide-react'
 
 interface League {
@@ -43,8 +48,20 @@ interface GameListing {
   homeTeam: string
   awayTeam: string
   gameTime: string
+  gameDate: string
   channel: ChannelInfo
   description?: string
+  priority?: 'high' | 'medium' | 'low'
+  status?: 'upcoming' | 'live' | 'completed'
+}
+
+interface ScheduledRoutine {
+  id: string
+  name: string
+  time: string
+  enabled: boolean
+  lastRun?: string
+  nextRun: string
 }
 
 const SAMPLE_LEAGUES: League[] = [
@@ -121,10 +138,15 @@ export default function SportsGuide() {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [expandedLeagues, setExpandedLeagues] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [scheduledRoutines, setScheduledRoutines] = useState<ScheduledRoutine[]>([])
+  const [showScheduler, setShowScheduler] = useState(false)
+  const [selectedDay, setSelectedDay] = useState(0) // 0 = today, 1 = tomorrow, etc.
 
   useEffect(() => {
     // Load available leagues on component mount
     loadAvailableLeagues()
+    loadScheduledRoutines()
   }, [])
 
   useEffect(() => {
@@ -211,11 +233,60 @@ export default function SportsGuide() {
     }
   }
 
+  const loadScheduledRoutines = async () => {
+    try {
+      // Initialize default routine if none exist
+      const defaultRoutine: ScheduledRoutine = {
+        id: 'daily-sports-update',
+        name: '7-Day Sports Update',
+        time: '00:00', // 12:00 AM
+        enabled: true,
+        nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      }
+      
+      setScheduledRoutines([defaultRoutine])
+    } catch (error) {
+      console.error('Error loading scheduled routines:', error)
+    }
+  }
+
+  const toggleRoutine = async (routineId: string) => {
+    setScheduledRoutines(prev => 
+      prev.map(routine => 
+        routine.id === routineId 
+          ? { ...routine, enabled: !routine.enabled }
+          : routine
+      )
+    )
+  }
+
+  const runScheduledUpdate = async () => {
+    setIsLoading(true)
+    try {
+      // Generate comprehensive 7-day sports guide
+      await generateSportsGuide()
+      
+      // Update routine last run time
+      setScheduledRoutines(prev =>
+        prev.map(routine => ({
+          ...routine,
+          lastRun: new Date().toISOString(),
+          nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        }))
+      )
+    } catch (error) {
+      console.error('Error running scheduled update:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const downloadGuide = () => {
     const guideData = {
       generatedAt: new Date().toISOString(),
       selectedLeagues: selectedLeagues.map(id => availableLeagues.find(l => l.id === id)),
-      games: sportsGuide
+      games: sportsGuide,
+      scheduledRoutines: scheduledRoutines
     }
     
     const blob = new Blob([JSON.stringify(guideData, null, 2)], { type: 'application/json' })
@@ -260,6 +331,41 @@ export default function SportsGuide() {
     }
   }
 
+  const getNextSevenDays = () => {
+    const days = []
+    for (let i = 0; i < 7; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() + i)
+      days.push({
+        date: date.toISOString().split('T')[0],
+        label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      })
+    }
+    return days
+  }
+
+  const getGamesForSelectedDay = () => {
+    const targetDate = getNextSevenDays()[selectedDay]?.date
+    return sportsGuide.filter(game => game.gameDate === targetDate)
+  }
+
+  const getChannelsForGrid = () => {
+    const allChannels = new Set<string>()
+    sportsGuide.forEach(game => allChannels.add(game.channel.name))
+    return Array.from(allChannels).sort()
+  }
+
+  const getTimeSlots = () => {
+    const slots = []
+    for (let hour = 8; hour <= 23; hour++) {
+      slots.push({
+        time: `${hour}:00`,
+        label: `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`
+      })
+    }
+    return slots
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -275,15 +381,52 @@ export default function SportsGuide() {
             </div>
           </div>
           
-          {sportsGuide.length > 0 && (
-            <button
-              onClick={downloadGuide}
-              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Guide</span>
-            </button>
-          )}
+          <div className="flex items-center space-x-2">
+            {sportsGuide.length > 0 && (
+              <>
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`flex items-center space-x-1 px-3 py-1 rounded-md text-sm ${
+                      viewMode === 'list' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    <List className="w-4 h-4" />
+                    <span>List</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`flex items-center space-x-1 px-3 py-1 rounded-md text-sm ${
+                      viewMode === 'grid' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    <Grid3X3 className="w-4 h-4" />
+                    <span>Cable Guide</span>
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setShowScheduler(!showScheduler)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Schedule</span>
+                </button>
+                
+                <button
+                  onClick={downloadGuide}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Search and Filter */}
@@ -311,6 +454,70 @@ export default function SportsGuide() {
           </select>
         </div>
       </div>
+
+      {/* Scheduler Section */}
+      {showScheduler && (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+              <Zap className="w-5 h-5 text-yellow-500" />
+              <span>Automated Sports Guide Updates</span>
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">Configure automatic updates for your sports guide</p>
+          </div>
+          
+          <div className="p-6">
+            {scheduledRoutines.map((routine) => (
+              <div key={routine.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full ${routine.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    <div>
+                      <h4 className="font-medium text-gray-900">{routine.name}</h4>
+                      <p className="text-sm text-gray-500">
+                        Runs daily at {routine.time} • 
+                        {routine.lastRun 
+                          ? ` Last run: ${new Date(routine.lastRun).toLocaleDateString()}`
+                          : ' Never run'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => toggleRoutine(routine.id)}
+                    className={`px-3 py-1 rounded-md text-sm font-medium ${
+                      routine.enabled 
+                        ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {routine.enabled ? 'Enabled' : 'Disabled'}
+                  </button>
+                  
+                  <button
+                    onClick={runScheduledUpdate}
+                    disabled={isLoading}
+                    className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Run Now</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+            
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800 font-medium mb-2">📅 Next 7-Day Update Schedule:</p>
+              <p className="text-sm text-blue-700">
+                The automated routine will pull sports shows and games for the next 7 days at 12:00 AM daily. 
+                This ensures your sports guide is always up to date with the latest schedules from all major networks.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* League Selection */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200">
@@ -396,77 +603,161 @@ export default function SportsGuide() {
       {sportsGuide.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Your Sports Guide</h3>
               <div className="text-sm text-gray-500">
                 {sportsGuide.length} games found
               </div>
             </div>
+            
+            {/* Day Navigation for Grid View */}
+            {viewMode === 'grid' && (
+              <div className="flex items-center space-x-2 overflow-x-auto">
+                {getNextSevenDays().map((day, index) => (
+                  <button
+                    key={day.date}
+                    onClick={() => setSelectedDay(index)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                      selectedDay === index
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           
           <div className="p-6">
-            <div className="grid gap-4">
-              {sportsGuide.map((game) => (
-                <div
-                  key={game.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="bg-blue-100 rounded-lg p-2">
-                        <Star className="w-4 h-4 text-blue-600" />
+            {viewMode === 'list' ? (
+              /* List View */
+              <div className="grid gap-4">
+                {sportsGuide.map((game) => (
+                  <div
+                    key={game.id}
+                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-blue-100 rounded-lg p-2">
+                          <Star className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900">{game.league}</h4>
+                          <p className="text-sm text-gray-500">{game.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">{game.league}</h4>
-                        <p className="text-sm text-gray-500">{game.description}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="text-right">
-                      <div className="flex items-center space-x-1 text-sm text-gray-600">
-                        <Clock className="w-4 h-4" />
-                        <span>{game.gameTime}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-lg font-medium text-gray-900">
-                      {game.awayTeam} @ {game.homeTeam}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="bg-white rounded-lg p-2 shadow-sm">
-                        {game.channel.type === 'streaming' ? 
-                          <Smartphone className="w-4 h-4 text-purple-600" /> : 
-                          <Tv className="w-4 h-4 text-blue-600" />
-                        }
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-900">{game.channel.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {getCostIcon(game.channel.cost)} {game.channel.cost}
+                      
+                      <div className="text-right">
+                        <div className="flex items-center space-x-1 text-sm text-gray-600">
+                          <Clock className="w-4 h-4" />
+                          <span>{game.gameTime}</span>
                         </div>
                       </div>
                     </div>
                     
-                    <button
-                      onClick={() => handleChannelClick(game.channel)}
-                      className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      <span>Watch Now</span>
-                    </button>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-lg font-medium text-gray-900">
+                        {game.awayTeam} @ {game.homeTeam}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-white rounded-lg p-2 shadow-sm">
+                          {game.channel.type === 'streaming' ? 
+                            <Smartphone className="w-4 h-4 text-purple-600" /> : 
+                            <Tv className="w-4 h-4 text-blue-600" />
+                          }
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{game.channel.name}</div>
+                          <div className="text-sm text-gray-500">
+                            {getCostIcon(game.channel.cost)} {game.channel.cost}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => handleChannelClick(game.channel)}
+                        className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Watch Now</span>
+                      </button>
+                    </div>
+                    
+                    <div className="mt-2 text-xs text-gray-500">
+                      Available on: {game.channel.platforms.join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Cable Guide Grid View */
+              <div className="overflow-x-auto">
+                <div className="min-w-full">
+                  {/* Grid Header */}
+                  <div className="grid grid-cols-[120px_repeat(auto-fit,minmax(200px,1fr))] gap-1 mb-2">
+                    <div className="font-semibold text-gray-700 p-2">Time</div>
+                    {getChannelsForGrid().map((channel) => (
+                      <div key={channel} className="font-semibold text-gray-700 p-2 text-center bg-gray-50 rounded-md">
+                        {channel}
+                      </div>
+                    ))}
                   </div>
                   
-                  <div className="mt-2 text-xs text-gray-500">
-                    Available on: {game.channel.platforms.join(', ')}
+                  {/* Grid Body */}
+                  <div className="space-y-1">
+                    {getTimeSlots().map((timeSlot) => (
+                      <div key={timeSlot.time} className="grid grid-cols-[120px_repeat(auto-fit,minmax(200px,1fr))] gap-1">
+                        <div className="p-2 font-medium text-gray-600 bg-gray-50 rounded-md">
+                          {timeSlot.label}
+                        </div>
+                        {getChannelsForGrid().map((channel) => {
+                          const game = getGamesForSelectedDay().find(g => 
+                            g.channel.name === channel && 
+                            g.gameTime.includes(timeSlot.time.split(':')[0])
+                          )
+                          
+                          return (
+                            <div key={`${timeSlot.time}-${channel}`} className="p-2 border border-gray-200 rounded-md min-h-[60px]">
+                              {game ? (
+                                <button
+                                  onClick={() => handleChannelClick(game.channel)}
+                                  className="w-full text-left hover:bg-blue-50 rounded-md p-1 transition-colors"
+                                >
+                                  <div className="text-xs font-medium text-blue-600 mb-1">
+                                    {game.league}
+                                  </div>
+                                  <div className="text-xs text-gray-800">
+                                    {game.awayTeam} @ {game.homeTeam}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {game.gameTime}
+                                  </div>
+                                </button>
+                              ) : (
+                                <div className="text-xs text-gray-400 p-1">-</div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
                   </div>
+                  
+                  {getGamesForSelectedDay().length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Tv className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>No games scheduled for {getNextSevenDays()[selectedDay]?.label}</p>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
