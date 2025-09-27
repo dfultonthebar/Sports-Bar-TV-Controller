@@ -16,7 +16,15 @@ import {
   WifiOff,
   Speaker,
   Play,
-  Pause
+  Pause,
+  Calendar,
+  Clock,
+  Star,
+  ExternalLink,
+  Filter,
+  Search,
+  Smartphone,
+  Monitor
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -79,6 +87,38 @@ interface RemoteCommand {
   color?: string
 }
 
+interface League {
+  id: string
+  name: string
+  description: string
+  category: 'professional' | 'college' | 'international'
+  season: string
+  logo?: string
+}
+
+interface ChannelInfo {
+  id: string
+  name: string
+  url?: string
+  platforms: string[]
+  type: 'cable' | 'streaming' | 'ota'
+  cost: 'free' | 'subscription' | 'premium'
+  logoUrl?: string
+  channelNumber?: string
+  appCommand?: string
+  deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
+}
+
+interface GameListing {
+  id: string
+  league: string
+  homeTeam: string
+  awayTeam: string
+  gameTime: string
+  channel: ChannelInfo
+  description?: string
+}
+
 const CHANNEL_COMMANDS: RemoteCommand[] = [
   { display: '1', command: '1' },
   { display: '2', command: '2' },
@@ -128,12 +168,21 @@ export default function BartenderRemoteControl() {
     { id: 'microphone', name: 'Microphone', isActive: true },
   ])
   const [audioCommandStatus, setAudioCommandStatus] = useState<string>('')
+  
+  // Sports Guide related state
+  const [showSportsGuide, setShowSportsGuide] = useState(false)
+  const [sportsGuide, setSportsGuide] = useState<GameListing[]>([])
+  const [availableLeagues, setAvailableLeagues] = useState<League[]>([])
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(['nfl', 'nba']) // Default popular leagues
+  const [isLoadingSportsGuide, setIsLoadingSportsGuide] = useState(false)
+  const [sportsGuideStatus, setSportsGuideStatus] = useState<string>('')
 
   useEffect(() => {
     loadInputs()
     loadIRDevices()
     checkConnectionStatus()
     loadAudioProcessors()
+    loadAvailableLeagues()
   }, [])
 
   useEffect(() => {
@@ -141,6 +190,13 @@ export default function BartenderRemoteControl() {
       loadAudioZones(selectedProcessor.id)
     }
   }, [selectedProcessor])
+
+  useEffect(() => {
+    // Auto-load sports guide when selected leagues change
+    if (selectedLeagues.length > 0 && showSportsGuide) {
+      generateSportsGuide()
+    }
+  }, [selectedLeagues, showSportsGuide])
 
   const loadInputs = async () => {
     try {
@@ -460,6 +516,199 @@ export default function BartenderRemoteControl() {
     }
   }
 
+  // Sports Guide Functions
+  const loadAvailableLeagues = async () => {
+    try {
+      const response = await fetch('/api/leagues')
+      const result = await response.json()
+      
+      if (result.success) {
+        setAvailableLeagues(result.data)
+      } else {
+        // Fallback to default leagues
+        const defaultLeagues = [
+          { id: 'nfl', name: 'NFL', description: 'National Football League', category: 'professional' as const, season: '2024-25' },
+          { id: 'nba', name: 'NBA', description: 'National Basketball Association', category: 'professional' as const, season: '2024-25' },
+          { id: 'mlb', name: 'MLB', description: 'Major League Baseball', category: 'professional' as const, season: '2024' },
+          { id: 'nhl', name: 'NHL', description: 'National Hockey League', category: 'professional' as const, season: '2024-25' },
+          { id: 'ncaa-fb', name: 'NCAA Football', description: 'College Football', category: 'college' as const, season: '2024' },
+          { id: 'ncaa-bb', name: 'NCAA Basketball', description: 'College Basketball', category: 'college' as const, season: '2024-25' }
+        ]
+        setAvailableLeagues(defaultLeagues)
+      }
+    } catch (error) {
+      console.error('Error loading leagues:', error)
+    }
+  }
+
+  const generateSportsGuide = async () => {
+    setIsLoadingSportsGuide(true)
+    setSportsGuideStatus('Loading games...')
+    
+    try {
+      const response = await fetch('/api/sports-guide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ selectedLeagues })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        setSportsGuide(result.data.games || [])
+        setSportsGuideStatus(`Found ${result.data.games?.length || 0} games`)
+      } else {
+        console.error('Failed to generate sports guide:', result.error)
+        setSportsGuide([])
+        setSportsGuideStatus('Failed to load games')
+      }
+    } catch (error) {
+      console.error('Error generating sports guide:', error)
+      setSportsGuide([])
+      setSportsGuideStatus('Error loading games')
+    } finally {
+      setIsLoadingSportsGuide(false)
+      // Clear status after 3 seconds
+      setTimeout(() => setSportsGuideStatus(''), 3000)
+    }
+  }
+
+  const handleGameClick = async (game: GameListing) => {
+    const channel = game.channel
+    
+    // Determine which device type this channel should use
+    let targetInput: MatrixInput | null = null
+    let targetDevice: IRDevice | null = null
+    
+    if (channel.type === 'cable' || channel.type === 'ota') {
+      // Find a cable box or satellite device
+      targetInput = inputs.find(input => 
+        input.inputType.toLowerCase().includes('cable') || 
+        input.inputType.toLowerCase().includes('satellite')
+      ) || null
+    } else if (channel.type === 'streaming') {
+      // Find a streaming device 
+      targetInput = inputs.find(input => 
+        input.inputType.toLowerCase().includes('streaming') ||
+        input.label.toLowerCase().includes('fire') ||
+        input.label.toLowerCase().includes('roku') ||
+        input.label.toLowerCase().includes('apple')
+      ) || null
+    }
+    
+    if (!targetInput) {
+      setSportsGuideStatus(`No suitable device found for ${channel.name}`)
+      setTimeout(() => setSportsGuideStatus(''), 3000)
+      return
+    }
+
+    // Find the corresponding IR device
+    targetDevice = irDevices.find(d => d.inputChannel === targetInput!.channelNumber) || null
+    
+    if (!targetDevice) {
+      setSportsGuideStatus(`Device not configured for ${targetInput.label}`)
+      setTimeout(() => setSportsGuideStatus(''), 3000)
+      return
+    }
+
+    // Switch to the appropriate input first
+    await selectInput(targetInput.channelNumber)
+    
+    // Wait a moment for input switch
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // Now send the appropriate command based on device type
+    if (channel.type === 'cable' || channel.type === 'ota') {
+      // Send channel change command
+      if (channel.channelNumber) {
+        setSportsGuideStatus(`Changing to channel ${channel.channelNumber} on ${targetDevice.name}`)
+        await sendChannelCommand(channel.channelNumber, targetDevice)
+      } else {
+        setSportsGuideStatus(`Channel number not available for ${channel.name}`)
+      }
+    } else if (channel.type === 'streaming') {
+      // Send app launch command
+      if (channel.appCommand) {
+        setSportsGuideStatus(`Opening ${channel.name} app on ${targetDevice.name}`)
+        await sendAppCommand(channel.appCommand, targetDevice)
+      } else {
+        setSportsGuideStatus(`App command not configured for ${channel.name}`)
+      }
+    }
+
+    // Log the sports guide action
+    try {
+      await fetch('/api/logs/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'sports_guide_action',
+          action: `Watch ${game.league}: ${game.awayTeam} @ ${game.homeTeam}`,
+          device: targetDevice.name,
+          details: {
+            game: {
+              league: game.league,
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              gameTime: game.gameTime
+            },
+            channel: {
+              name: channel.name,
+              type: channel.type,
+              channelNumber: channel.channelNumber,
+              appCommand: channel.appCommand
+            },
+            targetInput: targetInput.channelNumber,
+            targetDevice: targetDevice.name
+          },
+          success: true
+        })
+      })
+    } catch (error) {
+      console.error('Failed to log sports guide action:', error)
+    }
+
+    setTimeout(() => setSportsGuideStatus(''), 5000)
+  }
+
+  const sendChannelCommand = async (channelNumber: string, device: IRDevice) => {
+    // Send individual digits for channel change
+    const digits = channelNumber.split('')
+    
+    for (const digit of digits) {
+      await sendIRCommand(digit)
+      // Small delay between digits
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    
+    // Send enter/OK command to confirm
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await sendIRCommand('OK')
+  }
+
+  const sendAppCommand = async (appCommand: string, device: IRDevice) => {
+    // Send app launch command - this could be a sequence of commands
+    // For example, for Netflix: HOME -> Navigate to Netflix -> OK
+    const commands = appCommand.split(',').map(cmd => cmd.trim())
+    
+    for (const command of commands) {
+      await sendIRCommand(command)
+      // Delay between commands
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+  }
+
+  const getCostIcon = (cost: string) => {
+    switch (cost) {
+      case 'free': return '🆓'
+      case 'subscription': return '💳'
+      case 'premium': return '💎'
+      default: return '💳'
+    }
+  }
+
   return (
     <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       {/* Header */}
@@ -467,7 +716,7 @@ export default function BartenderRemoteControl() {
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
           🏈 Bartender Remote
         </h1>
-        <div className="flex items-center justify-center space-x-4 text-sm">
+        <div className="flex items-center justify-center space-x-2 text-sm flex-wrap">
           <div className={`px-3 py-1 rounded-full font-medium flex items-center space-x-1 ${
             connectionStatus === 'connected' 
               ? 'bg-green-500/20 text-green-400 border border-green-500/30'
@@ -486,8 +735,128 @@ export default function BartenderRemoteControl() {
               Audio: {audioCommandStatus}
             </div>
           )}
+          {sportsGuideStatus && (
+            <div className="px-3 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-full">
+              Sports: {sportsGuideStatus}
+            </div>
+          )}
+          <button
+            onClick={() => setShowSportsGuide(!showSportsGuide)}
+            className={`px-3 py-1 rounded-full font-medium flex items-center space-x-1 transition-all ${
+              showSportsGuide 
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30'
+            }`}
+          >
+            <Calendar className="w-3 h-3" />
+            <span>Sports Guide</span>
+          </button>
         </div>
       </div>
+
+      {/* Sports Guide Panel */}
+      {showSportsGuide && (
+        <div className="max-w-7xl mx-auto mb-6">
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white flex items-center">
+                <Calendar className="mr-2 w-5 h-5" />
+                Sports Guide
+              </h2>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={generateSportsGuide}
+                  disabled={isLoadingSportsGuide}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center space-x-2"
+                >
+                  {isLoadingSportsGuide ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>Loading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Star className="w-4 h-4" />
+                      <span>Load Games</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowSportsGuide(false)}
+                  className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Sports Guide Games List */}
+            {sportsGuide.length > 0 ? (
+              <div className="grid gap-3 max-h-96 overflow-y-auto">
+                {sportsGuide.map((game) => (
+                  <div
+                    key={game.id}
+                    className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                    onClick={() => handleGameClick(game)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-blue-500/20 rounded-lg p-2">
+                          <Star className="w-4 h-4 text-blue-400" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-white">{game.league}</h4>
+                          <p className="text-sm text-gray-300">{game.awayTeam} @ {game.homeTeam}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="flex items-center space-x-1 text-sm text-gray-300">
+                          <Clock className="w-4 h-4" />
+                          <span>{game.gameTime}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between bg-white/5 rounded-lg p-3 mt-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-white/10 rounded-lg p-2">
+                          {game.channel.type === 'streaming' ? 
+                            <Smartphone className="w-4 h-4 text-purple-400" /> : 
+                            <Tv className="w-4 h-4 text-blue-400" />
+                          }
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{game.channel.name}</div>
+                          <div className="text-sm text-gray-400">
+                            {getCostIcon(game.channel.cost)} {game.channel.cost}
+                            {game.channel.channelNumber && ` • Ch ${game.channel.channelNumber}`}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="text-sm text-green-400 font-medium">Click to Watch</div>
+                        <div className="text-xs text-gray-400">
+                          {game.channel.type === 'cable' ? 'Change Channel' : 'Open App'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="bg-gray-500/20 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                  <Calendar className="w-8 h-8 text-gray-400 mx-auto" />
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">No Games Loaded</h3>
+                <p className="text-gray-400">Click "Load Games" to see current sports listings</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
@@ -793,12 +1162,27 @@ export default function BartenderRemoteControl() {
               
               <button
                 onClick={() => {
+                  setShowSportsGuide(false)
+                  setSportsGuide([])
+                  setSportsGuideStatus('')
+                }}
+                className="w-full p-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded-lg text-sm hover:bg-green-500/30 transition-all flex items-center justify-center space-x-2"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Clear Sports</span>
+              </button>
+              
+              <button
+                onClick={() => {
                   setSelectedInput(null)
                   setSelectedDevice(null)
                   setCommandStatus('')
                   setSelectedProcessor(null)
                   setSelectedAudioZone(null)
                   setAudioCommandStatus('')
+                  setShowSportsGuide(false)
+                  setSportsGuide([])
+                  setSportsGuideStatus('')
                   loadInputs()
                   loadAudioProcessors()
                 }}

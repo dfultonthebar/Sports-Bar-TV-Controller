@@ -12,6 +12,9 @@ export interface ChannelInfo {
   type: 'cable' | 'streaming' | 'ota'
   cost: 'free' | 'subscription' | 'premium'
   logoUrl?: string
+  channelNumber?: string
+  appCommand?: string
+  deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
 }
 
 export interface GameListing {
@@ -33,7 +36,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 206', 'Spectrum Ch. 300', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.espn.com/watch/'
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '206',
+    deviceType: 'cable'
   },
   {
     id: 'espn2',
@@ -41,7 +46,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 209', 'Spectrum Ch. 301', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.espn.com/watch/'
+    url: 'https://www.espn.com/watch/',
+    channelNumber: '209',
+    deviceType: 'cable'
   },
   {
     id: 'fox-sports',
@@ -49,7 +56,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 219', 'Spectrum Ch. 311', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.foxsports.com/live'
+    url: 'https://www.foxsports.com/live',
+    channelNumber: '219',
+    deviceType: 'satellite'
   },
   {
     id: 'nbc-sports',
@@ -57,7 +66,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 220', 'Spectrum Ch. 312', 'Peacock Premium', 'Hulu Live TV'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.nbcsports.com/live'
+    url: 'https://www.nbcsports.com/live',
+    channelNumber: '220',
+    deviceType: 'satellite'
   },
   {
     id: 'cbs-sports',
@@ -65,7 +76,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 221', 'Spectrum Ch. 313', 'Paramount+', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.cbssports.com/live-tv/'
+    url: 'https://www.cbssports.com/live-tv/',
+    channelNumber: '221',
+    deviceType: 'satellite'
   },
   {
     id: 'tnt',
@@ -73,7 +86,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['DirecTV Ch. 245', 'Spectrum Ch. 32', 'Hulu Live TV', 'YouTube TV', 'Max'],
     type: 'cable',
     cost: 'subscription',
-    url: 'https://www.tntdrama.com/watchtnt'
+    url: 'https://www.tntdrama.com/watchtnt',
+    channelNumber: '245',
+    deviceType: 'cable'
   },
   {
     id: 'amazon-prime',
@@ -81,7 +96,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['Fire TV', 'Roku', 'Apple TV', 'Smart TVs', 'Mobile Apps'],
     type: 'streaming',
     cost: 'premium',
-    url: 'https://www.amazon.com/gp/video/storefront'
+    url: 'https://www.amazon.com/gp/video/storefront',
+    appCommand: 'HOME,DOWN,DOWN,RIGHT,RIGHT,OK',
+    deviceType: 'streaming'
   },
   {
     id: 'netflix',
@@ -89,7 +106,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
     type: 'streaming',
     cost: 'subscription',
-    url: 'https://www.netflix.com'
+    url: 'https://www.netflix.com',
+    appCommand: 'HOME,DOWN,RIGHT,RIGHT,OK',
+    deviceType: 'streaming'
   },
   {
     id: 'paramount-plus',
@@ -97,7 +116,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
     type: 'streaming',
     cost: 'subscription',
-    url: 'https://www.paramountplus.com'
+    url: 'https://www.paramountplus.com',
+    appCommand: 'HOME,DOWN,DOWN,DOWN,RIGHT,OK',
+    deviceType: 'streaming'
   },
   {
     id: 'peacock',
@@ -105,7 +126,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Apple TV', 'Mobile Apps'],
     type: 'streaming',
     cost: 'subscription',
-    url: 'https://www.peacocktv.com'
+    url: 'https://www.peacocktv.com',
+    appCommand: 'HOME,DOWN,RIGHT,DOWN,RIGHT,OK',
+    deviceType: 'streaming'
   },
   {
     id: 'apple-tv',
@@ -113,7 +136,9 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['Apple TV', 'Smart TVs', 'Fire TV', 'Roku', 'Mobile Apps'],
     type: 'streaming',
     cost: 'subscription',
-    url: 'https://tv.apple.com'
+    url: 'https://tv.apple.com',
+    appCommand: 'HOME,RIGHT,RIGHT,DOWN,OK',
+    deviceType: 'streaming'
   },
   {
     id: 'youtube-tv',
@@ -121,7 +146,36 @@ const CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku', 'Chromecast', 'Mobile Apps'],
     type: 'streaming',
     cost: 'subscription',
-    url: 'https://tv.youtube.com'
+    url: 'https://tv.youtube.com',
+    appCommand: 'HOME,DOWN,DOWN,RIGHT,OK',
+    deviceType: 'streaming'
+  },
+  {
+    id: 'local-cbs',
+    name: 'CBS (Local)',
+    platforms: ['Antenna', 'Cable Ch. 2', 'DirecTV Ch. 2'],
+    type: 'ota',
+    cost: 'free',
+    channelNumber: '2',
+    deviceType: 'cable'
+  },
+  {
+    id: 'local-nbc',
+    name: 'NBC (Local)',
+    platforms: ['Antenna', 'Cable Ch. 4', 'DirecTV Ch. 4'],
+    type: 'ota',
+    cost: 'free',
+    channelNumber: '4',
+    deviceType: 'cable'
+  },
+  {
+    id: 'local-fox',
+    name: 'FOX (Local)',
+    platforms: ['Antenna', 'Cable Ch. 5', 'DirecTV Ch. 5'],
+    type: 'ota',
+    cost: 'free',
+    channelNumber: '5',
+    deviceType: 'cable'
   }
 ]
 
