@@ -20,10 +20,12 @@ import {
   Volume1,
   VolumeIcon,
   Sliders,
-  Speaker
+  Speaker,
+  Calendar
 } from 'lucide-react'
 import Image from 'next/image'
 import CECPowerControl from '../../components/CECPowerControl'
+import SportsGuide from '../../components/SportsGuide'
 
 interface MatrixInput {
   id: string
@@ -136,7 +138,7 @@ export default function BartenderRemotePage() {
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   
   // New tab and audio states
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide'>('video')
   const [selectedAudioInput, setSelectedAudioInput] = useState<number | null>(null)
   const [audioZones, setAudioZones] = useState<AudioZone[]>([
     { id: '1', name: 'Main Bar', volume: 75, isMuted: false },
@@ -791,6 +793,14 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'power' && <CECPowerControl />}
+        
+        {activeTab === 'guide' && (
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <SportsGuide />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Tab Navigation */}
@@ -798,37 +808,49 @@ export default function BartenderRemotePage() {
         <div className="flex justify-around items-center py-2">
           <button
             onClick={() => setActiveTab('video')}
-            className={`flex flex-col items-center space-y-1 px-4 py-2 rounded-lg transition-all ${
+            className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg transition-all ${
               activeTab === 'video'
                 ? 'bg-blue-500/30 text-blue-300'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Tv className="w-6 h-6" />
+            <Tv className="w-5 h-5" />
             <span className="text-xs font-medium">Video</span>
           </button>
           
           <button
             onClick={() => setActiveTab('audio')}
-            className={`flex flex-col items-center space-y-1 px-4 py-2 rounded-lg transition-all ${
+            className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg transition-all ${
               activeTab === 'audio'
                 ? 'bg-purple-500/30 text-purple-300'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Volume2 className="w-6 h-6" />
+            <Volume2 className="w-5 h-5" />
             <span className="text-xs font-medium">Audio</span>
           </button>
           
           <button
+            onClick={() => setActiveTab('guide')}
+            className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg transition-all ${
+              activeTab === 'guide'
+                ? 'bg-green-500/30 text-green-300'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Calendar className="w-5 h-5" />
+            <span className="text-xs font-medium">Guide</span>
+          </button>
+          
+          <button
             onClick={() => setActiveTab('power')}
-            className={`flex flex-col items-center space-y-1 px-4 py-2 rounded-lg transition-all ${
+            className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg transition-all ${
               activeTab === 'power'
                 ? 'bg-red-500/30 text-red-300'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Power className="w-6 h-6" />
+            <Power className="w-5 h-5" />
             <span className="text-xs font-medium">Power</span>
           </button>
         </div>

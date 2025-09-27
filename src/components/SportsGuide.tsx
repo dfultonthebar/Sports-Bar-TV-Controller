@@ -369,28 +369,28 @@ export default function SportsGuide() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+      <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-xl p-6 border border-blue-500/30">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg p-3">
               <Tv className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Sports Viewing Guide</h2>
-              <p className="text-gray-600">Find where to watch your favorite sports</p>
+              <h2 className="text-2xl font-bold text-white">Sports Viewing Guide</h2>
+              <p className="text-blue-200">Find where to watch your favorite sports</p>
             </div>
           </div>
           
           <div className="flex items-center space-x-2">
             {sportsGuide.length > 0 && (
               <>
-                <div className="flex bg-gray-100 rounded-lg p-1">
+                <div className="flex bg-white/10 rounded-lg p-1">
                   <button
                     onClick={() => setViewMode('list')}
                     className={`flex items-center space-x-1 px-3 py-1 rounded-md text-sm ${
                       viewMode === 'list' 
-                        ? 'bg-white text-blue-600 shadow-sm' 
-                        : 'text-gray-600 hover:text-gray-800'
+                        ? 'bg-blue-500 text-white shadow-sm' 
+                        : 'text-blue-200 hover:text-white'
                     }`}
                   >
                     <List className="w-4 h-4" />
@@ -400,8 +400,8 @@ export default function SportsGuide() {
                     onClick={() => setViewMode('grid')}
                     className={`flex items-center space-x-1 px-3 py-1 rounded-md text-sm ${
                       viewMode === 'grid' 
-                        ? 'bg-white text-blue-600 shadow-sm' 
-                        : 'text-gray-600 hover:text-gray-800'
+                        ? 'bg-blue-500 text-white shadow-sm' 
+                        : 'text-blue-200 hover:text-white'
                     }`}
                   >
                     <Grid3X3 className="w-4 h-4" />
@@ -432,49 +432,49 @@ export default function SportsGuide() {
         {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-300 w-4 h-4" />
             <input
               type="text"
               placeholder="Search leagues..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 bg-white/10 border border-blue-500/30 text-white placeholder-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
             />
           </div>
           
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 bg-white/10 border border-blue-500/30 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
           >
-            <option value="all">All Categories</option>
-            <option value="professional">Professional</option>
-            <option value="college">College</option>
-            <option value="international">International</option>
+            <option value="all" className="bg-slate-800">All Categories</option>
+            <option value="professional" className="bg-slate-800">Professional</option>
+            <option value="college" className="bg-slate-800">College</option>
+            <option value="international" className="bg-slate-800">International</option>
           </select>
         </div>
       </div>
 
       {/* Scheduler Section */}
       {showScheduler && (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-              <Zap className="w-5 h-5 text-yellow-500" />
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+          <div className="p-6 border-b border-white/20">
+            <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+              <Zap className="w-5 h-5 text-yellow-400" />
               <span>Automated Sports Guide Updates</span>
             </h3>
-            <p className="text-sm text-gray-600 mt-1">Configure automatic updates for your sports guide</p>
+            <p className="text-sm text-blue-200 mt-1">Configure automatic updates for your sports guide</p>
           </div>
           
           <div className="p-6">
             {scheduledRoutines.map((routine) => (
-              <div key={routine.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+              <div key={routine.id} className="flex items-center justify-between p-4 border border-white/20 rounded-lg bg-white/5">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${routine.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    <div className={`w-3 h-3 rounded-full ${routine.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
                     <div>
-                      <h4 className="font-medium text-gray-900">{routine.name}</h4>
-                      <p className="text-sm text-gray-500">
+                      <h4 className="font-medium text-white">{routine.name}</h4>
+                      <p className="text-sm text-blue-200">
                         Runs daily at {routine.time} • 
                         {routine.lastRun 
                           ? ` Last run: ${new Date(routine.lastRun).toLocaleDateString()}`
@@ -508,9 +508,9 @@ export default function SportsGuide() {
               </div>
             ))}
             
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800 font-medium mb-2">📅 Next 7-Day Update Schedule:</p>
-              <p className="text-sm text-blue-700">
+            <div className="mt-4 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+              <p className="text-sm text-blue-200 font-medium mb-2">📅 Next 7-Day Update Schedule:</p>
+              <p className="text-sm text-blue-300">
                 The automated routine will pull sports shows and games for the next 7 days at 12:00 AM daily. 
                 This ensures your sports guide is always up to date with the latest schedules from all major networks.
               </p>
@@ -520,52 +520,52 @@ export default function SportsGuide() {
       )}
 
       {/* League Selection */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Select Sports Leagues</h3>
-          <p className="text-sm text-gray-600 mt-1">Choose the leagues you want to follow</p>
+      <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+        <div className="p-6 border-b border-white/20">
+          <h3 className="text-lg font-semibold text-white">Select Sports Leagues</h3>
+          <p className="text-sm text-blue-200 mt-1">Choose the leagues you want to follow</p>
         </div>
         
         <div className="p-6 space-y-4">
           {Object.entries(leaguesByCategory).map(([category, leagues]) => (
-            <div key={category} className="border border-gray-200 rounded-lg">
+            <div key={category} className="border border-white/20 rounded-lg bg-white/5">
               <button
                 onClick={() => toggleLeagueExpansion(category)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 rounded-lg transition-colors"
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-white/10 rounded-lg transition-colors"
               >
                 <div className="flex items-center space-x-3">
                   <span className="text-2xl">{getCategoryIcon(category)}</span>
                   <div>
-                    <h4 className="font-medium text-gray-900 capitalize">{category} Sports</h4>
-                    <p className="text-sm text-gray-500">{leagues.length} leagues available</p>
+                    <h4 className="font-medium text-white capitalize">{category} Sports</h4>
+                    <p className="text-sm text-blue-200">{leagues.length} leagues available</p>
                   </div>
                 </div>
                 {expandedLeagues.has(category) ? 
-                  <ChevronDown className="w-5 h-5 text-gray-400" /> : 
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronDown className="w-5 h-5 text-blue-300" /> : 
+                  <ChevronRight className="w-5 h-5 text-blue-300" />
                 }
               </button>
               
               {expandedLeagues.has(category) && (
-                <div className="border-t border-gray-200 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="border-t border-white/20 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {leagues.map((league) => (
                     <label
                       key={league.id}
                       className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
                         selectedLeagues.includes(league.id)
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
+                          ? 'border-blue-400 bg-blue-500/20'
+                          : 'border-white/20 hover:border-white/30'
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={selectedLeagues.includes(league.id)}
                         onChange={() => toggleLeague(league.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-4 h-4 text-blue-500 bg-white/20 border-white/30 rounded focus:ring-blue-400"
                       />
                       <div className="flex-1">
-                        <div className="font-medium text-gray-900">{league.name}</div>
-                        <div className="text-xs text-gray-500">{league.description}</div>
+                        <div className="font-medium text-white">{league.name}</div>
+                        <div className="text-xs text-blue-200">{league.description}</div>
                       </div>
                     </label>
                   ))}
@@ -601,11 +601,11 @@ export default function SportsGuide() {
 
       {/* Sports Guide Results */}
       {sportsGuide.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+          <div className="p-6 border-b border-white/20">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Your Sports Guide</h3>
-              <div className="text-sm text-gray-500">
+              <h3 className="text-lg font-semibold text-white">Your Sports Guide</h3>
+              <div className="text-sm text-blue-200">
                 {sportsGuide.length} games found
               </div>
             </div>
@@ -765,11 +765,11 @@ export default function SportsGuide() {
       {/* Empty State */}
       {selectedLeagues.length === 0 && (
         <div className="text-center py-12">
-          <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
-            <Calendar className="w-8 h-8 text-gray-400 mx-auto" />
+          <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+            <Calendar className="w-8 h-8 text-blue-300 mx-auto" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Leagues Selected</h3>
-          <p className="text-gray-500">Select one or more sports leagues to generate your viewing guide</p>
+          <h3 className="text-lg font-medium text-white mb-2">No Leagues Selected</h3>
+          <p className="text-blue-200">Select one or more sports leagues to generate your viewing guide</p>
         </div>
       )}
     </div>
