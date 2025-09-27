@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import DocumentUpload from '../components/DocumentUpload'
 import TroubleshootingChat from '../components/TroubleshootingChat'
 import EnhancedAIChat from '../components/EnhancedAIChat'
+import AIInsightsDashboard from '../components/AIInsightsDashboard'
 import SystemEnhancement from '../components/SystemEnhancement'
 import ApiKeysManager from '../components/ApiKeysManager'
 import GitHubSync from '../components/GitHubSync'
@@ -94,6 +95,7 @@ const tabCategories = {
     tabs: [
       { id: 'ai-chat', name: 'AI Assistant', icon: MessageCircle, description: 'Troubleshooting & guidance', color: 'text-purple-600' },
       { id: 'enhanced-ai', name: 'Advanced AI', icon: Zap, description: 'Enhanced analysis tools', color: 'text-purple-600' },
+      { id: 'ai-insights', name: 'Log Analysis', icon: BarChart3, description: 'AI-powered operation insights', color: 'text-purple-600' },
     ]
   },
   admin: {
@@ -304,6 +306,7 @@ export default function Home() {
               {activeTab === 'sports-guide' && <SportsGuide />}
               {activeTab === 'ai-chat' && <TroubleshootingChat />}
               {activeTab === 'enhanced-ai' && <EnhancedAIChat />}
+              {activeTab === 'ai-insights' && <AIInsightsDashboard />}
               {activeTab === 'api-keys' && <ApiKeysManager />}
               {activeTab === 'github-sync' && <GitHubSync />}
               {activeTab === 'file-system' && <FileSystemManager />}
