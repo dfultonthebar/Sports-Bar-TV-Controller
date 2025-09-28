@@ -167,12 +167,16 @@ export default function BartenderRemotePage() {
         const data = await response.json()
         if (data.configs?.length > 0) {
           const activeConfig = data.configs[0]
-          // Only show inputs with custom labels (not default "Input X" format)
-          const customInputs = activeConfig.inputs?.filter((input: MatrixInput) => 
-            input.label && !input.label.match(/^Input \d+$/) && input.isActive
+          // Use ALL active inputs from Wolf Pack matrix
+          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) => 
+            input.isActive
           ) || []
           
-          setInputs(customInputs)
+          // Only use matrix inputs if they exist, don't fallback to generic names
+          if (matrixInputs.length > 0) {
+            setInputs(matrixInputs)
+          }
+          
           setConnectionStatus(activeConfig.connectionStatus === 'connected' ? 'connected' : 'disconnected')
           setMatrixConfig(activeConfig)
           
@@ -180,6 +184,33 @@ export default function BartenderRemotePage() {
           if (activeConfig.outputs && tvLayout.zones.length > 0) {
             const updatedZones = tvLayout.zones.map(zone => {
               const matchingOutput = activeConfig.outputs.find((output: any) => 
+                output.channelNumber === zone.outputNumber
+              )
+              return {
+                ...zone,
+                label: matchingOutput?.label && !matchingOutput.label.match(/^Output \d+$/) 
+                  ? matchingOutput.label 
+                  : zone.label
+              }
+            })
+            setTVLayout({ ...tvLayout, zones: updatedZones })
+          }
+        } else if (data.config) {
+          // Fallback for direct config format
+          const directInputs = data.inputs?.filter((input: MatrixInput) => 
+            input.isActive
+          ) || []
+          
+          if (directInputs.length > 0) {
+            setInputs(directInputs)
+          }
+          
+          setConnectionStatus(data.config.connectionStatus === 'connected' ? 'connected' : 'disconnected')
+          setMatrixConfig(data.config)
+          
+          if (data.outputs && tvLayout.zones.length > 0) {
+            const updatedZones = tvLayout.zones.map(zone => {
+              const matchingOutput = data.outputs.find((output: any) => 
                 output.channelNumber === zone.outputNumber
               )
               return {
@@ -200,17 +231,8 @@ export default function BartenderRemotePage() {
 
   const loadInputs = async () => {
     // Matrix inputs are now loaded via fetchMatrixData()
-    // Keep fallback inputs for demo purposes if no matrix is configured
-    if (inputs.length === 0) {
-      setInputs([
-        { id: '1', channelNumber: 1, label: 'Cable Box 1', inputType: 'Cable', isActive: true },
-        { id: '2', channelNumber: 2, label: 'DirecTV 1', inputType: 'Satellite', isActive: true },
-        { id: '3', channelNumber: 3, label: 'Cable Box 2', inputType: 'Cable', isActive: true },
-        { id: '4', channelNumber: 4, label: 'DirecTV 2', inputType: 'Satellite', isActive: true },
-        { id: '5', channelNumber: 5, label: 'Streaming Box', inputType: 'Streaming', isActive: true },
-        { id: '6', channelNumber: 6, label: 'Gaming Console', inputType: 'Gaming', isActive: true },
-      ])
-    }
+    // This function is kept for compatibility but matrix data takes precedence
+    console.log('loadInputs called - matrix data should be loaded via fetchMatrixData')
   }
 
   const loadTVLayout = async () => {

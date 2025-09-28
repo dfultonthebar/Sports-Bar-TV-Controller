@@ -6,22 +6,33 @@ const prisma = new PrismaClient()
 export async function GET() {
   try {
     const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
+      where: { isActive: true },
+      include: {
+        inputs: {
+          orderBy: { channelNumber: 'asc' }
+        },
+        outputs: {
+          orderBy: { channelNumber: 'asc' }
+        }
+      }
     })
     
-    const inputs = await prisma.matrixInput.findMany({
-      orderBy: { channelNumber: 'asc' }
-    })
-    
-    const outputs = await prisma.matrixOutput.findMany({
-      orderBy: { channelNumber: 'asc' }
-    })
-
-    return NextResponse.json({
-      config,
-      inputs,
-      outputs
-    })
+    if (config) {
+      // Return format expected by Bartender Remote
+      return NextResponse.json({
+        configs: [config],
+        config,
+        inputs: config.inputs,
+        outputs: config.outputs
+      })
+    } else {
+      return NextResponse.json({
+        configs: [],
+        config: null,
+        inputs: [],
+        outputs: []
+      })
+    }
   } catch (error) {
     console.error('Error loading matrix configuration:', error)
     return NextResponse.json({ error: 'Failed to load configuration' }, { status: 500 })
