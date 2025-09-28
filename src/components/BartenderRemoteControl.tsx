@@ -178,7 +178,7 @@ export default function BartenderRemoteControl() {
   const [sportsGuideStatus, setSportsGuideStatus] = useState<string>('')
 
   useEffect(() => {
-    loadInputs()
+    loadMatrixConfiguration()
     loadIRDevices()
     checkConnectionStatus()
     loadAudioProcessors()
@@ -198,10 +198,31 @@ export default function BartenderRemoteControl() {
     }
   }, [selectedLeagues, showSportsGuide])
 
-  const loadInputs = async () => {
+  const loadMatrixConfiguration = async () => {
     try {
-      // In a real implementation, this would load from an API
-      // For now, we'll use mock data that represents typical sports bar setup
+      const response = await fetch('/api/matrix/config')
+      const data = await response.json()
+      
+      if (data.inputs && data.inputs.length > 0) {
+        // Filter for inputs with custom labels (not default "Input X" format) and that are active
+        const customInputs = data.inputs.filter((input: MatrixInput) => 
+          input.label && !input.label.match(/^Input \d+$/) && input.isActive
+        )
+        setInputs(customInputs)
+      } else {
+        // Fallback to default setup if no matrix config is available
+        setInputs([
+          { id: '1', channelNumber: 1, label: 'Cable Box 1', inputType: 'Cable', isActive: true },
+          { id: '2', channelNumber: 2, label: 'DirecTV 1', inputType: 'Satellite', isActive: true },
+          { id: '3', channelNumber: 3, label: 'Cable Box 2', inputType: 'Cable', isActive: true },
+          { id: '4', channelNumber: 4, label: 'DirecTV 2', inputType: 'Satellite', isActive: true },
+          { id: '5', channelNumber: 5, label: 'Streaming Box', inputType: 'Streaming', isActive: true },
+          { id: '6', channelNumber: 6, label: 'Gaming Console', inputType: 'Gaming', isActive: true },
+        ])
+      }
+    } catch (error) {
+      console.error('Error loading matrix configuration:', error)
+      // Use fallback data on error
       setInputs([
         { id: '1', channelNumber: 1, label: 'Cable Box 1', inputType: 'Cable', isActive: true },
         { id: '2', channelNumber: 2, label: 'DirecTV 1', inputType: 'Satellite', isActive: true },
@@ -209,11 +230,7 @@ export default function BartenderRemoteControl() {
         { id: '4', channelNumber: 4, label: 'DirecTV 2', inputType: 'Satellite', isActive: true },
         { id: '5', channelNumber: 5, label: 'Streaming Box', inputType: 'Streaming', isActive: true },
         { id: '6', channelNumber: 6, label: 'Gaming Console', inputType: 'Gaming', isActive: true },
-        { id: '7', channelNumber: 7, label: 'Cable Box 3', inputType: 'Cable', isActive: true },
-        { id: '8', channelNumber: 8, label: 'DirecTV 3', inputType: 'Satellite', isActive: true },
       ])
-    } catch (error) {
-      console.error('Error loading inputs:', error)
     }
   }
 
@@ -247,7 +264,8 @@ export default function BartenderRemoteControl() {
     const device = irDevices.find(d => d.inputChannel === inputNumber)
     setSelectedDevice(device || null)
     
-    setCommandStatus(`Selected Input ${inputNumber}`)
+    const input = inputs.find(i => i.channelNumber === inputNumber)
+    setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`}`)
 
     // Log the operation
     try {
@@ -880,8 +898,8 @@ export default function BartenderRemoteControl() {
                   <div className="flex items-center space-x-2">
                     <span className="text-lg">{getInputIcon(input.inputType)}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">Input {input.channelNumber}</div>
-                      <div className="text-xs opacity-80 truncate">{input.label}</div>
+                      <div className="font-medium truncate">{input.label}</div>
+                      <div className="text-xs opacity-80 truncate">Ch {input.channelNumber} • {input.inputType}</div>
                     </div>
                   </div>
                 </button>
@@ -897,7 +915,7 @@ export default function BartenderRemoteControl() {
               <>
                 <div className="text-center mb-4">
                   <h2 className="text-xl font-bold text-white mb-1">
-                    Input {selectedInput} Control
+                    {inputs.find(i => i.channelNumber === selectedInput)?.label || `Input ${selectedInput}`} Control
                   </h2>
                   {selectedDevice && (
                     <p className="text-blue-300 text-sm">
@@ -1183,7 +1201,7 @@ export default function BartenderRemoteControl() {
                   setShowSportsGuide(false)
                   setSportsGuide([])
                   setSportsGuideStatus('')
-                  loadInputs()
+                  loadMatrixConfiguration()
                   loadAudioProcessors()
                 }}
                 className="w-full p-2 bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg text-sm hover:bg-gray-500/30 transition-all flex items-center justify-center space-x-2"
