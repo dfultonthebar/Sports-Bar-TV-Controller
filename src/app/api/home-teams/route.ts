@@ -55,21 +55,21 @@ const TEAM_SUGGESTIONS: TeamSuggestion[] = [
   { name: 'Kansas Jayhawks', league: 'ncaa-bb', category: 'college', sport: 'basketball', location: 'Lawrence, KS', conference: 'Big 12' },
   { name: 'Villanova Wildcats', league: 'ncaa-bb', category: 'college', sport: 'basketball', location: 'Villanova, PA', conference: 'Big East' },
 
-  // High School Examples (Wisconsin/Pennsylvania focus)
+  // High School Examples (Wisconsin focus only)
   { name: 'Bay Port Pirates', league: 'high-school', category: 'high-school', sport: 'football', location: 'Green Bay, WI', conference: 'FRCC' },
   { name: 'De Pere Redbirds', league: 'high-school', category: 'high-school', sport: 'football', location: 'De Pere, WI', conference: 'FRCC' },
   { name: 'Appleton North Lightning', league: 'high-school', category: 'high-school', sport: 'football', location: 'Appleton, WI', conference: 'FVA' },
   { name: 'Kimberly Papermakers', league: 'high-school', category: 'high-school', sport: 'football', location: 'Kimberly, WI', conference: 'FVA' },
   { name: 'Homestead Highlanders', league: 'high-school', category: 'high-school', sport: 'football', location: 'Mequon, WI', conference: 'North Shore' },
-  
-  // Pennsylvania High Schools
-  { name: 'St. Joseph\'s Prep Hawks', league: 'high-school', category: 'high-school', sport: 'football', location: 'Philadelphia, PA', conference: 'PCL' },
-  { name: 'Pine-Richland Rams', league: 'high-school', category: 'high-school', sport: 'football', location: 'Gibsonia, PA', conference: 'WPIAL 5A' },
-  { name: 'Central Catholic Vikings', league: 'high-school', category: 'high-school', sport: 'football', location: 'Pittsburgh, PA', conference: 'WPIAL 6A' },
+  { name: 'Green Bay Southwest Trojans', league: 'high-school', category: 'high-school', sport: 'football', location: 'Green Bay, WI', conference: 'FRCC' },
+  { name: 'Ashwaubenon Jaguars', league: 'high-school', category: 'high-school', sport: 'football', location: 'Ashwaubenon, WI', conference: 'FRCC' },
+  { name: 'Pulaski Red Raiders', league: 'high-school', category: 'high-school', sport: 'football', location: 'Pulaski, WI', conference: 'FRCC' },
 
-  // High School Basketball
+  // High School Basketball (Wisconsin)
   { name: 'Monona Grove Silver Eagles', league: 'high-school', category: 'high-school', sport: 'basketball', location: 'Monona, WI', conference: 'Badger Conference' },
   { name: 'Sun Prairie Cardinals', league: 'high-school', category: 'high-school', sport: 'basketball', location: 'Sun Prairie, WI', conference: 'Big Eight Conference' },
+  { name: 'Madison Memorial Spartans', league: 'high-school', category: 'high-school', sport: 'basketball', location: 'Madison, WI', conference: 'Big Eight Conference' },
+  { name: 'Middleton Cardinals', league: 'high-school', category: 'high-school', sport: 'basketball', location: 'Middleton, WI', conference: 'Big Eight Conference' },
 
   // Soccer/International
   { name: 'Manchester City', league: 'premier', category: 'international', sport: 'soccer', location: 'Manchester, England', conference: 'Premier League' },
