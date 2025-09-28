@@ -26,6 +26,8 @@ import {
   Satellite,
   Router
 } from 'lucide-react'
+import ProgrammingScheduler from '../../components/ProgrammingScheduler'
+import EnhancedChannelGrid from '../../components/EnhancedChannelGrid'
 
 interface League {
   id: string
@@ -203,6 +205,7 @@ export default function SportsGuide() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [scheduledRoutines, setScheduledRoutines] = useState<ScheduledRoutine[]>([])
   const [showScheduler, setShowScheduler] = useState(false)
+  const [activeTab, setActiveTab] = useState<'sports-guide' | 'tv-programming' | 'scheduler'>('sports-guide')
   const [selectedDay, setSelectedDay] = useState(0) // 0 = today, 1 = tomorrow, etc.
   
   // New state for input and provider management
@@ -732,9 +735,63 @@ export default function SportsGuide() {
             <option value="international" className="bg-slate-800">International</option>
           </select>
         </div>
+        
+        {/* Tab Navigation */}
+        <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+          <div className="flex space-x-1 p-1">
+            <button
+              onClick={() => setActiveTab('sports-guide')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'sports-guide'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Sports Guide</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('tv-programming')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'tv-programming'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Tv className="w-4 h-4" />
+              <span>TV Programming</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('scheduler')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'scheduler'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-blue-200 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>Scheduler</span>
+            </button>
+          </div>
+        </div>
       </div>
-
-      {/* Scheduler Section */}
+      
+      {/* Tab Content */}
+      {activeTab === 'tv-programming' && (
+        <div className="lg:col-span-3">
+          <EnhancedChannelGrid />
+        </div>
+      )}
+      
+      {activeTab === 'scheduler' && (
+        <div className="lg:col-span-3">
+          <ProgrammingScheduler />
+        </div>
+      )}
+      
+      {activeTab === 'sports-guide' && (
+        <>
+          {/* Scheduler Section */}
       {showScheduler && (
         <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
           <div className="p-6 border-b border-white/20">
@@ -1056,6 +1113,8 @@ export default function SportsGuide() {
             <p className="text-blue-200">Select one or more sports leagues to generate your viewing guide</p>
           </div>
         )}
+        </>
+      )}
       </div>
     </div>
   )
