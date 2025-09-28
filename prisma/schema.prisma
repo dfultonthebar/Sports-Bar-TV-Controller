@@ -236,3 +236,40 @@ model CECConfiguration {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model SportsGuideConfiguration {
+  id          String   @id @default(cuid())
+  zipCode     String?  // For local programming guide
+  city        String?
+  state       String?
+  timezone    String   @default("America/New_York")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TVProvider {
+  id          String   @id @default(cuid())
+  name        String   // "Spectrum Business & Sports Package"
+  type        String   // "cable", "satellite", "streaming", "iptv"
+  channels    String   // JSON array of channel names
+  packages    String   // JSON array of package names
+  inputId     String?  // Matrix input this provider is assigned to
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HomeTeam {
+  id          String   @id @default(cuid())
+  teamName    String   // "Green Bay Packers", "Wisconsin Badgers", etc.
+  league      String   // "nfl", "ncaa-fb", "high-school", etc.
+  category    String   // "professional", "college", "high-school"
+  sport       String   // "football", "basketball", "baseball", etc.
+  location    String?  // "Green Bay, WI", "Madison, WI"
+  conference  String?  // "NFC North", "Big Ten", etc.
+  isPrimary   Boolean  @default(false) // Main favorite team
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
