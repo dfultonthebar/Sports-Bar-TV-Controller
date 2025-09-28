@@ -8,47 +8,56 @@ async function debugRemoteData() {
     console.log('🔍 Debugging Bartender Remote Data Loading')
     console.log('=' .repeat(50))
     
-    // Check Wolf Pack inputs
-    console.log('\n📡 Wolf Pack Inputs in Database:')
-    const wolfPackInputs = await prisma.wolfPackInput.findMany({
+    // Check Matrix inputs
+    console.log('\n📡 Matrix Inputs in Database:')
+    const matrixInputs = await prisma.matrixInput.findMany({
       orderBy: { channelNumber: 'asc' }
     })
     
-    if (wolfPackInputs.length === 0) {
-      console.log('❌ No Wolf Pack inputs found in database!')
+    if (matrixInputs.length === 0) {
+      console.log('❌ No Matrix inputs found in database!')
       console.log('💡 Run: node scripts/setup-wolfpack-inputs.js')
     } else {
-      wolfPackInputs.forEach(input => {
+      matrixInputs.forEach(input => {
         console.log(`   Channel ${input.channelNumber}: "${input.label}" (${input.inputType}) - ${input.isActive ? '✅' : '❌'}`)
       })
     }
     
-    // Check IR devices
-    console.log('\n📺 IR Devices in Database:')
-    const irDevices = await prisma.irDevice.findMany({
-      orderBy: { inputChannel: 'asc' }
-    })
-    
-    if (irDevices.length === 0) {
-      console.log('❌ No IR devices found in database!')
-    } else {
-      irDevices.forEach(device => {
-        console.log(`   Channel ${device.inputChannel}: "${device.name}" (${device.brand}) - ${device.controlMethod} - ${device.isActive ? '✅' : '❌'}`)
-      })
+    // Check IR devices from JSON file
+    console.log('\n📺 IR Devices in JSON File:')
+    let irDevices = []
+    try {
+      const fs = require('fs')
+      const path = require('path')
+      const irDevicesPath = path.join(__dirname, 'data', 'ir-devices.json')
+      const irDevicesData = fs.readFileSync(irDevicesPath, 'utf8')
+      const parsedData = JSON.parse(irDevicesData)
+      irDevices = parsedData.devices || []
+      
+      if (irDevices.length === 0) {
+        console.log('❌ No IR devices found in JSON file!')
+      } else {
+        irDevices.forEach(device => {
+          console.log(`   Channel ${device.inputChannel}: "${device.name}" (${device.brand}) - ${device.controlMethod} - ${device.isActive ? '✅' : '❌'}`)
+        })
+      }
+    } catch (err) {
+      console.log('❌ Failed to load IR devices from JSON file!')
+      console.log('Error:', err.message)
     }
     
     // Check mapping alignment
-    console.log('\n🔗 Wolf Pack to IR Device Mapping:')
+    console.log('\n🔗 Matrix Input to IR Device Mapping:')
     for (let channel = 1; channel <= 6; channel++) {
-      const wolfPackInput = wolfPackInputs.find(i => i.channelNumber === channel)
+      const matrixInput = matrixInputs.find(i => i.channelNumber === channel)
       const irDevice = irDevices.find(d => d.inputChannel === channel)
       
-      if (wolfPackInput && irDevice) {
-        console.log(`   Channel ${channel}: "${wolfPackInput.label}" ↔ "${irDevice.name}" ✅`)
-      } else if (wolfPackInput && !irDevice) {
-        console.log(`   Channel ${channel}: "${wolfPackInput.label}" ↔ NO IR DEVICE ❌`)
-      } else if (!wolfPackInput && irDevice) {
-        console.log(`   Channel ${channel}: NO WOLF PACK INPUT ↔ "${irDevice.name}" ❌`)
+      if (matrixInput && irDevice) {
+        console.log(`   Channel ${channel}: "${matrixInput.label}" ↔ "${irDevice.name}" ✅`)
+      } else if (matrixInput && !irDevice) {
+        console.log(`   Channel ${channel}: "${matrixInput.label}" ↔ NO IR DEVICE ❌`)
+      } else if (!matrixInput && irDevice) {
+        console.log(`   Channel ${channel}: NO MATRIX INPUT ↔ "${irDevice.name}" ❌`)
       } else {
         console.log(`   Channel ${channel}: NO DATA ❌`)
       }
@@ -56,7 +65,7 @@ async function debugRemoteData() {
     
     // Simulate API response
     console.log('\n🌐 Matrix Config API Response Simulation:')
-    const matrixConfig = await prisma.wolfPackConfiguration.findFirst({
+    const matrixConfig = await prisma.matrixConfiguration.findFirst({
       include: {
         inputs: {
           where: { isActive: true },
