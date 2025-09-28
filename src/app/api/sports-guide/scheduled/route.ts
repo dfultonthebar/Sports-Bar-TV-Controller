@@ -1,23 +1,16 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { liveSportsService } from '../../../../lib/sports-apis/live-sports-service'
 
 export const dynamic = 'force-dynamic'
-
-const prisma = new PrismaClient()
 
 // This endpoint handles the scheduled 7-day sports guide updates with timezone support
 export async function POST(request: NextRequest) {
   try {
-    // Get timezone configuration for proper date/time handling
-    const config = await prisma.sportsGuideConfiguration.findFirst({
-      where: { isActive: true }
-    })
+    const timezone = 'America/New_York'
     
-    const timezone = config?.timezone || 'America/New_York'
-    
-    // Get current time in configured timezone - FIXED
+    // Get current time in configured timezone
     const now = new Date()
     const localNow = new Date(now.toLocaleString("en-US", { timeZone: timezone }))
     const sevenDaysFromNow = new Date(localNow.getTime() + (7 * 24 * 60 * 60 * 1000))
@@ -28,35 +21,25 @@ export async function POST(request: NextRequest) {
       'premier', 'champions', 'la-liga', 'serie-a', 'bundesliga'
     ]
 
-    // Call the main sports guide generation with all leagues
-    const sportsGuideResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sports-guide`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        selectedLeagues: allLeagues,
-        scheduledUpdate: true,
-        timezone: timezone,
-        dateRange: {
-          start: localNow.toISOString().split('T')[0],
-          end: sevenDaysFromNow.toISOString().split('T')[0]
-        }
-      })
-    })
+    console.log(`🏆 Starting scheduled sports guide update for ${allLeagues.length} leagues`)
+    console.log(`📅 Date range: ${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`)
 
-    if (!sportsGuideResponse.ok) {
-      throw new Error('Failed to generate sports guide')
-    }
-
-    const sportsData = await sportsGuideResponse.json()
+    // Call the live sports service directly
+    const liveData = await liveSportsService.getLiveGames(
+      allLeagues,
+      localNow.toISOString().split('T')[0],
+      sevenDaysFromNow.toISOString().split('T')[0]
+    )
 
     // Log the successful update with timezone-adjusted time
     console.log(`🏆 Scheduled Sports Guide Update Completed:`, {
       timestamp: localNow.toISOString(),
       timezone: timezone,
-      totalGames: sportsData.data?.totalGames || 0,
-      channels: sportsData.data?.channels?.length || 0,
+      totalGames: liveData.totalGames,
+      liveGames: liveData.liveGames,
+      upcomingGames: liveData.upcomingGames,
+      completedGames: liveData.completedGames,
+      dataSources: liveData.sources,
       dateRange: `${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`
     })
 
@@ -66,14 +49,23 @@ export async function POST(request: NextRequest) {
       data: {
         updateTime: localNow.toISOString(),
         timezone: timezone,
-        gamesFound: sportsData.data?.totalGames || 0,
-        channelsCovered: sportsData.data?.channels?.length || 0,
+        totalGames: liveData.totalGames,
+        liveGames: liveData.liveGames,
+        upcomingGames: liveData.upcomingGames,
+        completedGames: liveData.completedGames,
+        dataSources: liveData.sources,
+        channelsCovered: Array.from(new Set(liveData.games.map(g => g.channel.name))).length,
         dateRange: {
           start: localNow.toISOString().split('T')[0],
           end: sevenDaysFromNow.toISOString().split('T')[0]
         },
         leagues: allLeagues,
-        nextUpdate: new Date(localNow.getTime() + (24 * 60 * 60 * 1000)).toISOString()
+        nextUpdate: new Date(localNow.getTime() + (24 * 60 * 60 * 1000)).toISOString(),
+        gamesPerLeague: allLeagues.reduce((acc, league) => {
+          const leagueGames = liveData.games.filter(g => g.league.toLowerCase().includes(league.replace('-', ' ')))
+          acc[league] = leagueGames.length
+          return acc
+        }, {} as Record<string, number>)
       }
     })
   } catch (error) {
@@ -82,6 +74,7 @@ export async function POST(request: NextRequest) {
       { 
         success: false, 
         error: 'Failed to complete scheduled update',
+        details: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString()
       },
       { status: 500 }
@@ -98,27 +91,37 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      info: 'Scheduled Sports Guide Update Endpoint',
+      info: 'Scheduled Live Sports Guide Update Endpoint',
+      version: '2.0.0',
       schedule: {
         frequency: 'Daily at 12:00 AM',
         nextRun: midnight.toISOString(),
         coverage: '7 days from update time',
+        timezone: 'America/New_York',
         leagues: [
-          'NFL', 'NBA', 'MLB', 'NHL', 'NCAA Football', 'NCAA Basketball',
-          'MLS', 'Premier League', 'Champions League', 'La Liga', 'Serie A', 'Bundesliga'
+          'NFL (ESPN API)', 'NBA (ESPN API)', 'MLB (ESPN API)', 'NHL (ESPN API)', 
+          'NCAA Football (ESPN API)', 'NCAA Basketball (ESPN API)', 'MLS (ESPN API)',
+          'Premier League (TheSportsDB)', 'Champions League (TheSportsDB)', 
+          'La Liga (TheSportsDB)', 'Serie A (TheSportsDB)', 'Bundesliga (TheSportsDB)'
         ],
-        channels: [
-          'ESPN', 'ESPN2', 'ESPNU', 'ESPN News', 'Fox Sports 1', 'Fox Sports 2',
-          'Big Ten Network', 'Bally Sports', 'Golf Channel', 'NFL Network', 'NFL RedZone',
-          'NBA TV', 'MLB Network', 'NHL Network', 'SEC Network', 'ACC Network',
-          'Tennis Channel', 'NBC Sports', 'CBS Sports', 'TNT', 'Amazon Prime Video',
-          'Netflix', 'Paramount+', 'Peacock Premium', 'Apple TV+', 'YouTube TV'
+        dataSources: [
+          'ESPN API (Free) - No API key required',
+          'TheSportsDB API (Free) - No API key required'
+        ],
+        features: [
+          'Live game data from free APIs',
+          'Real-time scores and game status',
+          'Automatic fallback to mock data if APIs unavailable',
+          'Channel and broadcast information',
+          'Comprehensive 7-day coverage'
         ]
       },
       usage: {
-        'POST /api/sports-guide/scheduled': 'Run the scheduled update manually',
-        'GET /api/sports-guide/scheduled': 'Get schedule information'
-      }
+        'POST /api/sports-guide/scheduled': 'Run the scheduled live data update manually',
+        'GET /api/sports-guide/scheduled': 'Get schedule information and status'
+      },
+      lastUpdate: null, // Would be populated from actual logs/database
+      apiStatus: 'Ready for live data integration'
     })
   } catch (error) {
     console.error('Error getting scheduled update info:', error)

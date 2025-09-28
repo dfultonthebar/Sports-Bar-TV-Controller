@@ -1,188 +1,237 @@
 
-
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { espnAPI } from '../../../../lib/sports-apis/espn-api'
+import { sportsDBAPI } from '../../../../lib/sports-apis/thesportsdb-api'
 
 export const dynamic = 'force-dynamic'
 
-const prisma = new PrismaClient()
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Get all configured providers with their input assignments
-    const providers = await prisma.tVProvider.findMany({
-      where: { isActive: true },
-      include: {
-        providerInputs: {
-          include: {
-            input: true
-          }
-        }
+    const today = new Date().toISOString().split('T')[0]
+    const testResults = {
+      timestamp: new Date().toISOString(),
+      testDate: today,
+      providers: {} as any,
+      summary: {
+        totalProviders: 2,
+        workingProviders: 0,
+        failedProviders: 0,
+        totalGamesFound: 0
       }
-    })
+    }
 
-    // Get matrix inputs for compatibility check
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
+    console.log('🧪 Testing live sports API providers...')
+
+    // Test ESPN API
+    console.log('🔄 Testing ESPN API...')
+    try {
+      const espnTestStart = Date.now()
+      const nflGames = await espnAPI.getNFLGames(today)
+      const nbaGames = await espnAPI.getNBAGames(today)
+      const mlbGames = await espnAPI.getMLBGames(today)
+      const espnTestEnd = Date.now()
+      
+      const espnTotalGames = nflGames.length + nbaGames.length + mlbGames.length
+      
+      testResults.providers.espn = {
+        status: 'success',
+        responseTime: espnTestEnd - espnTestStart,
+        leagues: {
+          nfl: { games: nflGames.length, status: 'ok' },
+          nba: { games: nbaGames.length, status: 'ok' },
+          mlb: { games: mlbGames.length, status: 'ok' }
+        },
+        totalGames: espnTotalGames,
+        baseUrl: 'https://site.api.espn.com/apis/site/v2/sports',
+        error: null
       }
-    })
-
-    const matrixInputs = matrixConfig?.inputs || []
-
-    // Test provider compatibility
-    const providerCompatibility = providers.map(provider => {
-      const compatibleInputs = matrixInputs.filter(input => {
-        const deviceType = input.deviceType?.toLowerCase() || ''
-        const inputType = input.inputType?.toLowerCase() || ''
-        const label = input.label?.toLowerCase() || ''
-        
-        // Enhanced compatibility logic for testing
-        let isCompatible = false
-        
-        if (provider.type === 'satellite') {
-          isCompatible = deviceType.includes('direct') || deviceType.includes('dish') || 
-                        deviceType.includes('satellite') || inputType.includes('satellite') ||
-                        label.includes('direct') || label.includes('dish') || label.includes('satellite')
-        } else if (provider.type === 'cable') {
-          isCompatible = deviceType.includes('cable') || inputType.includes('cable') ||
-                        label.includes('cable') || label.includes('spectrum') || label.includes('comcast')
-        } else if (provider.type === 'streaming') {
-          isCompatible = deviceType.includes('streaming') || deviceType.includes('roku') ||
-                        deviceType.includes('fire') || deviceType.includes('apple') ||
-                        inputType.includes('streaming') || label.includes('streaming')
-        } else {
-          // Fallback - HDMI and Other are compatible with everything
-          isCompatible = inputType.includes('hdmi') || deviceType.includes('hdmi') ||
-                        deviceType === 'Other' || inputType === 'Other'
-        }
-        
-        return isCompatible
-      })
-
-      return {
-        id: provider.id,
-        name: provider.name,
-        type: provider.type,
-        channels: JSON.parse(provider.channels),
-        packages: JSON.parse(provider.packages),
-        assignedInputs: provider.providerInputs.map(pi => ({
-          id: pi.input.id,
-          label: pi.input.label,
-          channelNumber: pi.input.channelNumber,
-          deviceType: pi.input.deviceType,
-          inputType: pi.input.inputType
-        })),
-        compatibleInputs: compatibleInputs.map(input => ({
-          id: input.id,
-          label: input.label,
-          channelNumber: input.channelNumber,
-          deviceType: input.deviceType,
-          inputType: input.inputType
-        })),
-        isSelectable: compatibleInputs.length > 0 || provider.providerInputs.length > 0
+      
+      testResults.summary.workingProviders++
+      testResults.summary.totalGamesFound += espnTotalGames
+      
+      console.log(`✅ ESPN API: ${espnTotalGames} games found in ${espnTestEnd - espnTestStart}ms`)
+      
+    } catch (error) {
+      console.error('❌ ESPN API test failed:', error)
+      testResults.providers.espn = {
+        status: 'failed',
+        responseTime: null,
+        leagues: {},
+        totalGames: 0,
+        baseUrl: 'https://site.api.espn.com/apis/site/v2/sports',
+        error: error instanceof Error ? error.message : 'Unknown error'
       }
-    })
+      testResults.summary.failedProviders++
+    }
 
+    // Test TheSportsDB API
+    console.log('🔄 Testing TheSportsDB API...')
+    try {
+      const sportsDbTestStart = Date.now()
+      const premierLeagueEvents = await sportsDBAPI.getPremierLeagueEvents(today)
+      const championsLeagueEvents = await sportsDBAPI.getChampionsLeagueEvents(today)
+      const laLigaEvents = await sportsDBAPI.getLaLigaEvents(today)
+      const sportsDbTestEnd = Date.now()
+      
+      const sportsDbTotalEvents = premierLeagueEvents.length + championsLeagueEvents.length + laLigaEvents.length
+      
+      testResults.providers.thesportsdb = {
+        status: 'success',
+        responseTime: sportsDbTestEnd - sportsDbTestStart,
+        leagues: {
+          premier: { games: premierLeagueEvents.length, status: 'ok' },
+          champions: { games: championsLeagueEvents.length, status: 'ok' },
+          laliga: { games: laLigaEvents.length, status: 'ok' }
+        },
+        totalGames: sportsDbTotalEvents,
+        baseUrl: 'https://www.thesportsdb.com/api/v1/json/3',
+        error: null
+      }
+      
+      testResults.summary.workingProviders++
+      testResults.summary.totalGamesFound += sportsDbTotalEvents
+      
+      console.log(`✅ TheSportsDB API: ${sportsDbTotalEvents} events found in ${sportsDbTestEnd - sportsDbTestStart}ms`)
+      
+    } catch (error) {
+      console.error('❌ TheSportsDB API test failed:', error)
+      testResults.providers.thesportsdb = {
+        status: 'failed',
+        responseTime: null,
+        leagues: {},
+        totalGames: 0,
+        baseUrl: 'https://www.thesportsdb.com/api/v1/json/3',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+      testResults.summary.failedProviders++
+    }
+
+    const overallStatus = testResults.summary.workingProviders > 0 ? 'operational' : 'degraded'
+    
+    console.log(`🏁 API Test Complete: ${testResults.summary.workingProviders}/${testResults.summary.totalProviders} providers working`)
+    
     return NextResponse.json({
       success: true,
-      data: {
-        totalProviders: providers.length,
-        selectableProviders: providerCompatibility.filter(p => p.isSelectable).length,
-        matrixInputs: matrixInputs.length,
-        providers: providerCompatibility
-      },
-      message: 'Provider compatibility test completed'
+      status: overallStatus,
+      message: `API connectivity test completed. ${testResults.summary.workingProviders} of ${testResults.summary.totalProviders} providers operational.`,
+      ...testResults
     })
+    
   } catch (error) {
-    console.error('Error testing providers:', error)
+    console.error('❌ Error testing sports API providers:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to test providers' },
+      { 
+        success: false, 
+        status: 'error',
+        error: 'Failed to test API providers',
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     )
   }
 }
 
-// Test endpoint to verify DirectTV specifically
 export async function POST(request: NextRequest) {
   try {
-    const { providerType } = await request.json()
+    const body = await request.json()
+    const { leagues = ['nfl', 'nba', 'premier'], date } = body
     
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
-    })
-
-    const matrixInputs = matrixConfig?.inputs || []
+    const testDate = date || new Date().toISOString().split('T')[0]
     
-    // Test specific provider type compatibility
-    const testResults = matrixInputs.map(input => {
-      const deviceType = input.deviceType?.toLowerCase() || ''
-      const inputType = input.inputType?.toLowerCase() || ''
-      const label = input.label?.toLowerCase() || ''
-      
-      let compatibility = {
-        exact: false,
-        partial: false,
-        label: false,
-        reason: []
-      }
-      
-      if (providerType === 'satellite') {
-        compatibility.exact = deviceType === 'directv' || deviceType === 'directv receiver' || 
-                              deviceType === 'satellite' || inputType === 'satellite'
-        compatibility.partial = deviceType.includes('direct') || deviceType.includes('dish') ||
-                               deviceType.includes('satellite') || inputType.includes('satellite')
-        compatibility.label = label.includes('direct') || label.includes('dish') || 
-                             label.includes('satellite')
+    console.log(`🧪 Testing specific leagues: ${leagues.join(', ')} for date: ${testDate}`)
+    
+    const results: any = {
+      timestamp: new Date().toISOString(),
+      testDate,
+      requestedLeagues: leagues,
+      results: {}
+    }
+    
+    for (const league of leagues) {
+      try {
+        let games = 0
+        let source = 'unknown'
         
-        if (compatibility.exact) compatibility.reason.push('Exact device/input type match')
-        if (compatibility.partial) compatibility.reason.push('Partial type match')
-        if (compatibility.label) compatibility.reason.push('Label contains satellite keywords')
+        switch (league.toLowerCase()) {
+          case 'nfl':
+            const nflGames = await espnAPI.getNFLGames(testDate)
+            games = nflGames.length
+            source = 'ESPN API'
+            break
+          case 'nba':
+            const nbaGames = await espnAPI.getNBAGames(testDate)
+            games = nbaGames.length
+            source = 'ESPN API'
+            break
+          case 'mlb':
+            const mlbGames = await espnAPI.getMLBGames(testDate)
+            games = mlbGames.length
+            source = 'ESPN API'
+            break
+          case 'nhl':
+            const nhlGames = await espnAPI.getNHLGames(testDate)
+            games = nhlGames.length
+            source = 'ESPN API'
+            break
+          case 'premier':
+            const premierEvents = await sportsDBAPI.getPremierLeagueEvents(testDate)
+            games = premierEvents.length
+            source = 'TheSportsDB API'
+            break
+          case 'champions':
+            const championsEvents = await sportsDBAPI.getChampionsLeagueEvents(testDate)
+            games = championsEvents.length
+            source = 'TheSportsDB API'
+            break
+          case 'la-liga':
+            const laLigaEvents = await sportsDBAPI.getLaLigaEvents(testDate)
+            games = laLigaEvents.length
+            source = 'TheSportsDB API'
+            break
+          default:
+            throw new Error(`Unsupported league: ${league}`)
+        }
+        
+        results.results[league] = {
+          status: 'success',
+          games,
+          source,
+          error: null
+        }
+        
+        console.log(`✅ ${league.toUpperCase()}: ${games} games found via ${source}`)
+        
+      } catch (error) {
+        results.results[league] = {
+          status: 'failed',
+          games: 0,
+          source: null,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+        
+        console.error(`❌ ${league.toUpperCase()}: Failed -`, error)
       }
-      
-      return {
-        input: {
-          id: input.id,
-          label: input.label,
-          channelNumber: input.channelNumber,
-          deviceType: input.deviceType,
-          inputType: input.inputType
-        },
-        compatibility,
-        isCompatible: compatibility.exact || compatibility.partial || compatibility.label
-      }
-    })
+    }
     
-    const compatibleInputs = testResults.filter(result => result.isCompatible)
+    const successCount = Object.values(results.results).filter((r: any) => r.status === 'success').length
+    const totalGames = Object.values(results.results).reduce((sum: number, r: any) => sum + r.games, 0)
     
     return NextResponse.json({
       success: true,
-      data: {
-        providerType,
-        totalInputs: matrixInputs.length,
-        compatibleInputs: compatibleInputs.length,
-        testResults,
-        recommendation: compatibleInputs.length === 0 ? 
-          `No compatible inputs found for ${providerType}. Configure matrix inputs with device types like: DirecTV, DirectTV Receiver, Satellite Box, or Satellite.` :
-          `Found ${compatibleInputs.length} compatible input(s) for ${providerType} provider.`
-      }
+      message: `Tested ${leagues.length} leagues, ${successCount} successful`,
+      totalGames,
+      ...results
     })
+    
   } catch (error) {
-    console.error('Error in provider compatibility test:', error)
+    console.error('❌ Error in targeted API test:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to test provider compatibility' },
+      { 
+        success: false, 
+        error: 'Failed to test specified leagues',
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     )
   }
 }
-

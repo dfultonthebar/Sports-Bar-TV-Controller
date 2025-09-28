@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { liveSportsService } from '../../../lib/sports-apis/live-sports-service'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,12 @@ export interface GameListing {
   channel: ChannelInfo
   description?: string
   priority?: 'high' | 'medium' | 'low'
+  status?: 'upcoming' | 'live' | 'completed'
+  homeScore?: string
+  awayScore?: string
+  venue?: string
+  broadcast?: string[]
+  source?: 'espn' | 'sportsdb' | 'mock'
 }
 
 const CHANNELS: ChannelInfo[] = [
@@ -339,11 +346,11 @@ const CHANNELS: ChannelInfo[] = [
   }
 ]
 
-// Mock game data generator - FIXED DATE/TIME HANDLING
+// Fallback mock game generator for when APIs are unavailable
 const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
+  console.log('⚠️ Falling back to mock data generation')
   const games: GameListing[] = []
   
-  // Get current date/time in correct timezone - FIXED
   const now = new Date()
   const today = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}))
   
@@ -381,11 +388,9 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
     const leagueTeams = teams[leagueId as keyof typeof teams] || ['Team A', 'Team B', 'Team C', 'Team D']
     const leagueName = leagueNames[leagueId as keyof typeof leagueNames] || leagueId.toUpperCase()
     
-    // Generate 3-5 games per league
-    const gameCount = Math.floor(Math.random() * 3) + 3
+    const gameCount = Math.floor(Math.random() * 3) + 2 // Reduced to 2-4 games per league
     
     for (let i = 0; i < gameCount; i++) {
-      // FIXED: Generate games for next 7 days from current date
       const gameDate = new Date(today)
       const daysOffset = Math.floor(Math.random() * 7)
       gameDate.setDate(gameDate.getDate() + daysOffset)
@@ -398,28 +403,28 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
       
       const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
       
-      // FIXED: Better time formatting and realistic game times
-      const gameHour = Math.floor(Math.random() * 10) + 10 // Games between 10 AM and 8 PM
+      const gameHour = Math.floor(Math.random() * 10) + 10
       const gameMinute = ['00', '15', '30', '45'][Math.floor(Math.random() * 4)]
       const displayHour = gameHour > 12 ? gameHour - 12 : gameHour === 0 ? 12 : gameHour
       const ampm = gameHour >= 12 ? 'PM' : 'AM'
       const gameTime = `${displayHour}:${gameMinute} ${ampm} EST`
       
       games.push({
-        id: `${leagueId}-game-${i + 1}`,
+        id: `mock-${leagueId}-game-${i + 1}`,
         league: leagueName,
         homeTeam,
         awayTeam,
         gameTime,
         gameDate: gameDate.toISOString().split('T')[0],
         channel,
-        description: `${leagueName} regular season matchup`,
-        priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+        description: `${leagueName} regular season matchup (Mock Data)`,
+        priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low',
+        status: 'upcoming',
+        source: 'mock'
       })
     }
   })
   
-  // Sort games by date and time
   return games.sort((a, b) => {
     const dateA = new Date(`${a.gameDate} ${a.gameTime}`)
     const dateB = new Date(`${b.gameDate} ${b.gameTime}`)
@@ -430,7 +435,7 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { selectedLeagues } = body
+    const { selectedLeagues, scheduledUpdate, timezone, dateRange } = body
 
     if (!selectedLeagues || !Array.isArray(selectedLeagues) || selectedLeagues.length === 0) {
       return NextResponse.json(
@@ -439,8 +444,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate mock sports guide data
-    const games = generateMockGames(selectedLeagues)
+    console.log(`🏆 Fetching live sports data for leagues: ${selectedLeagues.join(', ')}`)
+    
+    let games: GameListing[] = []
+    let dataSource = 'Live APIs (ESPN + TheSportsDB)'
+    let apiSources: string[] = []
+
+    try {
+      // Attempt to fetch live data using the combined sports service
+      const startDate = dateRange?.start || new Date().toISOString().split('T')[0]
+      const endDate = dateRange?.end || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      
+      console.log(`📅 Date range: ${startDate} to ${endDate}`)
+      
+      const liveData = await liveSportsService.getLiveGames(selectedLeagues, startDate, endDate)
+      
+      if (liveData.games && liveData.games.length > 0) {
+        // Convert live data to GameListing format
+        games = liveData.games.map(game => ({
+          id: game.id,
+          league: game.league,
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          gameTime: game.gameTime,
+          gameDate: game.gameDate,
+          channel: game.channel,
+          description: game.description,
+          priority: game.priority,
+          status: game.status,
+          homeScore: game.homeScore,
+          awayScore: game.awayScore,
+          venue: game.venue,
+          broadcast: game.broadcast,
+          source: game.source
+        }))
+        
+        apiSources = liveData.sources
+        
+        console.log(`✅ Successfully fetched ${liveData.totalGames} games from live APIs`)
+        console.log(`📊 Live: ${liveData.liveGames}, Upcoming: ${liveData.upcomingGames}, Completed: ${liveData.completedGames}`)
+        
+      } else {
+        console.log('⚠️ No live data available, falling back to mock data')
+        games = generateMockGames(selectedLeagues)
+        dataSource = 'Mock Data (Fallback)'
+        apiSources = ['Mock Generator']
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fetching live sports data:', error)
+      console.log('⚠️ Falling back to mock data due to API error')
+      games = generateMockGames(selectedLeagues)
+      dataSource = 'Mock Data (API Error Fallback)'
+      apiSources = ['Mock Generator']
+    }
     
     const response = {
       success: true,
@@ -450,21 +507,23 @@ export async function POST(request: NextRequest) {
         selectedLeagues,
         totalGames: games.length,
         channels: Array.from(new Set(games.map(game => game.channel.name))),
+        dataSource,
+        apiSources,
         summary: {
-          upcomingGames: games.filter(game => {
-            const gameDate = new Date(`${game.gameDate} ${game.gameTime}`)
-            return gameDate > new Date()
-          }).length,
+          liveGames: games.filter(game => game.status === 'live').length,
+          upcomingGames: games.filter(game => game.status === 'upcoming').length,
+          completedGames: games.filter(game => game.status === 'completed').length,
           platforms: Array.from(new Set(games.flatMap(game => game.channel.platforms))),
           streamingServices: games.filter(game => game.channel.type === 'streaming').length,
-          cableChannels: games.filter(game => game.channel.type === 'cable').length
+          cableChannels: games.filter(game => game.channel.type === 'cable').length,
+          freeChannels: games.filter(game => game.channel.cost === 'free').length
         }
       }
     }
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('Error generating sports guide:', error)
+    console.error('❌ Error in sports guide API:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to generate sports guide' },
       { status: 500 }
@@ -476,26 +535,42 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json({
       success: true,
-      message: 'Sports Guide API is active',
+      message: 'Live Sports Guide API is active',
+      version: '2.0.0',
+      dataSources: [
+        'ESPN API (Free) - NFL, NBA, MLB, NHL, NCAA Football, NCAA Basketball, MLS',
+        'TheSportsDB API (Free) - Premier League, Champions League, La Liga, Serie A, Bundesliga'
+      ],
       endpoints: {
-        'POST /api/sports-guide': 'Generate sports guide with selected leagues',
-        'GET /api/leagues': 'Get available sports leagues'
+        'POST /api/sports-guide': 'Generate sports guide with selected leagues using live data',
+        'GET /api/sports-guide': 'Get API information and status',
+        'POST /api/sports-guide/scheduled': 'Run scheduled update with all leagues',
+        'GET /api/sports-guide/test-providers': 'Test live API connectivity'
       },
       availableChannels: CHANNELS.length,
-      supportedLeagues: Object.keys({
-        'nfl': 'NFL',
-        'nba': 'NBA', 
-        'mlb': 'MLB',
-        'nhl': 'NHL',
-        'ncaa-fb': 'NCAA Football',
-        'ncaa-bb': 'NCAA Basketball',
-        'mls': 'MLS',
-        'premier': 'Premier League',
-        'champions': 'Champions League',
-        'la-liga': 'La Liga',
-        'serie-a': 'Serie A',
-        'bundesliga': 'Bundesliga'
-      })
+      supportedLeagues: {
+        'nfl': 'NFL (ESPN API)',
+        'nba': 'NBA (ESPN API)', 
+        'mlb': 'MLB (ESPN API)',
+        'nhl': 'NHL (ESPN API)',
+        'ncaa-fb': 'NCAA Football (ESPN API)',
+        'ncaa-bb': 'NCAA Basketball (ESPN API)',
+        'mls': 'MLS (ESPN API)',
+        'premier': 'Premier League (TheSportsDB)',
+        'champions': 'Champions League (TheSportsDB)',
+        'la-liga': 'La Liga (TheSportsDB)',
+        'serie-a': 'Serie A (TheSportsDB)',
+        'bundesliga': 'Bundesliga (TheSportsDB)'
+      },
+      features: [
+        'Live game data from free APIs',
+        'Real-time scores and game status',
+        'Automatic fallback to mock data if APIs unavailable',
+        'Channel and broadcast information',
+        'Timezone-aware scheduling',
+        'Multi-league support',
+        'No API keys required'
+      ]
     })
   } catch (error) {
     console.error('Error in sports guide API:', error)
