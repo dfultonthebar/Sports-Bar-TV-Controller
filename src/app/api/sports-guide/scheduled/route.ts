@@ -1,14 +1,26 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
+import { PrismaClient } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
-// This endpoint handles the scheduled 7-day sports guide updates
+const prisma = new PrismaClient()
+
+// This endpoint handles the scheduled 7-day sports guide updates with timezone support
 export async function POST(request: NextRequest) {
   try {
+    // Get timezone configuration for proper date/time handling
+    const config = await prisma.sportsGuideConfiguration.findFirst({
+      where: { isActive: true }
+    })
+    
+    const timezone = config?.timezone || 'America/New_York'
+    
+    // Get current time in configured timezone - FIXED
     const now = new Date()
-    const sevenDaysFromNow = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000))
+    const localNow = new Date(now.toLocaleString("en-US", { timeZone: timezone }))
+    const sevenDaysFromNow = new Date(localNow.getTime() + (7 * 24 * 60 * 60 * 1000))
     
     // Get all major sports leagues for comprehensive coverage
     const allLeagues = [
@@ -25,8 +37,9 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ 
         selectedLeagues: allLeagues,
         scheduledUpdate: true,
+        timezone: timezone,
         dateRange: {
-          start: now.toISOString().split('T')[0],
+          start: localNow.toISOString().split('T')[0],
           end: sevenDaysFromNow.toISOString().split('T')[0]
         }
       })
@@ -38,27 +51,29 @@ export async function POST(request: NextRequest) {
 
     const sportsData = await sportsGuideResponse.json()
 
-    // Log the successful update
+    // Log the successful update with timezone-adjusted time
     console.log(`🏆 Scheduled Sports Guide Update Completed:`, {
-      timestamp: now.toISOString(),
+      timestamp: localNow.toISOString(),
+      timezone: timezone,
       totalGames: sportsData.data?.totalGames || 0,
       channels: sportsData.data?.channels?.length || 0,
-      dateRange: `${now.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`
+      dateRange: `${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`
     })
 
     return NextResponse.json({
       success: true,
       message: '7-Day Sports Guide Update Completed Successfully',
       data: {
-        updateTime: now.toISOString(),
+        updateTime: localNow.toISOString(),
+        timezone: timezone,
         gamesFound: sportsData.data?.totalGames || 0,
         channelsCovered: sportsData.data?.channels?.length || 0,
         dateRange: {
-          start: now.toISOString().split('T')[0],
+          start: localNow.toISOString().split('T')[0],
           end: sevenDaysFromNow.toISOString().split('T')[0]
         },
         leagues: allLeagues,
-        nextUpdate: new Date(now.getTime() + (24 * 60 * 60 * 1000)).toISOString()
+        nextUpdate: new Date(localNow.getTime() + (24 * 60 * 60 * 1000)).toISOString()
       }
     })
   } catch (error) {

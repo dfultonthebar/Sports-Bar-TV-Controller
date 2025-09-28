@@ -373,34 +373,57 @@ export default function SportsGuideConfigPage() {
     })
   }
 
-  // Map provider types to compatible device types - FIXED VERSION
+  // Map provider types to compatible device types - EXPANDED COMPATIBILITY
   const getCompatibleDeviceTypes = (providerType: string): string[] => {
     switch (providerType) {
       case 'cable':
-        return ['Cable Box', 'HDMI', 'Component', 'Composite']
+        return ['Cable Box', 'Cable', 'HDMI', 'Component', 'Composite', 'Coax', 'Other']
       case 'satellite':
-        return ['DirecTV Receiver', 'Dish Network Receiver', 'Satellite Box', 'Satellite', 'HDMI']
+        return ['DirecTV Receiver', 'DirecTV', 'DirectTV', 'Dish Network Receiver', 'Dish', 'Satellite Box', 'Satellite', 'HDMI', 'Component', 'Other']
       case 'streaming':
-        return ['Fire TV', 'Apple TV', 'Roku', 'Chromecast', 'Streaming Box', 'Smart TV', 'HDMI']
+        return ['Fire TV', 'Apple TV', 'Roku', 'Chromecast', 'Streaming Box', 'Smart TV', 'HDMI', 'Other', 'Streaming']
       case 'iptv':
-        return ['Streaming Box', 'Fire TV', 'Apple TV', 'Roku', 'Computer', 'HDMI']
+        return ['Streaming Box', 'Fire TV', 'Apple TV', 'Roku', 'Computer', 'HDMI', 'Network', 'Other']
       default:
-        return []
+        return ['HDMI', 'Other'] // Fallback for any type
     }
   }
 
-  // Filter inputs based on provider compatibility - IMPROVED VERSION
+  // Filter inputs based on provider compatibility - ENHANCED MATCHING
   const getCompatibleInputs = (providerType: string): MatrixInput[] => {
     const compatibleTypes = getCompatibleDeviceTypes(providerType)
     return matrixInputs.filter(input => {
       if (!input.isActive) return false
       
-      // Check both deviceType and inputType for compatibility
-      const deviceTypeMatch = compatibleTypes.includes(input.deviceType)
-      const inputTypeMatch = compatibleTypes.includes(input.inputType)
-      const labelMatch = input.label.toLowerCase().includes(providerType)
+      // Enhanced compatibility checking - case insensitive and partial matching
+      const deviceType = input.deviceType?.toLowerCase() || ''
+      const inputType = input.inputType?.toLowerCase() || ''
+      const label = input.label?.toLowerCase() || ''
       
-      return deviceTypeMatch || inputTypeMatch || labelMatch
+      // Check exact matches first
+      const deviceTypeMatch = compatibleTypes.some(type => type.toLowerCase() === deviceType)
+      const inputTypeMatch = compatibleTypes.some(type => type.toLowerCase() === inputType)
+      
+      // Check partial matches for better compatibility
+      const partialDeviceMatch = compatibleTypes.some(type => 
+        deviceType.includes(type.toLowerCase()) || type.toLowerCase().includes(deviceType)
+      )
+      const partialInputMatch = compatibleTypes.some(type => 
+        inputType.includes(type.toLowerCase()) || type.toLowerCase().includes(inputType)
+      )
+      
+      // Check label-based matching for common patterns
+      let labelMatch = false
+      if (providerType === 'satellite') {
+        labelMatch = label.includes('direct') || label.includes('dish') || label.includes('satellite')
+      } else if (providerType === 'cable') {
+        labelMatch = label.includes('cable') || label.includes('spectrum') || label.includes('comcast')
+      } else if (providerType === 'streaming') {
+        labelMatch = label.includes('streaming') || label.includes('roku') || label.includes('fire') || 
+                    label.includes('apple') || label.includes('chromecast')
+      }
+      
+      return deviceTypeMatch || inputTypeMatch || partialDeviceMatch || partialInputMatch || labelMatch
     })
   }
 

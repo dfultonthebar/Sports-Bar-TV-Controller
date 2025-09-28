@@ -12,6 +12,11 @@ export interface SportsGuideConfigRequest {
   city?: string
   state?: string
   timezone: string
+  updateSchedule?: {
+    enabled: boolean
+    time: string // "HH:MM" format
+    frequency: 'daily' | 'weekly'
+  }
   providers: {
     id?: string
     name: string
@@ -95,16 +100,23 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { zipCode, city, state, timezone, providers, homeTeams }: SportsGuideConfigRequest = await request.json()
+    const { zipCode, city, state, timezone, updateSchedule, providers, homeTeams }: SportsGuideConfigRequest = await request.json()
 
-    // Update or create sports guide configuration
+    // Validate timezone - ENHANCED TIMEZONE HANDLING
+    const validTimezones = [
+      'America/New_York', 'America/Chicago', 'America/Denver', 
+      'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu'
+    ]
+    const finalTimezone = validTimezones.includes(timezone) ? timezone : 'America/New_York'
+
+    // Update or create sports guide configuration with proper timezone
     const config = await prisma.sportsGuideConfiguration.upsert({
       where: { id: '1' }, // Use single configuration record
       update: {
         zipCode,
         city,
         state,
-        timezone,
+        timezone: finalTimezone,
         isActive: true
       },
       create: {
@@ -112,7 +124,7 @@ export async function POST(request: NextRequest) {
         zipCode,
         city,
         state,
-        timezone,
+        timezone: finalTimezone,
         isActive: true
       }
     })

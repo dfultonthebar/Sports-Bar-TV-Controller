@@ -339,10 +339,13 @@ const CHANNELS: ChannelInfo[] = [
   }
 ]
 
-// Mock game data generator
+// Mock game data generator - FIXED DATE/TIME HANDLING
 const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
   const games: GameListing[] = []
-  const today = new Date()
+  
+  // Get current date/time in correct timezone - FIXED
+  const now = new Date()
+  const today = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}))
   
   const teams = {
     'nfl': ['Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills', 'Rams'],
@@ -382,8 +385,10 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
     const gameCount = Math.floor(Math.random() * 3) + 3
     
     for (let i = 0; i < gameCount; i++) {
+      // FIXED: Generate games for next 7 days from current date
       const gameDate = new Date(today)
-      gameDate.setDate(today.getDate() + Math.floor(Math.random() * 7))
+      const daysOffset = Math.floor(Math.random() * 7)
+      gameDate.setDate(gameDate.getDate() + daysOffset)
       
       const homeTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
       let awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
@@ -393,9 +398,12 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
       
       const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
       
-      const gameHour = Math.floor(Math.random() * 8) + 12 // Games between 12 PM and 8 PM
-      const gameMinute = Math.random() < 0.5 ? '00' : '30'
-      const gameTime = `${gameHour}:${gameMinute} ${gameHour >= 12 ? 'PM' : 'AM'} EST`
+      // FIXED: Better time formatting and realistic game times
+      const gameHour = Math.floor(Math.random() * 10) + 10 // Games between 10 AM and 8 PM
+      const gameMinute = ['00', '15', '30', '45'][Math.floor(Math.random() * 4)]
+      const displayHour = gameHour > 12 ? gameHour - 12 : gameHour === 0 ? 12 : gameHour
+      const ampm = gameHour >= 12 ? 'PM' : 'AM'
+      const gameTime = `${displayHour}:${gameMinute} ${ampm} EST`
       
       games.push({
         id: `${leagueId}-game-${i + 1}`,
