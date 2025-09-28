@@ -819,7 +819,91 @@ export default function BartenderRemotePage() {
         {activeTab === 'guide' && (
           <div className="max-w-7xl mx-auto">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-              <SportsGuide />
+              {/* Grid View Only - Channel Selection Grid */}
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-xl p-4 border border-blue-500/30">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg p-2">
+                      <Calendar className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Channel Guide Grid</h2>
+                      <p className="text-blue-200 text-sm">Select an input first to view channel grid</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Input Selection for Guide */}
+                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                  <h3 className="text-md font-semibold text-white mb-3">Select TV Input</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {inputs.map((input) => (
+                      <button
+                        key={input.id}
+                        onClick={() => selectInput(input.channelNumber)}
+                        className={`p-3 rounded-lg text-left transition-all ${
+                          selectedInput === input.channelNumber
+                            ? 'bg-blue-500 text-white shadow-lg'
+                            : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span className="text-lg">{getInputIcon(input.inputType)}</span>
+                          <div>
+                            <div className="font-medium text-sm">{input.label}</div>
+                            <div className="text-xs opacity-80">Ch {input.channelNumber}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Channel Grid */}
+                {selectedInput && (
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-md font-semibold text-white">
+                        Channel Grid - {inputs.find(i => i.channelNumber === selectedInput)?.label}
+                      </h3>
+                      <div className="text-sm text-blue-200">
+                        Channel lineup for selected input
+                      </div>
+                    </div>
+                    
+                    {/* Sample Channel Grid */}
+                    <div className="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                      {Array.from({ length: 50 }, (_, i) => i + 1).map((channelNum) => (
+                        <button
+                          key={channelNum}
+                          onClick={() => sendIRCommand(channelNum.toString())}
+                          className="aspect-square bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg flex flex-col items-center justify-center text-white hover:text-blue-300 transition-colors"
+                        >
+                          <span className="font-bold text-sm">{channelNum}</span>
+                          <span className="text-xs opacity-60">
+                            {channelNum <= 10 ? 'HD' : channelNum <= 30 ? 'SD' : 'PPV'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-blue-200">Click any channel number to tune directly</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* No Input Selected */}
+                {!selectedInput && (
+                  <div className="text-center py-12">
+                    <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                      <Calendar className="w-8 h-8 text-blue-300 mx-auto" />
+                    </div>
+                    <h3 className="text-lg font-medium text-white mb-2">Select an Input Source</h3>
+                    <p className="text-blue-200">Choose a TV input above to view the channel grid</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

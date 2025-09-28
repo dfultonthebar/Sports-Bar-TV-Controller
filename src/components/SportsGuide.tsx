@@ -20,7 +20,11 @@ import {
   Grid3X3,
   List,
   Settings,
-  Zap
+  Zap,
+  Radio,
+  Cable,
+  Satellite,
+  Router
 } from 'lucide-react'
 
 interface League {
@@ -37,9 +41,10 @@ interface ChannelInfo {
   name: string
   url?: string
   platforms: string[]
-  type: 'cable' | 'streaming' | 'ota'
+  type: 'cable' | 'streaming' | 'ota' | 'satellite'
   cost: 'free' | 'subscription' | 'premium'
   logoUrl?: string
+  providerId?: string // Link to provider
 }
 
 interface GameListing {
@@ -53,6 +58,25 @@ interface GameListing {
   description?: string
   priority?: 'high' | 'medium' | 'low'
   status?: 'upcoming' | 'live' | 'completed'
+  inputId?: string // Which input this is available on
+}
+
+interface MatrixInput {
+  id: string
+  channelNumber: number
+  label: string
+  inputType: string
+  isActive: boolean
+  provider?: string // Associated provider
+}
+
+interface Provider {
+  id: string
+  name: string
+  type: 'cable' | 'satellite' | 'streaming' | 'iptv'
+  channels: string[]
+  packages: string[]
+  inputId?: string // Which matrix input this provider uses
 }
 
 interface ScheduledRoutine {
@@ -75,34 +99,69 @@ const SAMPLE_LEAGUES: League[] = [
   { id: 'champions', name: 'Champions League', description: 'UEFA Champions League', category: 'international', season: '2024-25' }
 ]
 
+const SAMPLE_PROVIDERS: Provider[] = [
+  {
+    id: 'spectrum-business',
+    name: 'Spectrum Business & Sports Package',
+    type: 'cable',
+    channels: ['ESPN', 'ESPN2', 'Fox Sports', 'NBC Sports', 'CBS Sports', 'FS1', 'FS2', 'NFL Network', 'NBA TV', 'MLB Network'],
+    packages: ['Business TV Select', 'Sports Package']
+  },
+  {
+    id: 'directv-nfl',
+    name: 'DirecTV with NFL Sunday Ticket',
+    type: 'satellite', 
+    channels: ['ESPN', 'Fox Sports', 'NBC Sports', 'CBS Sports', 'NFL RedZone', 'NFL Network', 'Sunday Ticket Channels'],
+    packages: ['Choice Package', 'NFL Sunday Ticket MAX']
+  },
+  {
+    id: 'streaming-box',
+    name: 'Streaming Services (Roku/Apple TV)',
+    type: 'streaming',
+    channels: ['Netflix', 'Hulu Live TV', 'YouTube TV', 'Amazon Prime Video', 'Peacock Premium', 'Paramount+'],
+    packages: ['Premium Streaming Bundle']
+  },
+  {
+    id: 'cable-box-premium',
+    name: 'Premium Cable Package',
+    type: 'cable',
+    channels: ['ESPN', 'ESPN2', 'Fox Sports', 'NBC Sports', 'CBS Sports', 'TNT', 'TBS', 'USA Network'],
+    packages: ['Premium Sports', 'Entertainment Package']
+  }
+]
+
 const SAMPLE_CHANNELS: ChannelInfo[] = [
   { 
     id: 'espn', 
     name: 'ESPN', 
     platforms: ['DirecTV', 'Spectrum', 'Hulu Live', 'YouTube TV'], 
     type: 'cable', 
-    cost: 'subscription' 
+    cost: 'subscription',
+    providerId: 'spectrum-business'
   },
   { 
     id: 'fox-sports', 
     name: 'Fox Sports', 
     platforms: ['DirecTV', 'Spectrum', 'Sling TV', 'FuboTV'], 
     type: 'cable', 
-    cost: 'subscription' 
+    cost: 'subscription',
+    providerId: 'spectrum-business'
   },
   { 
-    id: 'nbc-sports', 
-    name: 'NBC Sports', 
-    platforms: ['DirecTV', 'Spectrum', 'Peacock Premium'], 
-    type: 'cable', 
-    cost: 'subscription' 
+    id: 'nfl-network', 
+    name: 'NFL Network', 
+    platforms: ['DirecTV Sunday Ticket'], 
+    type: 'satellite', 
+    cost: 'premium',
+    providerId: 'directv-nfl'
   },
   { 
-    id: 'cbs-sports', 
-    name: 'CBS Sports', 
-    platforms: ['DirecTV', 'Spectrum', 'Paramount+'], 
-    type: 'cable', 
-    cost: 'subscription' 
+    id: 'nfl-redzone', 
+    name: 'NFL RedZone', 
+    platforms: ['DirecTV Sunday Ticket'], 
+    type: 'satellite', 
+    cost: 'premium',
+    providerId: 'directv-nfl'
   },
   { 
     id: 'amazon-prime', 
@@ -110,6 +169,7 @@ const SAMPLE_CHANNELS: ChannelInfo[] = [
     platforms: ['Fire TV', 'Roku', 'Apple TV'], 
     type: 'streaming', 
     cost: 'premium',
+    providerId: 'streaming-box',
     url: 'https://www.amazon.com/gp/video/storefront'
   },
   { 
@@ -118,6 +178,7 @@ const SAMPLE_CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku'], 
     type: 'streaming', 
     cost: 'subscription',
+    providerId: 'streaming-box',
     url: 'https://www.netflix.com'
   },
   { 
@@ -126,6 +187,7 @@ const SAMPLE_CHANNELS: ChannelInfo[] = [
     platforms: ['All Smart TVs', 'Fire TV', 'Roku'], 
     type: 'streaming', 
     cost: 'subscription',
+    providerId: 'streaming-box',
     url: 'https://www.paramountplus.com'
   }
 ]
@@ -142,11 +204,18 @@ export default function SportsGuide() {
   const [scheduledRoutines, setScheduledRoutines] = useState<ScheduledRoutine[]>([])
   const [showScheduler, setShowScheduler] = useState(false)
   const [selectedDay, setSelectedDay] = useState(0) // 0 = today, 1 = tomorrow, etc.
+  
+  // New state for input and provider management
+  const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
+  const [selectedInput, setSelectedInput] = useState<string | null>(null)
+  const [providers, setProviders] = useState<Provider[]>(SAMPLE_PROVIDERS)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   useEffect(() => {
     // Load available leagues on component mount
     loadAvailableLeagues()
     loadScheduledRoutines()
+    loadMatrixInputs()
   }, [])
 
   useEffect(() => {
@@ -171,6 +240,57 @@ export default function SportsGuide() {
       console.error('Error loading leagues:', error)
       // Fallback to sample leagues
       setAvailableLeagues(SAMPLE_LEAGUES)
+    }
+  }
+
+  const loadMatrixInputs = async () => {
+    try {
+      const response = await fetch('/api/matrix/config')
+      const result = await response.json()
+      
+      if (result.success && result.configs?.length > 0) {
+        const activeConfig = result.configs[0]
+        const activeInputs = activeConfig.inputs?.filter((input: MatrixInput) => input.isActive) || []
+        
+        // Associate providers with inputs based on labels
+        const inputsWithProviders = activeInputs.map((input: MatrixInput) => ({
+          ...input,
+          provider: getProviderForInput(input.label)
+        }))
+        
+        setMatrixInputs(inputsWithProviders)
+        
+        // Associate providers with inputs
+        const updatedProviders = providers.map(provider => ({
+          ...provider,
+          inputId: inputsWithProviders.find(input => input.provider === provider.id)?.id
+        }))
+        setProviders(updatedProviders)
+      }
+    } catch (error) {
+      console.error('Error loading matrix inputs:', error)
+    }
+  }
+
+  const getProviderForInput = (inputLabel: string): string | undefined => {
+    const label = inputLabel.toLowerCase()
+    if (label.includes('cable') && !label.includes('streaming')) {
+      return 'spectrum-business'
+    } else if (label.includes('direct') || label.includes('satellite')) {
+      return 'directv-nfl'
+    } else if (label.includes('streaming') || label.includes('roku') || label.includes('apple')) {
+      return 'streaming-box'
+    }
+    return undefined
+  }
+
+  const selectInput = (inputId: string) => {
+    setSelectedInput(inputId)
+    const input = matrixInputs.find(i => i.id === inputId)
+    if (input && input.provider) {
+      setSelectedProvider(input.provider)
+    } else {
+      setSelectedProvider(null)
     }
   }
 
@@ -331,6 +451,43 @@ export default function SportsGuide() {
     }
   }
 
+  const getInputIcon = (inputType: string) => {
+    switch (inputType.toLowerCase()) {
+      case 'cable': return Cable
+      case 'satellite': return Satellite
+      case 'streaming': return Smartphone
+      case 'iptv': return Router
+      default: return Radio
+    }
+  }
+
+  const getProviderIcon = (providerType: string) => {
+    switch (providerType) {
+      case 'cable': return '📺'
+      case 'satellite': return '🛰️'
+      case 'streaming': return '📱'
+      case 'iptv': return '🌐'
+      default: return '📺'
+    }
+  }
+
+  const getFilteredGames = () => {
+    if (!selectedProvider || !selectedInput) {
+      return sportsGuide // Show all games if no input/provider selected
+    }
+    
+    const provider = providers.find(p => p.id === selectedProvider)
+    if (!provider) return sportsGuide
+    
+    return sportsGuide.filter(game => {
+      // Filter games based on channels available on the selected provider
+      return provider.channels.some(channel => 
+        game.channel.name.toLowerCase().includes(channel.toLowerCase()) ||
+        channel.toLowerCase().includes(game.channel.name.toLowerCase())
+      )
+    })
+  }
+
   const getNextSevenDays = () => {
     const days = []
     for (let i = 0; i < 7; i++) {
@@ -346,12 +503,12 @@ export default function SportsGuide() {
 
   const getGamesForSelectedDay = () => {
     const targetDate = getNextSevenDays()[selectedDay]?.date
-    return sportsGuide.filter(game => game.gameDate === targetDate)
+    return getFilteredGames().filter(game => game.gameDate === targetDate)
   }
 
   const getChannelsForGrid = () => {
     const allChannels = new Set<string>()
-    sportsGuide.forEach(game => allChannels.add(game.channel.name))
+    getFilteredGames().forEach(game => allChannels.add(game.channel.name))
     return Array.from(allChannels).sort()
   }
 
@@ -367,9 +524,123 @@ export default function SportsGuide() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-xl p-6 border border-blue-500/30">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Input Selection Panel - Left Side */}
+      <div className="lg:col-span-1 space-y-4">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+          <div className="p-4 border-b border-white/20">
+            <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+              <Radio className="w-5 h-5" />
+              <span>TV Input Sources</span>
+            </h3>
+            <p className="text-sm text-blue-200 mt-1">Select input to filter available content</p>
+          </div>
+          
+          <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+            {matrixInputs.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <Radio className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No inputs configured</p>
+              </div>
+            ) : (
+              <>
+                {matrixInputs.map((input) => {
+                  const provider = providers.find(p => p.id === input.provider)
+                  const IconComponent = getInputIcon(input.inputType)
+                  
+                  return (
+                    <button
+                      key={input.id}
+                      onClick={() => selectInput(input.id)}
+                      className={`w-full p-3 rounded-lg text-left transition-all ${
+                        selectedInput === input.id
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <IconComponent className="w-5 h-5" />
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{input.label}</div>
+                          <div className="text-xs opacity-80">
+                            Ch {input.channelNumber} • {input.inputType}
+                          </div>
+                          {provider && (
+                            <div className="text-xs mt-1 opacity-75">
+                              {getProviderIcon(provider.type)} {provider.name}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+                
+                {selectedInput && (
+                  <button
+                    onClick={() => {
+                      setSelectedInput(null)
+                      setSelectedProvider(null)
+                    }}
+                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg hover:bg-gray-500/30 transition-all"
+                  >
+                    Show All Content
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Provider Info Panel */}
+        {selectedProvider && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+            <div className="p-4 border-b border-white/20">
+              <h4 className="text-md font-semibold text-white">Provider Info</h4>
+            </div>
+            
+            <div className="p-4">
+              {(() => {
+                const provider = providers.find(p => p.id === selectedProvider)
+                if (!provider) return null
+                
+                return (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-lg">{getProviderIcon(provider.type)}</span>
+                        <span className="font-medium text-white text-sm">{provider.name}</span>
+                      </div>
+                      <div className="text-xs text-blue-200 mb-3">
+                        {provider.packages.join(' • ')}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="text-xs font-medium text-gray-300 mb-2">Available Channels:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {provider.channels.slice(0, 6).map((channel, index) => (
+                          <span key={index} className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
+                            {channel}
+                          </span>
+                        ))}
+                        {provider.channels.length > 6 && (
+                          <span className="text-xs text-gray-400">+{provider.channels.length - 6} more</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content Area - Right Side */}
+      <div className="lg:col-span-3 space-y-6">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-xl p-6 border border-blue-500/30">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg p-3">
@@ -382,6 +653,14 @@ export default function SportsGuide() {
           </div>
           
           <div className="flex items-center space-x-2">
+            <a
+              href="/sports-guide-config"
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Configure</span>
+            </a>
+            
             {sportsGuide.length > 0 && (
               <>
                 <div className="flex bg-white/10 rounded-lg p-1">
@@ -606,7 +885,12 @@ export default function SportsGuide() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">Your Sports Guide</h3>
               <div className="text-sm text-blue-200">
-                {sportsGuide.length} games found
+                {getFilteredGames().length} games found
+                {selectedProvider && selectedInput && (
+                  <span className="block text-xs mt-1">
+                    Filtered by: {matrixInputs.find(i => i.id === selectedInput)?.label}
+                  </span>
+                )}
               </div>
             </div>
             
@@ -634,7 +918,7 @@ export default function SportsGuide() {
             {viewMode === 'list' ? (
               /* List View */
               <div className="grid gap-4">
-                {sportsGuide.map((game) => (
+                {getFilteredGames().map((game) => (
                   <div
                     key={game.id}
                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -762,16 +1046,17 @@ export default function SportsGuide() {
         </div>
       )}
 
-      {/* Empty State */}
-      {selectedLeagues.length === 0 && (
-        <div className="text-center py-12">
-          <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
-            <Calendar className="w-8 h-8 text-blue-300 mx-auto" />
+        {/* Empty State */}
+        {selectedLeagues.length === 0 && (
+          <div className="text-center py-12">
+            <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+              <Calendar className="w-8 h-8 text-blue-300 mx-auto" />
+            </div>
+            <h3 className="text-lg font-medium text-white mb-2">No Leagues Selected</h3>
+            <p className="text-blue-200">Select one or more sports leagues to generate your viewing guide</p>
           </div>
-          <h3 className="text-lg font-medium text-white mb-2">No Leagues Selected</h3>
-          <p className="text-blue-200">Select one or more sports leagues to generate your viewing guide</p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
