@@ -8,6 +8,7 @@ interface MatrixInput {
   channelNumber: number
   label: string
   inputType: string
+  deviceType: string
   status: 'active' | 'unused' | 'no' | 'na'
 }
 
@@ -49,6 +50,7 @@ export default function MatrixControl() {
       channelNumber: i + 1,
       label: `Input ${i + 1}`,
       inputType: 'HDMI',
+      deviceType: 'Other',
       status: 'active' as const
     })),
     outputs: Array.from({ length: 36 }, (_, i) => ({
@@ -66,6 +68,12 @@ export default function MatrixControl() {
   const [activeSection, setActiveSection] = useState<'config' | 'inputs' | 'outputs'>('config')
 
   const inputTypes = ['HDMI', 'Component', 'Composite', 'SDI', 'DVI', 'VGA']
+  const deviceTypes = [
+    'Cable Box', 'DirecTV Receiver', 'Dish Network Receiver', 
+    'Fire TV', 'Apple TV', 'Roku', 'Chromecast', 
+    'Gaming Console', 'Streaming Box', 'Local HDMI', 
+    'Computer', 'Laptop', 'Other'
+  ]
   const resolutions = ['720p', '1080p', '4K', '1080i', '480p']
   const statusOptions = [
     { value: 'active', label: 'Active' },
@@ -103,6 +111,7 @@ export default function MatrixControl() {
                 channelNumber: i + 1,
                 label: `Input ${i + 1}`,
                 inputType: 'HDMI',
+                deviceType: 'Other',
                 status: 'active' as const
               })),
               outputs: Array.from({ length: 36 }, (_, i) => ({
@@ -140,6 +149,7 @@ export default function MatrixControl() {
           channelNumber: input.channelNumber,
           label: input.label,
           inputType: input.inputType,
+          deviceType: input.deviceType || 'Other',
           status: input.status || 'active',
           isActive: input.status === 'active'
         })),
@@ -489,6 +499,16 @@ export default function MatrixControl() {
                         placeholder={isUnused ? `Unused Input ${input.channelNumber}` : `Input ${input.channelNumber} label`}
                         disabled={isUnused}
                       />
+                      <select
+                        value={input.deviceType || 'Other'}
+                        onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isUnused}
+                      >
+                        {deviceTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
                       <select
                         value={input.inputType}
                         onChange={(e) => updateInput(index, 'inputType', e.target.value)}

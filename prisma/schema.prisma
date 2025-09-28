@@ -89,6 +89,7 @@ model MatrixInput {
   channelNumber Int     // 1-32 typically
   label        String   // User-defined label like "Cable Box 1"
   inputType    String   @default("HDMI") // HDMI, Component, Composite, etc.
+  deviceType   String   @default("Other") // Cable Box, DirecTV Receiver, Fire TV, etc.
   status       String   @default("active") // active, unused, no, na
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())

@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
           channelNumber: input.channelNumber,
           label: input.label,
           inputType: input.inputType,
+          deviceType: input.deviceType || 'Other',
           isActive: input.isActive,
           status: input.status || 'active'
         }))

@@ -33,6 +33,7 @@ interface MatrixInput {
   channelNumber: number
   label: string
   inputType: string
+  deviceType: string
   isActive: boolean
 }
 
@@ -210,6 +211,30 @@ export default function SportsGuideConfigPage() {
     })
   }
 
+  // Map provider types to compatible device types
+  const getCompatibleDeviceTypes = (providerType: string): string[] => {
+    switch (providerType) {
+      case 'cable':
+        return ['Cable Box', 'Other']
+      case 'satellite':
+        return ['DirecTV Receiver', 'Dish Network Receiver', 'Other']
+      case 'streaming':
+        return ['Fire TV', 'Apple TV', 'Roku', 'Chromecast', 'Streaming Box', 'Other']
+      case 'iptv':
+        return ['Streaming Box', 'Fire TV', 'Apple TV', 'Roku', 'Computer', 'Other']
+      default:
+        return ['Other']
+    }
+  }
+
+  // Filter inputs based on provider compatibility
+  const getCompatibleInputs = (providerType: string): MatrixInput[] => {
+    const compatibleDeviceTypes = getCompatibleDeviceTypes(providerType)
+    return matrixInputs.filter(input => 
+      input.isActive && compatibleDeviceTypes.includes(input.deviceType)
+    )
+  }
+
   const assignInputToProvider = (providerId: string, inputId: string) => {
     // Clear input from other providers first
     setProviders(prev => prev.map(p => ({ ...p, inputId: undefined })))
@@ -337,6 +362,7 @@ export default function SportsGuideConfigPage() {
           {providers.map((provider) => {
             const IconComponent = getProviderIcon(provider.type)
             const assignedInput = matrixInputs.find(input => input.id === provider.inputId)
+            const compatibleInputs = getCompatibleInputs(provider.type)
             
             return (
               <div key={provider.id} className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
@@ -376,26 +402,45 @@ export default function SportsGuideConfigPage() {
 
                   {/* Input Assignment */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-white mb-2">Assigned TV Input</label>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Assigned TV Input
+                      <span className="text-xs text-gray-400 ml-2">
+                        (Showing {compatibleInputs.length} compatible inputs)
+                      </span>
+                    </label>
                     <div className="flex items-center space-x-2">
                       <select
                         value={provider.inputId || ''}
                         onChange={(e) => assignInputToProvider(provider.id, e.target.value)}
-                        className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="flex-1 px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       >
                         <option value="" className="bg-slate-800">No input assigned</option>
-                        {matrixInputs.map(input => (
+                        {compatibleInputs.map(input => (
                           <option key={input.id} value={input.id} className="bg-slate-800">
-                            {input.label} (Ch {input.channelNumber})
+                            {input.label} (Ch {input.channelNumber}) - {input.deviceType}
                           </option>
                         ))}
                       </select>
                       {assignedInput && (
-                        <span className="text-sm text-green-400">
-                          ✓ Assigned to {assignedInput.label}
-                        </span>
+                        <div className="text-sm">
+                          <span className="text-green-400">✓ {assignedInput.label}</span>
+                          <div className="text-xs text-gray-400">
+                            {assignedInput.deviceType} • Ch {assignedInput.channelNumber}
+                          </div>
+                        </div>
                       )}
                     </div>
+                    
+                    {compatibleInputs.length === 0 && (
+                      <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                        <div className="text-sm text-yellow-300">
+                          ⚠️ No compatible inputs found for {provider.type} provider.
+                        </div>
+                        <div className="text-xs text-yellow-200 mt-1">
+                          Configure Wolf Pack inputs with device types: {getCompatibleDeviceTypes(provider.type).join(', ')}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
