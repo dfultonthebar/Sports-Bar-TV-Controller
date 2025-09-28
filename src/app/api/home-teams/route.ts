@@ -29,10 +29,42 @@ const TEAM_SUGGESTIONS: TeamSuggestion[] = [
   { name: 'Golden State Warriors', league: 'nba', category: 'professional', sport: 'basketball', location: 'San Francisco, CA', conference: 'Western Conference' },
   { name: 'Milwaukee Bucks', league: 'nba', category: 'professional', sport: 'basketball', location: 'Milwaukee, WI', conference: 'Eastern Conference' },
 
-  // MLB Teams
+  // MLB Teams - Complete List
   { name: 'New York Yankees', league: 'mlb', category: 'professional', sport: 'baseball', location: 'New York, NY', conference: 'American League East' },
-  { name: 'Los Angeles Dodgers', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Los Angeles, CA', conference: 'National League West' },
   { name: 'Boston Red Sox', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Boston, MA', conference: 'American League East' },
+  { name: 'Toronto Blue Jays', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Toronto, ON', conference: 'American League East' },
+  { name: 'Baltimore Orioles', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Baltimore, MD', conference: 'American League East' },
+  { name: 'Tampa Bay Rays', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Tampa Bay, FL', conference: 'American League East' },
+  
+  { name: 'Houston Astros', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Houston, TX', conference: 'American League West' },
+  { name: 'Seattle Mariners', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Seattle, WA', conference: 'American League West' },
+  { name: 'Texas Rangers', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Arlington, TX', conference: 'American League West' },
+  { name: 'Los Angeles Angels', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Anaheim, CA', conference: 'American League West' },
+  { name: 'Oakland Athletics', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Oakland, CA', conference: 'American League West' },
+  
+  { name: 'Cleveland Guardians', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Cleveland, OH', conference: 'American League Central' },
+  { name: 'Minnesota Twins', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Minneapolis, MN', conference: 'American League Central' },
+  { name: 'Detroit Tigers', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Detroit, MI', conference: 'American League Central' },
+  { name: 'Chicago White Sox', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Chicago, IL', conference: 'American League Central' },
+  { name: 'Kansas City Royals', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Kansas City, MO', conference: 'American League Central' },
+  
+  { name: 'Los Angeles Dodgers', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Los Angeles, CA', conference: 'National League West' },
+  { name: 'San Diego Padres', league: 'mlb', category: 'professional', sport: 'baseball', location: 'San Diego, CA', conference: 'National League West' },
+  { name: 'San Francisco Giants', league: 'mlb', category: 'professional', sport: 'baseball', location: 'San Francisco, CA', conference: 'National League West' },
+  { name: 'Arizona Diamondbacks', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Phoenix, AZ', conference: 'National League West' },
+  { name: 'Colorado Rockies', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Denver, CO', conference: 'National League West' },
+  
+  { name: 'Atlanta Braves', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Atlanta, GA', conference: 'National League East' },
+  { name: 'New York Mets', league: 'mlb', category: 'professional', sport: 'baseball', location: 'New York, NY', conference: 'National League East' },
+  { name: 'Philadelphia Phillies', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Philadelphia, PA', conference: 'National League East' },
+  { name: 'Miami Marlins', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Miami, FL', conference: 'National League East' },
+  { name: 'Washington Nationals', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Washington, DC', conference: 'National League East' },
+  
+  { name: 'Milwaukee Brewers', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Milwaukee, WI', conference: 'National League Central' },
+  { name: 'St. Louis Cardinals', league: 'mlb', category: 'professional', sport: 'baseball', location: 'St. Louis, MO', conference: 'National League Central' },
+  { name: 'Chicago Cubs', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Chicago, IL', conference: 'National League Central' },
+  { name: 'Cincinnati Reds', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Cincinnati, OH', conference: 'National League Central' },
+  { name: 'Pittsburgh Pirates', league: 'mlb', category: 'professional', sport: 'baseball', location: 'Pittsburgh, PA', conference: 'National League Central' },
 
   // NHL Teams
   { name: 'Pittsburgh Penguins', league: 'nhl', category: 'professional', sport: 'hockey', location: 'Pittsburgh, PA', conference: 'Eastern Conference' },

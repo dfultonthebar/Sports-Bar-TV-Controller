@@ -18,7 +18,7 @@ export interface SportsGuideConfigRequest {
     type: string
     channels: string[]
     packages: string[]
-    inputId?: string
+    inputIds?: string[]  // Changed to support multiple inputs
   }[]
   homeTeams: {
     id?: string
@@ -40,7 +40,14 @@ export async function GET() {
     })
 
     const providers = await prisma.tVProvider.findMany({
-      where: { isActive: true }
+      where: { isActive: true },
+      include: {
+        providerInputs: {
+          include: {
+            input: true
+          }
+        }
+      }
     })
 
     const homeTeams = await prisma.homeTeam.findMany({
@@ -70,7 +77,8 @@ export async function GET() {
         providers: providers.map(p => ({
           ...p,
           channels: JSON.parse(p.channels),
-          packages: JSON.parse(p.packages)
+          packages: JSON.parse(p.packages),
+          inputIds: p.providerInputs.map(pi => pi.inputId)
         })),
         homeTeams,
         matrixInputs: matrixConfig?.inputs || []
@@ -109,20 +117,33 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Clear existing providers and create new ones
+    // Clear existing providers and their input relationships
+    await prisma.providerInput.deleteMany()
     await prisma.tVProvider.deleteMany({ where: { isActive: true } })
     
     if (providers.length > 0) {
-      await prisma.tVProvider.createMany({
-        data: providers.map(provider => ({
-          name: provider.name,
-          type: provider.type,
-          channels: JSON.stringify(provider.channels),
-          packages: JSON.stringify(provider.packages),
-          inputId: provider.inputId,
-          isActive: true
-        }))
-      })
+      for (const provider of providers) {
+        // Create the provider
+        const createdProvider = await prisma.tVProvider.create({
+          data: {
+            name: provider.name,
+            type: provider.type,
+            channels: JSON.stringify(provider.channels),
+            packages: JSON.stringify(provider.packages),
+            isActive: true
+          }
+        })
+
+        // Create provider-input relationships
+        if (provider.inputIds && provider.inputIds.length > 0) {
+          await prisma.providerInput.createMany({
+            data: provider.inputIds.map(inputId => ({
+              providerId: createdProvider.id,
+              inputId: inputId
+            }))
+          })
+        }
+      }
     }
 
     // Clear existing home teams and create new ones

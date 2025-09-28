@@ -96,6 +96,7 @@ model MatrixInput {
   updatedAt    DateTime @updatedAt
   
   configuration MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  providerInputs ProviderInput[]
   
   @@unique([configId, channelNumber])
 }
@@ -254,10 +255,24 @@ model TVProvider {
   type        String   // "cable", "satellite", "streaming", "iptv"
   channels    String   // JSON array of channel names
   packages    String   // JSON array of package names
-  inputId     String?  // Matrix input this provider is assigned to
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  // Relationship to multiple inputs
+  providerInputs ProviderInput[]
+}
+
+model ProviderInput {
+  id         String   @id @default(cuid())
+  providerId String
+  inputId    String
+  createdAt  DateTime @default(now())
+  
+  provider   TVProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  input      MatrixInput  @relation(fields: [inputId], references: [id], onDelete: Cascade)
+  
+  @@unique([providerId, inputId])
 }
 
 model HomeTeam {

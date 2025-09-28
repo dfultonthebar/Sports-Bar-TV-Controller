@@ -31,7 +31,7 @@ interface Provider {
   type: 'cable' | 'satellite' | 'streaming' | 'iptv'
   channels: string[]
   packages: string[]
-  inputId?: string
+  inputIds?: string[]  // Changed to support multiple inputs
 }
 
 interface MatrixInput {
@@ -139,7 +139,7 @@ export default function SportsGuideConfigPage() {
     type: 'cable',
     channels: [],
     packages: [],
-    inputId: undefined
+    inputIds: []
   })
 
   useEffect(() => {
@@ -337,7 +337,7 @@ export default function SportsGuideConfigPage() {
       type: 'cable',
       channels: [],
       packages: [],
-      inputId: undefined
+      inputIds: []
     })
     setIsAdding(false)
   }
@@ -411,13 +411,43 @@ export default function SportsGuideConfigPage() {
     })
   }
 
-  const assignInputToProvider = (providerId: string, inputId: string) => {
-    // Clear input from other providers first
-    setProviders(prev => prev.map(p => 
-      p.inputId === inputId ? { ...p, inputId: undefined } : p
-    ))
-    // Assign to selected provider
-    updateProvider(providerId, { inputId })
+  const toggleInputForProvider = (providerId: string, inputId: string) => {
+    setProviders(prev => prev.map(provider => {
+      if (provider.id === providerId) {
+        const currentInputIds = provider.inputIds || []
+        const hasInput = currentInputIds.includes(inputId)
+        
+        if (hasInput) {
+          // Remove the input
+          return {
+            ...provider,
+            inputIds: currentInputIds.filter(id => id !== inputId)
+          }
+        } else {
+          // Add the input (first remove it from other providers to avoid conflicts)
+          const updatedProviders = prev.map(p => ({
+            ...p,
+            inputIds: (p.inputIds || []).filter(id => id !== inputId)
+          }))
+          
+          // Then add to current provider
+          return {
+            ...provider,
+            inputIds: [...currentInputIds, inputId]
+          }
+        }
+      }
+      // Remove input from other providers when assigning
+      return {
+        ...provider,
+        inputIds: (provider.inputIds || []).filter(id => id !== inputId)
+      }
+    }))
+  }
+
+  const isInputAssignedToProvider = (providerId: string, inputId: string): boolean => {
+    const provider = providers.find(p => p.id === providerId)
+    return provider?.inputIds?.includes(inputId) || false
   }
 
   return (
@@ -584,7 +614,7 @@ export default function SportsGuideConfigPage() {
             <div className="space-y-4">
               {providers.map((provider) => {
                 const IconComponent = getProviderIcon(provider.type)
-                const assignedInput = matrixInputs.find(input => input.id === provider.inputId)
+                const assignedInputs = matrixInputs.filter(input => provider.inputIds?.includes(input.id))
                 const compatibleInputs = getCompatibleInputs(provider.type)
                 
                 return (
@@ -623,38 +653,53 @@ export default function SportsGuideConfigPage() {
                         </div>
                       </div>
 
-                      {/* Input Assignment - FIXED VERSION */}
+                      {/* Multi-Input Assignment */}
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-white mb-2">
-                          Assigned TV Input
+                          Assigned TV Inputs ({assignedInputs.length} selected)
                           <span className="text-xs text-gray-400 ml-2">
                             (Showing {compatibleInputs.length} compatible inputs)
                           </span>
                         </label>
-                        <div className="flex items-center space-x-2">
-                          <select
-                            value={provider.inputId || ''}
-                            onChange={(e) => assignInputToProvider(provider.id!, e.target.value)}
-                            className="flex-1 px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                          >
-                            <option value="" className="bg-slate-800">No input assigned</option>
-                            {compatibleInputs.map(input => (
-                              <option key={input.id} value={input.id} className="bg-slate-800">
-                                {input.label} (Ch {input.channelNumber}) - {input.deviceType}
-                              </option>
-                            ))}
-                          </select>
-                          {assignedInput && (
-                            <div className="text-sm">
-                              <span className="text-green-400">✓ {assignedInput.label}</span>
-                              <div className="text-xs text-gray-400">
-                                {assignedInput.deviceType} • Ch {assignedInput.channelNumber}
-                              </div>
-                            </div>
-                          )}
-                        </div>
                         
-                        {compatibleInputs.length === 0 && (
+                        {/* Show assigned inputs */}
+                        {assignedInputs.length > 0 && (
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            {assignedInputs.map(input => (
+                              <span key={input.id} className="flex items-center space-x-1 bg-green-500/20 text-green-300 px-3 py-1 rounded-full text-sm">
+                                <span>✓ {input.label} (Ch {input.channelNumber})</span>
+                                <button
+                                  onClick={() => toggleInputForProvider(provider.id!, input.id)}
+                                  className="text-green-400 hover:text-green-200"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Input selection checkboxes */}
+                        {compatibleInputs.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                            {compatibleInputs.map(input => (
+                              <label key={input.id} className="flex items-center space-x-2 p-2 bg-white/5 rounded-lg hover:bg-white/10 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isInputAssignedToProvider(provider.id!, input.id)}
+                                  onChange={() => toggleInputForProvider(provider.id!, input.id)}
+                                  className="w-4 h-4 text-blue-600 bg-white/10 border-white/20 rounded focus:ring-blue-500 focus:ring-2"
+                                />
+                                <div className="text-sm">
+                                  <div className="text-white">{input.label}</div>
+                                  <div className="text-xs text-gray-400">
+                                    Ch {input.channelNumber} • {input.deviceType}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
                           <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                             <div className="text-sm text-yellow-300">
                               ⚠️ No compatible inputs found for {provider.type} provider.
