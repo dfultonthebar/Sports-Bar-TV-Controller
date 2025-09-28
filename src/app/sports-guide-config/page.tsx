@@ -256,7 +256,7 @@ export default function SportsGuideConfigPage() {
       sport: suggestion.sport,
       location: suggestion.location,
       conference: suggestion.conference,
-      isPrimary: homeTeams.length === 0 // First team becomes primary
+      isPrimary: false // Users must explicitly select primary teams
     }
     
     setHomeTeams(prev => [...prev, newTeam])
@@ -265,20 +265,13 @@ export default function SportsGuideConfigPage() {
   }
 
   const removeTeam = (index: number) => {
-    setHomeTeams(prev => {
-      const updated = prev.filter((_, i) => i !== index)
-      // If we removed the primary team, make the first remaining team primary
-      if (updated.length > 0 && !updated.some(team => team.isPrimary)) {
-        updated[0].isPrimary = true
-      }
-      return updated
-    })
+    setHomeTeams(prev => prev.filter((_, i) => i !== index))
   }
 
-  const setPrimaryTeam = (index: number) => {
+  const togglePrimaryTeam = (index: number) => {
     setHomeTeams(prev => prev.map((team, i) => ({
       ...team,
-      isPrimary: i === index
+      isPrimary: i === index ? !team.isPrimary : team.isPrimary
     })))
   }
 
@@ -936,7 +929,7 @@ export default function SportsGuideConfigPage() {
                 <Users className="w-5 h-5" />
                 <span>Home Team Preferences</span>
               </h3>
-              <p className="text-blue-200 mt-1">Select your favorite teams to prioritize their games in the sports guide</p>
+              <p className="text-blue-200 mt-1">Select your favorite teams and mark multiple teams as primary for top priority in the sports guide</p>
             </div>
             
             <div className="p-6 space-y-6">
@@ -993,7 +986,14 @@ export default function SportsGuideConfigPage() {
 
               {/* Selected Teams */}
               <div>
-                <h4 className="font-medium text-white mb-4">Your Favorite Teams ({homeTeams.length})</h4>
+                <h4 className="font-medium text-white mb-4">
+                  Your Favorite Teams ({homeTeams.length}) 
+                  {homeTeams.filter(team => team.isPrimary).length > 0 && (
+                    <span className="text-yellow-400 text-sm ml-2">
+                      • {homeTeams.filter(team => team.isPrimary).length} Primary
+                    </span>
+                  )}
+                </h4>
                 
                 {homeTeams.length === 0 ? (
                   <div className="text-center py-8 text-gray-400">
@@ -1037,15 +1037,17 @@ export default function SportsGuideConfigPage() {
                         </div>
                         
                         <div className="flex items-center space-x-2">
-                          {!team.isPrimary && (
-                            <button
-                              onClick={() => setPrimaryTeam(index)}
-                              className="p-2 text-gray-400 hover:text-yellow-400 transition-colors"
-                              title="Set as primary team"
-                            >
-                              <Star className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => togglePrimaryTeam(index)}
+                            className={`p-2 transition-colors ${
+                              team.isPrimary 
+                                ? 'text-yellow-400 hover:text-yellow-300' 
+                                : 'text-gray-400 hover:text-yellow-400'
+                            }`}
+                            title={team.isPrimary ? "Remove from primary teams" : "Set as primary team"}
+                          >
+                            <Star className={`w-4 h-4 ${team.isPrimary ? 'fill-current' : ''}`} />
+                          </button>
                           <button
                             onClick={() => removeTeam(index)}
                             className="p-2 text-gray-400 hover:text-red-400 transition-colors"
@@ -1065,9 +1067,10 @@ export default function SportsGuideConfigPage() {
                   <div>
                     <h4 className="font-medium text-blue-200 mb-2">Team Priority Features</h4>
                     <ul className="text-sm text-blue-300 space-y-1">
-                      <li>• Primary team games are highlighted and prioritized in the guide</li>
+                      <li>• Select multiple primary teams for top priority in the guide</li>
+                      <li>• Primary team games are highlighted and scheduled first</li>
                       <li>• Supports professional, college, and high school teams</li>
-                      <li>• Multiple team selection for following local favorites</li>
+                      <li>• Follow multiple local favorites with custom priority levels</li>
                       <li>• Automatic notifications for your teams' games (coming soon)</li>
                     </ul>
                   </div>
