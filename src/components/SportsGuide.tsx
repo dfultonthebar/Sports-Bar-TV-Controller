@@ -239,6 +239,9 @@ export default function SportsGuide() {
     loadAvailableLeagues()
     loadScheduledRoutines()
     loadMatrixInputs()
+    
+    // Auto-expand professional and college leagues for better UX
+    setExpandedLeagues(new Set(['professional', 'college']))
   }, [])
 
   useEffect(() => {
@@ -249,31 +252,54 @@ export default function SportsGuide() {
 
   const loadAvailableLeagues = async () => {
     try {
+      console.log('Loading leagues...')
       const response = await fetch('/api/leagues')
       const result = await response.json()
       
-      if (result.success) {
+      console.log('Leagues API response:', result)
+      
+      if (result.success && result.data) {
         setAvailableLeagues(result.data)
+        console.log('Successfully loaded leagues:', result.data.length)
+        
+        // Auto-select popular leagues for immediate content
+        if (selectedLeagues.length === 0) {
+          const popularLeagues = result.data.filter((league: League) => 
+            ['nfl', 'nba', 'mlb'].includes(league.id)
+          ).map((league: League) => league.id)
+          
+          if (popularLeagues.length > 0) {
+            setSelectedLeagues(popularLeagues.slice(0, 2)) // Select first 2 popular leagues
+            console.log('Auto-selected popular leagues:', popularLeagues.slice(0, 2))
+          }
+        }
       } else {
         console.error('Failed to load leagues:', result.error)
         // Fallback to sample leagues
         setAvailableLeagues(SAMPLE_LEAGUES)
+        console.log('Using sample leagues fallback')
       }
     } catch (error) {
       console.error('Error loading leagues:', error)
       // Fallback to sample leagues
       setAvailableLeagues(SAMPLE_LEAGUES)
+      console.log('Using sample leagues fallback due to error')
     }
   }
 
   const loadMatrixInputs = async () => {
     try {
+      console.log('Loading matrix inputs...')
       const response = await fetch('/api/matrix/config')
       const result = await response.json()
       
-      if (result.success && result.configs?.length > 0) {
+      console.log('Matrix config API response:', result)
+      
+      if (result.success !== false && result.configs?.length > 0) {
         const activeConfig = result.configs[0]
         const activeInputs = activeConfig.inputs?.filter((input: MatrixInput) => input.isActive) || []
+        
+        console.log('Active inputs found:', activeInputs.length)
         
         // Associate providers with inputs based on labels
         const inputsWithProviders = activeInputs.map((input: MatrixInput) => ({
@@ -282,6 +308,7 @@ export default function SportsGuide() {
         }))
         
         setMatrixInputs(inputsWithProviders)
+        console.log('Matrix inputs loaded:', inputsWithProviders.length)
         
         // Associate providers with inputs
         const updatedProviders = providers.map(provider => ({
@@ -289,6 +316,27 @@ export default function SportsGuide() {
           inputId: inputsWithProviders.find(input => input.provider === provider.id)?.id
         }))
         setProviders(updatedProviders)
+      } else if (result.inputs?.length > 0) {
+        // Handle case where inputs are directly in the result
+        const activeInputs = result.inputs.filter((input: MatrixInput) => input.isActive) || []
+        
+        console.log('Active inputs found (direct):', activeInputs.length)
+        
+        const inputsWithProviders = activeInputs.map((input: MatrixInput) => ({
+          ...input,
+          provider: getProviderForInput(input.label)
+        }))
+        
+        setMatrixInputs(inputsWithProviders)
+        console.log('Matrix inputs loaded (direct):', inputsWithProviders.length)
+        
+        const updatedProviders = providers.map(provider => ({
+          ...provider,
+          inputId: inputsWithProviders.find(input => input.provider === provider.id)?.id
+        }))
+        setProviders(updatedProviders)
+      } else {
+        console.log('No matrix inputs found in response')
       }
     } catch (error) {
       console.error('Error loading matrix inputs:', error)

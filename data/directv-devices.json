@@ -1,0 +1,24 @@
+{
+  "devices": [
+    {
+      "name": "Main DirecTV Receiver",
+      "ipAddress": "192.168.1.100",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 1,
+      "id": "directv_1759116061998",
+      "isOnline": false,
+      "addedAt": "2025-09-29T03:21:01.998Z"
+    },
+    {
+      "name": "Bar DirecTV Mini",
+      "ipAddress": "192.168.1.101",
+      "port": 8080,
+      "receiverType": "Genie Mini",
+      "inputChannel": 2,
+      "id": "directv_1759116067154",
+      "isOnline": false,
+      "addedAt": "2025-09-29T03:21:07.154Z"
+    }
+  ]
+}

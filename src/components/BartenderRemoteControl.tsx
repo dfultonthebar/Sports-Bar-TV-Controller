@@ -52,6 +52,19 @@ interface IRDevice {
   isActive: boolean
 }
 
+interface DirecTVDevice {
+  id: string
+  name: string
+  ipAddress: string
+  port: number
+  isOnline: boolean
+  receiverType: 'Genie HD DVR' | 'Genie Mini' | 'HR Series DVR' | 'C61K Mini' | 'HS17 Server'
+  inputChannel?: number  // Associated matrix input channel
+  lastResponse?: string
+  softwareVersion?: string
+  serialNumber?: string
+}
+
 interface AudioProcessor {
   id: string
   name: string
@@ -144,8 +157,10 @@ const CONTROL_COMMANDS: RemoteCommand[] = [
 export default function BartenderRemoteControl() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
+  const [direcTVDevices, setDirecTVDevices] = useState<DirecTVDevice[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
+  const [selectedDirecTVDevice, setSelectedDirecTVDevice] = useState<DirecTVDevice | null>(null)
   const [loading, setLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -180,6 +195,7 @@ export default function BartenderRemoteControl() {
   useEffect(() => {
     loadMatrixConfiguration()
     loadIRDevices()
+    loadDirecTVDevices()
     checkConnectionStatus()
     loadAudioProcessors()
     loadAvailableLeagues()
@@ -192,11 +208,20 @@ export default function BartenderRemoteControl() {
   }, [selectedProcessor])
 
   useEffect(() => {
-    // Auto-load sports guide when selected leagues change
+    // Auto-load sports guide when selected leagues change or when sports guide is opened
     if (selectedLeagues.length > 0 && showSportsGuide) {
+      console.log('🏆 Auto-loading sports guide due to state change')
       generateSportsGuide()
     }
   }, [selectedLeagues, showSportsGuide])
+
+  // Auto-load sports guide data on component mount
+  useEffect(() => {
+    if (selectedLeagues.length > 0) {
+      console.log('🏆 Auto-loading sports guide data on mount')
+      generateSportsGuide()
+    }
+  }, [])
 
   const loadMatrixConfiguration = async () => {
     try {
@@ -244,6 +269,16 @@ export default function BartenderRemoteControl() {
     }
   }
 
+  const loadDirecTVDevices = async () => {
+    try {
+      const response = await fetch('/api/directv-devices')
+      const data = await response.json()
+      setDirecTVDevices(data.devices || [])
+    } catch (error) {
+      console.error('Error loading DirecTV devices:', error)
+    }
+  }
+
   const checkConnectionStatus = async () => {
     try {
       const response = await fetch('/api/matrix/test-connection')
@@ -261,11 +296,26 @@ export default function BartenderRemoteControl() {
     setSelectedInput(inputNumber)
     
     // Find the corresponding IR device for this input
-    const device = irDevices.find(d => d.inputChannel === inputNumber)
-    setSelectedDevice(device || null)
+    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    setSelectedDevice(irDevice || null)
+    
+    // Find the corresponding DirecTV device for this input
+    const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
+    setSelectedDirecTVDevice(direcTVDevice || null)
     
     const input = inputs.find(i => i.channelNumber === inputNumber)
-    setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`}`)
+    
+    // Determine which device is configured for this input
+    let deviceInfo = ''
+    if (direcTVDevice) {
+      deviceInfo = `DirecTV: ${direcTVDevice.name} (${direcTVDevice.ipAddress})`
+    } else if (irDevice) {
+      deviceInfo = `IR: ${irDevice.name} (${irDevice.brand})`
+    } else {
+      deviceInfo = 'No device configured'
+    }
+    
+    setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} - ${deviceInfo}`)
 
     // Log the operation
     try {
@@ -278,9 +328,12 @@ export default function BartenderRemoteControl() {
           device: `Input ${inputNumber}`,
           details: {
             inputNumber,
-            deviceName: device?.name || 'Not configured',
-            deviceBrand: device?.brand || 'Unknown',
-            controlMethod: device?.controlMethod || 'None'
+            irDeviceName: irDevice?.name || 'Not configured',
+            irDeviceBrand: irDevice?.brand || 'Unknown',
+            irControlMethod: irDevice?.controlMethod || 'None',
+            direcTVDeviceName: direcTVDevice?.name || 'Not configured',
+            direcTVDeviceIP: direcTVDevice?.ipAddress || 'None',
+            activeDevice: direcTVDevice ? 'DirecTV' : (irDevice ? 'IR' : 'None')
           },
           success: true
         })
@@ -291,7 +344,10 @@ export default function BartenderRemoteControl() {
   }
 
   const sendIRCommand = async (command: string) => {
-    if (!selectedDevice) {
+    // Prioritize DirecTV device over IR device for more reliable control
+    const activeDevice = selectedDirecTVDevice || selectedDevice
+    
+    if (!activeDevice) {
       setCommandStatus('No device selected')
       // Log failed attempt
       try {
@@ -300,7 +356,7 @@ export default function BartenderRemoteControl() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'error',
-            action: 'IR command failed - no device selected',
+            action: 'Command failed - no device selected',
             details: { command, selectedInput },
             success: false,
             errorMessage: 'No device selected'
@@ -320,30 +376,52 @@ export default function BartenderRemoteControl() {
 
     try {
       let response;
+      let deviceName = '';
       
-      if (selectedDevice.controlMethod === 'IP' && selectedDevice.deviceIpAddress) {
-        // Send IP command
-        response = await fetch('/api/ir-devices/send-ip-command', {
+      if (selectedDirecTVDevice) {
+        // Send DirecTV IP command
+        deviceName = selectedDirecTVDevice.name
+        response = await fetch('/api/directv-devices/send-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            deviceId: selectedDevice.id,
+            deviceId: selectedDirecTVDevice.id,
             command: command,
-            ipAddress: selectedDevice.deviceIpAddress,
-            port: selectedDevice.ipControlPort || 80
+            ipAddress: selectedDirecTVDevice.ipAddress,
+            port: selectedDirecTVDevice.port
           })
         })
-      } else if (selectedDevice.iTachAddress) {
-        // Send Global Cache command
-        response = await fetch('/api/ir-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: selectedDevice.id,
-            command: command,
-            iTachAddress: selectedDevice.iTachAddress
+      } else if (selectedDevice) {
+        // Send IR device command
+        deviceName = selectedDevice.name
+        if (selectedDevice.controlMethod === 'IP' && selectedDevice.deviceIpAddress) {
+          // Send IP command to IR device
+          response = await fetch('/api/ir-devices/send-ip-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceId: selectedDevice.id,
+              command: command,
+              ipAddress: selectedDevice.deviceIpAddress,
+              port: selectedDevice.ipControlPort || 80
+            })
           })
-        })
+        } else if (selectedDevice.iTachAddress) {
+          // Send Global Cache command
+          response = await fetch('/api/ir-devices/send-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceId: selectedDevice.id,
+              command: command,
+              iTachAddress: selectedDevice.iTachAddress
+            })
+          })
+        } else {
+          setCommandStatus('Device not configured')
+          setLoading(false)
+          errorMessage = 'Device not configured'
+        }
       } else {
         setCommandStatus('Device not configured')
         setLoading(false)
@@ -354,7 +432,7 @@ export default function BartenderRemoteControl() {
         const result = await response.json()
         
         if (response.ok) {
-          setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
+          setCommandStatus(`✓ Sent ${command} to ${deviceName}`)
           success = true
         } else {
           setCommandStatus(`✗ Failed: ${result.error}`)
@@ -372,30 +450,39 @@ export default function BartenderRemoteControl() {
       try {
         const operationType = command.includes('VOL') ? 'volume_change' : 
                            command.includes('CH') ? 'channel_change' : 
-                           command === 'POWER' ? 'power_control' : 'matrix_control'
+                           command === 'POWER' ? 'power_control' : 'device_control'
+
+        const logDevice = selectedDirecTVDevice || selectedDevice
+        const deviceType = selectedDirecTVDevice ? 'DirecTV' : 'IR'
 
         await fetch('/api/logs/operations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: operationType,
-            action: `IR Command: ${command}`,
-            device: selectedDevice.name,
+            action: `${deviceType} Command: ${command}`,
+            device: logDevice?.name || 'Unknown device',
             details: {
               command,
               inputNumber: selectedInput,
-              deviceId: selectedDevice.id,
-              deviceBrand: selectedDevice.brand,
-              controlMethod: selectedDevice.controlMethod,
-              ipAddress: selectedDevice.deviceIpAddress,
-              iTachAddress: selectedDevice.iTachAddress
+              deviceType,
+              deviceId: logDevice?.id,
+              // DirecTV specific fields
+              direcTVIP: selectedDirecTVDevice?.ipAddress,
+              direcTVPort: selectedDirecTVDevice?.port,
+              receiverType: selectedDirecTVDevice?.receiverType,
+              // IR device specific fields
+              deviceBrand: selectedDevice?.brand,
+              controlMethod: selectedDevice?.controlMethod,
+              ipAddress: selectedDevice?.deviceIpAddress,
+              iTachAddress: selectedDevice?.iTachAddress
             },
             success,
             errorMessage: success ? undefined : errorMessage
           })
         })
       } catch (logError) {
-        console.error('Failed to log IR command:', logError)
+        console.error('Failed to log device command:', logError)
       }
 
       // Clear status after 3 seconds
@@ -564,6 +651,7 @@ export default function BartenderRemoteControl() {
     setSportsGuideStatus('Loading games...')
     
     try {
+      console.log('🏆 Requesting sports guide with leagues:', selectedLeagues)
       const response = await fetch('/api/sports-guide', {
         method: 'POST',
         headers: {
@@ -572,24 +660,28 @@ export default function BartenderRemoteControl() {
         body: JSON.stringify({ selectedLeagues })
       })
       
+      console.log('🏆 Sports guide response status:', response.status)
       const result = await response.json()
+      console.log('🏆 Sports guide result:', result)
       
-      if (result.success) {
-        setSportsGuide(result.data.games || [])
-        setSportsGuideStatus(`Found ${result.data.games?.length || 0} games`)
+      if (result.success && result.data && result.data.games) {
+        const games = result.data.games || []
+        console.log('🏆 Setting', games.length, 'games to state')
+        setSportsGuide(games)
+        setSportsGuideStatus(`Found ${games.length} games`)
       } else {
-        console.error('Failed to generate sports guide:', result.error)
+        console.error('Failed to generate sports guide:', result.error || 'No games data')
         setSportsGuide([])
-        setSportsGuideStatus('Failed to load games')
+        setSportsGuideStatus(`Failed to load games: ${result.error || 'No data'}`)
       }
     } catch (error) {
       console.error('Error generating sports guide:', error)
       setSportsGuide([])
-      setSportsGuideStatus('Error loading games')
+      setSportsGuideStatus(`Error: ${error.message}`)
     } finally {
       setIsLoadingSportsGuide(false)
-      // Clear status after 3 seconds
-      setTimeout(() => setSportsGuideStatus(''), 3000)
+      // Clear status after 5 seconds (extended for debugging)
+      setTimeout(() => setSportsGuideStatus(''), 5000)
     }
   }
 
@@ -885,25 +977,47 @@ export default function BartenderRemoteControl() {
               TV Inputs
             </h2>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {inputs.map((input) => (
-                <button
-                  key={input.id}
-                  onClick={() => selectInput(input.channelNumber)}
-                  className={`w-full p-3 rounded-lg text-left transition-all ${
-                    selectedInput === input.channelNumber
-                      ? 'bg-blue-500 text-white shadow-lg'
-                      : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg">{getInputIcon(input.inputType)}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{input.label}</div>
-                      <div className="text-xs opacity-80 truncate">Ch {input.channelNumber} • {input.inputType}</div>
+              {inputs.map((input) => {
+                const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
+                const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
+                
+                return (
+                  <button
+                    key={input.id}
+                    onClick={() => selectInput(input.channelNumber)}
+                    className={`w-full p-3 rounded-lg text-left transition-all ${
+                      selectedInput === input.channelNumber
+                        ? 'bg-blue-500 text-white shadow-lg'
+                        : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="text-lg">{getInputIcon(input.inputType)}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium truncate">{input.label}</div>
+                        <div className="text-xs opacity-80 truncate">
+                          Ch {input.channelNumber} • {input.inputType}
+                          {direcTVDevice && (
+                            <span className="ml-2 px-1 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
+                              DirecTV IP
+                            </span>
+                          )}
+                          {!direcTVDevice && irDevice && (
+                            <span className="ml-2 px-1 py-0.5 bg-orange-500/20 text-orange-400 rounded text-xs border border-orange-500/30">
+                              {irDevice.controlMethod}
+                            </span>
+                          )}
+                          {!direcTVDevice && !irDevice && (
+                            <span className="ml-2 px-1 py-0.5 bg-gray-500/20 text-gray-400 rounded text-xs border border-gray-500/30">
+                              No Device
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
