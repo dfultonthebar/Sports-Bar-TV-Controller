@@ -61,6 +61,7 @@ interface GameListing {
   description?: string
   priority?: 'high' | 'medium' | 'low'
   status?: 'upcoming' | 'live' | 'completed'
+  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
   inputId?: string // Which input this is available on
 }
 
@@ -548,6 +549,12 @@ export default function SportsGuide() {
     }
   }
 
+  const isHighSchoolGame = (game: GameListing) => {
+    return game.league.toLowerCase().includes('high school') || 
+           game.league.toLowerCase().includes('nfhs') ||
+           game.source === 'nfhs'
+  }
+
   const getCostIcon = (cost: string) => {
     switch (cost) {
       case 'free': return '🆓'
@@ -630,29 +637,29 @@ export default function SportsGuide() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 p-6">
         {/* Input Selection Panel - Left Side */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-gradient-to-br from-slate-800/90 to-slate-700/90 backdrop-blur-xl rounded-2xl border border-slate-600/50 shadow-2xl">
-            <div className="p-6 border-b border-slate-600/50">
-              <h3 className="text-xl font-bold text-white flex items-center space-x-3">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-xl">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center space-x-3">
                 <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
                   <Radio className="w-5 h-5 text-white" />
                 </div>
                 <span>TV Input Sources</span>
               </h3>
-              <p className="text-sm text-slate-300 mt-2">Select input to filter available content</p>
+              <p className="text-sm text-gray-600 mt-2">Select input to filter available content</p>
             </div>
           
           <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
             {matrixInputs.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <div className="bg-slate-700/50 rounded-full p-4 w-16 h-16 mx-auto mb-4">
-                  <Radio className="w-8 h-8 mx-auto opacity-60" />
+              <div className="text-center py-12 text-gray-500">
+                <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                  <Radio className="w-8 h-8 mx-auto text-gray-400" />
                 </div>
                 <p className="text-sm font-medium">No inputs configured</p>
-                <p className="text-xs text-slate-500 mt-1">Connect your AV devices first</p>
+                <p className="text-xs text-gray-400 mt-1">Connect your AV devices first</p>
               </div>
             ) : (
               <>
@@ -667,14 +674,14 @@ export default function SportsGuide() {
                       className={`w-full p-4 rounded-xl text-left transition-all duration-200 border ${
                         selectedInput === input.id
                           ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg border-blue-400/50 scale-105'
-                          : 'bg-slate-700/50 text-slate-200 hover:bg-slate-600/60 hover:text-white border-slate-600/50 hover:border-slate-500/50'
+                          : 'bg-gray-50 text-gray-800 hover:bg-gray-100 hover:text-gray-900 border-gray-200 hover:border-gray-300'
                       }`}
                     >
                       <div className="flex items-center space-x-3">
                         <div className={`p-2 rounded-lg ${
                           selectedInput === input.id 
                             ? 'bg-white/20' 
-                            : 'bg-slate-600/50'
+                            : 'bg-gray-200'
                         }`}>
                           <IconComponent className="w-4 h-4" />
                         </div>
@@ -778,24 +785,24 @@ export default function SportsGuide() {
         {/* Main Content Area - Right Side */}
         <div className="lg:col-span-3 space-y-8">
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 backdrop-blur-xl rounded-2xl p-8 border border-blue-500/30 shadow-2xl">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 border border-gray-200 shadow-xl">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-4 shadow-lg">
                   <Tv className="w-8 h-8 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-3xl font-bold text-white bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text text-transparent">
+                  <h2 className="text-3xl font-bold text-gray-900">
                     Sports Viewing Guide
                   </h2>
-                  <p className="text-slate-300 text-lg">Find where to watch your favorite sports</p>
+                  <p className="text-gray-600 text-lg">Find where to watch your favorite sports</p>
                 </div>
               </div>
           
           <div className="flex items-center space-x-3">
             <a
               href="/sports-guide-config"
-              className="flex items-center space-x-2 px-5 py-3 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-xl hover:from-slate-500 hover:to-slate-600 transition-all duration-200 shadow-lg border border-slate-500/50 font-medium"
+              className="flex items-center space-x-2 px-5 py-3 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all duration-200 shadow-lg border border-gray-500 font-medium"
             >
               <Settings className="w-4 h-4" />
               <span>Configure</span>
@@ -803,13 +810,13 @@ export default function SportsGuide() {
             
             {sportsGuide.length > 0 && (
               <>
-                <div className="flex bg-slate-700/50 backdrop-blur-sm rounded-xl p-2 border border-slate-600/50">
+                <div className="flex bg-gray-100 backdrop-blur-sm rounded-xl p-2 border border-gray-200">
                   <button
                     onClick={() => setViewMode('list')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       viewMode === 'list' 
                         ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
-                        : 'text-slate-200 hover:text-white hover:bg-slate-600/50'
+                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-200'
                     }`}
                   >
                     <List className="w-4 h-4" />
@@ -820,7 +827,7 @@ export default function SportsGuide() {
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       viewMode === 'grid' 
                         ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
-                        : 'text-slate-200 hover:text-white hover:bg-slate-600/50'
+                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-200'
                     }`}
                   >
                     <Grid3X3 className="w-4 h-4" />
@@ -851,41 +858,41 @@ export default function SportsGuide() {
           {/* Search and Filter */}
           <div className="flex flex-col sm:flex-row gap-6">
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search leagues..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-600/50 text-white placeholder-slate-400 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400/50 backdrop-blur-sm transition-all duration-200 text-base"
+                className="w-full pl-12 pr-4 py-4 bg-white border border-gray-300 text-gray-900 placeholder-gray-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 text-base"
               />
             </div>
             
             <div className="relative">
-              <Filter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+              <Filter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" />
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="pl-12 pr-8 py-4 bg-slate-800/50 border border-slate-600/50 text-white rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400/50 backdrop-blur-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
+                className="pl-12 pr-8 py-4 bg-white border border-gray-300 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
               >
-                <option value="all" className="bg-slate-800">All Categories</option>
-                <option value="professional" className="bg-slate-800">Professional</option>
-                <option value="college" className="bg-slate-800">College</option>
-                <option value="high-school" className="bg-slate-800">High School</option>
-                <option value="international" className="bg-slate-800">International</option>
+                <option value="all" className="bg-white">All Categories</option>
+                <option value="professional" className="bg-white">Professional</option>
+                <option value="college" className="bg-white">College</option>
+                <option value="high-school" className="bg-white">High School</option>
+                <option value="international" className="bg-white">International</option>
               </select>
             </div>
           </div>
         
           {/* Tab Navigation */}
-          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-600/50 shadow-lg">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-lg">
             <div className="flex space-x-2 p-3">
               <button
                 onClick={() => setActiveTab('sports-guide')}
                 className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-base font-semibold transition-all duration-200 ${
                   activeTab === 'sports-guide'
                     ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg border border-blue-400/50'
-                    : 'text-slate-200 hover:text-white hover:bg-slate-700/50 border border-transparent'
+                    : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
                 }`}
               >
                 <Calendar className="w-5 h-5" />
@@ -896,7 +903,7 @@ export default function SportsGuide() {
                 className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-base font-semibold transition-all duration-200 ${
                   activeTab === 'tv-programming'
                     ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg border border-blue-400/50'
-                    : 'text-slate-200 hover:text-white hover:bg-slate-700/50 border border-transparent'
+                    : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
                 }`}
               >
                 <Tv className="w-5 h-5" />
@@ -997,63 +1004,63 @@ export default function SportsGuide() {
       )}
 
           {/* League Selection */}
-          <div className="bg-gradient-to-br from-slate-800/90 to-slate-700/90 backdrop-blur-xl rounded-2xl border border-slate-600/50 shadow-2xl">
-            <div className="p-8 border-b border-slate-600/50">
-              <h3 className="text-2xl font-bold text-white flex items-center space-x-3">
-                <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-xl">
+            <div className="p-8 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-gray-900 flex items-center space-x-3">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
                   <Star className="w-6 h-6 text-white" />
                 </div>
                 <span>Select Sports Leagues</span>
               </h3>
-              <p className="text-slate-300 mt-2 text-lg">Choose the leagues you want to follow</p>
+              <p className="text-gray-600 mt-2 text-lg">Choose the leagues you want to follow</p>
             </div>
             
             <div className="p-8 space-y-6">
               {Object.entries(leaguesByCategory).map(([category, leagues]) => (
-                <div key={category} className="border border-slate-600/50 rounded-xl bg-slate-700/30 overflow-hidden shadow-lg">
+                <div key={category} className="border border-gray-200 rounded-xl bg-gray-50 overflow-hidden shadow-lg">
                   <button
                     onClick={() => toggleLeagueExpansion(category)}
-                    className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-600/40 transition-all duration-200"
+                    className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-100 transition-all duration-200"
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="text-3xl bg-slate-600/50 p-3 rounded-lg">
+                      <div className="text-3xl bg-gray-200 p-3 rounded-lg">
                         {getCategoryIcon(category)}
                       </div>
                       <div>
-                        <h4 className="font-bold text-white text-lg capitalize">{category.replace('-', ' ')} Sports</h4>
-                        <p className="text-sm text-slate-300">
+                        <h4 className="font-bold text-gray-900 text-lg capitalize">{category.replace('-', ' ')} Sports</h4>
+                        <p className="text-sm text-gray-600">
                           {leagues.length} leagues available • {leagues.filter(l => selectedLeagues.includes(l.id)).length} selected
                         </p>
                       </div>
                     </div>
                     <div className={`p-2 rounded-lg transition-all duration-200 ${
-                      expandedLeagues.has(category) ? 'bg-blue-600/20 rotate-180' : 'bg-slate-600/30'
+                      expandedLeagues.has(category) ? 'bg-blue-100 rotate-180' : 'bg-gray-200'
                     }`}>
-                      <ChevronDown className="w-6 h-6 text-slate-300" />
+                      <ChevronDown className="w-6 h-6 text-gray-600" />
                     </div>
                   </button>
                   
                   {expandedLeagues.has(category) && (
-                    <div className="border-t border-slate-600/50 p-6 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800/20">
+                    <div className="border-t border-gray-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white">
                       {leagues.map((league) => (
                         <label
                           key={league.id}
                           className={`flex items-center space-x-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:scale-105 ${
                             selectedLeagues.includes(league.id)
-                              ? 'border-blue-400/70 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 shadow-lg'
-                              : 'border-slate-600/50 hover:border-slate-500/70 bg-slate-700/20'
+                              ? 'border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 shadow-lg'
+                              : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
                           }`}
                         >
                           <input
                             type="checkbox"
                             checked={selectedLeagues.includes(league.id)}
                             onChange={() => toggleLeague(league.id)}
-                            className="w-5 h-5 text-blue-500 bg-slate-600/30 border-slate-500/50 rounded-md focus:ring-2 focus:ring-blue-400 transition-all"
+                            className="w-5 h-5 text-blue-600 bg-white border-gray-300 rounded focus:ring-2 focus:ring-blue-500 transition-all"
                           />
                           <div className="flex-1">
-                            <div className="font-semibold text-white text-base">{league.name}</div>
-                            <div className="text-sm text-slate-300">{league.description}</div>
-                            <div className="text-xs text-slate-400 mt-1">{league.season} season</div>
+                            <div className="font-semibold text-gray-900 text-base">{league.name}</div>
+                            <div className="text-sm text-gray-600">{league.description}</div>
+                            <div className="text-xs text-gray-500 mt-1">{league.season} season</div>
                           </div>
                         </label>
                       ))}
@@ -1090,13 +1097,31 @@ export default function SportsGuide() {
             </div>
           )}
 
+      {/* High School Sports Notice */}
+      {(selectedLeagues.includes('high-school') || selectedLeagues.includes('nfhs')) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center space-x-3">
+            <span className="text-2xl">🏫</span>
+            <div>
+              <h4 className="font-semibold text-amber-900">High School Sports Selected</h4>
+              <p className="text-sm text-amber-800">
+                You've selected high school sports. Local teams and NFHS Network games will appear in your guide.
+                {sportsGuide.filter(isHighSchoolGame).length > 0 && (
+                  <span className="font-medium"> {sportsGuide.filter(isHighSchoolGame).length} high school games found!</span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sports Guide Results */}
       {sportsGuide.length > 0 && (
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-          <div className="p-6 border-b border-white/20">
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg">
+          <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Your Sports Guide</h3>
-              <div className="text-sm text-blue-200">
+              <h3 className="text-lg font-semibold text-gray-900">Your Sports Guide</h3>
+              <div className="text-sm text-gray-600">
                 {getFilteredGames().length} games found
                 {selectedProvider && selectedInput && (
                   <span className="block text-xs mt-1">
@@ -1115,8 +1140,8 @@ export default function SportsGuide() {
                     onClick={() => setSelectedDay(index)}
                     className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all border ${
                       selectedDay === index
-                        ? 'bg-emerald-600 text-white shadow-lg border-emerald-500/50'
-                        : 'bg-slate-700/40 text-blue-200 border-slate-600/50 hover:bg-slate-600/50 hover:text-white'
+                        ? 'bg-blue-600 text-white shadow-lg border-blue-500'
+                        : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200 hover:text-gray-900'
                     }`}
                   >
                     {day.label}
@@ -1133,29 +1158,48 @@ export default function SportsGuide() {
                 {getFilteredGames().map((game) => (
                   <div
                     key={game.id}
-                    className="border border-white/30 bg-white/10 backdrop-blur-sm rounded-lg p-4 hover:bg-white/20 transition-all shadow-lg"
+                    className={`border rounded-lg p-4 hover:shadow-xl transition-all shadow-lg ${
+                      isHighSchoolGame(game) 
+                        ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
-                        <div className="bg-blue-500/20 border border-blue-400/30 rounded-lg p-2">
-                          <Star className="w-4 h-4 text-blue-300" />
+                        <div className={`border rounded-lg p-2 ${
+                          isHighSchoolGame(game)
+                            ? 'bg-amber-100 border-amber-200' 
+                            : 'bg-blue-100 border-blue-200'
+                        }`}>
+                          {isHighSchoolGame(game) ? (
+                            <span className="text-sm">🏫</span>
+                          ) : (
+                            <Star className="w-4 h-4 text-blue-600" />
+                          )}
                         </div>
                         <div>
-                          <h4 className="font-medium text-white">{game.league}</h4>
-                          <p className="text-sm text-blue-200">{game.description}</p>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="font-medium text-gray-900">{game.league}</h4>
+                            {isHighSchoolGame(game) && (
+                              <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-bold rounded-full">
+                                High School
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{game.description}</p>
                         </div>
                       </div>
                       
                       <div className="text-right">
-                        <div className="flex items-center space-x-1 text-sm text-blue-200">
+                        <div className="flex items-center space-x-1 text-sm text-gray-600">
                           <Clock className="w-4 h-4" />
-                          <span className="font-medium text-white">{game.gameTime}</span>
+                          <span className="font-medium text-gray-900">{game.gameTime}</span>
                         </div>
                       </div>
                     </div>
                     
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-lg font-bold text-white">
+                      <div className="text-lg font-bold text-gray-900">
                         {game.awayTeam} @ {game.homeTeam}
                       </div>
                     </div>
