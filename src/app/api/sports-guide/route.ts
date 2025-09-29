@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { liveSportsService } from '../../../lib/sports-apis/live-sports-service'
+import { enhancedLiveSportsService } from '../../../lib/sports-apis/enhanced-live-sports-service'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -10,7 +10,7 @@ export interface ChannelInfo {
   name: string
   url?: string
   platforms: string[]
-  type: 'cable' | 'streaming' | 'ota'
+  type: 'cable' | 'streaming' | 'ota' | 'satellite'
   cost: 'free' | 'subscription' | 'premium'
   logoUrl?: string
   channelNumber?: string
@@ -33,7 +33,7 @@ export interface GameListing {
   awayScore?: string
   venue?: string
   broadcast?: string[]
-  source?: 'espn' | 'sportsdb' | 'mock'
+  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock'
 }
 
 const CHANNELS: ChannelInfo[] = [
@@ -343,6 +343,35 @@ const CHANNELS: ChannelInfo[] = [
     cost: 'free',
     channelNumber: '5',
     deviceType: 'cable'
+  },
+  {
+    id: 'nfhs-network',
+    name: 'NFHS Network',
+    platforms: ['NFHS Network App', 'Web Browser', 'Roku', 'Apple TV', 'Smart TVs'],
+    type: 'streaming',
+    cost: 'subscription',
+    url: 'https://www.nfhsnetwork.com',
+    appCommand: 'HOME,APPS,NFHS,OK',
+    deviceType: 'streaming'
+  },
+  {
+    id: 'sunday-ticket',
+    name: 'NFL Sunday Ticket',
+    platforms: ['DirecTV', 'DirecTV Stream', 'Sunday Ticket App'],
+    type: 'satellite',
+    cost: 'premium',
+    url: 'https://nflst.directv.com',
+    channelNumber: '705-719',
+    deviceType: 'satellite'
+  },
+  {
+    id: 'sunday-ticket-redzone',
+    name: 'NFL RedZone (Sunday Ticket)',
+    platforms: ['DirecTV Ch. 213', 'Sunday Ticket Package'],
+    type: 'satellite',
+    cost: 'premium',
+    channelNumber: '213',
+    deviceType: 'satellite'
   }
 ]
 
@@ -356,6 +385,7 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
   
   const teams = {
     'nfl': ['Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills', 'Rams'],
+    'nfl-sunday-ticket': ['Chargers', 'Raiders', 'Cardinals', 'Panthers', 'Jaguars', 'Titans', 'Bengals', 'Browns'],
     'nba': ['Lakers', 'Warriors', 'Celtics', 'Nets', 'Bucks', 'Heat', 'Suns', 'Nuggets'],
     'mlb': ['Yankees', 'Dodgers', 'Red Sox', 'Giants', 'Cubs', 'Astros', 'Phillies', 'Braves'],
     'nhl': ['Bruins', 'Rangers', 'Blackhawks', 'Kings', 'Penguins', 'Lightning', 'Capitals', 'Avalanche'],
@@ -366,11 +396,14 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
     'champions': ['Real Madrid', 'Barcelona', 'Bayern Munich', 'PSG', 'Manchester City', 'Liverpool', 'AC Milan', 'Inter Milan'],
     'la-liga': ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Sevilla', 'Real Betis', 'Villarreal', 'Valencia', 'Athletic Bilbao'],
     'serie-a': ['Juventus', 'AC Milan', 'Inter Milan', 'Napoli', 'Roma', 'Lazio', 'Atalanta', 'Fiorentina'],
-    'bundesliga': ['Bayern Munich', 'Borussia Dortmund', 'RB Leipzig', 'Bayer Leverkusen', 'Union Berlin', 'Frankfurt', 'Wolfsburg', 'Freiburg']
+    'bundesliga': ['Bayern Munich', 'Borussia Dortmund', 'RB Leipzig', 'Bayer Leverkusen', 'Union Berlin', 'Frankfurt', 'Wolfsburg', 'Freiburg'],
+    'high-school': ['Madison West Regents', 'Milwaukee Hamilton Chargers', 'Green Bay East Red Devils', 'Appleton North Lightning', 'Stevens Point Panthers', 'Oshkosh North Spartans'],
+    'nfhs': ['La Crosse Central Red Raiders', 'Eau Claire Memorial Old Abes', 'Waukesha West Wolverines', 'Kenosha Bradford Red Devils']
   }
   
   const leagueNames = {
     'nfl': 'NFL',
+    'nfl-sunday-ticket': 'NFL Sunday Ticket',
     'nba': 'NBA', 
     'mlb': 'MLB',
     'nhl': 'NHL',
@@ -381,7 +414,9 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
     'champions': 'Champions League',
     'la-liga': 'La Liga',
     'serie-a': 'Serie A',
-    'bundesliga': 'Bundesliga'
+    'bundesliga': 'Bundesliga',
+    'high-school': 'High School Sports',
+    'nfhs': 'NFHS Network'
   }
 
   selectedLeagues.forEach(leagueId => {
@@ -435,7 +470,7 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { selectedLeagues, scheduledUpdate, timezone, dateRange } = body
+    const { selectedLeagues, scheduledUpdate, timezone, dateRange, location } = body
 
     if (!selectedLeagues || !Array.isArray(selectedLeagues) || selectedLeagues.length === 0) {
       return NextResponse.json(
@@ -444,24 +479,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`🏆 Fetching live sports data for leagues: ${selectedLeagues.join(', ')}`)
+    console.log(`🏆 Fetching enhanced sports data for leagues: ${selectedLeagues.join(', ')}`)
     
     let games: GameListing[] = []
-    let dataSource = 'Live APIs (ESPN + TheSportsDB)'
+    let dataSource = 'Live APIs (ESPN + TheSportsDB + NFHS + Sunday Ticket)'
     let apiSources: string[] = []
 
     try {
-      // Attempt to fetch live data using the combined sports service
+      // Attempt to fetch live data using the enhanced combined sports service
       const startDate = dateRange?.start || new Date().toISOString().split('T')[0]
       const endDate = dateRange?.end || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       
       console.log(`📅 Date range: ${startDate} to ${endDate}`)
+      console.log(`📍 Location: ${location ? `${location.city || ''}, ${location.state || ''}` : 'Default (Wisconsin)'}`)
       
-      const liveData = await liveSportsService.getLiveGames(selectedLeagues, startDate, endDate)
+      const enhancedData = await enhancedLiveSportsService.getEnhancedLiveGames(
+        selectedLeagues, 
+        location || { state: 'WI', city: 'Madison' }, // Default to Wisconsin
+        startDate, 
+        endDate
+      )
       
-      if (liveData.games && liveData.games.length > 0) {
-        // Convert live data to GameListing format
-        games = liveData.games.map(game => ({
+      if (enhancedData.games && enhancedData.games.length > 0) {
+        // Convert enhanced live data to GameListing format
+        games = enhancedData.games.map(game => ({
           id: game.id,
           league: game.league,
           homeTeam: game.homeTeam,
@@ -472,27 +513,30 @@ export async function POST(request: NextRequest) {
           description: game.description,
           priority: game.priority,
           status: game.status,
-          homeScore: game.homeScore,
-          awayScore: game.awayScore,
+          homeScore: game.homeScore?.toString(),
+          awayScore: game.awayScore?.toString(),
           venue: game.venue,
           broadcast: game.broadcast,
           source: game.source
         }))
         
-        apiSources = liveData.sources
+        apiSources = enhancedData.sources
         
-        console.log(`✅ Successfully fetched ${liveData.totalGames} games from live APIs`)
-        console.log(`📊 Live: ${liveData.liveGames}, Upcoming: ${liveData.upcomingGames}, Completed: ${liveData.completedGames}`)
+        console.log(`✅ Successfully fetched ${enhancedData.totalGames} games from enhanced APIs`)
+        console.log(`📊 Live: ${enhancedData.liveGames}, Upcoming: ${enhancedData.upcomingGames}, Completed: ${enhancedData.completedGames}`)
+        console.log(`🏆 Professional: ${enhancedData.categories.professional}, College: ${enhancedData.categories.college}`)
+        console.log(`🏫 High School: ${enhancedData.categories.highSchool}, International: ${enhancedData.categories.international}`)
+        console.log(`📺 Sunday Ticket: ${enhancedData.sundayTicketGames}, NFHS Streams: ${enhancedData.nfhsStreamingGames}`)
         
       } else {
-        console.log('⚠️ No live data available, falling back to mock data')
+        console.log('⚠️ No enhanced data available, falling back to mock data')
         games = generateMockGames(selectedLeagues)
         dataSource = 'Mock Data (Fallback)'
         apiSources = ['Mock Generator']
       }
       
     } catch (error) {
-      console.error('❌ Error fetching live sports data:', error)
+      console.error('❌ Error fetching enhanced sports data:', error)
       console.log('⚠️ Falling back to mock data due to API error')
       games = generateMockGames(selectedLeagues)
       dataSource = 'Mock Data (API Error Fallback)'
@@ -535,14 +579,16 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json({
       success: true,
-      message: 'Live Sports Guide API is active',
-      version: '2.0.0',
+      message: 'Enhanced Live Sports Guide API is active',
+      version: '3.0.0',
       dataSources: [
         'ESPN API (Free) - NFL, NBA, MLB, NHL, NCAA Football, NCAA Basketball, MLS',
-        'TheSportsDB API (Free) - Premier League, Champions League, La Liga, Serie A, Bundesliga'
+        'TheSportsDB API (Free) - Premier League, Champions League, La Liga, Serie A, Bundesliga',
+        'NFHS Network API - High School Sports (all sports, location-based)',
+        'NFL Sunday Ticket Service - Out-of-market NFL games identification'
       ],
       endpoints: {
-        'POST /api/sports-guide': 'Generate sports guide with selected leagues using live data',
+        'POST /api/sports-guide': 'Generate enhanced sports guide with selected leagues using live data',
         'GET /api/sports-guide': 'Get API information and status',
         'POST /api/sports-guide/scheduled': 'Run scheduled update with all leagues',
         'GET /api/sports-guide/test-providers': 'Test live API connectivity'
@@ -560,20 +606,32 @@ export async function GET(request: NextRequest) {
         'champions': 'Champions League (TheSportsDB)',
         'la-liga': 'La Liga (TheSportsDB)',
         'serie-a': 'Serie A (TheSportsDB)',
-        'bundesliga': 'Bundesliga (TheSportsDB)'
+        'bundesliga': 'Bundesliga (TheSportsDB)',
+        'high-school': 'High School Sports (NFHS Network)',
+        'nfhs': 'NFHS Network Streaming Games'
+      },
+      specialFeatures: {
+        'sundayTicket': 'NFL Sunday Ticket exclusive game identification',
+        'nfhsStreaming': 'NFHS Network live streaming games',
+        'locationBased': 'Location-based high school sports discovery',
+        'multiCategory': 'Professional, College, High School, and International sports'
       },
       features: [
-        'Live game data from free APIs',
+        'Live game data from multiple free APIs',
         'Real-time scores and game status',
+        'NFL Sunday Ticket exclusive games identification',
+        'NFHS Network high school sports integration',
+        'Location-based sports discovery',
+        'Multi-category sports coverage',
         'Automatic fallback to mock data if APIs unavailable',
-        'Channel and broadcast information',
+        'Enhanced channel and broadcast information',
         'Timezone-aware scheduling',
         'Multi-league support',
-        'No API keys required'
+        'No API keys required for basic functionality'
       ]
     })
   } catch (error) {
-    console.error('Error in sports guide API:', error)
+    console.error('Error in enhanced sports guide API:', error)
     return NextResponse.json(
       { success: false, error: 'API error' },
       { status: 500 }

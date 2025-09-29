@@ -33,7 +33,7 @@ interface League {
   id: string
   name: string
   description: string
-  category: 'professional' | 'college' | 'international'
+  category: 'professional' | 'college' | 'international' | 'high-school'
   season: string
   logo?: string
 }
@@ -98,7 +98,9 @@ const SAMPLE_LEAGUES: League[] = [
   { id: 'ncaa-fb', name: 'NCAA Football', description: 'College Football', category: 'college', season: '2024' },
   { id: 'ncaa-bb', name: 'NCAA Basketball', description: 'College Basketball', category: 'college', season: '2024-25' },
   { id: 'premier', name: 'Premier League', description: 'English Premier League', category: 'international', season: '2024-25' },
-  { id: 'champions', name: 'Champions League', description: 'UEFA Champions League', category: 'international', season: '2024-25' }
+  { id: 'champions', name: 'Champions League', description: 'UEFA Champions League', category: 'international', season: '2024-25' },
+  { id: 'high-school', name: 'High School Sports', description: 'Local high school athletics', category: 'high-school', season: '2024-25' },
+  { id: 'nfhs', name: 'NFHS Network', description: 'High school sports streaming', category: 'high-school', season: '2024-25' }
 ]
 
 const SAMPLE_PROVIDERS: Provider[] = [
@@ -191,6 +193,24 @@ const SAMPLE_CHANNELS: ChannelInfo[] = [
     cost: 'subscription',
     providerId: 'streaming-box',
     url: 'https://www.paramountplus.com'
+  },
+  { 
+    id: 'nfhs-network', 
+    name: 'NFHS Network', 
+    platforms: ['NFHS Network App', 'Web Browser', 'Roku'], 
+    type: 'streaming', 
+    cost: 'subscription',
+    providerId: 'streaming-box',
+    url: 'https://www.nfhsnetwork.com'
+  },
+  { 
+    id: 'sunday-ticket', 
+    name: 'NFL Sunday Ticket', 
+    platforms: ['DirecTV', 'DirecTV Stream', 'Sunday Ticket App'], 
+    type: 'satellite', 
+    cost: 'premium',
+    providerId: 'directv-nfl',
+    url: 'https://nflst.directv.com'
   }
 ]
 
@@ -441,6 +461,7 @@ export default function SportsGuide() {
       case 'professional': return '🏆'
       case 'college': return '🎓'
       case 'international': return '🌍'
+      case 'high-school': return '🏫'
       default: return '⚽'
     }
   }
@@ -732,6 +753,7 @@ export default function SportsGuide() {
             <option value="all" className="bg-slate-800">All Categories</option>
             <option value="professional" className="bg-slate-800">Professional</option>
             <option value="college" className="bg-slate-800">College</option>
+            <option value="high-school" className="bg-slate-800">High School</option>
             <option value="international" className="bg-slate-800">International</option>
           </select>
         </div>
