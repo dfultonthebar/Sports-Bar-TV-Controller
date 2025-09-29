@@ -154,11 +154,16 @@ export default function BartenderRemotePage() {
     loadIRDevices()
     checkConnectionStatus()
     loadTVLayout()
+    // Also fetch matrix data on initial load
+    fetchMatrixData()
   }, [])
 
   useEffect(() => {
-    fetchMatrixData()
-  }, [tvLayout.zones.length]) // Re-fetch when layout zones change
+    // Re-fetch matrix data when layout zones change (but skip initial empty state)
+    if (tvLayout.zones.length > 0) {
+      fetchMatrixData()
+    }
+  }, [tvLayout.zones.length])
 
   const fetchMatrixData = async () => {
     try {
@@ -172,11 +177,10 @@ export default function BartenderRemotePage() {
             input.isActive
           ) || []
           
-          // Only use matrix inputs if they exist, don't fallback to generic names
-          if (matrixInputs.length > 0) {
-            setInputs(matrixInputs)
-          }
+          // Always show matrix inputs if they exist, regardless of connection status
+          setInputs(matrixInputs)
           
+          // Set initial connection status from database, but this may be overridden by checkConnectionStatus
           setConnectionStatus(activeConfig.connectionStatus === 'connected' ? 'connected' : 'disconnected')
           setMatrixConfig(activeConfig)
           
@@ -230,9 +234,8 @@ export default function BartenderRemotePage() {
   }
 
   const loadInputs = async () => {
-    // Matrix inputs are now loaded via fetchMatrixData()
-    // This function is kept for compatibility but matrix data takes precedence
-    console.log('loadInputs called - matrix data should be loaded via fetchMatrixData')
+    // Matrix inputs are loaded via fetchMatrixData()
+    // This function is kept for compatibility
   }
 
   const loadTVLayout = async () => {
@@ -262,7 +265,8 @@ export default function BartenderRemotePage() {
   const checkConnectionStatus = async () => {
     try {
       const response = await fetch('/api/matrix/test-connection')
-      if (response.ok) {
+      const result = await response.json()
+      if (result.success) {
         setConnectionStatus('connected')
       } else {
         setConnectionStatus('disconnected')
@@ -276,18 +280,28 @@ export default function BartenderRemotePage() {
     setSelectedInput(inputNumber)
     
     // Find the corresponding IR device for this input
-    const device = irDevices.find(d => d.inputChannel === inputNumber)
+    const device = irDevices.find(d => d.inputChannel === inputNumber && d.isActive)
     setSelectedDevice(device || null)
     
     const input = inputs.find(i => i.channelNumber === inputNumber)
-    setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`}`)
+    
+    if (device) {
+      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} → ${device.name} (${device.brand})`)
+    } else {
+      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} ⚠️ No IR device configured for this input`)
+    }
+    
+    // Auto-clear status after 5 seconds
+    setTimeout(() => {
+      if (commandStatus.includes(input?.label || `Input ${inputNumber}`)) {
+        setCommandStatus('')
+      }
+    }, 5000)
   }
 
   const routeInputToOutput = async (inputNumber: number, outputNumber: number) => {
-    if (connectionStatus !== 'connected') {
-      setCommandStatus('❌ Matrix not connected')
-      return
-    }
+    // Allow routing attempt even if connection status shows disconnected
+    // The actual routing API will handle connection failures gracefully
 
     setIsRouting(true)
     try {
@@ -485,34 +499,51 @@ export default function BartenderRemotePage() {
                     </div>
                   ) : (
                     <>
-                      {inputs.map((input) => (
-                        <button
-                          key={input.id}
-                          onClick={() => selectInput(input.channelNumber)}
-                          className={`w-full p-3 rounded-lg text-left transition-all ${
-                            selectedInput === input.channelNumber
-                              ? 'bg-blue-500 text-white shadow-lg'
-                              : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <span className="text-2xl">{getInputIcon(input.inputType)}</span>
-                              <div>
-                                <div className="font-medium">{input.label}</div>
-                                <div className="text-sm opacity-80">
-                                  Channel {input.channelNumber} • {input.inputType}
+                      {inputs.map((input) => {
+                        const hasIRDevice = irDevices.some(d => d.inputChannel === input.channelNumber && d.isActive)
+                        const device = irDevices.find(d => d.inputChannel === input.channelNumber && d.isActive)
+                        
+                        return (
+                          <button
+                            key={input.id}
+                            onClick={() => selectInput(input.channelNumber)}
+                            className={`w-full p-3 rounded-lg text-left transition-all relative ${
+                              selectedInput === input.channelNumber
+                                ? 'bg-blue-500 text-white shadow-lg'
+                                : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-2xl">{getInputIcon(input.inputType)}</span>
+                                <div className="flex-1">
+                                  <div className="font-medium">{input.label}</div>
+                                  <div className="text-sm opacity-80">
+                                    Channel {input.channelNumber} • {input.inputType}
+                                  </div>
+                                  {device && (
+                                    <div className="text-xs opacity-70 mt-1">
+                                      📱 {device.name} ({device.controlMethod === 'IP' ? 'IP' : 'IR'})
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            </div>
-                            {selectedInput === input.channelNumber && (
-                              <div className="text-blue-200">
-                                <Zap className="w-5 h-5" />
+                              <div className="flex items-center space-x-2">
+                                {hasIRDevice && (
+                                  <div className="text-green-400" title="IR remote control available">
+                                    <Settings className="w-4 h-4" />
+                                  </div>
+                                )}
+                                {selectedInput === input.channelNumber && (
+                                  <div className="text-blue-200">
+                                    <Zap className="w-5 h-5" />
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                            </div>
+                          </button>
+                        )
+                      })}
                       
                       {selectedInput && (
                         <button
@@ -531,52 +562,107 @@ export default function BartenderRemotePage() {
                 </div>
               </div>
 
-              {/* IR Device Control Panel */}
-              {selectedInput && selectedDevice && (
+              {/* IR Device Status Panel */}
+              {selectedInput && (
                 <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mt-4">
                   <h3 className="text-lg font-bold text-white mb-3 flex items-center">
                     <Settings className="mr-2 w-4 h-4" />
                     Device Control
                   </h3>
-                  <p className="text-blue-300 text-sm mb-3">
-                    {selectedDevice.name} ({selectedDevice.brand})
-                  </p>
                   
-                  {/* Power and Main Controls */}
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    {CONTROL_COMMANDS.map((cmd) => (
-                      <button
-                        key={cmd.command}
-                        onClick={() => sendIRCommand(cmd.command)}
-                        disabled={loading}
-                        className={`p-2 rounded-lg font-medium text-white text-sm transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          cmd.color || 'bg-gray-600 hover:bg-gray-500'
-                        }`}
-                      >
-                        <div className="flex flex-col items-center space-y-1">
-                          {cmd.icon && <cmd.icon className="w-4 h-4" />}
-                          <span className="text-xs">{cmd.display}</span>
+                  {selectedDevice ? (
+                    <>
+                      <div className="bg-green-500/20 text-green-300 border border-green-500/30 rounded-lg p-3 mb-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{selectedDevice.name}</div>
+                            <div className="text-sm opacity-80">{selectedDevice.brand} • {selectedDevice.deviceType}</div>
+                          </div>
+                          <div className="text-xs bg-green-600/30 px-2 py-1 rounded">
+                            {selectedDevice.controlMethod === 'IP' ? '📡 IP Control' : '📻 IR Control'}
+                          </div>
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                        {selectedDevice.controlMethod === 'IP' ? (
+                          <div className="text-xs mt-2 opacity-75">
+                            {selectedDevice.deviceIpAddress}:{selectedDevice.ipControlPort || 'auto'}
+                          </div>
+                        ) : (
+                          <div className="text-xs mt-2 opacity-75">
+                            iTach: {selectedDevice.iTachAddress}:{selectedDevice.iTachPort || 1}
+                          </div>
+                        )}
+                      </div>
+                  
+                      {/* Power and Main Controls */}
+                      <div className="grid grid-cols-2 gap-2 mb-4">
+                        {CONTROL_COMMANDS.map((cmd) => (
+                          <button
+                            key={cmd.command}
+                            onClick={() => sendIRCommand(cmd.command)}
+                            disabled={loading}
+                            className={`p-2 rounded-lg font-medium text-white text-sm transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${
+                              cmd.color || 'bg-gray-600 hover:bg-gray-500'
+                            }`}
+                          >
+                            <div className="flex flex-col items-center space-y-1">
+                              {cmd.icon && <cmd.icon className="w-4 h-4" />}
+                              <span className="text-xs">{cmd.display}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
 
-                  {/* Channel Controls */}
-                  <div className="grid grid-cols-3 gap-1">
-                    {CHANNEL_COMMANDS.slice(0, 12).map((cmd) => (
-                      <button
-                        key={cmd.command}
-                        onClick={() => sendIRCommand(cmd.command)}
-                        disabled={loading}
-                        className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex flex-col items-center space-y-1">
-                          {cmd.icon && <cmd.icon className="w-3 h-3" />}
-                          <span>{cmd.display}</span>
+                      {/* Channel Controls */}
+                      <div className="grid grid-cols-3 gap-1">
+                        {CHANNEL_COMMANDS.slice(0, 12).map((cmd) => (
+                          <button
+                            key={cmd.command}
+                            onClick={() => sendIRCommand(cmd.command)}
+                            disabled={loading}
+                            className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <div className="flex flex-col items-center space-y-1">
+                              {cmd.icon && <cmd.icon className="w-3 h-3" />}
+                              <span>{cmd.display}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* No Device Configured */}
+                      <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-lg p-3 mb-3">
+                        <div className="flex items-center space-x-2">
+                          <div className="text-yellow-400">⚠️</div>
+                          <div>
+                            <div className="font-medium">No IR Device Configured</div>
+                            <div className="text-sm opacity-80">
+                              This input doesn't have a remote control device set up
+                            </div>
+                          </div>
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                      </div>
+                      
+                      {/* Show available IR devices for reference */}
+                      {irDevices.length > 0 && (
+                        <div className="mt-3">
+                          <h4 className="text-sm font-medium text-white mb-2">Available IR Devices:</h4>
+                          <div className="space-y-1">
+                            {irDevices.filter(d => d.isActive).map(device => (
+                              <div key={device.id} className="text-xs text-blue-200 bg-blue-500/10 px-2 py-1 rounded">
+                                <span className="font-medium">{device.name}</span> 
+                                <span className="opacity-75"> → Channel {device.inputChannel}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-2">
+                            Contact management to configure IR control for this input
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>

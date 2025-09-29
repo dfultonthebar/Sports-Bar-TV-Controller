@@ -284,6 +284,38 @@ export default function IRDeviceControl() {
     }
   }
 
+  const deleteDevice = async (deviceId: string) => {
+    const device = devices.find(d => d.id === deviceId)
+    if (!device) return
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${device.name}"?\n\nThis action cannot be undone.`
+    )
+    
+    if (!confirmDelete) return
+
+    try {
+      const response = await fetch(`/api/ir-devices?id=${deviceId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        // If the deleted device was selected, clear selection
+        if (selectedDevice?.id === deviceId) {
+          setSelectedDevice(null)
+        }
+        await loadDevices()
+        alert(`"${device.name}" has been deleted successfully.`)
+      } else {
+        const error = await response.json()
+        alert(`Failed to delete device: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to delete device:', error)
+      alert('Failed to delete device')
+    }
+  }
+
   const sendIRCommand = async (command: string) => {
     if (!selectedDevice) {
       alert('Please select a device first')
@@ -477,6 +509,17 @@ export default function IRDeviceControl() {
                   }`}>
                     Ch {device.inputChannel}
                   </span>
+                  {/* Delete Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteDevice(device.id)
+                    }}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
+                    title="Delete device"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
               <h4 className="font-medium text-gray-800 mt-2">{device.name}</h4>
