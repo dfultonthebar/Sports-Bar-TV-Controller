@@ -39,9 +39,20 @@ interface DirecTVDevice {
   port: number
   isOnline: boolean
   receiverType: 'Genie HD DVR' | 'Genie Mini' | 'HR Series DVR' | 'C61K Mini' | 'HS17 Server'
+  inputChannel?: number  // Associated matrix input channel
   lastResponse?: string
   softwareVersion?: string
   serialNumber?: string
+}
+
+interface MatrixInput {
+  id: string
+  channelNumber: number
+  label: string
+  inputType: string
+  deviceType: string
+  status: string
+  isActive: boolean
 }
 
 interface SportsFavorite {
@@ -132,11 +143,14 @@ export default function DirecTVController() {
   const [showSportsFavorites, setShowSportsFavorites] = useState(false)
   const [selectedSportsCategory, setSelectedSportsCategory] = useState<string>('All')
   const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
+  const [loadingInputs, setLoadingInputs] = useState(false)
   const [newDevice, setNewDevice] = useState({
     name: '',
     ipAddress: '',
     port: 8080,
-    receiverType: 'Genie HD DVR' as const
+    receiverType: 'Genie HD DVR' as const,
+    inputChannel: undefined as number | undefined
   })
 
   useEffect(() => {
@@ -155,6 +169,21 @@ export default function DirecTVController() {
       }
     } catch (error) {
       console.error('Failed to load DirecTV devices:', error)
+    }
+  }
+
+  const loadMatrixInputs = async () => {
+    setLoadingInputs(true)
+    try {
+      const response = await fetch('/api/matrix/config')
+      if (response.ok) {
+        const data = await response.json()
+        setMatrixInputs(data.inputs || [])
+      }
+    } catch (error) {
+      console.error('Failed to load matrix inputs:', error)
+    } finally {
+      setLoadingInputs(false)
     }
   }
 
@@ -269,12 +298,18 @@ export default function DirecTVController() {
       return
     }
 
+    if (!newDevice.inputChannel) {
+      alert('Please select which matrix input this DirecTV box is connected to')
+      return
+    }
+
     const device: DirecTVDevice = {
       id: `directv_${Date.now()}`,
       name: newDevice.name,
       ipAddress: newDevice.ipAddress,
       port: newDevice.port,
       receiverType: newDevice.receiverType,
+      inputChannel: newDevice.inputChannel,
       isOnline: false
     }
 
@@ -292,7 +327,7 @@ export default function DirecTVController() {
       if (response.ok) {
         await loadDirecTVDevices()
         setShowAddDevice(false)
-        setNewDevice({ name: '', ipAddress: '', port: 8080, receiverType: 'Genie HD DVR' })
+        setNewDevice({ name: '', ipAddress: '', port: 8080, receiverType: 'Genie HD DVR', inputChannel: undefined })
       }
     } catch (error) {
       console.error('Failed to add DirecTV device:', error)
@@ -348,7 +383,10 @@ export default function DirecTVController() {
 
           {/* Add Device Button */}
           <button
-            onClick={() => setShowAddDevice(true)}
+            onClick={() => {
+              setShowAddDevice(true)
+              loadMatrixInputs()
+            }}
             className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium flex items-center space-x-2 transition-colors"
           >
             <Satellite className="w-4 h-4" />
@@ -386,6 +424,9 @@ export default function DirecTVController() {
               <p className="text-xs text-gray-500 mt-1">
                 {device.ipAddress}:{device.port}
               </p>
+              {device.inputChannel && (
+                <p className="text-xs text-blue-600 font-medium">Input: {device.inputChannel}</p>
+              )}
               {device.softwareVersion && (
                 <p className="text-xs text-gray-400">v{device.softwareVersion}</p>
               )}
@@ -814,6 +855,39 @@ export default function DirecTVController() {
                   <option value="C61K Mini">C61K Mini</option>
                   <option value="HS17 Server">HS17 Server</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Matrix Input Channel
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                {loadingInputs ? (
+                  <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                    <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+                    <span className="text-gray-500 text-sm">Loading inputs...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={newDevice.inputChannel || ''}
+                    onChange={(e) => setNewDevice({ ...newDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Select Input Channel...</option>
+                    {matrixInputs
+                      .filter(input => input.isActive && input.status === 'active')
+                      .sort((a, b) => a.channelNumber - b.channelNumber)
+                      .map((input) => (
+                        <option key={input.id} value={input.channelNumber}>
+                          Input {input.channelNumber}: {input.label} ({input.deviceType})
+                        </option>
+                      ))}
+                  </select>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Select which matrix input this DirecTV box is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                </p>
               </div>
             </div>
 
