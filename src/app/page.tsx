@@ -48,7 +48,8 @@ import {
   Tv,
   Power,
   Satellite,
-  Monitor
+  Monitor,
+  Upload
 } from 'lucide-react'
 
 const tabCategories = {

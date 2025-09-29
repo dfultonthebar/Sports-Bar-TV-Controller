@@ -197,7 +197,7 @@ export default function GitHubConfigSync() {
           {gitStatus && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex items-center gap-2">
-                <Badge variant={gitStatus.hasChanges ? 'destructive' : 'success'}>
+                <Badge variant={gitStatus.hasChanges ? 'destructive' : 'secondary'}>
                   {gitStatus.hasChanges ? 'Changes Pending' : 'Up to Date'}
                 </Badge>
               </div>
@@ -207,7 +207,7 @@ export default function GitHubConfigSync() {
               </div>
               <div className="flex items-center gap-2">
                 {gitStatus.hasUnpushedCommits && (
-                  <Badge variant="warning">
+                  <Badge variant="outline" className="text-orange-700">
                     {gitStatus.unpushedCommits.length} Unpushed
                   </Badge>
                 )}

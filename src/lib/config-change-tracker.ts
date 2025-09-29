@@ -199,7 +199,7 @@ class ConfigChangeTracker {
 
   // Cleanup watchers
   cleanup() {
-    for (const [file, watcher] of this.watchers) {
+    for (const [file, watcher] of Array.from(this.watchers.entries())) {
       try {
         watcher.close()
       } catch (error) {

@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       // Generate commit message if not provided
       let finalCommitMessage = commitMessage
       if (!finalCommitMessage) {
-        const changeTypes = [...new Set(configChanges.map(c => c.type))]
+        const changeTypes = Array.from(new Set(configChanges.map(c => c.type)))
         const changeDescriptions = configChanges.map(c => c.description).join(', ')
         finalCommitMessage = `Configuration Update: ${changeTypes.join(', ')} - ${changeDescriptions}`
       }

@@ -107,13 +107,13 @@ export default function ConfigSyncIndicator({
         )}
         
         {gitStatus.hasUnpushedCommits && (
-          <Badge variant="warning" className="text-xs">
+          <Badge variant="outline" className="text-xs text-orange-700">
             {gitStatus.unpushedCommits.length} Unpushed
           </Badge>
         )}
         
         {!gitStatus.hasChanges && !gitStatus.hasUnpushedCommits && (
-          <Badge variant="success" className="text-xs">
+          <Badge variant="secondary" className="text-xs text-green-700">
             <CheckCircle className="w-3 h-3 mr-1" />
             Clean
           </Badge>
