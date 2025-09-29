@@ -54,6 +54,9 @@ interface InputConfig {
   id: number
   name: string
   type: 'microphone' | 'line' | 'dante' | 'zone'
+  physicalInput: number // Physical input number on the processor (1-based)
+  stereoLink?: number // ID of paired input for stereo (optional)
+  stereoMode: 'mono' | 'left' | 'right' | 'stereo' // Stereo configuration
   gainDb: number
   phantom: boolean
   lowcut: boolean
@@ -71,6 +74,9 @@ interface OutputConfig {
   id: number
   name: string
   type: 'speaker' | 'dante' | 'zone'
+  physicalOutput: number // Physical output number on the processor (1-based)
+  groupId?: string // Group ID for output grouping (optional)
+  groupName?: string // Human-readable group name
   levelDb: number
   muted: boolean
   delay: number
@@ -114,6 +120,7 @@ export default function AtlasProgrammingInterface() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error'} | null>(null)
+  const [outputGroups, setOutputGroups] = useState<{[key: string]: string}>({}) // groupId -> groupName mapping
   const [showAddProcessor, setShowAddProcessor] = useState(false)
   const [newProcessor, setNewProcessor] = useState({
     name: '',
@@ -186,6 +193,8 @@ export default function AtlasProgrammingInterface() {
       id: i + 1,
       name: `Input ${i + 1}`,
       type: i < 4 ? 'microphone' : 'line',
+      physicalInput: i + 1, // Map to physical input 1-based
+      stereoMode: 'mono',
       gainDb: 0,
       phantom: false,
       lowcut: false,
@@ -201,6 +210,7 @@ export default function AtlasProgrammingInterface() {
       id: i + 1,
       name: `Zone ${i + 1}`,
       type: 'speaker',
+      physicalOutput: i + 1, // Map to physical output 1-based
       levelDb: -10,
       muted: false,
       delay: 0,
@@ -224,10 +234,16 @@ export default function AtlasProgrammingInterface() {
 
   const addInput = () => {
     const maxId = Math.max(0, ...inputs.map(i => i.id))
+    const usedPhysicalInputs = inputs.map(i => i.physicalInput)
+    const availablePhysicalInput = Array.from({ length: selectedProcessor?.inputs || 8 }, (_, i) => i + 1)
+      .find(physical => !usedPhysicalInputs.includes(physical)) || 1
+      
     const newInput: InputConfig = {
       id: maxId + 1,
       name: `Input ${maxId + 1}`,
       type: 'line',
+      physicalInput: availablePhysicalInput,
+      stereoMode: 'mono',
       gainDb: 0,
       phantom: false,
       lowcut: false,
@@ -250,10 +266,15 @@ export default function AtlasProgrammingInterface() {
 
   const addOutput = () => {
     const maxId = Math.max(0, ...outputs.map(o => o.id))
+    const usedPhysicalOutputs = outputs.map(o => o.physicalOutput)
+    const availablePhysicalOutput = Array.from({ length: selectedProcessor?.outputs || 8 }, (_, i) => i + 1)
+      .find(physical => !usedPhysicalOutputs.includes(physical)) || 1
+      
     const newOutput: OutputConfig = {
       id: maxId + 1,
       name: `Zone ${maxId + 1}`,
       type: 'speaker',
+      physicalOutput: availablePhysicalOutput,
       levelDb: -10,
       muted: false,
       delay: 0,
@@ -469,6 +490,65 @@ export default function AtlasProgrammingInterface() {
       console.error('Error deleting processor:', error)
       showMessage('Failed to delete processor', 'error')
     }
+  }
+
+  // Stereo linking functions
+  const linkStereoInputs = (leftInputId: number, rightInputId: number) => {
+    setInputs(prev => prev.map(input => {
+      if (input.id === leftInputId) {
+        return { ...input, stereoLink: rightInputId, stereoMode: 'left' as const }
+      } else if (input.id === rightInputId) {
+        return { ...input, stereoLink: leftInputId, stereoMode: 'right' as const }
+      }
+      return input
+    }))
+    showMessage('Stereo link created successfully')
+  }
+
+  const unlinkStereoInputs = (inputId: number) => {
+    const input = inputs.find(i => i.id === inputId)
+    if (input?.stereoLink) {
+      setInputs(prev => prev.map(inp => {
+        if (inp.id === inputId || inp.id === input.stereoLink) {
+          return { ...inp, stereoLink: undefined, stereoMode: 'mono' as const }
+        }
+        return inp
+      }))
+      showMessage('Stereo link removed successfully')
+    }
+  }
+
+  // Output grouping functions
+  const createOutputGroup = (outputIds: number[], groupName: string) => {
+    const groupId = `group_${Date.now()}`
+    setOutputGroups(prev => ({ ...prev, [groupId]: groupName }))
+    setOutputs(prev => prev.map(output => 
+      outputIds.includes(output.id) 
+        ? { ...output, groupId, groupName }
+        : output
+    ))
+    showMessage(`Output group "${groupName}" created successfully`)
+  }
+
+  const removeFromGroup = (outputId: number) => {
+    setOutputs(prev => prev.map(output => 
+      output.id === outputId 
+        ? { ...output, groupId: undefined, groupName: undefined }
+        : output
+    ))
+    showMessage('Output removed from group')
+  }
+
+  const getAvailablePhysicalInputs = () => {
+    const usedInputs = inputs.map(i => i.physicalInput)
+    return Array.from({ length: selectedProcessor?.inputs || 8 }, (_, i) => i + 1)
+      .filter(physical => !usedInputs.includes(physical))
+  }
+
+  const getAvailablePhysicalOutputs = () => {
+    const usedOutputs = outputs.map(o => o.physicalOutput)
+    return Array.from({ length: selectedProcessor?.outputs || 8 }, (_, i) => i + 1)
+      .filter(physical => !usedOutputs.includes(physical))
   }
 
   if (loading) {
@@ -834,6 +914,14 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
+                                  <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
+                                    Physical: {input.physicalInput}
+                                  </Badge>
+                                  {input.stereoLink && (
+                                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                                      STEREO-{input.stereoMode.toUpperCase()}
+                                    </Badge>
+                                  )}
                                   {input.phantom && (
                                     <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
                                       +48V
@@ -861,7 +949,76 @@ export default function AtlasProgrammingInterface() {
                               </div>
 
                               {/* Input Controls */}
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                {/* Physical Input & Stereo */}
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium text-gray-900">Physical Input</label>
+                                  <select
+                                    value={input.physicalInput}
+                                    onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
+                                    className="w-full p-2 border rounded-md text-sm"
+                                  >
+                                    <option value={input.physicalInput}>Input {input.physicalInput}</option>
+                                    {getAvailablePhysicalInputs().map(physical => (
+                                      <option key={physical} value={physical}>
+                                        Input {physical}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-gray-700">Stereo Mode</label>
+                                    <select
+                                      value={input.stereoMode}
+                                      onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
+                                      className="w-full p-1 border rounded text-xs"
+                                    >
+                                      <option value="mono">Mono</option>
+                                      <option value="left">Stereo Left</option>
+                                      <option value="right">Stereo Right</option>
+                                      <option value="stereo">Full Stereo</option>
+                                    </select>
+                                    
+                                    {input.stereoLink && (
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className="text-purple-600 font-medium">
+                                          Linked to Input {inputs.find(i => i.id === input.stereoLink)?.name}
+                                        </span>
+                                        <Button
+                                          onClick={() => unlinkStereoInputs(input.id)}
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-5 text-xs px-2"
+                                        >
+                                          Unlink
+                                        </Button>
+                                      </div>
+                                    )}
+                                    
+                                    {!input.stereoLink && input.stereoMode === 'mono' && (
+                                      <div className="space-y-1">
+                                        <select
+                                          onChange={(e) => {
+                                            if (e.target.value) {
+                                              linkStereoInputs(input.id, parseInt(e.target.value))
+                                            }
+                                          }}
+                                          className="w-full p-1 border rounded text-xs"
+                                          value=""
+                                        >
+                                          <option value="">Link with...</option>
+                                          {inputs
+                                            .filter(i => i.id !== input.id && !i.stereoLink && i.stereoMode === 'mono')
+                                            .map(i => (
+                                              <option key={i.id} value={i.id}>
+                                                {i.name}
+                                              </option>
+                                            ))}
+                                        </select>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                                 {/* Gain Control */}
                                 <div className="space-y-2">
                                   <label className="text-sm font-medium text-gray-900">
@@ -1054,6 +1211,14 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
+                                  <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
+                                    Physical: {output.physicalOutput}
+                                  </Badge>
+                                  {output.groupId && (
+                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                                      GROUP: {output.groupName}
+                                    </Badge>
+                                  )}
                                   {output.muted && (
                                     <Badge variant="secondary" className="bg-red-100 text-red-800">
                                       MUTED
@@ -1081,7 +1246,100 @@ export default function AtlasProgrammingInterface() {
                               </div>
 
                               {/* Output Controls */}
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                {/* Physical Output & Grouping */}
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium text-gray-900">Physical Output</label>
+                                  <select
+                                    value={output.physicalOutput}
+                                    onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
+                                    className="w-full p-2 border rounded-md text-sm"
+                                  >
+                                    <option value={output.physicalOutput}>Output {output.physicalOutput}</option>
+                                    {getAvailablePhysicalOutputs().map(physical => (
+                                      <option key={physical} value={physical}>
+                                        Output {physical}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-gray-700">Output Grouping</label>
+                                    {output.groupId ? (
+                                      <div className="space-y-1">
+                                        <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-blue-800 font-medium">
+                                              Group: {output.groupName}
+                                            </span>
+                                            <Button
+                                              onClick={() => removeFromGroup(output.id)}
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-5 text-xs px-2 text-red-600 border-red-200"
+                                            >
+                                              Leave Group
+                                            </Button>
+                                          </div>
+                                          <div className="mt-1 text-blue-600">
+                                            Grouped outputs: {outputs
+                                              .filter(o => o.groupId === output.groupId)
+                                              .map(o => `Output ${o.physicalOutput}`)
+                                              .join(', ')}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-1">
+                                        <Button
+                                          onClick={() => {
+                                            const groupName = prompt('Enter group name:')
+                                            if (groupName) {
+                                              const selectedOutputs = prompt(
+                                                `Enter output IDs to group with ${output.id} (comma-separated):`
+                                              )
+                                              if (selectedOutputs) {
+                                                const outputIds = [output.id, ...selectedOutputs
+                                                  .split(',')
+                                                  .map(id => parseInt(id.trim()))
+                                                  .filter(id => !isNaN(id) && outputs.find(o => o.id === id))]
+                                                createOutputGroup(outputIds, groupName)
+                                              }
+                                            }
+                                          }}
+                                          size="sm"
+                                          variant="outline"
+                                          className="w-full h-6 text-xs"
+                                        >
+                                          Create Group
+                                        </Button>
+                                        
+                                        {/* Quick group with adjacent outputs */}
+                                        <div className="space-y-1">
+                                          {outputs
+                                            .filter(o => 
+                                              o.id !== output.id && 
+                                              !o.groupId && 
+                                              Math.abs(o.physicalOutput - output.physicalOutput) <= 2
+                                            )
+                                            .slice(0, 2)
+                                            .map(adjacentOutput => (
+                                              <button
+                                                key={adjacentOutput.id}
+                                                onClick={() => {
+                                                  const groupName = `Zone ${Math.min(output.physicalOutput, adjacentOutput.physicalOutput)}-${Math.max(output.physicalOutput, adjacentOutput.physicalOutput)}`
+                                                  createOutputGroup([output.id, adjacentOutput.id], groupName)
+                                                }}
+                                                className="w-full text-xs p-1 bg-gray-100 hover:bg-gray-200 rounded border text-gray-700"
+                                              >
+                                                + {adjacentOutput.name}
+                                              </button>
+                                            ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                                 {/* Level Control */}
                                 <div className="space-y-2">
                                   <label className="text-sm font-medium text-gray-900">
