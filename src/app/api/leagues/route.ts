@@ -8,7 +8,7 @@ export interface League {
   id: string
   name: string
   description: string
-  category: 'professional' | 'college' | 'international'
+  category: 'professional' | 'college' | 'international' | 'high-school'
   season: string
   logo?: string
 }
@@ -96,6 +96,20 @@ const LEAGUES: League[] = [
     name: 'Bundesliga', 
     description: 'German Bundesliga', 
     category: 'international', 
+    season: '2024-25'
+  },
+  { 
+    id: 'high-school', 
+    name: 'High School Sports', 
+    description: 'Local high school athletics', 
+    category: 'high-school', 
+    season: '2024-25'
+  },
+  { 
+    id: 'nfhs', 
+    name: 'NFHS Network', 
+    description: 'High school sports streaming', 
+    category: 'high-school', 
     season: '2024-25'
   }
 ]
