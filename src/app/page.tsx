@@ -19,6 +19,7 @@ import AtlasProgrammingInterface from '../components/AtlasProgrammingInterface'
 import CECPowerControl from '../components/CECPowerControl'
 import SportsGuide from '../components/SportsGuide'
 import DirecTVController from '../components/DirecTVController'
+import FireTVController from '../components/FireTVController'
 import { 
   FileText, 
   MessageCircle, 
@@ -43,7 +44,8 @@ import {
   Calendar,
   Tv,
   Power,
-  Satellite
+  Satellite,
+  Monitor
 } from 'lucide-react'
 
 const tabCategories = {
@@ -64,6 +66,7 @@ const tabCategories = {
     priority: false,
     tabs: [
       { id: 'directv-control', name: 'DirecTV IP Control', icon: Satellite, description: 'Direct IP control of DirecTV receivers', color: 'text-blue-600' },
+      { id: 'firetv-control', name: 'Fire TV Control', icon: Monitor, description: 'Amazon Fire TV Cube/Stick ADB control', color: 'text-blue-600' },
       { id: 'matrix-control', name: 'Video Matrix', icon: Grid, description: 'Video routing & switching', color: 'text-blue-600' },
       { id: 'cec-power', name: 'CEC Power', icon: Power, description: 'TV power control via CEC', color: 'text-blue-600' },
       { id: 'audio-processors', name: 'Audio Systems', icon: Speaker, description: 'AtlasIED processor management', color: 'text-blue-600' },
@@ -304,6 +307,7 @@ export default function Home() {
               {activeTab === 'audio-zones' && <AudioZoneControl />}
               {activeTab === 'bartender' && <BartenderInterface />}
               {activeTab === 'directv-control' && <DirecTVController />}
+              {activeTab === 'firetv-control' && <FireTVController />}
               {activeTab === 'ir-control' && <IRDeviceControl />}
               {activeTab === 'cec-power' && <CECPowerControl />}
               {activeTab === 'document-upload' && <DocumentUpload />}
