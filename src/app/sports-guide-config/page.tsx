@@ -86,11 +86,25 @@ const DEFAULT_PROVIDERS: Provider[] = [
     packages: ['Choice Package', 'NFL Sunday Ticket MAX']
   },
   {
+    id: 'nfl-sunday-ticket',
+    name: 'NFL Sunday Ticket',
+    type: 'satellite',
+    channels: ['NFL Sunday Ticket', 'Sunday Ticket Mix Channel', 'Sunday Ticket Red Zone', 'NFL RedZone', 'NFL Network'],
+    packages: ['NFL Sunday Ticket', 'NFL Sunday Ticket MAX', 'Sunday Ticket To Go']
+  },
+  {
     id: 'streaming-services',
     name: 'Premium Streaming Bundle',
     type: 'streaming',
     channels: ['Netflix', 'Hulu Live TV', 'YouTube TV', 'Amazon Prime Video', 'Peacock Premium', 'Paramount+'],
     packages: ['Premium Streaming Bundle']
+  },
+  {
+    id: 'nfhs-network',
+    name: 'NFHS Network',
+    type: 'streaming',
+    channels: ['NFHS Network', 'High School Football', 'High School Basketball', 'High School Baseball', 'High School Wrestling', 'High School Soccer'],
+    packages: ['NFHS Network Subscription', 'NFHS School Pass']
   }
 ]
 
@@ -98,6 +112,8 @@ const POPULAR_CHANNELS = [
   'ESPN', 'ESPN2', 'ESPN Classic', 'Fox Sports', 'FS1', 'FS2', 'NBC Sports', 'CBS Sports', 
   'NFL Network', 'NFL RedZone', 'NBA TV', 'MLB Network', 'NHL Network', 'Tennis Channel',
   'Golf Channel', 'Big Ten Network', 'SEC Network', 'ACC Network', 'Pac-12 Network',
+  'NFL Sunday Ticket', 'Sunday Ticket Mix Channel', 'Sunday Ticket Red Zone',
+  'NFHS Network', 'High School Football', 'High School Basketball', 'High School Baseball',
   'TNT', 'TBS', 'USA Network', 'FX', 'Comedy Central', 'Discovery Channel', 'History Channel',
   'Netflix', 'Hulu', 'Amazon Prime Video', 'Peacock', 'Paramount+', 'HBO Max', 'Disney+'
 ]
