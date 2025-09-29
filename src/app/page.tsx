@@ -78,7 +78,7 @@ export default function Home() {
               {/* Configuration & AV Management */}
               <div className="mt-8">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">⚙️ Configuration & AV Management</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                   <a 
                     href="/sports-guide-config"
                     className="block p-4 bg-purple-50 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors"
@@ -133,6 +133,14 @@ export default function Home() {
                     </h4>
                     <p className="text-orange-600 text-sm">Floor plan & TV zone setup</p>
                   </button>
+                  
+                  <a 
+                    href="/config-sync"
+                    className="block p-4 bg-green-50 rounded-lg border border-green-200 hover:bg-green-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-green-800 mb-1">📤 GitHub Sync</h4>
+                    <p className="text-green-600 text-sm">Configuration backup & sync</p>
+                  </a>
                 </div>
               </div>
               
