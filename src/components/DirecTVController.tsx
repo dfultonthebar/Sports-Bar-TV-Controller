@@ -29,7 +29,10 @@ import {
   Trophy,
   CheckCircle,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Edit,
+  Trash2,
+  X
 } from 'lucide-react'
 
 interface DirecTVDevice {
@@ -138,6 +141,10 @@ export default function DirecTVController() {
   const [devices, setDevices] = useState<DirecTVDevice[]>([])
   const [selectedDevice, setSelectedDevice] = useState<DirecTVDevice | null>(null)
   const [showAddDevice, setShowAddDevice] = useState(false)
+  const [showEditDevice, setShowEditDevice] = useState(false)
+  const [showDeleteDevice, setShowDeleteDevice] = useState(false)
+  const [editingDevice, setEditingDevice] = useState<DirecTVDevice | null>(null)
+  const [deletingDevice, setDeletingDevice] = useState<DirecTVDevice | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('disconnected')
   const [quickChannel, setQuickChannel] = useState('')
   const [showSportsFavorites, setShowSportsFavorites] = useState(false)
@@ -150,6 +157,13 @@ export default function DirecTVController() {
     ipAddress: '',
     port: 8080,
     receiverType: 'Genie HD DVR' as const,
+    inputChannel: undefined as number | undefined
+  })
+  const [editDevice, setEditDevice] = useState({
+    name: '',
+    ipAddress: '',
+    port: 8080,
+    receiverType: 'Genie HD DVR' as DirecTVDevice['receiverType'],
     inputChannel: undefined as number | undefined
   })
 
@@ -335,6 +349,105 @@ export default function DirecTVController() {
     }
   }
 
+  const openEditDevice = (device: DirecTVDevice) => {
+    setEditingDevice(device)
+    setEditDevice({
+      name: device.name,
+      ipAddress: device.ipAddress,
+      port: device.port,
+      receiverType: device.receiverType,
+      inputChannel: device.inputChannel
+    })
+    setShowEditDevice(true)
+    loadMatrixInputs()
+  }
+
+  const updateDirecTVDevice = async () => {
+    if (!editingDevice) return
+
+    if (!editDevice.name || !editDevice.ipAddress) {
+      alert('Please fill in device name and IP address')
+      return
+    }
+
+    if (!editDevice.inputChannel) {
+      alert('Please select which matrix input this DirecTV box is connected to')
+      return
+    }
+
+    const updatedDevice = {
+      ...editingDevice,
+      name: editDevice.name,
+      ipAddress: editDevice.ipAddress,
+      port: editDevice.port,
+      receiverType: editDevice.receiverType,
+      inputChannel: editDevice.inputChannel,
+      isOnline: false // Reset connection status, will be tested
+    }
+
+    try {
+      // Test connection with updated info
+      const isConnected = await testDirecTVConnection(updatedDevice)
+      updatedDevice.isOnline = isConnected
+
+      const response = await fetch('/api/directv-devices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDevice)
+      })
+
+      if (response.ok) {
+        await loadDirecTVDevices()
+        setShowEditDevice(false)
+        setEditingDevice(null)
+        setEditDevice({ name: '', ipAddress: '', port: 8080, receiverType: 'Genie HD DVR', inputChannel: undefined })
+        
+        // Update selected device if it's the one being edited
+        if (selectedDevice?.id === editingDevice.id) {
+          setSelectedDevice(updatedDevice)
+        }
+      } else {
+        const error = await response.json()
+        alert(`Failed to update device: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Failed to update DirecTV device:', error)
+      alert('Failed to update device')
+    }
+  }
+
+  const openDeleteDevice = (device: DirecTVDevice) => {
+    setDeletingDevice(device)
+    setShowDeleteDevice(true)
+  }
+
+  const deleteDirecTVDevice = async () => {
+    if (!deletingDevice) return
+
+    try {
+      const response = await fetch(`/api/directv-devices?id=${deletingDevice.id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await loadDirecTVDevices()
+        setShowDeleteDevice(false)
+        setDeletingDevice(null)
+        
+        // Clear selected device if it's the one being deleted
+        if (selectedDevice?.id === deletingDevice.id) {
+          setSelectedDevice(null)
+        }
+      } else {
+        const error = await response.json()
+        alert(`Failed to delete device: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Failed to delete DirecTV device:', error)
+      alert('Failed to delete device')
+    }
+  }
+
   const filteredSportsFavorites = selectedSportsCategory === 'All' 
     ? SPORTS_FAVORITES 
     : SPORTS_FAVORITES.filter(fav => fav.category === selectedSportsCategory)
@@ -400,37 +513,62 @@ export default function DirecTVController() {
         <h3 className="text-lg font-medium text-gray-800 mb-3">DirecTV Receivers</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {devices.map((device) => (
-            <button
-              key={device.id}
-              onClick={() => setSelectedDevice(device)}
-              className={`p-3 rounded-lg border-2 transition-all duration-200 text-left ${
-                selectedDevice?.id === device.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <Satellite className="w-5 h-5 text-gray-600" />
-                <div className="flex space-x-1">
-                  {device.isOnline ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                  )}
+            <div key={device.id} className="relative group">
+              <button
+                onClick={() => setSelectedDevice(device)}
+                className={`w-full p-3 rounded-lg border-2 transition-all duration-200 text-left ${
+                  selectedDevice?.id === device.id
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <Satellite className="w-5 h-5 text-gray-600" />
+                  <div className="flex space-x-1">
+                    {device.isOnline ? (
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-500" />
+                    )}
+                  </div>
                 </div>
+                <h4 className="font-medium text-gray-800 mt-2">{device.name}</h4>
+                <p className="text-sm text-gray-600">{device.receiverType}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {device.ipAddress}:{device.port}
+                </p>
+                {device.inputChannel && (
+                  <p className="text-xs text-blue-600 font-medium">Input: {device.inputChannel}</p>
+                )}
+                {device.softwareVersion && (
+                  <p className="text-xs text-gray-400">v{device.softwareVersion}</p>
+                )}
+              </button>
+              
+              {/* Edit and Delete buttons */}
+              <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openEditDevice(device)
+                  }}
+                  className="p-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors shadow-lg"
+                  title="Edit device"
+                >
+                  <Edit className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openDeleteDevice(device)
+                  }}
+                  className="p-1 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-lg"
+                  title="Delete device"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
               </div>
-              <h4 className="font-medium text-gray-800 mt-2">{device.name}</h4>
-              <p className="text-sm text-gray-600">{device.receiverType}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                {device.ipAddress}:{device.port}
-              </p>
-              {device.inputChannel && (
-                <p className="text-xs text-blue-600 font-medium">Input: {device.inputChannel}</p>
-              )}
-              {device.softwareVersion && (
-                <p className="text-xs text-gray-400">v{device.softwareVersion}</p>
-              )}
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -903,6 +1041,164 @@ export default function DirecTVController() {
                 className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-600 transition-colors"
               >
                 Add Device
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Device Modal */}
+      {showEditDevice && editingDevice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-800">Edit DirecTV Receiver</h3>
+              <button
+                onClick={() => {
+                  setShowEditDevice(false)
+                  setEditingDevice(null)
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Main Bar DirecTV"
+                  value={editDevice.name}
+                  onChange={(e) => setEditDevice({ ...editDevice, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IP Address *</label>
+                <input
+                  type="text"
+                  placeholder="192.168.1.150"
+                  value={editDevice.ipAddress}
+                  onChange={(e) => setEditDevice({ ...editDevice, ipAddress: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Find this in your DirecTV receiver's network settings</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+                <input
+                  type="number"
+                  value={editDevice.port}
+                  onChange={(e) => setEditDevice({ ...editDevice, port: parseInt(e.target.value) || 8080 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Receiver Type</label>
+                <select
+                  value={editDevice.receiverType}
+                  onChange={(e) => setEditDevice({ ...editDevice, receiverType: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Genie HD DVR">Genie HD DVR (HR54, HR44)</option>
+                  <option value="Genie Mini">Genie Mini (C61K, C51)</option>
+                  <option value="HR Series DVR">HR Series DVR</option>
+                  <option value="C61K Mini">C61K Mini</option>
+                  <option value="HS17 Server">HS17 Server</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Matrix Input Channel
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                {loadingInputs ? (
+                  <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                    <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+                    <span className="text-gray-500 text-sm">Loading inputs...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={editDevice.inputChannel || ''}
+                    onChange={(e) => setEditDevice({ ...editDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Select Input Channel...</option>
+                    {matrixInputs
+                      .filter(input => input.isActive && input.status === 'active')
+                      .sort((a, b) => a.channelNumber - b.channelNumber)
+                      .map((input) => (
+                        <option key={input.id} value={input.channelNumber}>
+                          Input {input.channelNumber}: {input.label} ({input.deviceType})
+                        </option>
+                      ))}
+                  </select>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Select which matrix input this DirecTV box is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowEditDevice(false)
+                  setEditingDevice(null)
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateDirecTVDevice}
+                className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-600 transition-colors"
+              >
+                Update Device
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteDevice && deletingDevice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-sm w-full p-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            
+            <h3 className="text-lg font-medium text-gray-800 text-center mb-2">Delete DirecTV Receiver</h3>
+            <p className="text-sm text-gray-600 text-center mb-6">
+              Are you sure you want to delete "{deletingDevice.name}"? This action cannot be undone.
+            </p>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteDevice(false)
+                  setDeletingDevice(null)
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteDirecTVDevice}
+                className="flex-1 bg-red-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-600 transition-colors"
+              >
+                Delete Device
               </button>
             </div>
           </div>
