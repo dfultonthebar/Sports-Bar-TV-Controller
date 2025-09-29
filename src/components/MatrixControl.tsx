@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import WolfpackAIMonitor from './WolfpackAIMonitor'
 
 interface MatrixInput {
   id?: string
@@ -65,7 +66,9 @@ export default function MatrixControl() {
   const [isLoading, setIsLoading] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState<{success: boolean, message: string} | null>(null)
-  const [activeSection, setActiveSection] = useState<'config' | 'inputs' | 'outputs'>('config')
+  const [activeSection, setActiveSection] = useState<'config' | 'inputs' | 'outputs' | 'ai'>('config')
+  const [showAIMonitor, setShowAIMonitor] = useState(true)
+  const [matrixDataForAI, setMatrixDataForAI] = useState<any>(null)
 
   const inputTypes = ['HDMI', 'Component', 'Composite', 'SDI', 'DVI', 'VGA']
   const deviceTypes = [
@@ -86,6 +89,35 @@ export default function MatrixControl() {
   useEffect(() => {
     fetchConfigurations()
   }, [])
+
+  // Update AI data when configuration changes
+  useEffect(() => {
+    if (currentConfig && currentConfig.name && currentConfig.inputs && currentConfig.outputs) {
+      const aiData = {
+        config: {
+          name: currentConfig.name,
+          ipAddress: currentConfig.ipAddress,
+          port: currentConfig.port,
+          tcpPort: currentConfig.tcpPort,
+          udpPort: currentConfig.udpPort,
+          protocol: currentConfig.protocol,
+          connectionStatus: connectionResult?.success ? 'connected' : 
+                           connectionResult?.success === false ? 'error' : 'unknown',
+          lastTested: connectionResult ? new Date().toISOString() : undefined,
+          isActive: currentConfig.isActive
+        },
+        inputs: currentConfig.inputs,
+        outputs: currentConfig.outputs,
+        systemHealth: {
+          connectionStable: connectionResult?.success || false,
+          commandLatency: Math.random() * 200 + 50, // Simulated for now
+          errorRate: Math.random() * 5,
+          lastError: connectionResult?.success === false ? connectionResult.message : undefined
+        }
+      }
+      setMatrixDataForAI(aiData)
+    }
+  }, [currentConfig, connectionResult])
 
   const fetchConfigurations = async () => {
     try {
@@ -336,7 +368,8 @@ export default function MatrixControl() {
             {[
               { id: 'config', name: 'Connection', icon: '🔧' },
               { id: 'inputs', name: 'Input Labels', icon: '📥' },
-              { id: 'outputs', name: 'Output Labels', icon: '📤' }
+              { id: 'outputs', name: 'Output Labels', icon: '📤' },
+              { id: 'ai', name: 'AI Monitor', icon: '🤖' }
             ].map((section) => (
               <button
                 key={section.id}
@@ -714,6 +747,69 @@ export default function MatrixControl() {
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-600">36</div>
                   <div className="text-gray-600">Total Outputs</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Monitor Section */}
+        {activeSection === 'ai' && (
+          <div>
+            <div className="mb-6">
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <span className="text-3xl">🤖</span>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Wolfpack Matrix AI Assistant</h3>
+                    <p className="text-gray-600">
+                      Advanced AI analysis of your matrix configuration, performance, and optimization opportunities
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="bg-white rounded-md p-3 border border-blue-100">
+                    <div className="font-semibold text-blue-900 mb-1">🔗 Connection Analysis</div>
+                    <div className="text-gray-700">Network connectivity, protocol optimization, and troubleshooting</div>
+                  </div>
+                  <div className="bg-white rounded-md p-3 border border-blue-100">
+                    <div className="font-semibold text-blue-900 mb-1">🔄 Routing Intelligence</div>
+                    <div className="text-gray-700">Command optimization, switching patterns, and performance insights</div>
+                  </div>
+                  <div className="bg-white rounded-md p-3 border border-blue-100">
+                    <div className="font-semibold text-blue-900 mb-1">📍 Layout Integration</div>
+                    <div className="text-gray-700">TV mapping analysis, audio routing, and configuration recommendations</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Monitor Component */}
+            <WolfpackAIMonitor 
+              matrixData={matrixDataForAI}
+              isVisible={showAIMonitor}
+              className="mb-6"
+            />
+
+            {/* AI Insights Summary */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-900 mb-2">💡 How to Use the AI Monitor</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+                <div>
+                  <div className="font-medium mb-1">Real-time Analysis:</div>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>Click "Analyze Now" to get instant insights</li>
+                    <li>AI updates automatically when you make changes</li>
+                    <li>Filter by category and priority level</li>
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-medium mb-1">Optimization Features:</div>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>Connection troubleshooting guidance</li>
+                    <li>Configuration best practices</li>
+                    <li>Performance optimization tips</li>
+                  </ul>
                 </div>
               </div>
             </div>
