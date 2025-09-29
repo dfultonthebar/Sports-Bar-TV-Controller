@@ -30,6 +30,7 @@ export default function Home() {
                 <span className="text-slate-700">Server Online</span>
               </div>
               
+              {/* Main System Controls */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
                 <a 
                   href="/sports-guide"
@@ -54,6 +55,44 @@ export default function Home() {
                   <h3 className="font-semibold text-blue-800 mb-2">📊 System Logs</h3>
                   <p className="text-blue-600 text-sm">Monitor system performance</p>
                 </a>
+              </div>
+              
+              {/* Configuration & AV Management */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">⚙️ Configuration & AV Management</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <a 
+                    href="/sports-guide-config"
+                    className="block p-4 bg-purple-50 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-purple-800 mb-1">🏈 Sports Config</h4>
+                    <p className="text-purple-600 text-sm">Configure sports guide settings</p>
+                  </a>
+                  
+                  <a 
+                    href="/matrix-control"
+                    className="block p-4 bg-indigo-50 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-indigo-800 mb-1">📡 Matrix Control</h4>
+                    <p className="text-indigo-600 text-sm">Video switching & routing</p>
+                  </a>
+                  
+                  <a 
+                    href="/atlas-config"
+                    className="block p-4 bg-teal-50 rounded-lg border border-teal-200 hover:bg-teal-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-teal-800 mb-1">🔊 Atlas Audio</h4>
+                    <p className="text-teal-600 text-sm">Audio system configuration</p>
+                  </a>
+                  
+                  <a 
+                    href="/device-config"
+                    className="block p-4 bg-amber-50 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-amber-800 mb-1">🖥️ Device Setup</h4>
+                    <p className="text-amber-600 text-sm">TV & device configuration</p>
+                  </a>
+                </div>
               </div>
               
               <div className="mt-8 p-4 bg-gray-50 rounded-lg">
