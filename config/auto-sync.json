@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "syncInterval": 30,
+  "autoCommitOnConfigChange": false,
+  "monitoredPaths": [
+    "src/data/matrix-config.json",
+    "src/data/device-mappings.json",
+    "src/data/ir-devices.json",
+    "src/data/audio-zones.json",
+    "src/data/directv-channels.json",
+    "config/",
+    ".env.local"
+  ],
+  "lastSync": "2025-09-29T04:45:09.166Z"
+}

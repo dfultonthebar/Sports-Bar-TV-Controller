@@ -8,6 +8,7 @@ import AIInsightsDashboard from '../components/AIInsightsDashboard'
 import SystemEnhancement from '../components/SystemEnhancement'
 import ApiKeysManager from '../components/ApiKeysManager'
 import GitHubSync from '../components/GitHubSync'
+import GitHubConfigSync from '../components/GitHubConfigSync'
 import FileSystemManager from '../components/FileSystemManager'
 import MatrixControl from '../components/MatrixControl'
 import BartenderInterface from '../components/BartenderInterface'
@@ -20,6 +21,8 @@ import CECPowerControl from '../components/CECPowerControl'
 import SportsGuide from '../components/SportsGuide'
 import DirecTVController from '../components/DirecTVController'
 import FireTVController from '../components/FireTVController'
+import LogAnalyticsDashboard from '../components/LogAnalyticsDashboard'
+import LoggingManagementDashboard from '../components/LoggingManagementDashboard'
 import { 
   FileText, 
   MessageCircle, 
@@ -112,8 +115,19 @@ const tabCategories = {
     tabs: [
       { id: 'api-keys', name: 'API Management', icon: Key, description: 'External service credentials', color: 'text-slate-600' },
       { id: 'github-sync', name: 'Version Control', icon: GitBranch, description: 'Code & configuration sync', color: 'text-slate-600' },
+      { id: 'github-config-sync', name: 'Config Auto-Push', icon: Upload, description: 'Auto-push configuration changes', color: 'text-slate-600' },
       { id: 'file-system', name: 'File Manager', icon: HardDrive, description: 'System files & storage', color: 'text-slate-600' },
       { id: 'system-enhancement', name: 'System Tools', icon: Wrench, description: 'Maintenance & optimization', color: 'text-slate-600' },
+    ]
+  },
+  monitoring: {
+    title: 'System Monitoring',
+    icon: Activity,
+    color: 'bg-cyan-500/10 border-cyan-500/30 hover:bg-cyan-500/20',
+    priority: false,
+    tabs: [
+      { id: 'logs-dashboard', name: 'Logging Center', icon: BarChart3, description: 'Comprehensive logging with AI analysis & downloads', color: 'text-cyan-600' },
+      { id: 'performance-monitor', name: 'Performance', icon: Activity, description: 'Real-time system performance', color: 'text-cyan-600' },
     ]
   }
 }
@@ -317,11 +331,28 @@ export default function Home() {
               {activeTab === 'ai-insights' && <AIInsightsDashboard />}
               {activeTab === 'api-keys' && <ApiKeysManager />}
               {activeTab === 'github-sync' && <GitHubSync />}
+              {activeTab === 'github-config-sync' && <GitHubConfigSync />}
               {activeTab === 'file-system' && <FileSystemManager />}
               {activeTab === 'matrix-control' && <MatrixControl />}
               {activeTab === 'audio-processors' && <AudioProcessorManager />}
               {activeTab === 'atlas-programming' && <AtlasProgrammingInterface />}
               {activeTab === 'system-enhancement' && <SystemEnhancement />}
+              {activeTab === 'logs-dashboard' && <LoggingManagementDashboard />}
+              {activeTab === 'performance-monitor' && (
+                <div className="space-y-6">
+                  <div className="text-center py-8">
+                    <Activity className="h-16 w-16 mx-auto text-cyan-500 mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">Real-time Performance Monitor</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Coming soon - Live system metrics and resource monitoring
+                    </p>
+                    <div className="inline-flex items-center space-x-2 px-4 py-2 bg-cyan-50 rounded-lg">
+                      <Clock className="w-4 h-4 text-cyan-600" />
+                      <span className="text-cyan-600 text-sm">Use Logs & Analytics for detailed monitoring</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
