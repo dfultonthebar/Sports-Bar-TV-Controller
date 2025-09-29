@@ -45,6 +45,16 @@ import {
 } from 'lucide-react'
 import { FireTVDevice, FIRETV_SPORTS_APPS, SPORTS_QUICK_ACCESS, StreamingApp, generateFireTVDeviceId } from '../lib/firetv-utils'
 
+interface MatrixInput {
+  id: string
+  channelNumber: number
+  label: string
+  inputType: string
+  deviceType: string
+  status: string
+  isActive: boolean
+}
+
 interface ConnectionTest {
   success: boolean
   message: string
@@ -67,18 +77,35 @@ export default function FireTVController() {
   const [showAddDevice, setShowAddDevice] = useState(false)
   const [showAppsGrid, setShowAppsGrid] = useState(false)
   const [activeCategory, setActiveCategory] = useState<'all' | 'sports' | 'entertainment' | 'news' | 'premium'>('sports')
+  
+  // Matrix inputs state
+  const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
+  const [loadingInputs, setLoadingInputs] = useState(false)
 
   // New device form state
   const [newDevice, setNewDevice] = useState({
     name: '',
     ipAddress: '',
     port: 5555,
-    deviceType: 'Fire TV Cube' as const
+    deviceType: 'Fire TV Cube' as const,
+    inputChannel: undefined as number | undefined
+  })
+  
+  // Edit device state
+  const [editingDevice, setEditingDevice] = useState<FireTVDevice | null>(null)
+  const [showEditDevice, setShowEditDevice] = useState(false)
+  const [editDevice, setEditDevice] = useState({
+    name: '',
+    ipAddress: '',
+    port: 5555,
+    deviceType: 'Fire TV Cube' as FireTVDevice['deviceType'],
+    inputChannel: undefined as number | undefined
   })
 
   // Load devices on component mount
   useEffect(() => {
     loadDevices()
+    loadMatrixInputs()
   }, [])
 
   const loadDevices = async () => {
@@ -99,7 +126,48 @@ export default function FireTVController() {
     }
   }
 
+  const loadMatrixInputs = async () => {
+    try {
+      setLoadingInputs(true)
+      const response = await fetch('/api/matrix/config')
+      const data = await response.json()
+      
+      if (data.success && data.inputs) {
+        const inputs = Object.entries(data.inputs).map(([key, input]: [string, any]) => ({
+          id: key,
+          channelNumber: parseInt(key),
+          label: input.name || `Input ${key}`,
+          inputType: input.type || 'unknown',
+          deviceType: input.type || 'unknown',
+          status: 'active',
+          isActive: true
+        }))
+        setMatrixInputs(inputs)
+      }
+    } catch (error) {
+      console.error('Error loading matrix inputs:', error)
+    } finally {
+      setLoadingInputs(false)
+    }
+  }
+
   const addDevice = async () => {
+    if (!newDevice.name || !newDevice.ipAddress) {
+      setCommandStatus({
+        success: false,
+        message: 'Please fill in device name and IP address'
+      })
+      return
+    }
+
+    if (!newDevice.inputChannel) {
+      setCommandStatus({
+        success: false,
+        message: 'Please select which matrix input this Fire TV device is connected to'
+      })
+      return
+    }
+
     try {
       setLoading(true)
       const response = await fetch('/api/firetv-devices', {
@@ -107,7 +175,8 @@ export default function FireTVController() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newDevice,
-          id: generateFireTVDeviceId()
+          id: generateFireTVDeviceId(),
+          isOnline: false
         })
       })
 
@@ -123,7 +192,8 @@ export default function FireTVController() {
           name: '',
           ipAddress: '',
           port: 5555,
-          deviceType: 'Fire TV Cube'
+          deviceType: 'Fire TV Cube',
+          inputChannel: undefined
         })
         setShowAddDevice(false)
         await loadDevices()
@@ -137,6 +207,95 @@ export default function FireTVController() {
       setCommandStatus({
         success: false,
         message: 'Error adding device'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openEditDevice = (device: FireTVDevice) => {
+    setEditingDevice(device)
+    setEditDevice({
+      name: device.name,
+      ipAddress: device.ipAddress,
+      port: device.port,
+      deviceType: device.deviceType,
+      inputChannel: device.inputChannel
+    })
+    setShowEditDevice(true)
+    loadMatrixInputs()
+  }
+
+  const updateDevice = async () => {
+    if (!editingDevice) return
+
+    if (!editDevice.name || !editDevice.ipAddress) {
+      setCommandStatus({
+        success: false,
+        message: 'Please fill in device name and IP address'
+      })
+      return
+    }
+
+    if (!editDevice.inputChannel) {
+      setCommandStatus({
+        success: false,
+        message: 'Please select which matrix input this Fire TV device is connected to'
+      })
+      return
+    }
+
+    const updatedDevice = {
+      ...editingDevice,
+      name: editDevice.name,
+      ipAddress: editDevice.ipAddress,
+      port: editDevice.port,
+      deviceType: editDevice.deviceType,
+      inputChannel: editDevice.inputChannel,
+      isOnline: false // Reset connection status
+    }
+
+    try {
+      setLoading(true)
+      const response = await fetch('/api/firetv-devices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDevice)
+      })
+
+      const result = await response.json()
+      
+      if (response.ok) {
+        setCommandStatus({
+          success: true,
+          message: 'Fire TV device updated successfully'
+        })
+        
+        setShowEditDevice(false)
+        setEditingDevice(null)
+        setEditDevice({
+          name: '',
+          ipAddress: '',
+          port: 5555,
+          deviceType: 'Fire TV Cube',
+          inputChannel: undefined
+        })
+        
+        // Update selected device if it's the one being edited
+        if (selectedDevice?.id === editingDevice.id) {
+          setSelectedDevice(updatedDevice)
+        }
+        await loadDevices()
+      } else {
+        setCommandStatus({
+          success: false,
+          message: result.error || 'Failed to update device'
+        })
+      }
+    } catch (error) {
+      setCommandStatus({
+        success: false,
+        message: 'Error updating device'
       })
     } finally {
       setLoading(false)
@@ -375,6 +534,35 @@ export default function FireTVController() {
                 <option value="Fire TV Stick 4K Max">Fire TV Stick 4K Max</option>
               </select>
             </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Matrix Input Channel</label>
+              {loadingInputs ? (
+                <div className="flex items-center justify-center py-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+                  <span className="text-gray-500 text-sm ml-2">Loading inputs...</span>
+                </div>
+              ) : (
+                <select
+                  value={newDevice.inputChannel || ''}
+                  onChange={(e) => setNewDevice(prev => ({ ...prev, inputChannel: e.target.value ? parseInt(e.target.value) : undefined }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                >
+                  <option value="">Select Input Channel...</option>
+                  {matrixInputs
+                    .filter(input => input.isActive && input.status === 'active')
+                    .sort((a, b) => a.channelNumber - b.channelNumber)
+                    .map((input) => (
+                      <option key={input.id} value={input.channelNumber}>
+                        Input {input.channelNumber}: {input.label} ({input.deviceType})
+                      </option>
+                    ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Select which matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+              </p>
+            </div>
           </div>
           <div className="mt-4 flex space-x-3">
             <button
@@ -386,6 +574,102 @@ export default function FireTVController() {
             </button>
             <button
               onClick={() => setShowAddDevice(false)}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Device Form */}
+      {showEditDevice && editingDevice && (
+        <div className="bg-gray-50 p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Fire TV Device</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+              <input
+                type="text"
+                value={editDevice.name}
+                onChange={(e) => setEditDevice(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Living Room Fire TV Cube"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+              <input
+                type="text"
+                value={editDevice.ipAddress}
+                onChange={(e) => setEditDevice(prev => ({ ...prev, ipAddress: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="192.168.1.100"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+              <input
+                type="number"
+                value={editDevice.port}
+                onChange={(e) => setEditDevice(prev => ({ ...prev, port: parseInt(e.target.value) || 5555 }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="5555"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+              <select
+                value={editDevice.deviceType}
+                onChange={(e) => setEditDevice(prev => ({ ...prev, deviceType: e.target.value as any }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="Fire TV Cube">Fire TV Cube</option>
+                <option value="Fire TV Stick">Fire TV Stick</option>
+                <option value="Fire TV">Fire TV</option>
+                <option value="Fire TV Stick 4K Max">Fire TV Stick 4K Max</option>
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Matrix Input Channel</label>
+              {loadingInputs ? (
+                <div className="flex items-center justify-center py-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+                  <span className="text-gray-500 text-sm ml-2">Loading inputs...</span>
+                </div>
+              ) : (
+                <select
+                  value={editDevice.inputChannel || ''}
+                  onChange={(e) => setEditDevice(prev => ({ ...prev, inputChannel: e.target.value ? parseInt(e.target.value) : undefined }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                >
+                  <option value="">Select Input Channel...</option>
+                  {matrixInputs
+                    .filter(input => input.isActive && input.status === 'active')
+                    .sort((a, b) => a.channelNumber - b.channelNumber)
+                    .map((input) => (
+                      <option key={input.id} value={input.channelNumber}>
+                        Input {input.channelNumber}: {input.label} ({input.deviceType})
+                      </option>
+                    ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Select which matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex space-x-3">
+            <button
+              onClick={updateDevice}
+              disabled={loading || !editDevice.name || !editDevice.ipAddress || !editDevice.inputChannel}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+            >
+              {loading ? 'Updating...' : 'Update Device'}
+            </button>
+            <button
+              onClick={() => setShowEditDevice(false)}
               className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
             >
               Cancel
@@ -423,6 +707,11 @@ export default function FireTVController() {
                       <div className="text-sm text-gray-500">
                         {device.deviceType} • {device.ipAddress}:{device.port}
                       </div>
+                      {device.inputChannel && (
+                        <div className="text-xs text-orange-600 font-medium">
+                          Input: {device.inputChannel}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -439,6 +728,15 @@ export default function FireTVController() {
                       ) : (
                         'Test'
                       )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openEditDevice(device)
+                      }}
+                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                    >
+                      <Edit3 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {

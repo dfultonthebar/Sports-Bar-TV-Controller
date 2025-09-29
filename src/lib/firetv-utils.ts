@@ -9,6 +9,7 @@ export interface FireTVDevice {
   port: number
   isOnline: boolean
   deviceType: 'Fire TV Cube' | 'Fire TV Stick' | 'Fire TV' | 'Fire TV Stick 4K Max'
+  inputChannel?: number  // Associated matrix input channel
   lastResponse?: string
   softwareVersion?: string
   serialNumber?: string
