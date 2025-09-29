@@ -18,6 +18,7 @@ import AudioProcessorManager from '../components/AudioProcessorManager'
 import AtlasProgrammingInterface from '../components/AtlasProgrammingInterface'
 import CECPowerControl from '../components/CECPowerControl'
 import SportsGuide from '../components/SportsGuide'
+import DirecTVController from '../components/DirecTVController'
 import { 
   FileText, 
   MessageCircle, 
@@ -41,7 +42,8 @@ import {
   BarChart3,
   Calendar,
   Tv,
-  Power
+  Power,
+  Satellite
 } from 'lucide-react'
 
 const tabCategories = {
@@ -61,6 +63,7 @@ const tabCategories = {
     color: 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20',
     priority: false,
     tabs: [
+      { id: 'directv-control', name: 'DirecTV IP Control', icon: Satellite, description: 'Direct IP control of DirecTV receivers', color: 'text-blue-600' },
       { id: 'matrix-control', name: 'Video Matrix', icon: Grid, description: 'Video routing & switching', color: 'text-blue-600' },
       { id: 'cec-power', name: 'CEC Power', icon: Power, description: 'TV power control via CEC', color: 'text-blue-600' },
       { id: 'audio-processors', name: 'Audio Systems', icon: Speaker, description: 'AtlasIED processor management', color: 'text-blue-600' },
@@ -300,6 +303,7 @@ export default function Home() {
               {activeTab === 'bartender-remote' && <BartenderRemoteControl />}
               {activeTab === 'audio-zones' && <AudioZoneControl />}
               {activeTab === 'bartender' && <BartenderInterface />}
+              {activeTab === 'directv-control' && <DirecTVController />}
               {activeTab === 'ir-control' && <IRDeviceControl />}
               {activeTab === 'cec-power' && <CECPowerControl />}
               {activeTab === 'document-upload' && <DocumentUpload />}

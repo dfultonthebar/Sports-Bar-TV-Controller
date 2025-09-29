@@ -104,7 +104,15 @@ const IP_CONTROL_DEVICES = {
 const IR_ONLY_DEVICES = {
   'Comcast': ['X1 Cable Box', 'XG1v3', 'Xi6'],
   'Cox': ['Contour Cable Box', 'Mini Box'],
-  'Charter Spectrum': ['Cable Box', 'HD Receiver'],
+  'Charter Spectrum': ['HD Cable Box', 'HD DVR', 'Legacy Cable Box', 'Digital Transport Adapter'],
+  
+  // Comprehensive Spectrum Cable Box Manufacturers
+  'Samsung': ['SMT-C5320 (Spectrum HD)', 'SMT-H3272 (Spectrum DVR)', 'SMT-H4362 (Spectrum DVR)', 'SMT-I3105 (Spectrum)', 'SMT-I5150 (Spectrum HD)'],
+  'Cisco': ['DTA271HD (Spectrum)', 'DTA170HD (Spectrum)', 'Explorer 4250HDC (Spectrum DVR)', 'Explorer 8300HDC (Spectrum DVR)', 'Explorer 3250HD (Spectrum HD)'],
+  'Arris': ['DCT3416 (Spectrum DVR)', 'DCT6200 (Spectrum HD)', 'DCT6412 (Spectrum DVR)', 'DCX3200 (Spectrum HD)', 'DCX3400 (Spectrum DVR)', 'DX013ANM (Spectrum)'],
+  'Motorola': ['DCH70 (Spectrum HD)', 'DCT3416 (Spectrum DVR)', 'DCT6200 (Spectrum HD)', 'DCT6412 (Spectrum DVR)'],
+  'Pace': ['DC758D (Spectrum)', 'TDC575D (Spectrum HD)', 'TDC777D (Spectrum DVR)', 'MX011ANM (Spectrum)'],
+  
   'Verizon FiOS': ['Set-top Box', 'DVR'],
   'AT&T U-verse': ['Receiver', 'DVR'],
   'DISH Network': ['Hopper', 'Joey', 'Wally'],
@@ -197,9 +205,33 @@ export default function IRDeviceControl() {
       if (response.ok) {
         const data = await response.json()
         setAvailableCodesets(data.codesets || [])
+        
+        // Log search results for debugging
+        console.log(`Found ${data.codesets?.length || 0} codesets for ${brand} ${deviceType}`)
+        if (data.globalCacheApiUsed) {
+          console.log('Using Global Cache IR Database API')
+        }
       }
     } catch (error) {
       console.error('Failed to search codesets:', error)
+    }
+  }
+
+  const searchAllSpectrumModels = async () => {
+    try {
+      const response = await fetch('/api/ir-devices/search-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'searchAllSpectrum' })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableCodesets(data.models || [])
+        console.log(`Found ${data.totalModels} Spectrum cable box models across all manufacturers`)
+      }
+    } catch (error) {
+      console.error('Failed to search all Spectrum models:', error)
     }
   }
 
