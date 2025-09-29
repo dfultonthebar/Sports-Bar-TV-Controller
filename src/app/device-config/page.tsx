@@ -3,9 +3,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, Settings, Tv, Smartphone, Monitor } from 'lucide-react'
+import { ArrowLeft, Save, Settings, Tv, Smartphone, Monitor, Router } from 'lucide-react'
 import Link from 'next/link'
 import DirecTVController from '../../components/DirecTVController'
+import FireTVController from '../../components/FireTVController'
+import IRDeviceControl from '../../components/IRDeviceControl'
 
 interface TabProps {
   activeTab: string
@@ -16,6 +18,7 @@ function DeviceConfigTabs({ activeTab, setActiveTab }: TabProps) {
   const tabs = [
     { id: 'directv', label: 'DirecTV', icon: Tv },
     { id: 'firetv', label: 'Fire TV', icon: Monitor },
+    { id: 'globalcache', label: 'Global Cache', icon: Router },
     { id: 'ir', label: 'IR Devices', icon: Smartphone },
   ]
 
@@ -88,20 +91,21 @@ export default function DeviceConfigPage() {
             {activeTab === 'firetv' && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Fire TV Configuration</h3>
-                <div className="p-6 bg-gray-50 rounded-lg">
-                  <p className="text-gray-600">Fire TV device configuration interface will be displayed here.</p>
-                  <p className="text-sm text-gray-500 mt-2">Configure Fire TV devices, network settings, and remote control options.</p>
-                </div>
+                <FireTVController />
+              </div>
+            )}
+
+            {activeTab === 'globalcache' && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Global Cache iTach Configuration</h3>
+                <IRDeviceControl />
               </div>
             )}
             
             {activeTab === 'ir' && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">IR Device Configuration</h3>
-                <div className="p-6 bg-gray-50 rounded-lg">
-                  <p className="text-gray-600">IR device configuration interface will be displayed here.</p>
-                  <p className="text-sm text-gray-500 mt-2">Configure infrared devices, learning remotes, and control codes.</p>
-                </div>
+                <IRDeviceControl />
               </div>
             )}
           </div>
