@@ -132,20 +132,27 @@ export default function FireTVController() {
       const response = await fetch('/api/matrix/config')
       const data = await response.json()
       
-      if (data.success && data.inputs) {
-        const inputs = Object.entries(data.inputs).map(([key, input]: [string, any]) => ({
-          id: key,
-          channelNumber: parseInt(key),
-          label: input.name || `Input ${key}`,
-          inputType: input.type || 'unknown',
-          deviceType: input.type || 'unknown',
-          status: 'active',
-          isActive: true
+      // Load Wolfpack input names from database - replaces static matrix-config.json
+      // The API returns inputs from the Wolfpack database configuration
+      if (data.inputs && Array.isArray(data.inputs)) {
+        const inputs = data.inputs.map((input: any) => ({
+          id: input.id || input.channelNumber.toString(),
+          channelNumber: input.channelNumber,
+          label: input.label || `Input ${input.channelNumber}`,
+          inputType: input.inputType || 'Other',
+          deviceType: input.deviceType || input.inputType || 'Other',
+          status: input.status || 'active',
+          isActive: input.isActive !== false
         }))
         setMatrixInputs(inputs)
+        console.log('Loaded Wolfpack inputs:', inputs)
+      } else {
+        console.log('No Wolfpack inputs found in database')
+        setMatrixInputs([])
       }
     } catch (error) {
-      console.error('Error loading matrix inputs:', error)
+      console.error('Error loading Wolfpack matrix inputs:', error)
+      setMatrixInputs([])
     } finally {
       setLoadingInputs(false)
     }
@@ -548,19 +555,19 @@ export default function FireTVController() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                   required
                 >
-                  <option value="">Select Input Channel...</option>
+                  <option value="">Select Wolfpack Input Channel...</option>
                   {matrixInputs
                     .filter(input => input.isActive && input.status === 'active')
                     .sort((a, b) => a.channelNumber - b.channelNumber)
                     .map((input) => (
                       <option key={input.id} value={input.channelNumber}>
-                        Input {input.channelNumber}: {input.label} ({input.deviceType})
+                        Input {input.channelNumber}: {input.label} ({input.inputType})
                       </option>
                     ))}
                 </select>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Select which matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
           </div>
@@ -644,19 +651,19 @@ export default function FireTVController() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                   required
                 >
-                  <option value="">Select Input Channel...</option>
+                  <option value="">Select Wolfpack Input Channel...</option>
                   {matrixInputs
                     .filter(input => input.isActive && input.status === 'active')
                     .sort((a, b) => a.channelNumber - b.channelNumber)
                     .map((input) => (
                       <option key={input.id} value={input.channelNumber}>
-                        Input {input.channelNumber}: {input.label} ({input.deviceType})
+                        Input {input.channelNumber}: {input.label} ({input.inputType})
                       </option>
                     ))}
                 </select>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Select which matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
           </div>
