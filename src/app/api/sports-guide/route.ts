@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { enhancedLiveSportsService } from '../../../lib/sports-apis/enhanced-live-sports-service'
 import { getEnhancedStreamingSportsData, getUserStreamingPlatformAccess } from '../../../lib/enhanced-streaming-sports-service'
+import { spectrumChannelService, type SpectrumChannelData } from '../../../lib/spectrum-channel-service'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -42,212 +43,212 @@ const CHANNELS: ChannelInfo[] = [
   {
     id: 'espn',
     name: 'ESPN',
-    platforms: ['DirecTV Ch. 206', 'Spectrum Ch. 300', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 206', 'Spectrum Ch. 24', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '206',
+    channelNumber: '24',
     deviceType: 'cable'
   },
   {
     id: 'espn2',
     name: 'ESPN2',
-    platforms: ['DirecTV Ch. 209', 'Spectrum Ch. 301', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 209', 'Spectrum Ch. 25', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '209',
+    channelNumber: '25',
     deviceType: 'cable'
   },
   {
     id: 'espnu',
     name: 'ESPNU',
-    platforms: ['DirecTV Ch. 208', 'Spectrum Ch. 302', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 208', 'Spectrum Ch. 141', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '208',
+    channelNumber: '141',
     deviceType: 'cable'
   },
   {
     id: 'espn-news',
     name: 'ESPN News',
-    platforms: ['DirecTV Ch. 207', 'Spectrum Ch. 303', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 207', 'Spectrum Ch. 142', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '207',
+    channelNumber: '142',
     deviceType: 'cable'
   },
   {
     id: 'fox-sports',
     name: 'Fox Sports 1 (FS1)',
-    platforms: ['DirecTV Ch. 219', 'Spectrum Ch. 311', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 219', 'Spectrum Ch. 83', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.foxsports.com/live',
-    channelNumber: '219',
-    deviceType: 'satellite'
+    channelNumber: '83',
+    deviceType: 'cable'
   },
   {
     id: 'fox-sports2',
     name: 'Fox Sports 2 (FS2)',
-    platforms: ['DirecTV Ch. 618', 'Spectrum Ch. 312', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 618', 'Spectrum Ch. 84', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.foxsports.com/live',
-    channelNumber: '618',
-    deviceType: 'satellite'
+    channelNumber: '84',
+    deviceType: 'cable'
   },
   {
     id: 'big-ten-network',
     name: 'Big Ten Network',
-    platforms: ['DirecTV Ch. 610', 'Spectrum Ch. 320', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 610', 'Spectrum Ch. 143', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.btn.com/watch/',
-    channelNumber: '610',
-    deviceType: 'satellite'
+    channelNumber: '143',
+    deviceType: 'cable'
   },
   {
     id: 'bally-sports',
-    name: 'Bally Sports Regional',
-    platforms: ['DirecTV Ch. 671', 'Spectrum Regional', 'FuboTV'],
+    name: 'Bally Sports Wisconsin',
+    platforms: ['DirecTV Ch. 671', 'Spectrum Ch. 33', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.ballysports.com/',
-    channelNumber: '671',
-    deviceType: 'satellite'
+    channelNumber: '33',
+    deviceType: 'cable'
   },
   {
     id: 'golf-channel',
     name: 'Golf Channel',
-    platforms: ['DirecTV Ch. 218', 'Spectrum Ch. 400', 'Hulu Live TV', 'YouTube TV', 'Peacock Premium'],
+    platforms: ['DirecTV Ch. 218', 'Spectrum Ch. 85', 'Hulu Live TV', 'YouTube TV', 'Peacock Premium'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.golfchannel.com/watch',
-    channelNumber: '218',
-    deviceType: 'satellite'
+    channelNumber: '85',
+    deviceType: 'cable'
   },
   {
     id: 'nfl-network',
     name: 'NFL Network',
-    platforms: ['DirecTV Ch. 212', 'Spectrum Ch. 304', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 212', 'Spectrum Ch. 144', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.nfl.com/network/',
-    channelNumber: '212',
-    deviceType: 'satellite'
+    channelNumber: '144',
+    deviceType: 'cable'
   },
   {
     id: 'nfl-redzone',
     name: 'NFL RedZone',
-    platforms: ['DirecTV Ch. 213', 'Spectrum Premium', 'Hulu Live TV', 'YouTube TV'],
+    platforms: ['DirecTV Ch. 213', 'Spectrum Ch. 145', 'Hulu Live TV', 'YouTube TV'],
     type: 'cable',
     cost: 'premium',
     url: 'https://www.nfl.com/redzone/',
-    channelNumber: '213',
-    deviceType: 'satellite'
+    channelNumber: '145',
+    deviceType: 'cable'
   },
   {
     id: 'nba-tv',
     name: 'NBA TV',
-    platforms: ['DirecTV Ch. 216', 'Spectrum Ch. 305', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
+    platforms: ['DirecTV Ch. 216', 'Spectrum Ch. 146', 'Hulu Live TV', 'YouTube TV', 'Sling TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.nba.com/watch/',
-    channelNumber: '216',
-    deviceType: 'satellite'
+    channelNumber: '146',
+    deviceType: 'cable'
   },
   {
     id: 'mlb-network',
     name: 'MLB Network',
-    platforms: ['DirecTV Ch. 213', 'Spectrum Ch. 306', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 213', 'Spectrum Ch. 147', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.mlb.com/network',
-    channelNumber: '213',
-    deviceType: 'satellite'
+    channelNumber: '147',
+    deviceType: 'cable'
   },
   {
     id: 'nhl-network',
     name: 'NHL Network',
-    platforms: ['DirecTV Ch. 215', 'Spectrum Ch. 307', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 215', 'Spectrum Ch. 148', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.nhl.com/tv',
-    channelNumber: '215',
-    deviceType: 'satellite'
+    channelNumber: '148',
+    deviceType: 'cable'
   },
   {
     id: 'sec-network',
     name: 'SEC Network',
-    platforms: ['DirecTV Ch. 611', 'Spectrum Ch. 321', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 611', 'Spectrum Ch. 149', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '611',
-    deviceType: 'satellite'
+    channelNumber: '149',
+    deviceType: 'cable'
   },
   {
     id: 'acc-network',
     name: 'ACC Network',
-    platforms: ['DirecTV Ch. 612', 'Spectrum Ch. 322', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 612', 'Spectrum Ch. 150', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.espn.com/watch/',
-    channelNumber: '612',
-    deviceType: 'satellite'
+    channelNumber: '150',
+    deviceType: 'cable'
   },
   {
     id: 'pac12-network',
     name: 'Pac-12 Network',
-    platforms: ['DirecTV Ch. 613', 'Spectrum Ch. 323', 'FuboTV'],
+    platforms: ['DirecTV Ch. 613', 'Spectrum Ch. 151', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://pac-12.com/live',
-    channelNumber: '613',
-    deviceType: 'satellite'
+    channelNumber: '151',
+    deviceType: 'cable'
   },
   {
     id: 'tennis-channel',
     name: 'Tennis Channel',
-    platforms: ['DirecTV Ch. 217', 'Spectrum Ch. 401', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
+    platforms: ['DirecTV Ch. 217', 'Spectrum Ch. 86', 'Hulu Live TV', 'YouTube TV', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.tennischannel.com/watch',
-    channelNumber: '217',
-    deviceType: 'satellite'
+    channelNumber: '86',
+    deviceType: 'cable'
   },
   {
     id: 'olympic-channel',
     name: 'Olympic Channel',
-    platforms: ['DirecTV Ch. 388', 'Spectrum Ch. 402', 'FuboTV', 'Peacock Premium'],
+    platforms: ['DirecTV Ch. 388', 'Spectrum Ch. 152', 'FuboTV', 'Peacock Premium'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.olympicchannel.com/',
-    channelNumber: '388',
-    deviceType: 'satellite'
+    channelNumber: '152',
+    deviceType: 'cable'
   },
   {
     id: 'nbc-sports',
     name: 'NBC Sports',
-    platforms: ['DirecTV Ch. 220', 'Spectrum Ch. 312', 'Peacock Premium', 'Hulu Live TV'],
+    platforms: ['DirecTV Ch. 220', 'Spectrum Ch. 87', 'Peacock Premium', 'Hulu Live TV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.nbcsports.com/live',
-    channelNumber: '220',
-    deviceType: 'satellite'
+    channelNumber: '87',
+    deviceType: 'cable'
   },
   {
     id: 'cbs-sports',
     name: 'CBS Sports Network',
-    platforms: ['DirecTV Ch. 221', 'Spectrum Ch. 313', 'Paramount+', 'FuboTV'],
+    platforms: ['DirecTV Ch. 221', 'Spectrum Ch. 88', 'Paramount+', 'FuboTV'],
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.cbssports.com/live-tv/',
-    channelNumber: '221',
-    deviceType: 'satellite'
+    channelNumber: '88',
+    deviceType: 'cable'
   },
   {
     id: 'tnt',
@@ -256,7 +257,7 @@ const CHANNELS: ChannelInfo[] = [
     type: 'cable',
     cost: 'subscription',
     url: 'https://www.tntdrama.com/watchtnt',
-    channelNumber: '245',
+    channelNumber: '32',
     deviceType: 'cable'
   },
   {
@@ -377,8 +378,34 @@ const CHANNELS: ChannelInfo[] = [
   }
 ]
 
+// Enhanced channel information with live Spectrum data
+const getEnhancedChannelInfo = async (channel: ChannelInfo): Promise<ChannelInfo> => {
+  try {
+    // Check if this is a Spectrum channel and get real data
+    const spectrumChannel = await spectrumChannelService.findChannelByName(channel.name)
+    
+    if (spectrumChannel) {
+      return {
+        ...channel,
+        channelNumber: spectrumChannel.channelNumber,
+        platforms: channel.platforms.map(platform => 
+          platform.includes('Spectrum') 
+            ? `Spectrum Ch. ${spectrumChannel.channelNumber} (${spectrumChannel.isHD ? 'HD' : 'SD'})`
+            : platform
+        ),
+        logoUrl: spectrumChannel.logoUrl || channel.logoUrl
+      }
+    }
+    
+    return channel
+  } catch (error) {
+    console.error(`Error enhancing channel info for ${channel.name}:`, error)
+    return channel
+  }
+}
+
 // Fallback mock game generator for when APIs are unavailable
-const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
+const generateMockGames = async (selectedLeagues: string[]): Promise<GameListing[]> => {
   console.log('⚠️ Falling back to mock data generation')
   const games: GameListing[] = []
   
@@ -421,7 +448,7 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
     'nfhs': 'NFHS Network'
   }
 
-  selectedLeagues.forEach(leagueId => {
+  for (const leagueId of selectedLeagues) {
     const leagueTeams = teams[leagueId as keyof typeof teams] || ['Team A', 'Team B', 'Team C', 'Team D']
     const leagueName = leagueNames[leagueId as keyof typeof leagueNames] || leagueId.toUpperCase()
     
@@ -438,7 +465,8 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
         awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
       }
       
-      const channel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
+      const baseChannel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
+      const enhancedChannel = await getEnhancedChannelInfo(baseChannel)
       
       const gameHour = Math.floor(Math.random() * 10) + 10
       const gameMinute = ['00', '15', '30', '45'][Math.floor(Math.random() * 4)]
@@ -453,14 +481,14 @@ const generateMockGames = (selectedLeagues: string[]): GameListing[] => {
         awayTeam,
         gameTime,
         gameDate: gameDate.toISOString().split('T')[0],
-        channel,
+        channel: enhancedChannel,
         description: `${leagueName} regular season matchup (Mock Data)`,
         priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low',
         status: 'upcoming',
         source: 'mock'
       })
     }
-  })
+  }
   
   return games.sort((a, b) => {
     const dateA = new Date(`${a.gameDate} ${a.gameTime}`)
@@ -522,27 +550,34 @@ export async function POST(request: NextRequest) {
       )
       
       if (enhancedData.games && enhancedData.games.length > 0) {
-        // Convert enhanced live data to GameListing format
-        games = enhancedData.games.map(game => ({
-          id: game.id,
-          league: game.league,
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
-          gameTime: game.gameTime,
-          gameDate: game.gameDate,
-          channel: {
-            ...game.channel,
-            userHasAccess: streamingAccess[game.channel.id] || false
-          },
-          description: game.description,
-          priority: game.priority,
-          status: game.status,
-          homeScore: game.homeScore?.toString(),
-          awayScore: game.awayScore?.toString(),
-          venue: game.venue,
-          broadcast: game.broadcast,
-          source: game.source
-        }))
+        // Convert enhanced live data to GameListing format with real channel info
+        const enhancedGames = await Promise.all(
+          enhancedData.games.map(async game => {
+            const enhancedChannel = await getEnhancedChannelInfo(game.channel)
+            return {
+              id: game.id,
+              league: game.league,
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              gameTime: game.gameTime,
+              gameDate: game.gameDate,
+              channel: {
+                ...enhancedChannel,
+                userHasAccess: streamingAccess[game.channel.id] || false
+              },
+              description: game.description,
+              priority: game.priority,
+              status: game.status,
+              homeScore: game.homeScore?.toString(),
+              awayScore: game.awayScore?.toString(),
+              venue: game.venue,
+              broadcast: game.broadcast,
+              source: game.source
+            }
+          })
+        )
+        
+        games = enhancedGames
         
         apiSources = enhancedData.sources
         
@@ -554,7 +589,7 @@ export async function POST(request: NextRequest) {
         
       } else {
         console.log('⚠️ No enhanced API data available, using mock data')
-        games = generateMockGames(selectedLeagues)
+        games = await generateMockGames(selectedLeagues)
         dataSource = streamingEnhancedGames > 0 ? 'Streaming Enhanced + Mock Data (API Fallback)' : 'Mock Data (Fallback)'
         apiSources = streamingEnhancedGames > 0 ? ['Streaming Platforms', 'Mock Generator'] : ['Mock Generator']
       }
@@ -590,7 +625,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('❌ Error fetching enhanced sports data:', error)
       console.log('⚠️ Falling back to mock data due to API error')
-      games = generateMockGames(selectedLeagues)
+      games = await generateMockGames(selectedLeagues)
       dataSource = 'Mock Data (API Error Fallback)'
       apiSources = ['Mock Generator']
     }
@@ -636,19 +671,41 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const action = searchParams.get('action')
+    
+    // Special action to get Spectrum channel lineup
+    if (action === 'spectrum-channels') {
+      const channelLineup = await spectrumChannelService.getChannelLineup()
+      return NextResponse.json(channelLineup)
+    }
+    
+    // Special action to get sports channels only
+    if (action === 'spectrum-sports') {
+      const sportsChannels = await spectrumChannelService.getSportsChannels()
+      return NextResponse.json({
+        success: true,
+        sportsChannels,
+        totalCount: sportsChannels.length
+      })
+    }
+    
     return NextResponse.json({
       success: true,
       message: 'Enhanced Live Sports Guide API is active',
-      version: '3.0.0',
+      version: '3.1.0',
       dataSources: [
         'ESPN API (Free) - NFL, NBA, MLB, NHL, NCAA Football, NCAA Basketball, MLS',
         'TheSportsDB API (Free) - Premier League, Champions League, La Liga, Serie A, Bundesliga',
         'NFHS Network API - High School Sports (all sports, location-based)',
-        'NFL Sunday Ticket Service - Out-of-market NFL games identification'
+        'NFL Sunday Ticket Service - Out-of-market NFL games identification',
+        'Spectrum Channel Service - Real-time channel lineup (Wisconsin/Madison Market)'
       ],
       endpoints: {
         'POST /api/sports-guide': 'Generate enhanced sports guide with selected leagues using live data',
         'GET /api/sports-guide': 'Get API information and status',
+        'GET /api/sports-guide?action=spectrum-channels': 'Get current Spectrum channel lineup',
+        'GET /api/sports-guide?action=spectrum-sports': 'Get Spectrum sports channels only',
         'POST /api/sports-guide/scheduled': 'Run scheduled update with all leagues',
         'GET /api/sports-guide/test-providers': 'Test live API connectivity'
       },
@@ -673,7 +730,9 @@ export async function GET(request: NextRequest) {
         'sundayTicket': 'NFL Sunday Ticket exclusive game identification',
         'nfhsStreaming': 'NFHS Network live streaming games',
         'locationBased': 'Location-based high school sports discovery',
-        'multiCategory': 'Professional, College, High School, and International sports'
+        'multiCategory': 'Professional, College, High School, and International sports',
+        'spectrumIntegration': 'Live Spectrum Business TV channel lineup integration',
+        'realChannelNumbers': 'Accurate channel numbers for Wisconsin/Madison market'
       },
       features: [
         'Live game data from multiple free APIs',
@@ -684,6 +743,8 @@ export async function GET(request: NextRequest) {
         'Multi-category sports coverage',
         'Automatic fallback to mock data if APIs unavailable',
         'Enhanced channel and broadcast information',
+        'Real Spectrum channel lineup integration',
+        'Accurate channel numbers and HD indicators',
         'Timezone-aware scheduling',
         'Multi-league support',
         'No API keys required for basic functionality'

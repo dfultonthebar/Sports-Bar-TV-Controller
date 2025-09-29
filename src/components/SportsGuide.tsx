@@ -46,6 +46,7 @@ interface ChannelInfo {
   type: 'cable' | 'streaming' | 'ota' | 'satellite'
   cost: 'free' | 'subscription' | 'premium'
   logoUrl?: string
+  channelNumber?: string
   providerId?: string // Link to provider
 }
 
@@ -1023,15 +1024,15 @@ export default function SportsGuide() {
             
             {/* Day Navigation for Grid View */}
             {viewMode === 'grid' && (
-              <div className="flex items-center space-x-2 overflow-x-auto">
+              <div className="flex items-center space-x-2 overflow-x-auto pb-2">
                 {getNextSevenDays().map((day, index) => (
                   <button
                     key={day.date}
                     onClick={() => setSelectedDay(index)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                    className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all border ${
                       selectedDay === index
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-emerald-600 text-white shadow-lg border-emerald-500/50'
+                        : 'bg-slate-700/40 text-blue-200 border-slate-600/50 hover:bg-slate-600/50 hover:text-white'
                     }`}
                   >
                     {day.label}
@@ -1048,60 +1049,60 @@ export default function SportsGuide() {
                 {getFilteredGames().map((game) => (
                   <div
                     key={game.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    className="border border-white/30 bg-white/10 backdrop-blur-sm rounded-lg p-4 hover:bg-white/20 transition-all shadow-lg"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
-                        <div className="bg-blue-100 rounded-lg p-2">
-                          <Star className="w-4 h-4 text-blue-600" />
+                        <div className="bg-blue-500/20 border border-blue-400/30 rounded-lg p-2">
+                          <Star className="w-4 h-4 text-blue-300" />
                         </div>
                         <div>
-                          <h4 className="font-medium text-gray-900">{game.league}</h4>
-                          <p className="text-sm text-gray-500">{game.description}</p>
+                          <h4 className="font-medium text-white">{game.league}</h4>
+                          <p className="text-sm text-blue-200">{game.description}</p>
                         </div>
                       </div>
                       
                       <div className="text-right">
-                        <div className="flex items-center space-x-1 text-sm text-gray-600">
+                        <div className="flex items-center space-x-1 text-sm text-blue-200">
                           <Clock className="w-4 h-4" />
-                          <span>{game.gameTime}</span>
+                          <span className="font-medium text-white">{game.gameTime}</span>
                         </div>
                       </div>
                     </div>
                     
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-lg font-medium text-gray-900">
+                      <div className="text-lg font-bold text-white">
                         {game.awayTeam} @ {game.homeTeam}
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
                       <div className="flex items-center space-x-3">
-                        <div className="bg-white rounded-lg p-2 shadow-sm">
+                        <div className="bg-slate-700/50 border border-slate-600/50 rounded-lg p-2">
                           {game.channel.type === 'streaming' ? 
-                            <Smartphone className="w-4 h-4 text-purple-600" /> : 
-                            <Tv className="w-4 h-4 text-blue-600" />
+                            <Smartphone className="w-4 h-4 text-purple-400" /> : 
+                            <Tv className="w-4 h-4 text-blue-400" />
                           }
                         </div>
                         <div>
-                          <div className="font-medium text-gray-900">{game.channel.name}</div>
-                          <div className="text-sm text-gray-500">
-                            {getCostIcon(game.channel.cost)} {game.channel.cost}
+                          <div className="font-bold text-white">{game.channel.name}</div>
+                          <div className="text-sm text-blue-300 font-medium">
+                            {getCostIcon(game.channel.cost)} {game.channel.cost} • Ch. {game.channel.channelNumber || 'N/A'}
                           </div>
                         </div>
                       </div>
                       
                       <button
                         onClick={() => handleChannelClick(game.channel)}
-                        className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                        className="inline-flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-bold shadow-lg border border-emerald-500/30"
                       >
                         <ExternalLink className="w-4 h-4" />
                         <span>Watch Now</span>
                       </button>
                     </div>
                     
-                    <div className="mt-2 text-xs text-gray-500">
-                      Available on: {game.channel.platforms.join(', ')}
+                    <div className="mt-3 text-xs text-blue-300 bg-slate-900/30 rounded p-2 border border-slate-700/50">
+                      <span className="font-medium text-white">Available on:</span> {game.channel.platforms.join(' • ')}
                     </div>
                   </div>
                 ))}
@@ -1112,9 +1113,9 @@ export default function SportsGuide() {
                 <div className="min-w-full">
                   {/* Grid Header */}
                   <div className="grid grid-cols-[120px_repeat(auto-fit,minmax(200px,1fr))] gap-1 mb-2">
-                    <div className="font-semibold text-gray-700 p-2">Time</div>
+                    <div className="font-bold text-white p-2 bg-slate-800/60 border border-slate-700/50 rounded-md">Time</div>
                     {getChannelsForGrid().map((channel) => (
-                      <div key={channel} className="font-semibold text-gray-700 p-2 text-center bg-gray-50 rounded-md">
+                      <div key={channel} className="font-bold text-white p-2 text-center bg-slate-800/60 border border-slate-700/50 rounded-md">
                         {channel}
                       </div>
                     ))}
@@ -1124,7 +1125,7 @@ export default function SportsGuide() {
                   <div className="space-y-1">
                     {getTimeSlots().map((timeSlot) => (
                       <div key={timeSlot.time} className="grid grid-cols-[120px_repeat(auto-fit,minmax(200px,1fr))] gap-1">
-                        <div className="p-2 font-medium text-gray-600 bg-gray-50 rounded-md">
+                        <div className="p-2 font-bold text-white bg-slate-700/40 border border-slate-600/50 rounded-md">
                           {timeSlot.label}
                         </div>
                         {getChannelsForGrid().map((channel) => {
@@ -1134,24 +1135,24 @@ export default function SportsGuide() {
                           )
                           
                           return (
-                            <div key={`${timeSlot.time}-${channel}`} className="p-2 border border-gray-200 rounded-md min-h-[60px]">
+                            <div key={`${timeSlot.time}-${channel}`} className="p-2 border border-white/20 bg-white/5 rounded-md min-h-[60px]">
                               {game ? (
                                 <button
                                   onClick={() => handleChannelClick(game.channel)}
-                                  className="w-full text-left hover:bg-blue-50 rounded-md p-1 transition-colors"
+                                  className="w-full text-left hover:bg-blue-600/20 hover:border-blue-400/50 rounded-md p-1 transition-colors border border-transparent"
                                 >
-                                  <div className="text-xs font-medium text-blue-600 mb-1">
+                                  <div className="text-xs font-bold text-blue-300 mb-1">
                                     {game.league}
                                   </div>
-                                  <div className="text-xs text-gray-800">
+                                  <div className="text-xs text-white font-medium">
                                     {game.awayTeam} @ {game.homeTeam}
                                   </div>
-                                  <div className="text-xs text-gray-500 mt-1">
+                                  <div className="text-xs text-blue-200 mt-1 font-medium">
                                     {game.gameTime}
                                   </div>
                                 </button>
                               ) : (
-                                <div className="text-xs text-gray-400 p-1">-</div>
+                                <div className="text-xs text-gray-500 p-1 font-medium">-</div>
                               )}
                             </div>
                           )
@@ -1161,9 +1162,9 @@ export default function SportsGuide() {
                   </div>
                   
                   {getGamesForSelectedDay().length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Tv className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>No games scheduled for {getNextSevenDays()[selectedDay]?.label}</p>
+                    <div className="text-center py-8 text-blue-200">
+                      <Tv className="w-12 h-12 mx-auto mb-4 text-blue-300" />
+                      <p className="text-white font-medium">No games scheduled for {getNextSevenDays()[selectedDay]?.label}</p>
                     </div>
                   )}
                 </div>
