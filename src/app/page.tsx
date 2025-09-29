@@ -1,9 +1,14 @@
 
 'use client'
 
+import { useState } from 'react'
 import StreamingPlatformsWidget from '../components/StreamingPlatformsWidget'
+import LayoutConfiguration from '../components/LayoutConfiguration'
+import { Settings } from 'lucide-react'
 
 export default function Home() {
+  const [showLayoutConfig, setShowLayoutConfig] = useState(false)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/50">
@@ -113,6 +118,21 @@ export default function Home() {
                     <h4 className="font-medium text-amber-800 mb-1">🖥️ Device Setup</h4>
                     <p className="text-amber-600 text-sm">TV & device configuration</p>
                   </a>
+                  
+                  <button 
+                    onClick={() => setShowLayoutConfig(!showLayoutConfig)}
+                    className="block p-4 bg-orange-50 rounded-lg border border-orange-200 hover:bg-orange-100 transition-colors text-left w-full"
+                  >
+                    <h4 className="font-medium text-orange-800 mb-1 flex items-center">
+                      📐 Layout Config
+                      {showLayoutConfig ? (
+                        <span className="ml-2 text-xs bg-orange-200 px-2 py-1 rounded">Open</span>
+                      ) : (
+                        <Settings className="ml-2 w-3 h-3" />
+                      )}
+                    </h4>
+                    <p className="text-orange-600 text-sm">Floor plan & TV zone setup</p>
+                  </button>
                 </div>
               </div>
               
@@ -123,6 +143,13 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Layout Configuration Section */}
+        {showLayoutConfig && (
+          <div className="mb-8">
+            <LayoutConfiguration />
+          </div>
+        )}
 
         {/* Streaming Platforms Widget */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

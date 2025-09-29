@@ -11,6 +11,13 @@ interface TVLocation {
   }
 }
 
+interface InputMapping {
+  outputNumber: number
+  suggestedInput: string
+  confidence: number
+  reasoning: string
+}
+
 interface LayoutAnalysis {
   totalTVs: number
   locations: TVLocation[]
@@ -22,11 +29,12 @@ interface LayoutAnalysis {
     priority: 'high' | 'medium' | 'low'
     audioOutput?: string
   }[]
+  inputMappingSuggestions?: InputMapping[]
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { layoutDescription, matrixOutputs, availableOutputs, imageUrl } = await request.json()
+    const { layoutDescription, matrixOutputs, availableOutputs, imageUrl, availableInputs } = await request.json()
     
     console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs, imageUrl })
     
@@ -47,10 +55,18 @@ export async function POST(request: NextRequest) {
     const suggestions = generateOutputMappings(tvLocations, matrixOutputs, activeOutputs)
     console.log('AI Analysis - Generated Suggestions:', suggestions.length, suggestions.slice(0, 3))
     
+    // Generate AI input mapping suggestions
+    let inputMappingSuggestions: InputMapping[] = []
+    if (availableInputs && Array.isArray(availableInputs) && availableInputs.length > 0) {
+      inputMappingSuggestions = generateInputMappingSuggestions(suggestions, availableInputs)
+      console.log('AI Analysis - Generated Input Mapping:', inputMappingSuggestions.length, inputMappingSuggestions.slice(0, 3))
+    }
+    
     const analysis: LayoutAnalysis = {
       totalTVs: tvLocations.length,
       locations: tvLocations,
-      suggestions: suggestions
+      suggestions: suggestions,
+      inputMappingSuggestions: inputMappingSuggestions
     }
     
     console.log('AI Analysis - Final Result:', { totalTVs: analysis.totalTVs, suggestionsCount: analysis.suggestions.length })
@@ -405,4 +421,91 @@ function generateSmartLabel(location: TVLocation): string {
   
   // Default naming based on TV number
   return `TV ${location.number}`
+}
+
+function generateInputMappingSuggestions(suggestions: any[], availableInputs: any[]): InputMapping[] {
+  const inputMappings: InputMapping[] = []
+  
+  // Create a pool of inputs based on their types and labels
+  const inputsByType = {
+    cable: availableInputs.filter(input => input.inputType.toLowerCase().includes('cable')),
+    satellite: availableInputs.filter(input => input.inputType.toLowerCase().includes('satellite')),
+    streaming: availableInputs.filter(input => input.inputType.toLowerCase().includes('streaming')),
+    gaming: availableInputs.filter(input => input.inputType.toLowerCase().includes('gaming')),
+    other: availableInputs.filter(input => 
+      !input.inputType.toLowerCase().includes('cable') &&
+      !input.inputType.toLowerCase().includes('satellite') &&
+      !input.inputType.toLowerCase().includes('streaming') &&
+      !input.inputType.toLowerCase().includes('gaming')
+    )
+  }
+  
+  // Sort suggestions by priority (high priority areas get better inputs)
+  const sortedSuggestions = [...suggestions].sort((a, b) => {
+    const priorityOrder = { high: 3, medium: 2, low: 1 }
+    return (priorityOrder[b.priority as keyof typeof priorityOrder] || 0) - (priorityOrder[a.priority as keyof typeof priorityOrder] || 0)
+  })
+  
+  // Track assigned inputs to avoid duplicates
+  const assignedInputs = new Set<string>()
+  
+  for (const suggestion of sortedSuggestions) {
+    const location = suggestion.label.toLowerCase()
+    let recommendedInput: any = null
+    let confidence = 70 // Base confidence
+    let reasoning = 'AI-based location analysis'
+    
+    // High priority locations get premium content
+    if (suggestion.priority === 'high') {
+      // Main areas get satellite/cable for sports
+      if (location.includes('main') || location.includes('bar')) {
+        recommendedInput = findAvailableInput(inputsByType.satellite, assignedInputs) ||
+                          findAvailableInput(inputsByType.cable, assignedInputs)
+        confidence = 90
+        reasoning = 'Main viewing area - prioritized for sports content'
+      }
+    }
+    
+    // Medium priority locations get diverse content
+    else if (suggestion.priority === 'medium') {
+      if (location.includes('side') || location.includes('corner')) {
+        recommendedInput = findAvailableInput(inputsByType.streaming, assignedInputs) ||
+                          findAvailableInput(inputsByType.cable, assignedInputs)
+        confidence = 80
+        reasoning = 'Secondary viewing area - suitable for varied content'
+      }
+    }
+    
+    // Low priority locations get remaining inputs
+    else {
+      recommendedInput = findAvailableInput(inputsByType.other, assignedInputs) ||
+                        findAvailableInput(inputsByType.streaming, assignedInputs) ||
+                        findAvailableInput([...availableInputs], assignedInputs)
+      confidence = 60
+      reasoning = 'Peripheral location - assigned available input'
+    }
+    
+    // Fallback: assign any available input
+    if (!recommendedInput) {
+      recommendedInput = findAvailableInput([...availableInputs], assignedInputs)
+      confidence = 50
+      reasoning = 'Fallback assignment - any available input'
+    }
+    
+    if (recommendedInput) {
+      assignedInputs.add(recommendedInput.label)
+      inputMappings.push({
+        outputNumber: suggestion.outputNumber,
+        suggestedInput: recommendedInput.label,
+        confidence: confidence,
+        reasoning: reasoning
+      })
+    }
+  }
+  
+  return inputMappings
+}
+
+function findAvailableInput(inputPool: any[], assignedInputs: Set<string>): any | null {
+  return inputPool.find(input => !assignedInputs.has(input.label)) || null
 }
