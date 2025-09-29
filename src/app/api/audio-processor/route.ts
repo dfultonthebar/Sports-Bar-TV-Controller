@@ -50,3 +50,29 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Processor ID is required' },
+        { status: 400 }
+      )
+    }
+
+    await prisma.audioProcessor.delete({
+      where: { id }
+    })
+
+    return NextResponse.json({ message: 'Processor deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting audio processor:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete audio processor' },
+      { status: 500 }
+    )
+  }
+}
