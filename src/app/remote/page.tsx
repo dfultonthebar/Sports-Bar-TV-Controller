@@ -51,6 +51,31 @@ interface IRDevice {
   isActive: boolean
 }
 
+interface DirecTVDevice {
+  id: string
+  name: string
+  ipAddress: string
+  port: number
+  receiverType: string
+  inputChannel?: number
+  isOnline: boolean
+  controlMethod: 'IP'
+  deviceType: 'DirecTV'
+}
+
+interface FireTVDevice {
+  id: string
+  name: string
+  ipAddress: string
+  port: number
+  deviceType: string
+  inputChannel?: number
+  isOnline: boolean
+  controlMethod: 'IP'
+}
+
+type AllDeviceTypes = IRDevice | DirecTVDevice | FireTVDevice
+
 interface TVLayoutZone {
   id: string
   outputNumber: number
@@ -126,8 +151,10 @@ const AUDIO_INPUTS: AudioInput[] = [
 export default function BartenderRemotePage() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
+  const [directvDevices, setDirectvDevices] = useState<DirecTVDevice[]>([])
+  const [firetvDevices, setFiretvDevices] = useState<FireTVDevice[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
-  const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
+  const [selectedDevice, setSelectedDevice] = useState<AllDeviceTypes | null>(null)
   const [loading, setLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -155,6 +182,8 @@ export default function BartenderRemotePage() {
   useEffect(() => {
     loadInputs()
     loadIRDevices()
+    loadDirecTVDevices()
+    loadFireTVDevices()
     checkConnectionStatus()
     loadTVLayout()
     // Also fetch matrix data on initial load
@@ -265,6 +294,39 @@ export default function BartenderRemotePage() {
     }
   }
 
+  const loadDirecTVDevices = async () => {
+    try {
+      const response = await fetch('/api/directv-devices')
+      const data = await response.json()
+      if (data.devices) {
+        const devices = data.devices.map((device: any) => ({
+          ...device,
+          controlMethod: 'IP' as const,
+          deviceType: 'DirecTV' as const
+        }))
+        setDirectvDevices(devices)
+      }
+    } catch (error) {
+      console.error('Error loading DirecTV devices:', error)
+    }
+  }
+
+  const loadFireTVDevices = async () => {
+    try {
+      const response = await fetch('/api/firetv-devices')
+      const data = await response.json()
+      if (data.devices) {
+        const devices = data.devices.map((device: any) => ({
+          ...device,
+          controlMethod: 'IP' as const
+        }))
+        setFiretvDevices(devices)
+      }
+    } catch (error) {
+      console.error('Error loading Fire TV devices:', error)
+    }
+  }
+
   const checkConnectionStatus = async () => {
     try {
       const response = await fetch('/api/matrix/test-connection')
@@ -282,16 +344,32 @@ export default function BartenderRemotePage() {
   const selectInput = async (inputNumber: number) => {
     setSelectedInput(inputNumber)
     
-    // Find the corresponding IR device for this input
-    const device = irDevices.find(d => d.inputChannel === inputNumber && d.isActive)
+    // Find the corresponding device for this input from all device types
+    let device: AllDeviceTypes | null = null
+    
+    // Check IR devices first
+    device = irDevices.find(d => d.inputChannel === inputNumber && d.isActive) || null
+    
+    // Check DirecTV devices if no IR device found
+    if (!device) {
+      device = directvDevices.find(d => d.inputChannel === inputNumber) || null
+    }
+    
+    // Check Fire TV devices if no other device found
+    if (!device) {
+      device = firetvDevices.find(d => d.inputChannel === inputNumber) || null
+    }
+    
     setSelectedDevice(device || null)
     
     const input = inputs.find(i => i.channelNumber === inputNumber)
     
     if (device) {
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} → ${device.name} (${device.brand})`)
+      const deviceBrand = 'brand' in device ? device.brand : (device.deviceType === 'DirecTV' ? 'DirecTV' : 'Amazon Fire TV')
+      const controlType = device.controlMethod === 'IP' ? 'IP Control' : 'IR Control'
+      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} → ${device.name} (${deviceBrand} - ${controlType})`)
     } else {
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} ⚠️ No IR device configured for this input`)
+      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} ⚠️ No control device configured for this input`)
     }
     
     // Auto-clear status after 5 seconds
@@ -356,25 +434,56 @@ export default function BartenderRemotePage() {
     try {
       let response;
       
-      if (selectedDevice.controlMethod === 'IP' && selectedDevice.deviceIpAddress) {
+      // Handle DirecTV devices
+      if (selectedDevice.deviceType === 'DirecTV') {
+        const directvDevice = selectedDevice as DirecTVDevice
+        response = await fetch('/api/directv-devices/send-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: directvDevice.id,
+            command: command,
+            ipAddress: directvDevice.ipAddress,
+            port: directvDevice.port
+          })
+        })
+      }
+      // Handle Fire TV devices  
+      else if ('deviceType' in selectedDevice && selectedDevice.deviceType !== 'DirecTV') {
+        const firetvDevice = selectedDevice as FireTVDevice
+        response = await fetch('/api/firetv-devices/send-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: firetvDevice.id,
+            command: command,
+            ipAddress: firetvDevice.ipAddress,
+            port: firetvDevice.port
+          })
+        })
+      }
+      // Handle IR devices (original logic)
+      else if (selectedDevice.controlMethod === 'IP' && 'deviceIpAddress' in selectedDevice && selectedDevice.deviceIpAddress) {
+        const irDevice = selectedDevice as IRDevice
         response = await fetch('/api/ir-devices/send-ip-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            deviceId: selectedDevice.id,
+            deviceId: irDevice.id,
             command: command,
-            ipAddress: selectedDevice.deviceIpAddress,
-            port: selectedDevice.ipControlPort || 80
+            ipAddress: irDevice.deviceIpAddress,
+            port: irDevice.ipControlPort || 80
           })
         })
-      } else if (selectedDevice.iTachAddress) {
+      } else if ('iTachAddress' in selectedDevice && selectedDevice.iTachAddress) {
+        const irDevice = selectedDevice as IRDevice
         response = await fetch('/api/ir-devices/send-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            deviceId: selectedDevice.id,
+            deviceId: irDevice.id,
             command: command,
-            iTachAddress: selectedDevice.iTachAddress
+            iTachAddress: irDevice.iTachAddress
           })
         })
       } else {
@@ -505,8 +614,12 @@ export default function BartenderRemotePage() {
                   ) : (
                     <>
                       {inputs.map((input) => {
-                        const hasIRDevice = irDevices.some(d => d.inputChannel === input.channelNumber && d.isActive)
-                        const device = irDevices.find(d => d.inputChannel === input.channelNumber && d.isActive)
+                        // Check all device types for this input
+                        const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber && d.isActive)
+                        const directvDevice = directvDevices.find(d => d.inputChannel === input.channelNumber)
+                        const firetvDevice = firetvDevices.find(d => d.inputChannel === input.channelNumber)
+                        const device = irDevice || directvDevice || firetvDevice
+                        const hasDevice = !!device
                         
                         return (
                           <button
@@ -528,14 +641,14 @@ export default function BartenderRemotePage() {
                                   </div>
                                   {device && (
                                     <div className="text-xs opacity-70 mt-1">
-                                      📱 {device.name} ({device.controlMethod === 'IP' ? 'IP' : 'IR'})
+                                      📱 {device.name} ({device.controlMethod === 'IP' ? 'IP' : 'IR'} Control)
                                     </div>
                                   )}
                                 </div>
                               </div>
                               <div className="flex items-center space-x-2">
-                                {hasIRDevice && (
-                                  <div className="text-green-400" title="IR remote control available">
+                                {hasDevice && (
+                                  <div className="text-green-400" title={`${device.controlMethod === 'IP' ? 'IP' : 'IR'} remote control available`}>
                                     <Settings className="w-4 h-4" />
                                   </div>
                                 )}
@@ -581,7 +694,14 @@ export default function BartenderRemotePage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-medium">{selectedDevice.name}</div>
-                            <div className="text-sm opacity-80">{selectedDevice.brand} • {selectedDevice.deviceType}</div>
+                            <div className="text-sm opacity-80">
+                              {'brand' in selectedDevice 
+                                ? `${selectedDevice.brand} • ${selectedDevice.deviceType}` 
+                                : selectedDevice.deviceType === 'DirecTV' 
+                                  ? `DirecTV • ${(selectedDevice as DirecTVDevice).receiverType}`
+                                  : `Amazon • ${selectedDevice.deviceType}`
+                              }
+                            </div>
                           </div>
                           <div className="text-xs bg-green-600/30 px-2 py-1 rounded">
                             {selectedDevice.controlMethod === 'IP' ? '📡 IP Control' : '📻 IR Control'}
@@ -589,11 +709,19 @@ export default function BartenderRemotePage() {
                         </div>
                         {selectedDevice.controlMethod === 'IP' ? (
                           <div className="text-xs mt-2 opacity-75">
-                            {selectedDevice.deviceIpAddress}:{selectedDevice.ipControlPort || 'auto'}
+                            {'ipAddress' in selectedDevice 
+                              ? `${selectedDevice.ipAddress}:${selectedDevice.port}`
+                              : 'deviceIpAddress' in selectedDevice 
+                                ? `${selectedDevice.deviceIpAddress}:${selectedDevice.ipControlPort || 'auto'}`
+                                : 'IP Address not configured'
+                            }
                           </div>
                         ) : (
                           <div className="text-xs mt-2 opacity-75">
-                            iTach: {selectedDevice.iTachAddress}:{selectedDevice.iTachPort || 1}
+                            {'iTachAddress' in selectedDevice 
+                              ? `iTach: ${selectedDevice.iTachAddress}:${selectedDevice.iTachPort || 1}`
+                              : 'iTach not configured'
+                            }
                           </div>
                         )}
                       </div>
@@ -649,20 +777,35 @@ export default function BartenderRemotePage() {
                         </div>
                       </div>
                       
-                      {/* Show available IR devices for reference */}
-                      {irDevices.length > 0 && (
+                      {/* Show available devices for reference */}
+                      {(irDevices.length > 0 || directvDevices.length > 0 || firetvDevices.length > 0) && (
                         <div className="mt-3">
-                          <h4 className="text-sm font-medium text-white mb-2">Available IR Devices:</h4>
+                          <h4 className="text-sm font-medium text-white mb-2">Available Devices:</h4>
                           <div className="space-y-1">
+                            {/* IR Devices */}
                             {irDevices.filter(d => d.isActive).map(device => (
                               <div key={device.id} className="text-xs text-blue-200 bg-blue-500/10 px-2 py-1 rounded">
                                 <span className="font-medium">{device.name}</span> 
-                                <span className="opacity-75"> → Channel {device.inputChannel}</span>
+                                <span className="opacity-75"> → Channel {device.inputChannel} (IR)</span>
+                              </div>
+                            ))}
+                            {/* DirecTV Devices */}
+                            {directvDevices.filter(d => d.inputChannel).map(device => (
+                              <div key={device.id} className="text-xs text-green-200 bg-green-500/10 px-2 py-1 rounded">
+                                <span className="font-medium">{device.name}</span> 
+                                <span className="opacity-75"> → Channel {device.inputChannel} (DirecTV IP)</span>
+                              </div>
+                            ))}
+                            {/* Fire TV Devices */}
+                            {firetvDevices.filter(d => d.inputChannel).map(device => (
+                              <div key={device.id} className="text-xs text-orange-200 bg-orange-500/10 px-2 py-1 rounded">
+                                <span className="font-medium">{device.name}</span> 
+                                <span className="opacity-75"> → Channel {device.inputChannel} (Fire TV IP)</span>
                               </div>
                             ))}
                           </div>
                           <p className="text-xs text-gray-400 mt-2">
-                            Contact management to configure IR control for this input
+                            Contact management to configure device control for this input
                           </p>
                         </div>
                       )}
