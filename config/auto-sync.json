@@ -1,7 +1,7 @@
 {
-  "enabled": false,
+  "enabled": true,
   "syncInterval": 30,
-  "autoCommitOnConfigChange": false,
+  "autoCommitOnConfigChange": true,
   "monitoredPaths": [
     "src/data/matrix-config.json",
     "src/data/device-mappings.json",
