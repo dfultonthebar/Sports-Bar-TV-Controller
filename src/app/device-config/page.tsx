@@ -18,8 +18,7 @@ function DeviceConfigTabs({ activeTab, setActiveTab }: TabProps) {
   const tabs = [
     { id: 'directv', label: 'DirecTV', icon: Tv },
     { id: 'firetv', label: 'Fire TV', icon: Monitor },
-    { id: 'globalcache', label: 'Global Cache', icon: Router },
-    { id: 'ir', label: 'IR Devices', icon: Smartphone },
+    { id: 'ir', label: 'IR Control', icon: Router },
   ]
 
   return (
@@ -94,17 +93,13 @@ export default function DeviceConfigPage() {
                 <FireTVController />
               </div>
             )}
-
-            {activeTab === 'globalcache' && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Global Cache iTach Configuration</h3>
-                <IRDeviceControl />
-              </div>
-            )}
             
             {activeTab === 'ir' && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">IR Device Configuration</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">IR Device Control</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Configure and control IR devices including Global Cache iTach units, IP-based IR blasters, and other infrared control systems.
+                </p>
                 <IRDeviceControl />
               </div>
             )}
