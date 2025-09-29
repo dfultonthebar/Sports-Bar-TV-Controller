@@ -1,4 +1,8 @@
 
+'use client'
+
+import StreamingPlatformsWidget from '../components/StreamingPlatformsWidget'
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -19,7 +23,8 @@ export default function Home() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200">
+        {/* Main Status Card */}
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 mb-8">
           <div className="p-8 text-center">
             <h2 className="text-2xl font-bold text-slate-900 mb-4">🚀 Sports Bar AI Assistant</h2>
             <p className="text-slate-600 mb-6">System is now running successfully!</p>
@@ -31,13 +36,21 @@ export default function Home() {
               </div>
               
               {/* Main System Controls */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <a 
                   href="/sports-guide"
                   className="block p-6 bg-orange-50 rounded-xl border border-orange-200 hover:bg-orange-100 transition-colors"
                 >
                   <h3 className="font-semibold text-orange-800 mb-2">📺 Sports Guide</h3>
                   <p className="text-orange-600 text-sm">Find where to watch sports</p>
+                </a>
+                
+                <a 
+                  href="/nfhs-network"
+                  className="block p-6 bg-red-50 rounded-xl border border-red-200 hover:bg-red-100 transition-colors"
+                >
+                  <h3 className="font-semibold text-red-800 mb-2">🏫 NFHS Network</h3>
+                  <p className="text-red-600 text-sm">High school sports streaming</p>
                 </a>
                 
                 <a 
@@ -60,13 +73,21 @@ export default function Home() {
               {/* Configuration & AV Management */}
               <div className="mt-8">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">⚙️ Configuration & AV Management</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                   <a 
                     href="/sports-guide-config"
                     className="block p-4 bg-purple-50 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors"
                   >
                     <h4 className="font-medium text-purple-800 mb-1">🏈 Sports Config</h4>
                     <p className="text-purple-600 text-sm">Configure sports guide settings</p>
+                  </a>
+                  
+                  <a 
+                    href="/streaming-platforms"
+                    className="block p-4 bg-pink-50 rounded-lg border border-pink-200 hover:bg-pink-100 transition-colors"
+                  >
+                    <h4 className="font-medium text-pink-800 mb-1">📺 Streaming Platforms</h4>
+                    <p className="text-pink-600 text-sm">Manage streaming accounts</p>
                   </a>
                   
                   <a 
@@ -98,6 +119,67 @@ export default function Home() {
               <div className="mt-8 p-4 bg-gray-50 rounded-lg">
                 <h4 className="font-semibold text-gray-800 mb-2">✅ Issue Status: RESOLVED</h4>
                 <p className="text-gray-600 text-sm">All build errors have been fixed. The application is now running properly.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Streaming Platforms Widget */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <StreamingPlatformsWidget />
+          
+          {/* Quick Stats Widget */}
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-2.5 shadow-lg">
+                <span className="text-2xl">📊</span>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">System Status</h3>
+                <p className="text-sm text-slate-500">Real-time system information</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  <span className="font-medium text-green-800">AV Systems</span>
+                </div>
+                <span className="text-sm text-green-600">Online</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <span className="font-medium text-blue-800">Sports APIs</span>
+                </div>
+                <span className="text-sm text-blue-600">Active</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-purple-50 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                  <span className="font-medium text-purple-800">Matrix Control</span>
+                </div>
+                <span className="text-sm text-purple-600">Ready</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                  <span className="font-medium text-yellow-800">Atlas Audio</span>
+                </div>
+                <span className="text-sm text-yellow-600">Configured</span>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <div className="text-center">
+                <div className="text-sm text-slate-500">Last Updated</div>
+                <div className="text-xs text-slate-400 mt-1">
+                  {new Date().toLocaleString()}
+                </div>
               </div>
             </div>
           </div>

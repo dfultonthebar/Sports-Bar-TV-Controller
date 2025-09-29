@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { enhancedLiveSportsService } from '../../../lib/sports-apis/enhanced-live-sports-service'
+import { getEnhancedStreamingSportsData, getUserStreamingPlatformAccess } from '../../../lib/enhanced-streaming-sports-service'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,7 @@ export interface ChannelInfo {
   channelNumber?: string
   appCommand?: string
   deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
+  userHasAccess?: boolean
 }
 
 export interface GameListing {
@@ -33,7 +35,7 @@ export interface GameListing {
   awayScore?: string
   venue?: string
   broadcast?: string[]
-  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock'
+  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
 }
 
 const CHANNELS: ChannelInfo[] = [
@@ -482,10 +484,29 @@ export async function POST(request: NextRequest) {
     console.log(`🏆 Fetching enhanced sports data for leagues: ${selectedLeagues.join(', ')}`)
     
     let games: GameListing[] = []
-    let dataSource = 'Live APIs (ESPN + TheSportsDB + NFHS + Sunday Ticket)'
+    let dataSource = 'Live APIs (ESPN + TheSportsDB + NFHS + Sunday Ticket + Streaming Platforms)'
     let apiSources: string[] = []
+    let streamingEnhancedGames = 0
+    let connectedPlatforms: string[] = []
 
     try {
+      // First, get streaming platform access info
+      const streamingAccess = getUserStreamingPlatformAccess()
+      console.log(`🔐 Streaming platform access:`, streamingAccess)
+
+      // Fetch enhanced streaming data first
+      let streamingGames: any[] = []
+      try {
+        const streamingData = await getEnhancedStreamingSportsData(selectedLeagues)
+        streamingGames = streamingData.games
+        connectedPlatforms = streamingData.enhancedPlatforms
+        streamingEnhancedGames = streamingData.totalEnhanced
+        
+        console.log(`📺 Retrieved ${streamingEnhancedGames} enhanced games from ${connectedPlatforms.length} streaming platforms`)
+      } catch (streamingError) {
+        console.error('❌ Error fetching streaming enhanced data:', streamingError)
+      }
+
       // Attempt to fetch live data using the enhanced combined sports service
       const startDate = dateRange?.start || new Date().toISOString().split('T')[0]
       const endDate = dateRange?.end || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -509,7 +530,10 @@ export async function POST(request: NextRequest) {
           awayTeam: game.awayTeam,
           gameTime: game.gameTime,
           gameDate: game.gameDate,
-          channel: game.channel,
+          channel: {
+            ...game.channel,
+            userHasAccess: streamingAccess[game.channel.id] || false
+          },
           description: game.description,
           priority: game.priority,
           status: game.status,
@@ -529,10 +553,38 @@ export async function POST(request: NextRequest) {
         console.log(`📺 Sunday Ticket: ${enhancedData.sundayTicketGames}, NFHS Streams: ${enhancedData.nfhsStreamingGames}`)
         
       } else {
-        console.log('⚠️ No enhanced data available, falling back to mock data')
+        console.log('⚠️ No enhanced API data available, using mock data')
         games = generateMockGames(selectedLeagues)
-        dataSource = 'Mock Data (Fallback)'
-        apiSources = ['Mock Generator']
+        dataSource = streamingEnhancedGames > 0 ? 'Streaming Enhanced + Mock Data (API Fallback)' : 'Mock Data (Fallback)'
+        apiSources = streamingEnhancedGames > 0 ? ['Streaming Platforms', 'Mock Generator'] : ['Mock Generator']
+      }
+
+      // Add streaming enhanced games to the results
+      if (streamingGames.length > 0) {
+        const convertedStreamingGames = streamingGames.map(game => ({
+          id: game.id,
+          league: game.league,
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          gameTime: game.gameTime,
+          gameDate: game.gameDate,
+          channel: game.channel,
+          description: game.description,
+          priority: game.priority,
+          status: game.status,
+          homeScore: game.homeScore?.toString(),
+          awayScore: game.awayScore?.toString(),
+          venue: game.venue,
+          broadcast: game.broadcast,
+          source: game.source
+        }))
+        
+        // Merge streaming games with regular games, prioritizing streaming enhanced games
+        games = [...convertedStreamingGames, ...games]
+        
+        if (!apiSources.includes('Streaming Platforms')) {
+          apiSources.unshift('Streaming Platforms')
+        }
       }
       
     } catch (error) {
@@ -553,6 +605,12 @@ export async function POST(request: NextRequest) {
         channels: Array.from(new Set(games.map(game => game.channel.name))),
         dataSource,
         apiSources,
+        streamingEnhancements: {
+          connectedPlatforms,
+          enhancedGamesCount: streamingEnhancedGames,
+          totalConnectedPlatforms: connectedPlatforms.length,
+          userAccessibleGames: games.filter(game => game.channel.userHasAccess).length
+        },
         summary: {
           liveGames: games.filter(game => game.status === 'live').length,
           upcomingGames: games.filter(game => game.status === 'upcoming').length,
@@ -560,7 +618,8 @@ export async function POST(request: NextRequest) {
           platforms: Array.from(new Set(games.flatMap(game => game.channel.platforms))),
           streamingServices: games.filter(game => game.channel.type === 'streaming').length,
           cableChannels: games.filter(game => game.channel.type === 'cable').length,
-          freeChannels: games.filter(game => game.channel.cost === 'free').length
+          freeChannels: games.filter(game => game.channel.cost === 'free').length,
+          enhancedStreamingGames: games.filter(game => game.source === 'streaming-enhanced').length
         }
       }
     }
