@@ -7,7 +7,15 @@ export async function GET() {
     const processors = await prisma.audioProcessor.findMany({
       orderBy: { name: 'asc' }
     })
-    return NextResponse.json({ processors })
+    
+    // Add calculated inputs and outputs for each processor
+    const processorsWithCounts = processors.map(processor => ({
+      ...processor,
+      inputs: processor.model.includes('AZM8') ? 8 : 4,
+      outputs: processor.zones
+    }))
+    
+    return NextResponse.json({ processors: processorsWithCounts })
   } catch (error) {
     console.error('Error fetching audio processors:', error)
     return NextResponse.json(
@@ -29,19 +37,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Calculate inputs and outputs based on model
+    const calculatedZones = zones || (model.includes('AZM8') ? 8 : 4)
+    const inputs = model.includes('AZM8') ? 8 : 4
+    const outputs = calculatedZones
+
     const processor = await prisma.audioProcessor.create({
       data: {
         name,
         model,
         ipAddress,
         port: port || 80,
-        zones: zones || (model.includes('AZM8') ? 8 : 4),
+        zones: calculatedZones,
         description,
         status: 'offline'
       }
     })
 
-    return NextResponse.json({ processor })
+    // Return processor with calculated values for the frontend
+    const processorWithCounts = {
+      ...processor,
+      inputs,
+      outputs
+    }
+
+    return NextResponse.json({ processor: processorWithCounts })
   } catch (error) {
     console.error('Error creating audio processor:', error)
     return NextResponse.json(

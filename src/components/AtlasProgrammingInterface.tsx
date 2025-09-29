@@ -106,7 +106,7 @@ interface MessageConfig {
 export default function AtlasProgrammingInterface() {
   const [processors, setProcessors] = useState<AtlasProcessor[]>([])
   const [selectedProcessor, setSelectedProcessor] = useState<AtlasProcessor | null>(null)
-  const [activeTab, setActiveTab] = useState('inputs')
+  const [activeTab, setActiveTab] = useState('processors')
   const [inputs, setInputs] = useState<InputConfig[]>([])
   const [outputs, setOutputs] = useState<OutputConfig[]>([])
   const [scenes, setScenes] = useState<SceneConfig[]>([])
@@ -114,6 +114,15 @@ export default function AtlasProgrammingInterface() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error'} | null>(null)
+  const [showAddProcessor, setShowAddProcessor] = useState(false)
+  const [newProcessor, setNewProcessor] = useState({
+    name: '',
+    model: 'AZM8',
+    ipAddress: '',
+    port: 80,
+    zones: 8,
+    description: ''
+  })
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type })
@@ -211,6 +220,61 @@ export default function AtlasProgrammingInterface() {
     setOutputs(prev => prev.map(output => 
       output.id === outputId ? { ...output, ...updates } : output
     ))
+  }
+
+  const addInput = () => {
+    const maxId = Math.max(0, ...inputs.map(i => i.id))
+    const newInput: InputConfig = {
+      id: maxId + 1,
+      name: `Input ${maxId + 1}`,
+      type: 'line',
+      gainDb: 0,
+      phantom: false,
+      lowcut: false,
+      compressor: false,
+      gate: false,
+      eq: { band1: 0, band2: 0, band3: 0 },
+      routing: []
+    }
+    setInputs(prev => [...prev, newInput])
+  }
+
+  const deleteInput = (inputId: number) => {
+    if (inputs.length <= 1) {
+      showMessage('Cannot delete the last input', 'error')
+      return
+    }
+    setInputs(prev => prev.filter(input => input.id !== inputId))
+    // Note: Outputs don't have routing arrays, inputs do the routing to outputs
+  }
+
+  const addOutput = () => {
+    const maxId = Math.max(0, ...outputs.map(o => o.id))
+    const newOutput: OutputConfig = {
+      id: maxId + 1,
+      name: `Zone ${maxId + 1}`,
+      type: 'speaker',
+      levelDb: -10,
+      muted: false,
+      delay: 0,
+      eq: { band1: 0, band2: 0, band3: 0 },
+      compressor: false,
+      limiter: true
+    }
+    setOutputs(prev => [...prev, newOutput])
+  }
+
+  const deleteOutput = (outputId: number) => {
+    if (outputs.length <= 1) {
+      showMessage('Cannot delete the last output', 'error')
+      return
+    }
+    setOutputs(prev => prev.filter(output => output.id !== outputId))
+    // Also remove this output from all input routings
+    setInputs(prev => prev.map(input => ({
+      ...input,
+      routing: input.routing.filter(r => r !== outputId)
+    })))
   }
 
   const saveConfiguration = async () => {
@@ -348,6 +412,65 @@ export default function AtlasProgrammingInterface() {
     }
   }
 
+  const addProcessor = async () => {
+    try {
+      const response = await fetch('/api/audio-processor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProcessor)
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update processor list
+        await fetchProcessors()
+        // Reset form
+        setNewProcessor({
+          name: '',
+          model: 'AZM8',
+          ipAddress: '',
+          port: 80,
+          zones: 8,
+          description: ''
+        })
+        setShowAddProcessor(false)
+        showMessage(`Processor "${data.processor.name}" added successfully`)
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to add processor', 'error')
+      }
+    } catch (error) {
+      console.error('Error adding processor:', error)
+      showMessage('Failed to add processor', 'error')
+    }
+  }
+
+  const deleteProcessor = async (processorId: string) => {
+    if (!confirm('Are you sure you want to delete this processor? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/audio-processor?id=${processorId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await fetchProcessors()
+        if (selectedProcessor?.id === processorId) {
+          setSelectedProcessor(null)
+        }
+        showMessage('Processor deleted successfully')
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to delete processor', 'error')
+      }
+    } catch (error) {
+      console.error('Error deleting processor:', error)
+      showMessage('Failed to delete processor', 'error')
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -403,7 +526,113 @@ export default function AtlasProgrammingInterface() {
             Comprehensive Atlas processor programming and configuration
           </p>
         </div>
+        <Button
+          onClick={() => setShowAddProcessor(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Processor
+        </Button>
       </div>
+
+      {/* Add Processor Form */}
+      {showAddProcessor && (
+        <Card className="border-2 border-purple-200 bg-purple-50/50">
+          <CardHeader>
+            <CardTitle className="text-purple-900 flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Add New Atlas Processor
+            </CardTitle>
+            <CardDescription>
+              Configure a new Atlas audio processor for programming and control
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Processor Name</label>
+                <Input
+                  value={newProcessor.name}
+                  onChange={(e) => setNewProcessor({ ...newProcessor, name: e.target.value })}
+                  placeholder="e.g., Main Bar Audio"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Model</label>
+                <select
+                  value={newProcessor.model}
+                  onChange={(e) => {
+                    const model = e.target.value
+                    const zones = model.includes('AZM8') ? 8 : 4
+                    setNewProcessor({ 
+                      ...newProcessor, 
+                      model, 
+                      zones
+                    })
+                  }}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="AZM4">AZM4 (4 zones)</option>
+                  <option value="AZM8">AZM8 (8 zones)</option>
+                  <option value="AZMP4">AZMP4 (4 zones with processing)</option>
+                  <option value="AZMP8">AZMP8 (8 zones with processing)</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">IP Address</label>
+                <Input
+                  value={newProcessor.ipAddress}
+                  onChange={(e) => setNewProcessor({ ...newProcessor, ipAddress: e.target.value })}
+                  placeholder="192.168.1.100"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Port</label>
+                <Input
+                  type="number"
+                  value={newProcessor.port}
+                  onChange={(e) => setNewProcessor({ ...newProcessor, port: parseInt(e.target.value) || 80 })}
+                  placeholder="80"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-900">Description (Optional)</label>
+              <Input
+                value={newProcessor.description}
+                onChange={(e) => setNewProcessor({ ...newProcessor, description: e.target.value })}
+                placeholder="Additional notes about this processor"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                onClick={() => {
+                  setShowAddProcessor(false)
+                  setNewProcessor({
+                    name: '',
+                    model: 'AZM8',
+                    ipAddress: '',
+                    port: 80,
+                    zones: 8,
+                    description: ''
+                  })
+                }}
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={addProcessor}
+                disabled={!newProcessor.name || !newProcessor.ipAddress}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Processor
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Processor Selection */}
       {processors.length === 0 ? (
@@ -434,17 +663,30 @@ export default function AtlasProgrammingInterface() {
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <h3 className="font-semibold text-gray-900">{processor.name}</h3>
                       <p className="text-sm text-gray-600">{processor.model}</p>
                     </div>
-                    <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
-                      ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                      ${processor.status === 'offline' ? 'bg-gray-100 text-gray-800 border-gray-300' : ''}
-                      ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
-                    `}>
-                      {processor.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
+                        ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
+                        ${processor.status === 'offline' ? 'bg-gray-100 text-gray-800 border-gray-300' : ''}
+                        ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
+                      `}>
+                        {processor.status}
+                      </Badge>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteProcessor(processor.id)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2 text-xs text-gray-600">
@@ -538,11 +780,21 @@ export default function AtlasProgrammingInterface() {
 
                   {/* Input Configuration Tab */}
                   <TabsContent value="inputs" className="space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-xl font-semibold text-gray-900">Input Configuration</h3>
-                      <p className="text-sm text-gray-600">
-                        Configure microphone and line inputs, including gain, phantom power, EQ, and routing
-                      </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-semibold text-gray-900">Input Configuration</h3>
+                        <p className="text-sm text-gray-600">
+                          Configure microphone and line inputs, including gain, phantom power, EQ, and routing
+                        </p>
+                      </div>
+                      <Button
+                        onClick={addInput}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Input
+                      </Button>
                     </div>
 
                     <div className="space-y-4">
@@ -562,7 +814,7 @@ export default function AtlasProgrammingInterface() {
                                       <AudioLines className="h-4 w-4 text-blue-600" />
                                     )}
                                   </div>
-                                  <div>
+                                  <div className="flex-1">
                                     <Input
                                       value={input.name}
                                       onChange={(e) => updateInput(input.id, { name: e.target.value })}
@@ -597,6 +849,14 @@ export default function AtlasProgrammingInterface() {
                                       GATE
                                     </Badge>
                                   )}
+                                  <Button
+                                    onClick={() => deleteInput(input.id)}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </div>
 
@@ -747,11 +1007,21 @@ export default function AtlasProgrammingInterface() {
 
                   {/* Output Configuration Tab */}
                   <TabsContent value="outputs" className="space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-xl font-semibold text-gray-900">Output Configuration</h3>
-                      <p className="text-sm text-gray-600">
-                        Configure speaker zones, Dante outputs, and processing parameters
-                      </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-semibold text-gray-900">Output Configuration</h3>
+                        <p className="text-sm text-gray-600">
+                          Configure speaker zones, Dante outputs, and processing parameters
+                        </p>
+                      </div>
+                      <Button
+                        onClick={addOutput}
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Output
+                      </Button>
                     </div>
 
                     <div className="space-y-4">
@@ -765,7 +1035,7 @@ export default function AtlasProgrammingInterface() {
                                   <div className="p-2 bg-green-100 rounded-lg">
                                     <Headphones className="h-4 w-4 text-green-600" />
                                   </div>
-                                  <div>
+                                  <div className="flex-1">
                                     <Input
                                       value={output.name}
                                       onChange={(e) => updateOutput(output.id, { name: e.target.value })}
@@ -799,6 +1069,14 @@ export default function AtlasProgrammingInterface() {
                                       LIMIT
                                     </Badge>
                                   )}
+                                  <Button
+                                    onClick={() => deleteOutput(output.id)}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </div>
 
