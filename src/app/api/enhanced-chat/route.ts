@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
-import { EnhancedAIClient } from '../../../../lib/enhanced-ai-client'
+import { prisma } from '@/lib/db'
+import { EnhancedAIClient } from '@/lib/enhanced-ai-client'
 
 export async function POST(request: NextRequest) {
   try {

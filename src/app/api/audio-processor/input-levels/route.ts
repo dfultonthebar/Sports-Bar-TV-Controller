@@ -1,7 +1,7 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
+import { prisma } from '@/lib/db'
 import * as dgram from 'dgram'
 import * as net from 'net'
 

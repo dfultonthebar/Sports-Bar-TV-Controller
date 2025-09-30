@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { operationLogger } from '../../../../lib/operation-logger'
+import { operationLogger } from '@/lib/operation-logger'
 
 export const dynamic = 'force-dynamic'
 

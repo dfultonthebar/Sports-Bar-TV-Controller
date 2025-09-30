@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { atlasAIAnalyzer, AtlasMonitoringData } from '../../../../lib/atlas-ai-analyzer'
+import { atlasAIAnalyzer, AtlasMonitoringData } from '@/lib/atlas-ai-analyzer'
 
 export const dynamic = 'force-dynamic'
 

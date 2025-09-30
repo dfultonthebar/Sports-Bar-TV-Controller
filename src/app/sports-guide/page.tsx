@@ -1,7 +1,7 @@
 
 'use client'
 
-import SportsGuide from '../../components/SportsGuide'
+import SportsGuide from '@/components/SportsGuide'
 import { Calendar, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 

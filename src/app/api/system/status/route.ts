@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { operationLogger } from '../../../../lib/operation-logger'
-import { documentSearch } from '../../../../lib/enhanced-document-search'
-import { prisma } from '../../../../lib/db'
+import { operationLogger } from '@/lib/operation-logger'
+import { documentSearch } from '@/lib/enhanced-document-search'
+import { prisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 

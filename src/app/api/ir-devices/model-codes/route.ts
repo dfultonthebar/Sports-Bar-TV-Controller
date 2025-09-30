@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { globalCacheAPI } from '../../../../lib/global-cache-api'
+import { globalCacheAPI } from '@/lib/global-cache-api'
 
 export const dynamic = 'force-dynamic'
 

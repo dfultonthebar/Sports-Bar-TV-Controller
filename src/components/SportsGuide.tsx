@@ -26,8 +26,8 @@ import {
   Satellite,
   Router
 } from 'lucide-react'
-import ProgrammingScheduler from '../../components/ProgrammingScheduler'
-import EnhancedChannelGrid from '../../components/EnhancedChannelGrid'
+import ProgrammingScheduler from './ProgrammingScheduler'
+import EnhancedChannelGrid from './EnhancedChannelGrid'
 
 interface League {
   id: string

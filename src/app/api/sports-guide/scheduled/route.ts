@@ -1,7 +1,7 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { liveSportsService } from '../../../../lib/sports-apis/live-sports-service'
+import { liveSportsService } from '@/lib/sports-apis/live-sports-service'
 
 export const dynamic = 'force-dynamic'
 

@@ -2,8 +2,8 @@
 'use client'
 
 import { useState } from 'react'
-import StreamingPlatformsWidget from '../components/StreamingPlatformsWidget'
-import LayoutConfiguration from '../components/LayoutConfiguration'
+import StreamingPlatformsWidget from '@/components/StreamingPlatformsWidget'
+import LayoutConfiguration from '@/components/LayoutConfiguration'
 import { Settings } from 'lucide-react'
 
 export default function Home() {

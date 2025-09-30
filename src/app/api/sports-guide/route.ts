@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { enhancedLiveSportsService } from '../../../lib/sports-apis/enhanced-live-sports-service'
-import { getEnhancedStreamingSportsData, getUserStreamingPlatformAccess } from '../../../lib/enhanced-streaming-sports-service'
-import { spectrumChannelService, type SpectrumChannelData } from '../../../lib/spectrum-channel-service'
+import { enhancedLiveSportsService } from '@/lib/sports-apis/enhanced-live-sports-service'
+import { getEnhancedStreamingSportsData, getUserStreamingPlatformAccess } from '@/lib/enhanced-streaming-sports-service'
+import { spectrumChannelService, type SpectrumChannelData } from '@/lib/spectrum-channel-service'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'

@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
-import { saveFile, generateUniqueFilename } from '../../../../lib/file-utils'
-import { extractTextFromFile } from '../../../../lib/text-extractor'
+import { prisma } from '@/lib/db'
+import { saveFile, generateUniqueFilename } from '@/lib/file-utils'
+import { extractTextFromFile } from '@/lib/text-extractor'
 
 export async function POST(request: NextRequest) {
   console.log('📁 Upload request received')
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         let textContent = ''
         try {
           const textExtractionResult = await extractTextFromFile(filePath, file.type)
-          textContent = textExtractionResult
+          textContent = textExtractionResult.text
           console.log(`✅ Text extracted: ${textContent.length} characters`)
         } catch (textError) {
           console.error(`⚠️ Text extraction failed for ${file.name}:`, textError)

@@ -5,9 +5,9 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Save, Settings, Speaker, Volume2, Brain } from 'lucide-react'
 import Link from 'next/link'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
-import AtlasProgrammingInterface from '../../components/AtlasProgrammingInterface'
-import AtlasAIMonitor from '../../components/AtlasAIMonitor'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import AtlasProgrammingInterface from '@/components/AtlasProgrammingInterface'
+import AtlasAIMonitor from '@/components/AtlasAIMonitor'
 
 export default function AtlasConfigPage() {
   return (

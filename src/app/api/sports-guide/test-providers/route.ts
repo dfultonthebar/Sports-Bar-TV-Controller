@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { espnAPI } from '../../../../lib/sports-apis/espn-api'
-import { sportsDBAPI } from '../../../../lib/sports-apis/thesportsdb-api'
+import { espnAPI } from '@/lib/sports-apis/espn-api'
+import { sportsDBAPI } from '@/lib/sports-apis/thesportsdb-api'
 
 export const dynamic = 'force-dynamic'
 

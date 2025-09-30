@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
-import { encrypt } from '../../../../lib/encryption'
+import { prisma } from '@/lib/db'
+import { encrypt } from '@/lib/encryption'
 
 export async function PUT(
   request: NextRequest,

@@ -45,7 +45,7 @@ import {
   Package,
   BarChart3
 } from 'lucide-react'
-import { FireTVDevice, FIRETV_SPORTS_APPS, SPORTS_QUICK_ACCESS, StreamingApp, generateFireTVDeviceId } from '../lib/firetv-utils'
+import { FireTVDevice, FIRETV_SPORTS_APPS, SPORTS_QUICK_ACCESS, StreamingApp, generateFireTVDeviceId } from '@/lib/firetv-utils'
 import DeviceSubscriptionPanel from './DeviceSubscriptionPanel'
 
 interface MatrixInput {

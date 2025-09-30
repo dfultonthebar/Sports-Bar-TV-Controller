@@ -1,7 +1,7 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { FIRETV_COMMANDS, getAppLaunchCommand, isValidFireTVCommand } from '../../../../lib/firetv-utils'
+import { FIRETV_COMMANDS, getAppLaunchCommand, isValidFireTVCommand } from '@/lib/firetv-utils'
 
 // ADB command execution via network
 async function executeADBCommand(ip: string, port: number, command: string): Promise<{ success: boolean; message: string; data?: any }> {

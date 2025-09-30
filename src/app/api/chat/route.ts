@@ -1,10 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/db'
-import { decrypt } from '../../../../lib/encryption'
-import { documentSearch } from '../../../../lib/enhanced-document-search'
-import { operationLogger } from '../../../../lib/operation-logger'
+import { prisma } from '@/lib/db'
+import { decrypt } from '@/lib/encryption'
+import { documentSearch } from '@/lib/enhanced-document-search'
+import { operationLogger } from '@/lib/operation-logger'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'

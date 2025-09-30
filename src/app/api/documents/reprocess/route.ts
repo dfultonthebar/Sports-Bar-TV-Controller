@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { documentSearch } from '../../../../lib/enhanced-document-search'
-import { operationLogger } from '../../../../lib/operation-logger'
+import { documentSearch } from '@/lib/enhanced-document-search'
+import { operationLogger } from '@/lib/operation-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     // Check current document status
-    const { prisma } = await import('../../../../lib/db')
+    const { prisma } = await import('@/lib/db')
     
     const totalDocs = await prisma.document.count()
     const docsWithContent = await prisma.document.count({

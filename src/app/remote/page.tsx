@@ -24,9 +24,9 @@ import {
   Calendar
 } from 'lucide-react'
 import Image from 'next/image'
-import CECPowerControl from '../../components/CECPowerControl'
-import SportsGuide from '../../components/SportsGuide'
-import TVGuide from '../../components/TVGuide'
+import CECPowerControl from '@/components/CECPowerControl'
+import SportsGuide from '@/components/SportsGuide'
+import TVGuide from '@/components/TVGuide'
 
 interface MatrixInput {
   id: string

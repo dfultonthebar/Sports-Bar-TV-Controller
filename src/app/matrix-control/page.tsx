@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Save, Settings, Cable, Monitor, Zap } from 'lucide-react'
 import Link from 'next/link'
-import MatrixControl from '../../components/MatrixControl'
+import MatrixControl from '@/components/MatrixControl'
 
 export default function MatrixControlPage() {
   return (

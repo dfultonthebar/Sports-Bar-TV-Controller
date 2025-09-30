@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { globalCacheAPI, searchSpectrumModels, SPECTRUM_CABLE_BOX_MODELS } from '../../../../lib/global-cache-api'
+import { globalCacheAPI, searchSpectrumModels, SPECTRUM_CABLE_BOX_MODELS } from '@/lib/global-cache-api'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
