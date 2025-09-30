@@ -21,13 +21,15 @@ import {
   VolumeIcon,
   Sliders,
   Speaker,
-  Calendar
+  Calendar,
+  Music2
 } from 'lucide-react'
 import Image from 'next/image'
 import CECPowerControl from '@/components/CECPowerControl'
 import SportsGuide from '@/components/SportsGuide'
 import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
+import BartenderMusicControl from '@/components/BartenderMusicControl'
 
 interface MatrixInput {
   id: string
@@ -167,7 +169,7 @@ export default function BartenderRemotePage() {
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   
   // New tab and audio states
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
   const [selectedAudioInput, setSelectedAudioInput] = useState<number | null>(null)
   const [audioZones, setAudioZones] = useState<AudioZone[]>([
     { id: '1', name: 'Main Bar', volume: 75, isMuted: false },
@@ -1055,7 +1057,7 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'power' && <CECPowerControl />}
 
-
+        {activeTab === 'music' && <BartenderMusicControl />}
         
         {activeTab === 'guide' && <EnhancedChannelGuideBartenderRemote />}
       </div>
@@ -1087,7 +1089,17 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Audio</span>
           </button>
           
-
+          <button
+            onClick={() => setActiveTab('music')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'music'
+                ? 'bg-indigo-500/30 text-indigo-300'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Music2 className="w-4 h-4" />
+            <span className="text-xs font-medium">Music</span>
+          </button>
           
           <button
             onClick={() => setActiveTab('guide')}

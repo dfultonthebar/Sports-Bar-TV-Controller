@@ -288,3 +288,14 @@ model HomeTeam {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model SoundtrackConfig {
+  id          String   @id @default(cuid())
+  apiKey      String   // Soundtrack Your Brand API token
+  accountId   String?  // Soundtrack account ID
+  accountName String?  // Business name from Soundtrack
+  status      String   @default("active") // "active", "error", "untested"
+  lastTested  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

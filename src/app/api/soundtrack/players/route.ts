@@ -1,10 +1,25 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { PrismaClient } from '@prisma/client'
+import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
+
+const prisma = new PrismaClient()
+
+async function getAPI() {
+  const config = await prisma.soundtrackConfig.findFirst({
+    orderBy: { createdAt: 'desc' }
+  })
+  
+  if (!config || !config.apiKey) {
+    throw new Error('Soundtrack Your Brand not configured')
+  }
+  
+  return new SoundtrackYourBrandAPI(config.apiKey)
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const api = getSoundtrackAPI()
+    const api = await getAPI()
     const players = await api.listPlayers()
     return NextResponse.json({ success: true, players })
   } catch (error: any) {
@@ -28,7 +43,7 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const api = getSoundtrackAPI()
+    const api = await getAPI()
     const player = await api.updatePlayer(playerId, data)
     return NextResponse.json({ success: true, player })
   } catch (error: any) {

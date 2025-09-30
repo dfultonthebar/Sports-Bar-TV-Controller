@@ -1,11 +1,27 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { PrismaClient } from '@prisma/client'
+import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
+
+const prisma = new PrismaClient()
+
+async function getAPI() {
+  const config = await prisma.soundtrackConfig.findFirst({
+    orderBy: { createdAt: 'desc' }
+  })
+  
+  if (!config || !config.apiKey) {
+    throw new Error('Soundtrack Your Brand not configured')
+  }
+  
+  return new SoundtrackYourBrandAPI(config.apiKey)
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const playerId = request.nextUrl.searchParams.get('playerId')
-    
+    const { searchParams } = new URL(request.url)
+    const playerId = searchParams.get('playerId')
+
     if (!playerId) {
       return NextResponse.json(
         { success: false, error: 'Player ID required' },
@@ -13,7 +29,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const api = getSoundtrackAPI()
+    const api = await getAPI()
     const nowPlaying = await api.getNowPlaying(playerId)
     return NextResponse.json({ success: true, nowPlaying })
   } catch (error: any) {

@@ -10,6 +10,7 @@ import FireTVController from '@/components/FireTVController'
 import IRDeviceControl from '@/components/IRDeviceControl'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
+import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import { Button } from '@/components/ui/button'
 import { 
   Satellite, 
@@ -20,7 +21,8 @@ import {
   Zap,
   TrendingUp,
   Target,
-  BarChart3
+  BarChart3,
+  Music2
 } from 'lucide-react'
 
 export default function DeviceConfigPage() {
@@ -97,7 +99,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="directv" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="directv" className="flex items-center gap-2">
             <Satellite className="w-4 h-4" />
             DirecTV
@@ -113,6 +115,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="ir" className="flex items-center gap-2">
             <Radio className="w-4 h-4" />
             IR Devices
+          </TabsTrigger>
+          <TabsTrigger value="soundtrack" className="flex items-center gap-2">
+            <Music2 className="w-4 h-4" />
+            Soundtrack
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -222,6 +228,21 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <IRDeviceControl />
+        </TabsContent>
+
+        <TabsContent value="soundtrack" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Music2 className="w-5 h-5 text-purple-600" />
+                Soundtrack Your Brand
+              </CardTitle>
+              <CardDescription>
+                Configure API access and manage business music streaming
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <SoundtrackConfiguration />
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">
