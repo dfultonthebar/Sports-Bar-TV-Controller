@@ -1,0 +1,43 @@
+
+{
+  "channels": [
+    {
+      "number": "206",
+      "name": "ESPN",
+      "category": "Sports",
+      "hd": true
+    },
+    {
+      "number": "207",
+      "name": "ESPN2", 
+      "category": "Sports",
+      "hd": true
+    },
+    {
+      "number": "209",
+      "name": "FOX Sports 1",
+      "category": "Sports",
+      "hd": true
+    },
+    {
+      "number": "210",
+      "name": "FOX Sports 2",
+      "category": "Sports", 
+      "hd": true
+    },
+    {
+      "number": "220",
+      "name": "NFL Network",
+      "category": "Sports",
+      "hd": true
+    },
+    {
+      "number": "221",
+      "name": "NFL RedZone",
+      "category": "Sports",
+      "hd": true
+    }
+  ],
+  "lastUpdated": "2025-09-29T05:15:00Z",
+  "provider": "DirecTV"
+}

@@ -1,0 +1,66 @@
+
+'use client'
+
+import { useState } from 'react'
+import DocumentUpload from '../components/DocumentUpload'
+import TroubleshootingChat from '../components/TroubleshootingChat'
+import SystemEnhancement from '../components/SystemEnhancement'
+import ApiKeysManager from '../components/ApiKeysManager'
+import MatrixControl from '../components/MatrixControl'
+
+export default function Home() {
+  const [activeTab, setActiveTab] = useState('upload')
+
+  const tabs = [
+    { id: 'upload', name: 'Document Upload', icon: '📄' },
+    { id: 'troubleshoot', name: 'AI Chat', icon: '🤖' },
+    { id: 'matrix', name: 'Matrix Control', icon: '🔄' },
+    { id: 'api-keys', name: 'API Keys', icon: '🔑' },
+    { id: 'enhance', name: 'System Enhancement', icon: '⚡' },
+  ]
+
+  return (
+    <div className="px-4 py-6 sm:px-0">
+      <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            Welcome to Your Sports Bar AI Assistant
+          </h2>
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            Manage your AV systems with AI-powered assistance. Upload documentation, 
+            configure AI providers, get troubleshooting help, and enhance your sports bar experience.
+          </p>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200 mb-8">
+          <nav className="-mb-px flex space-x-8 justify-center">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+              >
+                <span className="text-lg">{tab.icon}</span>
+                <span>{tab.name}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        <div className="mt-8">
+          {activeTab === 'upload' && <DocumentUpload />}
+          {activeTab === 'troubleshoot' && <TroubleshootingChat />}
+          {activeTab === 'matrix' && <MatrixControl />}
+          {activeTab === 'api-keys' && <ApiKeysManager />}
+          {activeTab === 'enhance' && <SystemEnhancement />}
+        </div>
+      </div>
+    </div>
+  )
+}
