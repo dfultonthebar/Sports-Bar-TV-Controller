@@ -21,9 +21,11 @@ import {
   Users,
   Search,
   Star,
-  Globe
+  Globe,
+  Database
 } from 'lucide-react'
 import Link from 'next/link'
+import TVGuideConfigurationPanel from '@/components/tv-guide/TVGuideConfigurationPanel'
 
 interface Provider {
   id?: string
@@ -134,7 +136,7 @@ export default function SportsGuideConfigPage() {
   const [isAdding, setIsAdding] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedStatus, setSavedStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [activeTab, setActiveTab] = useState<'providers' | 'location' | 'teams'>('providers')
+  const [activeTab, setActiveTab] = useState<'providers' | 'location' | 'teams' | 'tv-guide-apis'>('providers')
   
   // Location configuration state
   const [locationConfig, setLocationConfig] = useState<LocationConfig>({
@@ -571,6 +573,18 @@ export default function SportsGuideConfigPage() {
           >
             <Users className="w-4 h-4" />
             <span>Home Teams</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('tv-guide-apis')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
+              activeTab === 'tv-guide-apis'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'text-blue-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>TV Guide APIs</span>
           </button>
         </div>
       </div>
@@ -1114,6 +1128,54 @@ export default function SportsGuideConfigPage() {
                     </ul>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TV Guide APIs Tab */}
+        {activeTab === 'tv-guide-apis' && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+            <div className="p-6 border-b border-white/20">
+              <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                <Database className="w-5 h-5" />
+                <span>Professional TV Guide APIs</span>
+              </h3>
+              <p className="text-blue-200 mt-1">Configure Gracenote and Spectrum Business API integration for comprehensive guide data</p>
+            </div>
+            
+            <div className="p-6">
+              <TVGuideConfigurationPanel />
+              
+              <div className="mt-6 bg-blue-900/30 rounded-lg p-4 border border-blue-500/30">
+                <div className="flex items-start space-x-3">
+                  <Database className="w-5 h-5 text-blue-300 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-200 mb-2">Professional TV Guide Integration</h4>
+                    <ul className="text-sm text-blue-300 space-y-1">
+                      <li>• Gracenote provides comprehensive sports metadata and team information</li>
+                      <li>• Spectrum Business API delivers account-specific channel lineups</li>
+                      <li>• Combined data ensures accurate scheduling and channel mapping</li>
+                      <li>• Supports real-time updates for live sports events and programming changes</li>
+                      <li>• Professional-grade reliability for commercial sports bar environments</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex space-x-3">
+                <a 
+                  href="/tv-guide"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  View TV Guide →
+                </a>
+                <a 
+                  href="/tv-guide-config"
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Advanced API Settings
+                </a>
               </div>
             </div>
           </div>
