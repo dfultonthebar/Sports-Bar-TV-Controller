@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "syncInterval": 30,
+  "syncInterval": 10,
   "autoCommitOnConfigChange": true,
   "monitoredPaths": [
     "src/data/matrix-config.json",
