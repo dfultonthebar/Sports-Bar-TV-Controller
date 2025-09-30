@@ -8,9 +8,6 @@ import {
   Music2, 
   Play, 
   Pause, 
-  Volume2, 
-  ChevronUp, 
-  ChevronDown,
   RefreshCw,
   AlertCircle,
   Radio,
@@ -142,33 +139,6 @@ export default function BartenderMusicControl() {
     }
   }
 
-  const handleVolumeChange = async (delta: number) => {
-    if (!selectedPlayer || actionLoading) return
-    
-    const newVolume = Math.max(0, Math.min(100, selectedPlayer.volume + delta))
-    
-    setActionLoading(true)
-    try {
-      const response = await fetch('/api/soundtrack/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: selectedPlayer.id,
-          volume: newVolume
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedPlayer(data.player)
-      }
-    } catch (err) {
-      console.error('Failed to change volume:', err)
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   const handleStationChange = async (stationId: string) => {
     if (!selectedPlayer || actionLoading) return
     
@@ -288,13 +258,13 @@ export default function BartenderMusicControl() {
           </Badge>
         </div>
 
-        {/* Play/Pause and Volume */}
-        <div className="flex items-center justify-between gap-4 mb-6">
+        {/* Play/Pause Controls */}
+        <div className="mb-6">
           <Button
             onClick={handlePlayPause}
             disabled={actionLoading}
             size="lg"
-            className={selectedPlayer.isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'}
+            className={`w-full ${selectedPlayer.isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'}`}
           >
             {selectedPlayer.isPlaying ? (
               <>
@@ -308,31 +278,6 @@ export default function BartenderMusicControl() {
               </>
             )}
           </Button>
-
-          <div className="flex items-center space-x-3 bg-white/5 rounded-lg px-4 py-2">
-            <Button 
-              onClick={() => handleVolumeChange(-5)} 
-              disabled={actionLoading}
-              size="sm" 
-              variant="outline"
-              className="h-10 w-10 p-0"
-            >
-              <ChevronDown className="w-5 h-5" />
-            </Button>
-            <div className="flex flex-col items-center min-w-[60px]">
-              <Volume2 className="w-5 h-5 text-gray-400 mb-1" />
-              <span className="text-white font-mono text-lg">{selectedPlayer.volume}</span>
-            </div>
-            <Button 
-              onClick={() => handleVolumeChange(5)} 
-              disabled={actionLoading}
-              size="sm" 
-              variant="outline"
-              className="h-10 w-10 p-0"
-            >
-              <ChevronUp className="w-5 h-5" />
-            </Button>
-          </div>
         </div>
 
         {/* Playlist/Station Selection */}
