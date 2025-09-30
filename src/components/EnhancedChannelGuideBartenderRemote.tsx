@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { useBartenderLogging } from '@/hooks/useLogging'
+import { useLogging } from '@/hooks/useLogging'
 import { 
   Power, 
   Volume2, 
@@ -138,7 +138,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     logDeviceInteraction,
     startPerformanceTimer, 
     endPerformanceTimer,
-  } = useBartenderLogging()
+  } = useLogging('EnhancedChannelGuide')
 
   // Device and Input State
   const [inputs, setInputs] = useState<MatrixInput[]>([])
