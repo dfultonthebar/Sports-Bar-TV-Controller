@@ -27,6 +27,7 @@ import Image from 'next/image'
 import CECPowerControl from '@/components/CECPowerControl'
 import SportsGuide from '@/components/SportsGuide'
 import TVGuide from '@/components/TVGuide'
+import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 
 interface MatrixInput {
   id: string
@@ -1052,7 +1053,7 @@ export default function BartenderRemotePage() {
 
 
         
-        {activeTab === 'guide' && <TVGuide selectedInput={selectedInput} inputs={inputs} sendIRCommand={sendIRCommand} />}
+        {activeTab === 'guide' && <EnhancedChannelGuideBartenderRemote />}
       </div>
 
       {/* Bottom Tab Navigation */}
