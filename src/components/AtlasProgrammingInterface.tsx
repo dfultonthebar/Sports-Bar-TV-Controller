@@ -903,7 +903,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={input.type}
                                       onChange={(e) => updateInput(input.id, { type: e.target.value as any })}
-                                      className="text-sm text-gray-600 border-0 bg-transparent"
+                                      className="text-sm text-black border-0 bg-transparent"
                                     >
                                       <option value="microphone">Microphone</option>
                                       <option value="line">Line Input</option>
@@ -956,7 +956,7 @@ export default function AtlasProgrammingInterface() {
                                   <select
                                     value={input.physicalInput}
                                     onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm"
+                                    className="w-full p-2 border rounded-md text-sm text-black"
                                   >
                                     <option value={input.physicalInput}>Input {input.physicalInput}</option>
                                     {getAvailablePhysicalInputs().map(physical => (
@@ -971,7 +971,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={input.stereoMode}
                                       onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
-                                      className="w-full p-1 border rounded text-xs"
+                                      className="w-full p-1 border rounded text-xs text-black"
                                     >
                                       <option value="mono">Mono</option>
                                       <option value="left">Stereo Left</option>
@@ -1003,7 +1003,7 @@ export default function AtlasProgrammingInterface() {
                                               linkStereoInputs(input.id, parseInt(e.target.value))
                                             }
                                           }}
-                                          className="w-full p-1 border rounded text-xs"
+                                          className="w-full p-1 border rounded text-xs text-black"
                                           value=""
                                         >
                                           <option value="">Link with...</option>
@@ -1201,7 +1201,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={output.type}
                                       onChange={(e) => updateOutput(output.id, { type: e.target.value as any })}
-                                      className="text-sm text-gray-600 border-0 bg-transparent"
+                                      className="text-sm text-black border-0 bg-transparent"
                                     >
                                       <option value="speaker">Speaker Zone</option>
                                       <option value="dante">Dante Output</option>
@@ -1253,7 +1253,7 @@ export default function AtlasProgrammingInterface() {
                                   <select
                                     value={output.physicalOutput}
                                     onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm"
+                                    className="w-full p-2 border rounded-md text-sm text-black"
                                   >
                                     <option value={output.physicalOutput}>Output {output.physicalOutput}</option>
                                     {getAvailablePhysicalOutputs().map(physical => (
