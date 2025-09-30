@@ -1,24 +1,86 @@
 {
   "devices": [
     {
-      "name": "Main DirecTV Receiver",
-      "ipAddress": "192.168.1.100",
+      "id": "directv_1759187217790",
+      "name": "Direct TV 1",
+      "ipAddress": "192.168.1.121",
       "port": 8080,
       "receiverType": "Genie HD DVR",
-      "inputChannel": 1,
-      "id": "directv_1759116061998",
+      "inputChannel": 5,
       "isOnline": false,
-      "addedAt": "2025-09-29T03:21:01.998Z"
+      "addedAt": "2025-09-29T23:06:18.386Z",
+      "updatedAt": "2025-09-29T23:07:27.055Z"
     },
     {
-      "name": "Bar DirecTV Mini",
-      "ipAddress": "192.168.1.101",
+      "id": "directv_1759187265011",
+      "name": "Direct TV 2",
+      "ipAddress": "192.168.1.122",
       "port": 8080,
-      "receiverType": "Genie Mini",
-      "inputChannel": 2,
-      "id": "directv_1759116067154",
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 6,
       "isOnline": false,
-      "addedAt": "2025-09-29T03:21:07.154Z"
+      "addedAt": "2025-09-29T23:07:05.584Z",
+      "updatedAt": "2025-09-29T23:09:35.359Z"
+    },
+    {
+      "id": "directv_1759187398411",
+      "name": "Direct TV 3",
+      "ipAddress": "192.168.1.123",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 7,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:09:18.991Z"
+    },
+    {
+      "id": "directv_1759187444390",
+      "name": "Direct TV 4",
+      "ipAddress": "192.168.1.124",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 8,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:10:04.974Z"
+    },
+    {
+      "id": "directv_1759187476373",
+      "name": "Direct TV 5",
+      "ipAddress": "192.168.1.125",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 9,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:10:36.943Z"
+    },
+    {
+      "id": "directv_1759187508606",
+      "name": "Direct TV 6",
+      "ipAddress": "192.168.1.126",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 10,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:11:09.201Z"
+    },
+    {
+      "id": "directv_1759187540487",
+      "name": "Direct TV 7",
+      "ipAddress": "192.168.1.127",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 11,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:11:41.074Z"
+    },
+    {
+      "id": "directv_1759187570875",
+      "name": "Direct TV 8",
+      "ipAddress": "192.168.1.128",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 12,
+      "isOnline": false,
+      "addedAt": "2025-09-29T23:12:11.466Z"
     }
   ]
 }
