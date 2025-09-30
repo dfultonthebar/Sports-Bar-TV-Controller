@@ -74,6 +74,36 @@ export default function Home() {
                   <p className="text-blue-200/80 text-sm">Monitor system performance</p>
                 </a>
               </div>
+
+              {/* Music & Audio */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold text-slate-200 mb-4">🎵 Music & Audio</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <a 
+                    href="/soundtrack"
+                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-purple-400/30 hover:bg-sportsBar-600/80 hover:border-purple-400/50 transition-all duration-200"
+                  >
+                    <h3 className="font-semibold text-purple-300 mb-2">🎵 Soundtrack Your Brand</h3>
+                    <p className="text-purple-200/80 text-sm">Professional music streaming control</p>
+                  </a>
+                  
+                  <a 
+                    href="/atlas-config"
+                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-teal-400/30 hover:bg-sportsBar-600/80 hover:border-teal-400/50 transition-all duration-200"
+                  >
+                    <h3 className="font-semibold text-teal-300 mb-2">🔊 Audio Zones</h3>
+                    <p className="text-teal-200/80 text-sm">Zone control & volume management</p>
+                  </a>
+                  
+                  <a 
+                    href="/audio-manager"
+                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-cyan-400/30 hover:bg-sportsBar-600/80 hover:border-cyan-400/50 transition-all duration-200"
+                  >
+                    <h3 className="font-semibold text-cyan-300 mb-2">🎛️ Audio Processor</h3>
+                    <p className="text-cyan-200/80 text-sm">Atlas IED processor configuration</p>
+                  </a>
+                </div>
+              </div>
               
               {/* Configuration & AV Management */}
               <div className="mt-8">
