@@ -12,6 +12,8 @@ import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import { Button } from '@/components/ui/button'
+import SportsBarLayout from '@/components/SportsBarLayout'
+import SportsBarHeader from '@/components/SportsBarHeader'
 import { 
   Satellite, 
   MonitorPlay, 
@@ -30,72 +32,64 @@ export default function DeviceConfigPage() {
   const [selectedDevice, setSelectedDevice] = useState<any>(null)
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Settings className="w-8 h-8 text-blue-600" />
-            Device Configuration
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Configure and manage DirecTV, Fire TV, and IR devices with AI-enhanced capabilities
-          </p>
-        </div>
-        
-        {/* AI Toggle */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
-            <span className="text-sm font-medium">AI Enhancements</span>
+    <SportsBarLayout>
+      <SportsBarHeader
+        title="Device Configuration"
+        subtitle="Configure and manage DirecTV, Fire TV, and IR devices with AI-enhanced capabilities"
+        icon={<Settings className="w-8 h-8 text-blue-400" />}
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-400" />
+              <span className="text-sm font-medium text-slate-300">AI Enhancements</span>
+            </div>
+            <Button
+              variant={aiEnhancementsEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAiEnhancementsEnabled(!aiEnhancementsEnabled)}
+              className="flex items-center gap-2"
+            >
+              {aiEnhancementsEnabled ? (
+                <>
+                  <Zap className="w-4 h-4" />
+                  Enabled
+                </>
+              ) : (
+                <>
+                  <Target className="w-4 h-4" />
+                  Enable AI
+                </>
+              )}
+            </Button>
           </div>
-          <Button
-            variant={aiEnhancementsEnabled ? "default" : "outline"}
-            size="sm"
-            onClick={() => setAiEnhancementsEnabled(!aiEnhancementsEnabled)}
-            className="flex items-center gap-2"
-          >
-            {aiEnhancementsEnabled ? (
-              <>
-                <Zap className="w-4 h-4" />
-                Enabled
-              </>
-            ) : (
-              <>
-                <Target className="w-4 h-4" />
-                Enable AI
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* AI Enhancement Notice */}
-      {aiEnhancementsEnabled && (
-        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50">
-          <CardContent className="p-4">
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* AI Enhancement Notice */}
+        {aiEnhancementsEnabled && (
+          <div className="card p-4 border-blue-600/50 bg-gradient-to-r from-blue-900/40 to-purple-900/40">
             <div className="flex items-center gap-3">
-              <Brain className="w-6 h-6 text-blue-600" />
+              <Brain className="w-6 h-6 text-blue-400" />
               <div>
-                <h3 className="font-semibold text-blue-900">AI Enhancements Active</h3>
-                <p className="text-sm text-blue-700">
+                <h3 className="font-semibold text-blue-200">AI Enhancements Active</h3>
+                <p className="text-sm text-blue-300">
                   Intelligent monitoring, smart recommendations, and predictive optimization are now enabled for all devices.
                 </p>
               </div>
               <div className="flex gap-2 ml-auto">
-                <Badge className="bg-green-100 text-green-800">
+                <Badge className="bg-green-900/50 text-green-200 border-green-800">
                   <TrendingUp className="w-3 h-3 mr-1" />
                   Learning
                 </Badge>
-                <Badge className="bg-blue-100 text-blue-800">
+                <Badge className="bg-blue-900/50 text-blue-200 border-blue-800">
                   <Zap className="w-3 h-3 mr-1" />
                   Optimizing
                 </Badge>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
       {/* Device Tabs */}
       <Tabs defaultValue="directv" className="space-y-6">
@@ -275,7 +269,7 @@ export default function DeviceConfigPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-600" />
+              <Zap className="w-5 h-5 text-yellow-400" />
               Quick AI Actions
             </CardTitle>
             <CardDescription>
@@ -285,32 +279,33 @@ export default function DeviceConfigPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
-                <Brain className="w-5 h-5 text-blue-500" />
+                <Brain className="w-5 h-5 text-blue-400" />
                 <div className="text-left">
                   <div className="font-medium">Run Full AI Analysis</div>
-                  <div className="text-xs text-gray-600">Complete device intelligence scan</div>
+                  <div className="text-xs text-slate-400">Complete device intelligence scan</div>
                 </div>
               </Button>
               
               <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
-                <Target className="w-5 h-5 text-green-500" />
+                <Target className="w-5 h-5 text-green-400" />
                 <div className="text-left">
                   <div className="font-medium">Optimize All Devices</div>
-                  <div className="text-xs text-gray-600">Apply AI recommendations</div>
+                  <div className="text-xs text-slate-400">Apply AI recommendations</div>
                 </div>
               </Button>
               
               <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
-                <TrendingUp className="w-5 h-5 text-purple-500" />
+                <TrendingUp className="w-5 h-5 text-purple-400" />
                 <div className="text-left">
                   <div className="font-medium">View AI Insights</div>
-                  <div className="text-xs text-gray-600">Check performance predictions</div>
+                  <div className="text-xs text-slate-400">Check performance predictions</div>
                 </div>
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
-    </div>
+      </div>
+    </SportsBarLayout>
   )
 }
