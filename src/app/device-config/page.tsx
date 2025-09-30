@@ -9,6 +9,7 @@ import DirecTVController from '@/components/DirecTVController'
 import FireTVController from '@/components/FireTVController'
 import IRDeviceControl from '@/components/IRDeviceControl'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
+import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import { Button } from '@/components/ui/button'
 import { 
   Satellite, 
@@ -18,7 +19,8 @@ import {
   Brain, 
   Zap,
   TrendingUp,
-  Target
+  Target,
+  BarChart3
 } from 'lucide-react'
 
 export default function DeviceConfigPage() {
@@ -95,7 +97,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="directv" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="directv" className="flex items-center gap-2">
             <Satellite className="w-4 h-4" />
             DirecTV
@@ -111,6 +113,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="ir" className="flex items-center gap-2">
             <Radio className="w-4 h-4" />
             IR Devices
+          </TabsTrigger>
+          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Subscriptions
           </TabsTrigger>
         </TabsList>
 
@@ -216,6 +222,30 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <IRDeviceControl />
+        </TabsContent>
+
+        <TabsContent value="subscriptions" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-purple-600" />
+                Subscription Dashboard
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {aiEnhancementsEnabled 
+                  ? "Monitor streaming and TV subscriptions with AI-powered cost optimization and usage analytics"
+                  : "View and manage streaming subscriptions across DirecTV and Fire TV devices"
+                }
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <SubscriptionDashboard />
         </TabsContent>
       </Tabs>
 

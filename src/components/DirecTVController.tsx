@@ -32,8 +32,11 @@ import {
   RefreshCw,
   Edit,
   Trash2,
-  X
+  X,
+  Package,
+  BarChart3
 } from 'lucide-react'
+import DeviceSubscriptionPanel from './DeviceSubscriptionPanel'
 
 interface DirecTVDevice {
   id: string
@@ -166,6 +169,8 @@ export default function DirecTVController() {
     receiverType: 'Genie HD DVR' as DirecTVDevice['receiverType'],
     inputChannel: undefined as number | undefined
   })
+  const [showSubscriptions, setShowSubscriptions] = useState(false)
+  const [subscriptionDeviceId, setSubscriptionDeviceId] = useState<string | null>(null)
 
   useEffect(() => {
     loadDirecTVDevices()
@@ -448,6 +453,11 @@ export default function DirecTVController() {
     }
   }
 
+  const openSubscriptionPanel = (device: DirecTVDevice) => {
+    setSubscriptionDeviceId(device.id)
+    setShowSubscriptions(true)
+  }
+
   const filteredSportsFavorites = selectedSportsCategory === 'All' 
     ? SPORTS_FAVORITES 
     : SPORTS_FAVORITES.filter(fav => fav.category === selectedSportsCategory)
@@ -545,8 +555,18 @@ export default function DirecTVController() {
                 )}
               </button>
               
-              {/* Edit and Delete buttons */}
+              {/* Action buttons */}
               <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openSubscriptionPanel(device)
+                  }}
+                  className="p-1 bg-purple-500 hover:bg-purple-600 text-white rounded-full transition-colors shadow-lg"
+                  title="View Subscriptions"
+                >
+                  <Package className="w-3 h-3" />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -1201,6 +1221,23 @@ export default function DirecTVController() {
                 Delete Device
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Panel */}
+      {showSubscriptions && subscriptionDeviceId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <DeviceSubscriptionPanel
+              deviceId={subscriptionDeviceId}
+              deviceType="directv"
+              deviceName={devices.find(d => d.id === subscriptionDeviceId)?.name || 'DirecTV Device'}
+              onClose={() => {
+                setShowSubscriptions(false)
+                setSubscriptionDeviceId(null)
+              }}
+            />
           </div>
         </div>
       )}

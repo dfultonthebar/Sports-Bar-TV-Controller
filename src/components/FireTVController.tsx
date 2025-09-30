@@ -41,9 +41,12 @@ import {
   Edit3,
   Zap,
   Tv,
-  Smartphone
+  Smartphone,
+  Package,
+  BarChart3
 } from 'lucide-react'
 import { FireTVDevice, FIRETV_SPORTS_APPS, SPORTS_QUICK_ACCESS, StreamingApp, generateFireTVDeviceId } from '../lib/firetv-utils'
+import DeviceSubscriptionPanel from './DeviceSubscriptionPanel'
 
 interface MatrixInput {
   id: string
@@ -77,6 +80,8 @@ export default function FireTVController() {
   const [showAddDevice, setShowAddDevice] = useState(false)
   const [showAppsGrid, setShowAppsGrid] = useState(false)
   const [activeCategory, setActiveCategory] = useState<'all' | 'sports' | 'entertainment' | 'news' | 'premium'>('sports')
+  const [showSubscriptions, setShowSubscriptions] = useState(false)
+  const [subscriptionDeviceId, setSubscriptionDeviceId] = useState<string | null>(null)
   
   // Matrix inputs state
   const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
@@ -446,6 +451,11 @@ export default function FireTVController() {
     setTimeout(() => setCommandStatus(null), 5000)
   }
 
+  const openSubscriptionPanel = (device: FireTVDevice) => {
+    setSubscriptionDeviceId(device.id)
+    setShowSubscriptions(true)
+  }
+
   useEffect(() => {
     if (commandStatus) {
       clearStatus()
@@ -739,6 +749,16 @@ export default function FireTVController() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
+                        openSubscriptionPanel(device)
+                      }}
+                      className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+                      title="View Subscriptions"
+                    >
+                      <Package className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
                         openEditDevice(device)
                       }}
                       className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
@@ -1010,6 +1030,23 @@ export default function FireTVController() {
           >
             Add Fire TV Device
           </button>
+        </div>
+      )}
+
+      {/* Subscription Panel */}
+      {showSubscriptions && subscriptionDeviceId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <DeviceSubscriptionPanel
+              deviceId={subscriptionDeviceId}
+              deviceType="firetv"
+              deviceName={devices.find(d => d.id === subscriptionDeviceId)?.name || 'Fire TV Device'}
+              onClose={() => {
+                setShowSubscriptions(false)
+                setSubscriptionDeviceId(null)
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
