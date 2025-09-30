@@ -7,8 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity } from 'lucide-react'
+import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity, Info } from 'lucide-react'
 import InputLevelMonitor from './InputLevelMonitor'
+import { getModelSpec, formatInputName, type AtlasModelSpec } from '@/lib/atlas-models-config'
+import Image from 'next/image'
 
 interface AudioProcessor {
   id: string
@@ -53,6 +55,9 @@ export default function AudioProcessorManager() {
     description: ''
   })
 
+  const [selectedModelSpec, setSelectedModelSpec] = useState<AtlasModelSpec | null>(null)
+  const [showModelInfo, setShowModelInfo] = useState(false)
+
   const [zoneFormData, setZoneFormData] = useState({
     zoneNumber: 1,
     name: '',
@@ -73,11 +78,16 @@ export default function AudioProcessorManager() {
   useEffect(() => {
     if (selectedProcessor) {
       fetchZones(selectedProcessor.id)
+      // Load model specifications
+      const spec = getModelSpec(selectedProcessor.model)
+      setSelectedModelSpec(spec || null)
       // Reset zone form when switching processors
       setShowZoneForm(false)
-      setZoneFormData({ zoneNumber: 1, name: '', description: '', currentSource: 'Input 1' })
+      const firstInput = spec?.inputs[0]?.name || 'Input 1'
+      setZoneFormData({ zoneNumber: 1, name: '', description: '', currentSource: firstInput })
     } else {
       setZones([])
+      setSelectedModelSpec(null)
     }
   }, [selectedProcessor])
 
@@ -593,6 +603,104 @@ export default function AudioProcessorManager() {
               </CardHeader>
               
               <CardContent className="p-6">
+                {/* Model Information Panel */}
+                {selectedModelSpec && (
+                  <div className="mb-6">
+                    <button
+                      onClick={() => setShowModelInfo(!showModelInfo)}
+                      className="w-full flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Info className="h-5 w-5 text-blue-600" />
+                        <div className="text-left">
+                          <h4 className="font-semibold text-blue-900">Model Specifications</h4>
+                          <p className="text-sm text-blue-700">{selectedModelSpec.fullName}</p>
+                        </div>
+                      </div>
+                      <div className="text-blue-600">
+                        {showModelInfo ? '▲' : '▼'}
+                      </div>
+                    </button>
+                    
+                    {showModelInfo && (
+                      <div className="mt-4 p-6 bg-white rounded-lg border-2 border-blue-100 space-y-6">
+                        {/* Rear Panel Image */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <Settings className="h-4 w-4" />
+                            Rear Panel Layout
+                          </h5>
+                          <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                            <Image
+                              src={selectedModelSpec.rearPanelImage}
+                              alt={`${selectedModelSpec.model} Rear Panel`}
+                              fill
+                              className="object-contain p-4"
+                              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Input Configuration */}
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <h5 className="font-semibold text-gray-900">Physical Inputs</h5>
+                            <div className="space-y-2">
+                              {selectedModelSpec.inputs
+                                .filter(inp => inp.type !== 'matrix_audio')
+                                .map(inp => (
+                                  <div key={inp.id} className="flex items-start gap-2 text-sm">
+                                    <Badge 
+                                      variant={inp.priority === 'high' ? 'default' : 'secondary'}
+                                      className={inp.priority === 'high' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-gray-100 text-gray-700'}
+                                    >
+                                      {inp.name}
+                                    </Badge>
+                                    <div className="flex-1">
+                                      <p className="text-gray-900 font-medium">{inp.connector} {inp.type === 'balanced' ? 'Balanced' : inp.type === 'unbalanced' ? 'Unbalanced' : 'Network'}</p>
+                                      <p className="text-gray-600 text-xs">{inp.description}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <h5 className="font-semibold text-gray-900">Features</h5>
+                            <ul className="space-y-2">
+                              {selectedModelSpec.features.map((feature, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                  <CheckCircle className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                                  <span>{feature}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+
+                        {/* Output Configuration */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-gray-900">Zone Outputs</h5>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {selectedModelSpec.outputs
+                              .filter(out => out.type !== 'dante')
+                              .slice(0, selectedModelSpec.zones)
+                              .map(out => (
+                                <div key={out.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                  <p className="font-medium text-gray-900 text-sm">{out.name}</p>
+                                  <p className="text-xs text-gray-600">{out.type === 'amplified' ? '🔊 Amplified' : '📡 Line Level'}</p>
+                                  {out.powerRating && (
+                                    <p className="text-xs text-emerald-600 font-medium mt-1">{out.powerRating}</p>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <Tabs defaultValue="zones" className="w-full">
                   <TabsList className="grid w-full grid-cols-2 mb-6">
                     <TabsTrigger value="zones" className="flex items-center gap-2">
@@ -713,15 +821,56 @@ export default function AudioProcessorManager() {
                                 }}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                               >
-                                <option value="Input 1">Input 1</option>
-                                <option value="Input 2">Input 2</option>
-                                <option value="Input 3">Input 3</option>
-                                <option value="Input 4">Input 4</option>
-                                <option value="Matrix Audio 1">Matrix Audio 1</option>
-                                <option value="Matrix Audio 2">Matrix Audio 2</option>
-                                <option value="Matrix Audio 3">Matrix Audio 3</option>
-                                <option value="Matrix Audio 4">Matrix Audio 4</option>
+                                {selectedModelSpec ? (
+                                  <>
+                                    <optgroup label="Physical Inputs">
+                                      {selectedModelSpec.inputs
+                                        .filter(inp => inp.type === 'balanced' || inp.type === 'unbalanced')
+                                        .map(inp => (
+                                          <option key={inp.id} value={inp.name}>
+                                            {formatInputName(inp)}
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                    {selectedModelSpec.inputs.some(inp => inp.type === 'dante') && (
+                                      <optgroup label="Dante Network Audio">
+                                        {selectedModelSpec.inputs
+                                          .filter(inp => inp.type === 'dante')
+                                          .map(inp => (
+                                            <option key={inp.id} value={inp.name}>
+                                              {formatInputName(inp)}
+                                            </option>
+                                          ))}
+                                      </optgroup>
+                                    )}
+                                    <optgroup label="Matrix Audio (Internal)">
+                                      {selectedModelSpec.inputs
+                                        .filter(inp => inp.type === 'matrix_audio')
+                                        .map(inp => (
+                                          <option key={inp.id} value={inp.name}>
+                                            {formatInputName(inp)}
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value="Input 1">Input 1</option>
+                                    <option value="Input 2">Input 2</option>
+                                    <option value="Input 3">Input 3</option>
+                                    <option value="Input 4">Input 4</option>
+                                    <option value="Matrix Audio 1">Matrix Audio 1</option>
+                                    <option value="Matrix Audio 2">Matrix Audio 2</option>
+                                    <option value="Matrix Audio 3">Matrix Audio 3</option>
+                                    <option value="Matrix Audio 4">Matrix Audio 4</option>
+                                  </>
+                                )}
                               </select>
+                              {selectedModelSpec && (
+                                <p className="text-xs text-gray-500">
+                                  ⚡ = Balanced • 🔊 = RCA • 🌐 = Dante • 🔄 = Internal
+                                </p>
+                              )}
                             </div>
                             
                             <div className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
