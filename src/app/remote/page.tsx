@@ -565,26 +565,30 @@ export default function BartenderRemotePage() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
+    <div className="min-h-screen bg-sports-gradient">
       {/* Header */}
-      <div className="text-center py-4">
-        <h1 className="text-2xl font-bold text-white mb-2">
-          🏈 Bartender Remote Control
-        </h1>
-        <div className="flex items-center justify-center space-x-4">
-          <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
-            connectionStatus === 'connected' 
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-              : 'bg-red-500/20 text-red-400 border border-red-500/30'
-          }`}>
-            {connectionStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            <span>Matrix: {connectionStatus}</span>
-          </div>
-          {commandStatus && (
-            <div className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-sm">
-              {commandStatus}
+      <div className="sports-header">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-slate-100 mb-2">
+              🏈 Bartender Remote Control
+            </h1>
+            <div className="flex items-center justify-center space-x-4">
+              <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
+                connectionStatus === 'connected' 
+                  ? 'bg-green-900/80 text-green-200 border border-green-800'
+                  : 'bg-red-900/80 text-red-200 border border-red-800'
+              }`}>
+                {connectionStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                <span>Matrix: {connectionStatus}</span>
+              </div>
+              {commandStatus && (
+                <div className="px-3 py-1 bg-primary-900/80 text-blue-200 border border-primary-800 rounded-full text-sm">
+                  {commandStatus}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
