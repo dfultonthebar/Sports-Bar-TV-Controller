@@ -421,14 +421,78 @@ class EnhancedLiveSportsService {
   }
 
   /**
-   * Get NFHS streaming games
+   * Get enhanced NFHS streaming games with location and team filtering
    */
-  async getNFHSStreams(state?: string): Promise<EnhancedUnifiedGame[]> {
+  async getNFHSStreams(state?: string, homeTeam?: string): Promise<EnhancedUnifiedGame[]> {
     try {
-      const nfhsGames = await nfhsAPI.getUpcomingStreams()
-      return nfhsGames.map(game => this.convertNFHSGame(game))
+      console.log(`🏫 Fetching NFHS streams for state: ${state || 'WI'}, homeTeam: ${homeTeam || 'all'}`)
+      
+      // Get upcoming streams with enhanced filtering
+      const nfhsGames = await nfhsAPI.getUpcomingStreams(7)
+      
+      // Filter by state if provided
+      let filteredGames = nfhsGames
+      if (state) {
+        filteredGames = nfhsGames.filter(game => 
+          game.homeTeam.state.toLowerCase() === state.toLowerCase() ||
+          game.awayTeam.state.toLowerCase() === state.toLowerCase()
+        )
+      }
+      
+      // Filter by home team if provided (fuzzy matching)
+      if (homeTeam) {
+        const teamLower = homeTeam.toLowerCase()
+        filteredGames = filteredGames.filter(game => {
+          const homeMatch = 
+            game.homeTeam.name.toLowerCase().includes(teamLower) ||
+            game.homeTeam.school.toLowerCase().includes(teamLower) ||
+            teamLower.includes(game.homeTeam.name.toLowerCase())
+          
+          const awayMatch = 
+            game.awayTeam.name.toLowerCase().includes(teamLower) ||
+            game.awayTeam.school.toLowerCase().includes(teamLower) ||
+            teamLower.includes(game.awayTeam.name.toLowerCase())
+          
+          return homeMatch || awayMatch
+        })
+      }
+      
+      console.log(`✅ Found ${filteredGames.length} NFHS streaming games`)
+      return filteredGames.map(game => this.convertNFHSGame(game))
     } catch (error) {
       console.error('Error fetching NFHS streams:', error)
+      return []
+    }
+  }
+
+  /**
+   * Get live NFHS streaming games
+   */
+  async getLiveNFHSStreams(): Promise<EnhancedUnifiedGame[]> {
+    try {
+      const liveGames = await nfhsAPI.getLiveStreams()
+      console.log(`🔴 Found ${liveGames.length} live NFHS streams`)
+      return liveGames.map(game => this.convertNFHSGame(game))
+    } catch (error) {
+      console.error('Error fetching live NFHS streams:', error)
+      return []
+    }
+  }
+
+  /**
+   * Search NFHS games by location
+   */
+  async getNFHSGamesByLocation(
+    city?: string, 
+    state?: string, 
+    radiusMiles: number = 50
+  ): Promise<EnhancedUnifiedGame[]> {
+    try {
+      const locationGames = await nfhsAPI.getGamesByLocation(undefined, city, state, radiusMiles)
+      console.log(`📍 Found ${locationGames.length} NFHS games within ${radiusMiles} miles of ${city}, ${state}`)
+      return locationGames.map(game => this.convertNFHSGame(game))
+    } catch (error) {
+      console.error('Error fetching NFHS games by location:', error)
       return []
     }
   }
