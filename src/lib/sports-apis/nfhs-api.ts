@@ -73,8 +73,8 @@ class NFHSAPIService {
   }
 
   /**
-   * Enhanced NFHS data fetcher with real streaming integration
-   * Combines mock data with enhanced search and live streaming capabilities
+   * NFHS data fetcher with real streaming integration only
+   * Only returns actual data from NFHS Network sources
    */
   async getHighSchoolGames(
     state?: string, 
@@ -83,7 +83,7 @@ class NFHSAPIService {
     endDate?: string
   ): Promise<NFHSGame[]> {
     try {
-      // First attempt to get real NFHS Network data via web scraping/API
+      // Only attempt to get real NFHS Network data via web scraping/API
       const realGames = await this.fetchRealNFHSData(state, sport, startDate, endDate)
       
       if (realGames && realGames.length > 0) {
@@ -91,18 +91,18 @@ class NFHSAPIService {
         return realGames
       }
       
-      // Fallback to enhanced mock data with local team integration
-      console.log('⚠️ Using enhanced mock NFHS data with local team integration')
-      return this.generateEnhancedNFHSGames(state, sport, startDate, endDate)
+      // No fallback to mock data - return empty array if no real data available
+      console.log('ℹ️ No real NFHS data available for the requested criteria')
+      return []
     } catch (error) {
       console.error('Error fetching NFHS games:', error)
-      // Fallback to mock data
-      return this.generateEnhancedNFHSGames(state, sport, startDate, endDate)
+      // No fallback to mock data - return empty array on error
+      return []
     }
   }
 
   /**
-   * Get games by location (zip code or city/state)
+   * Get games by location (zip code or city/state) - real data only
    */
   async getGamesByLocation(
     zipCode?: string,
@@ -111,9 +111,26 @@ class NFHSAPIService {
     radiusMiles: number = 50
   ): Promise<NFHSGame[]> {
     try {
-      // Mock implementation - in production would use location-based API
-      const mockState = state || 'WI' // Default to Wisconsin as mentioned in conversation
-      return this.generateMockNFHSGames(mockState, undefined, undefined, undefined, radiusMiles)
+      // Use the real NFHS data fetcher with location parameters
+      const locationBasedGames = await this.fetchRealNFHSData(state, undefined, undefined, undefined)
+      
+      if (!locationBasedGames || locationBasedGames.length === 0) {
+        console.log('ℹ️ No NFHS games found for the specified location')
+        return []
+      }
+      
+      // Filter by location if city is specified
+      if (city) {
+        const filteredGames = locationBasedGames.filter(game => 
+          game.homeTeam.city.toLowerCase().includes(city.toLowerCase()) ||
+          game.awayTeam.city.toLowerCase().includes(city.toLowerCase())
+        )
+        console.log(`✅ Found ${filteredGames.length} NFHS games near ${city}, ${state}`)
+        return filteredGames
+      }
+      
+      console.log(`✅ Found ${locationBasedGames.length} NFHS games in ${state}`)
+      return locationBasedGames
     } catch (error) {
       console.error('Error fetching NFHS games by location:', error)
       return []
@@ -134,12 +151,20 @@ class NFHSAPIService {
   }
 
   /**
-   * Search for schools by name or location
+   * Search for schools by name or location - real data only
    */
   async searchSchools(query: string, state?: string): Promise<NFHSSchool[]> {
     try {
-      // Mock school search - in production would use actual NFHS school directory
-      return this.generateMockSchools(query, state)
+      // Attempt to get real school data from NFHS Network school directory
+      console.log(`🏫 Searching for schools matching: "${query}" in ${state || 'all states'}`)
+      
+      // NFHS Network doesn't have a public school directory API
+      // For real implementation, this would need to scrape their school directory
+      // or use an official API if one becomes available
+      
+      // For now, return empty array as no real data source is available
+      console.log('ℹ️ No real NFHS school directory API available')
+      return []
     } catch (error) {
       console.error('Error searching schools:', error)
       return []
@@ -148,7 +173,7 @@ class NFHSAPIService {
 
   /**
    * Attempt to fetch real NFHS Network streaming data
-   * This method tries to get actual streaming schedules from NFHS Network
+   * Enhanced approach to get actual streaming schedules from NFHS Network
    */
   private async fetchRealNFHSData(
     state?: string,
@@ -157,46 +182,178 @@ class NFHSAPIService {
     endDate?: string
   ): Promise<NFHSGame[]> {
     try {
-      // NFHS Network doesn't have a public API, but we can try to scrape their schedule
-      // For now, we'll use a placeholder that could be enhanced with web scraping
-      const searchParams = new URLSearchParams()
-      if (state) searchParams.set('state', state)
-      if (sport) searchParams.set('sport', sport)
-      if (startDate) searchParams.set('start', startDate)
-      if (endDate) searchParams.set('end', endDate)
-
-      // Attempt to fetch from NFHS Network's schedule API (if available)
-      const scheduleUrl = `${this.baseUrl}/api/schedule?${searchParams.toString()}`
+      console.log(`🏫 Attempting to fetch real NFHS data for ${state || 'all states'}, sport: ${sport || 'all sports'}`)
       
-      try {
-        const response = await this.fetchWithTimeout(scheduleUrl, {
-          headers: {
-            'Accept': 'application/json',
-            'Referer': 'https://www.nfhsnetwork.com',
-          }
-        })
+      // Try multiple real data sources for NFHS Network
+      const dataSources = [
+        // Method 1: Try potential NFHS API endpoints
+        () => this.tryNFHSApiEndpoints(state, sport, startDate, endDate),
         
-        if (response.ok) {
-          const data = await response.json()
-          if (data && data.games) {
-            return this.parseNFHSApiResponse(data.games)
+        // Method 2: Try to scrape live streams
+        () => this.scrapeNFHSLiveStreams(),
+        
+        // Method 3: Try to get schedule data from feeds
+        () => this.tryNFHSScheduleFeeds(state, sport, startDate, endDate),
+        
+        // Method 4: Try mobile API endpoints
+        () => this.tryNFHSMobileApi(state, sport, startDate, endDate)
+      ]
+      
+      for (const [index, dataSource] of dataSources.entries()) {
+        try {
+          console.log(`🔍 Trying NFHS data source method ${index + 1}...`)
+          const games = await dataSource()
+          if (games && games.length > 0) {
+            console.log(`✅ Found ${games.length} real NFHS games using method ${index + 1}`)
+            return games
           }
+        } catch (methodError) {
+          console.log(`❌ NFHS data source method ${index + 1} failed:`, methodError.message)
+          continue
         }
-      } catch (apiError) {
-        console.log('NFHS API not available, trying alternative methods...')
       }
 
-      // Alternative: Try to get live streaming data from their main pages
-      const liveStreams = await this.scrapeNFHSLiveStreams()
-      if (liveStreams.length > 0) {
-        return liveStreams
-      }
-
+      console.log('ℹ️ No real NFHS data found from any source')
       return []
     } catch (error) {
       console.error('Error fetching real NFHS data:', error)
       return []
     }
+  }
+  
+  /**
+   * Try various NFHS API endpoints that might exist
+   */
+  private async tryNFHSApiEndpoints(
+    state?: string,
+    sport?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<NFHSGame[]> {
+    const searchParams = new URLSearchParams()
+    if (state) searchParams.set('state', state)
+    if (sport) searchParams.set('sport', sport)
+    if (startDate) searchParams.set('start', startDate)
+    if (endDate) searchParams.set('end', endDate)
+
+    // Try known/potential NFHS endpoints
+    const endpoints = [
+      `/api/schedule?${searchParams.toString()}`,
+      `/api/events?${searchParams.toString()}`,
+      `/api/games?${searchParams.toString()}`,
+      `/feed/schedule.json?${searchParams.toString()}`,
+      `/data/schedule?${searchParams.toString()}`
+    ]
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await this.fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
+          headers: {
+            'Accept': 'application/json',
+            'Referer': 'https://www.nfhsnetwork.com',
+            'User-Agent': 'Mozilla/5.0 (compatible; Sports-Bar-AI/1.0)',
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data && (data.games || data.events || data.schedule)) {
+            return this.parseNFHSApiResponse(data.games || data.events || data.schedule)
+          }
+        }
+      } catch (error) {
+        console.log(`NFHS endpoint ${endpoint} failed:`, error.message)
+        continue
+      }
+    }
+    
+    return []
+  }
+  
+  /**
+   * Try NFHS schedule feeds (RSS, JSON feeds)
+   */
+  private async tryNFHSScheduleFeeds(
+    state?: string,
+    sport?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<NFHSGame[]> {
+    // Try RSS feeds or other structured data feeds
+    const feedUrls = [
+      '/feeds/schedule.rss',
+      '/feeds/events.json',
+      '/api/v2/events',
+      '/data/live-events.json'
+    ]
+    
+    for (const feedUrl of feedUrls) {
+      try {
+        const response = await this.fetchWithTimeout(`${this.baseUrl}${feedUrl}`, {
+          headers: {
+            'Accept': 'application/json, application/rss+xml',
+            'User-Agent': 'Mozilla/5.0 (compatible; Sports-Bar-AI/1.0)',
+          }
+        })
+        
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || ''
+          
+          if (contentType.includes('application/json')) {
+            const data = await response.json()
+            if (data && Array.isArray(data)) {
+              return this.parseNFHSApiResponse(data)
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`NFHS feed ${feedUrl} failed:`, error.message)
+        continue
+      }
+    }
+    
+    return []
+  }
+  
+  /**
+   * Try NFHS mobile API endpoints
+   */
+  private async tryNFHSMobileApi(
+    state?: string,
+    sport?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<NFHSGame[]> {
+    const mobileEndpoints = [
+      '/mobile/api/events',
+      '/app/api/schedule',
+      '/api/mobile/games',
+      '/v1/mobile/events'
+    ]
+    
+    for (const endpoint of mobileEndpoints) {
+      try {
+        const response = await this.fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'NFHSNetwork/1.0 (Mobile)',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data && (data.events || data.games)) {
+            return this.parseNFHSApiResponse(data.events || data.games)
+          }
+        }
+      } catch (error) {
+        console.log(`NFHS mobile endpoint ${endpoint} failed:`, error.message)
+        continue
+      }
+    }
+    
+    return []
   }
 
   /**
@@ -264,273 +421,11 @@ class NFHSAPIService {
   }
 
   /**
-   * Enhanced mock NFHS games with better Wisconsin integration and local teams
+   * Mock data generation removed - only real data sources supported
+   * This method has been removed to ensure only live data is used
    */
-  private generateEnhancedNFHSGames(
-    state?: string, 
-    sport?: string, 
-    startDate?: string, 
-    endDate?: string,
-    radiusMiles?: number
-  ): NFHSGame[] {
-    const games: NFHSGame[] = []
-    const targetState = state || 'WI'
-    
-    const sports = sport ? [sport] : [
-      'Football', 'Basketball', 'Volleyball', 'Soccer', 'Baseball', 
-      'Softball', 'Wrestling', 'Track and Field', 'Swimming', 'Tennis',
-      'Hockey', 'Cross Country', 'Golf', 'Lacrosse'
-    ]
 
-    // Enhanced Wisconsin schools including De Pere area schools
-    const enhancedWisconsinSchools = [
-      // Green Bay/De Pere Area Schools
-      { name: 'De Pere High School', city: 'De Pere', team: 'Red Birds', conference: 'Fox River Classic', nfhsStream: 0.7 },
-      { name: 'West De Pere High School', city: 'De Pere', team: 'Phantoms', conference: 'Fox River Classic', nfhsStream: 0.6 },
-      { name: 'Green Bay East High School', city: 'Green Bay', team: 'Red Devils', conference: 'Fox River Classic', nfhsStream: 0.8 },
-      { name: 'Green Bay West High School', city: 'Green Bay', team: 'Wildcats', conference: 'Fox River Classic', nfhsStream: 0.5 },
-      { name: 'Green Bay Southwest High School', city: 'Green Bay', team: 'Trojans', conference: 'Fox River Classic', nfhsStream: 0.6 },
-      { name: 'Bay Port High School', city: 'Green Bay', team: 'Pirates', conference: 'Fox River Classic', nfhsStream: 0.9 },
-      { name: 'Preble High School', city: 'Green Bay', team: 'Hornets', conference: 'Fox River Classic', nfhsStream: 0.7 },
-      
-      // Other Major Wisconsin Schools
-      { name: 'Madison West High School', city: 'Madison', team: 'Regents', conference: 'Big Eight Conference', nfhsStream: 0.8 },
-      { name: 'Madison East High School', city: 'Madison', team: 'Purgolders', conference: 'Big Eight Conference', nfhsStream: 0.7 },
-      { name: 'Milwaukee Hamilton High School', city: 'Milwaukee', team: 'Chargers', conference: 'Greater Metro Conference', nfhsStream: 0.6 },
-      { name: 'Appleton North High School', city: 'Appleton', team: 'Lightning', conference: 'Fox Valley Association', nfhsStream: 0.8 },
-      { name: 'Appleton West High School', city: 'Appleton', team: 'Terrors', conference: 'Fox Valley Association', nfhsStream: 0.7 },
-      { name: 'Eau Claire Memorial High School', city: 'Eau Claire', team: 'Old Abes', conference: 'Big Rivers Conference', nfhsStream: 0.7 },
-      { name: 'Kenosha Bradford High School', city: 'Kenosha', team: 'Red Devils', conference: 'Southeast Conference', nfhsStream: 0.6 },
-      { name: 'Waukesha West High School', city: 'Waukesha', team: 'Wolverines', conference: 'Classic Eight Conference', nfhsStream: 0.8 },
-      { name: 'Stevens Point High School', city: 'Stevens Point', team: 'Panthers', conference: 'Wisconsin Valley Conference', nfhsStream: 0.7 },
-      { name: 'Oshkosh North High School', city: 'Oshkosh', team: 'Spartans', conference: 'Fox Valley Association', nfhsStream: 0.6 },
-      { name: 'La Crosse Central High School', city: 'La Crosse', team: 'Red Raiders', conference: 'Mississippi Valley Conference', nfhsStream: 0.9 },
-      { name: 'Wisconsin Rapids Lincoln High School', city: 'Wisconsin Rapids', team: 'Lumberjacks', conference: 'Wisconsin Valley Conference', nfhsStream: 0.5 },
-      { name: 'Fond du Lac High School', city: 'Fond du Lac', team: 'Cardinals', conference: 'Fox Valley Association', nfhsStream: 0.6 },
-    ]
 
-    // Generate games for the next 7 days with enhanced realism
-    const today = new Date()
-    for (let day = 0; day < 7; day++) {
-      const gameDate = new Date(today)
-      gameDate.setDate(gameDate.getDate() + day)
-      
-      sports.forEach(sportType => {
-        // More games on weekends, especially Friday nights for football
-        const isWeekend = gameDate.getDay() === 0 || gameDate.getDay() === 6
-        const isFriday = gameDate.getDay() === 5
-        let numGames = Math.floor(Math.random() * 2) + 1
-        
-        if (isFriday && sportType === 'Football') {
-          numGames = Math.floor(Math.random() * 4) + 3 // 3-6 games on Friday for football
-        } else if (isWeekend) {
-          numGames = Math.floor(Math.random() * 3) + 2 // 2-4 games on weekends
-        }
-        
-        for (let i = 0; i < numGames; i++) {
-          const homeSchool = enhancedWisconsinSchools[Math.floor(Math.random() * enhancedWisconsinSchools.length)]
-          let awaySchool = enhancedWisconsinSchools[Math.floor(Math.random() * enhancedWisconsinSchools.length)]
-          while (awaySchool.name === homeSchool.name) {
-            awaySchool = enhancedWisconsinSchools[Math.floor(Math.random() * enhancedWisconsinSchools.length)]
-          }
-          
-          // Higher probability of NFHS streaming based on school's streaming likelihood
-          const isNFHSStream = Math.random() < Math.max(homeSchool.nfhsStream, awaySchool.nfhsStream)
-          
-          // Game timing based on sport and day
-          let gameHour: number
-          let gameMinute: string
-          
-          if (sportType === 'Football' && isFriday) {
-            gameHour = 19 // 7 PM for Friday night football
-            gameMinute = '00'
-          } else if (sportType === 'Basketball' || sportType === 'Volleyball') {
-            gameHour = Math.floor(Math.random() * 2) + 18 // 6-7 PM
-            gameMinute = ['00', '30'][Math.floor(Math.random() * 2)]
-          } else {
-            gameHour = Math.floor(Math.random() * 4) + 16 // 4-7 PM
-            gameMinute = ['00', '30'][Math.floor(Math.random() * 2)]
-          }
-          
-          const displayHour = gameHour > 12 ? gameHour - 12 : gameHour
-          const gameTime = `${displayHour}:${gameMinute} PM CST`
-          
-          games.push({
-            id: `nfhs-enhanced-${sportType.toLowerCase()}-${day}-${i}`,
-            homeTeam: {
-              name: homeSchool.team,
-              school: homeSchool.name,
-              city: homeSchool.city,
-              state: targetState
-            },
-            awayTeam: {
-              name: awaySchool.team,
-              school: awaySchool.name,
-              city: awaySchool.city,
-              state: targetState
-            },
-            sport: sportType,
-            league: `${targetState} High School ${sportType}`,
-            division: homeSchool.conference,
-            date: gameDate.toISOString().split('T')[0],
-            time: gameTime,
-            venue: `${homeSchool.name} ${this.getVenueType(sportType)}`,
-            status: 'scheduled',
-            streamUrl: isNFHSStream ? `https://www.nfhsnetwork.com/events/live/${sportType.toLowerCase()}-${homeSchool.name.replace(/\s+/g, '-').toLowerCase()}-vs-${awaySchool.name.replace(/\s+/g, '-').toLowerCase()}` : undefined,
-            isNFHSNetwork: isNFHSStream,
-            ticketInfo: Math.random() > 0.3 ? `Tickets: $${Math.floor(Math.random() * 5) + 5} adults, $${Math.floor(Math.random() * 3) + 3} students` : 'Tickets available at the door'
-          })
-        }
-      })
-    }
-
-    return games.sort((a, b) => {
-      const dateA = new Date(`${a.date} ${a.time}`)
-      const dateB = new Date(`${b.date} ${b.time}`)
-      return dateA.getTime() - dateB.getTime()
-    })
-  }
-
-  /**
-   * Generate mock NFHS games for development (deprecated - use generateEnhancedNFHSGames)
-   */
-  private generateMockNFHSGames(
-    state?: string, 
-    sport?: string, 
-    startDate?: string, 
-    endDate?: string,
-    radiusMiles?: number
-  ): NFHSGame[] {
-    const games: NFHSGame[] = []
-    const targetState = state || 'WI'
-    
-    const sports = sport ? [sport] : [
-      'Football', 'Basketball', 'Volleyball', 'Soccer', 'Baseball', 
-      'Softball', 'Wrestling', 'Track and Field', 'Swimming', 'Tennis'
-    ]
-
-    const wisConsimSchools = [
-      { name: 'Madison West High School', city: 'Madison', team: 'Regents' },
-      { name: 'Milwaukee Hamilton High School', city: 'Milwaukee', team: 'Chargers' },
-      { name: 'Green Bay East High School', city: 'Green Bay', team: 'Red Devils' },
-      { name: 'Appleton North High School', city: 'Appleton', team: 'Lightning' },
-      { name: 'Eau Claire Memorial High School', city: 'Eau Claire', team: 'Old Abes' },
-      { name: 'Kenosha Bradford High School', city: 'Kenosha', team: 'Red Devils' },
-      { name: 'Waukesha West High School', city: 'Waukesha', team: 'Wolverines' },
-      { name: 'Stevens Point High School', city: 'Stevens Point', team: 'Panthers' },
-      { name: 'Oshkosh North High School', city: 'Oshkosh', team: 'Spartans' },
-      { name: 'La Crosse Central High School', city: 'La Crosse', team: 'Red Raiders' }
-    ]
-
-    const conferences = [
-      'Big Eight Conference',
-      'Fox Valley Association', 
-      'Wisconsin Valley Conference',
-      'Southeast Conference',
-      'North Shore Conference',
-      'Metro Classic Conference'
-    ]
-
-    // Generate games for the next 7 days
-    const today = new Date()
-    for (let day = 0; day < 7; day++) {
-      const gameDate = new Date(today)
-      gameDate.setDate(gameDate.getDate() + day)
-      
-      sports.forEach(sportType => {
-        const numGames = Math.floor(Math.random() * 3) + 1 // 1-3 games per sport per day
-        
-        for (let i = 0; i < numGames; i++) {
-          const homeSchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          let awaySchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          while (awaySchool.name === homeSchool.name) {
-            awaySchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          }
-          
-          const conference = conferences[Math.floor(Math.random() * conferences.length)]
-          const isNFHSStream = Math.random() > 0.6 // 40% chance of being streamed on NFHS Network
-          
-          const gameHour = Math.floor(Math.random() * 6) + 15 // Games between 3 PM and 8 PM
-          const gameMinute = ['00', '30'][Math.floor(Math.random() * 2)]
-          const displayHour = gameHour > 12 ? gameHour - 12 : gameHour
-          const gameTime = `${displayHour}:${gameMinute} PM CST`
-          
-          games.push({
-            id: `nfhs-${sportType.toLowerCase()}-${day}-${i}`,
-            homeTeam: {
-              name: homeSchool.team,
-              school: homeSchool.name,
-              city: homeSchool.city,
-              state: targetState
-            },
-            awayTeam: {
-              name: awaySchool.team,
-              school: awaySchool.name,
-              city: awaySchool.city,
-              state: targetState
-            },
-            sport: sportType,
-            league: `${targetState} High School ${sportType}`,
-            division: conference,
-            date: gameDate.toISOString().split('T')[0],
-            time: gameTime,
-            venue: `${homeSchool.name} ${this.getVenueType(sportType)}`,
-            status: 'scheduled',
-            streamUrl: isNFHSStream ? `https://www.nfhsnetwork.com/events/${sportType.toLowerCase()}-game-${Math.floor(Math.random() * 10000)}` : undefined,
-            isNFHSNetwork: isNFHSStream,
-            ticketInfo: Math.random() > 0.5 ? 'Tickets available at the door' : undefined
-          })
-        }
-      })
-    }
-
-    return games.sort((a, b) => {
-      const dateA = new Date(`${a.date} ${a.time}`)
-      const dateB = new Date(`${b.date} ${b.time}`)
-      return dateA.getTime() - dateB.getTime()
-    })
-  }
-
-  private generateMockSchools(query: string, state?: string): NFHSSchool[] {
-    const mockSchools: NFHSSchool[] = [
-      {
-        id: 'madison-west',
-        name: 'Madison West High School',
-        city: 'Madison',
-        state: state || 'WI',
-        district: 'Madison Metropolitan School District',
-        conferences: ['Big Eight Conference'],
-        sports: ['Football', 'Basketball', 'Volleyball', 'Soccer', 'Swimming']
-      },
-      {
-        id: 'milwaukee-hamilton',
-        name: 'Milwaukee Hamilton High School', 
-        city: 'Milwaukee',
-        state: state || 'WI',
-        district: 'Milwaukee Public Schools',
-        conferences: ['Milwaukee City Conference'],
-        sports: ['Football', 'Basketball', 'Track and Field', 'Wrestling']
-      },
-      {
-        id: 'green-bay-east',
-        name: 'Green Bay East High School',
-        city: 'Green Bay',
-        state: state || 'WI',
-        district: 'Green Bay Area Public School District',
-        conferences: ['Fox River Classic Conference'],
-        sports: ['Football', 'Basketball', 'Hockey', 'Baseball', 'Softball']
-      }
-    ]
-
-    if (query) {
-      return mockSchools.filter(school => 
-        school.name.toLowerCase().includes(query.toLowerCase()) ||
-        school.city.toLowerCase().includes(query.toLowerCase())
-      )
-    }
-
-    return mockSchools
-  }
 
   private getVenueType(sport: string): string {
     switch (sport.toLowerCase()) {

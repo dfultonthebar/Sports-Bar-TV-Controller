@@ -404,98 +404,8 @@ const getEnhancedChannelInfo = async (channel: ChannelInfo): Promise<ChannelInfo
   }
 }
 
-// Fallback mock game generator for when APIs are unavailable
-const generateMockGames = async (selectedLeagues: string[]): Promise<GameListing[]> => {
-  console.log('⚠️ Falling back to mock data generation')
-  const games: GameListing[] = []
-  
-  const now = new Date()
-  const today = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}))
-  
-  const teams = {
-    'nfl': ['Patriots', 'Cowboys', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills', 'Rams'],
-    'nfl-sunday-ticket': ['Chargers', 'Raiders', 'Cardinals', 'Panthers', 'Jaguars', 'Titans', 'Bengals', 'Browns'],
-    'nba': ['Lakers', 'Warriors', 'Celtics', 'Nets', 'Bucks', 'Heat', 'Suns', 'Nuggets'],
-    'mlb': ['Yankees', 'Dodgers', 'Red Sox', 'Giants', 'Cubs', 'Astros', 'Phillies', 'Braves'],
-    'nhl': ['Bruins', 'Rangers', 'Blackhawks', 'Kings', 'Penguins', 'Lightning', 'Capitals', 'Avalanche'],
-    'ncaa-fb': ['Alabama', 'Georgia', 'Michigan', 'Ohio State', 'Clemson', 'USC', 'Texas', 'Oklahoma'],
-    'ncaa-bb': ['Duke', 'Kentucky', 'North Carolina', 'Kansas', 'Gonzaga', 'Villanova', 'UCLA', 'Michigan State'],
-    'mls': ['LAFC', 'Atlanta United', 'Seattle Sounders', 'NYCFC', 'Portland Timbers', 'Toronto FC', 'Galaxy', 'Austin FC'],
-    'premier': ['Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Manchester United', 'Tottenham', 'Newcastle', 'Brighton'],
-    'champions': ['Real Madrid', 'Barcelona', 'Bayern Munich', 'PSG', 'Manchester City', 'Liverpool', 'AC Milan', 'Inter Milan'],
-    'la-liga': ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Sevilla', 'Real Betis', 'Villarreal', 'Valencia', 'Athletic Bilbao'],
-    'serie-a': ['Juventus', 'AC Milan', 'Inter Milan', 'Napoli', 'Roma', 'Lazio', 'Atalanta', 'Fiorentina'],
-    'bundesliga': ['Bayern Munich', 'Borussia Dortmund', 'RB Leipzig', 'Bayer Leverkusen', 'Union Berlin', 'Frankfurt', 'Wolfsburg', 'Freiburg'],
-    'high-school': ['Madison West Regents', 'Milwaukee Hamilton Chargers', 'Green Bay East Red Devils', 'Appleton North Lightning', 'Stevens Point Panthers', 'Oshkosh North Spartans'],
-    'nfhs': ['La Crosse Central Red Raiders', 'Eau Claire Memorial Old Abes', 'Waukesha West Wolverines', 'Kenosha Bradford Red Devils']
-  }
-  
-  const leagueNames = {
-    'nfl': 'NFL',
-    'nfl-sunday-ticket': 'NFL Sunday Ticket',
-    'nba': 'NBA', 
-    'mlb': 'MLB',
-    'nhl': 'NHL',
-    'ncaa-fb': 'NCAA Football',
-    'ncaa-bb': 'NCAA Basketball',
-    'mls': 'MLS',
-    'premier': 'Premier League',
-    'champions': 'Champions League',
-    'la-liga': 'La Liga',
-    'serie-a': 'Serie A',
-    'bundesliga': 'Bundesliga',
-    'high-school': 'High School Sports',
-    'nfhs': 'NFHS Network'
-  }
-
-  for (const leagueId of selectedLeagues) {
-    const leagueTeams = teams[leagueId as keyof typeof teams] || ['Team A', 'Team B', 'Team C', 'Team D']
-    const leagueName = leagueNames[leagueId as keyof typeof leagueNames] || leagueId.toUpperCase()
-    
-    const gameCount = Math.floor(Math.random() * 3) + 2 // Reduced to 2-4 games per league
-    
-    for (let i = 0; i < gameCount; i++) {
-      const gameDate = new Date(today)
-      const daysOffset = Math.floor(Math.random() * 7)
-      gameDate.setDate(gameDate.getDate() + daysOffset)
-      
-      const homeTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
-      let awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
-      while (awayTeam === homeTeam) {
-        awayTeam = leagueTeams[Math.floor(Math.random() * leagueTeams.length)]
-      }
-      
-      const baseChannel = CHANNELS[Math.floor(Math.random() * CHANNELS.length)]
-      const enhancedChannel = await getEnhancedChannelInfo(baseChannel)
-      
-      const gameHour = Math.floor(Math.random() * 10) + 10
-      const gameMinute = ['00', '15', '30', '45'][Math.floor(Math.random() * 4)]
-      const displayHour = gameHour > 12 ? gameHour - 12 : gameHour === 0 ? 12 : gameHour
-      const ampm = gameHour >= 12 ? 'PM' : 'AM'
-      const gameTime = `${displayHour}:${gameMinute} ${ampm} EST`
-      
-      games.push({
-        id: `mock-${leagueId}-game-${i + 1}`,
-        league: leagueName,
-        homeTeam,
-        awayTeam,
-        gameTime,
-        gameDate: gameDate.toISOString().split('T')[0],
-        channel: enhancedChannel,
-        description: `${leagueName} regular season matchup (Mock Data)`,
-        priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low',
-        status: 'upcoming',
-        source: 'mock'
-      })
-    }
-  }
-  
-  return games.sort((a, b) => {
-    const dateA = new Date(`${a.gameDate} ${a.gameTime}`)
-    const dateB = new Date(`${b.gameDate} ${b.gameTime}`)
-    return dateA.getTime() - dateB.getTime()
-  })
-}
+// No more mock data generation - only real data sources supported
+// Mock data generation has been removed to ensure only live, real-time data is used
 
 export async function POST(request: NextRequest) {
   try {
@@ -588,10 +498,10 @@ export async function POST(request: NextRequest) {
         console.log(`📺 Sunday Ticket: ${enhancedData.sundayTicketGames}, NFHS Streams: ${enhancedData.nfhsStreamingGames}`)
         
       } else {
-        console.log('⚠️ No enhanced API data available, using mock data')
-        games = await generateMockGames(selectedLeagues)
-        dataSource = streamingEnhancedGames > 0 ? 'Streaming Enhanced + Mock Data (API Fallback)' : 'Mock Data (Fallback)'
-        apiSources = streamingEnhancedGames > 0 ? ['Streaming Platforms', 'Mock Generator'] : ['Mock Generator']
+        console.log('ℹ️ No enhanced API data available - no real data sources returned results')
+        games = []
+        dataSource = streamingEnhancedGames > 0 ? 'Streaming Enhanced Only (No Live Sports Data Available)' : 'No Live Data Available'
+        apiSources = streamingEnhancedGames > 0 ? ['Streaming Platforms'] : []
       }
 
       // Add streaming enhanced games to the results
@@ -624,10 +534,10 @@ export async function POST(request: NextRequest) {
       
     } catch (error) {
       console.error('❌ Error fetching enhanced sports data:', error)
-      console.log('⚠️ Falling back to mock data due to API error')
-      games = await generateMockGames(selectedLeagues)
-      dataSource = 'Mock Data (API Error Fallback)'
-      apiSources = ['Mock Generator']
+      console.log('ℹ️ No fallback data available - returning empty results')
+      games = []
+      dataSource = 'Error: No Data Available (API Error)'
+      apiSources = []
     }
     
     const response = {
@@ -735,19 +645,19 @@ export async function GET(request: NextRequest) {
         'realChannelNumbers': 'Accurate channel numbers for Wisconsin/Madison market'
       },
       features: [
-        'Live game data from multiple free APIs',
+        'Live game data from multiple real APIs only',
         'Real-time scores and game status',
         'NFL Sunday Ticket exclusive games identification',
-        'NFHS Network high school sports integration',
+        'NFHS Network high school sports integration (real streams only)',
         'Location-based sports discovery',
-        'Multi-category sports coverage',
-        'Automatic fallback to mock data if APIs unavailable',
+        'Multi-category sports coverage (real data only)',
+        'No mock data fallbacks - only authentic live data',
         'Enhanced channel and broadcast information',
         'Real Spectrum channel lineup integration',
         'Accurate channel numbers and HD indicators',
         'Timezone-aware scheduling',
         'Multi-league support',
-        'No API keys required for basic functionality'
+        'Returns empty results if no real data available'
       ]
     })
   } catch (error) {

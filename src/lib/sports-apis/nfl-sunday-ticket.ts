@@ -199,102 +199,24 @@ class NFLSundayTicketService {
   }
 
   /**
-   * Get upcoming Sunday Ticket games for the next week
+   * Get upcoming Sunday Ticket games for the next week - real data only
    */
   async getUpcomingSundayTicketGames(): Promise<SundayTicketGame[]> {
     try {
-      // This would typically fetch from ESPN API
-      // For now, return mock Sunday Ticket games
-      return this.generateMockSundayTicketGames()
+      // Sunday Ticket identification requires real NFL schedule data from ESPN API or similar
+      // Since DirecTV doesn't provide a public API for Sunday Ticket schedules,
+      // and Sunday Ticket is now part of DirecTV Stream/YouTube TV,
+      // we rely on the ESPN API integration to identify out-of-market games
+      
+      console.log('ℹ️ Sunday Ticket games are identified through the ESPN NFL API integration')
+      console.log('ℹ️ Use the ESPN API with identifySundayTicketGames() method for real Sunday Ticket data')
+      
+      // No mock data fallback - return empty array
+      return []
     } catch (error) {
       console.error('Error fetching Sunday Ticket games:', error)
       return []
     }
-  }
-
-  /**
-   * Generate mock Sunday Ticket games for demonstration
-   */
-  private generateMockSundayTicketGames(): SundayTicketGame[] {
-    const games: SundayTicketGame[] = []
-    const nflTeams = [
-      'Cowboys', 'Patriots', 'Packers', 'Chiefs', '49ers', 'Ravens', 'Bills', 'Rams',
-      'Bengals', 'Dolphins', 'Eagles', 'Vikings', 'Cardinals', 'Seahawks', 'Steelers', 'Broncos'
-    ]
-    
-    // Generate Sunday games (next Sunday)
-    const nextSunday = new Date()
-    nextSunday.setDate(nextSunday.getDate() + (7 - nextSunday.getDay()) % 7)
-    
-    // Early Sunday games (1 PM EST)
-    for (let i = 0; i < 8; i++) {
-      const gameTime = new Date(nextSunday)
-      gameTime.setHours(13, 0, 0) // 1:00 PM EST
-      
-      const homeTeam = nflTeams[i * 2]
-      const awayTeam = nflTeams[i * 2 + 1]
-      const channelNumber = (705 + i).toString()
-      
-      games.push({
-        id: `st-early-${i}`,
-        league: 'NFL Sunday Ticket',
-        homeTeam,
-        awayTeam,
-        gameTime: '1:00 PM EST',
-        gameDate: nextSunday.toISOString().split('T')[0],
-        isSundayTicketExclusive: true,
-        isRedZoneEligible: true,
-        marketRestrictions: [
-          `Available in ${homeTeam} market on local TV`,
-          `Available in ${awayTeam} market on local TV`,
-          'Out-of-market: Sunday Ticket required'
-        ],
-        channel: {
-          id: `sunday-ticket-${channelNumber}`,
-          name: `Sunday Ticket ${channelNumber}`,
-          platforms: [`DirecTV Ch. ${channelNumber}`, 'Sunday Ticket App', 'DirecTV Stream'],
-          type: 'satellite',
-          cost: 'premium',
-          channelNumber,
-          deviceType: 'satellite'
-        },
-        venue: `${homeTeam} Stadium`,
-        broadcast: ['DirecTV Sunday Ticket'],
-        description: 'Sunday Ticket Exclusive - Out-of-market NFL game',
-        priority: 'medium',
-        status: 'upcoming',
-        source: 'sunday-ticket'
-      })
-    }
-    
-    // Add RedZone coverage
-    games.push({
-      id: 'redzone-sunday',
-      league: 'NFL RedZone',
-      homeTeam: 'Multiple Games',
-      awayTeam: 'RedZone Coverage',
-      gameTime: '1:00 PM EST',
-      gameDate: nextSunday.toISOString().split('T')[0],
-      isSundayTicketExclusive: false,
-      isRedZoneEligible: true,
-      marketRestrictions: ['Available with Sunday Ticket package'],
-      channel: {
-        id: 'nfl-redzone',
-        name: 'NFL RedZone',
-        platforms: ['DirecTV Ch. 213', 'Sunday Ticket App', 'DirecTV Stream'],
-        type: 'satellite',
-        cost: 'premium',
-        channelNumber: '213',
-        deviceType: 'satellite'
-      },
-      broadcast: ['NFL RedZone'],
-      description: 'Commercial-free highlights and live look-ins from Sunday afternoon games',
-      priority: 'high',
-      status: 'upcoming',
-      source: 'sunday-ticket'
-    })
-    
-    return games
   }
 }
 
