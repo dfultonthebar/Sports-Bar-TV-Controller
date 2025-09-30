@@ -107,6 +107,12 @@ export default function AIKeysPage() {
         {/* Quick Actions */}
         <div className="mt-6 flex space-x-4">
           <Link
+            href="/ai-config"
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <span>Test AI Providers</span>
+          </Link>
+          <Link
             href="/logs"
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
