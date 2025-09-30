@@ -22,7 +22,8 @@ import {
   Search,
   Star,
   Globe,
-  Database
+  Database,
+  ChevronDown
 } from 'lucide-react'
 import Link from 'next/link'
 import TVGuideConfigurationPanel from '@/components/tv-guide/TVGuideConfigurationPanel'
@@ -110,15 +111,319 @@ const DEFAULT_PROVIDERS: Provider[] = [
   }
 ]
 
-const POPULAR_CHANNELS = [
-  'ESPN', 'ESPN2', 'ESPN Classic', 'Fox Sports', 'FS1', 'FS2', 'NBC Sports', 'CBS Sports', 
-  'NFL Network', 'NFL RedZone', 'NBA TV', 'MLB Network', 'NHL Network', 'Tennis Channel',
-  'Golf Channel', 'Big Ten Network', 'SEC Network', 'ACC Network', 'Pac-12 Network',
-  'NFL Sunday Ticket', 'Sunday Ticket Mix Channel', 'Sunday Ticket Red Zone',
-  'NFHS Network', 'High School Football', 'High School Basketball', 'High School Baseball',
-  'TNT', 'TBS', 'USA Network', 'FX', 'Comedy Central', 'Discovery Channel', 'History Channel',
-  'Netflix', 'Hulu', 'Amazon Prime Video', 'Peacock', 'Paramount+', 'HBO Max', 'Disney+'
+const COMPREHENSIVE_SPORTS_CHANNELS = [
+  // Major Sports Networks
+  'ESPN', 'ESPN2', 'ESPN Classic', 'ESPN Deportes', 'ESPNU', 'ESPN+',
+  'Fox Sports', 'FS1', 'FS2', 'Fox Sports Regional Networks',
+  'NBC Sports', 'NBC Sports Regional Networks', 'NBCSN',
+  'CBS Sports', 'CBS Sports Network', 'CBS Sports HQ',
+  'TNT', 'TBS', 'TruTV',
+  
+  // Professional Sports Networks
+  'NFL Network', 'NFL RedZone', 'NFL Sunday Ticket',
+  'NBA TV', 'NBA League Pass',
+  'MLB Network', 'MLB Extra Innings',
+  'NHL Network', 'NHL Center Ice',
+  'MLS Season Pass', 'MLS Direct Kick',
+  
+  // Racing & Motorsports
+  'SPEED Channel', 'Fox Sports Racing', 'NBC Sports Racing',
+  'Motor Trend TV', 'MAVTV Motorsports Network',
+  'ESPN Formula 1', 'F1 TV Pro',
+  'NASCAR on FOX', 'NASCAR on NBC',
+  'IndyCar on NBC', 'NHRA on FOX',
+  'World of Outlaws on DIRTVision',
+  
+  // Horse Racing & Equestrian
+  'TVG Network', 'Horse Racing TV', 'HRTV',
+  'FEI TV', 'Equestrian Channel',
+  'America\'s Day at the Races',
+  'Churchill Downs Racing',
+  'Belmont Park Racing',
+  'Saratoga Racing',
+  
+  // Combat Sports
+  'ESPN Fight Night', 'ESPN Boxing', 'Top Rank Boxing',
+  'Showtime Championship Boxing', 'HBO Boxing',
+  'UFC Fight Pass', 'UFC on ESPN', 'UFC on FOX',
+  'Bellator MMA', 'ONE Championship',
+  'WWE Network', 'AEW Dynamite',
+  
+  // Olympic & International Sports
+  'Olympic Channel', 'Universal Sports Network',
+  'Eurosport', 'beIN Sports', 'Fox Soccer Plus',
+  'Univision Deportes', 'Telemundo Deportes',
+  'TSN', 'Sportsnet', 'Sky Sports',
+  
+  // College Sports
+  'Big Ten Network', 'SEC Network', 'ACC Network', 
+  'Pac-12 Network', 'ESPN College Extra',
+  'Fox College Sports', 'CBS Sports Network College',
+  'Stadium College Sports', 'Conference USA TV',
+  
+  // Regional Sports Networks
+  'Bally Sports Regional Networks', 'SportsNet Regional',
+  'AT&T SportsNet', 'Root Sports',
+  'YES Network', 'NESN', 'SNY', 'CSN',
+  
+  // Specialty Sports
+  'Tennis Channel', 'Tennis Channel Plus',
+  'Golf Channel', 'Golf Channel Plus', 'PGA Tour Live',
+  'Outdoor Channel', 'Sportsman Channel',
+  'World Fishing Network', 'Hunt Channel',
+  'MLB Strike Zone', 'Red Zone Channel',
+  
+  // High School & Amateur
+  'NFHS Network', 'High School Sports Network',
+  'Prep Sports TV', 'Local High School Channels',
+  
+  // Streaming Sports Services
+  'Amazon Prime Thursday Night Football',
+  'Apple TV+ Friday Night Baseball',
+  'Netflix Sports Documentaries',
+  'Hulu Live Sports', 'YouTube TV Sports',
+  'Peacock Premium Sports', 'Paramount+ Sports',
+  'Disney+ Sports Content', 'HBO Max Sports',
+  'Sling TV Sports Extra', 'fuboTV Sports',
+  
+  // International & Specialty
+  'Cricket TV', 'Rugby Pass', 'FloSports',
+  'ESPN3', 'WatchESPN', 'Fox Sports Go',
+  'NBC Sports Gold', 'CBS All Access Sports'
 ]
+
+// Enhanced sports leagues with comprehensive categories
+const COMPREHENSIVE_SPORTS_LEAGUES = {
+  'professional-football': {
+    name: 'Professional Football',
+    emoji: '🏈',
+    leagues: [
+      'NFL', 'XFL', 'USFL', 'CFL', 'Arena Football League',
+      'Fan Controlled Football', 'Indoor Football League'
+    ]
+  },
+  'college-football': {
+    name: 'College Football',
+    emoji: '🎓🏈',
+    leagues: [
+      'NCAA Division I FBS', 'NCAA Division I FCS',
+      'NCAA Division II', 'NCAA Division III',
+      'NAIA Football', 'Junior College Football'
+    ]
+  },
+  'high-school-football': {
+    name: 'High School Football',
+    emoji: '🏫🏈',
+    leagues: [
+      'NFHS Network', 'Local High School Football',
+      'State Championship Games', 'Regional Playoffs'
+    ]
+  },
+  'professional-basketball': {
+    name: 'Professional Basketball',
+    emoji: '🏀',
+    leagues: [
+      'NBA', 'WNBA', 'NBA G League',
+      'BIG3 Basketball', 'The Basketball Tournament'
+    ]
+  },
+  'college-basketball': {
+    name: 'College Basketball',
+    emoji: '🎓🏀',
+    leagues: [
+      'NCAA Division I Men', 'NCAA Division I Women',
+      'NCAA March Madness', 'NIT Tournament',
+      'NCAA Division II', 'NCAA Division III'
+    ]
+  },
+  'professional-baseball': {
+    name: 'Professional Baseball',
+    emoji: '⚾',
+    leagues: [
+      'MLB', 'Minor League Baseball', 'Independent Baseball',
+      'World Baseball Classic', 'Caribbean Series'
+    ]
+  },
+  'college-baseball': {
+    name: 'College Baseball',
+    emoji: '🎓⚾',
+    leagues: [
+      'NCAA Division I Baseball', 'College World Series',
+      'NCAA Division II Baseball', 'NCAA Division III Baseball'
+    ]
+  },
+  'professional-hockey': {
+    name: 'Professional Hockey',
+    emoji: '🏒',
+    leagues: [
+      'NHL', 'AHL', 'ECHL', 'IIHF World Championship',
+      'Olympics Ice Hockey', 'KHL'
+    ]
+  },
+  'college-hockey': {
+    name: 'College Hockey',
+    emoji: '🎓🏒',
+    leagues: [
+      'NCAA Division I Hockey', 'Frozen Four',
+      'NCAA Division III Hockey', 'ACHA Hockey'
+    ]
+  },
+  'soccer': {
+    name: 'Soccer/Football',
+    emoji: '⚽',
+    leagues: [
+      'MLS', 'Premier League', 'La Liga', 'Bundesliga',
+      'Serie A', 'Ligue 1', 'Champions League', 'Europa League',
+      'FIFA World Cup', 'UEFA Euro', 'NWSL', 'USL',
+      'Copa America', 'CONCACAF Gold Cup'
+    ]
+  },
+  'motorsports-nascar': {
+    name: 'NASCAR Racing',
+    emoji: '🏎️',
+    leagues: [
+      'NASCAR Cup Series', 'NASCAR Xfinity Series',
+      'NASCAR Truck Series', 'NASCAR Modified Series',
+      'ARCA Menards Series'
+    ]
+  },
+  'motorsports-indycar': {
+    name: 'IndyCar Racing',
+    emoji: '🏁',
+    leagues: [
+      'IndyCar Series', 'Indianapolis 500', 'Indy Lights',
+      'Road to Indy', 'IndyCar Classic'
+    ]
+  },
+  'motorsports-formula1': {
+    name: 'Formula 1',
+    emoji: '🏎️',
+    leagues: [
+      'Formula 1 World Championship', 'Formula 2', 'Formula 3',
+      'F1 Academy', 'Porsche Supercup'
+    ]
+  },
+  'motorsports-drag-racing': {
+    name: 'Drag Racing',
+    emoji: '🚗💨',
+    leagues: [
+      'NHRA Drag Racing', 'IHRA Drag Racing',
+      'World Series of Pro Mod', 'Street Outlaws',
+      'No Prep Kings'
+    ]
+  },
+  'motorsports-rally': {
+    name: 'Rally Racing',
+    emoji: '🚙',
+    leagues: [
+      'World Rally Championship', 'Rally America',
+      'Global RallyCross', 'Red Bull Global RallyCross'
+    ]
+  },
+  'motorsports-other': {
+    name: 'Other Motorsports',
+    emoji: '🏎️',
+    leagues: [
+      'World of Outlaws Sprint Cars', 'Lucas Oil Late Model',
+      'IMSA WeatherTech SportsCar', 'Trans Am Series',
+      'Supercars Championship', 'MotoGP', 'Superbike Racing'
+    ]
+  },
+  'horse-racing-thoroughbred': {
+    name: 'Thoroughbred Horse Racing',
+    emoji: '🏇',
+    leagues: [
+      'Kentucky Derby', 'Preakness Stakes', 'Belmont Stakes',
+      'Breeders Cup', 'Dubai World Cup', 'Royal Ascot',
+      'Saratoga Racing', 'Churchill Downs', 'Belmont Park'
+    ]
+  },
+  'horse-racing-harness': {
+    name: 'Harness Racing',
+    emoji: '🐎',
+    leagues: [
+      'Hambletonian Stakes', 'Little Brown Jug',
+      'Meadowlands Pace', 'Harness Racing Triple Crown'
+    ]
+  },
+  'horse-racing-quarter': {
+    name: 'Quarter Horse Racing',
+    emoji: '🏇',
+    leagues: [
+      'All American Futurity', 'Rainbow Derby',
+      'Champion of Champions', 'Los Alamitos Racing'
+    ]
+  },
+  'combat-boxing': {
+    name: 'Professional Boxing',
+    emoji: '🥊',
+    leagues: [
+      'WBC', 'WBA', 'IBF', 'WBO', 'Top Rank Boxing',
+      'Golden Boy Promotions', 'PBC on FOX', 'ESPN Boxing'
+    ]
+  },
+  'combat-mma': {
+    name: 'Mixed Martial Arts',
+    emoji: '🥊',
+    leagues: [
+      'UFC', 'Bellator MMA', 'ONE Championship',
+      'PFL', 'Strikeforce', 'Invicta FC'
+    ]
+  },
+  'combat-wrestling': {
+    name: 'Professional Wrestling',
+    emoji: '🤼',
+    leagues: [
+      'WWE', 'AEW', 'Impact Wrestling', 'ROH',
+      'New Japan Pro Wrestling', 'Lucha Underground'
+    ]
+  },
+  'tennis': {
+    name: 'Tennis',
+    emoji: '🎾',
+    leagues: [
+      'ATP Tour', 'WTA Tour', 'Grand Slam Tournaments',
+      'Wimbledon', 'US Open', 'French Open', 'Australian Open',
+      'Davis Cup', 'Fed Cup', 'Laver Cup'
+    ]
+  },
+  'golf': {
+    name: 'Golf',
+    emoji: '⛳',
+    leagues: [
+      'PGA Tour', 'LPGA Tour', 'Champions Tour',
+      'The Masters', 'US Open Golf', 'British Open', 'PGA Championship',
+      'Ryder Cup', 'Presidents Cup', 'European Tour'
+    ]
+  },
+  'olympics-summer': {
+    name: 'Summer Olympics',
+    emoji: '🏅',
+    leagues: [
+      'Olympics Track and Field', 'Olympics Swimming',
+      'Olympics Gymnastics', 'Olympics Basketball',
+      'Olympics Soccer', 'Olympics Tennis', 'Olympics Golf'
+    ]
+  },
+  'olympics-winter': {
+    name: 'Winter Olympics',
+    emoji: '⛷️',
+    leagues: [
+      'Olympics Figure Skating', 'Olympics Alpine Skiing',
+      'Olympics Snowboarding', 'Olympics Ice Hockey',
+      'Olympics Bobsled', 'Olympics Curling'
+    ]
+  },
+  'extreme-sports': {
+    name: 'Extreme Sports',
+    emoji: '🤸',
+    leagues: [
+      'X Games', 'Dew Tour', 'Red Bull Events',
+      'Surfing Championships', 'Skateboarding',
+      'BMX Racing', 'Snowboarding Championships'
+    ]
+  }
+}
 
 const US_TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern Time (ET)' },
@@ -136,7 +441,11 @@ export default function SportsGuideConfigPage() {
   const [isAdding, setIsAdding] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedStatus, setSavedStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [activeTab, setActiveTab] = useState<'providers' | 'location' | 'teams' | 'tv-guide-apis'>('providers')
+  const [activeTab, setActiveTab] = useState<'providers' | 'location' | 'teams' | 'sports-leagues' | 'tv-guide-apis'>('providers')
+  
+  // Sports leagues configuration state
+  const [selectedSportsLeagues, setSelectedSportsLeagues] = useState<Set<string>>(new Set())
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['professional-football', 'motorsports-nascar', 'horse-racing-thoroughbred']))
   
   // Location configuration state
   const [locationConfig, setLocationConfig] = useState<LocationConfig>({
@@ -180,11 +489,20 @@ export default function SportsGuideConfigPage() {
       const result = await response.json()
       
       if (result.success) {
-        const { configuration, providers, homeTeams, matrixInputs } = result.data
+        const { configuration, providers, homeTeams, matrixInputs, selectedSportsLeagues, expandedCategories } = result.data
         
         setMatrixInputs(matrixInputs || [])
         setProviders(providers || DEFAULT_PROVIDERS)
         setHomeTeams(homeTeams || [])
+        
+        // Load sports leagues configuration
+        if (selectedSportsLeagues && Array.isArray(selectedSportsLeagues)) {
+          setSelectedSportsLeagues(new Set(selectedSportsLeagues))
+        }
+        
+        if (expandedCategories && Array.isArray(expandedCategories)) {
+          setExpandedCategories(new Set(expandedCategories))
+        }
         
         if (configuration) {
           setLocationConfig({
@@ -244,7 +562,9 @@ export default function SportsGuideConfigPage() {
         body: JSON.stringify({
           ...locationConfig,
           providers,
-          homeTeams
+          homeTeams,
+          selectedSportsLeagues: Array.from(selectedSportsLeagues),
+          expandedCategories: Array.from(expandedCategories)
         })
       })
       
@@ -291,6 +611,53 @@ export default function SportsGuideConfigPage() {
       ...team,
       isPrimary: i === index ? !team.isPrimary : team.isPrimary
     })))
+  }
+
+  // Sports leagues management functions
+  const toggleSportsLeague = (leagueId: string) => {
+    setSelectedSportsLeagues(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(leagueId)) {
+        newSet.delete(leagueId)
+      } else {
+        newSet.add(leagueId)
+      }
+      return newSet
+    })
+  }
+
+  const toggleCategoryExpansion = (categoryId: string) => {
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId)
+      } else {
+        newSet.add(categoryId)
+      }
+      return newSet
+    })
+  }
+
+  const selectAllInCategory = (categoryId: string) => {
+    const category = COMPREHENSIVE_SPORTS_LEAGUES[categoryId as keyof typeof COMPREHENSIVE_SPORTS_LEAGUES]
+    if (category) {
+      setSelectedSportsLeagues(prev => {
+        const newSet = new Set(prev)
+        category.leagues.forEach(league => newSet.add(league))
+        return newSet
+      })
+    }
+  }
+
+  const deselectAllInCategory = (categoryId: string) => {
+    const category = COMPREHENSIVE_SPORTS_LEAGUES[categoryId as keyof typeof COMPREHENSIVE_SPORTS_LEAGUES]
+    if (category) {
+      setSelectedSportsLeagues(prev => {
+        const newSet = new Set(prev)
+        category.leagues.forEach(league => newSet.delete(league))
+        return newSet
+      })
+    }
   }
 
   const getProviderIcon = (type: string) => {
@@ -576,6 +943,18 @@ export default function SportsGuideConfigPage() {
           </button>
           
           <button
+            onClick={() => setActiveTab('sports-leagues')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
+              activeTab === 'sports-leagues'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'text-blue-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Star className="w-4 h-4" />
+            <span>Sports Leagues</span>
+          </button>
+          
+          <button
             onClick={() => setActiveTab('tv-guide-apis')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'tv-guide-apis'
@@ -806,11 +1185,12 @@ export default function SportsGuideConfigPage() {
                         <div>
                           <label className="block text-sm font-medium text-white mb-3">Available Channels</label>
                           
-                          {/* Popular Channels Grid */}
+                          {/* Comprehensive Sports Channels Grid */}
                           <div className="mb-4">
-                            <h4 className="text-sm font-medium text-gray-300 mb-2">Popular Channels</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                              {POPULAR_CHANNELS.map((channel) => (
+                            <h4 className="text-sm font-medium text-gray-300 mb-2">Sports Channels ({COMPREHENSIVE_SPORTS_CHANNELS.length} available)</h4>
+                            <div className="max-h-64 overflow-y-auto">
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                {COMPREHENSIVE_SPORTS_CHANNELS.map((channel) => (
                                 <button
                                   key={channel}
                                   onClick={() => toggleChannel(provider.id!, channel)}
@@ -1129,6 +1509,185 @@ export default function SportsGuideConfigPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sports Leagues Tab */}
+        {activeTab === 'sports-leagues' && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+            <div className="p-6 border-b border-white/20">
+              <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                <Star className="w-5 h-5" />
+                <span>Comprehensive Sports Leagues Configuration</span>
+              </h3>
+              <p className="text-blue-200 mt-1">
+                Select all sports leagues, motorsports, horse racing, and broadcasted sports that should appear in your channel guide
+              </p>
+              <div className="mt-3 flex items-center space-x-4 text-sm text-blue-300">
+                <span>
+                  📊 {selectedSportsLeagues.size} leagues selected from {Object.values(COMPREHENSIVE_SPORTS_LEAGUES).reduce((total, category) => total + category.leagues.length, 0)} available
+                </span>
+                <span>•</span>
+                <span>
+                  📁 {Object.keys(COMPREHENSIVE_SPORTS_LEAGUES).length} sport categories
+                </span>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Quick Actions */}
+              <div className="flex flex-wrap gap-3 mb-6">
+                <button
+                  onClick={() => {
+                    const allLeagues = Object.values(COMPREHENSIVE_SPORTS_LEAGUES).flatMap(cat => cat.leagues)
+                    setSelectedSportsLeagues(new Set(allLeagues))
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  ✅ Select All Sports
+                </button>
+                <button
+                  onClick={() => setSelectedSportsLeagues(new Set())}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  ❌ Clear All
+                </button>
+                <button
+                  onClick={() => {
+                    const motorsportCategories = Object.keys(COMPREHENSIVE_SPORTS_LEAGUES).filter(key => key.startsWith('motorsports-'))
+                    motorsportCategories.forEach(cat => selectAllInCategory(cat))
+                  }}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                >
+                  🏎️ Select All Motorsports
+                </button>
+                <button
+                  onClick={() => {
+                    const horseRacingCategories = Object.keys(COMPREHENSIVE_SPORTS_LEAGUES).filter(key => key.startsWith('horse-racing-'))
+                    horseRacingCategories.forEach(cat => selectAllInCategory(cat))
+                  }}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
+                >
+                  🏇 Select All Horse Racing
+                </button>
+              </div>
+
+              {/* Sports Categories */}
+              <div className="space-y-4">
+                {Object.entries(COMPREHENSIVE_SPORTS_LEAGUES).map(([categoryId, category]) => {
+                  const isExpanded = expandedCategories.has(categoryId)
+                  const selectedInCategory = category.leagues.filter(league => selectedSportsLeagues.has(league)).length
+                  
+                  return (
+                    <div key={categoryId} className="bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+                      <div className="p-4 border-b border-white/10">
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={() => toggleCategoryExpansion(categoryId)}
+                            className="flex items-center space-x-3 flex-1 text-left"
+                          >
+                            <div className="text-2xl">{category.emoji}</div>
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-white">{category.name}</h4>
+                              <p className="text-sm text-blue-200">
+                                {selectedInCategory}/{category.leagues.length} leagues selected
+                              </p>
+                            </div>
+                            <ChevronDown className={`w-5 h-5 text-blue-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          <div className="flex items-center space-x-2 ml-4">
+                            {selectedInCategory > 0 && selectedInCategory < category.leagues.length && (
+                              <div className="w-3 h-3 rounded-full bg-yellow-500" title="Partially selected" />
+                            )}
+                            {selectedInCategory === category.leagues.length && (
+                              <div className="w-3 h-3 rounded-full bg-green-500" title="All selected" />
+                            )}
+                            
+                            <button
+                              onClick={() => selectedInCategory === category.leagues.length ? deselectAllInCategory(categoryId) : selectAllInCategory(categoryId)}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                                selectedInCategory === category.leagues.length
+                                  ? 'bg-red-500 text-white hover:bg-red-600'
+                                  : 'bg-green-500 text-white hover:bg-green-600'
+                              }`}
+                            >
+                              {selectedInCategory === category.leagues.length ? 'Deselect All' : 'Select All'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {category.leagues.map((league) => (
+                              <label
+                                key={league}
+                                className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all ${
+                                  selectedSportsLeagues.has(league)
+                                    ? 'bg-blue-500/20 border border-blue-400/30'
+                                    : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSportsLeagues.has(league)}
+                                  onChange={() => toggleSportsLeague(league)}
+                                  className="w-4 h-4 text-blue-600 bg-white/10 border-white/20 rounded focus:ring-blue-500 focus:ring-2"
+                                />
+                                <span className={`text-sm font-medium flex-1 ${
+                                  selectedSportsLeagues.has(league) ? 'text-blue-200' : 'text-white'
+                                }`}>
+                                  {league}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Configuration Status */}
+              <div className="bg-blue-900/30 rounded-lg p-4 border border-blue-500/30">
+                <div className="flex items-start space-x-3">
+                  <Star className="w-5 h-5 text-blue-300 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-200 mb-2">Sports Guide Enhancement Features</h4>
+                    <ul className="text-sm text-blue-300 space-y-1">
+                      <li>✅ All selected leagues are automatically preserved and maintained in the channel guide</li>
+                      <li>🏎️ Complete motorsports coverage including NASCAR, IndyCar, Formula 1, and drag racing</li>
+                      <li>🏇 Comprehensive horse racing including thoroughbred, harness, and quarter horse events</li>
+                      <li>🥊 Combat sports including boxing, MMA, and professional wrestling</li>
+                      <li>🎾 Individual sports like tennis, golf, and Olympic events</li>
+                      <li>🏈 All levels from professional to high school sports</li>
+                      <li>📺 Automatic channel source mapping for optimal viewing experience</li>
+                      <li>⚡ Real-time updates and schedule synchronization</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              {selectedSportsLeagues.size > 0 && (
+                <div className="bg-green-900/30 rounded-lg p-4 border border-green-500/30">
+                  <div className="flex items-center space-x-3">
+                    <Check className="w-5 h-5 text-green-300" />
+                    <div>
+                      <h4 className="font-medium text-green-200">
+                        {selectedSportsLeagues.size} Sports Leagues Configured
+                      </h4>
+                      <p className="text-sm text-green-300 mt-1">
+                        These leagues will stay checked and be included in all channel guide data. 
+                        The system will automatically map appropriate channels and sources for optimal coverage.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
