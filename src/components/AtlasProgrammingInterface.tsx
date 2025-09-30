@@ -597,8 +597,8 @@ export default function AtlasProgrammingInterface() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-xl">
-              <Settings className="h-6 w-6 text-purple-600" />
+            <div className="p-2 bg-blue-900/30 rounded-xl">
+              <Settings className="h-6 w-6 text-blue-400" />
             </div>
             Atlas Programming Interface
           </h1>
@@ -608,7 +608,7 @@ export default function AtlasProgrammingInterface() {
         </div>
         <Button
           onClick={() => setShowAddProcessor(true)}
-          className="bg-purple-600 hover:bg-purple-700 text-white"
+          className="bg-blue-400 hover:bg-blue-300 text-white"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Processor
@@ -617,9 +617,9 @@ export default function AtlasProgrammingInterface() {
 
       {/* Add Processor Form */}
       {showAddProcessor && (
-        <Card className="border-2 border-purple-200 bg-purple-50/50">
+        <Card className="border-2 border-blue-800/40 bg-blue-900/20/50">
           <CardHeader>
-            <CardTitle className="text-purple-900 flex items-center gap-2">
+            <CardTitle className="text-blue-100 flex items-center gap-2">
               <Plus className="h-5 w-5" />
               Add New Atlas Processor
             </CardTitle>
@@ -704,7 +704,7 @@ export default function AtlasProgrammingInterface() {
               <Button
                 onClick={addProcessor}
                 disabled={!newProcessor.name || !newProcessor.ipAddress}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+                className="bg-blue-400 hover:bg-blue-300 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Processor
@@ -736,7 +736,7 @@ export default function AtlasProgrammingInterface() {
                 key={processor.id} 
                 className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
                   selectedProcessor?.id === processor.id 
-                    ? 'border-purple-500 bg-purple-50/50 shadow-lg' 
+                    ? 'border-blue-900/200 bg-blue-900/20/50 shadow-lg' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
                 onClick={() => setSelectedProcessor(processor)}
@@ -786,17 +786,17 @@ export default function AtlasProgrammingInterface() {
 
           {/* Programming Interface */}
           {selectedProcessor && (
-            <Card className="border-2 border-purple-100 shadow-xl">
-              <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50">
+            <Card className="border-2 border-blue-900/30 shadow-xl">
+              <CardHeader className="bg-gradient-to-r from-blue-900/20 to-blue-900/20">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="space-y-1">
-                    <CardTitle className="text-2xl text-purple-900 flex items-center gap-3">
-                      <div className="p-2 bg-purple-200 rounded-lg">
-                        <Settings className="h-6 w-6 text-purple-700" />
+                    <CardTitle className="text-2xl text-blue-100 flex items-center gap-3">
+                      <div className="p-2 bg-blue-800/40 rounded-lg">
+                        <Settings className="h-6 w-6 text-blue-300" />
                       </div>
                       Programming: {selectedProcessor.name}
                     </CardTitle>
-                    <CardDescription className="text-purple-700 text-base">
+                    <CardDescription className="text-blue-300 text-base">
                       {selectedProcessor.model} • {selectedProcessor.inputs} inputs • {selectedProcessor.outputs} outputs
                     </CardDescription>
                   </div>
@@ -806,7 +806,7 @@ export default function AtlasProgrammingInterface() {
                       onClick={downloadConfiguration}
                       variant="outline"
                       size="sm"
-                      className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                      className="border-blue-800/40 text-blue-300 hover:bg-blue-900/20"
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Download Config
@@ -816,7 +816,7 @@ export default function AtlasProgrammingInterface() {
                       disabled={saving}
                       variant="outline"
                       size="sm"
-                      className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                      className="border-blue-800/40 text-blue-300 hover:bg-blue-900/20"
                     >
                       <Save className="h-4 w-4 mr-2" />
                       {saving ? 'Saving...' : 'Save Config'}
@@ -824,7 +824,7 @@ export default function AtlasProgrammingInterface() {
                     <Button
                       onClick={uploadConfiguration}
                       size="sm"
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      className="bg-blue-400 hover:bg-blue-300 text-white"
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Upload to Processor
@@ -918,7 +918,7 @@ export default function AtlasProgrammingInterface() {
                                     Physical: {input.physicalInput}
                                   </Badge>
                                   {input.stereoLink && (
-                                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                                    <Badge variant="secondary" className="bg-blue-900/30 text-blue-200">
                                       STEREO-{input.stereoMode.toUpperCase()}
                                     </Badge>
                                   )}
@@ -933,7 +933,7 @@ export default function AtlasProgrammingInterface() {
                                     </Badge>
                                   )}
                                   {input.gate && (
-                                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                                    <Badge variant="secondary" className="bg-blue-900/30 text-blue-200">
                                       GATE
                                     </Badge>
                                   )}
@@ -981,7 +981,7 @@ export default function AtlasProgrammingInterface() {
                                     
                                     {input.stereoLink && (
                                       <div className="flex items-center justify-between text-xs">
-                                        <span className="text-purple-600 font-medium">
+                                        <span className="text-blue-400 font-medium">
                                           Linked to Input {inputs.find(i => i.id === input.stereoLink)?.name}
                                         </span>
                                         <Button
@@ -1476,7 +1476,7 @@ export default function AtlasProgrammingInterface() {
                       </div>
                       <Button
                         onClick={createScene}
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        className="bg-blue-400 hover:bg-blue-300 text-white"
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Create Scene
@@ -1497,7 +1497,7 @@ export default function AtlasProgrammingInterface() {
                             <Button
                               onClick={createScene}
                               variant="outline"
-                              className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                              className="border-blue-800/40 text-blue-300 hover:bg-blue-900/20"
                             >
                               <Plus className="h-4 w-4 mr-2" />
                               Create First Scene
@@ -1507,7 +1507,7 @@ export default function AtlasProgrammingInterface() {
                       ) : (
                         <div className="grid gap-4">
                           {scenes.map((scene) => (
-                            <Card key={scene.id} className="border-l-4 border-l-purple-500">
+                            <Card key={scene.id} className="border-l-4 border-l-blue-900/200">
                               <CardContent className="p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                   <div className="space-y-1">
@@ -1526,7 +1526,7 @@ export default function AtlasProgrammingInterface() {
                                     <Button
                                       onClick={() => recallScene(scene.id)}
                                       size="sm"
-                                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                                      className="bg-blue-400 hover:bg-blue-300 text-white"
                                     >
                                       <Play className="h-4 w-4 mr-2" />
                                       Recall Scene

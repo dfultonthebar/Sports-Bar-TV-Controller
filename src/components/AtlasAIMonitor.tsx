@@ -215,12 +215,12 @@ export default function AtlasAIMonitor({
               </div>
             </div>
             
-            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-lg border border-purple-200">
+            <div className="bg-gradient-to-r from-blue-900/20 to-blue-900/20 p-4 rounded-lg border border-blue-800/40">
               <div className="flex items-center space-x-2 mb-2">
-                <Zap className="w-4 h-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-700">DSP Load</span>
+                <Zap className="w-4 h-4 text-blue-400" />
+                <span className="text-sm font-medium text-blue-300">DSP Load</span>
               </div>
-              <div className="text-2xl font-bold text-purple-800">
+              <div className="text-2xl font-bold text-blue-200">
                 {analysis?.performanceMetrics?.processingLoad || 0}%
               </div>
             </div>
@@ -302,15 +302,15 @@ export default function AtlasAIMonitor({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <BarChart3 className="w-5 h-5 text-purple-600" />
+              <BarChart3 className="w-5 h-5 text-blue-400" />
               <span>Audio Pattern Analysis</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {analysis.audioPatterns.map((pattern: string, index: number) => (
-                <div key={index} className="bg-purple-50 border border-purple-200 rounded p-3">
-                  <div className="text-sm text-purple-800">{pattern}</div>
+                <div key={index} className="bg-blue-900/20 border border-blue-800/40 rounded p-3">
+                  <div className="text-sm text-blue-200">{pattern}</div>
                 </div>
               ))}
             </div>
