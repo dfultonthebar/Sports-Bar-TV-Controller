@@ -8,36 +8,24 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, GitBranch } from 'lucide-react'
 import Link from 'next/link'
+import SportsBarLayout from '@/components/SportsBarLayout'
+import SportsBarHeader from '@/components/SportsBarHeader'
 
 export default function ConfigSyncPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-4">
-            <Link href="/" className="inline-flex">
-              <Button variant="outline" size="sm" className="gap-2">
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
-              </Button>
-            </Link>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-2.5 shadow-lg">
-              <GitBranch className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">GitHub Configuration Sync</h1>
-              <p className="text-slate-600 mt-1">Manage and sync your Sports Bar configurations</p>
-            </div>
-            <Badge variant="secondary" className="ml-auto">
-              Auto-Sync Enabled
-            </Badge>
-          </div>
-        </div>
-
+    <SportsBarLayout>
+      <SportsBarHeader
+        title="GitHub Configuration Sync"
+        subtitle="Manage and sync your Sports Bar configurations"
+        icon={<GitBranch className="w-8 h-8 text-blue-400" />}
+        actions={
+          <Badge variant="secondary" className="bg-green-900/50 text-green-200 border-green-800">
+            Auto-Sync Enabled
+          </Badge>
+        }
+      />
+      
+      <div className="max-w-6xl mx-auto p-6">
         {/* Instructions Card */}
         <Card className="mb-8">
           <CardHeader>
@@ -117,6 +105,6 @@ export default function ConfigSyncPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </SportsBarLayout>
   )
 }
