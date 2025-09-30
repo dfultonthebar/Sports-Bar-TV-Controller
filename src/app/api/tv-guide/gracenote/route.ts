@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
     
     switch (action) {
       case 'status':
-        return NextResponse.json(gracenoteService.getStatus())
+        const status = await gracenoteService.getStatus()
+        return NextResponse.json(status)
         
       case 'channels':
         const provider = searchParams.get('provider')

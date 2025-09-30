@@ -75,20 +75,37 @@ class SpectrumBusinessApiService {
   private cacheTimeout = 10 * 60 * 1000 // 10 minutes for business accounts
 
   constructor() {
-    this.loadConfig()
+    // Config will be loaded dynamically from database when needed
   }
 
-  private loadConfig() {
-    this.config = {
-      apiKey: process.env.SPECTRUM_BUSINESS_API_KEY || '',
-      accountId: process.env.SPECTRUM_BUSINESS_ACCOUNT_ID || '',
-      baseUrl: process.env.SPECTRUM_BUSINESS_BASE_URL || 'https://api.spectrum.com/business/v1',
-      region: process.env.SPECTRUM_BUSINESS_REGION || 'midwest'
+  private async loadConfig(): Promise<SpectrumBusinessConfig> {
+    // Try to import the API keys utility (only available on server side)
+    try {
+      const { getSpectrumBusinessConfig } = await import('./api-keys')
+      const dbConfig = await getSpectrumBusinessConfig()
+      
+      this.config = {
+        apiKey: dbConfig.apiKey || process.env.SPECTRUM_BUSINESS_API_KEY || '',
+        accountId: dbConfig.accountId || process.env.SPECTRUM_BUSINESS_ACCOUNT_ID || '',
+        baseUrl: process.env.SPECTRUM_BUSINESS_BASE_URL || 'https://api.spectrum.com/business/v1',
+        region: dbConfig.region || process.env.SPECTRUM_BUSINESS_REGION || 'midwest'
+      }
+    } catch (error) {
+      // Fallback to environment variables if database is not available
+      this.config = {
+        apiKey: process.env.SPECTRUM_BUSINESS_API_KEY || '',
+        accountId: process.env.SPECTRUM_BUSINESS_ACCOUNT_ID || '',
+        baseUrl: process.env.SPECTRUM_BUSINESS_BASE_URL || 'https://api.spectrum.com/business/v1',
+        region: process.env.SPECTRUM_BUSINESS_REGION || 'midwest'
+      }
     }
+    
+    return this.config
   }
 
-  private isConfigured(): boolean {
-    return !!(this.config?.apiKey && this.config?.accountId)
+  private async isConfigured(): Promise<boolean> {
+    const config = await this.loadConfig()
+    return !!(config?.apiKey && config?.accountId)
   }
 
   private getCacheKey(method: string, params: any): string {
@@ -118,7 +135,7 @@ class SpectrumBusinessApiService {
     const cached = this.getFromCache(cacheKey)
     if (cached) return cached
 
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       console.warn('Spectrum Business API not configured')
       return this.getFallbackAccountInfo()
     }
@@ -153,7 +170,7 @@ class SpectrumBusinessApiService {
     const cached = this.getFromCache(cacheKey)
     if (cached) return cached
 
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       console.warn('Spectrum Business API not configured - using enhanced fallback')
       return this.getEnhancedFallbackChannels()
     }
@@ -193,7 +210,7 @@ class SpectrumBusinessApiService {
     const cached = this.getFromCache(cacheKey)
     if (cached) return cached
 
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       return this.getFallbackGuideData(startTime, endTime)
     }
 
@@ -403,11 +420,11 @@ class SpectrumBusinessApiService {
   /**
    * Check API configuration status
    */
-  getStatus(): { configured: boolean; message: string } {
-    if (!this.isConfigured()) {
+  async getStatus(): Promise<{ configured: boolean; message: string }> {
+    if (!(await this.isConfigured())) {
       return {
         configured: false,
-        message: 'Spectrum Business API not configured. Add SPECTRUM_BUSINESS_API_KEY and SPECTRUM_BUSINESS_ACCOUNT_ID to your environment variables.'
+        message: 'Spectrum Business API not configured. Add API keys through the API Keys Management interface or environment variables.'
       }
     }
 

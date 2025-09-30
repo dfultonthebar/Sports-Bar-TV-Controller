@@ -61,20 +61,37 @@ class GracenoteService {
   private cacheTimeout = 15 * 60 * 1000 // 15 minutes
 
   constructor() {
-    this.loadConfig()
+    // Config will be loaded dynamically from database when needed
   }
 
-  private loadConfig() {
-    this.config = {
-      apiKey: process.env.GRACENOTE_API_KEY || '',
-      partnerId: process.env.GRACENOTE_PARTNER_ID || '',
-      userId: process.env.GRACENOTE_USER_ID || '',
-      baseUrl: process.env.GRACENOTE_BASE_URL || 'https://c.web.cddbp.net/webapi/xml/1.0/'
+  private async loadConfig(): Promise<GracenoteConfig> {
+    // Try to import the API keys utility (only available on server side)
+    try {
+      const { getGracenoteConfig } = await import('./api-keys')
+      const dbConfig = await getGracenoteConfig()
+      
+      this.config = {
+        apiKey: dbConfig.apiKey || process.env.GRACENOTE_API_KEY || '',
+        partnerId: dbConfig.partnerId || process.env.GRACENOTE_PARTNER_ID || '',
+        userId: dbConfig.userId || process.env.GRACENOTE_USER_ID || '',
+        baseUrl: dbConfig.baseUrl || process.env.GRACENOTE_BASE_URL || 'https://c.web.cddbp.net/webapi/xml/1.0/'
+      }
+    } catch (error) {
+      // Fallback to environment variables if database is not available
+      this.config = {
+        apiKey: process.env.GRACENOTE_API_KEY || '',
+        partnerId: process.env.GRACENOTE_PARTNER_ID || '',
+        userId: process.env.GRACENOTE_USER_ID || '',
+        baseUrl: process.env.GRACENOTE_BASE_URL || 'https://c.web.cddbp.net/webapi/xml/1.0/'
+      }
     }
+    
+    return this.config
   }
 
-  private isConfigured(): boolean {
-    return !!(this.config?.apiKey && this.config?.partnerId)
+  private async isConfigured(): Promise<boolean> {
+    const config = await this.loadConfig()
+    return !!(config?.apiKey && config?.partnerId)
   }
 
   private getCacheKey(method: string, params: any): string {
@@ -104,7 +121,7 @@ class GracenoteService {
     const cached = this.getFromCache(cacheKey)
     if (cached) return cached
 
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       console.warn('Gracenote API not configured - using fallback data')
       return this.getFallbackChannels()
     }
@@ -134,7 +151,7 @@ class GracenoteService {
     const cached = this.getFromCache(cacheKey)
     if (cached) return cached
 
-    if (!this.isConfigured()) {
+    if (!(await this.isConfigured())) {
       console.warn('Gracenote API not configured - using fallback data')
       return this.getFallbackGuideData(channels, startTime, endTime)
     }
@@ -276,11 +293,11 @@ class GracenoteService {
   /**
    * Check if API is properly configured
    */
-  getStatus(): { configured: boolean; message: string } {
-    if (!this.isConfigured()) {
+  async getStatus(): Promise<{ configured: boolean; message: string }> {
+    if (!(await this.isConfigured())) {
       return {
         configured: false,
-        message: 'Gracenote API keys not configured. Add GRACENOTE_API_KEY and GRACENOTE_PARTNER_ID to your environment variables.'
+        message: 'Gracenote API keys not configured. Add API keys through the API Keys Management interface or environment variables.'
       }
     }
     

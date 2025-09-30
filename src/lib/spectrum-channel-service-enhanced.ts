@@ -92,11 +92,12 @@ class EnhancedSpectrumChannelService {
     this.channels = ENHANCED_SPECTRUM_BUSINESS_CHANNELS
     this.lastUpdated = new Date()
     this.apiConfigured = false
-    this.checkApiConfiguration()
+    // Initialize API configuration check (don't await in constructor)
+    this.checkApiConfiguration().catch(console.error)
   }
 
-  private checkApiConfiguration() {
-    const status = spectrumBusinessApiService.getStatus()
+  private async checkApiConfiguration() {
+    const status = await spectrumBusinessApiService.getStatus()
     this.apiConfigured = status.configured
   }
 

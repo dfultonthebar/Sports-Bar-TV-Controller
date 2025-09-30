@@ -18,6 +18,8 @@ const PROVIDERS = [
   { value: 'grok', label: 'Grok (X.AI)', description: 'X.AI\'s Grok model' },
   { value: 'claude', label: 'Claude (Anthropic)', description: 'Anthropic\'s Claude models' },
   { value: 'openai', label: 'OpenAI', description: 'OpenAI GPT models' },
+  { value: 'gracenote', label: 'Gracenote API', description: 'Professional TV guide data with comprehensive sports metadata' },
+  { value: 'spectrum-business', label: 'Spectrum Business', description: 'Account-specific channel lineup and programming data' },
 ]
 
 export default function ApiKeysManager() {
@@ -341,6 +343,8 @@ export default function ApiKeysManager() {
           <li>• <strong>Grok (X.AI):</strong> Visit <a href="https://x.ai" target="_blank" rel="noopener noreferrer" className="underline">x.ai</a> to get your API key</li>
           <li>• <strong>Claude (Anthropic):</strong> Visit <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline">console.anthropic.com</a></li>
           <li>• <strong>OpenAI:</strong> Visit <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com/api-keys</a></li>
+          <li>• <strong>Gracenote API:</strong> Visit <a href="https://developer.gracenote.com" target="_blank" rel="noopener noreferrer" className="underline">developer.gracenote.com</a> to get your API key and Partner ID</li>
+          <li>• <strong>Spectrum Business:</strong> Contact your Spectrum Business representative to request API access credentials</li>
         </ul>
       </div>
     </div>

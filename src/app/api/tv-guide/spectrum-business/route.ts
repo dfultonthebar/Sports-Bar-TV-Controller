@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     
     switch (action) {
       case 'status':
-        return NextResponse.json(spectrumBusinessApiService.getStatus())
+        const status = await spectrumBusinessApiService.getStatus()
+        return NextResponse.json(status)
         
       case 'account':
         const accountInfo = await spectrumBusinessApiService.getAccountInfo()

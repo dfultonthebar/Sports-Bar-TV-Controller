@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     
     switch (action) {
       case 'status':
-        return NextResponse.json(unifiedTVGuideService.getServicesStatus())
+        const status = await unifiedTVGuideService.getServicesStatus()
+        return NextResponse.json(status)
         
       case 'channels':
         const channels = await unifiedTVGuideService.getUnifiedChannelLineup()

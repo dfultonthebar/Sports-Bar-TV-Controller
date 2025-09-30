@@ -130,8 +130,8 @@ class UnifiedTVGuideService {
         spectrumBusinessApiService.getGuideData(startTime, endTime, channelIds)
       ])
 
-      const gracenoteStatus = gracenoteService.getStatus()
-      const spectrumStatus = spectrumBusinessApiService.getStatus()
+      const gracenoteStatus = await gracenoteService.getStatus()
+      const spectrumStatus = await spectrumBusinessApiService.getStatus()
 
       const unifiedChannels = await this.getUnifiedChannelLineup()
       const unifiedPrograms = this.mergeProgramData(
@@ -413,13 +413,13 @@ class UnifiedTVGuideService {
   /**
    * Get service status for all providers
    */
-  getServicesStatus(): {
+  async getServicesStatus(): Promise<{
     gracenote: { configured: boolean; message: string }
     spectrum: { configured: boolean; message: string }
     unified: { ready: boolean; message: string }
-  } {
-    const gracenoteStatus = gracenoteService.getStatus()
-    const spectrumStatus = spectrumBusinessApiService.getStatus()
+  }> {
+    const gracenoteStatus = await gracenoteService.getStatus()
+    const spectrumStatus = await spectrumBusinessApiService.getStatus()
 
     return {
       gracenote: gracenoteStatus,
