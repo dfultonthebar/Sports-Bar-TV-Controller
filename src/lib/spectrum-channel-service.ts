@@ -171,9 +171,15 @@ class SpectrumChannelService {
   }
 }
 
-// Create singleton instance
-export const spectrumChannelService = new SpectrumChannelService()
+// Import from enhanced service for backward compatibility
+export { 
+  enhancedSpectrumChannelService as spectrumChannelService,
+  type SpectrumChannelData,
+  type ChannelLineupResponse 
+} from './spectrum-channel-service-enhanced'
 
-// Export types for use in other modules
-export type { SpectrumChannelData, ChannelLineupResponse }
+// Keep the original implementation as legacy backup
+class LegacySpectrumChannelService {
+  // Original implementation preserved for reference
+}
 
