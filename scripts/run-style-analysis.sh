@@ -32,6 +32,34 @@ case $choice in
         echo ""
         cd "$PROJECT_DIR"
         node scripts/ai-style-analyzer.js
+        
+        # Check if analysis completed successfully
+        if [ $? -eq 0 ]; then
+            # Find the latest report
+            LATEST_REPORT=$(ls -t "$PROJECT_DIR/ai-style-reports"/style-analysis-*.json 2>/dev/null | head -1)
+            
+            if [ -n "$LATEST_REPORT" ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                read -p "Would you like to apply fixes automatically? (y/n): " apply_fixes
+                
+                if [[ "$apply_fixes" =~ ^[Yy]$ ]]; then
+                    echo ""
+                    echo "🔧 Applying fixes from: $(basename "$LATEST_REPORT")"
+                    echo ""
+                    node scripts/ai-style-fixer.js "$LATEST_REPORT"
+                else
+                    echo ""
+                    echo "✋ Skipping automatic fixes"
+                    echo ""
+                    echo "To apply fixes later, run:"
+                    echo "  ./scripts/run-style-analysis.sh"
+                    echo "  Then choose option 2"
+                    echo ""
+                fi
+            fi
+        fi
         ;;
     2)
         echo ""
