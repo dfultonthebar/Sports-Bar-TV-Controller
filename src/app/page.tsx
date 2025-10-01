@@ -43,6 +43,14 @@ export default function Home() {
               {/* Main System Controls */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <a 
+                  href="/ai-assistant"
+                  className="block p-6 bg-gradient-to-br from-purple-600/40 to-blue-600/40 rounded-xl border-2 border-purple-400/50 hover:border-purple-400/70 hover:from-purple-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
+                >
+                  <h3 className="font-bold text-purple-200 mb-2">🤖 AI Assistant</h3>
+                  <p className="text-purple-100/90 text-sm">System troubleshooting & coding help</p>
+                </a>
+                
+                <a 
                   href="/sports-guide"
                   className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-orange/30 hover:bg-sportsBar-600/80 hover:border-accent-orange/50 transition-all duration-200"
                 >
