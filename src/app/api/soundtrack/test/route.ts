@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,69 +13,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Test the connection with a simple GraphQL query
-    const query = `
-      query {
-        me {
-          ... on PublicAPIClient {
-            accounts(first: 1) {
-              edges {
-                node {
-                  id
-                  businessName
-                  locations(first: 10) {
-                    edges {
-                      node {
-                        id
-                        name
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `
+    // Use the enhanced testConnection method with fallback patterns
+    const api = new SoundtrackYourBrandAPI(apiKey)
+    const testResult = await api.testConnection()
 
-    const response = await fetch('https://api.soundtrackyourbrand.com/v2', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query })
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
+    if (!testResult.success) {
       return NextResponse.json({
         success: false,
-        error: `API returned ${response.status}: ${errorText}`
-      }, { status: response.status })
-    }
-
-    const data = await response.json()
-
-    if (data.errors) {
-      return NextResponse.json({
-        success: false,
-        error: data.errors[0]?.message || 'GraphQL query failed'
+        error: testResult.message,
+        details: testResult.details
       }, { status: 400 })
     }
 
-    // Extract account info
-    const account = data.data?.me?.accounts?.edges?.[0]?.node
-    const locations = account?.locations?.edges || []
+    // If test succeeded, try to get more account info
+    let accountInfo = null
+    try {
+      const account = await api.getAccount()
+      const firstAccount = account.accounts && account.accounts.length > 0 
+        ? account.accounts[0] 
+        : null
+      
+      accountInfo = {
+        id: firstAccount?.id || account.id || 'unknown',
+        name: firstAccount?.name || 'Soundtrack Account',
+        accountCount: account.accounts?.length || 0
+      }
+    } catch (error: any) {
+      console.log('Could not fetch detailed account info:', error.message)
+      // Don't fail - we still got a successful connection test
+    }
 
     return NextResponse.json({
       success: true,
-      accountInfo: {
-        id: account?.id || 'unknown',
-        businessName: account?.businessName || 'Unknown Account',
-        locationCount: locations.length
-      }
+      message: testResult.message,
+      details: testResult.details,
+      accountInfo: accountInfo
     })
   } catch (error: any) {
     console.error('Error testing Soundtrack connection:', error)

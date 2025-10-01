@@ -58,13 +58,22 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Test the API token by fetching account info
+    // Test the API token with basic connection test
     setSoundtrackAPIToken(apiKey)
     const api = getSoundtrackAPI()
     
-    let accountInfo
+    // Use the new testConnection method which is more robust
+    let testResult
     try {
-      accountInfo = await api.getAccount()
+      testResult = await api.testConnection()
+      if (!testResult.success) {
+        clearSoundtrackAPI()
+        return NextResponse.json({ 
+          success: false, 
+          error: testResult.message || 'Unable to connect to Soundtrack API',
+          details: testResult.details
+        }, { status: 400 })
+      }
     } catch (error: any) {
       clearSoundtrackAPI()
       return NextResponse.json({ 
@@ -73,10 +82,18 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Extract account information
-    const firstAccount = accountInfo.accounts && accountInfo.accounts.length > 0 
-      ? accountInfo.accounts[0] 
-      : null
+    // Try to get account info, but don't fail if it doesn't work
+    let accountInfo
+    let firstAccount = null
+    try {
+      accountInfo = await api.getAccount()
+      firstAccount = accountInfo.accounts && accountInfo.accounts.length > 0 
+        ? accountInfo.accounts[0] 
+        : null
+    } catch (error: any) {
+      console.log('Could not fetch account info, will save token anyway:', error.message)
+      // Continue anyway - we'll use default values
+    }
     
     // Save or update configuration
     const existingConfig = await prisma.soundtrackConfig.findFirst()
@@ -86,7 +103,7 @@ export async function POST(request: NextRequest) {
           where: { id: existingConfig.id },
           data: {
             apiKey,
-            accountId: firstAccount?.id || accountInfo.id,
+            accountId: firstAccount?.id || accountInfo?.id || 'unknown',
             accountName: firstAccount?.name || 'Soundtrack Account',
             status: 'active',
             lastTested: new Date()
@@ -95,42 +112,48 @@ export async function POST(request: NextRequest) {
       : await prisma.soundtrackConfig.create({
           data: {
             apiKey,
-            accountId: firstAccount?.id || accountInfo.id,
+            accountId: firstAccount?.id || 'unknown',
             accountName: firstAccount?.name || 'Soundtrack Account',
             status: 'active',
             lastTested: new Date()
           }
         })
 
-    // Fetch sound zones from Soundtrack API and sync to database
+    // Try to fetch sound zones - this is now optional and won't fail the save
+    let zonesWarning = null
     try {
       const soundZones = await api.listSoundZones(firstAccount?.id)
       
-      // Update or create sound zone (player) records
-      for (const zone of soundZones) {
-        await prisma.soundtrackPlayer.upsert({
-          where: {
-            configId_playerId: {
+      if (soundZones && soundZones.length > 0) {
+        // Update or create sound zone (player) records
+        for (const zone of soundZones) {
+          await prisma.soundtrackPlayer.upsert({
+            where: {
+              configId_playerId: {
+                configId: config.id,
+                playerId: zone.id
+              }
+            },
+            create: {
               configId: config.id,
-              playerId: zone.id
+              playerId: zone.id,
+              playerName: zone.name,
+              accountId: zone.account.id,
+              bartenderVisible: false,
+              displayOrder: 0
+            },
+            update: {
+              playerName: zone.name,
+              accountId: zone.account.id
             }
-          },
-          create: {
-            configId: config.id,
-            playerId: zone.id,
-            playerName: zone.name,
-            accountId: zone.account.id,
-            bartenderVisible: false,
-            displayOrder: 0
-          },
-          update: {
-            playerName: zone.name,
-            accountId: zone.account.id
-          }
-        })
+          })
+        }
+      } else {
+        zonesWarning = 'No sound zones found. Please configure players in your Soundtrack account.'
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error syncing sound zones:', error)
+      zonesWarning = 'Could not fetch sound zones automatically. Use the "Refresh" button to try again.'
     }
 
     return NextResponse.json({ 
@@ -138,7 +161,9 @@ export async function POST(request: NextRequest) {
       config: {
         ...config,
         apiKey: '***' + apiKey.slice(-4)
-      }
+      },
+      warning: zonesWarning,
+      testResult: testResult.details
     })
   } catch (error: any) {
     console.error('Error saving Soundtrack config:', error)
