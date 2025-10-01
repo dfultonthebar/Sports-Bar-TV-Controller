@@ -109,6 +109,10 @@ model MatrixOutput {
   resolution    String   @default("1080p") // 1080p, 4K, 720p, etc.
   status        String   @default("active") // active, unused, no, na
   audioOutput   String?  // Matrix Audio 1-4 for routing to Atlas system
+  tvBrand       String?  // Auto-detected TV brand via CEC discovery
+  tvModel       String?  // Auto-detected TV model via CEC OSD name
+  cecAddress    String?  // CEC physical address
+  lastDiscovery DateTime? // Last time CEC discovery was run
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

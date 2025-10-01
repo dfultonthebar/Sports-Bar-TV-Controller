@@ -32,8 +32,11 @@ export async function POST(request: NextRequest) {
       const output = await prisma.matrixOutput.findFirst({
         where: { channelNumber: outputNumber }
       })
-      // You might want to add a brand field to MatrixOutput model
-      // For now, we'll use generic timing
+      // Use detected brand from CEC discovery if available
+      if (output?.tvBrand) {
+        brandConfig = getBrandConfig(output.tvBrand)
+        console.log(`[CEC Enhanced Control] Using brand-specific config for ${output.tvBrand}`)
+      }
     }
 
     // Get command mapping

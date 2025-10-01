@@ -11,6 +11,7 @@ import IRDeviceControl from '@/components/IRDeviceControl'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
+import CECDiscoveryPanel from '@/components/CECDiscoveryPanel'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
@@ -24,7 +25,8 @@ import {
   TrendingUp,
   Target,
   BarChart3,
-  Music2
+  Music2,
+  Tv
 } from 'lucide-react'
 
 export default function DeviceConfigPage() {
@@ -93,7 +95,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="directv" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="directv" className="flex items-center gap-2">
             <Satellite className="w-4 h-4" />
             DirecTV
@@ -113,6 +115,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="soundtrack" className="flex items-center gap-2">
             <Music2 className="w-4 h-4" />
             Soundtrack
+          </TabsTrigger>
+          <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
+            <Tv className="w-4 h-4" />
+            CEC Discovery
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -237,6 +243,30 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <SoundtrackConfiguration />
+        </TabsContent>
+
+        <TabsContent value="cec-discovery" className="space-y-4">
+          <Card className="bg-[#1e3a5f]">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Tv className="w-5 h-5 text-blue-400" />
+                CEC TV Discovery
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="text-blue-200">
+                {aiEnhancementsEnabled 
+                  ? "Automatically detect TV brands with AI-powered brand recognition and optimization recommendations"
+                  : "Automatically detect TV brands connected to WolfPack outputs via CEC protocol"
+                }
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <CECDiscoveryPanel />
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">
