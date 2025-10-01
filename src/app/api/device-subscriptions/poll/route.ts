@@ -3,11 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { pollRealDirecTVSubscriptions, pollRealFireTVSubscriptions, Subscription as RealSubscription } from '@/lib/real-device-subscriptions'
+import { cacheService, CacheKeys, CacheTTL } from '@/lib/cache-service'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
 const SUBSCRIPTIONS_FILE = join(process.cwd(), 'data', 'device-subscriptions.json')
+
+// Use the same Subscription interface from real-device-subscriptions
+type Subscription = RealSubscription
 
 interface DeviceSubscription {
   deviceId: string
@@ -17,20 +22,6 @@ interface DeviceSubscription {
   lastPolled: string
   pollStatus: 'success' | 'error' | 'pending'
   error?: string
-}
-
-interface Subscription {
-  id: string
-  name: string
-  type: 'streaming' | 'premium' | 'sports' | 'addon'
-  status: 'active' | 'inactive' | 'expired'
-  provider?: string
-  packageName?: string
-  subscriptionDate?: string
-  expirationDate?: string
-  cost?: number
-  description?: string
-  logoUrl?: string
 }
 
 // Ensure data directory exists
@@ -67,150 +58,10 @@ async function loadDeviceList(type: 'firetv' | 'directv') {
   }
 }
 
-// Mock DirecTV subscription polling
-async function pollDirecTVSubscriptions(device: any): Promise<Subscription[]> {
-  // Simulate API call to DirecTV receiver
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  
-  // Mock subscription data based on common DirecTV packages
-  const mockSubscriptions: Subscription[] = [
-    {
-      id: 'directv-choice',
-      name: 'DIRECTV CHOICE™',
-      type: 'premium',
-      status: 'active',
-      provider: 'DIRECTV',
-      packageName: 'CHOICE',
-      cost: 84.99,
-      description: '105+ channels including ESPN, Fox Sports 1, and regional sports networks',
-      logoUrl: '/images/directv-logo.png'
-    },
-    {
-      id: 'sports-pack',
-      name: 'Sports Pack',
-      type: 'sports',
-      status: 'active',
-      provider: 'DIRECTV',
-      packageName: 'SPORTS',
-      cost: 14.99,
-      description: 'NFL RedZone, NBA TV, NHL Network, and more sports channels',
-      logoUrl: '/images/sports-pack-logo.png'
-    },
-    {
-      id: 'nfl-sunday-ticket',
-      name: 'NFL Sunday Ticket',
-      type: 'sports',
-      status: 'active',
-      provider: 'DIRECTV',
-      packageName: 'NFL_ST',
-      subscriptionDate: '2024-09-01',
-      expirationDate: '2025-02-28',
-      cost: 293.94,
-      description: 'Every out-of-market NFL game, every Sunday',
-      logoUrl: '/images/nfl-sunday-ticket-logo.png'
-    },
-    {
-      id: 'regional-sports',
-      name: 'Regional Sports Networks',
-      type: 'sports',
-      status: 'active',
-      provider: 'DIRECTV',
-      packageName: 'RSN',
-      description: 'Local team coverage and regional sports programming',
-      logoUrl: '/images/rsn-logo.png'
-    }
-  ]
-  
-  return mockSubscriptions
-}
-
-// Mock Fire TV subscription polling
-async function pollFireTVSubscriptions(device: any): Promise<Subscription[]> {
-  // Simulate ADB commands to get installed apps
-  await new Promise(resolve => setTimeout(resolve, 800))
-  
-  // Mock installed streaming apps with subscription status
-  const mockSubscriptions: Subscription[] = [
-    {
-      id: 'prime-video',
-      name: 'Amazon Prime Video',
-      type: 'streaming',
-      status: 'active',
-      provider: 'Amazon',
-      packageName: 'com.amazon.avod.thirdpartyclient',
-      description: 'Included with Amazon Prime membership',
-      logoUrl: '/images/prime-video-logo.png'
-    },
-    {
-      id: 'netflix',
-      name: 'Netflix',
-      type: 'streaming',
-      status: 'active',
-      provider: 'Netflix',
-      packageName: 'com.netflix.ninja',
-      cost: 15.49,
-      description: 'Standard plan with HD streaming',
-      logoUrl: '/images/netflix-logo.png'
-    },
-    {
-      id: 'hulu-live',
-      name: 'Hulu + Live TV',
-      type: 'streaming',
-      status: 'active',
-      provider: 'Hulu',
-      packageName: 'com.hulu.plus',
-      cost: 69.99,
-      description: 'Live TV + streaming library with ESPN and sports channels',
-      logoUrl: '/images/hulu-logo.png'
-    },
-    {
-      id: 'espn-plus',
-      name: 'ESPN+',
-      type: 'sports',
-      status: 'active',
-      provider: 'Disney',
-      packageName: 'com.espn.score_center',
-      cost: 10.99,
-      description: 'Exclusive UFC, college sports, and original content',
-      logoUrl: '/images/espn-plus-logo.png'
-    },
-    {
-      id: 'paramount-plus',
-      name: 'Paramount+',
-      type: 'streaming',
-      status: 'active',
-      provider: 'Paramount',
-      packageName: 'com.cbs.app',
-      cost: 11.99,
-      description: 'CBS Sports, live NFL games, and exclusive content',
-      logoUrl: '/images/paramount-plus-logo.png'
-    },
-    {
-      id: 'disney-plus',
-      name: 'Disney+',
-      type: 'streaming',
-      status: 'active',
-      provider: 'Disney',
-      packageName: 'com.disney.disneyplus',
-      cost: 13.99,
-      description: 'Disney, Marvel, Star Wars, and National Geographic content',
-      logoUrl: '/images/disney-plus-logo.png'
-    },
-    {
-      id: 'youtube-tv',
-      name: 'YouTube TV',
-      type: 'streaming',
-      status: 'inactive',
-      provider: 'Google',
-      packageName: 'com.google.android.youtube.tv',
-      cost: 72.99,
-      description: 'Live TV with sports channels and unlimited DVR',
-      logoUrl: '/images/youtube-tv-logo.png'
-    }
-  ]
-  
-  return mockSubscriptions
-}
+/**
+ * Real device subscription polling - no mock data
+ * Connects to actual devices to detect installed apps and packages
+ */
 
 export async function POST(request: NextRequest) {
   try {
@@ -266,14 +117,34 @@ export async function POST(request: NextRequest) {
     await saveSubscriptionsData(subscriptionsData)
 
     try {
-      // Poll subscriptions based on device type
+      // Check cache first (unless forced)
+      const cacheKey = CacheKeys.deviceSubscriptions(deviceId)
       let subscriptions: Subscription[] = []
       
-      if (deviceType === 'directv') {
-        subscriptions = await pollDirecTVSubscriptions(device)
-      } else if (deviceType === 'firetv') {
-        subscriptions = await pollFireTVSubscriptions(device)
+      if (!force) {
+        const cached = cacheService.get<Subscription[]>(cacheKey)
+        if (cached) {
+          return NextResponse.json({
+            success: true,
+            message: 'Subscriptions from cache',
+            subscriptions: cached,
+            cached: true,
+            lastPolled: existingEntry?.lastPolled
+          })
+        }
       }
+      
+      // Poll subscriptions based on device type (REAL DATA)
+      if (deviceType === 'directv') {
+        subscriptions = await pollRealDirecTVSubscriptions(device)
+      } else if (deviceType === 'firetv') {
+        subscriptions = await pollRealFireTVSubscriptions(device)
+      } else {
+        throw new Error(`Unsupported device type: ${deviceType}`)
+      }
+      
+      // Cache the results for 1 hour
+      cacheService.set(cacheKey, subscriptions, CacheTTL.HOUR)
 
       // Update with results
       updatedEntry.subscriptions = subscriptions

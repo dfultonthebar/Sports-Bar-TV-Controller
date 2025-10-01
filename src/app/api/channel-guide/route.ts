@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { cacheService, CacheKeys, CacheTTL } from '@/lib/cache-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,12 +107,22 @@ async function getCableGuideData(inputNumber: number, startTime: string, endTime
         programs: sportsPrograms
       }
     } else {
-      // Return sample cable guide data if Spectrum API is not available
-      return generateSampleCableGuide(inputNumber, startTime, endTime)
+      // Return empty data if Spectrum API is not configured
+      return {
+        type: 'cable',
+        channels: [],
+        programs: [],
+        message: 'Configure Spectrum Business API in TV Guide Config to view real data'
+      }
     }
   } catch (error) {
     console.error('Error fetching cable guide data:', error)
-    return generateSampleCableGuide(inputNumber, startTime, endTime)
+    return {
+      type: 'cable',
+      channels: [],
+      programs: [],
+      error: error instanceof Error ? error.message : 'Failed to fetch cable guide data'
+    }
   }
 }
 
@@ -167,11 +178,22 @@ async function getSatelliteGuideData(inputNumber: number, deviceId: string | und
         programs
       }
     } else {
-      return generateSampleSatelliteGuide(inputNumber, startTime, endTime, targetDevice)
+      return {
+        type: 'satellite',
+        device: targetDevice,
+        channels: [],
+        programs: [],
+        message: 'No guide data available for DirecTV'
+      }
     }
   } catch (error) {
     console.error('Error fetching DirecTV guide data:', error)
-    return generateSampleSatelliteGuide(inputNumber, startTime, endTime)
+    return {
+      type: 'satellite',
+      channels: [],
+      programs: [],
+      error: error instanceof Error ? error.message : 'Failed to fetch DirecTV guide data'
+    }
   }
 }
 
@@ -256,184 +278,36 @@ async function getStreamingGuideData(inputNumber: number, deviceId: string | und
         apps: sportsApps
       }
     } else {
-      return generateSampleStreamingGuide(inputNumber, startTime, endTime, targetDevice)
+      // Return available sports apps but no programs
+      const sportsApps = [
+        { packageName: 'com.espn.score_center', displayName: 'ESPN', category: 'Sports', sportsContent: true },
+        { packageName: 'com.fox.now', displayName: 'FOX Sports', category: 'Sports', sportsContent: true },
+        { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
+        { packageName: 'com.hulu.plus', displayName: 'Hulu Live TV', category: 'Sports', sportsContent: true },
+        { packageName: 'com.nba.game', displayName: 'NBA League Pass', category: 'Sports', sportsContent: true },
+        { packageName: 'com.bamnetworks.mobile.android.gameday.mlb', displayName: 'MLB.TV', category: 'Sports', sportsContent: true },
+        { packageName: 'com.amazon.avod.thirdpartyclient', displayName: 'Prime Video', category: 'Sports', sportsContent: true },
+        { packageName: 'com.fubo.android', displayName: 'FuboTV', category: 'Sports', sportsContent: true },
+        { packageName: 'com.sling', displayName: 'Sling TV', category: 'Sports', sportsContent: true }
+      ]
+      
+      return {
+        type: 'streaming',
+        device: targetDevice,
+        channels: [],
+        programs: [],
+        apps: sportsApps,
+        message: 'No streaming guide data available'
+      }
     }
   } catch (error) {
     console.error('Error fetching Fire TV guide data:', error)
-    return generateSampleStreamingGuide(inputNumber, startTime, endTime)
-  }
-}
-
-// Generate sample cable guide data
-function generateSampleCableGuide(inputNumber: number, startTime: string, endTime: string) {
-  const now = new Date()
-  const samplePrograms = [
-    {
-      id: `cable-${inputNumber}-1`,
-      league: 'NFL',
-      homeTeam: 'Green Bay Packers',
-      awayTeam: 'Chicago Bears',
-      gameTime: new Date(now.getTime() + 2 * 60 * 60 * 1000).toLocaleTimeString(),
-      startTime: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(now.getTime() + 5 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: 'espn',
-        name: 'ESPN',
-        number: '206',
-        type: 'cable' as const,
-        cost: 'subscription' as const,
-        platforms: ['Spectrum'],
-        channelNumber: '206'
-      },
-      description: 'NFL Sunday Night Football',
-      isSports: true,
-      isLive: false
-    },
-    {
-      id: `cable-${inputNumber}-2`,
-      league: 'NBA',
-      homeTeam: 'Milwaukee Bucks',
-      awayTeam: 'Boston Celtics',
-      gameTime: new Date(now.getTime() + 4 * 60 * 60 * 1000).toLocaleTimeString(),
-      startTime: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(now.getTime() + 6.5 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: 'tnt',
-        name: 'TNT',
-        number: '245',
-        type: 'cable' as const,
-        cost: 'subscription' as const,
-        platforms: ['Spectrum'],
-        channelNumber: '245'
-      },
-      description: 'NBA Regular Season Game',
-      isSports: true,
-      isLive: false
+    return {
+      type: 'streaming',
+      channels: [],
+      programs: [],
+      apps: [],
+      error: error instanceof Error ? error.message : 'Failed to fetch Fire TV guide data'
     }
-  ]
-
-  return {
-    type: 'cable',
-    channels: [],
-    programs: samplePrograms
   }
-}
-
-// Generate sample satellite guide data
-function generateSampleSatelliteGuide(inputNumber: number, startTime: string, endTime: string, device?: any) {
-  const now = new Date()
-  const samplePrograms = [
-    {
-      id: `satellite-${inputNumber}-1`,
-      league: 'NFL',
-      homeTeam: 'Dallas Cowboys',
-      awayTeam: 'New York Giants',
-      gameTime: new Date(now.getTime() + 1 * 60 * 60 * 1000).toLocaleTimeString(),
-      startTime: new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: 'fox-sports',
-        name: 'FOX Sports',
-        number: '219',
-        type: 'satellite' as const,
-        cost: 'subscription' as const,
-        platforms: ['DirecTV'],
-        channelNumber: '219'
-      },
-      description: 'NFL Sunday Game',
-      isSports: true,
-      isLive: false
-    }
-  ]
-
-  return {
-    type: 'satellite',
-    device,
-    channels: [],
-    programs: samplePrograms
-  }
-}
-
-// Generate sample streaming guide data
-function generateSampleStreamingGuide(inputNumber: number, startTime: string, endTime: string, device?: any) {
-  const now = new Date()
-  const samplePrograms = [
-    {
-      id: `streaming-${inputNumber}-1`,
-      league: 'Prime Video',
-      homeTeam: '',
-      awayTeam: '',
-      gameTime: new Date(now.getTime() + 1 * 60 * 60 * 1000).toLocaleTimeString(),
-      startTime: new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: 'prime-video',
-        name: 'Prime Video',
-        type: 'streaming' as const,
-        cost: 'subscription' as const,
-        platforms: ['Prime Video'],
-        packageName: 'com.amazon.avod.thirdpartyclient',
-        appCommand: 'monkey -p com.amazon.avod.thirdpartyclient 1'
-      },
-      description: 'Thursday Night Football',
-      isSports: true,
-      isLive: false
-    },
-    {
-      id: `streaming-${inputNumber}-2`,
-      league: 'ESPN+',
-      homeTeam: '',
-      awayTeam: '',
-      gameTime: new Date(now.getTime() + 2 * 60 * 60 * 1000).toLocaleTimeString(),
-      startTime: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: 'espn-plus',
-        name: 'ESPN',
-        type: 'streaming' as const,
-        cost: 'subscription' as const,
-        platforms: ['ESPN'],
-        packageName: 'com.espn.score_center',
-        appCommand: 'monkey -p com.espn.score_center 1'
-      },
-      description: 'UFC Fight Night',
-      isSports: true,
-      isLive: false
-    }
-  ]
-
-  const sportsApps = [
-    { packageName: 'com.espn.score_center', displayName: 'ESPN', category: 'Sports', sportsContent: true },
-    { packageName: 'com.fox.now', displayName: 'FOX Sports', category: 'Sports', sportsContent: true },
-    { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
-    { packageName: 'com.hulu.plus', displayName: 'Hulu Live TV', category: 'Sports', sportsContent: true },
-    { packageName: 'com.amazon.avod.thirdpartyclient', displayName: 'Prime Video', category: 'Sports', sportsContent: true }
-  ]
-
-  return {
-    type: 'streaming',
-    device,
-    channels: [],
-    programs: samplePrograms,
-    apps: sportsApps
-  }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    message: 'Channel Guide API',
-    description: 'Provides device-specific channel guide data for bartender remote',
-    endpoints: {
-      'POST /api/channel-guide': 'Get channel guide data for specific device type and input',
-    },
-    supportedDeviceTypes: ['cable', 'satellite', 'streaming'],
-    requiredParams: {
-      inputNumber: 'number - Matrix input number',
-      deviceType: 'string - Device type (cable, satellite, streaming)',
-      deviceId: 'string - Optional device ID',
-      startTime: 'string - Optional ISO start time',
-      endTime: 'string - Optional ISO end time'
-    }
-  })
 }
