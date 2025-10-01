@@ -77,19 +77,40 @@ if [ ! -f "config/local.local.json" ]; then
     echo "📝 Local configuration not found. Initializing from templates..."
     if [ -f "scripts/init-local-config.sh" ]; then
         ./scripts/init-local-config.sh
+        
+        # Migrate settings from .env to local config
+        if [ -f "scripts/migrate-env-to-local-config.sh" ]; then
+            echo ""
+            echo "🔄 Migrating existing .env settings to local config..."
+            ./scripts/migrate-env-to-local-config.sh
+        fi
+        
         echo ""
-        echo "⚠️  IMPORTANT: Edit your local configuration files:"
+        echo "✅ Local configuration initialized with your existing settings"
+        echo ""
+        echo "📝 To customize further, edit:"
         echo "   nano config/local.local.json      # System settings"
         echo "   nano config/devices.local.json    # Device inventory"
         echo "   nano config/sports-teams.local.json   # Sports preferences"
         echo ""
-        read -p "Press Enter to continue after you've reviewed the config files..."
     else
         echo "⚠️  Warning: init-local-config.sh not found"
         echo "   You may need to manually create config/*.local.json files"
     fi
 else
     echo "✅ Local configuration files found and preserved"
+    
+    # Check if migration is needed (old .env but outdated local config)
+    if [ -f ".env" ] && [ -f "scripts/migrate-env-to-local-config.sh" ]; then
+        # Check if local config still has default IP
+        if grep -q '"ip": "192.168.1.100"' config/local.local.json && \
+           grep -q '"port": 4999' config/local.local.json && \
+           [ -n "$(grep 'WOLFPACK_HOST' .env)" ]; then
+            echo "   📝 Detected .env settings not yet in local config..."
+            echo "   🔄 Migrating .env to local config..."
+            ./scripts/migrate-env-to-local-config.sh
+        fi
+    fi
     
     # Check if there are new template options that should be merged
     if [ -f "scripts/init-local-config.sh" ]; then
