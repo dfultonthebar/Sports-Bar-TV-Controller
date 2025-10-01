@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, FileText, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
+import { Send, Bot, User, FileText, BookOpen, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,7 +32,11 @@ export default function AIAssistant() {
   const [useKnowledge, setUseKnowledge] = useState(true);
   const [kbStats, setKbStats] = useState<KBStats | null>(null);
   const [isRebuildingKB, setIsRebuildingKB] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadKBStats();
@@ -95,6 +99,74 @@ export default function AIAssistant() {
       }]);
     } finally {
       setIsRebuildingKB(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const validFiles = files.filter(file => 
+      file.type === 'application/pdf' || 
+      file.name.endsWith('.md') || 
+      file.name.endsWith('.txt')
+    );
+    
+    if (validFiles.length !== files.length) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Some files were filtered out. Only PDF, MD, and TXT files are supported.',
+        timestamp: new Date()
+      }]);
+    }
+    
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadDocuments = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      selectedFiles.forEach(file => {
+        formData.append('files', file);
+      });
+
+      const response = await fetch('/api/ai/upload-documents', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload documents');
+      }
+
+      const result = await response.json();
+      
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Successfully uploaded ${result.uploaded} document(s)! Rebuilding knowledge base...`,
+        timestamp: new Date()
+      }]);
+
+      // Auto-rebuild knowledge base after upload
+      await rebuildKnowledgeBase();
+      
+      // Clear selected files and close modal
+      setSelectedFiles([]);
+      setShowUploadModal(false);
+    } catch (error) {
+      console.error('Error uploading documents:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Error uploading documents. Please check the server logs.',
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -175,14 +247,23 @@ export default function AIAssistant() {
                     {kbStats.stats.totalPDFs} PDFs • {kbStats.stats.totalMarkdown} MD files
                   </div>
                 </div>
-                <button
-                  onClick={rebuildKnowledgeBase}
-                  disabled={isRebuildingKB}
-                  className="p-2 bg-blue-500/20 hover:bg-blue-500/30 rounded-lg transition-colors disabled:opacity-50"
-                  title="Rebuild Knowledge Base"
-                >
-                  <RefreshCw className={`w-5 h-5 text-blue-400 ${isRebuildingKB ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="p-2 bg-emerald-500/20 hover:bg-emerald-500/30 rounded-lg transition-colors"
+                    title="Upload Documents"
+                  >
+                    <Upload className="w-5 h-5 text-emerald-400" />
+                  </button>
+                  <button
+                    onClick={rebuildKnowledgeBase}
+                    disabled={isRebuildingKB}
+                    className="p-2 bg-blue-500/20 hover:bg-blue-500/30 rounded-lg transition-colors disabled:opacity-50"
+                    title="Rebuild Knowledge Base"
+                  >
+                    <RefreshCw className={`w-5 h-5 text-blue-400 ${isRebuildingKB ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -297,6 +378,125 @@ export default function AIAssistant() {
             </button>
           </div>
         </form>
+
+        {/* Upload Modal */}
+        {showUploadModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-xl border border-blue-500/30 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-emerald-500/20 rounded-lg">
+                    <Upload className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Upload Documents</h2>
+                    <p className="text-sm text-gray-400">Add PDFs, Markdown, or Text files to the knowledge base</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setSelectedFiles([]);
+                  }}
+                  className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* File Selection */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-blue-500/30 rounded-xl p-8 text-center cursor-pointer hover:border-blue-500/50 hover:bg-slate-700/30 transition-all"
+                >
+                  <Upload className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                  <p className="text-white font-medium mb-1">Click to select files</p>
+                  <p className="text-sm text-gray-400">Supports PDF, MD, and TXT files</p>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.md,.txt"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                {/* Selected Files List */}
+                {selectedFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-gray-400">Selected Files ({selectedFiles.length})</h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {selectedFiles.map((file, index) => (
+                        <div
+                          key={index}
+                          className="bg-slate-700/50 rounded-lg p-3 flex items-center justify-between"
+                        >
+                          <div className="flex items-center space-x-3 flex-1 min-w-0">
+                            <FileText className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-white text-sm font-medium truncate">{file.name}</p>
+                              <p className="text-xs text-gray-400">
+                                {(file.size / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeFile(index)}
+                            className="p-1 hover:bg-slate-600 rounded transition-colors flex-shrink-0"
+                          >
+                            <X className="w-4 h-4 text-gray-400" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-slate-700 flex items-center justify-between">
+                <p className="text-sm text-gray-400">
+                  {selectedFiles.length > 0 
+                    ? `${selectedFiles.length} file(s) ready to upload` 
+                    : 'No files selected'}
+                </p>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      setSelectedFiles([]);
+                    }}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                    disabled={isUploading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={uploadDocuments}
+                    disabled={selectedFiles.length === 0 || isUploading}
+                    className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  >
+                    {isUploading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Uploading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>Upload & Add to KB</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
