@@ -45,23 +45,40 @@ export default function EnhancedChannelGrid() {
 
   const fetchChannels = async () => {
     try {
-      // Mock channel data since we don't have a channels API in this project
-      const mockChannels = [
-        { id: '1', channelNumber: '206', name: 'ESPN', displayName: 'ESPN HD', category: 'sports', subcategory: 'general_sports', isHd: true, is4k: false, priority: 95, callSign: 'ESPN' },
-        { id: '2', channelNumber: '207', name: 'ESPN2', displayName: 'ESPN2 HD', category: 'sports', subcategory: 'general_sports', isHd: true, is4k: false, priority: 90, callSign: 'ESPN2' },
-        { id: '3', channelNumber: '213', name: 'Fox Sports 1', displayName: 'FS1 HD', category: 'sports', subcategory: 'general_sports', isHd: true, is4k: false, priority: 95, callSign: 'FS1' },
-        { id: '4', channelNumber: '214', name: 'Fox Sports 2', displayName: 'FS2 HD', category: 'sports', subcategory: 'general_sports', isHd: true, is4k: false, priority: 85, callSign: 'FS2' },
-        { id: '5', channelNumber: '215', name: 'MLB Network', displayName: 'MLB Network HD', category: 'sports', subcategory: 'baseball', isHd: true, is4k: false, priority: 85, callSign: 'MLBN' },
-        { id: '6', channelNumber: '216', name: 'NBA TV', displayName: 'NBA TV HD', category: 'sports', subcategory: 'basketball', isHd: true, is4k: false, priority: 85, callSign: 'NBATV' },
-        { id: '7', channelNumber: '217', name: 'NHL Network', displayName: 'NHL Network HD', category: 'sports', subcategory: 'hockey', isHd: true, is4k: false, priority: 80, callSign: 'NHLN' },
-        { id: '8', channelNumber: '219', name: 'Golf Channel', displayName: 'Golf Channel HD', category: 'sports', subcategory: 'golf', isHd: true, is4k: false, priority: 80, callSign: 'GOLF' },
-        { id: '9', channelNumber: '701', name: 'NFL Sunday Ticket 1', displayName: 'NFL ST 1', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST1' },
-        { id: '10', channelNumber: '702', name: 'NFL Sunday Ticket 2', displayName: 'NFL ST 2', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST2' },
-        { id: '11', channelNumber: '703', name: 'NFL Sunday Ticket 3', displayName: 'NFL ST 3', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST3' },
-        { id: '12', channelNumber: '704', name: 'NFL Sunday Ticket 4', displayName: 'NFL ST 4', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST4' },
-        { id: '13', channelNumber: '212-ST', name: 'NFL RedZone', displayName: 'NFL RedZone (ST)', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 100, callSign: 'NFLRZ' }
+      // Fetch real channel lineup from Spectrum API
+      const response = await fetch('/api/sports-guide?action=spectrum-sports')
+      const data = await response.json()
+      
+      if (!data.success || !data.sportsChannels) {
+        throw new Error('Failed to fetch channel lineup')
+      }
+      
+      // Transform Spectrum channel data to our format
+      const transformedChannels = data.sportsChannels.map((ch: any, index: number) => ({
+        id: ch.channelId || `spectrum-${index}`,
+        channelNumber: ch.channelNumber,
+        name: ch.channelName,
+        displayName: ch.isHD ? `${ch.channelName} HD` : ch.channelName,
+        category: 'sports',
+        subcategory: ch.category || 'general_sports',
+        isHd: ch.isHD,
+        is4k: false,
+        priority: ch.priority || 80,
+        callSign: ch.callSign || ch.channelName
+      }))
+      
+      // Keep some hardcoded Sunday Ticket channels as they may not be in Spectrum lineup
+      const sundayTicketChannels = [
+        { id: 'st-1', channelNumber: '701', name: 'NFL Sunday Ticket 1', displayName: 'NFL ST 1', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST1' },
+        { id: 'st-2', channelNumber: '702', name: 'NFL Sunday Ticket 2', displayName: 'NFL ST 2', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST2' },
+        { id: 'st-3', channelNumber: '703', name: 'NFL Sunday Ticket 3', displayName: 'NFL ST 3', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST3' },
+        { id: 'st-4', channelNumber: '704', name: 'NFL Sunday Ticket 4', displayName: 'NFL ST 4', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 95, callSign: 'NFLST4' },
+        { id: 'st-rz', channelNumber: '212-ST', name: 'NFL RedZone', displayName: 'NFL RedZone (ST)', category: 'sports', subcategory: 'football', isHd: true, is4k: false, priority: 100, callSign: 'NFLRZ' }
       ]
-      setChannels(mockChannels.slice(0, 20))
+      
+      // Combine Spectrum channels with Sunday Ticket channels
+      const allChannels = [...transformedChannels, ...sundayTicketChannels]
+      setChannels(allChannels.slice(0, 30))
     } catch (error) {
       console.error('Error fetching channels:', error)
     }

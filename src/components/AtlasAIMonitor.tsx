@@ -58,25 +58,15 @@ export default function AtlasAIMonitor({
       setLoading(true)
       setError(null)
       
-      // Mock data for demonstration - in real implementation, this would fetch from your Atlas hardware
-      const mockData = {
-        processorId,
-        processorModel,
-        inputLevels: { 1: -12, 2: -18, 3: -25, 4: -30, 5: -15, 6: -22, 7: -28, 8: -35 },
-        outputLevels: { 1: -8, 2: -10, 3: -12, 4: -15, 5: -9, 6: -11, 7: -14, 8: -16 },
-        networkLatency: Math.random() * 15 + 5,
-        cpuLoad: Math.random() * 30 + 40,
-        memoryUsage: Math.random() * 20 + 50,
-        errorLogs: [],
-        configChanges: [],
-        sceneRecalls: [],
-        lastSeen: new Date().toISOString()
-      }
-      
+      // Fetch real Atlas hardware data - this will query the actual Atlas processor
+      // The API will return error if Atlas is not configured or unreachable
       const response = await fetch('/api/atlas/ai-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mockData)
+        body: JSON.stringify({
+          processorId,
+          processorModel
+        })
       })
       
       if (!response.ok) {

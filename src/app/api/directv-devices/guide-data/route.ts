@@ -131,43 +131,22 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       console.error('❌ Error fetching from DirecTV API:', fetchError)
       
-      // Generate sample guide data as fallback
-      console.log('📝 Generating sample DirecTV guide data as fallback')
-      const sampleChannels = [
-        { channel: '206', name: 'ESPN', category: 'Sports' },
-        { channel: '207', name: 'ESPN2', category: 'Sports' },
-        { channel: '212', name: 'NFL RedZone', category: 'Sports' },
-        { channel: '213', name: 'NFL Network', category: 'Sports' },
-        { channel: '215', name: 'NBA TV', category: 'Sports' },
-        { channel: '217', name: 'MLB Network', category: 'Sports' },
-        { channel: '611', name: 'TNT', category: 'Entertainment' }
-      ]
-
-      const now = new Date()
-      sampleChannels.forEach((ch, idx) => {
-        for (let i = 0; i < 6; i++) {
-          const startTime = new Date(now.getTime() + (i * 30 + idx * 5) * 60 * 1000)
-          const endTime = new Date(startTime.getTime() + 30 * 60 * 1000)
-          
-          guideData.push({
-            id: `directv-sample-${ch.channel}-${i}`,
-            source: 'directv-sample',
-            deviceId,
-            channel: ch.channel,
-            channelName: ch.name,
-            title: `${ch.name} Program ${i + 1}`,
-            description: `Sample program on ${ch.name} - Guide data unavailable from receiver`,
-            startTime: startTime.toISOString(),
-            endTime: endTime.toISOString(),
-            duration: 1800,
-            category: ch.category,
-            isHD: true,
-            recordable: true,
-            fetchedAt: new Date().toISOString(),
-            isSample: true
-          })
-        }
-      })
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to connect to DirecTV receiver',
+        details: 'Unable to retrieve guide data from DirecTV. Please ensure receiver is powered on and network accessible.',
+        deviceId,
+        deviceType: 'directv',
+        recommendations: [
+          'Ensure DirecTV receiver is powered on',
+          'Verify receiver is connected to network',
+          'Check if receiver API is enabled (SHEF protocol)',
+          'Verify IP address is correct',
+          'Try accessing http://<receiver-ip>:8080/tv/getTuned in a browser'
+        ],
+        apiDocumentation: 'DirecTV receivers use the SHEF (Streaming Home Entertainment Framework) protocol',
+        commonPorts: [8080, 8088]
+      }, { status: 503 })
     }
 
     return NextResponse.json({

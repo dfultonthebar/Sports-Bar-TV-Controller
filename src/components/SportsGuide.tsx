@@ -92,7 +92,7 @@ interface ScheduledRoutine {
   nextRun: string
 }
 
-const SAMPLE_LEAGUES: League[] = [
+const AVAILABLE_LEAGUES: League[] = [
   { id: 'nfl', name: 'NFL', description: 'National Football League', category: 'professional', season: '2024-25' },
   { id: 'nba', name: 'NBA', description: 'National Basketball Association', category: 'professional', season: '2024-25' },
   { id: 'mlb', name: 'MLB', description: 'Major League Baseball', category: 'professional', season: '2024' },
@@ -105,7 +105,7 @@ const SAMPLE_LEAGUES: League[] = [
   { id: 'nfhs', name: 'NFHS Network', description: 'High school sports streaming', category: 'high-school', season: '2024-25' }
 ]
 
-const SAMPLE_PROVIDERS: Provider[] = [
+const DEFAULT_PROVIDERS: Provider[] = [
   {
     id: 'spectrum-business',
     name: 'Spectrum Business & Sports Package',
@@ -136,7 +136,7 @@ const SAMPLE_PROVIDERS: Provider[] = [
   }
 ]
 
-const SAMPLE_CHANNELS: ChannelInfo[] = [
+const DEFAULT_CHANNELS: ChannelInfo[] = [
   { 
     id: 'espn', 
     name: 'ESPN', 
@@ -233,7 +233,7 @@ export default function SportsGuide() {
   // New state for input and provider management
   const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
   const [selectedInput, setSelectedInput] = useState<string | null>(null)
-  const [providers, setProviders] = useState<Provider[]>(SAMPLE_PROVIDERS)
+  const [providers, setProviders] = useState<Provider[]>(DEFAULT_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   useEffect(() => {
@@ -304,13 +304,13 @@ export default function SportsGuide() {
       } else {
         console.error('Failed to load leagues:', result.error)
         // Fallback to sample leagues
-        setAvailableLeagues(SAMPLE_LEAGUES)
+        setAvailableLeagues(AVAILABLE_LEAGUES)
         console.log('Using sample leagues fallback')
       }
     } catch (error) {
       console.error('Error loading leagues:', error)
       // Fallback to sample leagues
-      setAvailableLeagues(SAMPLE_LEAGUES)
+      setAvailableLeagues(AVAILABLE_LEAGUES)
       console.log('Using sample leagues fallback due to error')
     }
   }

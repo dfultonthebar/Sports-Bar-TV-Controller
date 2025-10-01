@@ -61,9 +61,19 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       console.error('❌ Error fetching from Fire TV:', fetchError)
       
-      // Generate sample Fire TV guide data as fallback
-      console.log('📝 Generating sample Fire TV guide data as fallback')
-      guideData = generateSampleFireTVGuide(deviceId, start, end)
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to connect to Fire TV device',
+        details: 'Unable to retrieve guide data from Fire TV. Please ensure device is powered on and ADB is enabled.',
+        deviceId,
+        deviceType: 'firetv',
+        recommendations: [
+          'Enable ADB debugging on Fire TV (Settings > My Fire TV > Developer Options)',
+          'Ensure Fire TV is on the same network',
+          'Verify IP address is correct',
+          'Check if Fire TV is responding to network connections'
+        ]
+      }, { status: 503 })
     }
 
     return NextResponse.json({
@@ -109,8 +119,11 @@ async function connectToFireTV(ipAddress: string, port: number) {
 
 // Get installed streaming apps that might have guide data
 async function getInstalledStreamingApps(ipAddress: string, port: number) {
-  // Mock implementation - in reality would query Fire TV for installed apps
-  return [
+  // In a real implementation, this would use ADB to query Fire TV for installed apps
+  // Example command: adb shell pm list packages | grep -E "netflix|hulu|youtube|amazon"
+  
+  // For now, return expected apps - actual implementation would query the device
+  const knownStreamingApps = [
     { 
       name: 'Prime Video', 
       packageName: 'com.amazon.avod.thirdpartyclient',
@@ -142,107 +155,28 @@ async function getInstalledStreamingApps(ipAddress: string, port: number) {
       category: 'streaming'
     }
   ]
+  
+  // Would use ADB to check which are actually installed
+  return knownStreamingApps
 }
 
 // Get guide data from specific streaming app
 async function getAppGuideData(ipAddress: string, port: number, app: any) {
-  const guideData = []
+  // In a real implementation, this would:
+  // 1. Use ADB to launch the app
+  // 2. Query the app's content provider if available
+  // 3. Use platform-specific APIs (Prime Video API, YouTube TV API, etc.)
+  // 4. Parse on-screen guide data if accessible
   
-  if (!app.hasGuideData) {
-    return guideData
-  }
-
-  const now = new Date()
+  // For now, return empty - no mock data
+  // Each streaming service would require:
+  // - Prime Video: Amazon Prime Video API with credentials
+  // - YouTube TV: YouTube TV API with OAuth
+  // - Hulu: Hulu API with credentials
+  // - Netflix: Netflix does not provide guide data API
   
-  // Generate sample guide data for apps that typically have schedules
-  switch (app.name) {
-    case 'Prime Video':
-      const primeShows = [
-        { title: 'Thursday Night Football', category: 'Sports', duration: 10800 },
-        { title: 'The Boys', category: 'Drama', duration: 3600 },
-        { title: 'Rings of Power', category: 'Fantasy', duration: 4200 },
-        { title: 'Citadel', category: 'Action', duration: 3600 }
-      ]
-      
-      primeShows.forEach((show, idx) => {
-        const startTime = new Date(now.getTime() + idx * 60 * 60 * 1000)
-        const endTime = new Date(startTime.getTime() + show.duration * 1000)
-        
-        guideData.push({
-          id: `firetv-prime-${idx}`,
-          source: 'firetv-prime',
-          appName: 'Prime Video',
-          packageName: app.packageName,
-          title: show.title,
-          description: `Prime Video Original - ${show.category}`,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          duration: show.duration,
-          category: show.category,
-          isOriginal: true,
-          streamingService: 'Prime Video'
-        })
-      })
-      break
-      
-    case 'YouTube TV':
-      const ytvChannels = [
-        { channel: 'ESPN', title: 'SportsCenter', category: 'Sports' },
-        { channel: 'Fox News', title: 'Tucker Carlson Tonight', category: 'News' },
-        { channel: 'HGTV', title: 'Property Brothers', category: 'Lifestyle' }
-      ]
-      
-      ytvChannels.forEach((ch, idx) => {
-        const startTime = new Date(now.getTime() + idx * 30 * 60 * 1000)
-        const endTime = new Date(startTime.getTime() + 30 * 60 * 1000)
-        
-        guideData.push({
-          id: `firetv-ytv-${ch.channel}-${idx}`,
-          source: 'firetv-youtubetv',
-          appName: 'YouTube TV',
-          packageName: app.packageName,
-          channel: ch.channel,
-          title: ch.title,
-          description: `Live on ${ch.channel} via YouTube TV`,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          duration: 1800,
-          category: ch.category,
-          isLive: true,
-          streamingService: 'YouTube TV'
-        })
-      })
-      break
-      
-    case 'Hulu':
-      const huluContent = [
-        { title: 'The Handmaids Tale', category: 'Drama', type: 'Original' },
-        { title: 'Live TV: ABC News', category: 'News', type: 'Live TV' }
-      ]
-      
-      huluContent.forEach((content, idx) => {
-        const startTime = new Date(now.getTime() + idx * 45 * 60 * 1000)
-        const endTime = new Date(startTime.getTime() + 45 * 60 * 1000)
-        
-        guideData.push({
-          id: `firetv-hulu-${idx}`,
-          source: 'firetv-hulu',
-          appName: 'Hulu',
-          packageName: app.packageName,
-          title: content.title,
-          description: `Hulu ${content.type} - ${content.category}`,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          duration: 2700,
-          category: content.category,
-          streamingService: 'Hulu',
-          contentType: content.type
-        })
-      })
-      break
-  }
-  
-  return guideData
+  console.log(`ℹ️ Guide data API not configured for ${app.name}`)
+  return []
 }
 
 // Get Fire TV live TV guide (if Fire TV Recast or similar is available)
@@ -250,46 +184,6 @@ async function getFireTVLiveTVGuide(ipAddress: string, port: number) {
   // This would query Fire TV Recast or other live TV solutions
   // For now, return empty array as most Fire TVs don't have built-in live TV
   return []
-}
-
-// Generate sample Fire TV guide data
-function generateSampleFireTVGuide(deviceId: string, start: string, end: string) {
-  const guideData = []
-  const now = new Date()
-  
-  const sampleContent = [
-    { app: 'Prime Video', title: 'NFL on Prime', category: 'Sports', duration: 10800 },
-    { app: 'Netflix', title: 'Stranger Things', category: 'Drama', duration: 3600 },
-    { app: 'YouTube TV', title: 'Live: ESPN', category: 'Sports', duration: 1800 },
-    { app: 'Hulu', title: 'The Bear', category: 'Comedy', duration: 1800 },
-    { app: 'Paramount+', title: 'Star Trek Discovery', category: 'Sci-Fi', duration: 2400 },
-    { app: 'Apple TV+', title: 'Ted Lasso', category: 'Comedy', duration: 1800 }
-  ]
-  
-  sampleContent.forEach((content, idx) => {
-    for (let i = 0; i < 4; i++) {
-      const startTime = new Date(now.getTime() + (i * 60 + idx * 10) * 60 * 1000)
-      const endTime = new Date(startTime.getTime() + content.duration * 1000)
-      
-      guideData.push({
-        id: `firetv-sample-${idx}-${i}`,
-        source: 'firetv-sample',
-        deviceId,
-        appName: content.app,
-        title: `${content.title} ${i + 1}`,
-        description: `Sample ${content.app} content - Guide data unavailable from device`,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        duration: content.duration,
-        category: content.category,
-        streamingService: content.app,
-        fetchedAt: new Date().toISOString(),
-        isSample: true
-      })
-    }
-  })
-  
-  return guideData
 }
 
 export async function GET(request: NextRequest) {
