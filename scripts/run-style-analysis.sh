@@ -10,33 +10,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 echo "🎨 Sports Bar AI Assistant - Color Scheme Standardization"
 echo "=========================================================="
 echo ""
-
-# Check if Ollama is installed
-if ! command -v ollama &> /dev/null; then
-    echo "❌ Ollama is not installed"
-    echo ""
-    echo "To install Ollama, run:"
-    echo "  curl -fsSL https://ollama.ai/install.sh | sh"
-    echo ""
-    echo "Or use the local AI installation script:"
-    echo "  cd $PROJECT_DIR"
-    echo "  ./install-local-ai.sh"
-    exit 1
-fi
-
-echo "✅ Ollama is installed"
-echo ""
-
-# Check if Ollama is running
-if ! ollama list &> /dev/null; then
-    echo "❌ Ollama is not running"
-    echo ""
-    echo "Start Ollama with:"
-    echo "  ollama serve"
-    exit 1
-fi
-
-echo "✅ Ollama is running"
+echo "Using fast pattern-based analysis (no AI required)"
 echo ""
 
 # Show menu

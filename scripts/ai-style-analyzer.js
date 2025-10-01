@@ -1,23 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * AI-Powered Color Scheme Analyzer
- * Uses local Ollama AI to analyze components and suggest styling changes
+ * Fast Pattern-Based Color Scheme Analyzer
+ * Uses regex patterns to analyze components and suggest styling changes
+ * Much faster and more reliable than AI-based analysis for CSS class detection
  */
 
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
 
 // Configuration
 const CONFIG = {
   srcDir: path.join(__dirname, '../src'),
   styleGuide: path.join(__dirname, '../COLOR_SCHEME_STANDARD.md'),
   outputDir: path.join(__dirname, '../ai-style-reports'),
-  ollamaModel: 'llama3.2',
-  maxFilesPerBatch: 5
 };
 
 // Ensure output directory exists
@@ -26,30 +22,49 @@ if (!fs.existsSync(CONFIG.outputDir)) {
 }
 
 /**
- * Check if Ollama is installed and running
+ * Style guide rules - patterns to check
  */
-async function checkOllama() {
-  try {
-    const { stdout } = await execPromise('ollama list');
-    console.log('✅ Ollama is installed and running');
-    
-    // Check if our preferred model is available
-    if (stdout.includes(CONFIG.ollamaModel)) {
-      console.log(`✅ Model ${CONFIG.ollamaModel} is available`);
-      return true;
-    } else {
-      console.log(`⚠️  Model ${CONFIG.ollamaModel} not found. Available models:`);
-      console.log(stdout);
-      console.log(`\nPulling ${CONFIG.ollamaModel}...`);
-      await execPromise(`ollama pull ${CONFIG.ollamaModel}`);
-      return true;
-    }
-  } catch (error) {
-    console.error('❌ Ollama is not installed or not running');
-    console.error('Please install Ollama: https://ollama.ai');
-    return false;
+const STYLE_RULES = {
+  // Correct patterns (approved colors)
+  approved: {
+    backgrounds: [
+      'bg-slate-800', 'bg-slate-900', 'bg-slate-700', 'bg-slate-750',
+      'bg-slate-800/50', 'bg-slate-900/50', 'bg-slate-700/50',
+      'bg-transparent'
+    ],
+    text: [
+      'text-slate-100', 'text-slate-200', 'text-slate-300', 'text-slate-400',
+      'text-white', 'text-gray-100', 'text-gray-200', 'text-gray-300'
+    ],
+    borders: [
+      'border-slate-700', 'border-slate-600', 'border-slate-800',
+      'border-transparent'
+    ],
+    accents: [
+      'text-blue-400', 'text-blue-500', 'text-green-400', 'text-green-500',
+      'text-red-400', 'text-red-500', 'text-yellow-400', 'text-yellow-500',
+      'text-purple-400', 'text-purple-500', 'text-orange-400', 'text-orange-500',
+      'bg-blue-900/50', 'bg-green-900/50', 'bg-red-900/50', 'bg-yellow-900/50',
+      'bg-purple-900/50', 'bg-orange-900/50'
+    ]
+  },
+  
+  // Problematic patterns (should be replaced)
+  problematic: {
+    lightBackgrounds: [
+      /\bbg-white\b/, /\bbg-gray-50\b/, /\bbg-gray-100\b/, /\bbg-gray-200\b/
+    ],
+    darkText: [
+      /\btext-gray-800\b/, /\btext-gray-900\b/, /\btext-black\b/
+    ],
+    oldSlateBackgrounds: [
+      /\bbg-slate-950\b/, /\bbg-slate-100\b/, /\bbg-slate-200\b/
+    ],
+    lightBorders: [
+      /\bborder-gray-200\b/, /\bborder-gray-300\b/, /\bborder-white\b/
+    ]
   }
-}
+};
 
 /**
  * Load the style guide
@@ -60,8 +75,8 @@ function loadStyleGuide() {
     console.log('✅ Loaded style guide');
     return styleGuide;
   } catch (error) {
-    console.error('❌ Failed to load style guide:', error.message);
-    process.exit(1);
+    console.log('⚠️  Style guide not found, using built-in rules');
+    return null;
   }
 }
 
@@ -95,95 +110,102 @@ function findComponentFiles() {
 }
 
 /**
- * Analyze a component file using AI
+ * Find specific styling issues in code
  */
-async function analyzeComponent(filePath, styleGuide) {
+function findStyleIssues(code, filePath) {
+  const issues = [];
+  const lines = code.split('\n');
+  
+  lines.forEach((line, lineIndex) => {
+    const lineNum = lineIndex + 1;
+    
+    // Check for light backgrounds (should be dark)
+    STYLE_RULES.problematic.lightBackgrounds.forEach(pattern => {
+      if (pattern.test(line)) {
+        issues.push({
+          line: lineNum,
+          type: 'background',
+          current: line.match(pattern)[0],
+          suggested: 'bg-slate-800 or bg-slate-900',
+          reason: 'Light background detected - should use dark slate colors for consistency'
+        });
+      }
+    });
+    
+    // Check for dark text (should be light)
+    STYLE_RULES.problematic.darkText.forEach(pattern => {
+      if (pattern.test(line)) {
+        issues.push({
+          line: lineNum,
+          type: 'text',
+          current: line.match(pattern)[0],
+          suggested: 'text-slate-100 or text-slate-200',
+          reason: 'Dark text detected - should use light slate colors for readability'
+        });
+      }
+    });
+    
+    // Check for old slate backgrounds
+    STYLE_RULES.problematic.oldSlateBackgrounds.forEach(pattern => {
+      if (pattern.test(line)) {
+        issues.push({
+          line: lineNum,
+          type: 'background',
+          current: line.match(pattern)[0],
+          suggested: 'bg-slate-800 or bg-slate-900',
+          reason: 'Non-standard slate color - use approved slate-800 or slate-900'
+        });
+      }
+    });
+    
+    // Check for light borders
+    STYLE_RULES.problematic.lightBorders.forEach(pattern => {
+      if (pattern.test(line)) {
+        issues.push({
+          line: lineNum,
+          type: 'border',
+          current: line.match(pattern)[0],
+          suggested: 'border-slate-700',
+          reason: 'Light border detected - should use border-slate-700 for consistency'
+        });
+      }
+    });
+  });
+  
+  return issues;
+}
+
+/**
+ * Analyze a component file using pattern matching
+ */
+function analyzeComponent(filePath) {
   const componentCode = fs.readFileSync(filePath, 'utf8');
   const relativePath = path.relative(CONFIG.srcDir, filePath);
   
-  const prompt = `You are a React/TypeScript code analyzer specializing in UI styling consistency.
-
-STYLE GUIDE:
-${styleGuide}
-
-COMPONENT TO ANALYZE:
-File: ${relativePath}
-\`\`\`tsx
-${componentCode}
-\`\`\`
-
-TASK:
-Analyze this component and identify any styling inconsistencies compared to the style guide.
-Focus on:
-1. Background colors (should use bg-slate-800, bg-slate-700, etc.)
-2. Text colors (should use text-slate-100, text-slate-200, etc.)
-3. Border colors (should use border-slate-700)
-4. Badge styles (should follow the pattern bg-{color}-900/50)
-5. Button styles (should have proper hover states)
-6. Icon colors (should use accent colors like text-blue-400)
-7. Card styles (should use bg-slate-800 with border-slate-700)
-
-OUTPUT FORMAT:
-Provide your analysis in JSON format:
-{
-  "hasIssues": true/false,
-  "severity": "high" | "medium" | "low",
-  "issues": [
-    {
-      "line": <line number or "unknown">,
-      "type": "background" | "text" | "border" | "component",
-      "current": "current class names",
-      "suggested": "suggested class names",
-      "reason": "explanation"
-    }
-  ],
-  "summary": "Brief summary of findings"
-}
-
-If no issues are found, return {"hasIssues": false, "summary": "Component follows style guide"}.
-
-Respond ONLY with valid JSON, no additional text.`;
-
   try {
-    // Create a temporary file for the prompt
-    const promptFile = path.join(CONFIG.outputDir, 'temp_prompt.txt');
-    fs.writeFileSync(promptFile, prompt);
-    
     console.log(`  Analyzing ${relativePath}...`);
     
-    // Call Ollama with the prompt using stdin
-    const command = `cat ${promptFile} | ollama run ${CONFIG.ollamaModel}`;
-    const { stdout, stderr } = await execPromise(command, { 
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 120000  // Increased timeout for AI processing
-    });
+    const issues = findStyleIssues(componentCode, filePath);
     
-    // Clean up temp file
-    fs.unlinkSync(promptFile);
-    
-    // Try to parse JSON from response
-    let result;
-    try {
-      // Find JSON in the response (sometimes AI adds explanatory text)
-      const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        result = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found in response');
-      }
-    } catch (parseError) {
-      console.error(`  ⚠️  Failed to parse AI response for ${relativePath}`);
-      result = {
-        hasIssues: false,
-        summary: 'Unable to parse AI response',
-        error: stdout.substring(0, 500)
-      };
+    // Determine severity based on number and type of issues
+    let severity = 'low';
+    if (issues.length > 10) {
+      severity = 'high';
+    } else if (issues.length > 5) {
+      severity = 'medium';
     }
+    
+    const hasIssues = issues.length > 0;
     
     return {
       filePath: relativePath,
       fullPath: filePath,
-      ...result
+      hasIssues,
+      severity: hasIssues ? severity : undefined,
+      issues,
+      summary: hasIssues 
+        ? `Found ${issues.length} styling inconsistencies`
+        : 'Component follows style guide'
     };
   } catch (error) {
     console.error(`  ❌ Error analyzing ${relativePath}:`, error.message);
@@ -250,17 +272,11 @@ function displaySummary(stats, reportPath) {
 /**
  * Main execution
  */
-async function main() {
-  console.log('🎨 AI-Powered Color Scheme Analyzer\n');
+function main() {
+  console.log('🎨 Fast Pattern-Based Color Scheme Analyzer\n');
   
-  // Check prerequisites
-  const ollamaReady = await checkOllama();
-  if (!ollamaReady) {
-    process.exit(1);
-  }
-  
-  // Load style guide
-  const styleGuide = loadStyleGuide();
+  // Load style guide (optional)
+  loadStyleGuide();
   
   // Find all components
   const components = findComponentFiles();
@@ -278,11 +294,8 @@ async function main() {
     const component = components[i];
     console.log(`[${i + 1}/${components.length}] ${path.relative(CONFIG.srcDir, component)}`);
     
-    const analysis = await analyzeComponent(component, styleGuide);
+    const analysis = analyzeComponent(component);
     analyses.push(analysis);
-    
-    // Small delay to avoid overwhelming the system
-    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   // Generate report
@@ -303,7 +316,9 @@ async function main() {
 }
 
 // Run the analyzer
-main().catch(error => {
+try {
+  main();
+} catch (error) {
   console.error('Fatal error:', error);
   process.exit(1);
-});
+}
