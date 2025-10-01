@@ -119,41 +119,100 @@ export class SoundtrackYourBrandAPI {
   }
 
   /**
-   * Test API connection by fetching user accounts
+   * Test API connection with comprehensive diagnostics
    */
   async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
     try {
-      const query = `
+      // First, try introspection to see what queries are available
+      const introspectionQuery = `
         query {
-          me {
-            id
-            accounts {
-              id
-              name
+          __schema {
+            queryType {
+              fields {
+                name
+                description
+              }
             }
           }
         }
       `
       
-      const result = await this.graphql(query)
+      let availableQueries: string[] = []
+      try {
+        const introspection = await this.graphql(introspectionQuery)
+        if (introspection.data?.__schema?.queryType?.fields) {
+          availableQueries = introspection.data.__schema.queryType.fields.map((f: any) => f.name)
+        }
+      } catch (e) {
+        // Introspection might be disabled
+      }
       
-      if (result.data && result.data.me) {
+      // Try multiple query patterns
+      const testQueries = [
+        { name: 'soundZones direct', query: '{ soundZones { id name } }' },
+        { name: 'viewer.soundZones', query: '{ viewer { soundZones { id name } } }' },
+        { name: 'me query', query: '{ me { id } }' },
+      ]
+      
+      let successfulQuery = null
+      let lastError = null
+      
+      for (const test of testQueries) {
+        try {
+          const result = await this.graphql(test.query)
+          if (result.data && !result.errors) {
+            successfulQuery = test.name
+            break
+          }
+          if (result.errors) {
+            lastError = result.errors[0]?.message
+          }
+        } catch (e: any) {
+          lastError = e.message
+        }
+      }
+      
+      if (successfulQuery) {
         return {
           success: true,
           message: 'Successfully connected to Soundtrack Your Brand API',
-          details: result.data
+          details: {
+            workingQuery: successfulQuery,
+            availableQueries: availableQueries.length > 0 ? availableQueries : 'Introspection disabled'
+          }
         }
-      } else if (result.errors) {
-        return {
-          success: false,
-          message: result.errors[0]?.message || 'GraphQL query failed',
-          details: result.errors
+      }
+      
+      // If all GraphQL queries fail, try REST API
+      try {
+        const restResponse = await fetch(`${this.baseUrl}/accounts`, {
+          headers: {
+            'Authorization': `Basic ${this.apiToken}`,
+            'Accept': 'application/json'
+          }
+        })
+        
+        if (restResponse.ok) {
+          return {
+            success: true,
+            message: 'Successfully connected to Soundtrack Your Brand API (REST)',
+            details: {
+              note: 'GraphQL queries failed, but REST API is working',
+              lastGraphQLError: lastError
+            }
+          }
         }
+      } catch (restError) {
+        // REST also failed
       }
       
       return {
         success: false,
-        message: 'Unexpected API response format'
+        message: lastError || 'Could not connect to Soundtrack API',
+        details: {
+          testedQueries: testQueries.map(t => t.name),
+          availableQueries: availableQueries.length > 0 ? availableQueries : 'Unknown'
+        }
       }
     } catch (error: any) {
       return {
@@ -197,46 +256,95 @@ export class SoundtrackYourBrandAPI {
 
   /**
    * List all sound zones (players) for the account
-   * Uses direct soundZones query which is more reliable across API versions
+   * Uses a flexible query approach that works with Soundtrack's API structure
    */
   async listSoundZones(accountId?: string): Promise<SoundtrackSoundZone[]> {
+    // Try the most common query pattern first
     const query = `
-      query ListSoundZones {
-        me {
-          soundZones {
+      query {
+        soundZones {
+          id
+          name
+          account {
             id
             name
-            account {
+          }
+          currentPlayback {
+            station {
               id
               name
             }
-            currentPlayback {
-              station {
-                id
-                name
-              }
-              playing
-              volume
-            }
+            playing
+            volume
           }
         }
       }
     `
     
-    const result = await this.graphql(query)
-    
-    if (result.errors) {
-      throw new Error(result.errors[0]?.message || 'Failed to fetch sound zones')
+    try {
+      const result = await this.graphql(query)
+      
+      if (result.errors) {
+        // If direct soundZones query fails, try alternative structures
+        throw new Error(result.errors[0]?.message || 'Failed to fetch sound zones')
+      }
+      
+      const soundZones: SoundtrackSoundZone[] = result.data?.soundZones || []
+      
+      // Filter by account ID if provided
+      if (accountId) {
+        return soundZones.filter(zone => zone.account.id === accountId)
+      }
+      
+      return soundZones
+    } catch (firstError: any) {
+      // Try alternative query structure through viewer
+      try {
+        const altQuery = `
+          query {
+            viewer {
+              soundZones {
+                id
+                name
+                account {
+                  id
+                  name
+                }
+                currentPlayback {
+                  station {
+                    id
+                    name
+                  }
+                  playing
+                  volume
+                }
+              }
+            }
+          }
+        `
+        
+        const result = await this.graphql(altQuery)
+        
+        if (result.errors) {
+          throw new Error(result.errors[0]?.message || 'Failed to fetch sound zones')
+        }
+        
+        const soundZones: SoundtrackSoundZone[] = result.data?.viewer?.soundZones || []
+        
+        if (accountId) {
+          return soundZones.filter(zone => zone.account.id === accountId)
+        }
+        
+        return soundZones
+      } catch (secondError: any) {
+        // If both GraphQL approaches fail, provide helpful error
+        throw new Error(
+          `Unable to fetch sound zones. The API structure may have changed. ` +
+          `Original error: ${firstError.message}. ` +
+          `Please verify your API token has the correct permissions and check the Soundtrack API documentation.`
+        )
+      }
     }
-    
-    const soundZones: SoundtrackSoundZone[] = result.data?.me?.soundZones || []
-    
-    // Filter by account ID if provided
-    if (accountId) {
-      return soundZones.filter(zone => zone.account.id === accountId)
-    }
-    
-    return soundZones
   }
 
   /**
