@@ -197,6 +197,14 @@ export default function Home() {
                   </a>
                   
                   <a 
+                    href="/backup-restore"
+                    className="block p-4 bg-gradient-to-br from-cyan-600/40 to-indigo-600/40 rounded-lg border-2 border-cyan-400/50 hover:border-cyan-400/70 hover:from-cyan-600/50 hover:to-indigo-600/50 transition-all duration-200 shadow-lg"
+                  >
+                    <h4 className="font-bold text-cyan-200 mb-1">💾 Backup & Restore</h4>
+                    <p className="text-cyan-100/90 text-sm">System backup management</p>
+                  </a>
+                  
+                  <a 
                     href="/scheduler"
                     className="block p-4 bg-gradient-to-br from-emerald-600/40 to-blue-600/40 rounded-lg border-2 border-emerald-400/50 hover:border-emerald-400/70 hover:from-emerald-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
                   >

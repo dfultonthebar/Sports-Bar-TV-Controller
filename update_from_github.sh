@@ -24,6 +24,9 @@ BACKUP_FILE="$BACKUP_DIR/config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
 
 mkdir -p "$BACKUP_DIR"
 
+# Get the current config filename based on matrix configuration
+CONFIG_FILENAME=$(node scripts/get-config-filename.js 2>/dev/null || echo "local.local.json")
+
 # Backup local config files, .env, and database
 tar -czf "$BACKUP_FILE" \
     config/*.local.json \
@@ -239,6 +242,11 @@ if [ -f "prisma/schema.prisma" ]; then
     export DATABASE_URL="file:./dev.db"
     npx prisma generate
     npx prisma db push
+    
+    # Rename config file based on matrix configuration name
+    echo ""
+    echo "📝 Updating config file naming..."
+    node scripts/rename-config-file.js || echo "⚠️  Config rename skipped (will use default name)"
 fi
 
 # Build the application
