@@ -102,6 +102,12 @@ export default function SoundtrackControl({
           setSelectedPlayer(data.players[0])
           updateNowPlaying(data.players[0].id)
         }
+      } else if (playersRes.status === 404) {
+        const data = await playersRes.json()
+        if (data.error && data.error.includes('not configured')) {
+          setError('Soundtrack Your Brand is not configured. Please configure your API key in the system settings.')
+          return
+        }
       }
 
       if (stationsRes.ok) {
