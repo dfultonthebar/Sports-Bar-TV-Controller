@@ -33,6 +33,7 @@ interface MatrixConfig {
   connectionStatus?: string
   lastTested?: string
   isActive?: boolean
+  cecInputChannel?: number | null
   inputs: MatrixInput[]
   outputs: MatrixOutput[]
 }
@@ -430,6 +431,32 @@ export default function MatrixControl() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="4999"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  CEC Adapter Input
+                  <span className="text-xs text-gray-500 ml-2">(optional - for TV control)</span>
+                </label>
+                <select
+                  value={currentConfig.cecInputChannel || ''}
+                  onChange={(e) => setCurrentConfig({ 
+                    ...currentConfig, 
+                    cecInputChannel: e.target.value ? parseInt(e.target.value) : undefined 
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Not Connected</option>
+                  {currentConfig.inputs.map((input) => (
+                    <option key={input.channelNumber} value={input.channelNumber}>
+                      Input {input.channelNumber} - {input.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select which input channel has the Pulse-Eight CEC adapter connected. 
+                  This input will be routed to TVs when CEC control is needed.
+                </p>
               </div>
 
               <div className="flex space-x-3">

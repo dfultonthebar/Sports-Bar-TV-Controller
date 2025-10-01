@@ -142,6 +142,14 @@ export default function Home() {
                   </a>
                   
                   <a 
+                    href="/cec-control"
+                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-yellow-400/30 hover:bg-sportsBar-600/80 hover:border-yellow-400/50 transition-all duration-200"
+                  >
+                    <h4 className="font-medium text-yellow-300 mb-1">⚡ CEC TV Control</h4>
+                    <p className="text-yellow-200/80 text-sm">HDMI-CEC TV power & input</p>
+                  </a>
+                  
+                  <a 
                     href="/atlas-config"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-teal-400/30 hover:bg-sportsBar-600/80 hover:border-teal-400/50 transition-all duration-200"
                   >

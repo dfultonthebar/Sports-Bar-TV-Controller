@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
         tcpPort: config.tcpPort,
         udpPort: config.udpPort,
         protocol: config.protocol,
-        isActive: config.isActive
+        isActive: config.isActive,
+        cecInputChannel: config.cecInputChannel || null
       },
       create: {
         name: config.name,
@@ -60,7 +61,8 @@ export async function POST(request: NextRequest) {
         tcpPort: config.tcpPort,
         udpPort: config.udpPort,
         protocol: config.protocol,
-        isActive: config.isActive
+        isActive: config.isActive,
+        cecInputChannel: config.cecInputChannel || null
       }
     })
 

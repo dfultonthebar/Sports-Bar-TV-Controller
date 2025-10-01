@@ -76,6 +76,7 @@ model MatrixConfiguration {
   connectionStatus String   @default("disconnected") // connected, disconnected, error
   lastTested       DateTime?
   isActive         Boolean  @default(true)
+  cecInputChannel  Int?     // Which input channel has the CEC adapter connected (null if not used)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   
