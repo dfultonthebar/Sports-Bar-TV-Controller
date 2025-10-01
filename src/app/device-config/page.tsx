@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,21 @@ export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<any>(null)
 
+  // Load AI toggle state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem('deviceConfigAiEnabled')
+    if (savedState !== null) {
+      setAiEnhancementsEnabled(savedState === 'true')
+    }
+  }, [])
+
+  // Save AI toggle state to localStorage when it changes
+  const toggleAiEnhancements = () => {
+    const newState = !aiEnhancementsEnabled
+    setAiEnhancementsEnabled(newState)
+    localStorage.setItem('deviceConfigAiEnabled', String(newState))
+  }
+
   return (
     <SportsBarLayout>
       <SportsBarHeader
@@ -48,7 +63,7 @@ export default function DeviceConfigPage() {
             <Button
               variant={aiEnhancementsEnabled ? "default" : "outline"}
               size="sm"
-              onClick={() => setAiEnhancementsEnabled(!aiEnhancementsEnabled)}
+              onClick={toggleAiEnhancements}
               className="flex items-center gap-2"
             >
               {aiEnhancementsEnabled ? (

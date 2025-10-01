@@ -64,6 +64,16 @@ else
     echo "libCEC already installed"
 fi
 
+# Install Ollama for local AI support
+echo -e "${BLUE}🤖 Installing Ollama for Local AI support...${NC}"
+if [ -f "./install-ollama.sh" ]; then
+    echo "Running Ollama installation script..."
+    ./install-ollama.sh
+else
+    echo -e "${YELLOW}⚠️  Ollama installation script not found. Skipping...${NC}"
+    echo "You can install Ollama later by running: ./install-ollama.sh"
+fi
+
 echo -e "${YELLOW}📁 Setting up project...${NC}"
 
 # Clone or update repository

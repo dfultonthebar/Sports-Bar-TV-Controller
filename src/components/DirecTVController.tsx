@@ -519,7 +519,7 @@ export default function DirecTVController() {
       </div>
 
       {/* Device Selection */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border">
+      <div className="card p-4">
         <h3 className="text-lg font-medium text-slate-100 mb-3">DirecTV Receivers</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {devices.map((device) => (
@@ -528,12 +528,12 @@ export default function DirecTVController() {
                 onClick={() => setSelectedDevice(device)}
                 className={`w-full p-3 rounded-lg border-2 transition-all duration-200 text-left ${
                   selectedDevice?.id === device.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-blue-500 bg-blue-900/40'
+                    : 'border-slate-700 hover:border-blue-500 bg-slate-800/50 hover:bg-slate-800/80'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <Satellite className="w-5 h-5 text-gray-600" />
+                  <Satellite className="w-5 h-5 text-blue-400" />
                   <div className="flex space-x-1">
                     {device.isOnline ? (
                       <CheckCircle className="w-4 h-4 text-green-500" />
@@ -597,7 +597,7 @@ export default function DirecTVController() {
       {selectedDevice && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Quick Channel */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="card p-4">
             <h3 className="text-lg font-medium text-slate-100 mb-3">Quick Channel</h3>
             <div className="flex items-center space-x-3">
               <input
@@ -605,7 +605,7 @@ export default function DirecTVController() {
                 placeholder="Enter channel number"
                 value={quickChannel}
                 onChange={(e) => setQuickChannel(e.target.value.replace(/\D/g, ''))}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 input-dark"
                 onKeyPress={(e) => e.key === 'Enter' && sendQuickChannel()}
               />
               <button
@@ -618,7 +618,7 @@ export default function DirecTVController() {
           </div>
 
           {/* Sports Favorites */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-medium text-slate-100 flex items-center space-x-2">
                 <Trophy className="w-5 h-5 text-orange-500" />
@@ -674,7 +674,7 @@ export default function DirecTVController() {
                     <button
                       key={favorite.channel}
                       onClick={() => changeToChannel(favorite.channelNumber)}
-                      className="text-left p-2 hover:bg-gray-50 rounded text-sm border border-gray-100 transition-colors"
+                      className="text-left p-2 hover:bg-slate-700 rounded text-sm border border-slate-600 transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{favorite.name}</span>
@@ -693,7 +693,7 @@ export default function DirecTVController() {
       {selectedDevice && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Basic Controls */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="card p-4">
             <h3 className="text-lg font-medium text-slate-100 mb-4">Basic Controls</h3>
             
             {/* Power */}
@@ -779,7 +779,7 @@ export default function DirecTVController() {
           </div>
 
           {/* Navigation & Menu */}
-          <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <div className="card p-4">
             <h3 className="text-lg font-medium text-slate-100 mb-4">Navigation & Menu</h3>
             
             {/* Menu Buttons */}
@@ -876,7 +876,7 @@ export default function DirecTVController() {
 
       {/* DVR Controls */}
       {selectedDevice && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
+        <div className="card p-4">
           <h3 className="text-lg font-medium text-slate-100 mb-4 flex items-center space-x-2">
             <CirclePlay className="w-5 h-5 text-red-600" />
             <span>DVR Controls</span>
@@ -939,7 +939,7 @@ export default function DirecTVController() {
 
       {/* Number Pad */}
       {selectedDevice && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
+        <div className="card p-4">
           <h3 className="text-lg font-medium text-slate-100 mb-4">Number Pad</h3>
           <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DASH', '0', 'ENTER'].map((num) => (
@@ -962,7 +962,7 @@ export default function DirecTVController() {
       {/* Add Device Modal */}
       {showAddDevice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="card rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-slate-100 mb-4">Add DirecTV Receiver</h3>
             
             <div className="space-y-4">
@@ -973,7 +973,7 @@ export default function DirecTVController() {
                   placeholder="e.g., Main Bar DirecTV"
                   value={newDevice.name}
                   onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
               </div>
 
@@ -984,7 +984,7 @@ export default function DirecTVController() {
                   placeholder="192.168.1.150"
                   value={newDevice.ipAddress}
                   onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
                 <p className="text-xs text-slate-400 mt-1">Find this in your DirecTV receiver's network settings</p>
               </div>
@@ -995,7 +995,7 @@ export default function DirecTVController() {
                   type="number"
                   value={newDevice.port}
                   onChange={(e) => setNewDevice({ ...newDevice, port: parseInt(e.target.value) || 8080 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
                 <p className="text-xs text-slate-400 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
               </div>
@@ -1005,7 +1005,7 @@ export default function DirecTVController() {
                 <select
                   value={newDevice.receiverType}
                   onChange={(e) => setNewDevice({ ...newDevice, receiverType: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 >
                   <option value="Genie HD DVR">Genie HD DVR (HR54, HR44)</option>
                   <option value="Genie Mini">Genie Mini (C61K, C51)</option>
@@ -1021,7 +1021,7 @@ export default function DirecTVController() {
                   <span className="text-red-500 ml-1">*</span>
                 </label>
                 {loadingInputs ? (
-                  <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                  <div className="flex items-center space-x-2 px-3 py-2 input-dark bg-slate-800/50">
                     <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
                     <span className="text-slate-400 text-sm">Loading inputs...</span>
                   </div>
@@ -1029,7 +1029,7 @@ export default function DirecTVController() {
                   <select
                     value={newDevice.inputChannel || ''}
                     onChange={(e) => setNewDevice({ ...newDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 input-dark"
                     required
                   >
                     <option value="">Select Input Channel...</option>
@@ -1070,7 +1070,7 @@ export default function DirecTVController() {
       {/* Edit Device Modal */}
       {showEditDevice && editingDevice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="card rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-slate-100">Edit DirecTV Receiver</h3>
               <button
@@ -1092,7 +1092,7 @@ export default function DirecTVController() {
                   placeholder="e.g., Main Bar DirecTV"
                   value={editDevice.name}
                   onChange={(e) => setEditDevice({ ...editDevice, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
               </div>
 
@@ -1103,7 +1103,7 @@ export default function DirecTVController() {
                   placeholder="192.168.1.150"
                   value={editDevice.ipAddress}
                   onChange={(e) => setEditDevice({ ...editDevice, ipAddress: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
                 <p className="text-xs text-slate-400 mt-1">Find this in your DirecTV receiver's network settings</p>
               </div>
@@ -1114,7 +1114,7 @@ export default function DirecTVController() {
                   type="number"
                   value={editDevice.port}
                   onChange={(e) => setEditDevice({ ...editDevice, port: parseInt(e.target.value) || 8080 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 />
                 <p className="text-xs text-slate-400 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
               </div>
@@ -1124,7 +1124,7 @@ export default function DirecTVController() {
                 <select
                   value={editDevice.receiverType}
                   onChange={(e) => setEditDevice({ ...editDevice, receiverType: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 input-dark"
                 >
                   <option value="Genie HD DVR">Genie HD DVR (HR54, HR44)</option>
                   <option value="Genie Mini">Genie Mini (C61K, C51)</option>
@@ -1140,7 +1140,7 @@ export default function DirecTVController() {
                   <span className="text-red-500 ml-1">*</span>
                 </label>
                 {loadingInputs ? (
-                  <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                  <div className="flex items-center space-x-2 px-3 py-2 input-dark bg-slate-800/50">
                     <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
                     <span className="text-slate-400 text-sm">Loading inputs...</span>
                   </div>
@@ -1148,7 +1148,7 @@ export default function DirecTVController() {
                   <select
                     value={editDevice.inputChannel || ''}
                     onChange={(e) => setEditDevice({ ...editDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 input-dark"
                     required
                   >
                     <option value="">Select Input Channel...</option>
@@ -1192,7 +1192,7 @@ export default function DirecTVController() {
       {/* Delete Confirmation Modal */}
       {showDeleteDevice && deletingDevice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-sm w-full p-6">
+          <div className="card rounded-lg max-w-sm w-full p-6">
             <div className="flex items-center justify-center mb-4">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <Trash2 className="w-6 h-6 text-red-600" />
