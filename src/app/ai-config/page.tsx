@@ -251,8 +251,85 @@ export default function AIConfigPage() {
           </div>
         </div>
 
+        {/* AI-Powered Color Scheme Standardization */}
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
+          <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
+            <Bot className="w-5 h-5" />
+            <span>🎨 AI Style Standardization</span>
+          </h3>
+          
+          <div className="space-y-4">
+            <div className="bg-white/5 rounded-lg p-4">
+              <h4 className="font-medium text-blue-300 mb-2">Color Scheme Analysis</h4>
+              <p className="text-sm text-gray-300 mb-4">
+                Use local AI to automatically analyze and standardize the color scheme across all React components.
+              </p>
+              
+              <div className="space-y-2 text-xs text-gray-400 mb-4">
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Scans all components for styling inconsistencies</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Compares against standardized dark theme color palette</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Generates detailed reports with suggestions</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Automatically applies fixes with backup creation</span>
+                </div>
+              </div>
+              
+              <div className="bg-black/20 rounded p-3 mb-4">
+                <p className="text-xs text-purple-300 mb-2 font-medium">Quick Commands:</p>
+                <code className="block text-xs text-gray-300 mb-1">
+                  # Interactive menu (recommended)
+                </code>
+                <code className="block text-xs text-blue-300 bg-black/30 p-2 rounded mb-2">
+                  ./scripts/run-style-analysis.sh
+                </code>
+                
+                <code className="block text-xs text-gray-300 mb-1">
+                  # Direct analysis
+                </code>
+                <code className="block text-xs text-blue-300 bg-black/30 p-2 rounded mb-2">
+                  node scripts/ai-style-analyzer.js
+                </code>
+                
+                <code className="block text-xs text-gray-300 mb-1">
+                  # Apply fixes from latest report
+                </code>
+                <code className="block text-xs text-blue-300 bg-black/30 p-2 rounded">
+                  node scripts/ai-style-fixer.js ai-style-reports/[latest]
+                </code>
+              </div>
+              
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>💡 Requires: Ollama (Local AI)</span>
+                <span>📚 Docs: COLOR_SCHEME_STANDARD.md</span>
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-lg p-4 border border-blue-600/30">
+              <div className="flex items-start space-x-3">
+                <div className="text-2xl">🚀</div>
+                <div>
+                  <h4 className="font-medium text-blue-200 mb-1">Auto-Run During Updates</h4>
+                  <p className="text-xs text-blue-300">
+                    The color scheme analyzer now runs automatically in the background when you update from GitHub using <code className="bg-black/30 px-1 rounded">update_from_github.sh</code>. Check <code className="bg-black/30 px-1 rounded">ai-style-reports/</code> for results.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Quick Actions */}
-        <div className="flex space-x-4">
+        <div className="flex flex-wrap gap-4">
           <Link
             href="/ai-keys"
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -265,6 +342,13 @@ export default function AIConfigPage() {
           >
             <span>Test Team Search</span>
           </Link>
+          <a
+            href="/COLOR_SCHEME_STANDARD.md"
+            target="_blank"
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <span>View Style Guide</span>
+          </a>
         </div>
       </div>
     </div>
