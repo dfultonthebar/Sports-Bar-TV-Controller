@@ -110,6 +110,14 @@ export default function Home() {
                 <h3 className="text-lg font-semibold text-slate-200 mb-4">⚙️ Configuration & AV Management</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                   <a 
+                    href="/unified-tv-control"
+                    className="block p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-lg border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+                  >
+                    <h4 className="font-bold text-blue-200 mb-1">⚡ Unified TV Control</h4>
+                    <p className="text-blue-100/90 text-sm">CEC + IR with smart fallback</p>
+                  </a>
+                  
+                  <a 
                     href="/sports-guide-config"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-accent-purple/30 hover:bg-sportsBar-600/80 hover:border-accent-purple/50 transition-all duration-200"
                   >
