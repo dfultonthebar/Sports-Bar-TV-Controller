@@ -151,11 +151,11 @@ Respond ONLY with valid JSON, no additional text.`;
     
     console.log(`  Analyzing ${relativePath}...`);
     
-    // Call Ollama with the prompt
-    const command = `ollama run ${CONFIG.ollamaModel} "$(cat ${promptFile})"`;
+    // Call Ollama with the prompt using stdin
+    const command = `cat ${promptFile} | ollama run ${CONFIG.ollamaModel}`;
     const { stdout, stderr } = await execPromise(command, { 
       maxBuffer: 10 * 1024 * 1024,
-      timeout: 60000 
+      timeout: 120000  // Increased timeout for AI processing
     });
     
     // Clean up temp file
