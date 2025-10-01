@@ -1,0 +1,30 @@
+
+[Unit]
+Description=Sports Bar TV Controller Assistant
+Documentation=https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/Sports-Bar-TV-Controller
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sportsbar-assistant
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/Sports-Bar-TV-Controller
+
+[Install]
+WantedBy=multi-user.target
