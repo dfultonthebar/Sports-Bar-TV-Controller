@@ -39,6 +39,8 @@ next-env.d.ts
 # uploads
 /uploads/*
 !/uploads/.gitkeep
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # logs
 *.log
@@ -71,3 +73,6 @@ ecosystem.config.js
 *.backup
 *.backup.*
 core
+
+# Git files
+FETCH_HEAD

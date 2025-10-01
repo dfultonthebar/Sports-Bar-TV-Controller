@@ -243,6 +243,3 @@ echo "   3. Test the AI analysis features"
 echo "   4. Download logs with AI insights enabled"
 echo ""
 echo "✨ Your Sports Bar AI Assistant now has local AI-powered log analysis!"
-EOF
-
-chmod +x install-local-ai.sh
