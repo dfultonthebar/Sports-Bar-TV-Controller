@@ -1,0 +1,69 @@
+
+{
+  "system": {
+    "name": "Sports Bar Control System",
+    "location": "Your Bar Name",
+    "timezone": "America/New_York"
+  },
+  "network": {
+    "apiPort": 3000,
+    "devPort": 3001,
+    "allowedOrigins": ["http://localhost:3000", "http://localhost:3001"]
+  },
+  "devices": {
+    "autoDiscovery": true,
+    "discoveryInterval": 300000,
+    "commandDelay": 1000
+  },
+  "wolfpack": {
+    "ip": "192.168.1.100",
+    "port": 4999,
+    "protocol": "tcp",
+    "timeout": 5000,
+    "enabled": true,
+    "defaultMatrixSize": "8x8"
+  },
+  "globalCache": {
+    "devices": [],
+    "enabled": true,
+    "timeout": 3000
+  },
+  "directv": {
+    "devices": [],
+    "enabled": true,
+    "refreshInterval": 60000
+  },
+  "firetv": {
+    "devices": [],
+    "enabled": true,
+    "port": 5555
+  },
+  "cec": {
+    "enabled": false,
+    "adapter": "RPI",
+    "port": "",
+    "devices": []
+  },
+  "audio": {
+    "soundtrackEnabled": false,
+    "defaultVolume": 50,
+    "zones": []
+  },
+  "features": {
+    "aiAnalysis": true,
+    "autoScheduling": true,
+    "sportsFinder": true,
+    "tvGuide": true,
+    "layoutAnalysis": true
+  },
+  "logging": {
+    "level": "info",
+    "retention": 30,
+    "maxSize": "100mb"
+  },
+  "backup": {
+    "enabled": true,
+    "schedule": "0 2 * * *",
+    "retention": 7
+  }
+}
