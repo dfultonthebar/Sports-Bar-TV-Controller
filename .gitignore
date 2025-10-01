@@ -61,6 +61,13 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 
+# User data files (subscriptions, credentials, device configs)
+data/*.json
+!data/*.template.json
+data/scene-logs/
+data/atlas-configs/*.json
+!data/atlas-configs/*.template.json
+
 # IDE
 .vscode/
 .idea/

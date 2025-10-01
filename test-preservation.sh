@@ -59,6 +59,17 @@ echo "  Upload directory: $([ -d uploads ] && echo '✅ exists' || echo '❌ mis
 echo "  Files: $(find uploads -type f 2>/dev/null | wc -l)"
 echo ""
 
+echo "Data Files:"
+echo "  device-subscriptions.json: $([ -f data/device-subscriptions.json ] && echo '✅' || echo '❌')"
+echo "  streaming-credentials.json: $([ -f data/streaming-credentials.json ] && echo '✅' || echo '❌')"
+echo "  directv-devices.json: $([ -f data/directv-devices.json ] && echo '✅' || echo '❌')"
+echo "  firetv-devices.json: $([ -f data/firetv-devices.json ] && echo '✅' || echo '❌')"
+echo "  tv-layout.json: $([ -f data/tv-layout.json ] && echo '✅' || echo '❌')"
+if [ -f data/streaming-credentials.json ]; then
+    echo "  Streaming credentials count: $(cat data/streaming-credentials.json | jq 'length' 2>/dev/null || echo '0')"
+fi
+echo ""
+
 echo "=================================="
 echo "💡 Run ./update_from_github.sh and then run this script again"
 echo "   All counts should remain the same!"

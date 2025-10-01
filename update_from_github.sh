@@ -29,6 +29,9 @@ tar -czf "$BACKUP_FILE" \
     config/*.local.json \
     .env \
     prisma/dev.db \
+    data/*.json \
+    data/scene-logs/ \
+    data/atlas-configs/ \
     2>/dev/null || true
 
 if [ -f "$BACKUP_FILE" ]; then
@@ -61,6 +64,7 @@ echo "   Note: Your local files are gitignored and will be preserved:"
 echo "   - config/*.local.json (system/device/sports settings)"
 echo "   - .env (API keys and secrets)"
 echo "   - prisma/dev.db (ALL your configurations and data)"
+echo "   - data/*.json (subscriptions, credentials, device configs)"
 echo "   - uploads/ (user uploaded files)"
 
 # Clean only temporary files (NOT the database or uploads)
@@ -69,6 +73,26 @@ git clean -fd node_modules/.cache/ 2>/dev/null || true
 
 # Pull from GitHub (local data is automatically preserved by .gitignore)
 git pull origin main
+
+# =============================================================================
+# DATA FILES INITIALIZATION
+# =============================================================================
+
+# Initialize data files from templates if they don't exist
+echo ""
+echo "📁 Initializing data files..."
+
+for template in data/*.template.json; do
+    if [ -f "$template" ]; then
+        filename=$(basename "$template" .template.json).json
+        filepath="data/$filename"
+        
+        if [ ! -f "$filepath" ]; then
+            cp "$template" "$filepath"
+            echo "   ✅ Created $filename from template"
+        fi
+    fi
+done
 
 # =============================================================================
 # LOCAL CONFIGURATION INITIALIZATION
@@ -269,7 +293,14 @@ if curl -s http://localhost:3000 > /dev/null; then
     echo "      - Input/output mappings and scenes"
     echo "      - Audio zones and settings"
     echo "      - Sports guide configuration"
+    echo "      - AI API keys (Claude, ChatGPT, Grok, Local AI)"
+    echo "      - Soundtrack API credentials"
     echo "      - Uploaded layout PDFs"
+    echo "   ✅ Data files (data/*.json)"
+    echo "      - Streaming service credentials (NFHS, etc.)"
+    echo "      - Device subscription configurations"
+    echo "      - DirecTV/FireTV/IR device configs"
+    echo "      - Scene logs and Atlas configs"
     echo "   ✅ Local configuration (config/*.local.json)"
     echo "   ✅ Environment variables (.env)"
     echo "   ✅ User uploads (uploads/ directory)"

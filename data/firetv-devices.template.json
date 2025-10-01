@@ -1,0 +1,52 @@
+{
+  "devices": [
+    {
+      "name": "Amazon 1",
+      "ipAddress": "192.168.1.131",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "id": "firetv_1759187649372_qpmk1jw6o",
+      "isOnline": false,
+      "adbEnabled": false,
+      "addedAt": "2025-09-29T23:13:23.801Z",
+      "inputChannel": 13,
+      "updatedAt": "2025-09-29T23:47:14.723Z"
+    },
+    {
+      "name": "Amazon 2",
+      "ipAddress": "192.168.1.132",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "id": "firetv_1759187669414_okhb8gbt7",
+      "isOnline": false,
+      "adbEnabled": false,
+      "addedAt": "2025-09-29T23:13:43.842Z",
+      "inputChannel": 14,
+      "updatedAt": "2025-09-29T23:47:24.698Z"
+    },
+    {
+      "name": "Amazon 3",
+      "ipAddress": "192.168.1.133",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "id": "firetv_1759187694100_t78ztbdgb",
+      "isOnline": false,
+      "adbEnabled": false,
+      "addedAt": "2025-09-29T23:14:08.528Z",
+      "inputChannel": 15,
+      "updatedAt": "2025-09-29T23:47:34.741Z"
+    },
+    {
+      "name": "Amazon 4",
+      "ipAddress": "192.168.1.134",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "id": "firetv_1759187715902_ofa5mqk25",
+      "isOnline": false,
+      "adbEnabled": false,
+      "addedAt": "2025-09-29T23:14:30.334Z",
+      "inputChannel": 16,
+      "updatedAt": "2025-09-29T23:47:52.421Z"
+    }
+  ]
+}
