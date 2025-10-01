@@ -44,29 +44,35 @@ else
     echo "✅ Ollama service is already running"
 fi
 
-# Pull recommended AI models
+# Pull required AI models
 echo ""
-echo "📥 Pulling recommended AI models..."
+echo "📥 Pulling required AI models..."
 echo "   This may take a few minutes depending on your internet connection..."
 echo ""
 
-# Pull llama2 (7B - good balance of speed and quality)
-echo "📥 Pulling llama2 (7B)..."
-if ollama pull llama2 2>&1 | grep -q "success"; then
-    echo "✅ llama2 installed successfully"
-else
-    ollama pull llama2
-    echo "✅ llama2 model ready"
-fi
+# Define required models for all AI features
+REQUIRED_MODELS=(
+    "llama3.2"      # Primary model for style analysis and AI features
+    "llama2"        # Backup model for device diagnostics
+    "mistral"       # Fast model for quick queries
+)
 
-# Pull mistral (7B - faster, good for quick queries)
-echo "📥 Pulling mistral (7B)..."
-if ollama pull mistral 2>&1 | grep -q "success"; then
-    echo "✅ mistral installed successfully"
-else
-    ollama pull mistral
-    echo "✅ mistral model ready"
-fi
+# Pull each required model
+for MODEL in "${REQUIRED_MODELS[@]}"; do
+    echo ""
+    echo "📦 Pulling $MODEL..."
+    
+    if ollama pull "$MODEL"; then
+        echo "✅ $MODEL downloaded successfully"
+    else
+        echo "⚠️  Warning: Could not download $MODEL"
+        echo "   AI features may be limited"
+    fi
+done
+
+echo ""
+echo "📋 Installed AI Models:"
+ollama list
 
 echo ""
 echo "✅ Local AI models installed successfully!"

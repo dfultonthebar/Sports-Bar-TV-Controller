@@ -2,10 +2,11 @@
 #!/bin/bash
 
 # =============================================================================
-# UPDATE FROM GITHUB (No Yarn Issues)
+# UPDATE FROM GITHUB (Auto AI Setup)
 # =============================================================================
-# This script safely updates your local system from GitHub without yarn conflicts
-# Includes: libCEC, Ollama AI, and Color Scheme Standardization
+# This script safely updates your local system from GitHub
+# Automatically installs Ollama and downloads all required AI models
+# Includes: libCEC, Ollama AI, Required Models, and Color Scheme Standardization
 # =============================================================================
 
 set -e
@@ -45,47 +46,74 @@ else
     echo "✅ libCEC already installed"
 fi
 
-# Check for and install Ollama (Local AI) if missing
+# =============================================================================
+# OLLAMA AND AI MODELS INSTALLATION
+# =============================================================================
 echo ""
-echo "🤖 Checking Local AI (Ollama) installation..."
+echo "🤖 Setting up Local AI (Ollama)..."
+echo "=================================================="
+
+# Install Ollama if not present
 if ! command -v ollama &> /dev/null; then
-    echo "🔽 Ollama not found. Installing Local AI..."
+    echo "📥 Ollama not found. Installing..."
+    curl -fsSL https://ollama.com/install.sh | sh
     
-    # Check if install script exists
-    if [ -f "install-local-ai.sh" ]; then
-        echo "   Using install-local-ai.sh script..."
-        chmod +x install-local-ai.sh
-        ./install-local-ai.sh
+    if [ $? -eq 0 ]; then
+        echo "✅ Ollama installed successfully"
     else
-        echo "   Downloading and installing Ollama..."
-        curl -fsSL https://ollama.ai/install.sh | sh
-        
-        # Wait for Ollama to start
-        sleep 2
-        
-        # Pull recommended models
-        echo "   Pulling recommended AI models..."
-        ollama pull llama3.2:3b 2>/dev/null || echo "   ⚠️  Could not pull llama3.2:3b"
-        ollama pull llama3.2 2>/dev/null || echo "   ⚠️  Could not pull llama3.2"
+        echo "❌ Failed to install Ollama"
+        echo "   Please visit https://ollama.com/download for manual installation"
+        exit 1
     fi
-    
-    echo "✅ Local AI (Ollama) installed successfully"
 else
-    echo "✅ Local AI (Ollama) already installed"
-    
-    # Check if service is running
-    if ! pgrep -x ollama > /dev/null; then
-        echo "   Starting Ollama service..."
-        ollama serve > /dev/null 2>&1 &
-        sleep 2
-    fi
-    
-    # Ensure we have at least one model
-    if ! ollama list | grep -q "llama3.2"; then
-        echo "   Pulling llama3.2 model for AI features..."
-        ollama pull llama3.2:3b 2>/dev/null || ollama pull llama3.2 2>/dev/null || echo "   ⚠️  Could not pull model"
-    fi
+    echo "✅ Ollama already installed"
 fi
+
+# Start Ollama service if not running
+if ! pgrep -x "ollama" > /dev/null; then
+    echo "🔄 Starting Ollama service..."
+    ollama serve > /dev/null 2>&1 &
+    sleep 3
+    echo "✅ Ollama service started"
+else
+    echo "✅ Ollama service is running"
+fi
+
+# Define required models for all AI features
+REQUIRED_MODELS=(
+    "llama3.2"      # Primary model for style analysis and AI features
+    "llama2"        # Backup model for device diagnostics
+    "mistral"       # Fast model for quick queries
+)
+
+echo ""
+echo "📥 Downloading required AI models..."
+echo "   This may take a few minutes on first run..."
+
+# Pull each required model
+for MODEL in "${REQUIRED_MODELS[@]}"; do
+    echo ""
+    echo "📦 Checking model: $MODEL"
+    
+    if ollama list | grep -q "^$MODEL"; then
+        echo "   ✅ $MODEL already available"
+    else
+        echo "   📥 Downloading $MODEL..."
+        if ollama pull "$MODEL"; then
+            echo "   ✅ $MODEL downloaded successfully"
+        else
+            echo "   ⚠️  Warning: Could not download $MODEL"
+            echo "      AI features may be limited"
+        fi
+    fi
+done
+
+echo ""
+echo "📋 Installed AI Models:"
+ollama list
+
+echo ""
+echo "✅ AI setup complete!"
 
 # Update database if schema changed
 if [ -f "prisma/schema.prisma" ]; then
