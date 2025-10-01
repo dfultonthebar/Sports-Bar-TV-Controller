@@ -74,20 +74,26 @@ export default function BartenderMusicControl() {
       setLoading(true)
       setError(null)
 
+      // Fetch only bartender-visible players
       const [playersRes, stationsRes] = await Promise.all([
-        fetch('/api/soundtrack/players'),
+        fetch('/api/soundtrack/players?bartenderOnly=true'),
         fetch('/api/soundtrack/stations')
       ])
 
       if (playersRes.ok) {
         const data = await playersRes.json()
-        setPlayers(data.players || [])
-        if (data.players?.[0]) {
-          setSelectedPlayer(data.players[0])
-          updateNowPlaying(data.players[0].id)
+        const bartenderPlayers = data.players || []
+        setPlayers(bartenderPlayers)
+        
+        if (bartenderPlayers.length > 0) {
+          setSelectedPlayer(bartenderPlayers[0])
+          updateNowPlaying(bartenderPlayers[0].id)
+        } else {
+          setError('No music players are configured for bartender control. Contact management.')
         }
       } else {
-        setError('Failed to load Soundtrack players. Check configuration.')
+        const data = await playersRes.json()
+        setError(data.error || 'Failed to load Soundtrack players. Check configuration.')
       }
 
       if (stationsRes.ok) {
@@ -96,7 +102,7 @@ export default function BartenderMusicControl() {
       }
     } catch (err: any) {
       console.error('Failed to load Soundtrack data:', err)
-      setError('Not configured. Contact management.')
+      setError('Music system not configured. Contact management.')
     } finally {
       setLoading(false)
     }
@@ -211,13 +217,45 @@ export default function BartenderMusicControl() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
+      {/* Player Selection (if multiple players) */}
+      {players.length > 1 && (
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+          <h3 className="text-sm font-medium text-slate-400 mb-3">Select Music Zone:</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {players.map((player) => (
+              <button
+                key={player.id}
+                onClick={() => {
+                  setSelectedPlayer(player)
+                  updateNowPlaying(player.id)
+                }}
+                className={`p-3 rounded-lg border transition-all ${
+                  selectedPlayer?.id === player.id
+                    ? 'bg-purple-600 border-purple-400 text-white shadow-lg'
+                    : 'bg-slate-900 border-slate-700 text-gray-300 hover:border-slate-600'
+                }`}
+              >
+                <div className="font-medium text-sm">{player.name}</div>
+                <div className="flex items-center justify-center mt-2">
+                  {player.isPlaying ? (
+                    <Play className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Pause className="w-4 h-4 text-slate-500" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Now Playing Card */}
       {nowPlaying && (
         <div className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 backdrop-blur-sm rounded-lg p-6 border border-purple-800/30">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold flex items-center">
               <Disc className="w-5 h-5 mr-2 text-purple-400" />
-              Now Playing
+              Now Playing {players.length > 1 && `- ${selectedPlayer.name}`}
             </h3>
             <Badge variant="secondary" className="bg-purple-800/50 text-purple-200">
               {nowPlaying.station.name}

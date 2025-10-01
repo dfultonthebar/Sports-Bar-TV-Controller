@@ -305,6 +305,24 @@ model SoundtrackConfig {
   lastTested  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  players     SoundtrackPlayer[]
+}
+
+model SoundtrackPlayer {
+  id                 String            @id @default(cuid())
+  configId           String
+  playerId           String            // Soundtrack player ID from API
+  playerName         String            // Player name from Soundtrack
+  accountId          String?           // Soundtrack account ID
+  bartenderVisible   Boolean           @default(false) // Show in bartender remote
+  displayOrder       Int               @default(0)     // Order in bartender list
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  
+  config             SoundtrackConfig  @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, playerId])
 }
 
 model Schedule {

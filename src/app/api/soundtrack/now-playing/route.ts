@@ -1,42 +1,43 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
+import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 const prisma = new PrismaClient()
 
-async function getAPI() {
-  const config = await prisma.soundtrackConfig.findFirst({
-    orderBy: { createdAt: 'desc' }
-  })
-  
-  if (!config || !config.apiKey) {
-    throw new Error('Soundtrack Your Brand not configured')
-  }
-  
-  return new SoundtrackYourBrandAPI(config.apiKey)
-}
-
+// GET - Fetch now playing for a player
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const playerId = searchParams.get('playerId')
 
     if (!playerId) {
-      return NextResponse.json(
-        { success: false, error: 'Player ID required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Player ID is required' 
+      }, { status: 400 })
     }
 
-    const api = await getAPI()
+    // Get API key from config
+    const config = await prisma.soundtrackConfig.findFirst()
+    
+    if (!config) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Soundtrack not configured' 
+      }, { status: 404 })
+    }
+
+    const api = getSoundtrackAPI(config.apiKey)
     const nowPlaying = await api.getNowPlaying(playerId)
+
     return NextResponse.json({ success: true, nowPlaying })
   } catch (error: any) {
-    console.error('Soundtrack now playing error:', error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    )
+    console.error('Error fetching now playing:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message 
+    }, { status: 500 })
   }
 }
+
