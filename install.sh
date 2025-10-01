@@ -54,6 +54,16 @@ if ! command -v pm2 &> /dev/null; then
     sudo npm install -g pm2
 fi
 
+# Install CEC libraries for HDMI-CEC control
+echo -e "${BLUE}📺 Installing HDMI-CEC support (libCEC)...${NC}"
+if ! command -v cec-client &> /dev/null; then
+    echo "Installing libCEC for Pulse-Eight USB CEC Adapter..."
+    sudo apt install -y cec-utils libcec4 libcec-dev
+    echo -e "${GREEN}✅ libCEC installed successfully${NC}"
+else
+    echo "libCEC already installed"
+fi
+
 echo -e "${YELLOW}📁 Setting up project...${NC}"
 
 # Clone or update repository

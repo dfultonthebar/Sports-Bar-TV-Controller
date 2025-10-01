@@ -34,6 +34,16 @@ git pull origin main
 echo "📦 Installing/updating dependencies with npm..."
 npm install
 
+# Check for and install libCEC if missing
+if ! command -v cec-client &> /dev/null; then
+    echo "📺 Installing HDMI-CEC support (libCEC)..."
+    sudo apt update
+    sudo apt install -y cec-utils libcec4 libcec-dev
+    echo "✅ libCEC installed successfully"
+else
+    echo "✅ libCEC already installed"
+fi
+
 # Update database if schema changed
 if [ -f "prisma/schema.prisma" ]; then
     echo "🗄️  Updating database..."

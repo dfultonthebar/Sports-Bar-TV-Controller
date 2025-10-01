@@ -77,6 +77,11 @@ After installation/update, access at:
 - Matrix control system integration
 - System enhancement tools
 - Wolf Pack matrix control
+- **HDMI-CEC control for TVs via Pulse-Eight USB CEC Adapter**
+  - Power control (on/standby) for individual TVs or broadcast to all
+  - Device discovery and monitoring
+  - Integrated with matrix input selection
+  - Automatic driver installation (libCEC)
 
 ## 🛠️ **Development**
 
@@ -85,6 +90,22 @@ npm run dev    # Start development server
 npm run build  # Build for production
 npm start      # Start production server
 ```
+
+## 🔌 **Hardware Requirements**
+
+### HDMI-CEC Control
+For TV power control via HDMI-CEC, you'll need:
+- **Pulse-Eight USB CEC Adapter** connected to your server
+- HDMI connection from the server to your matrix switcher
+- TVs that support HDMI-CEC (most modern TVs)
+
+The installation script automatically installs **libCEC** drivers. Just plug in your Pulse-Eight adapter and the system will detect it!
+
+### Supported Hardware
+- **Matrix Switchers**: Wolf Pack HDMI matrices
+- **IR Control**: Global Cache iTach IP2IR (for cable boxes, DirecTV, Fire TV)
+- **Audio Processors**: AtlasIED Atmosphere (AZM4/AZM8)
+- **TVs**: Any HDMI-CEC capable displays
 
 ## 📦 **Package Manager**
 
