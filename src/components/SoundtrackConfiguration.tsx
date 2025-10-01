@@ -43,6 +43,8 @@ export default function SoundtrackConfiguration() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [diagnosing, setDiagnosing] = useState(false)
+  const [diagnosticResult, setDiagnosticResult] = useState<any>(null)
 
   useEffect(() => {
     loadConfiguration()
@@ -164,6 +166,30 @@ export default function SoundtrackConfiguration() {
     }
   }
 
+  const runDiagnostics = async () => {
+    try {
+      setDiagnosing(true)
+      setError(null)
+      setDiagnosticResult(null)
+
+      const response = await fetch('/api/soundtrack/diagnose')
+      const data = await response.json()
+      
+      setDiagnosticResult(data)
+      
+      if (!data.success) {
+        setError(data.message || 'Diagnostic test failed')
+      } else {
+        setSuccess('Connection successful!')
+        setTimeout(() => setSuccess(null), 3000)
+      }
+    } catch (err: any) {
+      setError('Failed to run diagnostics: ' + err.message)
+    } finally {
+      setDiagnosing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -210,6 +236,29 @@ export default function SoundtrackConfiguration() {
         <div className="bg-green-900/30 border border-green-800 rounded-lg p-4 flex items-center">
           <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
           <span className="text-green-300">{success}</span>
+        </div>
+      )}
+
+      {/* Diagnostic Results */}
+      {diagnosticResult && !diagnosticResult.success && (
+        <div className="bg-orange-900/30 border border-orange-800 rounded-lg p-6">
+          <h4 className="text-lg font-semibold text-orange-300 mb-3 flex items-center">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            Connection Diagnostic Results
+          </h4>
+          <div className="space-y-3">
+            <p className="text-orange-200">{diagnosticResult.message}</p>
+            {diagnosticResult.recommendations && diagnosticResult.recommendations.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-orange-300 mb-2">Recommendations:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm text-orange-200">
+                  {diagnosticResult.recommendations.map((rec: string, idx: number) => (
+                    <li key={idx}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -297,6 +346,32 @@ export default function SoundtrackConfiguration() {
             <p>• Get your API key from Soundtrack Your Brand dashboard</p>
             <p>• The key will be encrypted and stored securely</p>
           </div>
+
+          {config && (
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              <Button
+                onClick={runDiagnostics}
+                disabled={diagnosing}
+                variant="outline"
+                className="w-full"
+              >
+                {diagnosing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Running Diagnostics...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Test API Connection
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-slate-500 mt-2 text-center">
+                Troubleshoot connection issues with the Soundtrack API
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

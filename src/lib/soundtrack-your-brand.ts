@@ -51,22 +51,84 @@ export class SoundtrackYourBrandAPI {
     this.apiKey = apiKey
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit = {}, tryBasicAuth: boolean = false) {
     const url = `${this.baseUrl}${endpoint}`
+    
+    // Try both Bearer and Basic authentication methods
+    const authHeaders = tryBasicAuth 
+      ? { 'Authorization': `Basic ${this.apiKey}` }
+      : { 'Authorization': `Bearer ${this.apiKey}` }
+    
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        ...authHeaders,
         'Content-Type': 'application/json',
         ...options.headers,
       },
     })
 
     if (!response.ok) {
-      throw new Error(`Soundtrack API error: ${response.status} ${response.statusText}`)
+      // If Bearer auth fails with 401/403, try Basic auth
+      if (!tryBasicAuth && (response.status === 401 || response.status === 403)) {
+        return this.request(endpoint, options, true)
+      }
+      
+      // Provide detailed error messages
+      let errorMessage = `Soundtrack API error: ${response.status} ${response.statusText}`
+      
+      if (response.status === 404) {
+        errorMessage = 'Soundtrack API endpoint not found. The API may have changed or your account may not have access to this feature.'
+      } else if (response.status === 401) {
+        errorMessage = 'Authentication failed. Please check your API key.'
+      } else if (response.status === 403) {
+        errorMessage = 'Access forbidden. Your account may not have permission for this feature.'
+      }
+      
+      throw new Error(errorMessage)
     }
 
     return response.json()
+  }
+
+  // Diagnostic method to test API connectivity
+  async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+    const endpoints = ['/account', '/accounts', '/me', '/soundzones', '/players']
+    const versions = ['v2', 'v3', 'v1']
+    
+    for (const version of versions) {
+      const oldBaseUrl = this.baseUrl
+      this.baseUrl = `https://api.soundtrackyourbrand.com/${version}`
+      
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            headers: {
+              'Authorization': `Basic ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            return {
+              success: true,
+              message: `Successfully connected using ${version}${endpoint}`,
+              details: { version, endpoint, data }
+            }
+          }
+        } catch (error) {
+          // Continue trying
+        }
+      }
+      
+      this.baseUrl = oldBaseUrl
+    }
+    
+    return {
+      success: false,
+      message: 'Could not connect to Soundtrack API. Please verify your API key and check the Soundtrack Your Brand documentation for current API endpoints.'
+    }
   }
 
   // Account Management

@@ -190,10 +190,21 @@ export default function BartenderMusicControl() {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="bg-red-900/30 backdrop-blur-sm rounded-lg p-8 border border-red-800">
-          <div className="flex items-center justify-center text-red-300">
-            <AlertCircle className="w-6 h-6 mr-3" />
-            <span>{error}</span>
+          <div className="flex items-center justify-center text-red-300 mb-4">
+            <AlertCircle className="w-6 h-6 mr-3 flex-shrink-0" />
+            <span className="text-center">{error}</span>
           </div>
+          {error.includes('404') && (
+            <div className="mt-4 p-4 bg-orange-900/30 border border-orange-800 rounded-lg text-sm text-orange-200">
+              <p className="font-medium mb-2">Troubleshooting Steps:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Verify the Soundtrack API configuration in the admin settings</li>
+                <li>Check if your Soundtrack Your Brand account is active</li>
+                <li>Run the API connection diagnostic tool</li>
+                <li>Contact management to review the Soundtrack integration</li>
+              </ul>
+            </div>
+          )}
           <div className="text-center mt-4">
             <Button onClick={loadData} variant="outline" size="sm">
               Retry
