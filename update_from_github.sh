@@ -15,22 +15,90 @@ echo "🔄 Updating Sports Bar AI Assistant from GitHub..."
 
 cd /home/ubuntu/Sports-Bar-TV-Controller
 
+# =============================================================================
+# BACKUP LOCAL CONFIGURATION
+# =============================================================================
+echo "💾 Backing up local configuration..."
+BACKUP_DIR="$HOME/sports-bar-backups"
+BACKUP_FILE="$BACKUP_DIR/config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+
+mkdir -p "$BACKUP_DIR"
+
+# Backup local config files, .env, and database
+tar -czf "$BACKUP_FILE" \
+    config/*.local.json \
+    .env \
+    prisma/dev.db \
+    2>/dev/null || true
+
+if [ -f "$BACKUP_FILE" ]; then
+    echo "✅ Configuration backed up to: $BACKUP_FILE"
+    
+    # Keep only last 7 backups
+    cd "$BACKUP_DIR"
+    ls -t config-backup-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
+    cd - > /dev/null
+else
+    echo "ℹ️  No local configuration to backup (first run?)"
+fi
+
 # Check git status
+echo ""
 echo "📊 Checking git status..."
 git status
 
 # Stop running processes
+echo ""
 echo "⏹️  Stopping running processes..."
 pkill -f "npm.*start" 2>/dev/null || true
 pkill -f "next" 2>/dev/null || true
 sleep 2
 
 # Pull latest changes
+echo ""
 echo "⬇️  Pulling latest changes from GitHub..."
+echo "   Note: Your local config files (*.local.json) are gitignored and will be preserved"
+
 # Handle any local database changes that might conflict
 git checkout -- prisma/dev.db 2>/dev/null || true
 git clean -fd uploads/ 2>/dev/null || true
+
+# Pull from GitHub (local configs are automatically preserved by .gitignore)
 git pull origin main
+
+# =============================================================================
+# LOCAL CONFIGURATION INITIALIZATION
+# =============================================================================
+echo ""
+echo "🔧 Checking local configuration..."
+
+# Check if local config files exist
+if [ ! -f "config/local.local.json" ]; then
+    echo "📝 Local configuration not found. Initializing from templates..."
+    if [ -f "scripts/init-local-config.sh" ]; then
+        ./scripts/init-local-config.sh
+        echo ""
+        echo "⚠️  IMPORTANT: Edit your local configuration files:"
+        echo "   nano config/local.local.json      # System settings"
+        echo "   nano config/devices.local.json    # Device inventory"
+        echo "   nano config/sports-teams.local.json   # Sports preferences"
+        echo ""
+        read -p "Press Enter to continue after you've reviewed the config files..."
+    else
+        echo "⚠️  Warning: init-local-config.sh not found"
+        echo "   You may need to manually create config/*.local.json files"
+    fi
+else
+    echo "✅ Local configuration files found and preserved"
+    
+    # Check if there are new template options that should be merged
+    if [ -f "scripts/init-local-config.sh" ]; then
+        echo "   Checking for new configuration options..."
+        ./scripts/init-local-config.sh 2>&1 | grep -q "Created: 0" && \
+            echo "   ✅ Configuration is up to date" || \
+            echo "   ℹ️  New configuration options may have been added"
+    fi
+fi
 
 # Use npm instead of yarn to avoid version conflicts
 echo "📦 Installing/updating dependencies with npm..."
@@ -169,9 +237,24 @@ if curl -s http://localhost:3000 > /dev/null; then
     echo "   ✅ Database updated"
     echo "   ✅ AI style analysis running in background"
     echo ""
+    echo "🔧 Configuration Status:"
+    echo "   ✅ Local configuration preserved (config/*.local.json)"
+    echo "   💾 Backup saved to: $BACKUP_FILE"
+    echo "   📁 All backups in: $BACKUP_DIR"
+    echo ""
     echo "🎨 Style Analysis:"
     echo "   Check ai-style-reports/ for detailed component analysis"
     echo "   Run './scripts/run-style-analysis.sh' for interactive tools"
+    echo ""
+    echo "💡 Tip: Your local settings are safe during updates!"
+    echo "   Edit config: nano config/local.local.json"
 else
     echo "❌ Update may have issues. Check server.log for details."
+    echo ""
+    echo "🔧 Configuration Status:"
+    if [ -f "$BACKUP_FILE" ]; then
+        echo "   💾 Your configuration was backed up to:"
+        echo "      $BACKUP_FILE"
+        echo "   To restore: tar -xzf $BACKUP_FILE"
+    fi
 fi
