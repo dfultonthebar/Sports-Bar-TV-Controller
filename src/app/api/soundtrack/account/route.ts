@@ -5,6 +5,9 @@ import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 const prisma = new PrismaClient()
 
+// Force dynamic rendering - don't pre-render during build
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     // Get API key from config

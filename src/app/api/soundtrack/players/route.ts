@@ -30,19 +30,22 @@ export async function GET(request: NextRequest) {
       orderBy: { displayOrder: 'asc' }
     })
 
-    // Fetch live player data from Soundtrack API
+    // Fetch live sound zone (player) data from Soundtrack API
     const api = getSoundtrackAPI(config.apiKey)
-    const livePlayers = await api.listPlayers()
+    const liveSoundZones = await api.listSoundZones()
 
     // Merge database settings with live data
-    const players = livePlayers
-      .map(livePlayer => {
-        const dbPlayer = dbPlayers.find(p => p.playerId === livePlayer.id)
+    const players = liveSoundZones
+      .map(soundZone => {
+        const dbPlayer = dbPlayers.find(p => p.playerId === soundZone.id)
         if (bartenderOnly && !dbPlayer?.bartenderVisible) {
           return null
         }
         return {
-          ...livePlayer,
+          id: soundZone.id,
+          name: soundZone.name,
+          account: soundZone.account,
+          currentPlayback: soundZone.currentPlayback,
           bartenderVisible: dbPlayer?.bartenderVisible || false,
           displayOrder: dbPlayer?.displayOrder || 0
         }
@@ -83,13 +86,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     const api = getSoundtrackAPI(config.apiKey)
-    const player = await api.updatePlayer(playerId, {
-      ...(playing !== undefined && { playing }),
-      ...(stationId && { stationId }),
-      ...(volume !== undefined && { volume })
-    })
+    
+    // Update the sound zone with the provided parameters
+    const updatedData: any = {}
+    if (playing !== undefined) updatedData.playing = playing
+    if (stationId) updatedData.stationId = stationId
+    if (volume !== undefined) updatedData.volume = volume
+    
+    const soundZone = await api.updateSoundZone(playerId, updatedData)
 
-    return NextResponse.json({ success: true, player })
+    return NextResponse.json({ 
+      success: true, 
+      player: {
+        id: soundZone.id,
+        name: soundZone.name,
+        currentPlayback: soundZone.currentPlayback
+      }
+    })
   } catch (error: any) {
     console.error('Error controlling Soundtrack player:', error)
     return NextResponse.json({ 

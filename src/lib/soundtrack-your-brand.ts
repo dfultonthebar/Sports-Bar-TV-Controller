@@ -165,15 +165,59 @@ export class SoundtrackYourBrandAPI {
 
   /**
    * Get current user's account information
+   * Note: We extract this from sound zones since the Viewer type structure varies
    */
   async getAccount(): Promise<SoundtrackAccount> {
+    // Fetch sound zones which contain account information
+    const soundZones = await this.listSoundZones()
+    
+    if (soundZones.length === 0) {
+      throw new Error('No sound zones found for this Soundtrack API token')
+    }
+    
+    // Extract unique accounts from sound zones
+    const accountsMap = new Map<string, { id: string; name: string }>()
+    soundZones.forEach(zone => {
+      if (zone.account && !accountsMap.has(zone.account.id)) {
+        accountsMap.set(zone.account.id, {
+          id: zone.account.id,
+          name: zone.account.name
+        })
+      }
+    })
+    
+    const accounts = Array.from(accountsMap.values())
+    
+    return {
+      id: accounts[0].id,
+      name: accounts[0].name,
+      accounts: accounts
+    }
+  }
+
+  /**
+   * List all sound zones (players) for the account
+   * Uses direct soundZones query which is more reliable across API versions
+   */
+  async listSoundZones(accountId?: string): Promise<SoundtrackSoundZone[]> {
     const query = `
-      query {
+      query ListSoundZones {
         me {
-          id
-          accounts {
+          soundZones {
             id
             name
+            account {
+              id
+              name
+            }
+            currentPlayback {
+              station {
+                id
+                name
+              }
+              playing
+              volume
+            }
           }
         }
       }
@@ -182,53 +226,15 @@ export class SoundtrackYourBrandAPI {
     const result = await this.graphql(query)
     
     if (result.errors) {
-      throw new Error(result.errors[0]?.message || 'Failed to fetch account')
-    }
-    
-    return result.data.me
-  }
-
-  /**
-   * List all sound zones for the account
-   */
-  async listSoundZones(accountId?: string): Promise<SoundtrackSoundZone[]> {
-    const query = `
-      query ListSoundZones($accountId: ID) {
-        me {
-          accounts(id: $accountId) {
-            soundZones {
-              id
-              name
-              account {
-                id
-                name
-              }
-              currentPlayback {
-                station {
-                  id
-                  name
-                }
-                playing
-                volume
-              }
-            }
-          }
-        }
-      }
-    `
-    
-    const result = await this.graphql(query, { accountId })
-    
-    if (result.errors) {
       throw new Error(result.errors[0]?.message || 'Failed to fetch sound zones')
     }
     
-    const soundZones: SoundtrackSoundZone[] = []
-    result.data?.me?.accounts?.forEach((account: any) => {
-      if (account.soundZones) {
-        soundZones.push(...account.soundZones)
-      }
-    })
+    const soundZones: SoundtrackSoundZone[] = result.data?.me?.soundZones || []
+    
+    // Filter by account ID if provided
+    if (accountId) {
+      return soundZones.filter(zone => zone.account.id === accountId)
+    }
     
     return soundZones
   }

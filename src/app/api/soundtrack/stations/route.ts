@@ -5,6 +5,9 @@ import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 const prisma = new PrismaClient()
 
+// Force dynamic rendering - don't pre-render during build
+export const dynamic = 'force-dynamic'
+
 // GET - Fetch available stations/playlists
 export async function GET() {
   try {
@@ -19,7 +22,13 @@ export async function GET() {
     }
 
     const api = getSoundtrackAPI(config.apiKey)
-    const stations = await api.listStations()
+    
+    // First get the account info
+    const account = await api.getAccount()
+    
+    // Get stations for the first available account
+    const accountId = account.accounts?.[0]?.id || account.id
+    const stations = await api.listStations(accountId)
 
     return NextResponse.json({ success: true, stations })
   } catch (error: any) {
