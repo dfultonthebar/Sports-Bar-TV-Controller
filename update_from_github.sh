@@ -38,7 +38,7 @@ npm install
 if ! command -v cec-client &> /dev/null; then
     echo "📺 Installing HDMI-CEC support (libCEC)..."
     sudo apt update
-    sudo apt install -y cec-utils libcec4 libcec-dev
+    sudo apt install -y cec-utils libcec6 libcec-dev
     echo "✅ libCEC installed successfully"
 else
     echo "✅ libCEC already installed"

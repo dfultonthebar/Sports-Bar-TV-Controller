@@ -5,7 +5,7 @@ echo "Installing CEC Bridge for Pulse-Eight USB CEC Adapter..."
 
 # Install libCEC
 sudo apt-get update
-sudo apt-get install -y cec-utils libcec4 libcec-dev nodejs npm
+sudo apt-get install -y cec-utils libcec6 libcec-dev nodejs npm
 
 # Create CEC bridge directory
 mkdir -p /home/ubuntu/cec-bridge

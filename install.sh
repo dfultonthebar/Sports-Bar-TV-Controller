@@ -58,7 +58,7 @@ fi
 echo -e "${BLUE}📺 Installing HDMI-CEC support (libCEC)...${NC}"
 if ! command -v cec-client &> /dev/null; then
     echo "Installing libCEC for Pulse-Eight USB CEC Adapter..."
-    sudo apt install -y cec-utils libcec4 libcec-dev
+    sudo apt install -y cec-utils libcec6 libcec-dev
     echo -e "${GREEN}✅ libCEC installed successfully${NC}"
 else
     echo "libCEC already installed"
