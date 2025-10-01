@@ -1,10 +1,23 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { PrismaClient } from '@prisma/client'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+
+const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
-    const api = getSoundtrackAPI()
+    // Get API key from config
+    const config = await prisma.soundtrackConfig.findFirst()
+    
+    if (!config || !config.apiKey) {
+      return NextResponse.json(
+        { success: false, error: 'Soundtrack Your Brand API key not configured' },
+        { status: 404 }
+      )
+    }
+
+    const api = getSoundtrackAPI(config.apiKey)
     const account = await api.getAccount()
     return NextResponse.json({ success: true, account })
   } catch (error: any) {
@@ -13,5 +26,7 @@ export async function GET(request: NextRequest) {
       { success: false, error: error.message },
       { status: 500 }
     )
+  } finally {
+    await prisma.$disconnect()
   }
 }
