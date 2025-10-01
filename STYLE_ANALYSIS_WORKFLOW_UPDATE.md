@@ -24,16 +24,40 @@ SyntaxError: Invalid or unexpected token
 4. If yes, immediately runs the fixer with the latest report
 5. If no, provides instructions for running fixes later
 
-### 3. Improved User Experience
+### 3. Automatic GitHub Push (NEW!)
+**Updated**: `scripts/ai-style-fixer.js`
+
+**New Feature**: After applying fixes, the script now prompts:
+```
+Would you like to commit and push these changes to GitHub? (y/n):
+```
+
+If you choose 'y', it automatically:
+1. Stages all changed files (`git add -A`)
+2. Creates a descriptive commit message with:
+   - Number of fixes applied
+   - Number of files modified
+   - Report filename used
+   - Backup location
+3. Commits the changes
+4. Pushes to GitHub (`git push origin main`)
+
+**Benefits**:
+- ✅ No need to manually commit and push
+- ✅ Changes are immediately saved to GitHub
+- ✅ Next time you pull, you get the fixed files
+- ✅ No more re-running the same fixes after updates
+
+### 4. Improved User Experience
 
 **Before**:
 ```
-User runs analysis → Manual copy/paste of report path → Run fixer separately
+User runs analysis → Manual copy/paste of report path → Run fixer separately → Manual commit/push
 ```
 
 **After**:
 ```
-User runs analysis → Automatic prompt to apply fixes → Done!
+User runs analysis → Auto prompt to fix → Auto prompt to push → Done!
 ```
 
 ## Usage
@@ -152,13 +176,17 @@ Enter choice (1-3): 2
 # Backups are created automatically
 # Summary shows how many fixes were applied
 
-# 7. Test your application
-npm run dev
+# 7. NEW! Automatic GitHub push prompt
+Would you like to commit and push these changes to GitHub? (y/n): y
 
-# 8. If everything looks good, commit the changes
-git add -A
-git commit -m "Apply color scheme standardization fixes"
-git push origin main
+# If yes, it automatically:
+# - Stages all changes (git add -A)
+# - Creates a descriptive commit message
+# - Commits the changes
+# - Pushes to GitHub
+# Done! ✅
+
+# 8. Next time you run update_from_github.sh, you'll get these fixes!
 ```
 
 ## Current Status
