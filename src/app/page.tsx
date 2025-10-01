@@ -195,6 +195,14 @@ export default function Home() {
                     <h4 className="font-medium text-green-300 mb-1">📤 GitHub Sync</h4>
                     <p className="text-green-200/80 text-sm">Configuration backup & sync</p>
                   </a>
+                  
+                  <a 
+                    href="/scheduler"
+                    className="block p-4 bg-gradient-to-br from-emerald-600/40 to-blue-600/40 rounded-lg border-2 border-emerald-400/50 hover:border-emerald-400/70 hover:from-emerald-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
+                  >
+                    <h4 className="font-bold text-emerald-200 mb-1">📅 Smart Scheduler</h4>
+                    <p className="text-emerald-100/90 text-sm">Auto TV control & game finder</p>
+                  </a>
                 </div>
               </div>
               

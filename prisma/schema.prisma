@@ -304,3 +304,57 @@ model SoundtrackConfig {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model Schedule {
+  id                String   @id @default(cuid())
+  name              String   // "Morning TV Setup", "Game Day Auto", etc.
+  description       String?
+  enabled           Boolean  @default(true)
+  
+  // Time settings
+  scheduleType      String   @default("daily") // "daily", "weekly", "once", "game-based"
+  executionTime     String?  // HH:MM format for daily/weekly, or ISO timestamp for once
+  daysOfWeek        String?  // JSON array: ["monday", "friday", "saturday"]
+  
+  // TV Power settings
+  powerOnTVs        Boolean  @default(true)
+  powerOffTVs       Boolean  @default(false)
+  selectedOutputs   String   // JSON array of output IDs to control
+  
+  // Channel settings
+  setDefaultChannels Boolean @default(false)
+  defaultChannelMap  String? // JSON object: { "inputId": "channel" }
+  
+  // Smart game detection
+  autoFindGames     Boolean  @default(false)
+  monitorHomeTeams  Boolean  @default(false)
+  homeTeamIds       String?  // JSON array of HomeTeam IDs to monitor
+  preferredProviders String? // JSON array: ["cable", "satellite", "streaming"] in priority order
+  
+  // Execution settings
+  executionOrder    String   @default("outputs_first") // "outputs_first" or "channels_first"
+  delayBetweenCommands Int   @default(2000) // milliseconds
+  
+  // Status
+  lastExecuted      DateTime?
+  nextExecution     DateTime?
+  executionCount    Int      @default(0)
+  lastResult        String?  // JSON string with execution details
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ScheduleLog {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  scheduleName String
+  executedAt  DateTime @default(now())
+  success     Boolean
+  message     String?  // Summary message
+  details     String?  // JSON string with full execution details
+  gamesFound  Int      @default(0)
+  tvsControlled Int    @default(0)
+  channelsSet Int      @default(0)
+  errors      String?  // JSON array of any errors
+}
