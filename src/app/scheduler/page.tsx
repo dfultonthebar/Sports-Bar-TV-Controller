@@ -21,6 +21,8 @@ interface Schedule {
   monitorHomeTeams: boolean;
   homeTeamIds: string | null;
   preferredProviders: string | null;
+  executionOrder: string;
+  delayBetweenCommands: number;
   lastExecuted: string | null;
   nextExecution: string | null;
   executionCount: number;
