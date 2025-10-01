@@ -220,12 +220,12 @@ const UnifiedTVGuideViewer: React.FC = () => {
 
         {/* Data Sources Status */}
         {guideData?.sources && (
-          <div className="flex items-center space-x-4 text-sm text-gray-600 mb-4">
+          <div className="flex items-center space-x-4 text-sm text-slate-300 mb-4">
             <span>Data Sources:</span>
-            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.gracenote.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.gracenote.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-slate-400'}`}>
               Gracenote {guideData.sources.gracenote.used ? '✓' : '✗'}
             </span>
-            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.spectrum.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.spectrum.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-slate-400'}`}>
               Spectrum {guideData.sources.spectrum.used ? '✓' : '✗'}
             </span>
           </div>
@@ -242,9 +242,9 @@ const UnifiedTVGuideViewer: React.FC = () => {
                 <div className="flex-1">
                   <h4 className="font-medium">{program.title}</h4>
                   {program.episodeTitle && (
-                    <p className="text-sm text-gray-600">{program.episodeTitle}</p>
+                    <p className="text-sm text-slate-300">{program.episodeTitle}</p>
                   )}
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-slate-400 mt-1">
                     {formatTime(program.startTime)} - {formatTime(program.endTime)} | {formatDuration(program.duration)}
                   </p>
                   {program.isSports && program.sportsInfo && (
@@ -276,7 +276,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
                 {program.sportsInfo && (
                   <p className="text-sm text-green-600 mt-1">{getSportsInfo(program)}</p>
                 )}
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-slate-400 mt-2">
                   Ends at {formatTime(program.endTime)}
                 </p>
               </div>
@@ -293,7 +293,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
               {viewMode === 'sports' ? 'Sports Programming' : 'All Channels'} - {selectedDate.toLocaleDateString()}
             </h3>
             {guideData.coverage && (
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-slate-300 mt-1">
                 {viewMode === 'sports' 
                   ? `${guideData.programs.length} sports programs found`
                   : `${guideData.coverage.totalChannels} channels, ${guideData.coverage.sportsChannels} sports channels`
@@ -320,7 +320,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
                             <p className="text-gray-600">{program.episodeTitle}</p>
                           )}
                           {program.description && (
-                            <p className="text-sm text-gray-500 mt-1">{program.description}</p>
+                            <p className="text-sm text-slate-400 mt-1">{program.description}</p>
                           )}
                           {program.sportsInfo && (
                             <p className="text-sm text-blue-600 mt-2">{getSportsInfo(program)}</p>
@@ -335,7 +335,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
                           <p className="text-sm font-medium">
                             {formatTime(program.startTime)} - {formatTime(program.endTime)}
                           </p>
-                          <p className="text-xs text-gray-500">{formatDuration(program.duration)}</p>
+                          <p className="text-xs text-slate-400">{formatDuration(program.duration)}</p>
                           <span className={`inline-block mt-1 px-2 py-1 rounded text-xs ${program.source === 'gracenote' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                             {program.source}
                           </span>
@@ -345,7 +345,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
                   ))
                 }
                 {guideData.programs.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-slate-400">
                     No sports programming found for this date.
                   </div>
                 )}
@@ -353,7 +353,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
             ) : (
               // Traditional grid view (for all channels)
               <div className="p-4">
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-slate-400 text-center py-8">
                   Traditional grid view coming soon. For now, use Sports view to see programming.
                 </p>
               </div>
@@ -372,7 +372,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
           {loading ? 'Refreshing...' : 'Refresh Guide Data'}
         </button>
         
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-slate-400">
           Last updated: {new Date().toLocaleTimeString()}
         </div>
       </div>

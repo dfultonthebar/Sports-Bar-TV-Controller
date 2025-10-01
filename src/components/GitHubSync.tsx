@@ -128,7 +128,7 @@ export default function GitHubSync() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">GitHub Synchronization</h2>
+          <h2 className="text-2xl font-bold text-slate-100">GitHub Synchronization</h2>
           <p className="text-gray-600">Manage your local repository sync with GitHub</p>
         </div>
         <Button 
@@ -161,7 +161,7 @@ export default function GitHubSync() {
                     {gitStatus.isClean ? 'Clean' : 'Has Changes'}
                   </Badge>
                 </div>
-                <div className="flex items-center space-x-4 text-sm text-gray-600">
+                <div className="flex items-center space-x-4 text-sm text-slate-300">
                   {gitStatus.ahead > 0 && (
                     <span className="flex items-center space-x-1">
                       <Upload className="w-3 h-3" />
@@ -188,7 +188,7 @@ export default function GitHubSync() {
                     {gitStatus.lastCommit.hash.substring(0, 8)}
                   </p>
                   <p>{gitStatus.lastCommit.message}</p>
-                  <p className="text-gray-500">
+                  <p className="text-slate-400">
                     by {gitStatus.lastCommit.author} • {new Date(gitStatus.lastCommit.date).toLocaleString()}
                   </p>
                 </div>
@@ -228,7 +228,7 @@ export default function GitHubSync() {
               )}
             </div>
           ) : (
-            <div className="flex items-center space-x-2 text-gray-500">
+            <div className="flex items-center space-x-2 text-slate-400">
               <Clock className="w-4 h-4" />
               <span>Loading repository status...</span>
             </div>
@@ -293,7 +293,7 @@ export default function GitHubSync() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label htmlFor="commit-message" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="commit-message" className="block text-sm font-medium text-slate-200 mb-2">
                 Commit Message
               </label>
               <textarea

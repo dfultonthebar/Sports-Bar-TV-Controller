@@ -157,7 +157,7 @@ export default function ApiKeysManager() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           API Keys Management
         </h3>
         <p className="text-gray-600">
@@ -168,13 +168,13 @@ export default function ApiKeysManager() {
       {/* Add/Edit Form */}
       {showAddForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h4 className="text-lg font-medium text-gray-900 mb-4">
+          <h4 className="text-lg font-medium text-slate-100 mb-4">
             {editingKey ? 'Edit API Key' : 'Add New API Key'}
           </h4>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-200 mb-1">
                 Name
               </label>
               <input
@@ -188,7 +188,7 @@ export default function ApiKeysManager() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-200 mb-1">
                 Provider
               </label>
               <select
@@ -205,14 +205,14 @@ export default function ApiKeysManager() {
                 ))}
               </select>
               {formData.provider && (
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-slate-400 mt-1">
                   {PROVIDERS.find(p => p.value === formData.provider)?.description}
                 </p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-200 mb-1">
                 API Key
               </label>
               <input
@@ -226,7 +226,7 @@ export default function ApiKeysManager() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-200 mb-1">
                 Description (Optional)
               </label>
               <textarea
@@ -248,7 +248,7 @@ export default function ApiKeysManager() {
               <button
                 type="button"
                 onClick={resetForm}
-                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                className="bg-gray-300 text-slate-200 px-4 py-2 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
               >
                 Cancel
               </button>
@@ -260,7 +260,7 @@ export default function ApiKeysManager() {
       {/* API Keys List */}
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="flex justify-between items-center p-4 border-b border-gray-200">
-          <h4 className="text-lg font-medium text-gray-900">
+          <h4 className="text-lg font-medium text-slate-100">
             Configured API Keys ({apiKeys.length})
           </h4>
           {!showAddForm && (
@@ -274,7 +274,7 @@ export default function ApiKeysManager() {
         </div>
 
         {apiKeys.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-slate-400">
             <p className="mb-4">No API keys configured yet.</p>
             <p className="text-sm">Add an API key to enable AI chat functionality.</p>
           </div>
@@ -285,11 +285,11 @@ export default function ApiKeysManager() {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
-                      <h5 className="text-sm font-medium text-gray-900">{key.name}</h5>
+                      <h5 className="text-sm font-medium text-slate-100">{key.name}</h5>
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         key.isActive 
                           ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
+                          : 'bg-gray-100 text-slate-100'
                       }`}>
                         {key.isActive ? 'Active' : 'Inactive'}
                       </span>
@@ -298,9 +298,9 @@ export default function ApiKeysManager() {
                       </span>
                     </div>
                     {key.description && (
-                      <p className="text-sm text-gray-500 mt-1">{key.description}</p>
+                      <p className="text-sm text-slate-400 mt-1">{key.description}</p>
                     )}
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       Created: {new Date(key.createdAt).toLocaleDateString()}
                     </p>
                   </div>

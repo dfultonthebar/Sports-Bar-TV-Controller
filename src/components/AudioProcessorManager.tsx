@@ -276,7 +276,7 @@ export default function AudioProcessorManager() {
         icon: CheckCircle
       },
       offline: {
-        color: 'bg-gray-100 text-gray-800 border-gray-300',
+        color: 'bg-gray-100 text-slate-100 border-gray-300',
         icon: WifiOff
       },
       error: {
@@ -306,7 +306,7 @@ export default function AudioProcessorManager() {
             <Activity className="h-6 w-6 text-blue-600 animate-pulse" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-gray-900">Audio Processors</h1>
+            <h1 className="text-3xl font-bold text-slate-100">Audio Processors</h1>
             <p className="text-lg text-gray-600">Loading audio processor configurations...</p>
           </div>
         </div>
@@ -343,7 +343,7 @@ export default function AudioProcessorManager() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
             <div className="p-2 bg-blue-100 rounded-xl">
               <Activity className="h-6 w-6 text-blue-600" />
             </div>
@@ -382,7 +382,7 @@ export default function AudioProcessorManager() {
                 onClick={() => setShowAddForm(false)}
                 variant="ghost"
                 size="sm"
-                className="text-gray-500 hover:text-gray-700"
+                className="text-slate-400 hover:text-slate-200"
               >
                 ✕
               </Button>
@@ -392,10 +392,10 @@ export default function AudioProcessorManager() {
             <form onSubmit={addProcessor} className="space-y-6">
               {/* Basic Information */}
               <div className="space-y-4">
-                <h4 className="font-semibold text-gray-900 border-b pb-2">Basic Information</h4>
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Basic Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-900">Processor Name *</label>
+                    <label className="text-sm font-medium text-slate-100">Processor Name *</label>
                     <Input
                       type="text"
                       value={formData.name}
@@ -406,7 +406,7 @@ export default function AudioProcessorManager() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-900">Model</label>
+                    <label className="text-sm font-medium text-slate-100">Model</label>
                     <select
                       value={formData.model}
                       onChange={(e) => setFormData({...formData, model: e.target.value})}
@@ -422,7 +422,7 @@ export default function AudioProcessorManager() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-900">Description</label>
+                  <label className="text-sm font-medium text-slate-100">Description</label>
                   <Input
                     type="text"
                     value={formData.description}
@@ -435,10 +435,10 @@ export default function AudioProcessorManager() {
               
               {/* Network Configuration */}
               <div className="space-y-4">
-                <h4 className="font-semibold text-gray-900 border-b pb-2">Network Configuration</h4>
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Network Configuration</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-2 space-y-2">
-                    <label className="text-sm font-medium text-gray-900">IP Address *</label>
+                    <label className="text-sm font-medium text-slate-100">IP Address *</label>
                     <Input
                       type="text"
                       value={formData.ipAddress}
@@ -447,10 +447,10 @@ export default function AudioProcessorManager() {
                       required
                       className="border-gray-300 focus:border-blue-500"
                     />
-                    <p className="text-xs text-gray-500">Static IP address of the processor</p>
+                    <p className="text-xs text-slate-400">Static IP address of the processor</p>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-900">Port</label>
+                    <label className="text-sm font-medium text-slate-100">Port</label>
                     <Input
                       type="number"
                       value={formData.port}
@@ -460,7 +460,7 @@ export default function AudioProcessorManager() {
                       max="65535"
                       className="border-gray-300 focus:border-blue-500"
                     />
-                    <p className="text-xs text-gray-500">Usually 80 (HTTP)</p>
+                    <p className="text-xs text-slate-400">Usually 80 (HTTP)</p>
                   </div>
                 </div>
               </div>
@@ -492,9 +492,9 @@ export default function AudioProcessorManager() {
         <Card className="border-2 border-dashed border-gray-300">
           <CardContent className="text-center py-12">
             <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Activity className="h-12 w-12 text-gray-400" />
+              <Activity className="h-12 w-12 text-slate-500" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Audio Processors</h3>
+            <h3 className="text-xl font-semibold text-slate-100 mb-2">No Audio Processors</h3>
             <p className="text-gray-600 mb-6 max-w-sm mx-auto">
               Add your first AtlasIED Atmosphere processor to start managing audio zones and monitoring input levels.
             </p>
@@ -524,12 +524,12 @@ export default function AudioProcessorManager() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="space-y-1">
-                      <h3 className="font-semibold text-gray-900">{processor.name}</h3>
-                      <p className="text-sm text-gray-600">{processor.model}</p>
+                      <h3 className="font-semibold text-slate-100">{processor.name}</h3>
+                      <p className="text-sm text-slate-300">{processor.model}</p>
                     </div>
                     <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
                       ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                      ${processor.status === 'offline' ? 'bg-gray-100 text-gray-800 border-gray-300' : ''}
+                      ${processor.status === 'offline' ? 'bg-gray-100 text-slate-100 border-gray-300' : ''}
                       ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
                     `}>
                       <div className="flex items-center gap-1.5">
@@ -541,7 +541,7 @@ export default function AudioProcessorManager() {
                     </Badge>
                   </div>
                   
-                  <div className="space-y-2 text-xs text-gray-600">
+                  <div className="space-y-2 text-xs text-slate-400">
                     <div className="flex items-center gap-2">
                       <Wifi className="h-3 w-3" />
                       <span>{processor.ipAddress}:{processor.port}</span>
@@ -551,7 +551,7 @@ export default function AudioProcessorManager() {
                       <span>{processor.zones} audio zones</span>
                     </div>
                     {processor.description && (
-                      <p className="text-gray-500 mt-2 line-clamp-2">{processor.description}</p>
+                      <p className="text-slate-400 mt-2 line-clamp-2">{processor.description}</p>
                     )}
                   </div>
                 </CardContent>
@@ -626,7 +626,7 @@ export default function AudioProcessorManager() {
                       <div className="mt-4 p-6 bg-white rounded-lg border-2 border-blue-100 space-y-6">
                         {/* Rear Panel Image */}
                         <div className="space-y-3">
-                          <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h5 className="font-semibold text-slate-100 flex items-center gap-2">
                             <Settings className="h-4 w-4" />
                             Rear Panel Layout
                           </h5>
@@ -644,7 +644,7 @@ export default function AudioProcessorManager() {
                         {/* Input Configuration */}
                         <div className="grid md:grid-cols-2 gap-6">
                           <div className="space-y-3">
-                            <h5 className="font-semibold text-gray-900">Physical Inputs</h5>
+                            <h5 className="font-semibold text-slate-100">Physical Inputs</h5>
                             <div className="space-y-2">
                               {selectedModelSpec.inputs
                                 .filter(inp => inp.type !== 'matrix_audio')
@@ -652,12 +652,12 @@ export default function AudioProcessorManager() {
                                   <div key={inp.id} className="flex items-start gap-2 text-sm">
                                     <Badge 
                                       variant={inp.priority === 'high' ? 'default' : 'secondary'}
-                                      className={inp.priority === 'high' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-gray-100 text-gray-700'}
+                                      className={inp.priority === 'high' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-gray-100 text-slate-200'}
                                     >
                                       {inp.name}
                                     </Badge>
                                     <div className="flex-1">
-                                      <p className="text-gray-900 font-medium">{inp.connector} {inp.type === 'balanced' ? 'Balanced' : inp.type === 'unbalanced' ? 'Unbalanced' : 'Network'}</p>
+                                      <p className="text-slate-100 font-medium">{inp.connector} {inp.type === 'balanced' ? 'Balanced' : inp.type === 'unbalanced' ? 'Unbalanced' : 'Network'}</p>
                                       <p className="text-gray-600 text-xs">{inp.description}</p>
                                     </div>
                                   </div>
@@ -666,10 +666,10 @@ export default function AudioProcessorManager() {
                           </div>
 
                           <div className="space-y-3">
-                            <h5 className="font-semibold text-gray-900">Features</h5>
+                            <h5 className="font-semibold text-slate-100">Features</h5>
                             <ul className="space-y-2">
                               {selectedModelSpec.features.map((feature, idx) => (
-                                <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                <li key={idx} className="flex items-start gap-2 text-sm text-slate-200">
                                   <CheckCircle className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                                   <span>{feature}</span>
                                 </li>
@@ -680,15 +680,15 @@ export default function AudioProcessorManager() {
 
                         {/* Output Configuration */}
                         <div className="space-y-3">
-                          <h5 className="font-semibold text-gray-900">Zone Outputs</h5>
+                          <h5 className="font-semibold text-slate-100">Zone Outputs</h5>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {selectedModelSpec.outputs
                               .filter(out => out.type !== 'dante')
                               .slice(0, selectedModelSpec.zones)
                               .map(out => (
                                 <div key={out.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                  <p className="font-medium text-gray-900 text-sm">{out.name}</p>
-                                  <p className="text-xs text-gray-600">{out.type === 'amplified' ? '🔊 Amplified' : '📡 Line Level'}</p>
+                                  <p className="font-medium text-slate-100 text-sm">{out.name}</p>
+                                  <p className="text-xs text-slate-400">{out.type === 'amplified' ? '🔊 Amplified' : '📡 Line Level'}</p>
                                   {out.powerRating && (
                                     <p className="text-xs text-emerald-600 font-medium mt-1">{out.powerRating}</p>
                                   )}
@@ -719,8 +719,8 @@ export default function AudioProcessorManager() {
                     {/* Zone Management Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-gray-900">Audio Zones</h3>
-                        <p className="text-sm text-gray-600">Configure and control individual audio zones</p>
+                        <h3 className="text-xl font-semibold text-slate-100">Audio Zones</h3>
+                        <p className="text-sm text-slate-300">Configure and control individual audio zones</p>
                       </div>
                       <Button
                         onClick={() => setShowZoneForm(true)}
@@ -749,7 +749,7 @@ export default function AudioProcessorManager() {
                               onClick={() => setShowZoneForm(false)}
                               variant="ghost"
                               size="sm"
-                              className="text-gray-500 hover:text-gray-700"
+                              className="text-slate-400 hover:text-slate-200"
                             >
                               ✕
                             </Button>
@@ -759,7 +759,7 @@ export default function AudioProcessorManager() {
                           <form onSubmit={addZone} className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-900">Zone Number</label>
+                                <label className="text-sm font-medium text-slate-100">Zone Number</label>
                                 <select
                                   value={zoneFormData.zoneNumber}
                                   onChange={(e) => {
@@ -782,7 +782,7 @@ export default function AudioProcessorManager() {
                                 </select>
                               </div>
                               <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-900">Zone Name *</label>
+                                <label className="text-sm font-medium text-slate-100">Zone Name *</label>
                                 <Input
                                   type="text"
                                   value={zoneFormData.name}
@@ -798,7 +798,7 @@ export default function AudioProcessorManager() {
                             </div>
                             
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-gray-900">Description</label>
+                              <label className="text-sm font-medium text-slate-100">Description</label>
                               <Input
                                 type="text"
                                 value={zoneFormData.description}
@@ -812,7 +812,7 @@ export default function AudioProcessorManager() {
                             </div>
                             
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-gray-900">Audio Source</label>
+                              <label className="text-sm font-medium text-slate-100">Audio Source</label>
                               <select
                                 value={zoneFormData.currentSource}
                                 onChange={(e) => {
@@ -867,7 +867,7 @@ export default function AudioProcessorManager() {
                                 )}
                               </select>
                               {selectedModelSpec && (
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-slate-400">
                                   ⚡ = Balanced • 🔊 = RCA • 🌐 = Dante • 🔄 = Internal
                                 </p>
                               )}
@@ -905,9 +905,9 @@ export default function AudioProcessorManager() {
                         <Card className="border-2 border-dashed border-gray-300">
                           <CardContent className="text-center py-8">
                             <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                              <Volume2 className="h-8 w-8 text-gray-400" />
+                              <Volume2 className="h-8 w-8 text-slate-500" />
                             </div>
-                            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Audio Zones</h4>
+                            <h4 className="text-lg font-semibold text-slate-100 mb-2">No Audio Zones</h4>
                             <p className="text-gray-600 mb-4">
                               Configure audio zones to start controlling different areas
                             </p>
@@ -929,7 +929,7 @@ export default function AudioProcessorManager() {
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                   <div className="space-y-1">
                                     <div className="flex items-center gap-2">
-                                      <h4 className="text-lg font-semibold text-gray-900">
+                                      <h4 className="text-lg font-semibold text-slate-100">
                                         Zone {zone.zoneNumber}: {zone.name}
                                       </h4>
                                       {zone.muted && (
@@ -939,7 +939,7 @@ export default function AudioProcessorManager() {
                                         </Badge>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                                    <div className="flex items-center gap-4 text-sm text-slate-300">
                                       <span className="flex items-center gap-1">
                                         <Play className="h-3 w-3" />
                                         {zone.currentSource}
@@ -950,7 +950,7 @@ export default function AudioProcessorManager() {
                                       </span>
                                     </div>
                                     {zone.description && (
-                                      <p className="text-sm text-gray-500">{zone.description}</p>
+                                      <p className="text-sm text-slate-400">{zone.description}</p>
                                     )}
                                   </div>
                                   

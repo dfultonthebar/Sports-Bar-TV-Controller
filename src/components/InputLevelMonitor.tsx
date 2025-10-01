@@ -195,8 +195,8 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
         <CardContent>
           {inputMeters.length === 0 ? (
             <div className="text-center py-8">
-              <Volume2 className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-500 mb-4">No input meters configured</p>
+              <Volume2 className="h-12 w-12 mx-auto mb-4 text-slate-500" />
+              <p className="text-slate-400 mb-4">No input meters configured</p>
               <Button onClick={() => setShowAddForm(true)}>
                 Add First Input Meter
               </Button>
@@ -219,7 +219,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                               : meter.status === 'warning'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                            : 'bg-gray-100 text-slate-100'
                         }`}
                       >
                         {meter.isReceiving ? (
@@ -237,7 +237,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                         )}
                       </Badge>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-slate-400">
                       {meter.parameterName}
                     </div>
                   </CardHeader>
@@ -247,7 +247,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Current:</span>
                         <span className={`text-sm font-mono ${
-                          meter.currentLevel !== null ? 'text-foreground' : 'text-gray-400'
+                          meter.currentLevel !== null ? 'text-foreground' : 'text-slate-500'
                         }`}>
                           {formatLevel(meter.currentLevel)}
                         </span>
@@ -281,7 +281,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                             }}
                           />
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500">
+                        <div className="flex justify-between text-xs text-slate-400">
                           <span>-80dB</span>
                           <span>0dB</span>
                         </div>
@@ -291,7 +291,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Peak:</span>
                         <span className={`text-sm font-mono ${
-                          meter.peakLevel !== null ? 'text-foreground' : 'text-gray-400'
+                          meter.peakLevel !== null ? 'text-foreground' : 'text-slate-500'
                         }`}>
                           {formatLevel(meter.peakLevel)}
                         </span>
@@ -299,7 +299,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
 
                       {/* Last Update */}
                       {meter.lastUpdate && (
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-slate-400">
                           Last update: {new Date(meter.lastUpdate).toLocaleTimeString()}
                         </div>
                       )}
@@ -325,7 +325,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
             <form onSubmit={handleAddMeter} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="inputNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="inputNumber" className="block text-sm font-medium text-slate-200 mb-1">
                     Input Number (0-based)
                   </label>
                   <Input
@@ -341,7 +341,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                   />
                 </div>
                 <div>
-                  <label htmlFor="parameterName" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="parameterName" className="block text-sm font-medium text-slate-200 mb-1">
                     Parameter Name
                   </label>
                   <Input
@@ -358,7 +358,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
               </div>
               
               <div>
-                <label htmlFor="inputName" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="inputName" className="block text-sm font-medium text-slate-200 mb-1">
                   Input Name (friendly name)
                 </label>
                 <Input
@@ -374,7 +374,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="warningThreshold" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="warningThreshold" className="block text-sm font-medium text-slate-200 mb-1">
                     Warning Threshold (dB)
                   </label>
                   <Input
@@ -389,7 +389,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                   />
                 </div>
                 <div>
-                  <label htmlFor="dangerThreshold" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="dangerThreshold" className="block text-sm font-medium text-slate-200 mb-1">
                     Danger Threshold (dB)
                   </label>
                   <Input

@@ -200,7 +200,7 @@ export default function UnifiedGuideViewer({
   const getPriorityColor = (priority: number = 1) => {
     if (priority >= 7) return 'bg-red-100 text-red-800'
     if (priority >= 4) return 'bg-yellow-100 text-yellow-800'
-    return 'bg-gray-100 text-gray-800'
+    return 'bg-gray-100 text-slate-100'
   }
 
   const filteredPrograms = getFilteredPrograms()
@@ -211,7 +211,7 @@ export default function UnifiedGuideViewer({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
             <Calendar className="w-6 h-6 text-purple-600" />
             Unified TV Guide
           </h2>
@@ -222,7 +222,7 @@ export default function UnifiedGuideViewer({
         
         <div className="flex items-center space-x-3">
           {lastFetch && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-slate-400">
               Last updated: {typeof lastFetch === 'string' && lastFetch !== 'Never' 
                 ? new Date(lastFetch).toLocaleString()
                 : lastFetch}
@@ -245,7 +245,7 @@ export default function UnifiedGuideViewer({
           <div className="bg-white p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Programs</p>
+                <p className="text-sm text-slate-300">Total Programs</p>
                 <p className="text-2xl font-bold text-purple-600">{guideData.summary.totalPrograms}</p>
               </div>
               <Tv className="w-8 h-8 text-purple-600" />
@@ -255,7 +255,7 @@ export default function UnifiedGuideViewer({
           <div className="bg-white p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Connected Devices</p>
+                <p className="text-sm text-slate-300">Connected Devices</p>
                 <p className="text-2xl font-bold text-green-600">
                   {guideData.summary.successfulFetches}/{guideData.summary.totalDevices}
                 </p>
@@ -267,7 +267,7 @@ export default function UnifiedGuideViewer({
           <div className="bg-white p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">DirecTV Devices</p>
+                <p className="text-sm text-slate-300">DirecTV Devices</p>
                 <p className="text-2xl font-bold text-blue-600">{guideData.summary.directvDevices}</p>
               </div>
               <Satellite className="w-8 h-8 text-blue-600" />
@@ -277,7 +277,7 @@ export default function UnifiedGuideViewer({
           <div className="bg-white p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Fire TV Devices</p>
+                <p className="text-sm text-slate-300">Fire TV Devices</p>
                 <p className="text-2xl font-bold text-orange-600">{guideData.summary.firetvDevices}</p>
               </div>
               <MonitorPlay className="w-8 h-8 text-orange-600" />
@@ -291,7 +291,7 @@ export default function UnifiedGuideViewer({
         <div className="flex flex-wrap items-center gap-4">
           {/* Search */}
           <div className="flex items-center space-x-2 flex-1 min-w-64">
-            <Search className="w-4 h-4 text-gray-400" />
+            <Search className="w-4 h-4 text-slate-500" />
             <input
               type="text"
               placeholder="Search programs..."
@@ -353,7 +353,7 @@ export default function UnifiedGuideViewer({
           </div>
         </div>
 
-        <div className="mt-2 text-sm text-gray-600">
+        <div className="mt-2 text-sm text-slate-300">
           Showing {filteredPrograms.length} of {guideData?.summary.totalPrograms || 0} programs
         </div>
       </div>
@@ -391,7 +391,7 @@ export default function UnifiedGuideViewer({
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-2">
                     {getDeviceIcon(program.deviceType)}
-                    <span className="font-medium text-gray-900 truncate">{program.title}</span>
+                    <span className="font-medium text-slate-100 truncate">{program.title}</span>
                     {program.isLive && (
                       <span className="flex items-center px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
                         <Radio className="w-3 h-3 mr-1" />
@@ -412,9 +412,9 @@ export default function UnifiedGuideViewer({
                   )}
                 </div>
 
-                <p className="text-sm text-gray-600 mb-2 line-clamp-2">{program.description}</p>
+                <p className="text-sm text-slate-300 mb-2 line-clamp-2">{program.description}</p>
 
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
                   <div className="flex items-center space-x-1">
                     <Clock className="w-3 h-3" />
                     <span>{formatTime(program.startTime)} - {formatTime(program.endTime)}</span>
@@ -434,7 +434,7 @@ export default function UnifiedGuideViewer({
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">{program.deviceName}</span>
+                  <span className="text-xs text-slate-400">{program.deviceName}</span>
                   {program.matrixInput && (
                     <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
                       Input {program.matrixInput}
@@ -450,8 +450,8 @@ export default function UnifiedGuideViewer({
       {/* No Data State */}
       {!loading && !error && filteredPrograms.length === 0 && (
         <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Guide Data Available</h3>
+          <Calendar className="w-16 h-16 text-slate-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-slate-100 mb-2">No Guide Data Available</h3>
           <p className="text-gray-600 mb-6">
             {devices.length === 0 
               ? 'Configure DirecTV and Fire TV devices to get started'

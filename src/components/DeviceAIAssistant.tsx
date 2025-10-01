@@ -116,7 +116,7 @@ export default function DeviceAIAssistant() {
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      default: return 'bg-gray-100 text-slate-100 border-gray-200'
     }
   }
 
@@ -211,12 +211,12 @@ export default function DeviceAIAssistant() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-gray-600 mb-3">{insight.description}</p>
+                  <p className="text-sm text-slate-300 mb-3">{insight.description}</p>
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <p className="text-sm font-medium text-blue-800 mb-1">AI Recommendation:</p>
                     <p className="text-sm text-blue-700">{insight.recommendation}</p>
                   </div>
-                  <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                  <div className="flex items-center justify-between mt-3 text-xs text-slate-400">
                     <span>Confidence: {Math.round(insight.confidence * 100)}%</span>
                     <span>{new Date(insight.timestamp).toLocaleTimeString()}</span>
                   </div>
@@ -228,7 +228,7 @@ export default function DeviceAIAssistant() {
           {insights.length === 0 && (
             <Card>
               <CardContent className="py-8">
-                <div className="text-center text-gray-500">
+                <div className="text-center text-slate-400">
                   <Brain className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No AI insights available for the selected criteria</p>
                 </div>
@@ -246,7 +246,7 @@ export default function DeviceAIAssistant() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Responsiveness</span>
+                    <span className="text-xs text-slate-400">Responsiveness</span>
                     <div className="flex items-center gap-1">
                       <div className={`w-2 h-2 rounded-full ${
                         metric.responsiveness > 80 ? 'bg-green-500' : 
@@ -257,20 +257,20 @@ export default function DeviceAIAssistant() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Connection</span>
+                    <span className="text-xs text-slate-400">Connection</span>
                     <div className="flex items-center gap-1">
-                      <Network className="w-3 h-3 text-gray-400" />
+                      <Network className="w-3 h-3 text-slate-500" />
                       <span className="text-xs font-medium">{metric.connectionStability}%</span>
                     </div>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Error Rate</span>
+                    <span className="text-xs text-slate-400">Error Rate</span>
                     <span className="text-xs font-medium">{metric.errorRate.toFixed(2)}%</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Usage</span>
+                    <span className="text-xs text-slate-400">Usage</span>
                     <span className="text-xs font-medium">{metric.usageFrequency}/day</span>
                   </div>
                 </CardContent>
@@ -297,13 +297,13 @@ export default function DeviceAIAssistant() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-700 mb-3">{rec.message}</p>
+                  <p className="text-slate-200 mb-3">{rec.message}</p>
                   <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-sm font-medium text-gray-800 mb-1">Recommended Action:</p>
-                    <p className="text-sm text-gray-600">{rec.action}</p>
+                    <p className="text-sm font-medium text-slate-100 mb-1">Recommended Action:</p>
+                    <p className="text-sm text-slate-300">{rec.action}</p>
                   </div>
                   <div className="flex items-center gap-2 mt-3">
-                    <span className="text-xs text-gray-500">Applies to:</span>
+                    <span className="text-xs text-slate-400">Applies to:</span>
                     {rec.deviceTypes.map((type, i) => (
                       <Badge key={i} variant="outline" className="text-xs">
                         {type}
@@ -333,11 +333,11 @@ export default function DeviceAIAssistant() {
                   <div key={prediction.id} className="border-l-4 border-purple-500 pl-4 py-2">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-medium">{prediction.title}</h4>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-slate-400">
                         {Math.round(prediction.confidence * 100)}% confidence
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{prediction.description}</p>
+                    <p className="text-sm text-slate-300 mb-2">{prediction.description}</p>
                     <p className="text-sm text-purple-700 bg-purple-50 p-2 rounded">
                       {prediction.recommendation}
                     </p>
@@ -345,7 +345,7 @@ export default function DeviceAIAssistant() {
                 ))}
                 
                 {insights.filter(i => i.type === 'prediction').length === 0 && (
-                  <div className="text-center text-gray-500 py-6">
+                  <div className="text-center text-slate-400 py-6">
                     <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p>Building predictive models...</p>
                     <p className="text-xs">More data needed for accurate predictions</p>

@@ -298,7 +298,7 @@ export default function UnifiedTVControl() {
                       <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                     )}
                   </div>
-                  <div className="mt-1 text-xs text-gray-400">
+                  <div className="mt-1 text-xs text-slate-500">
                     Output {device.outputNumber} • {device.brand}
                   </div>
                   <div className="mt-1 flex items-center space-x-1 text-xs">
@@ -314,7 +314,7 @@ export default function UnifiedTVControl() {
             </div>
 
             {devices.length === 0 && (
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-slate-500">
                 <Tv className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">No devices found</p>
               </div>
@@ -330,34 +330,34 @@ export default function UnifiedTVControl() {
               </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Preferred:</span>
+                  <span className="text-slate-500">Preferred:</span>
                   <span className="text-white">{brandConfig.preferredControlMethod}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">CEC Wake:</span>
+                  <span className="text-slate-500">CEC Wake:</span>
                   <span className={brandConfig.supportsWakeOnCec ? 'text-green-400' : 'text-red-400'}>
                     {brandConfig.supportsWakeOnCec ? 'Yes' : 'No'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">CEC Volume:</span>
+                  <span className="text-slate-500">CEC Volume:</span>
                   <span className={brandConfig.supportsCecVolumeControl ? 'text-green-400' : 'text-red-400'}>
                     {brandConfig.supportsCecVolumeControl ? 'Yes' : 'No'}
                   </span>
                 </div>
                 <div className="mt-2 pt-2 border-t border-white/10">
-                  <div className="text-gray-400 mb-1">Timing (ms):</div>
+                  <div className="text-slate-500 mb-1">Timing (ms):</div>
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Power On:</span>
+                      <span className="text-slate-400">Power On:</span>
                       <span className="text-white">{brandConfig.cecPowerOnDelay}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Power Off:</span>
+                      <span className="text-slate-400">Power Off:</span>
                       <span className="text-white">{brandConfig.cecPowerOffDelay}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Volume:</span>
+                      <span className="text-slate-400">Volume:</span>
                       <span className="text-white">{brandConfig.cecVolumeDelay}</span>
                     </div>
                   </div>
@@ -545,8 +545,8 @@ export default function UnifiedTVControl() {
             </>
           ) : (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-12 text-center">
-              <Tv className="w-16 h-16 mx-auto mb-4 text-gray-500 opacity-50" />
-              <p className="text-gray-400">Select a device to begin</p>
+              <Tv className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
+              <p className="text-slate-500">Select a device to begin</p>
             </div>
           )}
         </div>
@@ -599,7 +599,7 @@ export default function UnifiedTVControl() {
             </h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {commandHistory.length === 0 ? (
-                <div className="text-center py-4 text-gray-500 text-xs">
+                <div className="text-center py-4 text-slate-400 text-xs">
                   No commands yet
                 </div>
               ) : (
@@ -610,10 +610,10 @@ export default function UnifiedTVControl() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-white font-medium">{entry.device}</span>
-                      <span className="text-gray-400">{entry.timestamp}</span>
+                      <span className="text-slate-500">{entry.timestamp}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">{entry.command}</span>
+                      <span className="text-slate-500">{entry.command}</span>
                       <div className="flex items-center space-x-1">
                         {entry.result.success ? (
                           <CheckCircle2 className="w-3 h-3 text-green-400" />

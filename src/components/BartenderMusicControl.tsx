@@ -201,7 +201,7 @@ export default function BartenderMusicControl() {
   if (!selectedPlayer) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center text-gray-400">
+        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center text-slate-500">
           <Music2 className="w-16 h-16 mx-auto mb-4 opacity-30" />
           <p>No Soundtrack players configured</p>
         </div>
@@ -239,7 +239,7 @@ export default function BartenderMusicControl() {
               <h4 className="text-xl font-bold text-white truncate">{nowPlaying.track.title}</h4>
               <p className="text-lg text-gray-300 truncate">{nowPlaying.track.artist}</p>
               {nowPlaying.track.album && (
-                <p className="text-sm text-gray-400 truncate mt-1">{nowPlaying.track.album}</p>
+                <p className="text-sm text-slate-500 truncate mt-1">{nowPlaying.track.album}</p>
               )}
             </div>
           </div>
@@ -251,7 +251,7 @@ export default function BartenderMusicControl() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-white font-semibold">{selectedPlayer.name}</h3>
-            <p className="text-sm text-gray-400">Music Player</p>
+            <p className="text-sm text-slate-500">Music Player</p>
           </div>
           <Badge variant={selectedPlayer.isPlaying ? "default" : "secondary"} className="text-sm">
             {selectedPlayer.isPlaying ? <><Play className="w-3 h-3 mr-1" /> Playing</> : <><Pause className="w-3 h-3 mr-1" /> Paused</>}
@@ -297,7 +297,7 @@ export default function BartenderMusicControl() {
 
           {showStations && (
             <div className="mt-3 space-y-2 max-h-80 overflow-y-auto bg-white/5 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-gray-400 mb-2 px-2">Available Playlists</h4>
+              <h4 className="text-sm font-medium text-slate-500 mb-2 px-2">Available Playlists</h4>
               {stations.map((station) => (
                 <button
                   key={station.id}
@@ -343,7 +343,7 @@ export default function BartenderMusicControl() {
             disabled={loading || actionLoading}
             variant="ghost"
             size="sm"
-            className="text-gray-400 hover:text-white"
+            className="text-slate-500 hover:text-white"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh

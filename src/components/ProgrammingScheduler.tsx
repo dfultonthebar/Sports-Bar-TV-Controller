@@ -60,10 +60,10 @@ export default function ProgrammingScheduler() {
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+          <h3 className="text-lg font-semibold text-slate-100 flex items-center">
             🕐 Programming Scheduler
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-300">
             Automatically updates sports programming daily at 12:00 AM
           </p>
         </div>
@@ -72,20 +72,20 @@ export default function ProgrammingScheduler() {
       {status && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-700">Status</div>
+            <div className="text-sm font-medium text-slate-200">Status</div>
             <div className={`text-lg font-semibold ${status.schedulerRunning ? 'text-green-600' : 'text-red-600'}`}>
               {status.schedulerRunning ? '🟢 Running' : '🔴 Stopped'}
             </div>
           </div>
           
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-700">Next Update</div>
-            <div className="text-lg font-semibold text-gray-900">{status.nextUpdate}</div>
+            <div className="text-sm font-medium text-slate-200">Next Update</div>
+            <div className="text-lg font-semibold text-slate-100">{status.nextUpdate}</div>
           </div>
           
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-700">Last Check</div>
-            <div className="text-lg font-semibold text-gray-900">
+            <div className="text-sm font-medium text-slate-200">Last Check</div>
+            <div className="text-lg font-semibold text-slate-100">
               {new Date(status.lastUpdate).toLocaleTimeString()}
             </div>
           </div>

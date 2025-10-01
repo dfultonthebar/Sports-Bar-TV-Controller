@@ -238,7 +238,7 @@ export default function EnhancedAIChat() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           Enhanced AI Assistant
         </h3>
         <p className="text-gray-600">
@@ -279,7 +279,7 @@ export default function EnhancedAIChat() {
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                         message.sender === 'user'
                           ? 'bg-blue-500 text-white'
-                          : 'bg-white text-gray-900 border'
+                          : 'bg-white text-slate-100 border'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -311,7 +311,7 @@ export default function EnhancedAIChat() {
                 
                 {isLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white text-gray-900 px-4 py-2 rounded-lg border">
+                    <div className="bg-white text-slate-100 px-4 py-2 rounded-lg border">
                       <div className="flex items-center space-x-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                         <span className="text-sm">AI is thinking...</span>
@@ -546,7 +546,7 @@ export default function EnhancedAIChat() {
               <p className="text-gray-600">
                 System optimization features coming soon! This will include:
               </p>
-              <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-gray-600">
+              <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-slate-300">
                 <li>Performance analysis and recommendations</li>
                 <li>Hardware upgrade suggestions</li>
                 <li>Configuration optimization</li>

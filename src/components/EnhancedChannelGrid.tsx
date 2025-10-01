@@ -169,7 +169,7 @@ export default function EnhancedChannelGrid() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">📺 Channel Grid</h3>
+          <h3 className="text-lg font-semibold text-slate-100">📺 Channel Grid</h3>
           <div className="flex space-x-2">
             <button
               onClick={() => setView('guide')}
@@ -206,26 +206,26 @@ export default function EnhancedChannelGrid() {
                 {currentProgram ? (
                   <div className="text-center">
                     <div className="text-xs font-medium text-green-600 mb-1">ON NOW</div>
-                    <div className="text-sm font-semibold text-gray-900 mb-1">
+                    <div className="text-sm font-semibold text-slate-100 mb-1">
                       {getProgramIcon(currentProgram)} {currentProgram.title}
                     </div>
-                    <div className="text-xs text-gray-600">
+                    <div className="text-xs text-slate-400">
                       {formatTime(currentProgram.startTime)} - {formatTime(currentProgram.endTime)}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center text-xs text-gray-500">
+                  <div className="text-center text-xs text-slate-400">
                     No current program
                   </div>
                 )}
 
                 {nextProgram && (
                   <div className="text-center mt-2 pt-2 border-t border-gray-100">
-                    <div className="text-xs text-gray-500 mb-1">NEXT</div>
-                    <div className="text-xs font-medium text-gray-700">
+                    <div className="text-xs text-slate-400 mb-1">NEXT</div>
+                    <div className="text-xs font-medium text-slate-200">
                       {nextProgram.title}
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-slate-400">
                       {formatTime(nextProgram.startTime)}
                     </div>
                   </div>
@@ -244,8 +244,8 @@ export default function EnhancedChannelGrid() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">📋 Sports Programming Guide</h3>
-          <p className="text-sm text-gray-600">{formatDate(selectedTime)}</p>
+          <h3 className="text-lg font-semibold text-slate-100">📋 Sports Programming Guide</h3>
+          <p className="text-sm text-slate-300">{formatDate(selectedTime)}</p>
         </div>
         <div className="flex space-x-2">
           <button
@@ -270,9 +270,9 @@ export default function EnhancedChannelGrid() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="p-3 text-left font-medium text-gray-700 w-32">Channel</th>
+                <th className="p-3 text-left font-medium text-slate-200 w-32">Channel</th>
                 {timeSlots.map((time) => (
-                  <th key={time.getTime()} className="p-3 text-center font-medium text-gray-700 w-40">
+                  <th key={time.getTime()} className="p-3 text-center font-medium text-slate-200 w-40">
                     {time.toLocaleTimeString('en-US', {
                       hour: 'numeric',
                       hour12: true
@@ -289,7 +289,7 @@ export default function EnhancedChannelGrid() {
                       <div className="text-lg">{getChannelIcon(channel)}</div>
                       <div>
                         <div className="font-semibold text-blue-600">{channel.channelNumber}</div>
-                        <div className="text-xs text-gray-600">{channel.displayName}</div>
+                        <div className="text-xs text-slate-400">{channel.displayName}</div>
                       </div>
                     </div>
                   </td>
@@ -299,7 +299,7 @@ export default function EnhancedChannelGrid() {
                       <td key={timeSlot.getTime()} className="p-2 border-l border-gray-100">
                         {program ? (
                           <div className="text-xs">
-                            <div className="font-medium text-gray-900 mb-1">
+                            <div className="font-medium text-slate-100 mb-1">
                               {getProgramIcon(program)} {program.title}
                             </div>
                             <div className="text-gray-600">
@@ -310,7 +310,7 @@ export default function EnhancedChannelGrid() {
                             )}
                           </div>
                         ) : (
-                          <div className="text-xs text-gray-400">-</div>
+                          <div className="text-xs text-slate-500">-</div>
                         )}
                       </td>
                     )

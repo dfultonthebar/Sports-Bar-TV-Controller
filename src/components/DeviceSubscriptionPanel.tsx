@@ -157,8 +157,8 @@ export default function DeviceSubscriptionPanel({
               )}
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Device Subscriptions</h3>
-              <p className="text-sm text-gray-600">{deviceName}</p>
+              <h3 className="text-lg font-semibold text-slate-100">Device Subscriptions</h3>
+              <p className="text-sm text-slate-300">{deviceName}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -173,7 +173,7 @@ export default function DeviceSubscriptionPanel({
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+                className="p-2 text-slate-500 hover:text-gray-600 rounded-lg"
               >
                 ×
               </button>
@@ -199,7 +199,7 @@ export default function DeviceSubscriptionPanel({
                 )}
                 <span className="capitalize">{subscriptionData.pollStatus}</span>
               </div>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-slate-400">
                 Last updated: {new Date(subscriptionData.lastPolled).toLocaleString()}
               </div>
             </div>
@@ -237,8 +237,8 @@ export default function DeviceSubscriptionPanel({
       <div className="p-4">
         {!subscriptionData && !loading && (
           <div className="text-center py-8">
-            <Wifi className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h4 className="text-lg font-medium text-gray-900 mb-2">No Subscription Data</h4>
+            <Wifi className="w-16 h-16 text-slate-500 mx-auto mb-4" />
+            <h4 className="text-lg font-medium text-slate-100 mb-2">No Subscription Data</h4>
             <p className="text-gray-600 mb-4">Poll this device to discover available subscriptions and streaming services.</p>
             <button
               onClick={() => pollSubscriptions()}
@@ -268,7 +268,7 @@ export default function DeviceSubscriptionPanel({
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                     filter === type
                       ? 'bg-white text-blue-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      : 'text-gray-600 hover:text-slate-100'
                   }`}
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -292,13 +292,13 @@ export default function DeviceSubscriptionPanel({
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <h4 className="font-medium text-gray-900">{subscription.name}</h4>
+                          <h4 className="font-medium text-slate-100">{subscription.name}</h4>
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(subscription.status)}`}>
                             {subscription.status}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{subscription.description}</p>
-                        <div className="flex items-center space-x-4 text-xs text-gray-500">
+                        <p className="text-sm text-slate-300 mb-2">{subscription.description}</p>
+                        <div className="flex items-center space-x-4 text-xs text-slate-400">
                           {subscription.provider && (
                             <span>Provider: {subscription.provider}</span>
                           )}
@@ -324,7 +324,7 @@ export default function DeviceSubscriptionPanel({
 
             {filteredSubscriptions.length === 0 && (
               <div className="text-center py-6">
-                <Package className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <Package className="w-12 h-12 text-slate-500 mx-auto mb-3" />
                 <p className="text-gray-600">No {filter === 'all' ? '' : filter + ' '}subscriptions found</p>
               </div>
             )}
@@ -334,7 +334,7 @@ export default function DeviceSubscriptionPanel({
         {subscriptionData && subscriptionData.pollStatus === 'error' && (
           <div className="text-center py-8">
             <WifiOff className="w-16 h-16 text-red-400 mx-auto mb-4" />
-            <h4 className="text-lg font-medium text-gray-900 mb-2">Polling Failed</h4>
+            <h4 className="text-lg font-medium text-slate-100 mb-2">Polling Failed</h4>
             <p className="text-gray-600 mb-4">
               {subscriptionData.error || 'Unable to connect to device'}
             </p>

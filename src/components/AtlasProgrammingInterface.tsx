@@ -559,7 +559,7 @@ export default function AtlasProgrammingInterface() {
             <Settings className="h-6 w-6 text-blue-600 animate-pulse" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-gray-900">Atlas Programming</h1>
+            <h1 className="text-3xl font-bold text-slate-100">Atlas Programming</h1>
             <p className="text-lg text-gray-600">Loading Atlas processor configurations...</p>
           </div>
         </div>
@@ -596,7 +596,7 @@ export default function AtlasProgrammingInterface() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
             <div className="p-2 bg-blue-900/30 rounded-xl">
               <Settings className="h-6 w-6 text-blue-400" />
             </div>
@@ -630,7 +630,7 @@ export default function AtlasProgrammingInterface() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Processor Name</label>
+                <label className="text-sm font-medium text-slate-100">Processor Name</label>
                 <Input
                   value={newProcessor.name}
                   onChange={(e) => setNewProcessor({ ...newProcessor, name: e.target.value })}
@@ -638,7 +638,7 @@ export default function AtlasProgrammingInterface() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Model</label>
+                <label className="text-sm font-medium text-slate-100">Model</label>
                 <select
                   value={newProcessor.model}
                   onChange={(e) => {
@@ -659,7 +659,7 @@ export default function AtlasProgrammingInterface() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">IP Address</label>
+                <label className="text-sm font-medium text-slate-100">IP Address</label>
                 <Input
                   value={newProcessor.ipAddress}
                   onChange={(e) => setNewProcessor({ ...newProcessor, ipAddress: e.target.value })}
@@ -667,7 +667,7 @@ export default function AtlasProgrammingInterface() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Port</label>
+                <label className="text-sm font-medium text-slate-100">Port</label>
                 <Input
                   type="number"
                   value={newProcessor.port}
@@ -677,7 +677,7 @@ export default function AtlasProgrammingInterface() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-900">Description (Optional)</label>
+              <label className="text-sm font-medium text-slate-100">Description (Optional)</label>
               <Input
                 value={newProcessor.description}
                 onChange={(e) => setNewProcessor({ ...newProcessor, description: e.target.value })}
@@ -719,9 +719,9 @@ export default function AtlasProgrammingInterface() {
         <Card className="border-2 border-dashed border-gray-300">
           <CardContent className="text-center py-12">
             <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Cpu className="h-12 w-12 text-gray-400" />
+              <Cpu className="h-12 w-12 text-slate-500" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Atlas Processors</h3>
+            <h3 className="text-xl font-semibold text-slate-100 mb-2">No Atlas Processors</h3>
             <p className="text-gray-600 mb-6 max-w-sm mx-auto">
               Add Atlas processors in the Audio Processors tab before accessing programming features.
             </p>
@@ -744,13 +744,13 @@ export default function AtlasProgrammingInterface() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="space-y-1 flex-1">
-                      <h3 className="font-semibold text-gray-900">{processor.name}</h3>
-                      <p className="text-sm text-gray-600">{processor.model}</p>
+                      <h3 className="font-semibold text-slate-100">{processor.name}</h3>
+                      <p className="text-sm text-slate-300">{processor.model}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
                         ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                        ${processor.status === 'offline' ? 'bg-gray-100 text-gray-800 border-gray-300' : ''}
+                        ${processor.status === 'offline' ? 'bg-gray-100 text-slate-100 border-gray-300' : ''}
                         ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
                       `}>
                         {processor.status}
@@ -769,7 +769,7 @@ export default function AtlasProgrammingInterface() {
                     </div>
                   </div>
                   
-                  <div className="space-y-2 text-xs text-gray-600">
+                  <div className="space-y-2 text-xs text-slate-400">
                     <div className="flex items-center gap-2">
                       <Network className="h-3 w-3" />
                       <span>{processor.ipAddress}:{processor.port}</span>
@@ -862,8 +862,8 @@ export default function AtlasProgrammingInterface() {
                   <TabsContent value="inputs" className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-gray-900">Input Configuration</h3>
-                        <p className="text-sm text-gray-600">
+                        <h3 className="text-xl font-semibold text-slate-100">Input Configuration</h3>
+                        <p className="text-sm text-slate-300">
                           Configure microphone and line inputs, including gain, phantom power, EQ, and routing
                         </p>
                       </div>
@@ -914,7 +914,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
+                                  <Badge variant="secondary" className="bg-gray-100 text-slate-200 text-xs">
                                     Physical: {input.physicalInput}
                                   </Badge>
                                   {input.stereoLink && (
@@ -952,7 +952,7 @@ export default function AtlasProgrammingInterface() {
                               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 {/* Physical Input & Stereo */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">Physical Input</label>
+                                  <label className="text-sm font-medium text-slate-100">Physical Input</label>
                                   <select
                                     value={input.physicalInput}
                                     onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
@@ -967,7 +967,7 @@ export default function AtlasProgrammingInterface() {
                                   </select>
                                   
                                   <div className="space-y-1">
-                                    <label className="text-xs font-medium text-gray-700">Stereo Mode</label>
+                                    <label className="text-xs font-medium text-slate-200">Stereo Mode</label>
                                     <select
                                       value={input.stereoMode}
                                       onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
@@ -1021,7 +1021,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 {/* Gain Control */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">
+                                  <label className="text-sm font-medium text-slate-100">
                                     Gain: {input.gainDb}dB
                                   </label>
                                   <input
@@ -1037,7 +1037,7 @@ export default function AtlasProgrammingInterface() {
 
                                 {/* Processing Controls */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">Processing</label>
+                                  <label className="text-sm font-medium text-slate-100">Processing</label>
                                   <div className="space-y-1">
                                     {input.type === 'microphone' && (
                                       <label className="flex items-center gap-2 text-sm">
@@ -1082,7 +1082,7 @@ export default function AtlasProgrammingInterface() {
 
                                 {/* EQ Controls */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">3-Band EQ</label>
+                                  <label className="text-sm font-medium text-slate-100">3-Band EQ</label>
                                   <div className="space-y-1">
                                     <div className="flex items-center gap-2 text-xs">
                                       <span className="w-12">High:</span>
@@ -1135,7 +1135,7 @@ export default function AtlasProgrammingInterface() {
 
                               {/* Routing Matrix */}
                               <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-900">Output Routing</label>
+                                <label className="text-sm font-medium text-slate-100">Output Routing</label>
                                 <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                                   {outputs.map((output) => (
                                     <label key={output.id} className="flex items-center gap-1 text-xs">
@@ -1166,8 +1166,8 @@ export default function AtlasProgrammingInterface() {
                   <TabsContent value="outputs" className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-gray-900">Output Configuration</h3>
-                        <p className="text-sm text-gray-600">
+                        <h3 className="text-xl font-semibold text-slate-100">Output Configuration</h3>
+                        <p className="text-sm text-slate-300">
                           Configure speaker zones, Dante outputs, and processing parameters
                         </p>
                       </div>
@@ -1211,7 +1211,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
+                                  <Badge variant="secondary" className="bg-gray-100 text-slate-200 text-xs">
                                     Physical: {output.physicalOutput}
                                   </Badge>
                                   {output.groupId && (
@@ -1249,7 +1249,7 @@ export default function AtlasProgrammingInterface() {
                               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                 {/* Physical Output & Grouping */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">Physical Output</label>
+                                  <label className="text-sm font-medium text-slate-100">Physical Output</label>
                                   <select
                                     value={output.physicalOutput}
                                     onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
@@ -1264,7 +1264,7 @@ export default function AtlasProgrammingInterface() {
                                   </select>
                                   
                                   <div className="space-y-1">
-                                    <label className="text-xs font-medium text-gray-700">Output Grouping</label>
+                                    <label className="text-xs font-medium text-slate-200">Output Grouping</label>
                                     {output.groupId ? (
                                       <div className="space-y-1">
                                         <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs">
@@ -1330,7 +1330,7 @@ export default function AtlasProgrammingInterface() {
                                                   const groupName = `Zone ${Math.min(output.physicalOutput, adjacentOutput.physicalOutput)}-${Math.max(output.physicalOutput, adjacentOutput.physicalOutput)}`
                                                   createOutputGroup([output.id, adjacentOutput.id], groupName)
                                                 }}
-                                                className="w-full text-xs p-1 bg-gray-100 hover:bg-gray-200 rounded border text-gray-700"
+                                                className="w-full text-xs p-1 bg-gray-100 hover:bg-gray-200 rounded border text-slate-200"
                                               >
                                                 + {adjacentOutput.name}
                                               </button>
@@ -1342,7 +1342,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 {/* Level Control */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">
+                                  <label className="text-sm font-medium text-slate-100">
                                     Level: {output.levelDb}dB
                                   </label>
                                   <input
@@ -1358,7 +1358,7 @@ export default function AtlasProgrammingInterface() {
 
                                 {/* Delay Control */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">
+                                  <label className="text-sm font-medium text-slate-100">
                                     Delay: {output.delay}ms
                                   </label>
                                   <input
@@ -1374,7 +1374,7 @@ export default function AtlasProgrammingInterface() {
 
                                 {/* Processing Controls */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">Processing</label>
+                                  <label className="text-sm font-medium text-slate-100">Processing</label>
                                   <div className="space-y-1">
                                     <label className="flex items-center gap-2 text-sm">
                                       <input
@@ -1408,7 +1408,7 @@ export default function AtlasProgrammingInterface() {
 
                                 {/* EQ Controls */}
                                 <div className="space-y-2">
-                                  <label className="text-sm font-medium text-gray-900">3-Band EQ</label>
+                                  <label className="text-sm font-medium text-slate-100">3-Band EQ</label>
                                   <div className="space-y-1">
                                     <div className="flex items-center gap-2 text-xs">
                                       <span className="w-12">High:</span>
@@ -1469,8 +1469,8 @@ export default function AtlasProgrammingInterface() {
                   <TabsContent value="scenes" className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-gray-900">Scene Recall</h3>
-                        <p className="text-sm text-gray-600">
+                        <h3 className="text-xl font-semibold text-slate-100">Scene Recall</h3>
+                        <p className="text-sm text-slate-300">
                           Save and recall complete system configurations
                         </p>
                       </div>
@@ -1488,9 +1488,9 @@ export default function AtlasProgrammingInterface() {
                         <Card className="border-2 border-dashed border-gray-300">
                           <CardContent className="text-center py-8">
                             <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                              <Play className="h-8 w-8 text-gray-400" />
+                              <Play className="h-8 w-8 text-slate-500" />
                             </div>
-                            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Scenes Created</h4>
+                            <h4 className="text-lg font-semibold text-slate-100 mb-2">No Scenes Created</h4>
                             <p className="text-gray-600 mb-4">
                               Create scenes to save and recall complete system configurations
                             </p>
@@ -1511,9 +1511,9 @@ export default function AtlasProgrammingInterface() {
                               <CardContent className="p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                   <div className="space-y-1">
-                                    <h4 className="text-lg font-semibold text-gray-900">{scene.name}</h4>
-                                    <p className="text-sm text-gray-600">{scene.description}</p>
-                                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                                    <h4 className="text-lg font-semibold text-slate-100">{scene.name}</h4>
+                                    <p className="text-sm text-slate-300">{scene.description}</p>
+                                    <div className="flex items-center gap-4 text-xs text-slate-400">
                                       <span className="flex items-center gap-1">
                                         <Clock className="h-3 w-3" />
                                         Recall: {scene.recall_time}s
@@ -1555,8 +1555,8 @@ export default function AtlasProgrammingInterface() {
                   {/* Message Playbook Tab */}
                   <TabsContent value="messages" className="space-y-6">
                     <div className="space-y-1">
-                      <h3 className="text-xl font-semibold text-gray-900">Message Playbook</h3>
-                      <p className="text-sm text-gray-600">
+                      <h3 className="text-xl font-semibold text-slate-100">Message Playbook</h3>
+                      <p className="text-sm text-slate-300">
                         Manage recorded messages and announcements for automatic or manual playback
                       </p>
                     </div>
@@ -1564,9 +1564,9 @@ export default function AtlasProgrammingInterface() {
                     <Card className="border-2 border-dashed border-gray-300">
                       <CardContent className="text-center py-8">
                         <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                          <MessageSquare className="h-8 w-8 text-gray-400" />
+                          <MessageSquare className="h-8 w-8 text-slate-500" />
                         </div>
-                        <h4 className="text-lg font-semibold text-gray-900 mb-2">Message Playbook</h4>
+                        <h4 className="text-lg font-semibold text-slate-100 mb-2">Message Playbook</h4>
                         <p className="text-gray-600 mb-4">
                           Upload and configure pre-recorded messages for automatic playback
                         </p>

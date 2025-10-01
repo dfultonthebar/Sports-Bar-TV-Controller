@@ -135,7 +135,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
     <div className="bg-white rounded-lg shadow-sm border p-6">
       <div className="flex items-center space-x-3 mb-6">
         <Brain className="w-6 h-6 text-blue-600" />
-        <h3 className="text-lg font-semibold text-gray-900">AI Layout Analyzer</h3>
+        <h3 className="text-lg font-semibold text-slate-100">AI Layout Analyzer</h3>
       </div>
 
       {!analysis && (
@@ -143,7 +143,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
           <div className="bg-blue-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
             <MapPin className="w-8 h-8 text-blue-600" />
           </div>
-          <h4 className="text-lg font-medium text-gray-900 mb-2">
+          <h4 className="text-lg font-medium text-slate-100 mb-2">
             Intelligent TV Mapping
           </h4>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
@@ -168,7 +168,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
             )}
           </button>
 
-          <p className="text-sm text-gray-500 mt-3">
+          <p className="text-sm text-slate-400 mt-3">
             AI will analyze your layout and create TV zones automatically
           </p>
         </div>
@@ -199,7 +199,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
 
           {/* TV Locations Map */}
           <div>
-            <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center space-x-2">
+            <h4 className="text-md font-semibold text-slate-100 mb-3 flex items-center space-x-2">
               <MapPin className="w-5 h-5" />
               <span>Detected TV Locations</span>
             </h4>
@@ -211,11 +211,11 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
                       {location.number}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">TV #{location.number}</p>
-                      <p className="text-xs text-gray-600">{location.description}</p>
+                      <p className="text-sm font-medium text-slate-100">TV #{location.number}</p>
+                      <p className="text-xs text-slate-400">{location.description}</p>
                     </div>
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-slate-400">
                     {location.position.wall} wall
                   </div>
                 </div>
@@ -225,7 +225,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
 
           {/* Output Mapping Suggestions */}
           <div>
-            <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center space-x-2">
+            <h4 className="text-md font-semibold text-slate-100 mb-3 flex items-center space-x-2">
               <Tv className="w-5 h-5" />
               <span>Recommended Output Mappings</span>
             </h4>
@@ -256,7 +256,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
             <button
               onClick={analyzeLayout}
               disabled={analyzing}
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center space-x-2"
+              className="bg-gray-100 text-slate-200 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center space-x-2"
             >
               <Brain className="w-4 h-4" />
               <span>Reanalyze Layout</span>

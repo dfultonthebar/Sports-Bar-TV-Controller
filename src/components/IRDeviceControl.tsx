@@ -423,7 +423,7 @@ export default function IRDeviceControl() {
   const renderCommandCategory = (category: string, commands: IRCommand[]) => {
     return (
       <div key={category} className="mb-6">
-        <h4 className="text-sm font-medium text-gray-700 mb-3 capitalize">{category}</h4>
+        <h4 className="text-sm font-medium text-slate-200 mb-3 capitalize">{category}</h4>
         <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
           {commands.map(renderCommandButton)}
         </div>
@@ -441,7 +441,7 @@ export default function IRDeviceControl() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center space-x-2">
+        <h2 className="text-2xl font-bold text-slate-100 flex items-center space-x-2">
           <Radio className="w-6 h-6 text-blue-600" />
           <span>IR Device Control</span>
         </h2>
@@ -465,7 +465,7 @@ export default function IRDeviceControl() {
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               isLearningMode 
                 ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-gray-200 text-slate-200 hover:bg-gray-300'
             }`}
           >
             {isLearningMode ? 'Stop Learning' : 'Learn IR'}
@@ -484,7 +484,7 @@ export default function IRDeviceControl() {
 
       {/* Device Selection */}
       <div className="bg-white p-4 rounded-lg shadow-sm border">
-        <h3 className="text-lg font-medium text-gray-800 mb-3">Select Device</h3>
+        <h3 className="text-lg font-medium text-slate-100 mb-3">Select Device</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {devices.map((device) => (
             <button
@@ -522,9 +522,9 @@ export default function IRDeviceControl() {
                   </button>
                 </div>
               </div>
-              <h4 className="font-medium text-gray-800 mt-2">{device.name}</h4>
-              <p className="text-sm text-gray-600">{device.brand} {device.deviceType}</p>
-              <p className="text-xs text-gray-500 mt-1">
+              <h4 className="font-medium text-slate-100 mt-2">{device.name}</h4>
+              <p className="text-sm text-slate-300">{device.brand} {device.deviceType}</p>
+              <p className="text-xs text-slate-400 mt-1">
                 {device.controlMethod === 'IP' 
                   ? `IP: ${device.deviceIpAddress}:${device.ipControlPort || 'auto'}`
                   : `iTach: ${device.iTachAddress}:${device.iTachPort || 1}`
@@ -538,7 +538,7 @@ export default function IRDeviceControl() {
       {/* Quick Channel Change */}
       {selectedDevice && (
         <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <h3 className="text-lg font-medium text-gray-800 mb-3">Quick Channel</h3>
+          <h3 className="text-lg font-medium text-slate-100 mb-3">Quick Channel</h3>
           <div className="flex items-center space-x-3">
             <input
               type="text"
@@ -561,7 +561,7 @@ export default function IRDeviceControl() {
       {/* IR Commands */}
       {selectedDevice && (
         <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <h3 className="text-lg font-medium text-gray-800 mb-4">
+          <h3 className="text-lg font-medium text-slate-100 mb-4">
             Control: {selectedDevice.name}
           </h3>
           
@@ -575,11 +575,11 @@ export default function IRDeviceControl() {
       {showAddDevice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-800 mb-4">Add New IR Device</h3>
+            <h3 className="text-lg font-medium text-slate-100 mb-4">Add New IR Device</h3>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+                <label className="block text-sm font-medium text-slate-200 mb-1">Device Name</label>
                 <input
                   type="text"
                   placeholder="e.g., Main DirecTV Box"
@@ -590,7 +590,7 @@ export default function IRDeviceControl() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                <label className="block text-sm font-medium text-slate-200 mb-1">Brand</label>
                 <select
                   value={newDevice.brand || ''}
                   onChange={(e) => {
@@ -620,7 +620,7 @@ export default function IRDeviceControl() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Device Model</label>
+                <label className="block text-sm font-medium text-slate-200 mb-1">Device Model</label>
                 <select
                   value={newDevice.deviceType || ''}
                   onChange={(e) => {
@@ -640,7 +640,7 @@ export default function IRDeviceControl() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Control Method</label>
+                <label className="block text-sm font-medium text-slate-200 mb-1">Control Method</label>
                 <div className="flex space-x-4">
                   <label className="flex items-center">
                     <input
@@ -673,7 +673,7 @@ export default function IRDeviceControl() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Input Channel</label>
+                <label className="block text-sm font-medium text-slate-200 mb-1">Input Channel</label>
                 <input
                   type="number"
                   min="1"
@@ -688,7 +688,7 @@ export default function IRDeviceControl() {
               {newDevice.controlMethod === 'IP' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Device IP Address *</label>
+                    <label className="block text-sm font-medium text-slate-200 mb-1">Device IP Address *</label>
                     <input
                       type="text"
                       placeholder="192.168.1.150"
@@ -696,10 +696,10 @@ export default function IRDeviceControl() {
                       onChange={(e) => setNewDevice({ ...newDevice, deviceIpAddress: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">IP address of the device you want to control</p>
+                    <p className="text-xs text-slate-400 mt-1">IP address of the device you want to control</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Control Port</label>
+                    <label className="block text-sm font-medium text-slate-200 mb-1">Control Port</label>
                     <input
                       type="number"
                       placeholder="8080"
@@ -707,7 +707,7 @@ export default function IRDeviceControl() {
                       onChange={(e) => setNewDevice({ ...newDevice, ipControlPort: parseInt(e.target.value) || undefined })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Port for IP control (auto-detected if left empty)</p>
+                    <p className="text-xs text-slate-400 mt-1">Port for IP control (auto-detected if left empty)</p>
                   </div>
                 </>
               )}
@@ -716,7 +716,7 @@ export default function IRDeviceControl() {
               {newDevice.controlMethod === 'GlobalCache' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">iTach IP Address *</label>
+                    <label className="block text-sm font-medium text-slate-200 mb-1">iTach IP Address *</label>
                     <input
                       type="text"
                       placeholder="192.168.1.100"
@@ -724,10 +724,10 @@ export default function IRDeviceControl() {
                       onChange={(e) => setNewDevice({ ...newDevice, iTachAddress: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">IP address of your Global Cache iTach device</p>
+                    <p className="text-xs text-slate-400 mt-1">IP address of your Global Cache iTach device</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">iTach Port</label>
+                    <label className="block text-sm font-medium text-slate-200 mb-1">iTach Port</label>
                     <select
                       value={newDevice.iTachPort || 1}
                       onChange={(e) => setNewDevice({ ...newDevice, iTachPort: parseInt(e.target.value) })}
@@ -737,7 +737,7 @@ export default function IRDeviceControl() {
                       <option value={2}>Port 2</option>
                       <option value={3}>Port 3</option>
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">Which port on the iTach device is connected to this device</p>
+                    <p className="text-xs text-slate-400 mt-1">Which port on the iTach device is connected to this device</p>
                   </div>
                 </>
               )}
@@ -746,7 +746,7 @@ export default function IRDeviceControl() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={() => setShowAddDevice(false)}
-                className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-gray-200 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>

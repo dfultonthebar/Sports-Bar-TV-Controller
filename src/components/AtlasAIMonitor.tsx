@@ -116,7 +116,7 @@ export default function AtlasAIMonitor({
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <div className="text-gray-500">Analyzing Atlas processor...</div>
+            <div className="text-slate-400">Analyzing Atlas processor...</div>
           </div>
         </CardContent>
       </Card>
@@ -229,10 +229,10 @@ export default function AtlasAIMonitor({
           {/* AI Insights */}
           {analysis?.audioInsights && analysis.audioInsights.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">AI Insights</h4>
+              <h4 className="text-sm font-semibold text-slate-200 mb-2">AI Insights</h4>
               <div className="space-y-1">
                 {analysis.audioInsights.map((insight: string, index: number) => (
-                  <div key={index} className="text-sm text-gray-600 flex items-start space-x-2">
+                  <div key={index} className="text-sm text-slate-300 flex items-start space-x-2">
                     <Brain className="w-3 h-3 text-blue-500 mt-0.5 flex-shrink-0" />
                     <span>{insight}</span>
                   </div>
@@ -244,7 +244,7 @@ export default function AtlasAIMonitor({
           {/* Recommendations */}
           {analysis?.hardwareRecommendations && analysis.hardwareRecommendations.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Hardware Recommendations</h4>
+              <h4 className="text-sm font-semibold text-slate-200 mb-2">Hardware Recommendations</h4>
               <div className="space-y-1">
                 {analysis.hardwareRecommendations.map((rec: string, index: number) => (
                   <div key={index} className="text-sm text-orange-600 flex items-start space-x-2">
@@ -259,7 +259,7 @@ export default function AtlasAIMonitor({
           {/* Configuration Issues */}
           {analysis?.configurationIssues && analysis.configurationIssues.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Configuration Issues</h4>
+              <h4 className="text-sm font-semibold text-slate-200 mb-2">Configuration Issues</h4>
               <div className="space-y-1">
                 {analysis.configurationIssues.map((issue: string, index: number) => (
                   <div key={index} className="text-sm text-red-600 flex items-start space-x-2">
@@ -273,7 +273,7 @@ export default function AtlasAIMonitor({
 
           {/* Confidence Indicator */}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex items-center justify-between text-sm text-gray-500">
+            <div className="flex items-center justify-between text-sm text-slate-400">
               <span>Analysis Confidence</span>
               <span>{analysis?.confidence || 0}%</span>
             </div>

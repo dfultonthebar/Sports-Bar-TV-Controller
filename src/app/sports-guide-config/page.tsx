@@ -860,7 +860,7 @@ export default function SportsGuideConfigPage() {
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-white mb-2">
                           Assigned TV Inputs ({assignedInputs.length} selected)
-                          <span className="text-xs text-gray-400 ml-2">
+                          <span className="text-xs text-slate-500 ml-2">
                             (Showing {compatibleInputs.length} compatible inputs)
                           </span>
                         </label>
@@ -895,7 +895,7 @@ export default function SportsGuideConfigPage() {
                                 />
                                 <div className="text-sm">
                                   <div className="text-white">{input.label}</div>
-                                  <div className="text-xs text-gray-400">
+                                  <div className="text-xs text-slate-500">
                                     Ch {input.channelNumber} • {input.deviceType}
                                   </div>
                                 </div>
@@ -1159,7 +1159,7 @@ export default function SportsGuideConfigPage() {
                 {addingTeam && (
                   <div className="bg-white/5 rounded-lg p-4 mb-4">
                     <div className="relative mb-4">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
                       <input
                         type="text"
                         placeholder="Search for teams (e.g. Green Bay Packers, Wisconsin Badgers, Bay Port Pirates...)"
@@ -1206,7 +1206,7 @@ export default function SportsGuideConfigPage() {
                 </h4>
                 
                 {homeTeams.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
+                  <div className="text-center py-8 text-slate-500">
                     <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No teams selected</p>
                     <p className="text-xs mt-1">Add teams to prioritize their games in the sports guide</p>
@@ -1252,7 +1252,7 @@ export default function SportsGuideConfigPage() {
                             className={`p-2 transition-colors ${
                               team.isPrimary 
                                 ? 'text-yellow-400 hover:text-yellow-300' 
-                                : 'text-gray-400 hover:text-yellow-400'
+                                : 'text-slate-500 hover:text-yellow-400'
                             }`}
                             title={team.isPrimary ? "Remove from primary teams" : "Set as primary team"}
                           >
@@ -1260,7 +1260,7 @@ export default function SportsGuideConfigPage() {
                           </button>
                           <button
                             onClick={() => removeTeam(index)}
-                            className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                            className="p-2 text-slate-500 hover:text-red-400 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -1365,7 +1365,7 @@ export default function SportsGuideConfigPage() {
                               )}
                             </div>
                             <h4 className="font-medium text-white">{category}</h4>
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-slate-500">
                               ({data.leagues.length} leagues)
                             </span>
                           </div>
@@ -1380,7 +1380,7 @@ export default function SportsGuideConfigPage() {
                               }
                               setExpandedCategories(newExpanded)
                             }}
-                            className="text-gray-400 hover:text-white transition-colors"
+                            className="text-slate-500 hover:text-white transition-colors"
                           >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                           </button>

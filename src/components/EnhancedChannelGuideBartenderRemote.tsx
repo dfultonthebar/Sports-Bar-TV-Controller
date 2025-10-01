@@ -597,7 +597,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       return <CheckCircle className="w-4 h-4 text-green-500" />
     }
     
-    return <AlertCircle className="w-4 h-4 text-gray-400" />
+    return <AlertCircle className="w-4 h-4 text-slate-500" />
   }
 
   return (
@@ -614,7 +614,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             </div>
           )}
           {lastOperationTime && (
-            <div className="px-3 py-1 bg-gray-500/20 text-gray-400 border border-gray-500/30 rounded-full flex items-center space-x-1">
+            <div className="px-3 py-1 bg-gray-500/20 text-slate-500 border border-gray-500/30 rounded-full flex items-center space-x-1">
               <Clock className="w-3 h-3" />
               <span>{lastOperationTime.toLocaleTimeString()}</span>
             </div>
@@ -624,7 +624,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             className={`px-3 py-1 rounded-full font-medium flex items-center space-x-1 transition-all ${
               showChannelGuide 
                 ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30'
+                : 'bg-gray-500/20 text-slate-500 border border-gray-500/30 hover:bg-gray-500/30'
             }`}
           >
             <Calendar className="w-3 h-3" />
@@ -678,9 +678,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
         <div className="lg:col-span-3">
           {!showChannelGuide ? (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center">
-              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <Calendar className="w-16 h-16 text-slate-500 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-white mb-2">Channel Guide</h3>
-              <p className="text-gray-400 mb-4">Select an input and click "Channel Guide" to see available sports programming</p>
+              <p className="text-slate-500 mb-4">Select an input and click "Channel Guide" to see available sports programming</p>
               <Button
                 onClick={() => setShowChannelGuide(true)}
                 className="bg-blue-600 hover:bg-blue-700"
@@ -690,9 +690,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
             </div>
           ) : !selectedInput ? (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center">
-              <Tv className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <Tv className="w-16 h-16 text-slate-500 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-white mb-2">Select an Input</h3>
-              <p className="text-gray-400">Choose an input from the left panel to load its channel guide</p>
+              <p className="text-slate-500">Choose an input from the left panel to load its channel guide</p>
             </div>
           ) : (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
@@ -728,7 +728,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Search */}
               <div className="mb-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
                   <input
                     type="text"
                     placeholder="Search games, teams, leagues..."
@@ -744,7 +744,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 {loadingGuide ? (
                   <div className="text-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                    <p className="text-gray-400">Loading channel guide...</p>
+                    <p className="text-slate-500">Loading channel guide...</p>
                   </div>
                 ) : guideError ? (
                   <div className="text-center py-8">
@@ -822,9 +822,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   </div>
                 ) : guideData ? (
                   <div className="text-center py-8">
-                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <Calendar className="w-12 h-12 text-slate-500 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-white mb-2">No Sports Programming Found</h3>
-                    <p className="text-gray-400">Try adjusting your search or check again later</p>
+                    <p className="text-slate-500">Try adjusting your search or check again later</p>
                   </div>
                 ) : null}
               </div>
@@ -841,7 +841,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                         className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-all text-center"
                       >
                         <div className="text-xs font-medium text-white">{app.displayName}</div>
-                        <div className="text-xs text-gray-400 mt-1">{app.category}</div>
+                        <div className="text-xs text-slate-500 mt-1">{app.category}</div>
                       </button>
                     ))}
                   </div>
@@ -857,7 +857,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-sm text-gray-600">Processing request...</p>
+            <p className="text-sm text-slate-300">Processing request...</p>
           </div>
         </div>
       )}

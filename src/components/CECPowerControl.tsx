@@ -250,7 +250,7 @@ export default function CECPowerControl() {
     if (tv.isProcessing) return <Clock className="w-4 h-4 animate-spin text-yellow-400" />
     if (tv.isPoweredOn === true) return <CheckCircle className="w-4 h-4 text-green-400" />
     if (tv.isPoweredOn === false) return <XCircle className="w-4 h-4 text-red-400" />
-    return <Monitor className="w-4 h-4 text-gray-400" />
+    return <Monitor className="w-4 h-4 text-slate-500" />
   }
 
   return (
@@ -318,7 +318,7 @@ export default function CECPowerControl() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Select the input where your CEC server/controller is connected
               </p>
             </div>
@@ -356,7 +356,7 @@ export default function CECPowerControl() {
             {/* Power Delays */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Power On Delay (ms)</label>
+                <label className="block text-xs text-slate-500 mb-1">Power On Delay (ms)</label>
                 <input
                   type="number"
                   value={cecConfig.powerOnDelay}
@@ -366,7 +366,7 @@ export default function CECPowerControl() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Power Off Delay (ms)</label>
+                <label className="block text-xs text-slate-500 mb-1">Power Off Delay (ms)</label>
                 <input
                   type="number"
                   value={cecConfig.powerOffDelay}
@@ -408,7 +408,7 @@ export default function CECPowerControl() {
                   <Tv className="w-5 h-5 text-blue-400" />
                   <span className="font-medium text-white">All TVs</span>
                 </div>
-                <span className="text-xs text-gray-400">{outputs.length} active</span>
+                <span className="text-xs text-slate-500">{outputs.length} active</span>
               </div>
               
               <div className="grid grid-cols-2 gap-2">
@@ -436,17 +436,17 @@ export default function CECPowerControl() {
               <h4 className="text-sm font-medium text-white mb-2">System Status</h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">CEC Input:</span>
+                  <span className="text-slate-500">CEC Input:</span>
                   <span className="text-white">
                     {cecConfig.cecInputChannel ? `Input ${cecConfig.cecInputChannel}` : 'Not set'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">CEC Server:</span>
+                  <span className="text-slate-500">CEC Server:</span>
                   <span className="text-white">{cecConfig.cecServerIP}:{cecConfig.cecPort}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Status:</span>
+                  <span className="text-slate-500">Status:</span>
                   <span className={cecConfig.isEnabled ? 'text-green-400' : 'text-red-400'}>
                     {cecConfig.isEnabled ? 'Enabled' : 'Disabled'}
                   </span>
@@ -465,7 +465,7 @@ export default function CECPowerControl() {
 
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {tvStatuses.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-slate-500">
                 <Tv className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No active TV outputs found.</p>
                 <p className="text-xs mt-1">Configure matrix outputs first.</p>
@@ -479,11 +479,11 @@ export default function CECPowerControl() {
                         {getTVStatusIcon(tv)}
                         <div>
                           <div className="font-medium text-white text-sm">{tv.label}</div>
-                          <div className="text-xs text-gray-400">Output {tv.outputNumber}</div>
+                          <div className="text-xs text-slate-500">Output {tv.outputNumber}</div>
                         </div>
                       </div>
                       {tv.lastActionTime && (
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-slate-500">
                           {tv.lastActionTime}
                         </div>
                       )}

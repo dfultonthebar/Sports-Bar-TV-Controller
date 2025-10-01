@@ -127,7 +127,7 @@ export default function DocumentUpload() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           Upload AV System Documentation
         </h3>
         <p className="text-gray-600">
@@ -155,7 +155,7 @@ export default function DocumentUpload() {
         
         <div className="text-center">
           <svg
-            className="mx-auto h-12 w-12 text-gray-400"
+            className="mx-auto h-12 w-12 text-slate-500"
             stroke="currentColor"
             fill="none"
             viewBox="0 0 48 48"
@@ -169,10 +169,10 @@ export default function DocumentUpload() {
           </svg>
           <div className="mt-4">
             <label className="cursor-pointer">
-              <span className="mt-2 block text-sm font-medium text-gray-900">
+              <span className="mt-2 block text-sm font-medium text-slate-100">
                 {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
               </span>
-              <span className="mt-1 block text-xs text-gray-500">
+              <span className="mt-1 block text-xs text-slate-400">
                 PDF, DOC, TXT, JPG, PNG up to 10MB
               </span>
             </label>
@@ -215,8 +215,8 @@ export default function DocumentUpload() {
                 <div className="flex items-center space-x-3">
                   <span className="text-green-600">📄</span>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{file.originalName}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-sm font-medium text-slate-100">{file.originalName}</p>
+                    <p className="text-xs text-slate-400">
                       {formatFileSize(file.fileSize)} • {new Date(file.uploadedAt).toLocaleDateString()}
                     </p>
                   </div>

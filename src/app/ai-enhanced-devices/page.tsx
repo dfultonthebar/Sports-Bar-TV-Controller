@@ -102,7 +102,7 @@ export default function AIEnhancedDevicesPage() {
               </div>
               <Zap className="w-8 h-8 text-green-500" />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Active automation rules</p>
+            <p className="text-xs text-slate-400 mt-1">Active automation rules</p>
           </CardContent>
         </Card>
 
@@ -115,7 +115,7 @@ export default function AIEnhancedDevicesPage() {
               </div>
               <AlertTriangle className="w-8 h-8 text-orange-500" />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Requiring attention</p>
+            <p className="text-xs text-slate-400 mt-1">Requiring attention</p>
           </CardContent>
         </Card>
 
@@ -131,7 +131,7 @@ export default function AIEnhancedDevicesPage() {
               </div>
               <Brain className="w-8 h-8 text-blue-500" />
             </div>
-            <p className="text-xs text-gray-500 mt-1">All systems operational</p>
+            <p className="text-xs text-slate-400 mt-1">All systems operational</p>
           </CardContent>
         </Card>
       </div>
@@ -267,7 +267,7 @@ export default function AIEnhancedDevicesPage() {
                     <span className="text-sm">Auto-Fix Success</span>
                     <Badge className="bg-purple-100 text-purple-800">84%</Badge>
                   </div>
-                  <div className="text-xs text-gray-500 mt-3">
+                  <div className="text-xs text-slate-400 mt-3">
                     AI models continuously improve based on your sports bar's usage patterns
                   </div>
                 </div>
@@ -321,7 +321,7 @@ export default function AIEnhancedDevicesPage() {
                         {action.type === 'troubleshooting' && <Bug className="w-4 h-4 text-purple-500" />}
                         <div>
                           <p className="text-sm font-medium">{action.action}</p>
-                          <p className="text-xs text-gray-600">{action.reason}</p>
+                          <p className="text-xs text-slate-400">{action.reason}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -330,7 +330,7 @@ export default function AIEnhancedDevicesPage() {
                         ) : (
                           <AlertTriangle className="w-4 h-4 text-orange-500" />
                         )}
-                        <span className="text-xs text-gray-500">{action.time}</span>
+                        <span className="text-xs text-slate-400">{action.time}</span>
                       </div>
                     </div>
                   ))}

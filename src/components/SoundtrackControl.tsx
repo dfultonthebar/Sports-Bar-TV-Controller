@@ -203,8 +203,8 @@ export default function SoundtrackControl({
     return (
       <Card className="bg-gray-800 border-gray-700">
         <CardContent className="flex items-center justify-center py-8">
-          <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
-          <span className="ml-2 text-gray-400">Loading Soundtrack...</span>
+          <RefreshCw className="w-6 h-6 text-slate-500 animate-spin" />
+          <span className="ml-2 text-slate-500">Loading Soundtrack...</span>
         </CardContent>
       </Card>
     )
@@ -231,7 +231,7 @@ export default function SoundtrackControl({
   if (!selectedPlayer) {
     return (
       <Card className="bg-gray-800 border-gray-700">
-        <CardContent className="py-8 text-center text-gray-400">
+        <CardContent className="py-8 text-center text-slate-500">
           No Soundtrack players found
         </CardContent>
       </Card>
@@ -254,7 +254,7 @@ export default function SoundtrackControl({
         {nowPlaying && (
           <div className="mb-3 text-sm">
             <div className="text-white font-medium truncate">{nowPlaying.track.title}</div>
-            <div className="text-gray-400 truncate">{nowPlaying.track.artist}</div>
+            <div className="text-slate-500 truncate">{nowPlaying.track.artist}</div>
           </div>
         )}
 
@@ -301,7 +301,7 @@ export default function SoundtrackControl({
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
-        <CardDescription className="text-gray-400">{zoneName}</CardDescription>
+        <CardDescription className="text-slate-500">{zoneName}</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -327,9 +327,9 @@ export default function SoundtrackControl({
                   </Badge>
                 </div>
                 <h3 className="text-white font-semibold truncate">{nowPlaying.track.title}</h3>
-                <p className="text-gray-400 text-sm truncate">{nowPlaying.track.artist}</p>
+                <p className="text-slate-500 text-sm truncate">{nowPlaying.track.artist}</p>
                 {nowPlaying.track.album && (
-                  <p className="text-gray-500 text-xs truncate">{nowPlaying.track.album}</p>
+                  <p className="text-slate-400 text-xs truncate">{nowPlaying.track.album}</p>
                 )}
               </div>
             </div>
@@ -342,7 +342,7 @@ export default function SoundtrackControl({
             <Badge variant={selectedPlayer.isPlaying ? "default" : "secondary"}>
               {selectedPlayer.isPlaying ? 'Playing' : 'Paused'}
             </Badge>
-            <span className="text-gray-400 text-sm">{selectedPlayer.name}</span>
+            <span className="text-slate-500 text-sm">{selectedPlayer.name}</span>
           </div>
 
           <div className="flex items-center justify-between">
@@ -372,7 +372,7 @@ export default function SoundtrackControl({
                 <ChevronDown className="w-4 h-4" />
               </Button>
               <div className="flex items-center space-x-2">
-                <Volume2 className="w-5 h-5 text-gray-400" />
+                <Volume2 className="w-5 h-5 text-slate-500" />
                 <span className="text-white font-mono w-12 text-center text-lg">
                   {selectedPlayer.volume}
                 </span>
@@ -416,7 +416,7 @@ export default function SoundtrackControl({
                 >
                   <div className="font-medium">{station.name}</div>
                   {station.description && (
-                    <div className="text-xs text-gray-400 mt-1">{station.description}</div>
+                    <div className="text-xs text-slate-500 mt-1">{station.description}</div>
                   )}
                   {(station.genre || station.mood) && (
                     <div className="flex gap-2 mt-2">

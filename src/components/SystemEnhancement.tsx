@@ -105,14 +105,14 @@ export default function SystemEnhancement() {
       case 'Easy': return 'bg-green-100 text-green-800'
       case 'Medium': return 'bg-yellow-100 text-yellow-800'
       case 'Advanced': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-slate-100'
     }
   }
 
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           System Enhancement Recommendations
         </h3>
         <p className="text-gray-600">
@@ -129,7 +129,7 @@ export default function SystemEnhancement() {
             className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 ${
               selectedCategory === category.id
                 ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-gray-100 text-slate-200 hover:bg-gray-200'
             }`}
           >
             <span>{category.icon}</span>
@@ -143,7 +143,7 @@ export default function SystemEnhancement() {
         {filteredEnhancements.map((enhancement) => (
           <div key={enhancement.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
             <div className="flex items-start justify-between mb-4">
-              <h4 className="text-lg font-semibold text-gray-900">
+              <h4 className="text-lg font-semibold text-slate-100">
                 {enhancement.title}
               </h4>
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(enhancement.difficulty)}`}>
@@ -172,7 +172,7 @@ export default function SystemEnhancement() {
 
       {filteredEnhancements.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-gray-500">No enhancements found for the selected category.</p>
+          <p className="text-slate-400">No enhancements found for the selected category.</p>
         </div>
       )}
 
@@ -182,12 +182,12 @@ export default function SystemEnhancement() {
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-gray-900">
+                <h3 className="text-xl font-bold text-slate-100">
                   {selectedEnhancement.title}
                 </h3>
                 <button
                   onClick={() => setSelectedEnhancement(null)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  className="text-slate-500 hover:text-gray-600 text-2xl"
                 >
                   ×
                 </button>
@@ -195,13 +195,13 @@ export default function SystemEnhancement() {
 
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Description</h4>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">Description</h4>
                   <p className="text-gray-600">{selectedEnhancement.description}</p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-800 mb-2">Benefits</h4>
+                    <h4 className="text-lg font-semibold text-slate-100 mb-2">Benefits</h4>
                     <ul className="space-y-1">
                       {selectedEnhancement.benefits.map((benefit, index) => (
                         <li key={index} className="text-gray-600 flex items-start">
@@ -213,7 +213,7 @@ export default function SystemEnhancement() {
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-800 mb-2">Requirements</h4>
+                    <h4 className="text-lg font-semibold text-slate-100 mb-2">Requirements</h4>
                     <ul className="space-y-1">
                       {selectedEnhancement.requirements.map((requirement, index) => (
                         <li key={index} className="text-gray-600 flex items-start">
@@ -226,17 +226,17 @@ export default function SystemEnhancement() {
                 </div>
 
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Implementation</h4>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">Implementation</h4>
                   <p className="text-gray-600">{selectedEnhancement.implementation}</p>
                 </div>
 
                 <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
                   <div>
-                    <span className="text-sm text-gray-500">Estimated Cost</span>
+                    <span className="text-sm text-slate-400">Estimated Cost</span>
                     <p className="text-lg font-semibold text-green-600">{selectedEnhancement.estimatedCost}</p>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-500">Difficulty</span>
+                    <span className="text-sm text-slate-400">Difficulty</span>
                     <p className={`text-sm font-medium px-2 py-1 rounded ${getDifficultyColor(selectedEnhancement.difficulty)}`}>
                       {selectedEnhancement.difficulty}
                     </p>
@@ -246,7 +246,7 @@ export default function SystemEnhancement() {
                 <div className="flex gap-4">
                   <button
                     onClick={() => setSelectedEnhancement(null)}
-                    className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200"
+                    className="flex-1 bg-gray-100 text-slate-200 px-4 py-2 rounded-md hover:bg-gray-200"
                   >
                     Close
                   </button>

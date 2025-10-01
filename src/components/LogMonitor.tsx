@@ -98,16 +98,16 @@ export default function LogMonitor() {
       case 'power_control': return 'bg-red-100 text-red-800'
       case 'input_switch': return 'bg-purple-100 text-purple-800'
       case 'audio_zone': return 'bg-orange-100 text-orange-800'
-      case 'matrix_control': return 'bg-gray-100 text-gray-800'
+      case 'matrix_control': return 'bg-gray-100 text-slate-100'
       case 'error': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-slate-100'
     }
   }
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+        <h2 className="text-2xl font-bold text-slate-100 flex items-center">
           <Activity className="mr-2 w-6 h-6" />
           System Activity Monitor
         </h2>
@@ -159,7 +159,7 @@ export default function LogMonitor() {
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'summary' 
               ? 'bg-white text-blue-600 shadow-sm' 
-              : 'text-gray-600 hover:text-gray-900'
+              : 'text-gray-600 hover:text-slate-100'
           }`}
         >
           <TrendingUp className="inline w-4 h-4 mr-1" />
@@ -170,7 +170,7 @@ export default function LogMonitor() {
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'operations' 
               ? 'bg-white text-blue-600 shadow-sm' 
-              : 'text-gray-600 hover:text-gray-900'
+              : 'text-gray-600 hover:text-slate-100'
           }`}
         >
           <Activity className="inline w-4 h-4 mr-1" />
@@ -181,7 +181,7 @@ export default function LogMonitor() {
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'errors' 
               ? 'bg-white text-red-600 shadow-sm' 
-              : 'text-gray-600 hover:text-gray-900'
+              : 'text-gray-600 hover:text-slate-100'
           }`}
         >
           <AlertTriangle className="inline w-4 h-4 mr-1" />
@@ -258,12 +258,12 @@ export default function LogMonitor() {
                   }`}>
                     {op.success ? '✓ Success' : '✗ Failed'}
                   </span>
-                  <span className="text-sm text-gray-500">{formatTimestamp(op.timestamp)}</span>
+                  <span className="text-sm text-slate-400">{formatTimestamp(op.timestamp)}</span>
                 </div>
               </div>
               {op.details && (
-                <details className="text-sm text-gray-600">
-                  <summary className="cursor-pointer hover:text-gray-800">View Details</summary>
+                <details className="text-sm text-slate-300">
+                  <summary className="cursor-pointer hover:text-slate-100">View Details</summary>
                   <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
                     {JSON.stringify(op.details, null, 2)}
                   </pre>
@@ -295,7 +295,7 @@ export default function LogMonitor() {
                   </span>
                   <span className="font-medium">{error.source}</span>
                 </div>
-                <span className="text-sm text-gray-500">{formatTimestamp(error.timestamp)}</span>
+                <span className="text-sm text-slate-400">{formatTimestamp(error.timestamp)}</span>
               </div>
               <div className="text-sm text-red-800 mb-2">{error.message}</div>
               {error.details && (

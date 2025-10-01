@@ -471,7 +471,7 @@ export default function FireTVController() {
             <MonitorPlay className="w-6 h-6 text-orange-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Fire TV Controller</h2>
+            <h2 className="text-2xl font-bold text-slate-100">Fire TV Controller</h2>
             <p className="text-gray-600">Control Amazon Fire TV devices via ADB over IP</p>
           </div>
         </div>
@@ -506,10 +506,10 @@ export default function FireTVController() {
       {/* Add Device Form */}
       {showAddDevice && (
         <div className="bg-gray-50 p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Fire TV Device</h3>
+          <h3 className="text-lg font-semibold text-slate-100 mb-4">Add Fire TV Device</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Device Name</label>
               <input
                 type="text"
                 value={newDevice.name}
@@ -519,7 +519,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">IP Address</label>
               <input
                 type="text"
                 value={newDevice.ipAddress}
@@ -529,7 +529,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Port</label>
               <input
                 type="number"
                 value={newDevice.port}
@@ -539,7 +539,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Device Type</label>
               <select
                 value={newDevice.deviceType}
                 onChange={(e) => setNewDevice(prev => ({ ...prev, deviceType: e.target.value as any }))}
@@ -552,11 +552,11 @@ export default function FireTVController() {
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Matrix Input Channel</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Matrix Input Channel</label>
               {loadingInputs ? (
                 <div className="flex items-center justify-center py-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
-                  <span className="text-gray-500 text-sm ml-2">Loading inputs...</span>
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                  <span className="text-slate-400 text-sm ml-2">Loading inputs...</span>
                 </div>
               ) : (
                 <select
@@ -576,7 +576,7 @@ export default function FireTVController() {
                     ))}
                 </select>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1">
                 Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
@@ -591,7 +591,7 @@ export default function FireTVController() {
             </button>
             <button
               onClick={() => setShowAddDevice(false)}
-              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+              className="px-4 py-2 bg-gray-300 text-slate-200 rounded-lg hover:bg-gray-400"
             >
               Cancel
             </button>
@@ -602,10 +602,10 @@ export default function FireTVController() {
       {/* Edit Device Form */}
       {showEditDevice && editingDevice && (
         <div className="bg-gray-50 p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Fire TV Device</h3>
+          <h3 className="text-lg font-semibold text-slate-100 mb-4">Edit Fire TV Device</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Device Name</label>
               <input
                 type="text"
                 value={editDevice.name}
@@ -615,7 +615,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">IP Address</label>
               <input
                 type="text"
                 value={editDevice.ipAddress}
@@ -625,7 +625,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Port</label>
               <input
                 type="number"
                 value={editDevice.port}
@@ -635,7 +635,7 @@ export default function FireTVController() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Device Type</label>
               <select
                 value={editDevice.deviceType}
                 onChange={(e) => setEditDevice(prev => ({ ...prev, deviceType: e.target.value as any }))}
@@ -648,11 +648,11 @@ export default function FireTVController() {
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Matrix Input Channel</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Matrix Input Channel</label>
               {loadingInputs ? (
                 <div className="flex items-center justify-center py-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
-                  <span className="text-gray-500 text-sm ml-2">Loading inputs...</span>
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                  <span className="text-slate-400 text-sm ml-2">Loading inputs...</span>
                 </div>
               ) : (
                 <select
@@ -672,7 +672,7 @@ export default function FireTVController() {
                     ))}
                 </select>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1">
                 Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
@@ -687,7 +687,7 @@ export default function FireTVController() {
             </button>
             <button
               onClick={() => setShowEditDevice(false)}
-              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+              className="px-4 py-2 bg-gray-300 text-slate-200 rounded-lg hover:bg-gray-400"
             >
               Cancel
             </button>
@@ -698,7 +698,7 @@ export default function FireTVController() {
       {/* Device Management */}
       {devices.length > 0 && (
         <div className="bg-white p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Fire TV Devices</h3>
+          <h3 className="text-lg font-semibold text-slate-100 mb-4">Fire TV Devices</h3>
           <div className="space-y-3">
             {devices.map((device) => (
               <div
@@ -720,8 +720,8 @@ export default function FireTVController() {
                       }`} />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">{device.name}</div>
-                      <div className="text-sm text-gray-500">
+                      <div className="font-medium text-slate-100">{device.name}</div>
+                      <div className="text-sm text-slate-400">
                         {device.deviceType} • {device.ipAddress}:{device.port}
                       </div>
                       {device.inputChannel && (
@@ -813,7 +813,7 @@ export default function FireTVController() {
           {/* Sports Quick Access */}
           <div className="bg-white p-6 rounded-lg border">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Sports Quick Access</h3>
+              <h3 className="text-lg font-semibold text-slate-100">Sports Quick Access</h3>
               <Trophy className="w-5 h-5 text-orange-600" />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -833,7 +833,7 @@ export default function FireTVController() {
 
           {/* Navigation Controls */}
           <div className="bg-white p-6 rounded-lg border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Navigation</h3>
+            <h3 className="text-lg font-semibold text-slate-100 mb-4">Navigation</h3>
             <div className="space-y-4">
               {/* D-Pad */}
               <div className="flex flex-col items-center">
@@ -908,7 +908,7 @@ export default function FireTVController() {
 
           {/* Media Controls */}
           <div className="bg-white p-6 rounded-lg border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Media Controls</h3>
+            <h3 className="text-lg font-semibold text-slate-100 mb-4">Media Controls</h3>
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => sendCommand('REWIND')}
@@ -966,7 +966,7 @@ export default function FireTVController() {
           {/* App Launcher */}
           <div className="bg-white p-6 rounded-lg border">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">App Launcher</h3>
+              <h3 className="text-lg font-semibold text-slate-100">App Launcher</h3>
               <button
                 onClick={() => setShowAppsGrid(!showAppsGrid)}
                 className="px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
@@ -984,7 +984,7 @@ export default function FireTVController() {
                   className={`px-3 py-1 text-sm rounded-full ${
                     activeCategory === category
                       ? 'bg-orange-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      : 'bg-gray-200 text-slate-200 hover:bg-gray-300'
                   }`}
                 >
                   {category.charAt(0).toUpperCase() + category.slice(1)}
@@ -1006,8 +1006,8 @@ export default function FireTVController() {
                     <Tv className="w-4 h-4" />
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900">{app.displayName}</div>
-                    <div className="text-xs text-gray-500">{app.category}</div>
+                    <div className="font-medium text-slate-100">{app.displayName}</div>
+                    <div className="text-xs text-slate-400">{app.category}</div>
                   </div>
                 </button>
               ))}
@@ -1019,8 +1019,8 @@ export default function FireTVController() {
       {/* No Devices Message */}
       {devices.length === 0 && (
         <div className="text-center py-12">
-          <Monitor className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Fire TV Devices</h3>
+          <Monitor className="w-16 h-16 text-slate-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-slate-100 mb-2">No Fire TV Devices</h3>
           <p className="text-gray-600 mb-6">
             Add your first Fire TV device to start controlling streaming content
           </p>

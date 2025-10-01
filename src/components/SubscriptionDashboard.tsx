@@ -189,7 +189,7 @@ export default function SubscriptionDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Subscription Dashboard</h2>
+          <h2 className="text-2xl font-bold text-slate-100">Subscription Dashboard</h2>
           <p className="text-gray-600">Monitor streaming and TV subscriptions across all devices</p>
         </div>
         <button
@@ -208,7 +208,7 @@ export default function SubscriptionDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Devices</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalDevices}</p>
+              <p className="text-2xl font-bold text-slate-100">{stats.totalDevices}</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <BarChart3 className="w-6 h-6 text-blue-600" />
@@ -277,15 +277,15 @@ export default function SubscriptionDashboard() {
         // Device Grid View
         <div className="bg-white rounded-lg border">
           <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">Devices</h3>
+            <h3 className="text-lg font-semibold text-slate-100">Devices</h3>
             <p className="text-gray-600">Click on a device to view its subscriptions</p>
           </div>
           
           <div className="p-6">
             {devices.length === 0 ? (
               <div className="text-center py-8">
-                <Wifi className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h4 className="text-lg font-medium text-gray-900 mb-2">No Devices Found</h4>
+                <Wifi className="w-16 h-16 text-slate-500 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-slate-100 mb-2">No Devices Found</h4>
                 <p className="text-gray-600">Configure Fire TV and DirecTV devices to monitor subscriptions</p>
               </div>
             ) : (
@@ -315,8 +315,8 @@ export default function SubscriptionDashboard() {
                           </div>
                         </div>
                         <div>
-                          <h4 className="font-medium text-gray-900">{device.name}</h4>
-                          <p className="text-sm text-gray-500">{device.ipAddress}</p>
+                          <h4 className="font-medium text-slate-100">{device.name}</h4>
+                          <p className="text-sm text-slate-400">{device.ipAddress}</p>
                         </div>
                       </div>
 
@@ -344,7 +344,7 @@ export default function SubscriptionDashboard() {
                         </div>
                       ) : (
                         <div className="text-center py-3">
-                          <p className="text-sm text-gray-500 mb-2">No subscription data</p>
+                          <p className="text-sm text-slate-400 mb-2">No subscription data</p>
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                             Click to poll device
                           </span>
@@ -363,12 +363,12 @@ export default function SubscriptionDashboard() {
       {subscriptions.length > 0 && !selectedDevice && (
         <div className="bg-white rounded-lg border">
           <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">Subscription Summary</h3>
+            <h3 className="text-lg font-semibold text-slate-100">Subscription Summary</h3>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <h4 className="font-medium text-gray-900 mb-3">By Type</h4>
+                <h4 className="font-medium text-slate-100 mb-3">By Type</h4>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center space-x-2">
@@ -388,8 +388,8 @@ export default function SubscriptionDashboard() {
               </div>
               
               <div>
-                <h4 className="font-medium text-gray-900 mb-3">Popular Services</h4>
-                <div className="space-y-1 text-sm text-gray-600">
+                <h4 className="font-medium text-slate-100 mb-3">Popular Services</h4>
+                <div className="space-y-1 text-sm text-slate-300">
                   {subscriptions
                     .flatMap(d => d.subscriptions.filter(s => s.status === 'active'))
                     .reduce((acc, sub) => {
@@ -416,7 +416,7 @@ export default function SubscriptionDashboard() {
               </div>
               
               <div>
-                <h4 className="font-medium text-gray-900 mb-3">Cost Breakdown</h4>
+                <h4 className="font-medium text-slate-100 mb-3">Cost Breakdown</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>Total Monthly:</span>

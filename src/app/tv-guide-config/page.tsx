@@ -8,7 +8,7 @@ export default function TVGuideConfigPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">TV Guide Configuration</h1>
+            <h1 className="text-3xl font-bold text-slate-100">TV Guide Configuration</h1>
             <p className="text-gray-600 mt-2">
               Configure your TV guide data sources for comprehensive sports bar programming information.
             </p>
@@ -28,7 +28,7 @@ export default function TVGuideConfigPage() {
                     sports-focused features, and real-time updates. Perfect for sports bars 
                     requiring detailed programming information.
                   </p>
-                  <ul className="text-sm text-gray-500 mt-2 space-y-1">
+                  <ul className="text-sm text-slate-400 mt-2 space-y-1">
                     <li>• Comprehensive sports metadata</li>
                     <li>• Team and league information</li>
                     <li>• Event status and scoring</li>
@@ -38,7 +38,7 @@ export default function TVGuideConfigPage() {
                 
                 <div>
                   <h4 className="font-medium">Getting Started with Gracenote:</h4>
-                  <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <ol className="text-sm text-slate-300 space-y-1 list-decimal list-inside">
                     <li>Visit <a href="https://developer.gracenote.com" className="text-blue-600 underline">developer.gracenote.com</a></li>
                     <li>Create a developer account</li>
                     <li>Register your application</li>
@@ -56,7 +56,7 @@ export default function TVGuideConfigPage() {
                     real-time channel lineup and programming data specific to your 
                     business account and service level.
                   </p>
-                  <ul className="text-sm text-gray-500 mt-2 space-y-1">
+                  <ul className="text-sm text-slate-400 mt-2 space-y-1">
                     <li>• Account-specific channel lineup</li>
                     <li>• Subscription-aware programming</li>
                     <li>• Regional sports networks</li>
@@ -66,7 +66,7 @@ export default function TVGuideConfigPage() {
                 
                 <div>
                   <h4 className="font-medium">Getting Spectrum Business API Access:</h4>
-                  <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <ol className="text-sm text-slate-300 space-y-1 list-decimal list-inside">
                     <li>Contact your Spectrum Business representative</li>
                     <li>Request API access for your account</li>
                     <li>Obtain API credentials and account ID</li>

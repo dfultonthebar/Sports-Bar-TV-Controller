@@ -179,7 +179,7 @@ export default function SoundtrackConfiguration() {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
-          <RefreshCw className="w-6 h-6 text-gray-400 animate-spin mr-2" />
+          <RefreshCw className="w-6 h-6 text-slate-500 animate-spin mr-2" />
           <span className="text-gray-600">Loading configuration...</span>
         </CardContent>
       </Card>
@@ -245,7 +245,7 @@ export default function SoundtrackConfiguration() {
                 />
                 <button
                   onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
                 >
                   {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -262,7 +262,7 @@ export default function SoundtrackConfiguration() {
                 )}
               </Button>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-400">
               Get your API token from <a href="https://business.soundtrackyourbrand.com" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Soundtrack Your Brand Dashboard</a>
             </p>
           </div>
@@ -336,7 +336,7 @@ export default function SoundtrackConfiguration() {
 
           {/* Last Tested */}
           {config.lastTested && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-400">
               Last tested: {new Date(config.lastTested).toLocaleString()}
             </p>
           )}

@@ -119,7 +119,7 @@ export default function SmartDeviceOptimizer() {
       case 'high': return 'bg-red-100 text-red-800 border-red-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      default: return 'bg-gray-100 text-slate-100 border-gray-200'
     }
   }
 
@@ -250,7 +250,7 @@ export default function SmartDeviceOptimizer() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-slate-400">
                         Success: {rule.successRate}%
                       </span>
                       <Button
@@ -268,8 +268,8 @@ export default function SmartDeviceOptimizer() {
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-sm font-medium text-gray-800 mb-1">Action:</p>
-                      <p className="text-sm text-gray-600">{rule.action}</p>
+                      <p className="text-sm font-medium text-slate-100 mb-1">Action:</p>
+                      <p className="text-sm text-slate-300">{rule.action}</p>
                     </div>
                     
                     <div className="flex items-center justify-between text-sm">
@@ -353,8 +353,8 @@ export default function SmartDeviceOptimizer() {
                     </div>
                     
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-sm font-medium text-gray-800 mb-1">Implementation:</p>
-                      <p className="text-sm text-gray-600">{suggestion.implementation}</p>
+                      <p className="text-sm font-medium text-slate-100 mb-1">Implementation:</p>
+                      <p className="text-sm text-slate-300">{suggestion.implementation}</p>
                     </div>
                   </div>
                 </CardContent>

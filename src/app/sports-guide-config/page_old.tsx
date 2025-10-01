@@ -611,7 +611,7 @@ export default function SportsGuideConfigPage() {
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-white mb-2">
                       Assigned TV Input
-                      <span className="text-xs text-gray-400 ml-2">
+                      <span className="text-xs text-slate-500 ml-2">
                         (Showing {compatibleInputs.length} compatible inputs)
                       </span>
                     </label>
@@ -631,7 +631,7 @@ export default function SportsGuideConfigPage() {
                       {assignedInput && (
                         <div className="text-sm">
                           <span className="text-green-400">✓ {assignedInput.label}</span>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-slate-500">
                             {assignedInput.deviceType} • Ch {assignedInput.channelNumber}
                           </div>
                         </div>

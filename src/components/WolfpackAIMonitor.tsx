@@ -135,7 +135,7 @@ export default function WolfpackAIMonitor({
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <span className="text-2xl">🤖</span>
-              <h3 className="text-lg font-semibold text-gray-900">Wolfpack Matrix AI Monitor</h3>
+              <h3 className="text-lg font-semibold text-slate-100">Wolfpack Matrix AI Monitor</h3>
             </div>
             {isAnalyzing && (
               <div className="flex items-center space-x-2 text-blue-600">
@@ -149,7 +149,7 @@ export default function WolfpackAIMonitor({
           </div>
           <div className="flex items-center space-x-4">
             {lastAnalysis && (
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-slate-400">
                 Last analysis: {lastAnalysis}
               </span>
             )}
@@ -166,7 +166,7 @@ export default function WolfpackAIMonitor({
         {/* Filters */}
         <div className="mt-4 flex flex-wrap gap-4">
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Category:</label>
+            <label className="text-sm font-medium text-slate-200">Category:</label>
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
@@ -180,7 +180,7 @@ export default function WolfpackAIMonitor({
             </select>
           </div>
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Priority:</label>
+            <label className="text-sm font-medium text-slate-200">Priority:</label>
             <select
               value={filterPriority}
               onChange={(e) => setFilterPriority(e.target.value)}
@@ -204,25 +204,25 @@ export default function WolfpackAIMonitor({
               <div className="text-2xl font-bold text-red-600">
                 {insights.filter(i => i.type === 'error').length}
               </div>
-              <div className="text-sm text-gray-600">Errors</div>
+              <div className="text-sm text-slate-300">Errors</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-yellow-600">
                 {insights.filter(i => i.type === 'warning').length}
               </div>
-              <div className="text-sm text-gray-600">Warnings</div>
+              <div className="text-sm text-slate-300">Warnings</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-blue-600">
                 {insights.filter(i => i.type === 'optimization').length}
               </div>
-              <div className="text-sm text-gray-600">Optimizations</div>
+              <div className="text-sm text-slate-300">Optimizations</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-green-600">
                 {insights.filter(i => i.type === 'success').length}
               </div>
-              <div className="text-sm text-gray-600">Good Status</div>
+              <div className="text-sm text-slate-300">Good Status</div>
             </div>
           </div>
         </div>
@@ -241,7 +241,7 @@ export default function WolfpackAIMonitor({
         ) : filteredInsights.length === 0 ? (
           <div className="text-center py-8">
             <span className="text-4xl mb-4 block">🎯</span>
-            <h4 className="text-lg font-medium text-gray-900 mb-2">No Issues Found</h4>
+            <h4 className="text-lg font-medium text-slate-100 mb-2">No Issues Found</h4>
             <p className="text-gray-600">
               {insights.length === 0 
                 ? 'Run an analysis to get AI-powered insights about your matrix configuration.'
@@ -262,9 +262,9 @@ export default function WolfpackAIMonitor({
                     </span>
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
-                        <h4 className="font-medium text-gray-900">{insight.title}</h4>
+                        <h4 className="font-medium text-slate-100">{insight.title}</h4>
                         {getPriorityBadge(insight.priority)}
-                        <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded-full">
+                        <span className="text-xs text-slate-400 bg-gray-200 px-2 py-1 rounded-full">
                           {Math.round(insight.confidence)}% confidence
                         </span>
                         {insight.affectedChannels && (
@@ -273,7 +273,7 @@ export default function WolfpackAIMonitor({
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-700 text-sm mb-2">{insight.message}</p>
+                      <p className="text-slate-200 text-sm mb-2">{insight.message}</p>
                       
                       {insight.recommendation && (
                         <div className="mt-2">
@@ -315,7 +315,7 @@ export default function WolfpackAIMonitor({
       {/* Footer */}
       {insights.length > 0 && (
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-300">
             🤖 AI-powered analysis of your Wolfpack matrix configuration and performance • 
             Showing {filteredInsights.length} of {insights.length} insights
           </p>

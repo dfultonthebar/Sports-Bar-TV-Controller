@@ -853,8 +853,8 @@ export default function MatrixControl() {
 
             {/* AI Insights Summary */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-900 mb-2">💡 How to Use the AI Monitor</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+              <h4 className="font-semibold text-slate-100 mb-2">💡 How to Use the AI Monitor</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-200">
                 <div>
                   <div className="font-medium mb-1">Real-time Analysis:</div>
                   <ul className="list-disc pl-4 space-y-1">

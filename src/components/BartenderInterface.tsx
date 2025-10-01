@@ -370,7 +370,7 @@ export default function BartenderInterface() {
   return (
     <div className="h-full">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Bartender Control Panel</h2>
+        <h2 className="text-2xl font-bold text-slate-100 mb-2">Bartender Control Panel</h2>
         <div className="flex items-center space-x-4 text-sm">
           <div className={`flex items-center space-x-2 ${connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
             <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -387,16 +387,16 @@ export default function BartenderInterface() {
         <div className="lg:col-span-1">
           <div className="bg-white rounded-lg shadow-lg border border-gray-200">
             <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                 <Radio className="w-5 h-5 mr-2" />
                 Input Sources
               </h3>
-              <p className="text-sm text-gray-600 mt-1">Click to select an input source</p>
+              <p className="text-sm text-slate-300 mt-1">Click to select an input source</p>
             </div>
             
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
               {inputs.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-slate-400">
                   <Radio className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p>No custom input sources configured.</p>
                   <p className="text-xs mt-1">Configure input labels in Matrix Control.</p>
@@ -415,8 +415,8 @@ export default function BartenderInterface() {
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-medium text-gray-900">{input.label}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="font-medium text-slate-100">{input.label}</div>
+                          <div className="text-sm text-slate-400">
                             Channel {input.channelNumber} • {input.inputType}
                           </div>
                         </div>
@@ -431,7 +431,7 @@ export default function BartenderInterface() {
                   
                   {/* Quick Action Buttons */}
                   <div className="pt-3 border-t border-gray-200 space-y-2">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Quick Actions</h4>
+                    <h4 className="text-sm font-medium text-slate-200 mb-2">Quick Actions</h4>
                     
                     <button
                       onClick={routeInputToAllOutputs}
@@ -471,7 +471,7 @@ export default function BartenderInterface() {
           <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-full">
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                   <Tv className="w-5 h-5 mr-2" />
                   TV Layout
                 </h3>
@@ -500,14 +500,14 @@ export default function BartenderInterface() {
                       setTVLayout(prev => ({ ...prev, zones: [] }))
                       saveTVLayout({ ...tvLayout, zones: [] })
                     }}
-                    className="text-gray-600 hover:text-gray-800"
+                    className="text-gray-600 hover:text-slate-100"
                     title="Clear TV zones"
                   >
                     <RotateCcw className="w-5 h-5" />
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-slate-300 mt-1">
                 {selectedInput 
                   ? 'Click on TVs to route the selected input' 
                   : 'Select an input source first, then click on TVs to route signal'
@@ -544,7 +544,7 @@ export default function BartenderInterface() {
                       {/* Show generated zones list for PDFs */}
                       {tvLayout.zones.length > 0 && (
                         <div className="mt-4 w-full">
-                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Generated TV Zones:</h4>
+                          <h4 className="text-sm font-semibold text-slate-200 mb-2">Generated TV Zones:</h4>
                           <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
                             {tvLayout.zones.map((zone) => (
                               <div
@@ -611,9 +611,9 @@ export default function BartenderInterface() {
               ) : (
                 <div className="flex items-center justify-center h-96 border-2 border-dashed border-gray-300 rounded-lg">
                   <div className="text-center">
-                    <Tv className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">Upload Your Bar Layout</h4>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <Tv className="w-16 h-16 mx-auto text-slate-500 mb-4" />
+                    <h4 className="text-lg font-medium text-slate-100 mb-2">Upload Your Bar Layout</h4>
+                    <p className="text-sm text-slate-300 mb-4">
                       Upload a photo or floor plan of your bar showing TV locations
                     </p>
                     <label className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg cursor-pointer font-medium">

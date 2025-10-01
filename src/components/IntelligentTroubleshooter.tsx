@@ -156,7 +156,7 @@ export default function IntelligentTroubleshooter() {
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      default: return 'bg-gray-100 text-slate-100 border-gray-200'
     }
   }
 
@@ -239,7 +239,7 @@ export default function IntelligentTroubleshooter() {
                   style={{ width: `${activeSession.progress}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-xs text-gray-600">
+              <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>Started: {activeSession.startTime.toLocaleTimeString()}</span>
                 <Badge className={
                   activeSession.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -275,7 +275,7 @@ export default function IntelligentTroubleshooter() {
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Overall Health</span>
+                    <span className="text-sm text-slate-300">Overall Health</span>
                     <span className={`font-bold text-lg ${getHealthColor(diagnostic.overallHealth)}`}>
                       {diagnostic.overallHealth}%
                     </span>
@@ -332,15 +332,15 @@ export default function IntelligentTroubleshooter() {
                             <Badge className={getSeverityColor(issue.severity)}>
                               {issue.severity}
                             </Badge>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-slate-400">
                               {Math.round(issue.aiConfidence * 100)}% confidence
                             </span>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{issue.description}</p>
+                        <p className="text-sm text-slate-300 mb-3">{issue.description}</p>
                         <div className="bg-gray-50 p-3 rounded">
-                          <p className="text-xs font-medium text-gray-800 mb-1">Possible Causes:</p>
-                          <ul className="text-xs text-gray-600 list-disc list-inside">
+                          <p className="text-xs font-medium text-slate-100 mb-1">Possible Causes:</p>
+                          <ul className="text-xs text-slate-400 list-disc list-inside">
                             {issue.possibleCauses.map((cause, index) => (
                               <li key={index}>{cause}</li>
                             ))}
@@ -383,7 +383,7 @@ export default function IntelligentTroubleshooter() {
                             )}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{action.description}</p>
+                        <p className="text-sm text-slate-300 mb-3">{action.description}</p>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                           <div className="bg-gray-50 p-2 rounded text-sm">
@@ -432,7 +432,7 @@ export default function IntelligentTroubleshooter() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-slate-400">
                 <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>Diagnostic history will appear here</p>
                 <p className="text-sm">Run diagnostics to start building history</p>

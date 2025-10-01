@@ -207,7 +207,7 @@ export default function AIInsightsDashboard() {
                         style={{ width: `${(item.operations / maxHourly) * 100}%` }}
                       />
                       <div className="absolute inset-0 flex items-center px-2">
-                        <span className="text-xs font-medium text-gray-700">
+                        <span className="text-xs font-medium text-slate-200">
                           {item.operations} ops
                         </span>
                       </div>
@@ -215,7 +215,7 @@ export default function AIInsightsDashboard() {
                   </div>
                 ))}
                 {hourlyData.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-slate-400">
                     No hourly data available
                   </div>
                 )}
@@ -244,7 +244,7 @@ export default function AIInsightsDashboard() {
                         style={{ width: `${(item.count / maxDevice) * 100}%` }}
                       />
                       <div className="absolute inset-0 flex items-center px-2">
-                        <span className="text-xs font-medium text-gray-700">
+                        <span className="text-xs font-medium text-slate-200">
                           {item.count} uses
                         </span>
                       </div>
@@ -252,7 +252,7 @@ export default function AIInsightsDashboard() {
                   </div>
                 ))}
                 {deviceData.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-slate-400">
                     No device usage data available
                   </div>
                 )}

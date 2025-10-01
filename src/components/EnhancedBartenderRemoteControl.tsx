@@ -460,7 +460,7 @@ export default function EnhancedBartenderRemoteControl() {
   // Device status indicator
   const getDeviceStatusIcon = (deviceId: string) => {
     const status = deviceStatuses[deviceId]
-    if (!status) return <AlertCircle className="h-4 w-4 text-gray-400" />
+    if (!status) return <AlertCircle className="h-4 w-4 text-slate-500" />
     
     if (status.online) {
       return <CheckCircle className="h-4 w-4 text-green-500" />

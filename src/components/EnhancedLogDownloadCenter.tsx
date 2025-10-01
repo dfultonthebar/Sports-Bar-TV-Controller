@@ -459,7 +459,7 @@ export default function EnhancedLogDownloadCenter() {
               {/* Search Bar */}
               <div className="flex gap-2">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
                   <Input
                     placeholder="Search logs by message, action, or device..."
                     value={searchQuery}

@@ -59,7 +59,7 @@ export default function AIConfigPage() {
       case 'active':
         return <CheckCircle2 className="w-4 h-4 text-green-500" />
       case 'inactive':
-        return <XCircle className="w-4 h-4 text-gray-400" />
+        return <XCircle className="w-4 h-4 text-slate-500" />
       case 'error':
         return <XCircle className="w-4 h-4 text-red-500" />
       default:
@@ -127,7 +127,7 @@ export default function AIConfigPage() {
                   <div className="text-sm text-blue-200">Cloud APIs</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-400">{providersStatus.total - providersStatus.active}</div>
+                  <div className="text-2xl font-bold text-slate-500">{providersStatus.total - providersStatus.active}</div>
                   <div className="text-sm text-blue-200">Inactive</div>
                 </div>
               </div>
@@ -166,12 +166,12 @@ export default function AIConfigPage() {
                           ? 'bg-green-100 text-green-800' 
                           : service.status === 'error'
                           ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
+                          : 'bg-gray-100 text-slate-100'
                       }`}>
                         {service.status}
                       </div>
                       {service.responseTime && (
-                        <p className="text-xs text-gray-400 mt-1">{service.responseTime}ms</p>
+                        <p className="text-xs text-slate-500 mt-1">{service.responseTime}ms</p>
                       )}
                     </div>
                   </div>
@@ -179,7 +179,7 @@ export default function AIConfigPage() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-400">No local AI services detected</p>
+            <p className="text-slate-500">No local AI services detected</p>
           )}
         </div>
 
@@ -199,7 +199,7 @@ export default function AIConfigPage() {
                       {service.hasKey ? (
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
                       ) : (
-                        <XCircle className="w-4 h-4 text-gray-400" />
+                        <XCircle className="w-4 h-4 text-slate-500" />
                       )}
                       <div>
                         <h4 className="font-medium text-white">{service.name}</h4>
@@ -211,7 +211,7 @@ export default function AIConfigPage() {
                     <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       service.hasKey 
                         ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
+                        : 'bg-gray-100 text-slate-100'
                     }`}>
                       {service.hasKey ? 'Ready' : 'Not Configured'}
                     </div>

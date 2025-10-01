@@ -233,7 +233,7 @@ export default function StreamingPlatformsWidget() {
       case 'expired':
         return <AlertCircle className="w-4 h-4 text-yellow-500" />
       default:
-        return <X className="w-4 h-4 text-gray-400" />
+        return <X className="w-4 h-4 text-slate-500" />
     }
   }
 

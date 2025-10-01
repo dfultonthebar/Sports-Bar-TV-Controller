@@ -75,7 +75,7 @@ export default function IntegratedAudioZone({
       <CardContent className="space-y-4">
         {/* Source Selection */}
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Audio Source</label>
+          <label className="text-sm text-slate-500 mb-2 block">Audio Source</label>
           <div className="grid grid-cols-2 gap-2">
             {sources.map((source) => (
               <button
@@ -96,7 +96,7 @@ export default function IntegratedAudioZone({
 
         {/* Volume Control */}
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Volume</label>
+          <label className="text-sm text-slate-500 mb-2 block">Volume</label>
           <div className="flex items-center justify-between bg-gray-700/50 rounded-lg p-4">
             <Button
               onClick={() => handleVolumeChange(-5)}

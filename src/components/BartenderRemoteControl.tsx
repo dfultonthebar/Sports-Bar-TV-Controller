@@ -855,7 +855,7 @@ export default function BartenderRemoteControl() {
             className={`px-3 py-1 rounded-full font-medium flex items-center space-x-1 transition-all ${
               showSportsGuide 
                 ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30'
+                : 'bg-gray-500/20 text-slate-500 border border-gray-500/30 hover:bg-gray-500/30'
             }`}
           >
             <Calendar className="w-3 h-3" />
@@ -938,7 +938,7 @@ export default function BartenderRemoteControl() {
                         </div>
                         <div>
                           <div className="font-medium text-white">{game.channel.name}</div>
-                          <div className="text-sm text-gray-400">
+                          <div className="text-sm text-slate-500">
                             {getCostIcon(game.channel.cost)} {game.channel.cost}
                             {game.channel.channelNumber && ` • Ch ${game.channel.channelNumber}`}
                           </div>
@@ -947,7 +947,7 @@ export default function BartenderRemoteControl() {
                       
                       <div className="text-right">
                         <div className="text-sm text-green-400 font-medium">Click to Watch</div>
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-slate-500">
                           {game.channel.type === 'cable' ? 'Change Channel' : 'Open App'}
                         </div>
                       </div>
@@ -958,10 +958,10 @@ export default function BartenderRemoteControl() {
             ) : (
               <div className="text-center py-8">
                 <div className="bg-gray-500/20 rounded-full p-4 w-16 h-16 mx-auto mb-4">
-                  <Calendar className="w-8 h-8 text-gray-400 mx-auto" />
+                  <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
                 </div>
                 <h3 className="text-lg font-medium text-white mb-2">No Games Loaded</h3>
-                <p className="text-gray-400">Click "Load Games" to see current sports listings</p>
+                <p className="text-slate-500">Click "Load Games" to see current sports listings</p>
               </div>
             )}
           </div>
@@ -1008,7 +1008,7 @@ export default function BartenderRemoteControl() {
                             </span>
                           )}
                           {!direcTVDevice && !irDevice && (
-                            <span className="ml-2 px-1 py-0.5 bg-gray-500/20 text-gray-400 rounded text-xs border border-gray-500/30">
+                            <span className="ml-2 px-1 py-0.5 bg-gray-500/20 text-slate-500 rounded text-xs border border-gray-500/30">
                               No Device
                             </span>
                           )}
@@ -1084,8 +1084,8 @@ export default function BartenderRemoteControl() {
                   </div>
                 ) : (
                   <div className="text-center py-8">
-                    <Settings className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                    <p className="text-gray-400 text-sm">
+                    <Settings className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-500 text-sm">
                       This input needs device configuration.
                       <br />
                       Contact management to set up control.
@@ -1095,9 +1095,9 @@ export default function BartenderRemoteControl() {
               </>
             ) : (
               <div className="text-center py-8">
-                <Tv className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+                <Tv className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                 <h3 className="text-xl font-medium text-white mb-2">Select a TV Input</h3>
-                <p className="text-gray-400">Choose an input from the left to control it</p>
+                <p className="text-slate-500">Choose an input from the left to control it</p>
               </div>
             )}
           </div>
@@ -1124,7 +1124,7 @@ export default function BartenderRemoteControl() {
               >
                 All TVs OFF
               </button>
-              <p className="text-xs text-gray-500">Coming Soon</p>
+              <p className="text-xs text-slate-400">Coming Soon</p>
             </div>
           </div>
 
@@ -1184,13 +1184,13 @@ export default function BartenderRemoteControl() {
                 ))}
               </div>
             ) : selectedProcessor ? (
-              <div className="text-center text-gray-400 text-sm py-4">
+              <div className="text-center text-slate-500 text-sm py-4">
                 <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>No zones configured</p>
                 <p className="text-xs">Set up zones in Audio Manager</p>
               </div>
             ) : (
-              <div className="text-center text-gray-400 text-sm py-4">
+              <div className="text-center text-slate-500 text-sm py-4">
                 <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>No audio processors</p>
                 <p className="text-xs">Configure in Audio Manager</p>

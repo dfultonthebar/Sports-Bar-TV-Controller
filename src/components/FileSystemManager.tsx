@@ -245,7 +245,7 @@ export default function FileSystemManager() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           File System Manager
         </h3>
         <p className="text-gray-600">
@@ -317,7 +317,7 @@ export default function FileSystemManager() {
                 onChange={(e) => setCommand(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && executeCommand()}
               />
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-slate-300">
                 Working Directory: <code>{currentDirectory}</code>
               </div>
             </div>
@@ -425,12 +425,12 @@ export default function FileSystemManager() {
                   {item.type === 'directory' ? (
                     <Folder className="w-4 h-4 text-blue-500" />
                   ) : (
-                    <File className="w-4 h-4 text-gray-500" />
+                    <File className="w-4 h-4 text-slate-400" />
                   )}
                   
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{item.name}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-slate-400">
                       {item.size && `${(item.size / 1024).toFixed(1)} KB`}
                       {item.modified && ` • Modified: ${new Date(item.modified).toLocaleString()}`}
                     </div>

@@ -238,7 +238,7 @@ export default function StreamingPlatformsPage() {
       case 'expired':
         return <AlertCircle className="w-5 h-5 text-yellow-500" />
       default:
-        return <X className="w-5 h-5 text-gray-400" />
+        return <X className="w-5 h-5 text-slate-500" />
     }
   }
 
@@ -577,7 +577,7 @@ export default function StreamingPlatformsPage() {
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-slate-900">{platform.name}</h3>
                         <span className={`flex items-center space-x-1 text-sm ${
-                          platform.authStatus === 'connected' ? 'text-green-600' : 'text-gray-500'
+                          platform.authStatus === 'connected' ? 'text-green-600' : 'text-slate-400'
                         }`}>
                           {getAuthStatusIcon(platform.authStatus)}
                           <span>
@@ -594,7 +594,7 @@ export default function StreamingPlatformsPage() {
                               {platform.authStatus === 'connected' ? (
                                 <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
                               ) : (
-                                <Minus className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <Minus className="w-4 h-4 text-slate-500 flex-shrink-0" />
                               )}
                               <span className={`text-sm ${
                                 platform.authStatus === 'connected' ? 'text-slate-700' : 'text-slate-400'

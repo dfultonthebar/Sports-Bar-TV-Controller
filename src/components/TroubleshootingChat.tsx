@@ -132,7 +132,7 @@ export default function TroubleshootingChat() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+        <h3 className="text-xl font-semibold text-slate-100 mb-2">
           AI Troubleshooting Assistant
         </h3>
         <p className="text-gray-600">
@@ -142,12 +142,12 @@ export default function TroubleshootingChat() {
 
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
         <div className="flex justify-between items-center p-4 border-b border-gray-200">
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-slate-300">
             {sessionId ? `Session: ${sessionId.substring(0, 8)}...` : 'New Session'}
           </div>
           <button
             onClick={clearChat}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="text-sm text-slate-400 hover:text-slate-200"
           >
             Clear Chat
           </button>
@@ -163,7 +163,7 @@ export default function TroubleshootingChat() {
                 className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                   message.sender === 'user'
                     ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-900'
+                    : 'bg-gray-100 text-slate-100'
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">{message.text}</p>
@@ -176,7 +176,7 @@ export default function TroubleshootingChat() {
           
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 text-gray-900 px-4 py-2 rounded-lg">
+              <div className="bg-gray-100 text-slate-100 px-4 py-2 rounded-lg">
                 <div className="flex items-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
                   <span className="text-sm">AI is thinking...</span>
@@ -226,7 +226,7 @@ export default function TroubleshootingChat() {
               Send
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-slate-400 mt-2">
             Press Enter to send, Shift+Enter for new line
           </p>
         </div>

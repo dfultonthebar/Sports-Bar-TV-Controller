@@ -613,7 +613,7 @@ export default function BartenderRemotePage() {
                 </p>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {inputs.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
+                    <div className="text-center py-8 text-slate-500">
                       <Radio className="w-12 h-12 mx-auto mb-3 opacity-30" />
                       <p>No input sources configured.</p>
                       <p className="text-xs mt-1">Contact management to configure inputs.</p>
@@ -811,7 +811,7 @@ export default function BartenderRemotePage() {
                               </div>
                             ))}
                           </div>
-                          <p className="text-xs text-gray-400 mt-2">
+                          <p className="text-xs text-slate-500 mt-2">
                             Contact management to configure device control for this input
                           </p>
                         </div>
@@ -842,7 +842,7 @@ export default function BartenderRemotePage() {
                 {tvLayout.imageUrl ? (
                   <div className="relative w-full h-96 border-2 border-dashed border-gray-500/30 rounded-lg overflow-hidden bg-gray-800/50">
                     {(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 p-6">
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 p-6">
                         <div className="bg-red-500/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                           <Tv className="w-8 h-8 text-red-400" />
                         </div>
@@ -887,7 +887,7 @@ export default function BartenderRemotePage() {
                         title={`Output ${zone.outputNumber}: ${zone.label}${selectedInput ? ' - Click to route' : ''}`}
                       >
                         <div className="flex items-center justify-center h-full">
-                          <div className="bg-white/90 px-2 py-1 rounded text-xs font-bold text-gray-800">
+                          <div className="bg-white/90 px-2 py-1 rounded text-xs font-bold text-slate-100">
                             {zone.outputNumber}
                           </div>
                         </div>
@@ -896,7 +896,7 @@ export default function BartenderRemotePage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-96 border-2 border-dashed border-gray-500/30 rounded-lg">
-                    <div className="text-center text-gray-400">
+                    <div className="text-center text-slate-500">
                       <Tv className="w-16 h-16 mx-auto mb-4 opacity-30" />
                       <h4 className="text-lg font-medium mb-2">No Layout Configured</h4>
                       <p className="text-sm">
@@ -918,7 +918,7 @@ export default function BartenderRemotePage() {
                           className={`p-2 rounded border text-xs cursor-pointer transition-colors ${
                             selectedInput 
                               ? 'border-blue-400 bg-blue-500/20 hover:bg-blue-500/40 text-blue-200' 
-                              : 'border-gray-500 bg-gray-500/20 text-gray-400 cursor-not-allowed'
+                              : 'border-gray-500 bg-gray-500/20 text-slate-500 cursor-not-allowed'
                           }`}
                         >
                           <div className="font-medium">TV {zone.outputNumber}</div>
@@ -1070,7 +1070,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'video'
                 ? 'bg-blue-500/30 text-blue-300'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
             }`}
           >
             <Tv className="w-4 h-4" />
@@ -1082,7 +1082,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'audio'
                 ? 'bg-purple-500/30 text-purple-300'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
             }`}
           >
             <Volume2 className="w-4 h-4" />
@@ -1094,7 +1094,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'music'
                 ? 'bg-indigo-500/30 text-indigo-300'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
             }`}
           >
             <Music2 className="w-4 h-4" />
@@ -1106,7 +1106,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'guide'
                 ? 'bg-green-500/30 text-green-300'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
             }`}
           >
             <Calendar className="w-4 h-4" />
@@ -1118,7 +1118,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'power'
                 ? 'bg-red-500/30 text-red-300'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-white/5'
             }`}
           >
             <Power className="w-4 h-4" />
