@@ -63,18 +63,29 @@ export class SoundtrackYourBrandAPI {
   }
 
   /**
+   * Encode the API token for Basic Authentication
+   * Soundtrack API requires the token to be base64 encoded with a colon appended
+   */
+  private getAuthHeader(): string {
+    // Basic Authentication format: base64(token:)
+    // The colon after the token indicates an empty password
+    const credentials = `${this.apiToken}:`
+    const base64Credentials = Buffer.from(credentials).toString('base64')
+    return `Basic ${base64Credentials}`
+  }
+
+  /**
    * Make an authenticated request to the Soundtrack API
    * Uses Basic Authentication as required by Soundtrack
    */
   private async request(endpoint: string, options: RequestInit = {}) {
     const url = `${this.baseUrl}${endpoint}`
     
-    // Soundtrack API uses Basic Authentication
-    // The token should already be base64 encoded from the Soundtrack dashboard
+    // Soundtrack API uses Basic Authentication with base64 encoded token
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': `Basic ${this.apiToken}`,
+        'Authorization': this.getAuthHeader(),
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         ...options.headers,
@@ -187,7 +198,7 @@ export class SoundtrackYourBrandAPI {
       try {
         const restResponse = await fetch(`${this.baseUrl}/accounts`, {
           headers: {
-            'Authorization': `Basic ${this.apiToken}`,
+            'Authorization': this.getAuthHeader(),
             'Accept': 'application/json'
           }
         })
