@@ -246,15 +246,15 @@ export default function StreamingPlatformsPage() {
   const availablePlatforms = platforms.filter(p => p.authStatus !== 'connected')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50">
+    <div className="min-h-screen bg-sports-gradient">
       {/* Header */}
-      <header className="bg-slate-800 or bg-slate-900/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
+      <header className="bg-sportsBar-800/90 backdrop-blur-sm border-b border-sportsBar-700/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link
                 href="/"
-                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-sportsBar-800 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back</span>
@@ -264,7 +264,7 @@ export default function StreamingPlatformsPage() {
                 <Tv className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Streaming Platforms</h1>
+                <h1 className="text-xl font-bold text-slate-100">Streaming Platforms</h1>
                 <p className="text-sm text-slate-500">Manage your streaming service integrations</p>
               </div>
             </div>
@@ -284,8 +284,8 @@ export default function StreamingPlatformsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tab Navigation */}
-        <div className="bg-slate-800 or bg-slate-900 rounded-2xl shadow-lg border border-slate-200 mb-8">
-          <div className="border-b border-slate-200">
+        <div className="bg-sportsBar-800 rounded-2xl shadow-lg border border-sportsBar-700 mb-8">
+          <div className="border-b border-sportsBar-700">
             <nav className="flex space-x-8 px-6">
               {[
                 { id: 'overview', name: 'Overview', icon: Activity },
@@ -298,7 +298,7 @@ export default function StreamingPlatformsPage() {
                   className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.id
                       ? 'border-purple-500 text-purple-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                      : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-sportsBar-600'
                   }`}
                 >
                   <tab.icon className="w-4 h-4" />
@@ -337,12 +337,12 @@ export default function StreamingPlatformsPage() {
                 {/* Platform Overview Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {platforms.map(platform => (
-                    <div key={platform.id} className="border border-slate-200 rounded-xl p-6">
+                    <div key={platform.id} className="border border-sportsBar-700 rounded-xl p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center space-x-3">
                           {getAuthStatusIcon(platform.authStatus)}
                           <div>
-                            <h3 className="font-semibold text-slate-900">{platform.name}</h3>
+                            <h3 className="font-semibold text-slate-100">{platform.name}</h3>
                             <p className="text-sm text-slate-500">{platform.description}</p>
                           </div>
                         </div>
@@ -351,7 +351,7 @@ export default function StreamingPlatformsPage() {
                             ? 'bg-green-100 text-green-700'
                             : platform.authStatus === 'expired'
                             ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-slate-800 or bg-slate-900 text-gray-600'
+                            : 'bg-sportsBar-800 text-slate-400'
                         }`}>
                           {platform.authStatus === 'connected' ? 'Connected' :
                            platform.authStatus === 'expired' ? 'Expired' : 'Not Connected'}
@@ -360,7 +360,7 @@ export default function StreamingPlatformsPage() {
 
                       <div className="space-y-3">
                         <div>
-                          <h4 className="text-sm font-medium text-slate-700 mb-2">Features</h4>
+                          <h4 className="text-sm font-medium text-slate-300 mb-2">Features</h4>
                           <div className="flex flex-wrap gap-1">
                             {platform.features.slice(0, 3).map((feature, index) => (
                               <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
@@ -368,7 +368,7 @@ export default function StreamingPlatformsPage() {
                               </span>
                             ))}
                             {platform.features.length > 3 && (
-                              <span className="text-xs px-2 py-1 bg-slate-800 or bg-slate-900 text-gray-600 rounded-full">
+                              <span className="text-xs px-2 py-1 bg-sportsBar-800 text-slate-400 rounded-full">
                                 +{platform.features.length - 3} more
                               </span>
                             )}
@@ -409,7 +409,7 @@ export default function StreamingPlatformsPage() {
                             href={platform.loginUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center space-x-1 text-slate-500 hover:text-slate-700 text-sm"
+                            className="flex items-center space-x-1 text-slate-500 hover:text-slate-300 text-sm"
                           >
                             <ExternalLink className="w-3 h-3" />
                             <span>Visit Site</span>
@@ -451,27 +451,27 @@ export default function StreamingPlatformsPage() {
 
                 {/* Authentication Form */}
                 {selectedPlatform && (
-                  <div className="border border-slate-200 rounded-xl p-6">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                  <div className="border border-sportsBar-700 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-slate-100 mb-4">
                       Connect to {selectedPlatform.name}
                     </h3>
                     
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
                           Username or Email
                         </label>
                         <input
                           type="text"
                           value={authForm.username}
                           onChange={(e) => setAuthForm(prev => ({ ...prev, username: e.target.value }))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="form-select-dark focus:outline-none focus:ring-2 focus:ring-purple-500"
                           placeholder="Enter your username/email"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
                           Password
                         </label>
                         <div className="relative">
@@ -479,13 +479,13 @@ export default function StreamingPlatformsPage() {
                             type={showPassword ? 'text' : 'password'}
                             value={authForm.password}
                             onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
+                            className="form-select-dark focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
                             placeholder="Enter your password"
                           />
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-400"
                           >
                             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
@@ -498,9 +498,9 @@ export default function StreamingPlatformsPage() {
                           id="rememberMe"
                           checked={authForm.rememberMe}
                           onChange={(e) => setAuthForm(prev => ({ ...prev, rememberMe: e.target.checked }))}
-                          className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
+                          className="w-4 h-4 text-purple-600 border-sportsBar-600 rounded focus:ring-purple-500"
                         />
-                        <label htmlFor="rememberMe" className="text-sm text-slate-700">
+                        <label htmlFor="rememberMe" className="text-sm text-slate-300">
                           Keep me logged in
                         </label>
                       </div>
@@ -508,7 +508,7 @@ export default function StreamingPlatformsPage() {
                       <div className="flex space-x-3">
                         <button
                           onClick={() => setSelectedPlatform(null)}
-                          className="flex-1 px-4 py-2 text-slate-700 bg-slate-800 or bg-slate-900 rounded-lg hover:bg-slate-800 or bg-slate-900 transition-colors"
+                          className="flex-1 px-4 py-2 text-slate-300 bg-sportsBar-800 rounded-lg hover:bg-sportsBar-800 transition-colors"
                         >
                           Cancel
                         </button>
@@ -531,7 +531,7 @@ export default function StreamingPlatformsPage() {
                 {/* Connected Accounts */}
                 {connectedPlatforms.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Connected Accounts</h3>
+                    <h3 className="text-lg font-semibold text-slate-100 mb-4">Connected Accounts</h3>
                     <div className="space-y-3">
                       {connectedPlatforms.map(platform => (
                         <div key={platform.id} className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
@@ -573,9 +573,9 @@ export default function StreamingPlatformsPage() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {platforms.map(platform => (
-                    <div key={platform.id} className="border border-slate-200 rounded-xl p-6">
+                    <div key={platform.id} className="border border-sportsBar-700 rounded-xl p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-slate-900">{platform.name}</h3>
+                        <h3 className="font-semibold text-slate-100">{platform.name}</h3>
                         <span className={`flex items-center space-x-1 text-sm ${
                           platform.authStatus === 'connected' ? 'text-green-600' : 'text-slate-400'
                         }`}>
@@ -587,7 +587,7 @@ export default function StreamingPlatformsPage() {
                       </div>
 
                       <div>
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">Data Enhancements</h4>
+                        <h4 className="text-sm font-medium text-slate-300 mb-2">Data Enhancements</h4>
                         <div className="space-y-2">
                           {platform.dataEnhancements.map((enhancement, index) => (
                             <div key={index} className="flex items-center space-x-2">
@@ -597,7 +597,7 @@ export default function StreamingPlatformsPage() {
                                 <Minus className="w-4 h-4 text-slate-500 flex-shrink-0" />
                               )}
                               <span className={`text-sm ${
-                                platform.authStatus === 'connected' ? 'text-slate-700' : 'text-slate-400'
+                                platform.authStatus === 'connected' ? 'text-slate-300' : 'text-slate-400'
                               }`}>
                                 {enhancement}
                               </span>

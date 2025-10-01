@@ -69,7 +69,7 @@ export default function AIConfigPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-sports-gradient flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-white">Testing AI providers...</p>
@@ -79,14 +79,14 @@ export default function AIConfigPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
+    <div className="min-h-screen bg-sports-gradient p-4">
       {/* Header */}
       <div className="max-w-6xl mx-auto mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
             <Link 
               href="/ai-keys"
-              className="flex items-center space-x-2 px-4 py-2 bg-slate-800 or bg-slate-900/10 text-white rounded-lg hover:bg-slate-800 or bg-slate-900/20 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-sportsBar-800/10 text-white rounded-lg hover:bg-sportsBar-800/20 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to AI Keys</span>
@@ -115,7 +115,7 @@ export default function AIConfigPage() {
 
         {/* Status Overview */}
         {providersStatus && (
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 mb-6 border border-slate-700/20">
+          <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-lg p-4 mb-6 border border-slate-700/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-6">
                 <div className="text-center">
@@ -139,7 +139,7 @@ export default function AIConfigPage() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Local Services */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+        <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
             <Bot className="w-5 h-5" />
             <span>Local AI Services</span>
@@ -148,7 +148,7 @@ export default function AIConfigPage() {
           {providersStatus?.localServices && providersStatus.localServices.length > 0 ? (
             <div className="space-y-3">
               {providersStatus.localServices.map((service, index) => (
-                <div key={index} className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4 border border-slate-700/10">
+                <div key={index} className="bg-sportsBar-800/5 rounded-lg p-4 border border-slate-700/10">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       {getStatusIcon(service.status)}
@@ -166,7 +166,7 @@ export default function AIConfigPage() {
                           ? 'bg-green-100 text-green-800' 
                           : service.status === 'error'
                           ? 'bg-red-100 text-red-800'
-                          : 'bg-slate-800 or bg-slate-900 text-slate-100'
+                          : 'bg-sportsBar-800 text-slate-100'
                       }`}>
                         {service.status}
                       </div>
@@ -184,7 +184,7 @@ export default function AIConfigPage() {
         </div>
 
         {/* Cloud Services */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+        <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
             <Bot className="w-5 h-5" />
             <span>Cloud AI Services</span>
@@ -193,7 +193,7 @@ export default function AIConfigPage() {
           {providersStatus?.cloudServices && (
             <div className="space-y-3">
               {providersStatus.cloudServices.map((service, index) => (
-                <div key={index} className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4 border border-slate-700/10">
+                <div key={index} className="bg-sportsBar-800/5 rounded-lg p-4 border border-slate-700/10">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       {service.hasKey ? (
@@ -211,7 +211,7 @@ export default function AIConfigPage() {
                     <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       service.hasKey 
                         ? 'bg-green-100 text-green-800' 
-                        : 'bg-slate-800 or bg-slate-900 text-slate-100'
+                        : 'bg-sportsBar-800 text-slate-100'
                     }`}>
                       {service.hasKey ? 'Ready' : 'Not Configured'}
                     </div>
@@ -223,11 +223,11 @@ export default function AIConfigPage() {
         </div>
 
         {/* Installation Guide */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+        <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
           <h3 className="font-semibold text-white mb-4">Local AI Setup Guide</h3>
           
           <div className="space-y-4 text-sm text-gray-300">
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
+            <div className="bg-sportsBar-800/5 rounded-lg p-4">
               <h4 className="font-medium text-blue-300 mb-2">🦙 Ollama</h4>
               <code className="block bg-black/20 p-2 rounded mb-2 text-xs">
                 curl -fsSL https://ollama.ai/install.sh | sh<br/>
@@ -236,7 +236,7 @@ export default function AIConfigPage() {
               <p>Runs on port 11434 with simple API</p>
             </div>
             
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
+            <div className="bg-sportsBar-800/5 rounded-lg p-4">
               <h4 className="font-medium text-green-300 mb-2">🤖 LocalAI</h4>
               <code className="block bg-black/20 p-2 rounded mb-2 text-xs">
                 docker run -p 8080:8080 --name local-ai -ti localai/localai:latest
@@ -244,7 +244,7 @@ export default function AIConfigPage() {
               <p>OpenAI-compatible API on port 8080</p>
             </div>
             
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
+            <div className="bg-sportsBar-800/5 rounded-lg p-4">
               <h4 className="font-medium text-purple-300 mb-2">⚡ LM Studio</h4>
               <p>Download from <a href="https://lmstudio.ai" className="text-blue-400 hover:underline">lmstudio.ai</a> and enable local server</p>
             </div>
@@ -252,14 +252,14 @@ export default function AIConfigPage() {
         </div>
 
         {/* AI-Powered Color Scheme Standardization */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+        <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
             <Bot className="w-5 h-5" />
             <span>🎨 AI Style Standardization</span>
           </h3>
           
           <div className="space-y-4">
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
+            <div className="bg-sportsBar-800/5 rounded-lg p-4">
               <h4 className="font-medium text-blue-300 mb-2">Color Scheme Analysis</h4>
               <p className="text-sm text-gray-300 mb-4">
                 Use local AI to automatically analyze and standardize the color scheme across all React components.

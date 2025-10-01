@@ -309,7 +309,7 @@ export default function SchedulerPage() {
           <div className="grid gap-4">
             {schedules.length === 0 ? (
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center">
-                <Calendar className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                <Calendar className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                 <p className="text-slate-400 text-lg mb-2">No schedules yet</p>
                 <p className="text-slate-500 text-sm mb-4">
                   Create your first schedule to automate TV control and game detection
@@ -456,7 +456,7 @@ export default function SchedulerPage() {
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Morning TV Setup"
                   />
                 </div>
@@ -469,7 +469,7 @@ export default function SchedulerPage() {
                     type="text"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Optional description"
                   />
                 </div>
@@ -484,7 +484,7 @@ export default function SchedulerPage() {
                   <select
                     value={formData.scheduleType}
                     onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value })}
-                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
@@ -500,7 +500,7 @@ export default function SchedulerPage() {
                     type="time"
                     value={formData.executionTime}
                     onChange={(e) => setFormData({ ...formData, executionTime: e.target.value })}
-                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
@@ -582,7 +582,7 @@ export default function SchedulerPage() {
                       <div>
                         <p className="text-xs text-slate-500 mb-2">☀️ Configured for Daily Turn-On:</p>
                         {outputScheduleInfo.dailyTurnOnOutputs.length === 0 ? (
-                          <p className="text-slate-600 italic">None configured</p>
+                          <p className="text-slate-400 italic">None configured</p>
                         ) : (
                           <div className="space-y-1">
                             {outputScheduleInfo.dailyTurnOnOutputs.map(o => (
@@ -596,7 +596,7 @@ export default function SchedulerPage() {
                       <div>
                         <p className="text-xs text-slate-500 mb-2">🌙 Configured for Daily Turn-Off:</p>
                         {outputScheduleInfo.dailyTurnOffOutputs.length === 0 ? (
-                          <p className="text-slate-600 italic">None configured</p>
+                          <p className="text-slate-400 italic">None configured</p>
                         ) : (
                           <div className="space-y-1">
                             {outputScheduleInfo.dailyTurnOffOutputs.map(o => (
@@ -610,7 +610,7 @@ export default function SchedulerPage() {
                       <div>
                         <p className="text-xs text-slate-500 mb-2">📺 Available for Custom Schedules:</p>
                         {outputScheduleInfo.availableOutputs.length === 0 ? (
-                          <p className="text-slate-600 italic">All configured</p>
+                          <p className="text-slate-400 italic">All configured</p>
                         ) : (
                           <p className="text-slate-400 text-xs">
                             {outputScheduleInfo.availableOutputs.length} outputs available

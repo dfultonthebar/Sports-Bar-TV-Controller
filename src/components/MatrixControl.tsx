@@ -407,7 +407,7 @@ export default function MatrixControl() {
                   type="text"
                   value={currentConfig.name}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-md text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Wolf Pack Matrix"
                 />
               </div>
@@ -420,7 +420,7 @@ export default function MatrixControl() {
                   type="text"
                   value={currentConfig.ipAddress}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, ipAddress: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-md text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="192.168.1.100"
                 />
               </div>
@@ -433,7 +433,7 @@ export default function MatrixControl() {
                   type="number"
                   value={currentConfig.port}
                   onChange={(e) => setCurrentConfig({ ...currentConfig, port: parseInt(e.target.value) || 4999 })}
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-md text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="4999"
                 />
               </div>
@@ -449,7 +449,7 @@ export default function MatrixControl() {
                     ...currentConfig, 
                     cecInputChannel: e.target.value ? parseInt(e.target.value) : undefined 
                   })}
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">Not Connected</option>
                   {currentConfig.inputs.map((input) => (
@@ -562,14 +562,14 @@ export default function MatrixControl() {
                         type="text"
                         value={input.label}
                         onChange={(e) => updateInput(index, 'label', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         placeholder={isUnused ? `Unused Input ${input.channelNumber}` : `Input ${input.channelNumber} label`}
                         disabled={isUnused}
                       />
                       <select
                         value={input.deviceType || 'Other'}
                         onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={isUnused}
                       >
                         {deviceTypes.map(type => (
@@ -579,7 +579,7 @@ export default function MatrixControl() {
                       <select
                         value={input.inputType}
                         onChange={(e) => updateInput(index, 'inputType', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={isUnused}
                       >
                         {inputTypes.map(type => (
@@ -705,14 +705,14 @@ export default function MatrixControl() {
                         type="text"
                         value={output.label}
                         onChange={(e) => updateOutput(index, 'label', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         placeholder={isUnused ? `Unused Output ${output.channelNumber}` : `e.g., Main Bar Left, Side Area 1, Lower Section TV`}
                         disabled={isUnused}
                       />
                       <select
                         value={output.resolution}
                         onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={isUnused}
                       >
                         {resolutions.map(res => (

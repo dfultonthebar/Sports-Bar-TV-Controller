@@ -4,26 +4,26 @@ import TVGuideConfigurationPanel from '@/components/tv-guide/TVGuideConfiguratio
 
 export default function TVGuideConfigPage() {
   return (
-    <div className="min-h-screen bg-slate-800 or bg-slate-900">
+    <div className="min-h-screen bg-sportsBar-800">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-slate-100">TV Guide Configuration</h1>
-            <p className="text-gray-600 mt-2">
+            <p className="text-slate-400 mt-2">
               Configure your TV guide data sources for comprehensive sports bar programming information.
             </p>
           </div>
           
           <TVGuideConfigurationPanel />
           
-          <div className="mt-8 bg-slate-800 or bg-slate-900 p-6 rounded-lg shadow">
+          <div className="mt-8 bg-sportsBar-800 p-6 rounded-lg shadow">
             <h2 className="text-xl font-semibold mb-4">About Professional TV Guide Services</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold text-lg text-blue-600">Gracenote (Nielsen)</h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-slate-400 text-sm">
                     Industry-standard professional TV guide data with comprehensive metadata, 
                     sports-focused features, and real-time updates. Perfect for sports bars 
                     requiring detailed programming information.
@@ -51,7 +51,7 @@ export default function TVGuideConfigPage() {
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold text-lg text-purple-600">Spectrum Business API</h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-slate-400 text-sm">
                     Direct integration with Spectrum Business TV services providing 
                     real-time channel lineup and programming data specific to your 
                     business account and service level.

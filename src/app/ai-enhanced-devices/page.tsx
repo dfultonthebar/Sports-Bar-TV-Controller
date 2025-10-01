@@ -46,7 +46,7 @@ export default function AIEnhancedDevicesPage() {
             <Brain className="w-8 h-8 text-blue-600" />
             AI-Enhanced Device Management
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Intelligent monitoring, optimization, and troubleshooting for DirecTV, Fire TV, and IR devices
           </p>
         </div>
@@ -70,7 +70,7 @@ export default function AIEnhancedDevicesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Active Devices</p>
+                <p className="text-sm font-medium text-slate-400">Active Devices</p>
                 <p className="text-2xl font-bold">
                   {activeDevices.directv + activeDevices.firetv + activeDevices.ir}
                 </p>
@@ -97,7 +97,7 @@ export default function AIEnhancedDevicesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Optimizations</p>
+                <p className="text-sm font-medium text-slate-400">Optimizations</p>
                 <p className="text-2xl font-bold text-green-600">{systemStats.totalOptimizations}</p>
               </div>
               <Zap className="w-8 h-8 text-green-500" />
@@ -110,7 +110,7 @@ export default function AIEnhancedDevicesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Smart Alerts</p>
+                <p className="text-sm font-medium text-slate-400">Smart Alerts</p>
                 <p className="text-2xl font-bold text-orange-600">{systemStats.activeAlerts}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-orange-500" />
@@ -123,7 +123,7 @@ export default function AIEnhancedDevicesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">AI Status</p>
+                <p className="text-sm font-medium text-slate-400">AI Status</p>
                 <div className="flex items-center gap-1">
                   <CheckCircle className="w-4 h-4 text-green-500" />
                   <span className="text-sm font-bold text-green-600">Online</span>
@@ -314,7 +314,7 @@ export default function AIEnhancedDevicesPage() {
                       success: true
                     }
                   ].map((action, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-slate-800 or bg-slate-900 rounded-lg">
+                    <div key={index} className="flex items-center justify-between p-3 bg-sportsBar-800 rounded-lg">
                       <div className="flex items-center gap-3">
                         {action.type === 'optimization' && <Zap className="w-4 h-4 text-yellow-500" />}
                         {action.type === 'maintenance' && <Settings className="w-4 h-4 text-blue-500" />}

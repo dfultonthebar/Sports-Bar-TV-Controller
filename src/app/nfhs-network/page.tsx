@@ -246,15 +246,15 @@ export default function NFHSNetworkPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-sports-gradient">
       {/* Header */}
-      <header className="bg-slate-800 or bg-slate-900/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
+      <header className="bg-sportsBar-800/90 backdrop-blur-sm border-b border-sportsBar-700/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link
                 href="/"
-                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-sportsBar-800 rounded-lg transition-colors"
               >
                 <span>←</span>
                 <span>Back</span>
@@ -264,7 +264,7 @@ export default function NFHSNetworkPage() {
                 <Play className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">NFHS Network</h1>
+                <h1 className="text-xl font-bold text-slate-100">NFHS Network</h1>
                 <p className="text-sm text-slate-500">High School Sports Streaming</p>
               </div>
             </div>
@@ -293,49 +293,49 @@ export default function NFHSNetworkPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50">
             <div className="flex items-center space-x-3">
               <div className="bg-red-100 rounded-lg p-3">
                 <Play className="w-6 h-6 text-red-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">{liveGames.length}</p>
+                <p className="text-2xl font-bold text-slate-100">{liveGames.length}</p>
                 <p className="text-sm text-slate-500">Live Games</p>
               </div>
             </div>
           </div>
           
-          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50">
             <div className="flex items-center space-x-3">
               <div className="bg-blue-100 rounded-lg p-3">
                 <Clock className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">{upcomingGames.length}</p>
+                <p className="text-2xl font-bold text-slate-100">{upcomingGames.length}</p>
                 <p className="text-sm text-slate-500">Upcoming Games</p>
               </div>
             </div>
           </div>
           
-          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50">
             <div className="flex items-center space-x-3">
               <div className="bg-green-100 rounded-lg p-3">
                 <Smartphone className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">{streamingGames.length}</p>
+                <p className="text-2xl font-bold text-slate-100">{streamingGames.length}</p>
                 <p className="text-sm text-slate-500">NFHS Streams</p>
               </div>
             </div>
           </div>
           
-          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50">
             <div className="flex items-center space-x-3">
               <div className="bg-purple-100 rounded-lg p-3">
                 <Users className="w-6 h-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">{schools.length}</p>
+                <p className="text-2xl font-bold text-slate-100">{schools.length}</p>
                 <p className="text-sm text-slate-500">Local Schools</p>
               </div>
             </div>
@@ -343,10 +343,10 @@ export default function NFHSNetworkPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50 mb-8">
+        <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Search</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <input
@@ -354,17 +354,17 @@ export default function NFHSNetworkPage() {
                   placeholder="Search schools, sports..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-sportsBar-600 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent"
                 />
               </div>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Sport</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Sport</label>
               <select
                 value={selectedSport}
                 onChange={(e) => setSelectedSport(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent"
               >
                 <option value="all">All Sports</option>
                 {sports.map(sport => (
@@ -374,11 +374,11 @@ export default function NFHSNetworkPage() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">State</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">State</label>
               <select
                 value={selectedState}
                 onChange={(e) => setSelectedState(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent"
               >
                 {states.map(state => (
                   <option key={state} value={state}>{state}</option>
@@ -387,7 +387,7 @@ export default function NFHSNetworkPage() {
             </div>
             
             <div className="flex flex-col space-y-2">
-              <label className="text-sm font-medium text-slate-700">Filters</label>
+              <label className="text-sm font-medium text-slate-300">Filters</label>
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -395,7 +395,7 @@ export default function NFHSNetworkPage() {
                   onChange={(e) => setShowLiveOnly(e.target.checked)}
                   className="rounded text-red-600 focus:ring-red-400"
                 />
-                <span className="text-sm text-slate-600">Live games only</span>
+                <span className="text-sm text-slate-400">Live games only</span>
               </label>
               <label className="flex items-center space-x-2">
                 <input
@@ -404,7 +404,7 @@ export default function NFHSNetworkPage() {
                   onChange={(e) => setShowStreamingOnly(e.target.checked)}
                   className="rounded text-red-600 focus:ring-red-400"
                 />
-                <span className="text-sm text-slate-600">NFHS streams only</span>
+                <span className="text-sm text-slate-400">NFHS streams only</span>
               </label>
             </div>
           </div>
@@ -420,10 +420,10 @@ export default function NFHSNetworkPage() {
         </div>
 
         {/* Games List */}
-        <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl border border-slate-200/50">
-          <div className="p-6 border-b border-slate-200/50">
+        <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl border border-sportsBar-700/50">
+          <div className="p-6 border-b border-sportsBar-700/50">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">High School Games</h3>
+              <h3 className="text-lg font-semibold text-slate-100">High School Games</h3>
               <div className="text-sm text-slate-500">
                 {filteredGames.length} games • {liveGames.length} live • {streamingGames.length} streaming
               </div>
@@ -449,20 +449,20 @@ export default function NFHSNetworkPage() {
                     className={`border rounded-lg p-4 transition-all hover:shadow-md ${
                       game.status === 'live' 
                         ? 'border-red-300 bg-red-50' 
-                        : 'border-slate-200 hover:border-slate-300'
+                        : 'border-sportsBar-700 hover:border-sportsBar-600'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <div className={`rounded-lg p-2 ${
-                          game.status === 'live' ? 'bg-red-100' : 'bg-slate-800 or bg-slate-900'
+                          game.status === 'live' ? 'bg-red-100' : 'bg-sportsBar-800'
                         }`}>
                           <Trophy className={`w-4 h-4 ${
-                            game.status === 'live' ? 'text-red-600' : 'text-slate-600'
+                            game.status === 'live' ? 'text-red-600' : 'text-slate-400'
                           }`} />
                         </div>
                         <div>
-                          <h4 className="font-medium text-slate-900">{game.sport}</h4>
+                          <h4 className="font-medium text-slate-100">{game.sport}</h4>
                           <p className="text-sm text-slate-500">{game.league}</p>
                         </div>
                       </div>
@@ -481,16 +481,16 @@ export default function NFHSNetworkPage() {
                       </div>
                     </div>
                     
-                    <div className="text-lg font-medium text-slate-900 mb-2">
+                    <div className="text-lg font-medium text-slate-100 mb-2">
                       {game.awayTeam.name} @ {game.homeTeam.name}
                     </div>
                     
-                    <div className="text-sm text-slate-600 mb-3">
+                    <div className="text-sm text-slate-400 mb-3">
                       {game.awayTeam.school} @ {game.homeTeam.school}
                     </div>
                     
                     <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                      <div className="flex items-center space-x-4 text-sm text-slate-600">
+                      <div className="flex items-center space-x-4 text-sm text-slate-400">
                         <div className="flex items-center space-x-1">
                           <Calendar className="w-4 h-4" />
                           <span>{new Date(game.date).toLocaleDateString()}</span>

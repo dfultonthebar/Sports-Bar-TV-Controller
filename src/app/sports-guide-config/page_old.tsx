@@ -421,14 +421,14 @@ export default function SportsGuideConfigPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
+    <div className="min-h-screen bg-sports-gradient p-4">
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
             <Link 
               href="/"
-              className="flex items-center space-x-2 px-4 py-2 bg-slate-800 or bg-slate-900/10 text-white rounded-lg hover:bg-slate-800 or bg-slate-900/20 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-sportsBar-800/10 text-white rounded-lg hover:bg-sportsBar-800/20 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Main</span>
@@ -474,13 +474,13 @@ export default function SportsGuideConfigPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-slate-800 or bg-slate-900/10 rounded-lg p-1">
+        <div className="flex space-x-1 bg-sportsBar-800/10 rounded-lg p-1">
           <button
             onClick={() => setActiveTab('providers')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'providers'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
+                : 'text-blue-200 hover:text-white hover:bg-sportsBar-800/10'
             }`}
           >
             <Tv className="w-4 h-4" />
@@ -492,7 +492,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'location'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
+                : 'text-blue-200 hover:text-white hover:bg-sportsBar-800/10'
             }`}
           >
             <MapPin className="w-4 h-4" />
@@ -504,7 +504,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'teams'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
+                : 'text-blue-200 hover:text-white hover:bg-sportsBar-800/10'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -517,7 +517,7 @@ export default function SportsGuideConfigPage() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Add Provider Form */}
         {isAdding && (
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+          <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Add New Provider</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -528,7 +528,7 @@ export default function SportsGuideConfigPage() {
                   value={newProvider.name}
                   onChange={(e) => setNewProvider(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. Spectrum Business Premium"
-                  className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-sportsBar-800/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                 />
               </div>
               
@@ -537,7 +537,7 @@ export default function SportsGuideConfigPage() {
                 <select
                   value={newProvider.type}
                   onChange={(e) => setNewProvider(prev => ({ ...prev, type: e.target.value as Provider['type'] }))}
-                  className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-sportsBar-800/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                 >
                   <option value="cable" className="bg-slate-800">Cable Provider</option>
                   <option value="satellite" className="bg-slate-800">Satellite Provider</option>
@@ -572,7 +572,7 @@ export default function SportsGuideConfigPage() {
             const compatibleInputs = getCompatibleInputs(provider.type)
             
             return (
-              <div key={provider.id} className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+              <div key={provider.id} className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
                 <div className="p-6 border-b border-slate-700/20">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-4">
@@ -619,7 +619,7 @@ export default function SportsGuideConfigPage() {
                       <select
                         value={provider.inputId || ''}
                         onChange={(e) => assignInputToProvider(provider.id, e.target.value)}
-                        className="flex-1 px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="flex-1 px-3 py-2 bg-sportsBar-800/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       >
                         <option value="" className="bg-slate-800">No input assigned</option>
                         {compatibleInputs.map(input => (
@@ -690,7 +690,7 @@ export default function SportsGuideConfigPage() {
                               }
                             }
                           }}
-                          className="flex-1 px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
+                          className="flex-1 px-3 py-2 bg-sportsBar-800/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
                         />
                       </div>
                     </div>
@@ -710,7 +710,7 @@ export default function SportsGuideConfigPage() {
                               className={`p-2 rounded-lg text-sm transition-all ${
                                 provider.channels.includes(channel)
                                   ? 'bg-blue-600 text-white shadow-lg'
-                                  : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
+                                  : 'bg-sportsBar-800/5 text-gray-300 hover:bg-sportsBar-800/10 hover:text-white'
                               }`}
                             >
                               {channel}
@@ -733,7 +733,7 @@ export default function SportsGuideConfigPage() {
                                 input.value = ''
                               }
                             }}
-                            className="flex-1 px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
+                            className="flex-1 px-3 py-2 bg-sportsBar-800/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
                           />
                         </div>
                       </div>
@@ -770,7 +770,7 @@ export default function SportsGuideConfigPage() {
 
         {providers.length === 0 && (
           <div className="text-center py-12">
-            <div className="bg-slate-800 or bg-slate-900/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+            <div className="bg-sportsBar-800/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
               <Settings className="w-8 h-8 text-blue-300 mx-auto" />
             </div>
             <h3 className="text-lg font-medium text-white mb-2">No Providers Configured</h3>

@@ -86,20 +86,20 @@ export default function ConfigSyncPage() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
               <div className="bg-slate-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-slate-900">12</div>
-                <div className="text-sm text-slate-600">TV Zones</div>
+                <div className="text-2xl font-bold text-slate-100">12</div>
+                <div className="text-sm text-slate-400">TV Zones</div>
               </div>
               <div className="bg-slate-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-slate-900">4</div>
-                <div className="text-sm text-slate-600">Matrix Inputs</div>
+                <div className="text-2xl font-bold text-slate-100">4</div>
+                <div className="text-sm text-slate-400">Matrix Inputs</div>
               </div>
               <div className="bg-slate-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-slate-900">6</div>
-                <div className="text-sm text-slate-600">IR Devices</div>
+                <div className="text-2xl font-bold text-slate-100">6</div>
+                <div className="text-sm text-slate-400">IR Devices</div>
               </div>
               <div className="bg-slate-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-slate-900">2</div>
-                <div className="text-sm text-slate-600">Audio Zones</div>
+                <div className="text-2xl font-bold text-slate-100">2</div>
+                <div className="text-sm text-slate-400">Audio Zones</div>
               </div>
             </div>
           </CardContent>
