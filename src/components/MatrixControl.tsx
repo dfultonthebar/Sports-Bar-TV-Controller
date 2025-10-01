@@ -20,6 +20,8 @@ interface MatrixOutput {
   resolution: string
   status: 'active' | 'unused' | 'no' | 'na'
   audioOutput?: string  // For audio routing to Atlas system
+  dailyTurnOn?: boolean  // Auto turn-on for daily morning schedule
+  dailyTurnOff?: boolean // Auto turn-off for nightly closing schedule
 }
 
 interface MatrixConfig {
@@ -271,7 +273,7 @@ export default function MatrixControl() {
     setCurrentConfig({ ...currentConfig, inputs: newInputs })
   }
 
-  const updateOutput = (index: number, field: keyof MatrixOutput, value: string) => {
+  const updateOutput = (index: number, field: keyof MatrixOutput, value: string | boolean) => {
     const newOutputs = [...currentConfig.outputs]
     if (field === 'status') {
       newOutputs[index] = { ...newOutputs[index], [field]: value as MatrixOutput['status'] }
@@ -737,6 +739,30 @@ export default function MatrixControl() {
                             <option key={audio} value={audio}>{audio}</option>
                           ))}
                         </select>
+                      )}
+                      
+                      {/* Daily Turn On/Off Toggles */}
+                      {!isUnused && (
+                        <div className="pt-2 space-y-2 border-t border-slate-600 mt-2">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={output.dailyTurnOn || false}
+                              onChange={(e) => updateOutput(index, 'dailyTurnOn', e.target.checked)}
+                              className="w-4 h-4 text-indigo-600 bg-slate-700 border-slate-600 rounded focus:ring-indigo-500 focus:ring-2"
+                            />
+                            <span className="text-sm text-slate-300">☀️ Daily Turn On</span>
+                          </label>
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={output.dailyTurnOff || false}
+                              onChange={(e) => updateOutput(index, 'dailyTurnOff', e.target.checked)}
+                              className="w-4 h-4 text-indigo-600 bg-slate-700 border-slate-600 rounded focus:ring-indigo-500 focus:ring-2"
+                            />
+                            <span className="text-sm text-slate-300">🌙 Daily Turn Off</span>
+                          </label>
+                        </div>
                       )}
                     </div>
                   </div>

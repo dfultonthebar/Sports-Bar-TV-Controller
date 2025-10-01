@@ -115,6 +115,8 @@ model MatrixOutput {
   cecAddress    String?  // CEC physical address
   lastDiscovery DateTime? // Last time CEC discovery was run
   isActive      Boolean  @default(true)
+  dailyTurnOn   Boolean  @default(false) // Auto turn-on for daily morning schedule
+  dailyTurnOff  Boolean  @default(false) // Auto turn-off for nightly closing schedule
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   

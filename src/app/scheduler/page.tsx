@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Play, Edit, Trash2, Clock, Tv, Calendar, AlertCircle, CheckCircle2, Target } from 'lucide-react';
+import { Plus, Play, Edit, Trash2, Clock, Tv, Calendar, AlertCircle, CheckCircle2, Target, Zap } from 'lucide-react';
 
 interface Schedule {
   id: string;
@@ -48,11 +48,18 @@ interface HomeTeam {
   sport: string;
 }
 
+interface OutputScheduleInfo {
+  dailyTurnOnOutputs: MatrixOutput[];
+  dailyTurnOffOutputs: MatrixOutput[];
+  availableOutputs: MatrixOutput[];
+}
+
 export default function SchedulerPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [outputs, setOutputs] = useState<MatrixOutput[]>([]);
   const [inputs, setInputs] = useState<MatrixInput[]>([]);
   const [homeTeams, setHomeTeams] = useState<HomeTeam[]>([]);
+  const [outputScheduleInfo, setOutputScheduleInfo] = useState<OutputScheduleInfo | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,24 +91,34 @@ export default function SchedulerPage() {
 
   const loadData = async () => {
     try {
-      const [schedulesRes, outputsRes, inputsRes, teamsRes] = await Promise.all([
+      const [schedulesRes, outputsRes, inputsRes, teamsRes, scheduleInfoRes] = await Promise.all([
         fetch('/api/schedules'),
         fetch('/api/matrix/outputs'),
         fetch('/api/matrix/inputs'),
-        fetch('/api/home-teams')
+        fetch('/api/home-teams'),
+        fetch('/api/matrix/outputs-schedule')
       ]);
 
-      const [schedulesData, outputsData, inputsData, teamsData] = await Promise.all([
+      const [schedulesData, outputsData, inputsData, teamsData, scheduleInfoData] = await Promise.all([
         schedulesRes.json(),
         outputsRes.json(),
         inputsRes.json(),
-        teamsRes.json()
+        teamsRes.json(),
+        scheduleInfoRes.json()
       ]);
 
       setSchedules(schedulesData.schedules || []);
       setOutputs(outputsData.outputs || []);
       setInputs(inputsData.inputs || []);
       setHomeTeams(teamsData.teams || []);
+      
+      if (scheduleInfoData.success) {
+        setOutputScheduleInfo({
+          dailyTurnOnOutputs: scheduleInfoData.dailyTurnOnOutputs || [],
+          dailyTurnOffOutputs: scheduleInfoData.dailyTurnOffOutputs || [],
+          availableOutputs: scheduleInfoData.availableOutputs || []
+        });
+      }
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -554,30 +571,91 @@ export default function SchedulerPage() {
                   </label>
                 </div>
 
+                {/* Output Schedule Info */}
+                {outputScheduleInfo && (
+                  <div className="mb-4 p-4 bg-slate-950 rounded-lg border border-slate-700">
+                    <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-400" />
+                      Wolfpack Output Schedule Configuration
+                    </h4>
+                    <div className="grid md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-xs text-slate-500 mb-2">☀️ Configured for Daily Turn-On:</p>
+                        {outputScheduleInfo.dailyTurnOnOutputs.length === 0 ? (
+                          <p className="text-slate-600 italic">None configured</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {outputScheduleInfo.dailyTurnOnOutputs.map(o => (
+                              <div key={o.id} className="text-emerald-400 text-xs">
+                                • Ch {o.channelNumber}: {o.label}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-2">🌙 Configured for Daily Turn-Off:</p>
+                        {outputScheduleInfo.dailyTurnOffOutputs.length === 0 ? (
+                          <p className="text-slate-600 italic">None configured</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {outputScheduleInfo.dailyTurnOffOutputs.map(o => (
+                              <div key={o.id} className="text-blue-400 text-xs">
+                                • Ch {o.channelNumber}: {o.label}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-2">📺 Available for Custom Schedules:</p>
+                        {outputScheduleInfo.availableOutputs.length === 0 ? (
+                          <p className="text-slate-600 italic">All configured</p>
+                        ) : (
+                          <p className="text-slate-400 text-xs">
+                            {outputScheduleInfo.availableOutputs.length} outputs available
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-800">
+                      💡 Tip: Configure daily turn-on/off in the <strong>Matrix Control</strong> page under the Outputs section
+                    </p>
+                  </div>
+                )}
+
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Select TV Outputs to Control
+                  <span className="text-xs text-slate-500 ml-2">(Includes all outputs, not just daily-configured ones)</span>
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-64 overflow-y-auto p-4 bg-slate-900 rounded-lg">
-                  {outputs.map(output => (
-                    <label
-                      key={output.id}
-                      className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer transition-colors ${
-                        formData.selectedOutputs.includes(output.id)
-                          ? 'bg-blue-900/50 border-blue-600'
-                          : 'bg-slate-800 border-slate-700 hover:border-slate-600'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.selectedOutputs.includes(output.id)}
-                        onChange={() => toggleOutput(output.id)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm text-slate-300">
-                        {output.channelNumber}: {output.label}
-                      </span>
-                    </label>
-                  ))}
+                  {outputs.map(output => {
+                    const isDailyTurnOn = outputScheduleInfo?.dailyTurnOnOutputs.some(o => o.id === output.id);
+                    const isDailyTurnOff = outputScheduleInfo?.dailyTurnOffOutputs.some(o => o.id === output.id);
+                    
+                    return (
+                      <label
+                        key={output.id}
+                        className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                          formData.selectedOutputs.includes(output.id)
+                            ? 'bg-blue-900/50 border-blue-600'
+                            : 'bg-slate-800 border-slate-700 hover:border-slate-600'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.selectedOutputs.includes(output.id)}
+                          onChange={() => toggleOutput(output.id)}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm text-slate-300 flex-1">
+                          {output.channelNumber}: {output.label}
+                        </span>
+                        {isDailyTurnOn && <span className="text-xs" title="Daily Turn-On">☀️</span>}
+                        {isDailyTurnOff && <span className="text-xs" title="Daily Turn-Off">🌙</span>}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
