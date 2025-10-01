@@ -57,13 +57,17 @@ sleep 2
 # Pull latest changes
 echo ""
 echo "⬇️  Pulling latest changes from GitHub..."
-echo "   Note: Your local config files (*.local.json) are gitignored and will be preserved"
+echo "   Note: Your local files are gitignored and will be preserved:"
+echo "   - config/*.local.json (system/device/sports settings)"
+echo "   - .env (API keys and secrets)"
+echo "   - prisma/dev.db (ALL your configurations and data)"
+echo "   - uploads/ (user uploaded files)"
 
-# Handle any local database changes that might conflict
-git checkout -- prisma/dev.db 2>/dev/null || true
-git clean -fd uploads/ 2>/dev/null || true
+# Clean only temporary files (NOT the database or uploads)
+git clean -fd .next/ 2>/dev/null || true
+git clean -fd node_modules/.cache/ 2>/dev/null || true
 
-# Pull from GitHub (local configs are automatically preserved by .gitignore)
+# Pull from GitHub (local data is automatically preserved by .gitignore)
 git pull origin main
 
 # =============================================================================
@@ -255,11 +259,20 @@ if curl -s http://localhost:3000 > /dev/null; then
     echo "   ✅ Dependencies installed"
     echo "   ✅ libCEC support verified"
     echo "   ✅ Local AI (Ollama) verified"
-    echo "   ✅ Database updated"
+    echo "   ✅ Database schema updated (data preserved)"
     echo "   ✅ AI style analysis running in background"
     echo ""
-    echo "🔧 Configuration Status:"
-    echo "   ✅ Local configuration preserved (config/*.local.json)"
+    echo "🔧 User Data Preserved:"
+    echo "   ✅ Database (prisma/dev.db)"
+    echo "      - Atlas matrix configurations"
+    echo "      - Device settings (DirecTV, FireTV, Cable boxes)"
+    echo "      - Input/output mappings and scenes"
+    echo "      - Audio zones and settings"
+    echo "      - Sports guide configuration"
+    echo "      - Uploaded layout PDFs"
+    echo "   ✅ Local configuration (config/*.local.json)"
+    echo "   ✅ Environment variables (.env)"
+    echo "   ✅ User uploads (uploads/ directory)"
     echo "   💾 Backup saved to: $BACKUP_FILE"
     echo "   📁 All backups in: $BACKUP_DIR"
     echo ""
