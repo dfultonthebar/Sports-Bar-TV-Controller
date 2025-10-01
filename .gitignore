@@ -1,54 +1,59 @@
 
-# Dependencies
-node_modules/
-.pnp
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
 .pnp.js
 
-# Testing
-coverage/
+# testing
+/coverage
 
-# Next.js
-.next/
-out/
-build/
-dist/
+# next.js
+/.next/
+/out/
 
-# Production
-build/
+# production
+/build
 
-# Misc
+# misc
 .DS_Store
-*.tsbuildinfo
-next-env.d.ts
+*.pem
 
-# Debug
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local env files
-.env
+# local env files
 .env*.local
-.env.production
+.env
 
-# Vercel
+# vercel
 .vercel
 
-# TypeScript
+# typescript
 *.tsbuildinfo
+next-env.d.ts
 
-# Logs
+# uploads
+/uploads/*
+!/uploads/.gitkeep
+
+# logs
 *.log
-server.log
+/logs/*
+!/logs/.gitkeep
+
+# AI style analysis
+/ai-style-reports/*
+!/ai-style-reports/.gitkeep
+/ai-style-backups/*
+!/ai-style-backups/.gitkeep
 
 # Database
-*.db
-*.sqlite
-dev.db
-prisma/dev.db
-
-# Uploads
-uploads/
+prisma/*.db
+prisma/*.db-journal
 
 # IDE
 .vscode/
@@ -58,12 +63,11 @@ uploads/
 .DS_Store
 Thumbs.db
 
-# Yarn
-.yarn/
-.yarnrc.yml
-yarn.lock
-
-# PM2
+# pm2
 ecosystem.config.js
-FETCH_HEAD
+
+# backup files
+*.bak
+*.backup
+*.backup.*
 core
