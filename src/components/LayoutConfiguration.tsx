@@ -278,7 +278,7 @@ export default function LayoutConfiguration() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-slate-200">
+    <div className="bg-slate-800 or bg-slate-900 rounded-2xl shadow-lg border border-slate-200">
       <div className="p-6">
         <div className="flex items-center space-x-3 mb-6">
           <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-xl p-2.5 shadow-lg">
@@ -415,7 +415,7 @@ export default function LayoutConfiguration() {
                 </h3>
                 <div className="space-y-2 text-sm">
                   {Object.entries(aiInputMapping).map(([outputNum, inputLabel]) => (
-                    <div key={outputNum} className="flex items-center justify-between bg-white rounded-lg p-2">
+                    <div key={outputNum} className="flex items-center justify-between bg-slate-800 or bg-slate-900 rounded-lg p-2">
                       <span className="text-slate-600">Output {outputNum}:</span>
                       <span className="font-medium text-purple-700">{inputLabel}</span>
                     </div>
@@ -441,7 +441,7 @@ export default function LayoutConfiguration() {
               </div>
 
               {tvLayout.imageUrl ? (
-                <div className="relative w-full h-96 border border-slate-200 rounded-lg overflow-hidden bg-white">
+                <div className="relative w-full h-96 border border-slate-200 rounded-lg overflow-hidden bg-slate-800 or bg-slate-900">
                   {(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 p-6">
                       <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
@@ -512,7 +512,7 @@ export default function LayoutConfiguration() {
                     {tvLayout.zones.map((zone) => (
                       <div
                         key={zone.id}
-                        className="p-2 rounded border border-slate-200 bg-white text-xs"
+                        className="p-2 rounded border border-slate-200 bg-slate-800 or bg-slate-900 text-xs"
                       >
                         <div className="font-medium text-slate-700">TV {zone.outputNumber}</div>
                         <div className="text-slate-500 truncate" title={zone.label}>{zone.label}</div>

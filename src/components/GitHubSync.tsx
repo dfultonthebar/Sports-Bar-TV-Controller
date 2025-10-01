@@ -178,13 +178,13 @@ export default function GitHubSync() {
               </div>
 
               {/* Last Commit */}
-              <div className="bg-gray-50 rounded-lg p-3">
+              <div className="bg-slate-800 or bg-slate-900 rounded-lg p-3">
                 <div className="flex items-center space-x-2 mb-2">
                   <GitCommit className="w-4 h-4" />
                   <span className="font-medium">Last Commit</span>
                 </div>
                 <div className="text-sm space-y-1">
-                  <p className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                  <p className="font-mono text-xs bg-slate-800 or bg-slate-900 px-2 py-1 rounded">
                     {gitStatus.lastCommit.hash.substring(0, 8)}
                   </p>
                   <p>{gitStatus.lastCommit.message}</p>
@@ -301,7 +301,7 @@ export default function GitHubSync() {
                 value={commitMessage}
                 onChange={(e) => setCommitMessage(e.target.value)}
                 placeholder="Describe your changes..."
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                className="w-full p-3 border border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 rows={3}
               />
             </div>

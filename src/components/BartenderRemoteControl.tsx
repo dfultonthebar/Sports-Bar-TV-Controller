@@ -867,7 +867,7 @@ export default function BartenderRemoteControl() {
       {/* Sports Guide Panel */}
       {showSportsGuide && (
         <div className="max-w-7xl mx-auto mb-6">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white flex items-center">
                 <Calendar className="mr-2 w-5 h-5" />
@@ -881,7 +881,7 @@ export default function BartenderRemoteControl() {
                 >
                   {isLoadingSportsGuide ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-700 border-t-transparent"></div>
                       <span>Loading...</span>
                     </>
                   ) : (
@@ -906,7 +906,7 @@ export default function BartenderRemoteControl() {
                 {sportsGuide.map((game) => (
                   <div
                     key={game.id}
-                    className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                    className="bg-slate-800 or bg-slate-900/5 backdrop-blur-sm rounded-lg p-4 border border-slate-700/10 hover:bg-slate-800 or bg-slate-900/10 transition-all cursor-pointer"
                     onClick={() => handleGameClick(game)}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -928,9 +928,9 @@ export default function BartenderRemoteControl() {
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-between bg-white/5 rounded-lg p-3 mt-3">
+                    <div className="flex items-center justify-between bg-slate-800 or bg-slate-900/5 rounded-lg p-3 mt-3">
                       <div className="flex items-center space-x-3">
-                        <div className="bg-white/10 rounded-lg p-2">
+                        <div className="bg-slate-800 or bg-slate-900/10 rounded-lg p-2">
                           {game.channel.type === 'streaming' ? 
                             <Smartphone className="w-4 h-4 text-purple-400" /> : 
                             <Tv className="w-4 h-4 text-blue-400" />
@@ -971,7 +971,7 @@ export default function BartenderRemoteControl() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 h-fit">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-fit">
             <h2 className="text-lg font-bold text-white mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5" />
               TV Inputs
@@ -988,7 +988,7 @@ export default function BartenderRemoteControl() {
                     className={`w-full p-3 rounded-lg text-left transition-all ${
                       selectedInput === input.channelNumber
                         ? 'bg-blue-500 text-white shadow-lg'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                        : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center space-x-2">
@@ -1024,7 +1024,7 @@ export default function BartenderRemoteControl() {
 
         {/* Main Remote Control Panel */}
         <div className="lg:col-span-2">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 h-fit">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-fit">
             {selectedInput ? (
               <>
                 <div className="text-center mb-4">
@@ -1106,7 +1106,7 @@ export default function BartenderRemoteControl() {
         {/* Right Panel - Future Features */}
         <div className="lg:col-span-1 space-y-4">
           {/* TV Power Controls (Future) */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Power className="mr-2 w-4 h-4" />
               TV Power
@@ -1129,7 +1129,7 @@ export default function BartenderRemoteControl() {
           </div>
 
           {/* Audio Zone Controls */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Speaker className="mr-2 w-4 h-4" />
               Audio Zones
@@ -1200,7 +1200,7 @@ export default function BartenderRemoteControl() {
 
           {/* Audio Zone Controls */}
           {selectedAudioZone && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
               <h3 className="text-lg font-bold text-white mb-3 flex items-center">
                 <Volume2 className="mr-2 w-4 h-4" />
                 Zone Control
@@ -1265,7 +1265,7 @@ export default function BartenderRemoteControl() {
           )}
 
           {/* Quick Actions */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3">Actions</h3>
             <div className="space-y-2">
               <button

@@ -170,7 +170,7 @@ export default function BartenderMusicControl() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-8">
           <div className="flex items-center justify-center">
             <RefreshCw className="w-6 h-6 text-blue-400 animate-spin mr-3" />
             <span className="text-white">Loading Soundtrack...</span>
@@ -201,7 +201,7 @@ export default function BartenderMusicControl() {
   if (!selectedPlayer) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center text-slate-500">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-8 text-center text-slate-500">
           <Music2 className="w-16 h-16 mx-auto mb-4 opacity-30" />
           <p>No Soundtrack players configured</p>
         </div>
@@ -247,7 +247,7 @@ export default function BartenderMusicControl() {
       )}
 
       {/* Player Controls */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+      <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-white font-semibold">{selectedPlayer.name}</h3>
@@ -296,7 +296,7 @@ export default function BartenderMusicControl() {
           </Button>
 
           {showStations && (
-            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto bg-white/5 rounded-lg p-3">
+            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto bg-slate-800 or bg-slate-900/5 rounded-lg p-3">
               <h4 className="text-sm font-medium text-slate-500 mb-2 px-2">Available Playlists</h4>
               {stations.map((station) => (
                 <button
@@ -306,7 +306,7 @@ export default function BartenderMusicControl() {
                   className={`w-full text-left p-4 rounded-lg border transition-all ${
                     selectedPlayer.currentStation?.id === station.id
                       ? 'bg-purple-600 border-purple-400 text-white shadow-lg'
-                      : 'bg-white/5 border-gray-600 text-gray-300 hover:bg-white/10 hover:border-gray-500'
+                      : 'bg-slate-800 or bg-slate-900/5 border-gray-600 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:border-gray-500'
                   } ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center justify-between">

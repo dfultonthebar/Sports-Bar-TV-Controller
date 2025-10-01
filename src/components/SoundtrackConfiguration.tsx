@@ -241,7 +241,7 @@ export default function SoundtrackConfiguration() {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Enter your Soundtrack Your Brand API token"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
                 <button
                   onClick={() => setShowApiKey(!showApiKey)}

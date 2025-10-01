@@ -204,7 +204,7 @@ export default function SubscriptionDashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Devices</p>
@@ -216,7 +216,7 @@ export default function SubscriptionDashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active Subscriptions</p>
@@ -228,7 +228,7 @@ export default function SubscriptionDashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Monthly Cost</p>
@@ -240,7 +240,7 @@ export default function SubscriptionDashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Sports Subscriptions</p>
@@ -275,7 +275,7 @@ export default function SubscriptionDashboard() {
         />
       ) : (
         // Device Grid View
-        <div className="bg-white rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 rounded-lg border">
           <div className="p-6 border-b">
             <h3 className="text-lg font-semibold text-slate-100">Devices</h3>
             <p className="text-gray-600">Click on a device to view its subscriptions</p>
@@ -302,7 +302,7 @@ export default function SubscriptionDashboard() {
                     <div
                       key={device.id}
                       onClick={() => setSelectedDevice(device)}
-                      className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="p-4 border rounded-lg hover:bg-slate-800 or bg-slate-900 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center space-x-3 mb-3">
                         <div className={`p-2 rounded-lg ${
@@ -345,7 +345,7 @@ export default function SubscriptionDashboard() {
                       ) : (
                         <div className="text-center py-3">
                           <p className="text-sm text-slate-400 mb-2">No subscription data</p>
-                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          <span className="text-xs bg-slate-800 or bg-slate-900 text-gray-600 px-2 py-1 rounded">
                             Click to poll device
                           </span>
                         </div>
@@ -361,7 +361,7 @@ export default function SubscriptionDashboard() {
 
       {/* Subscription Summary */}
       {subscriptions.length > 0 && !selectedDevice && (
-        <div className="bg-white rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 rounded-lg border">
           <div className="p-6 border-b">
             <h3 className="text-lg font-semibold text-slate-100">Subscription Summary</h3>
           </div>

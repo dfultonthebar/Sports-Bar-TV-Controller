@@ -276,7 +276,7 @@ export default function AudioProcessorManager() {
         icon: CheckCircle
       },
       offline: {
-        color: 'bg-gray-100 text-slate-100 border-gray-300',
+        color: 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700',
         icon: WifiOff
       },
       error: {
@@ -402,7 +402,7 @@ export default function AudioProcessorManager() {
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
                       placeholder="Main Bar Audio"
                       required
-                      className="border-gray-300 focus:border-blue-500"
+                      className="border-slate-700 focus:border-blue-500"
                     />
                   </div>
                   <div className="space-y-2">
@@ -410,7 +410,7 @@ export default function AudioProcessorManager() {
                     <select
                       value={formData.model}
                       onChange={(e) => setFormData({...formData, model: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="AZM4">AZM4 (4-Zone Controller)</option>
                       <option value="AZM8">AZM8 (8-Zone Controller)</option>
@@ -428,7 +428,7 @@ export default function AudioProcessorManager() {
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
                     placeholder="Main dining area audio control"
-                    className="border-gray-300 focus:border-blue-500"
+                    className="border-slate-700 focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -445,7 +445,7 @@ export default function AudioProcessorManager() {
                       onChange={(e) => setFormData({...formData, ipAddress: e.target.value})}
                       placeholder="192.168.1.100"
                       required
-                      className="border-gray-300 focus:border-blue-500"
+                      className="border-slate-700 focus:border-blue-500"
                     />
                     <p className="text-xs text-slate-400">Static IP address of the processor</p>
                   </div>
@@ -458,7 +458,7 @@ export default function AudioProcessorManager() {
                       placeholder="80"
                       min="1"
                       max="65535"
-                      className="border-gray-300 focus:border-blue-500"
+                      className="border-slate-700 focus:border-blue-500"
                     />
                     <p className="text-xs text-slate-400">Usually 80 (HTTP)</p>
                   </div>
@@ -489,9 +489,9 @@ export default function AudioProcessorManager() {
       )}
 
       {processors.length === 0 ? (
-        <Card className="border-2 border-dashed border-gray-300">
+        <Card className="border-2 border-dashed border-slate-700">
           <CardContent className="text-center py-12">
-            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-24 h-24 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
               <Activity className="h-12 w-12 text-slate-500" />
             </div>
             <h3 className="text-xl font-semibold text-slate-100 mb-2">No Audio Processors</h3>
@@ -517,7 +517,7 @@ export default function AudioProcessorManager() {
                 className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
                   selectedProcessor?.id === processor.id 
                     ? 'border-blue-500 bg-blue-50/50 shadow-lg' 
-                    : 'border-gray-200 hover:border-gray-300'
+                    : 'border-slate-700 hover:border-slate-700'
                 }`}
                 onClick={() => setSelectedProcessor(processor)}
               >
@@ -529,7 +529,7 @@ export default function AudioProcessorManager() {
                     </div>
                     <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
                       ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                      ${processor.status === 'offline' ? 'bg-gray-100 text-slate-100 border-gray-300' : ''}
+                      ${processor.status === 'offline' ? 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700' : ''}
                       ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
                     `}>
                       <div className="flex items-center gap-1.5">
@@ -623,14 +623,14 @@ export default function AudioProcessorManager() {
                     </button>
                     
                     {showModelInfo && (
-                      <div className="mt-4 p-6 bg-white rounded-lg border-2 border-blue-100 space-y-6">
+                      <div className="mt-4 p-6 bg-slate-800 or bg-slate-900 rounded-lg border-2 border-blue-100 space-y-6">
                         {/* Rear Panel Image */}
                         <div className="space-y-3">
                           <h5 className="font-semibold text-slate-100 flex items-center gap-2">
                             <Settings className="h-4 w-4" />
                             Rear Panel Layout
                           </h5>
-                          <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                          <div className="relative w-full aspect-video bg-slate-800 or bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
                             <Image
                               src={selectedModelSpec.rearPanelImage}
                               alt={`${selectedModelSpec.model} Rear Panel`}
@@ -652,7 +652,7 @@ export default function AudioProcessorManager() {
                                   <div key={inp.id} className="flex items-start gap-2 text-sm">
                                     <Badge 
                                       variant={inp.priority === 'high' ? 'default' : 'secondary'}
-                                      className={inp.priority === 'high' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-gray-100 text-slate-200'}
+                                      className={inp.priority === 'high' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-800 or bg-slate-900 text-slate-200'}
                                     >
                                       {inp.name}
                                     </Badge>
@@ -686,7 +686,7 @@ export default function AudioProcessorManager() {
                               .filter(out => out.type !== 'dante')
                               .slice(0, selectedModelSpec.zones)
                               .map(out => (
-                                <div key={out.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <div key={out.id} className="p-3 bg-slate-800 or bg-slate-900 rounded-lg border border-slate-700">
                                   <p className="font-medium text-slate-100 text-sm">{out.name}</p>
                                   <p className="text-xs text-slate-400">{out.type === 'amplified' ? '🔊 Amplified' : '📡 Line Level'}</p>
                                   {out.powerRating && (
@@ -767,7 +767,7 @@ export default function AudioProcessorManager() {
                                     console.log('Zone number changed to:', newZoneNumber)
                                     setZoneFormData({...zoneFormData, zoneNumber: newZoneNumber})
                                   }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                  className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                   required
                                 >
                                   {Array.from({length: selectedProcessor.zones}, (_, i) => {
@@ -792,7 +792,7 @@ export default function AudioProcessorManager() {
                                   }}
                                   placeholder="Main Dining Area"
                                   required
-                                  className="border-gray-300 focus:border-emerald-500"
+                                  className="border-slate-700 focus:border-emerald-500"
                                 />
                               </div>
                             </div>
@@ -807,7 +807,7 @@ export default function AudioProcessorManager() {
                                   setZoneFormData({...zoneFormData, description: e.target.value})
                                 }}
                                 placeholder="Main dining area ceiling speakers"
-                                className="border-gray-300 focus:border-emerald-500"
+                                className="border-slate-700 focus:border-emerald-500"
                               />
                             </div>
                             
@@ -819,7 +819,7 @@ export default function AudioProcessorManager() {
                                   console.log('Current source changed to:', e.target.value)
                                   setZoneFormData({...zoneFormData, currentSource: e.target.value})
                                 }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                               >
                                 {selectedModelSpec ? (
                                   <>
@@ -902,9 +902,9 @@ export default function AudioProcessorManager() {
                     {/* Zones Grid */}
                     <div className="space-y-4">
                       {zones.length === 0 ? (
-                        <Card className="border-2 border-dashed border-gray-300">
+                        <Card className="border-2 border-dashed border-slate-700">
                           <CardContent className="text-center py-8">
-                            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <div className="mx-auto w-16 h-16 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
                               <Volume2 className="h-8 w-8 text-slate-500" />
                             </div>
                             <h4 className="text-lg font-semibold text-slate-100 mb-2">No Audio Zones</h4>

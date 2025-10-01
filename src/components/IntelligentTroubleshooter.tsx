@@ -156,7 +156,7 @@ export default function IntelligentTroubleshooter() {
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-slate-100 border-gray-200'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700'
     }
   }
 
@@ -233,7 +233,7 @@ export default function IntelligentTroubleshooter() {
                 <span className="text-sm">{activeSession.currentStep}</span>
                 <span className="text-sm font-medium">{activeSession.progress}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-slate-800 or bg-slate-900 rounded-full h-2">
                 <div 
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${activeSession.progress}%` }}
@@ -338,7 +338,7 @@ export default function IntelligentTroubleshooter() {
                           </div>
                         </div>
                         <p className="text-sm text-slate-300 mb-3">{issue.description}</p>
-                        <div className="bg-gray-50 p-3 rounded">
+                        <div className="bg-slate-800 or bg-slate-900 p-3 rounded">
                           <p className="text-xs font-medium text-slate-100 mb-1">Possible Causes:</p>
                           <ul className="text-xs text-slate-400 list-disc list-inside">
                             {issue.possibleCauses.map((cause, index) => (
@@ -386,7 +386,7 @@ export default function IntelligentTroubleshooter() {
                         <p className="text-sm text-slate-300 mb-3">{action.description}</p>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                          <div className="bg-gray-50 p-2 rounded text-sm">
+                          <div className="bg-slate-800 or bg-slate-900 p-2 rounded text-sm">
                             <span className="font-medium">Time:</span> {action.estimatedTime}
                           </div>
                           <div className="bg-green-50 p-2 rounded text-sm">

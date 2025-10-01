@@ -98,14 +98,14 @@ export default function LogMonitor() {
       case 'power_control': return 'bg-red-100 text-red-800'
       case 'input_switch': return 'bg-purple-100 text-purple-800'
       case 'audio_zone': return 'bg-orange-100 text-orange-800'
-      case 'matrix_control': return 'bg-gray-100 text-slate-100'
+      case 'matrix_control': return 'bg-slate-800 or bg-slate-900 text-slate-100'
       case 'error': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-slate-100'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100'
     }
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
+    <div className="bg-slate-800 or bg-slate-900 rounded-lg shadow-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-slate-100 flex items-center">
           <Activity className="mr-2 w-6 h-6" />
@@ -115,7 +115,7 @@ export default function LogMonitor() {
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(parseInt(e.target.value))}
-            className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+            className="px-3 py-1 border border-slate-700 rounded-md text-sm"
           >
             <option value={1}>Last Hour</option>
             <option value={6}>Last 6 Hours</option>
@@ -153,12 +153,12 @@ export default function LogMonitor() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6">
+      <div className="flex space-x-1 bg-slate-800 or bg-slate-900 p-1 rounded-lg mb-6">
         <button
           onClick={() => setActiveTab('summary')}
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'summary' 
-              ? 'bg-white text-blue-600 shadow-sm' 
+              ? 'bg-slate-800 or bg-slate-900 text-blue-600 shadow-sm' 
               : 'text-gray-600 hover:text-slate-100'
           }`}
         >
@@ -169,7 +169,7 @@ export default function LogMonitor() {
           onClick={() => setActiveTab('operations')}
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'operations' 
-              ? 'bg-white text-blue-600 shadow-sm' 
+              ? 'bg-slate-800 or bg-slate-900 text-blue-600 shadow-sm' 
               : 'text-gray-600 hover:text-slate-100'
           }`}
         >
@@ -180,7 +180,7 @@ export default function LogMonitor() {
           onClick={() => setActiveTab('errors')}
           className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             activeTab === 'errors' 
-              ? 'bg-white text-red-600 shadow-sm' 
+              ? 'bg-slate-800 or bg-slate-900 text-red-600 shadow-sm' 
               : 'text-gray-600 hover:text-slate-100'
           }`}
         >
@@ -216,7 +216,7 @@ export default function LogMonitor() {
               <h3 className="text-lg font-semibold mb-3">Most Common Operations</h3>
               <div className="space-y-2">
                 {summary.mostCommonOperations.slice(0, 5).map((op, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                  <div key={index} className="flex justify-between items-center p-2 bg-slate-800 or bg-slate-900 rounded">
                     <span className="font-medium">{op.type}</span>
                     <span className="text-gray-600">{op.count} times</span>
                   </div>
@@ -228,7 +228,7 @@ export default function LogMonitor() {
               <h3 className="text-lg font-semibold mb-3">Usage Patterns</h3>
               <div className="space-y-2">
                 {summary.patterns.slice(0, 5).map((pattern, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                  <div key={index} className="flex justify-between items-center p-2 bg-slate-800 or bg-slate-900 rounded">
                     <span className="font-medium">{pattern.pattern.replace('_', ' ')}</span>
                     <span className="text-gray-600">{pattern.count} occurrences</span>
                   </div>
@@ -243,7 +243,7 @@ export default function LogMonitor() {
       {activeTab === 'operations' && (
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {operations.map((op, index) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-4">
+            <div key={index} className="border border-slate-700 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-2">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${getOperationTypeColor(op.type)}`}>
@@ -264,7 +264,7 @@ export default function LogMonitor() {
               {op.details && (
                 <details className="text-sm text-slate-300">
                   <summary className="cursor-pointer hover:text-slate-100">View Details</summary>
-                  <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
+                  <pre className="mt-2 p-2 bg-slate-800 or bg-slate-900 rounded text-xs overflow-x-auto">
                     {JSON.stringify(op.details, null, 2)}
                   </pre>
                 </details>

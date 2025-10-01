@@ -505,7 +505,7 @@ export default function FireTVController() {
 
       {/* Add Device Form */}
       {showAddDevice && (
-        <div className="bg-gray-50 p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <h3 className="text-lg font-semibold text-slate-100 mb-4">Add Fire TV Device</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -514,7 +514,7 @@ export default function FireTVController() {
                 type="text"
                 value={newDevice.name}
                 onChange={(e) => setNewDevice(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="Living Room Fire TV Cube"
               />
             </div>
@@ -524,7 +524,7 @@ export default function FireTVController() {
                 type="text"
                 value={newDevice.ipAddress}
                 onChange={(e) => setNewDevice(prev => ({ ...prev, ipAddress: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="192.168.1.100"
               />
             </div>
@@ -534,7 +534,7 @@ export default function FireTVController() {
                 type="number"
                 value={newDevice.port}
                 onChange={(e) => setNewDevice(prev => ({ ...prev, port: parseInt(e.target.value) || 5555 }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="5555"
               />
             </div>
@@ -543,7 +543,7 @@ export default function FireTVController() {
               <select
                 value={newDevice.deviceType}
                 onChange={(e) => setNewDevice(prev => ({ ...prev, deviceType: e.target.value as any }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
               >
                 <option value="Fire TV Cube">Fire TV Cube</option>
                 <option value="Fire TV Stick">Fire TV Stick</option>
@@ -562,7 +562,7 @@ export default function FireTVController() {
                 <select
                   value={newDevice.inputChannel || ''}
                   onChange={(e) => setNewDevice(prev => ({ ...prev, inputChannel: e.target.value ? parseInt(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                   required
                 >
                   <option value="">Select Wolfpack Input Channel...</option>
@@ -601,7 +601,7 @@ export default function FireTVController() {
 
       {/* Edit Device Form */}
       {showEditDevice && editingDevice && (
-        <div className="bg-gray-50 p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <h3 className="text-lg font-semibold text-slate-100 mb-4">Edit Fire TV Device</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -610,7 +610,7 @@ export default function FireTVController() {
                 type="text"
                 value={editDevice.name}
                 onChange={(e) => setEditDevice(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="Living Room Fire TV Cube"
               />
             </div>
@@ -620,7 +620,7 @@ export default function FireTVController() {
                 type="text"
                 value={editDevice.ipAddress}
                 onChange={(e) => setEditDevice(prev => ({ ...prev, ipAddress: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="192.168.1.100"
               />
             </div>
@@ -630,7 +630,7 @@ export default function FireTVController() {
                 type="number"
                 value={editDevice.port}
                 onChange={(e) => setEditDevice(prev => ({ ...prev, port: parseInt(e.target.value) || 5555 }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
                 placeholder="5555"
               />
             </div>
@@ -639,7 +639,7 @@ export default function FireTVController() {
               <select
                 value={editDevice.deviceType}
                 onChange={(e) => setEditDevice(prev => ({ ...prev, deviceType: e.target.value as any }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-700 rounded-md"
               >
                 <option value="Fire TV Cube">Fire TV Cube</option>
                 <option value="Fire TV Stick">Fire TV Stick</option>
@@ -658,7 +658,7 @@ export default function FireTVController() {
                 <select
                   value={editDevice.inputChannel || ''}
                   onChange={(e) => setEditDevice(prev => ({ ...prev, inputChannel: e.target.value ? parseInt(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                   required
                 >
                   <option value="">Select Wolfpack Input Channel...</option>
@@ -697,7 +697,7 @@ export default function FireTVController() {
 
       {/* Device Management */}
       {devices.length > 0 && (
-        <div className="bg-white p-6 rounded-lg border">
+        <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
           <h3 className="text-lg font-semibold text-slate-100 mb-4">Fire TV Devices</h3>
           <div className="space-y-3">
             {devices.map((device) => (
@@ -706,14 +706,14 @@ export default function FireTVController() {
                 className={`p-4 rounded-lg border cursor-pointer transition-colors ${
                   selectedDevice?.id === device.id 
                     ? 'border-orange-200 bg-orange-50' 
-                    : 'border-gray-200 hover:border-gray-300'
+                    : 'border-slate-700 hover:border-slate-700'
                 }`}
                 onClick={() => setSelectedDevice(device)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className={`p-2 rounded-lg ${
-                      selectedDevice?.id === device.id ? 'bg-orange-100' : 'bg-gray-100'
+                      selectedDevice?.id === device.id ? 'bg-orange-100' : 'bg-slate-800 or bg-slate-900'
                     }`}>
                       <Monitor className={`w-5 h-5 ${
                         selectedDevice?.id === device.id ? 'text-orange-600' : 'text-gray-600'
@@ -811,7 +811,7 @@ export default function FireTVController() {
       {selectedDevice && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Sports Quick Access */}
-          <div className="bg-white p-6 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-100">Sports Quick Access</h3>
               <Trophy className="w-5 h-5 text-orange-600" />
@@ -832,7 +832,7 @@ export default function FireTVController() {
           </div>
 
           {/* Navigation Controls */}
-          <div className="bg-white p-6 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
             <h3 className="text-lg font-semibold text-slate-100 mb-4">Navigation</h3>
             <div className="space-y-4">
               {/* D-Pad */}
@@ -840,7 +840,7 @@ export default function FireTVController() {
                 <button
                   onClick={() => sendCommand('UP')}
                   disabled={loading}
-                  className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                  className="p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                 >
                   <ChevronUp className="w-5 h-5" />
                 </button>
@@ -848,7 +848,7 @@ export default function FireTVController() {
                   <button
                     onClick={() => sendCommand('LEFT')}
                     disabled={loading}
-                    className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                    className="p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
@@ -862,7 +862,7 @@ export default function FireTVController() {
                   <button
                     onClick={() => sendCommand('RIGHT')}
                     disabled={loading}
-                    className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                    className="p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
@@ -870,7 +870,7 @@ export default function FireTVController() {
                 <button
                   onClick={() => sendCommand('DOWN')}
                   disabled={loading}
-                  className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50 mt-2"
+                  className="p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50 mt-2"
                 >
                   <ChevronDown className="w-5 h-5" />
                 </button>
@@ -881,7 +881,7 @@ export default function FireTVController() {
                 <button
                   onClick={() => sendCommand('HOME')}
                   disabled={loading}
-                  className="flex items-center justify-center space-x-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                  className="flex items-center justify-center space-x-2 p-2 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                 >
                   <Home className="w-4 h-4" />
                   <span className="text-sm">Home</span>
@@ -889,7 +889,7 @@ export default function FireTVController() {
                 <button
                   onClick={() => sendCommand('BACK')}
                   disabled={loading}
-                  className="flex items-center justify-center space-x-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                  className="flex items-center justify-center space-x-2 p-2 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span className="text-sm">Back</span>
@@ -897,7 +897,7 @@ export default function FireTVController() {
                 <button
                   onClick={() => sendCommand('MENU')}
                   disabled={loading}
-                  className="flex items-center justify-center space-x-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                  className="flex items-center justify-center space-x-2 p-2 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
                 >
                   <Settings className="w-4 h-4" />
                   <span className="text-sm">Menu</span>
@@ -907,13 +907,13 @@ export default function FireTVController() {
           </div>
 
           {/* Media Controls */}
-          <div className="bg-white p-6 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
             <h3 className="text-lg font-semibold text-slate-100 mb-4">Media Controls</h3>
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => sendCommand('REWIND')}
                 disabled={loading}
-                className="flex flex-col items-center p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                className="flex flex-col items-center p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
               >
                 <SkipBack className="w-5 h-5" />
                 <span className="text-xs mt-1">Rewind</span>
@@ -929,7 +929,7 @@ export default function FireTVController() {
               <button
                 onClick={() => sendCommand('FAST_FORWARD')}
                 disabled={loading}
-                className="flex flex-col items-center p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                className="flex flex-col items-center p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
               >
                 <SkipForward className="w-5 h-5" />
                 <span className="text-xs mt-1">Fast Forward</span>
@@ -939,7 +939,7 @@ export default function FireTVController() {
               <button
                 onClick={() => sendCommand('VOL_DOWN')}
                 disabled={loading}
-                className="flex flex-col items-center p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                className="flex flex-col items-center p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
               >
                 <VolumeX className="w-5 h-5" />
                 <span className="text-xs mt-1">Vol-</span>
@@ -955,7 +955,7 @@ export default function FireTVController() {
               <button
                 onClick={() => sendCommand('VOL_UP')}
                 disabled={loading}
-                className="flex flex-col items-center p-3 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+                className="flex flex-col items-center p-3 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg disabled:opacity-50"
               >
                 <Volume2 className="w-5 h-5" />
                 <span className="text-xs mt-1">Vol+</span>
@@ -964,7 +964,7 @@ export default function FireTVController() {
           </div>
 
           {/* App Launcher */}
-          <div className="bg-white p-6 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg border">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-100">App Launcher</h3>
               <button
@@ -984,7 +984,7 @@ export default function FireTVController() {
                   className={`px-3 py-1 text-sm rounded-full ${
                     activeCategory === category
                       ? 'bg-orange-600 text-white'
-                      : 'bg-gray-200 text-slate-200 hover:bg-gray-300'
+                      : 'bg-slate-800 or bg-slate-900 text-slate-200 hover:bg-gray-300'
                   }`}
                 >
                   {category.charAt(0).toUpperCase() + category.slice(1)}
@@ -998,10 +998,10 @@ export default function FireTVController() {
                   key={index}
                   onClick={() => launchApp(app)}
                   disabled={loading}
-                  className="flex items-center space-x-3 p-3 text-left bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-50 transition-colors"
+                  className="flex items-center space-x-3 p-3 text-left bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg hover:bg-slate-800 or bg-slate-900 disabled:opacity-50 transition-colors"
                 >
                   <div className={`p-2 rounded ${
-                    app.sportsContent ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+                    app.sportsContent ? 'bg-orange-100 text-orange-600' : 'bg-slate-800 or bg-slate-900 text-gray-600'
                   }`}>
                     <Tv className="w-4 h-4" />
                   </div>

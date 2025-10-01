@@ -660,7 +660,7 @@ export default function DirecTVController() {
                       className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                         selectedSportsCategory === category
                           ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 text-slate-200 hover:bg-gray-300'
+                          : 'bg-slate-800 or bg-slate-900 text-slate-200 hover:bg-gray-300'
                       }`}
                     >
                       {category}
@@ -1052,7 +1052,7 @@ export default function DirecTVController() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={() => setShowAddDevice(false)}
-                className="flex-1 bg-gray-200 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>
@@ -1174,7 +1174,7 @@ export default function DirecTVController() {
                   setShowEditDevice(false)
                   setEditingDevice(null)
                 }}
-                className="flex-1 bg-gray-200 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>
@@ -1210,7 +1210,7 @@ export default function DirecTVController() {
                   setShowDeleteDevice(false)
                   setDeletingDevice(null)
                 }}
-                className="flex-1 bg-gray-200 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>

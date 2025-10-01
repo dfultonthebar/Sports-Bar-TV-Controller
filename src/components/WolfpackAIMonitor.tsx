@@ -84,7 +84,7 @@ export default function WolfpackAIMonitor({
       case 'warning': return 'border-yellow-300 bg-yellow-50'
       case 'success': return 'border-green-300 bg-green-50'
       case 'optimization': return 'border-blue-300 bg-blue-50'
-      default: return 'border-gray-300 bg-gray-50'
+      default: return 'border-slate-700 bg-slate-800 or bg-slate-900'
     }
   }
 
@@ -128,9 +128,9 @@ export default function WolfpackAIMonitor({
   if (!isVisible) return null
 
   return (
-    <div className={`bg-white rounded-lg shadow-lg border border-gray-200 ${className}`}>
+    <div className={`bg-slate-800 or bg-slate-900 rounded-lg shadow-lg border border-slate-700 ${className}`}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+      <div className="px-6 py-4 border-b border-slate-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -170,7 +170,7 @@ export default function WolfpackAIMonitor({
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-slate-700 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {insightCategories.map(category => (
                 <option key={category.value} value={category.value}>
@@ -184,7 +184,7 @@ export default function WolfpackAIMonitor({
             <select
               value={filterPriority}
               onChange={(e) => setFilterPriority(e.target.value)}
-              className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-slate-700 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {priorityFilters.map(priority => (
                 <option key={priority.value} value={priority.value}>
@@ -198,7 +198,7 @@ export default function WolfpackAIMonitor({
 
       {/* Insights Summary */}
       {insights.length > 0 && (
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="px-6 py-4 bg-slate-800 or bg-slate-900 border-b border-slate-700">
           <div className="grid grid-cols-4 gap-4 text-center">
             <div>
               <div className="text-2xl font-bold text-red-600">
@@ -264,7 +264,7 @@ export default function WolfpackAIMonitor({
                       <div className="flex items-center space-x-2 mb-2">
                         <h4 className="font-medium text-slate-100">{insight.title}</h4>
                         {getPriorityBadge(insight.priority)}
-                        <span className="text-xs text-slate-400 bg-gray-200 px-2 py-1 rounded-full">
+                        <span className="text-xs text-slate-400 bg-slate-800 or bg-slate-900 px-2 py-1 rounded-full">
                           {Math.round(insight.confidence)}% confidence
                         </span>
                         {insight.affectedChannels && (
@@ -314,7 +314,7 @@ export default function WolfpackAIMonitor({
 
       {/* Footer */}
       {insights.length > 0 && (
-        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-center">
+        <div className="px-6 py-3 bg-slate-800 or bg-slate-900 border-t border-slate-700 text-center">
           <p className="text-sm text-slate-300">
             🤖 AI-powered analysis of your Wolfpack matrix configuration and performance • 
             Showing {filteredInsights.length} of {insights.length} insights

@@ -200,7 +200,7 @@ export default function UnifiedGuideViewer({
   const getPriorityColor = (priority: number = 1) => {
     if (priority >= 7) return 'bg-red-100 text-red-800'
     if (priority >= 4) return 'bg-yellow-100 text-yellow-800'
-    return 'bg-gray-100 text-slate-100'
+    return 'bg-slate-800 or bg-slate-900 text-slate-100'
   }
 
   const filteredPrograms = getFilteredPrograms()
@@ -242,7 +242,7 @@ export default function UnifiedGuideViewer({
       {/* Summary Stats */}
       {guideData && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-300">Total Programs</p>
@@ -252,7 +252,7 @@ export default function UnifiedGuideViewer({
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-300">Connected Devices</p>
@@ -264,7 +264,7 @@ export default function UnifiedGuideViewer({
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-300">DirecTV Devices</p>
@@ -274,7 +274,7 @@ export default function UnifiedGuideViewer({
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg border">
+          <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-300">Fire TV Devices</p>
@@ -287,7 +287,7 @@ export default function UnifiedGuideViewer({
       )}
 
       {/* Controls */}
-      <div className="bg-white p-4 rounded-lg border">
+      <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg border">
         <div className="flex flex-wrap items-center gap-4">
           {/* Search */}
           <div className="flex items-center space-x-2 flex-1 min-w-64">
@@ -297,7 +297,7 @@ export default function UnifiedGuideViewer({
               placeholder="Search programs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="flex-1 px-3 py-1 border border-slate-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
@@ -305,7 +305,7 @@ export default function UnifiedGuideViewer({
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="px-3 py-1 border border-slate-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <option value="All">All Categories</option>
             {categories.map(category => (
@@ -317,7 +317,7 @@ export default function UnifiedGuideViewer({
           <select
             value={filterDevice}
             onChange={(e) => setFilterDevice(e.target.value)}
-            className="px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="px-3 py-1 border border-slate-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <option value="All">All Devices</option>
             <option value="directv">DirecTV Only</option>
@@ -337,16 +337,16 @@ export default function UnifiedGuideViewer({
           </label>
 
           {/* View Mode */}
-          <div className="flex items-center space-x-1 border border-gray-300 rounded">
+          <div className="flex items-center space-x-1 border border-slate-700 rounded">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 ${viewMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'hover:bg-gray-100'}`}
+              className={`p-2 ${viewMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'hover:bg-slate-800 or bg-slate-900'}`}
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`p-2 ${viewMode === 'list' ? 'bg-purple-100 text-purple-600' : 'hover:bg-gray-100'}`}
+              className={`p-2 ${viewMode === 'list' ? 'bg-purple-100 text-purple-600' : 'hover:bg-slate-800 or bg-slate-900'}`}
             >
               <List className="w-4 h-4" />
             </button>
@@ -382,7 +382,7 @@ export default function UnifiedGuideViewer({
           {filteredPrograms.map((program) => (
             <div
               key={program.id}
-              className={`bg-white p-4 rounded-lg border hover:shadow-md transition-shadow ${
+              className={`bg-slate-800 or bg-slate-900 p-4 rounded-lg border hover:shadow-md transition-shadow ${
                 viewMode === 'list' ? 'flex items-center space-x-4' : ''
               }`}
             >

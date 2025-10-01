@@ -90,7 +90,7 @@ export default function AtlasAIMonitor({
       case 'minor': return 'text-yellow-600 bg-yellow-100'
       case 'moderate': return 'text-orange-600 bg-orange-100'
       case 'critical': return 'text-red-600 bg-red-100'
-      default: return 'text-gray-600 bg-gray-100'
+      default: return 'text-gray-600 bg-slate-800 or bg-slate-900'
     }
   }
 
@@ -272,12 +272,12 @@ export default function AtlasAIMonitor({
           )}
 
           {/* Confidence Indicator */}
-          <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="mt-4 pt-4 border-t border-slate-700">
             <div className="flex items-center justify-between text-sm text-slate-400">
               <span>Analysis Confidence</span>
               <span>{analysis?.confidence || 0}%</span>
             </div>
-            <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+            <div className="mt-1 w-full bg-slate-800 or bg-slate-900 rounded-full h-2">
               <div 
                 className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${analysis?.confidence || 0}%` }}

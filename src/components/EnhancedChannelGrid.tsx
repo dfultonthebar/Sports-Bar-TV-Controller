@@ -194,7 +194,7 @@ export default function EnhancedChannelGrid() {
             const nextProgram = getNextProgram(channel.channelNumber)
 
             return (
-              <div key={channel.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow">
+              <div key={channel.id} className="bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow">
                 <div className="text-center mb-3">
                   <div className="text-2xl mb-1">{getChannelIcon(channel)}</div>
                   <div className="text-lg font-bold text-blue-600">{channel.channelNumber}</div>
@@ -265,11 +265,11 @@ export default function EnhancedChannelGrid() {
       </div>
 
       {/* TV Guide Grid */}
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+      <div className="bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-slate-800 or bg-slate-900 border-b border-slate-700">
                 <th className="p-3 text-left font-medium text-slate-200 w-32">Channel</th>
                 {timeSlots.map((time) => (
                   <th key={time.getTime()} className="p-3 text-center font-medium text-slate-200 w-40">
@@ -283,7 +283,7 @@ export default function EnhancedChannelGrid() {
             </thead>
             <tbody>
               {channels.slice(0, 10).map((channel) => (
-                <tr key={channel.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr key={channel.id} className="border-b border-gray-100 hover:bg-slate-800 or bg-slate-900">
                   <td className="p-3">
                     <div className="flex items-center space-x-2">
                       <div className="text-lg">{getChannelIcon(channel)}</div>

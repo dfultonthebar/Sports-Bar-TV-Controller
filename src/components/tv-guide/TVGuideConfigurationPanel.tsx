@@ -266,16 +266,16 @@ const TVGuideConfigurationPanel: React.FC = () => {
   }
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow">
+    <div className="p-6 bg-slate-800 or bg-slate-900 rounded-lg shadow">
       <h2 className="text-2xl font-bold mb-6">TV Guide Configuration</h2>
       
       {/* Tab Navigation */}
-      <div className="flex space-x-1 mb-6 bg-gray-100 rounded-lg p-1">
+      <div className="flex space-x-1 mb-6 bg-slate-800 or bg-slate-900 rounded-lg p-1">
         <button
           onClick={() => setActiveTab('status')}
           className={`flex-1 py-2 px-4 rounded-md transition-colors ${
             activeTab === 'status'
-              ? 'bg-white shadow text-blue-600 font-medium'
+              ? 'bg-slate-800 or bg-slate-900 shadow text-blue-600 font-medium'
               : 'text-gray-600 hover:text-slate-100'
           }`}
         >
@@ -285,7 +285,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
           onClick={() => setActiveTab('keys')}
           className={`flex-1 py-2 px-4 rounded-md transition-colors ${
             activeTab === 'keys'
-              ? 'bg-white shadow text-blue-600 font-medium'
+              ? 'bg-slate-800 or bg-slate-900 shadow text-blue-600 font-medium'
               : 'text-gray-600 hover:text-slate-100'
           }`}
         >
@@ -342,25 +342,25 @@ const TVGuideConfigurationPanel: React.FC = () => {
       </div>
 
       {/* API Key Configuration Instructions */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-6">
+      <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg mb-6">
         <h3 className="font-semibold mb-3">API Configuration Required</h3>
         
         <div className="space-y-4">
           <div>
             <h4 className="font-medium text-slate-200">Gracenote API Keys:</h4>
             <div className="text-sm text-slate-300 space-y-1">
-              <p><code className="bg-white px-2 py-1 rounded">GRACENOTE_API_KEY</code> - Your Gracenote API key</p>
-              <p><code className="bg-white px-2 py-1 rounded">GRACENOTE_PARTNER_ID</code> - Your Gracenote Partner ID</p>
-              <p><code className="bg-white px-2 py-1 rounded">GRACENOTE_USER_ID</code> - Your Gracenote User ID (optional)</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_API_KEY</code> - Your Gracenote API key</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_PARTNER_ID</code> - Your Gracenote Partner ID</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_USER_ID</code> - Your Gracenote User ID (optional)</p>
             </div>
           </div>
           
           <div>
             <h4 className="font-medium text-slate-200">Spectrum Business API Keys:</h4>
             <div className="text-sm text-slate-300 space-y-1">
-              <p><code className="bg-white px-2 py-1 rounded">SPECTRUM_BUSINESS_API_KEY</code> - Your Spectrum Business API key</p>
-              <p><code className="bg-white px-2 py-1 rounded">SPECTRUM_BUSINESS_ACCOUNT_ID</code> - Your Spectrum Business Account ID</p>
-              <p><code className="bg-white px-2 py-1 rounded">SPECTRUM_BUSINESS_REGION</code> - Your region (default: midwest)</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_API_KEY</code> - Your Spectrum Business API key</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_ACCOUNT_ID</code> - Your Spectrum Business Account ID</p>
+              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_REGION</code> - Your region (default: midwest)</p>
             </div>
           </div>
         </div>
@@ -375,7 +375,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
 
       {/* Test Results */}
       {testResults && (
-        <div className="bg-white border rounded-lg p-4">
+        <div className="bg-slate-800 or bg-slate-900 border rounded-lg p-4">
           <h3 className="font-semibold mb-3">
             Test Results - {testResults.type.charAt(0).toUpperCase() + testResults.type.slice(1)} Service
           </h3>
@@ -393,7 +393,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
               </div>
               
               {testResults.success && testResults.data && (
-                <div className="bg-gray-50 p-3 rounded">
+                <div className="bg-slate-800 or bg-slate-900 p-3 rounded">
                   {testResults.type === 'unified' ? (
                     <div>
                       <p className="text-sm mb-2">
@@ -437,7 +437,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
         <>
           {/* Add/Edit Form */}
           {showAddForm && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+            <div className="bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg p-6 mb-6">
               <h4 className="text-lg font-medium text-slate-100 mb-4">
                 {editingKey ? 'Edit API Key' : 'Add TV Guide API Key'}
               </h4>
@@ -453,7 +453,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g., Gracenote Production Key"
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
@@ -465,7 +465,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                     <select
                       value={formData.provider}
                       onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     >
                       <option value="">Select provider</option>
@@ -484,7 +484,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                     value={formData.keyValue}
                     onChange={(e) => setFormData({ ...formData, keyValue: e.target.value })}
                     placeholder={editingKey ? "Leave empty to keep current key" : "Enter your API key"}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required={!editingKey}
                   />
                   {formData.provider === 'gracenote' && (
@@ -503,7 +503,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Optional description for this API key"
                     rows={2}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -527,8 +527,8 @@ const TVGuideConfigurationPanel: React.FC = () => {
           )}
 
           {/* API Keys List */}
-          <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+          <div className="bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg">
+            <div className="flex justify-between items-center p-4 border-b border-slate-700">
               <h4 className="text-lg font-medium text-slate-100">
                 TV Guide API Keys ({apiKeys.length})
               </h4>
@@ -558,7 +558,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                             key.isActive 
                               ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-slate-100'
+                              : 'bg-slate-800 or bg-slate-900 text-slate-100'
                           }`}>
                             {key.isActive ? 'Active' : 'Inactive'}
                           </span>
@@ -637,7 +637,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
       <div className="mt-6 flex space-x-3">
         <button
           onClick={checkServicesStatus}
-          className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          className="px-4 py-2 bg-slate-800 or bg-slate-9000 text-white rounded hover:bg-gray-600"
         >
           Refresh Status
         </button>

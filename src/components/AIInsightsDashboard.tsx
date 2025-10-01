@@ -201,7 +201,7 @@ export default function AIInsightsDashboard() {
                 {hourlyData.map((item) => (
                   <div key={item.hour} className="flex items-center space-x-3">
                     <div className="w-12 text-sm font-medium">{item.hour}</div>
-                    <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                    <div className="flex-1 bg-slate-800 or bg-slate-900 rounded-full h-6 relative overflow-hidden">
                       <div 
                         className="bg-blue-500 h-full rounded-full transition-all duration-300"
                         style={{ width: `${(item.operations / maxHourly) * 100}%` }}
@@ -238,7 +238,7 @@ export default function AIInsightsDashboard() {
                       <span className="text-xs font-bold text-white">{index + 1}</span>
                     </div>
                     <div className="w-20 text-sm font-medium truncate">{item.device}</div>
-                    <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                    <div className="flex-1 bg-slate-800 or bg-slate-900 rounded-full h-6 relative overflow-hidden">
                       <div 
                         className="bg-green-500 h-full rounded-full transition-all duration-300"
                         style={{ width: `${(item.count / maxDevice) * 100}%` }}

@@ -342,7 +342,7 @@ export default function FileSystemManager() {
                 {executionResult.stdout && (
                   <div>
                     <div className="text-sm font-medium mb-1">Output:</div>
-                    <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-32">
+                    <pre className="bg-slate-800 or bg-slate-900 p-2 rounded text-xs overflow-auto max-h-32">
                       {executionResult.stdout}
                     </pre>
                   </div>
@@ -381,7 +381,7 @@ export default function FileSystemManager() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="text-sm bg-gray-100 p-2 rounded">
+          <div className="text-sm bg-slate-800 or bg-slate-900 p-2 rounded">
             Current Directory: <code>{currentDirectory}</code>
           </div>
 
@@ -420,7 +420,7 @@ export default function FileSystemManager() {
               {directoryItems.map((item, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 p-2 border rounded hover:bg-gray-50"
+                  className="flex items-center gap-2 p-2 border rounded hover:bg-slate-800 or bg-slate-900"
                 >
                   {item.type === 'directory' ? (
                     <Folder className="w-4 h-4 text-blue-500" />

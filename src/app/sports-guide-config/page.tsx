@@ -637,7 +637,7 @@ export default function SportsGuideConfigPage() {
           <div className="flex items-center space-x-4">
             <Link 
               href="/"
-              className="flex items-center space-x-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-slate-800 or bg-slate-900/10 text-white rounded-lg hover:bg-slate-800 or bg-slate-900/20 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Main</span>
@@ -666,7 +666,7 @@ export default function SportsGuideConfigPage() {
             }`}
           >
             {savedStatus === 'saving' ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-700 border-t-transparent" />
             ) : savedStatus === 'saved' ? (
               <Check className="w-4 h-4" />
             ) : savedStatus === 'error' ? (
@@ -683,13 +683,13 @@ export default function SportsGuideConfigPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
+        <div className="flex space-x-1 bg-slate-800 or bg-slate-900/10 rounded-lg p-1">
           <button
             onClick={() => setActiveTab('providers')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'providers'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-white/10'
+                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
             }`}
           >
             <Tv className="w-4 h-4" />
@@ -701,7 +701,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'location'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-white/10'
+                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
             }`}
           >
             <MapPin className="w-4 h-4" />
@@ -713,7 +713,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'teams'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-white/10'
+                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -725,7 +725,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'sports-leagues'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-white/10'
+                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
             }`}
           >
             <Star className="w-4 h-4" />
@@ -737,7 +737,7 @@ export default function SportsGuideConfigPage() {
             className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-all ${
               activeTab === 'tv-guide-apis'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-blue-200 hover:text-white hover:bg-white/10'
+                : 'text-blue-200 hover:text-white hover:bg-slate-800 or bg-slate-900/10'
             }`}
           >
             <Database className="w-4 h-4" />
@@ -753,7 +753,7 @@ export default function SportsGuideConfigPage() {
           <>
             {/* Add Provider Form */}
             {isAdding && (
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">Add New Provider</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -764,7 +764,7 @@ export default function SportsGuideConfigPage() {
                       value={newProvider.name}
                       onChange={(e) => setNewProvider(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="e.g. Spectrum Business Premium"
-                      className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                     />
                   </div>
                   
@@ -773,7 +773,7 @@ export default function SportsGuideConfigPage() {
                     <select
                       value={newProvider.type}
                       onChange={(e) => setNewProvider(prev => ({ ...prev, type: e.target.value as Provider['type'] }))}
-                      className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                     >
                       <option value="cable" className="bg-slate-800">Cable Provider</option>
                       <option value="satellite" className="bg-slate-800">Satellite Provider</option>
@@ -821,8 +821,8 @@ export default function SportsGuideConfigPage() {
                 const compatibleInputs = getCompatibleInputs(provider.type)
                 
                 return (
-                  <div key={provider.id} className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-                    <div className="p-6 border-b border-white/20">
+                  <div key={provider.id} className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+                    <div className="p-6 border-b border-slate-700/20">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4">
                           <div className="bg-blue-500/20 rounded-lg p-3">
@@ -886,12 +886,12 @@ export default function SportsGuideConfigPage() {
                         {compatibleInputs.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                             {compatibleInputs.map(input => (
-                              <label key={input.id} className="flex items-center space-x-2 p-2 bg-white/5 rounded-lg hover:bg-white/10 cursor-pointer">
+                              <label key={input.id} className="flex items-center space-x-2 p-2 bg-slate-800 or bg-slate-900/5 rounded-lg hover:bg-slate-800 or bg-slate-900/10 cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={isInputAssignedToProvider(provider.id!, input.id)}
                                   onChange={() => toggleInputForProvider(provider.id!, input.id)}
-                                  className="w-4 h-4 text-blue-600 bg-white/10 border-white/20 rounded focus:ring-blue-500 focus:ring-2"
+                                  className="w-4 h-4 text-blue-600 bg-slate-800 or bg-slate-900/10 border-slate-700/20 rounded focus:ring-blue-500 focus:ring-2"
                                 />
                                 <div className="text-sm">
                                   <div className="text-white">{input.label}</div>
@@ -954,7 +954,7 @@ export default function SportsGuideConfigPage() {
                                   }
                                 }
                               }}
-                              className="flex-1 px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
+                              className="flex-1 px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
                             />
                           </div>
                         </div>
@@ -974,7 +974,7 @@ export default function SportsGuideConfigPage() {
                                   className={`p-2 rounded-lg text-sm transition-all ${
                                     provider.channels.includes(channel)
                                       ? 'bg-blue-600 text-white shadow-lg'
-                                      : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                                      : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
                                   }`}
                                 >
                                   {channel}
@@ -997,7 +997,7 @@ export default function SportsGuideConfigPage() {
                                     input.value = ''
                                   }
                                 }}
-                                className="flex-1 px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
+                                className="flex-1 px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
                               />
                             </div>
                           </div>
@@ -1034,7 +1034,7 @@ export default function SportsGuideConfigPage() {
 
             {providers.length === 0 && !isAdding && (
               <div className="text-center py-12">
-                <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                <div className="bg-slate-800 or bg-slate-900/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
                   <Settings className="w-8 h-8 text-blue-300 mx-auto" />
                 </div>
                 <h3 className="text-lg font-medium text-white mb-2">No Providers Configured</h3>
@@ -1053,8 +1053,8 @@ export default function SportsGuideConfigPage() {
 
         {/* Location & Timezone Tab */}
         {activeTab === 'location' && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-            <div className="p-6 border-b border-white/20">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+            <div className="p-6 border-b border-slate-700/20">
               <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                 <MapPin className="w-5 h-5" />
                 <span>Location & Timezone Configuration</span>
@@ -1071,7 +1071,7 @@ export default function SportsGuideConfigPage() {
                     value={locationConfig.zipCode}
                     onChange={(e) => setLocationConfig(prev => ({ ...prev, zipCode: e.target.value }))}
                     placeholder="e.g. 54304"
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   />
                 </div>
                 
@@ -1082,7 +1082,7 @@ export default function SportsGuideConfigPage() {
                     value={locationConfig.city}
                     onChange={(e) => setLocationConfig(prev => ({ ...prev, city: e.target.value }))}
                     placeholder="e.g. Green Bay"
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   />
                 </div>
                 
@@ -1093,7 +1093,7 @@ export default function SportsGuideConfigPage() {
                     value={locationConfig.state}
                     onChange={(e) => setLocationConfig(prev => ({ ...prev, state: e.target.value }))}
                     placeholder="e.g. WI"
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   />
                 </div>
               </div>
@@ -1103,7 +1103,7 @@ export default function SportsGuideConfigPage() {
                 <select
                   value={locationConfig.timezone}
                   onChange={(e) => setLocationConfig(prev => ({ ...prev, timezone: e.target.value }))}
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                 >
                   {US_TIMEZONES.map(tz => (
                     <option key={tz.value} value={tz.value} className="bg-slate-800">
@@ -1133,8 +1133,8 @@ export default function SportsGuideConfigPage() {
 
         {/* Home Teams Tab */}
         {activeTab === 'teams' && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-            <div className="p-6 border-b border-white/20">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+            <div className="p-6 border-b border-slate-700/20">
               <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                 <Users className="w-5 h-5" />
                 <span>Home Team Preferences</span>
@@ -1157,7 +1157,7 @@ export default function SportsGuideConfigPage() {
                 </div>
                 
                 {addingTeam && (
-                  <div className="bg-white/5 rounded-lg p-4 mb-4">
+                  <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4 mb-4">
                     <div className="relative mb-4">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
                       <input
@@ -1165,7 +1165,7 @@ export default function SportsGuideConfigPage() {
                         placeholder="Search for teams (e.g. Green Bay Packers, Wisconsin Badgers, Bay Port Pirates...)"
                         value={teamSearchQuery}
                         onChange={(e) => setTeamSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-2 bg-slate-800 or bg-slate-900/10 border border-slate-700/20 text-white placeholder-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       />
                     </div>
                     
@@ -1174,7 +1174,7 @@ export default function SportsGuideConfigPage() {
                         <button
                           key={index}
                           onClick={() => addTeam(team)}
-                          className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                          className="w-full text-left p-3 bg-slate-800 or bg-slate-900/5 hover:bg-slate-800 or bg-slate-900/10 rounded-lg transition-colors"
                         >
                           <div className="flex items-center space-x-3">
                             <span className="text-lg">{getCategoryEmoji(team.category)}</span>
@@ -1219,7 +1219,7 @@ export default function SportsGuideConfigPage() {
                         className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
                           team.isPrimary
                             ? 'bg-yellow-500/10 border-yellow-500/30'
-                            : 'bg-white/5 border-white/20'
+                            : 'bg-slate-800 or bg-slate-900/5 border-slate-700/20'
                         }`}
                       >
                         <div className="flex items-center space-x-4">
@@ -1292,8 +1292,8 @@ export default function SportsGuideConfigPage() {
 
         {/* Sports Leagues Tab */}
         {activeTab === 'sports-leagues' && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-            <div className="p-6 border-b border-white/20">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+            <div className="p-6 border-b border-slate-700/20">
               <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                 <Star className="w-5 h-5" />
                 <span>Sports Leagues & Coverage</span>
@@ -1336,10 +1336,10 @@ export default function SportsGuideConfigPage() {
                   const isSelected = selectedSportsLeagues.has(category)
                   
                   return (
-                    <div key={category} className="border border-white/10 rounded-lg overflow-hidden">
+                    <div key={category} className="border border-slate-700/10 rounded-lg overflow-hidden">
                       <div 
                         className={`p-4 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-600/20 border-blue-400' : 'bg-white/5 hover:bg-white/10'
+                          isSelected ? 'bg-blue-600/20 border-blue-400' : 'bg-slate-800 or bg-slate-900/5 hover:bg-slate-800 or bg-slate-900/10'
                         }`}
                         onClick={() => {
                           if (isSelected) {
@@ -1358,7 +1358,7 @@ export default function SportsGuideConfigPage() {
                             <div className={`w-5 h-5 rounded border-2 transition-colors ${
                               isSelected 
                                 ? 'bg-blue-500 border-blue-500' 
-                                : 'border-white/30'
+                                : 'border-slate-700/30'
                             }`}>
                               {isSelected && (
                                 <Check className="w-3 h-3 text-white mx-auto mt-0.5" />
@@ -1388,7 +1388,7 @@ export default function SportsGuideConfigPage() {
                       </div>
                       
                       {isExpanded && (
-                        <div className="p-4 border-t border-white/10 bg-white/5">
+                        <div className="p-4 border-t border-slate-700/10 bg-slate-800 or bg-slate-900/5">
                           <div className="grid gap-3">
                             <div>
                               <h5 className="text-sm font-medium text-blue-300 mb-2">Leagues:</h5>
@@ -1451,8 +1451,8 @@ export default function SportsGuideConfigPage() {
 
         {/* TV Guide APIs Tab */}
         {activeTab === 'tv-guide-apis' && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-            <div className="p-6 border-b border-white/20">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+            <div className="p-6 border-b border-slate-700/20">
               <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                 <Database className="w-5 h-5" />
                 <span>Professional TV Guide APIs</span>

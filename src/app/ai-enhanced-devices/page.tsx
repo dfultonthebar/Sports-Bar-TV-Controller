@@ -314,7 +314,7 @@ export default function AIEnhancedDevicesPage() {
                       success: true
                     }
                   ].map((action, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-800 or bg-slate-900 rounded-lg">
                       <div className="flex items-center gap-3">
                         {action.type === 'optimization' && <Zap className="w-4 h-4 text-yellow-500" />}
                         {action.type === 'maintenance' && <Settings className="w-4 h-4 text-blue-500" />}

@@ -119,7 +119,7 @@ export default function AudioZoneControl() {
               <div key={zone.id} className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4">
                 {/* Zone Header */}
                 <div className="text-center mb-4">
-                  <div className="bg-orange-500 text-black px-3 py-1 rounded text-sm font-bold mb-2">
+                  <div className="bg-orange-500 text-slate-100 or text-slate-200 px-3 py-1 rounded text-sm font-bold mb-2">
                     {zone.name}
                   </div>
                   <div className="text-white font-medium">

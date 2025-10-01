@@ -465,7 +465,7 @@ export default function IRDeviceControl() {
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               isLearningMode 
                 ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
-                : 'bg-gray-200 text-slate-200 hover:bg-gray-300'
+                : 'bg-slate-800 or bg-slate-900 text-slate-200 hover:bg-gray-300'
             }`}
           >
             {isLearningMode ? 'Stop Learning' : 'Learn IR'}
@@ -483,7 +483,7 @@ export default function IRDeviceControl() {
       </div>
 
       {/* Device Selection */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border">
+      <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg shadow-sm border">
         <h3 className="text-lg font-medium text-slate-100 mb-3">Select Device</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {devices.map((device) => (
@@ -493,7 +493,7 @@ export default function IRDeviceControl() {
               className={`p-3 rounded-lg border-2 transition-all duration-200 text-left ${
                 selectedDevice?.id === device.id
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-slate-700 hover:border-slate-700'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -505,7 +505,7 @@ export default function IRDeviceControl() {
                     {device.controlMethod === 'IP' ? 'IP' : 'IR'}
                   </span>
                   <span className={`text-xs px-2 py-1 rounded ${
-                    device.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                    device.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-800 or bg-slate-900 text-gray-600'
                   }`}>
                     Ch {device.inputChannel}
                   </span>
@@ -537,7 +537,7 @@ export default function IRDeviceControl() {
 
       {/* Quick Channel Change */}
       {selectedDevice && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
+        <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg shadow-sm border">
           <h3 className="text-lg font-medium text-slate-100 mb-3">Quick Channel</h3>
           <div className="flex items-center space-x-3">
             <input
@@ -545,7 +545,7 @@ export default function IRDeviceControl() {
               placeholder="Enter channel number"
               value={quickChannel}
               onChange={(e) => setQuickChannel(e.target.value.replace(/\D/g, ''))}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               onKeyPress={(e) => e.key === 'Enter' && sendQuickChannel()}
             />
             <button
@@ -560,7 +560,7 @@ export default function IRDeviceControl() {
 
       {/* IR Commands */}
       {selectedDevice && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
+        <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg shadow-sm border">
           <h3 className="text-lg font-medium text-slate-100 mb-4">
             Control: {selectedDevice.name}
           </h3>
@@ -574,7 +574,7 @@ export default function IRDeviceControl() {
       {/* Add Device Modal */}
       {showAddDevice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="bg-slate-800 or bg-slate-900 rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-slate-100 mb-4">Add New IR Device</h3>
             
             <div className="space-y-4">
@@ -585,7 +585,7 @@ export default function IRDeviceControl() {
                   placeholder="e.g., Main DirecTV Box"
                   value={newDevice.name || ''}
                   onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -610,7 +610,7 @@ export default function IRDeviceControl() {
                       searchCodesets(selectedBrand, newDevice.deviceType)
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Brand</option>
                   {DEVICE_BRANDS.map(brand => (
@@ -629,7 +629,7 @@ export default function IRDeviceControl() {
                       searchCodesets(newDevice.brand, e.target.value)
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!newDevice.brand}
                 >
                   <option value="">Select Model</option>
@@ -680,7 +680,7 @@ export default function IRDeviceControl() {
                   max="36"
                   value={newDevice.inputChannel || 1}
                   onChange={(e) => setNewDevice({ ...newDevice, inputChannel: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -694,7 +694,7 @@ export default function IRDeviceControl() {
                       placeholder="192.168.1.150"
                       value={newDevice.deviceIpAddress || ''}
                       onChange={(e) => setNewDevice({ ...newDevice, deviceIpAddress: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-slate-400 mt-1">IP address of the device you want to control</p>
                   </div>
@@ -705,7 +705,7 @@ export default function IRDeviceControl() {
                       placeholder="8080"
                       value={newDevice.ipControlPort || ''}
                       onChange={(e) => setNewDevice({ ...newDevice, ipControlPort: parseInt(e.target.value) || undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-slate-400 mt-1">Port for IP control (auto-detected if left empty)</p>
                   </div>
@@ -722,7 +722,7 @@ export default function IRDeviceControl() {
                       placeholder="192.168.1.100"
                       value={newDevice.iTachAddress || ''}
                       onChange={(e) => setNewDevice({ ...newDevice, iTachAddress: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-slate-400 mt-1">IP address of your Global Cache iTach device</p>
                   </div>
@@ -731,7 +731,7 @@ export default function IRDeviceControl() {
                     <select
                       value={newDevice.iTachPort || 1}
                       onChange={(e) => setNewDevice({ ...newDevice, iTachPort: parseInt(e.target.value) })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value={1}>Port 1</option>
                       <option value={2}>Port 2</option>
@@ -746,7 +746,7 @@ export default function IRDeviceControl() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={() => setShowAddDevice(false)}
-                className="flex-1 bg-gray-200 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>

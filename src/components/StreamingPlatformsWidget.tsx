@@ -252,7 +252,7 @@ export default function StreamingPlatformsWidget() {
   const availablePlatforms = platforms.filter(p => p.authStatus !== 'connected')
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
+    <div className="bg-slate-800 or bg-slate-900 rounded-2xl shadow-lg border border-slate-200 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
@@ -267,7 +267,7 @@ export default function StreamingPlatformsWidget() {
         
         <button
           onClick={() => updateAuthStatus()}
-          className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-800 or bg-slate-900 rounded-lg transition-colors"
         >
           <RefreshCw className="w-5 h-5" />
         </button>
@@ -353,7 +353,7 @@ export default function StreamingPlatformsWidget() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-full">
+                  <span className="text-xs px-2 py-1 bg-slate-800 or bg-slate-900 text-slate-600 rounded-full">
                     {getAuthStatusText(platform.authStatus)}
                   </span>
                   <button
@@ -389,7 +389,7 @@ export default function StreamingPlatformsWidget() {
       {/* Authentication Modal */}
       {showAuthModal && selectedPlatform && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+          <div className="bg-slate-800 or bg-slate-900 rounded-2xl p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">
                 Connect to {selectedPlatform.name}
@@ -464,7 +464,7 @@ export default function StreamingPlatformsWidget() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={() => setShowAuthModal(false)}
-                className="flex-1 px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                className="flex-1 px-4 py-2 text-slate-700 bg-slate-800 or bg-slate-900 rounded-lg hover:bg-slate-800 or bg-slate-900 transition-colors"
               >
                 Cancel
               </button>

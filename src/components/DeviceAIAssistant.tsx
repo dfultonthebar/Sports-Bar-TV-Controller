@@ -116,7 +116,7 @@ export default function DeviceAIAssistant() {
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-slate-100 border-gray-200'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700'
     }
   }
 
@@ -298,7 +298,7 @@ export default function DeviceAIAssistant() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-slate-200 mb-3">{rec.message}</p>
-                  <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg">
                     <p className="text-sm font-medium text-slate-100 mb-1">Recommended Action:</p>
                     <p className="text-sm text-slate-300">{rec.action}</p>
                   </div>

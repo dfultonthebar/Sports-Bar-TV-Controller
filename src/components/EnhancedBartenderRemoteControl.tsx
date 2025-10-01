@@ -711,7 +711,7 @@ export default function EnhancedBartenderRemoteControl() {
         {/* Loading indicator */}
         {loading && (
           <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-lg">
+            <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg shadow-lg">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-sm text-muted-foreground">Processing request...</p>
             </div>

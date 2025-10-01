@@ -636,7 +636,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 h-fit">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-fit">
             <h2 className="text-lg font-bold text-white mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5" />
               Select Input
@@ -652,7 +652,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     className={`w-full p-3 rounded-lg text-left transition-all ${
                       selectedInput === input.channelNumber
                         ? 'bg-blue-500 text-white shadow-lg'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                        : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center space-x-3">
@@ -677,7 +677,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         {/* Main Panel - Channel Guide */}
         <div className="lg:col-span-3">
           {!showChannelGuide ? (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-8 text-center">
               <Calendar className="w-16 h-16 text-slate-500 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-white mb-2">Channel Guide</h3>
               <p className="text-slate-500 mb-4">Select an input and click "Channel Guide" to see available sports programming</p>
@@ -689,13 +689,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
               </Button>
             </div>
           ) : !selectedInput ? (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-8 text-center">
               <Tv className="w-16 h-16 text-slate-500 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-white mb-2">Select an Input</h3>
               <p className="text-slate-500">Choose an input from the left panel to load its channel guide</p>
             </div>
           ) : (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-white flex items-center">
@@ -734,7 +734,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     placeholder="Search games, teams, leagues..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-800 or bg-slate-900/5 border border-slate-700/10 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -762,7 +762,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     {filteredPrograms.map((game) => (
                       <div
                         key={game.id}
-                        className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                        className="bg-slate-800 or bg-slate-900/5 backdrop-blur-sm rounded-lg p-4 border border-slate-700/10 hover:bg-slate-800 or bg-slate-900/10 transition-all cursor-pointer"
                         onClick={() => handleGameClick(game)}
                       >
                         <div className="flex items-center justify-between">
@@ -831,14 +831,14 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
               {/* Streaming Apps (for Fire TV) */}
               {guideData?.type === 'streaming' && guideData.apps && (
-                <div className="mt-6 pt-4 border-t border-white/10">
+                <div className="mt-6 pt-4 border-t border-slate-700/10">
                   <h3 className="text-lg font-medium text-white mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {guideData.apps.filter(app => app.sportsContent).map((app) => (
                       <button
                         key={app.packageName}
                         onClick={() => launchStreamingApp(app.packageName, app.displayName)}
-                        className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-all text-center"
+                        className="p-2 bg-slate-800 or bg-slate-900/5 hover:bg-slate-800 or bg-slate-900/10 rounded-lg transition-all text-center"
                       >
                         <div className="text-xs font-medium text-white">{app.displayName}</div>
                         <div className="text-xs text-slate-500 mt-1">{app.category}</div>
@@ -855,7 +855,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg">
+          <div className="bg-slate-800 or bg-slate-900 p-6 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-sm text-slate-300">Processing request...</p>
           </div>

@@ -174,7 +174,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
   }
 
   return (
-    <div className="p-6 bg-white">
+    <div className="p-6 bg-slate-800 or bg-slate-900">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-4">TV Guide</h1>
@@ -222,10 +222,10 @@ const UnifiedTVGuideViewer: React.FC = () => {
         {guideData?.sources && (
           <div className="flex items-center space-x-4 text-sm text-slate-300 mb-4">
             <span>Data Sources:</span>
-            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.gracenote.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-slate-400'}`}>
+            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.gracenote.used ? 'bg-green-100 text-green-700' : 'bg-slate-800 or bg-slate-900 text-slate-400'}`}>
               Gracenote {guideData.sources.gracenote.used ? '✓' : '✗'}
             </span>
-            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.spectrum.used ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-slate-400'}`}>
+            <span className={`px-2 py-1 rounded text-xs ${guideData.sources.spectrum.used ? 'bg-green-100 text-green-700' : 'bg-slate-800 or bg-slate-900 text-slate-400'}`}>
               Spectrum {guideData.sources.spectrum.used ? '✓' : '✗'}
             </span>
           </div>
@@ -234,11 +234,11 @@ const UnifiedTVGuideViewer: React.FC = () => {
 
       {/* Search Results */}
       {searchQuery && searchResults.length > 0 && (
-        <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+        <div className="mb-6 bg-slate-800 or bg-slate-900 p-4 rounded-lg">
           <h3 className="font-semibold mb-3">Search Results ({searchResults.length})</h3>
           <div className="space-y-2">
             {searchResults.slice(0, 10).map((program, index) => (
-              <div key={index} className="flex items-start justify-between p-3 bg-white rounded border">
+              <div key={index} className="flex items-start justify-between p-3 bg-slate-800 or bg-slate-900 rounded border">
                 <div className="flex-1">
                   <h4 className="font-medium">{program.title}</h4>
                   {program.episodeTitle && (
@@ -271,7 +271,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
           <h3 className="font-semibold text-green-800 mb-3">🔴 Live Sports Now</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {currentSports.map((program, index) => (
-              <div key={index} className="bg-white p-3 rounded border border-green-200">
+              <div key={index} className="bg-slate-800 or bg-slate-900 p-3 rounded border border-green-200">
                 <h4 className="font-medium text-green-800">{program.title}</h4>
                 {program.sportsInfo && (
                   <p className="text-sm text-green-600 mt-1">{getSportsInfo(program)}</p>
@@ -287,8 +287,8 @@ const UnifiedTVGuideViewer: React.FC = () => {
 
       {/* TV Guide Grid */}
       {guideData && (
-        <div className="bg-white rounded-lg border">
-          <div className="p-4 border-b bg-gray-50">
+        <div className="bg-slate-800 or bg-slate-900 rounded-lg border">
+          <div className="p-4 border-b bg-slate-800 or bg-slate-900">
             <h3 className="font-semibold">
               {viewMode === 'sports' ? 'Sports Programming' : 'All Channels'} - {selectedDate.toLocaleDateString()}
             </h3>
@@ -311,7 +311,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
                   .map((program, index) => (
                     <div 
                       key={index} 
-                      className={`p-4 border rounded-lg ${isCurrentlyAiring(program) ? 'bg-red-50 border-red-200' : 'bg-white'}`}
+                      className={`p-4 border rounded-lg ${isCurrentlyAiring(program) ? 'bg-red-50 border-red-200' : 'bg-slate-800 or bg-slate-900'}`}
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1">

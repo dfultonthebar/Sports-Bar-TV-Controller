@@ -219,7 +219,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
                               : meter.status === 'warning'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-slate-100'
+                            : 'bg-slate-800 or bg-slate-900 text-slate-100'
                         }`}
                       >
                         {meter.isReceiving ? (
@@ -255,7 +255,7 @@ export default function InputLevelMonitor({ processorId, processorName }: InputL
 
                       {/* Level Meter */}
                       <div className="space-y-1">
-                        <div className="relative h-4 bg-gray-200 rounded overflow-hidden">
+                        <div className="relative h-4 bg-slate-800 or bg-slate-900 rounded overflow-hidden">
                           <div 
                             className="h-full transition-all duration-200"
                             style={{

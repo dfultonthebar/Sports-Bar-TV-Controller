@@ -269,7 +269,7 @@ export default function EnhancedAIChat() {
         <TabsContent value="chat" className="space-y-4">
           <Card>
             <CardContent className="p-4">
-              <div className="h-96 overflow-y-auto mb-4 space-y-4 border rounded p-4 bg-gray-50">
+              <div className="h-96 overflow-y-auto mb-4 space-y-4 border rounded p-4 bg-slate-800 or bg-slate-900">
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -279,7 +279,7 @@ export default function EnhancedAIChat() {
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                         message.sender === 'user'
                           ? 'bg-blue-500 text-white'
-                          : 'bg-white text-slate-100 border'
+                          : 'bg-slate-800 or bg-slate-900 text-slate-100 border'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -311,7 +311,7 @@ export default function EnhancedAIChat() {
                 
                 {isLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white text-slate-100 px-4 py-2 rounded-lg border">
+                    <div className="bg-slate-800 or bg-slate-900 text-slate-100 px-4 py-2 rounded-lg border">
                       <div className="flex items-center space-x-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                         <span className="text-sm">AI is thinking...</span>
@@ -446,7 +446,7 @@ export default function EnhancedAIChat() {
                       featureName: e.target.value 
                     }))}
                     placeholder="e.g., Live Sports Notifications"
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    className="w-full border border-slate-700 rounded-md px-3 py-2"
                   />
                 </div>
                 
@@ -528,7 +528,7 @@ export default function EnhancedAIChat() {
                       Copy Design
                     </Button>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded overflow-auto max-h-96 text-sm whitespace-pre-wrap">
+                  <div className="bg-slate-800 or bg-slate-900 p-4 rounded overflow-auto max-h-96 text-sm whitespace-pre-wrap">
                     {featureDesign}
                   </div>
                 </div>

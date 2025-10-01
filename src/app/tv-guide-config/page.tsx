@@ -4,7 +4,7 @@ import TVGuideConfigurationPanel from '@/components/tv-guide/TVGuideConfiguratio
 
 export default function TVGuideConfigPage() {
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-slate-800 or bg-slate-900">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
@@ -16,7 +16,7 @@ export default function TVGuideConfigPage() {
           
           <TVGuideConfigurationPanel />
           
-          <div className="mt-8 bg-white p-6 rounded-lg shadow">
+          <div className="mt-8 bg-slate-800 or bg-slate-900 p-6 rounded-lg shadow">
             <h2 className="text-xl font-semibold mb-4">About Professional TV Guide Services</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

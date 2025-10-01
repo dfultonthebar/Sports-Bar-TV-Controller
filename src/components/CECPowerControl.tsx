@@ -275,7 +275,7 @@ export default function CECPowerControl() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* CEC Configuration Panel */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-4 flex items-center">
             <Settings className="mr-2 w-5 h-5" />
             CEC Configuration
@@ -394,7 +394,7 @@ export default function CECPowerControl() {
         </div>
 
         {/* System-Wide Power Control */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-4 flex items-center">
             <Power className="mr-2 w-5 h-5" />
             System Power Control
@@ -402,7 +402,7 @@ export default function CECPowerControl() {
 
           <div className="space-y-4">
             {/* All TVs Control */}
-            <div className="bg-white/5 rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Tv className="w-5 h-5 text-blue-400" />
@@ -432,7 +432,7 @@ export default function CECPowerControl() {
             </div>
 
             {/* System Status */}
-            <div className="bg-white/5 rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
               <h4 className="text-sm font-medium text-white mb-2">System Status</h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
@@ -457,7 +457,7 @@ export default function CECPowerControl() {
         </div>
 
         {/* Individual TV Control */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-4 flex items-center">
             <Monitor className="mr-2 w-5 h-5" />
             Individual TV Control
@@ -473,7 +473,7 @@ export default function CECPowerControl() {
             ) : (
               <>
                 {tvStatuses.map((tv) => (
-                  <div key={tv.outputNumber} className="bg-white/5 rounded-lg p-3">
+                  <div key={tv.outputNumber} className="bg-slate-800 or bg-slate-900/5 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         {getTVStatusIcon(tv)}

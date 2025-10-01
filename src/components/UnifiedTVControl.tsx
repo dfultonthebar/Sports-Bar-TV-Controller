@@ -263,7 +263,7 @@ export default function UnifiedTVControl() {
         </div>
         
         {status && (
-          <div className="px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm text-white border border-white/20">
+          <div className="px-4 py-2 bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-full text-sm text-white border border-slate-700/20">
             {status}
           </div>
         )}
@@ -272,7 +272,7 @@ export default function UnifiedTVControl() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Sidebar - Device Selection */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Monitor className="mr-2 w-5 h-5" />
               TV Devices
@@ -286,7 +286,7 @@ export default function UnifiedTVControl() {
                   className={`w-full p-3 rounded-lg text-left transition-all ${
                     selectedDevice?.id === device.id
                       ? 'bg-blue-500/30 border-2 border-blue-500'
-                      : 'bg-white/5 border-2 border-transparent hover:bg-white/10'
+                      : 'bg-slate-800 or bg-slate-900/5 border-2 border-transparent hover:bg-slate-800 or bg-slate-900/10'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -323,7 +323,7 @@ export default function UnifiedTVControl() {
 
           {/* Brand Info */}
           {brandConfig && showAdvanced && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
               <h4 className="text-sm font-bold text-white mb-2 flex items-center">
                 <Info className="mr-2 w-4 h-4" />
                 Brand Info
@@ -345,7 +345,7 @@ export default function UnifiedTVControl() {
                     {brandConfig.supportsCecVolumeControl ? 'Yes' : 'No'}
                   </span>
                 </div>
-                <div className="mt-2 pt-2 border-t border-white/10">
+                <div className="mt-2 pt-2 border-t border-slate-700/10">
                   <div className="text-slate-500 mb-1">Timing (ms):</div>
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
@@ -372,7 +372,7 @@ export default function UnifiedTVControl() {
           {selectedDevice ? (
             <>
               {/* Power Control */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center">
                   <Power className="mr-2 w-5 h-5" />
                   Power Control
@@ -398,7 +398,7 @@ export default function UnifiedTVControl() {
               </div>
 
               {/* Volume Control */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center">
                   <Volume2 className="mr-2 w-5 h-5" />
                   Volume Control
@@ -432,7 +432,7 @@ export default function UnifiedTVControl() {
               </div>
 
               {/* Navigation Control */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center">
                   <Menu className="mr-2 w-5 h-5" />
                   Navigation
@@ -498,7 +498,7 @@ export default function UnifiedTVControl() {
 
               {/* Playback Control */}
               {showAdvanced && (
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
                   <h3 className="text-lg font-bold text-white mb-4 flex items-center">
                     <PlayCircle className="mr-2 w-5 h-5" />
                     Playback
@@ -544,7 +544,7 @@ export default function UnifiedTVControl() {
               )}
             </>
           ) : (
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-12 text-center">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-12 text-center">
               <Tv className="w-16 h-16 mx-auto mb-4 text-slate-400 opacity-50" />
               <p className="text-slate-500">Select a device to begin</p>
             </div>
@@ -554,7 +554,7 @@ export default function UnifiedTVControl() {
         {/* Right Sidebar - Batch Control & History */}
         <div className="lg:col-span-3 space-y-4">
           {/* Batch Control */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Radio className="mr-2 w-5 h-5" />
               All TVs
@@ -592,7 +592,7 @@ export default function UnifiedTVControl() {
           </div>
 
           {/* Command History */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-sm font-bold text-white mb-3 flex items-center">
               <Clock className="mr-2 w-4 h-4" />
               Recent Commands
@@ -606,7 +606,7 @@ export default function UnifiedTVControl() {
                 commandHistory.map((entry, index) => (
                   <div 
                     key={index}
-                    className="bg-white/5 rounded p-2 text-xs"
+                    className="bg-slate-800 or bg-slate-900/5 rounded p-2 text-xs"
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-white font-medium">{entry.device}</span>

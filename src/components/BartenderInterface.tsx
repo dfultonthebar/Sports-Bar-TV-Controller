@@ -385,8 +385,8 @@ export default function BartenderInterface() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
         {/* Input Sources Panel */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200">
-            <div className="p-4 border-b border-gray-200">
+          <div className="bg-slate-800 or bg-slate-900 rounded-lg shadow-lg border border-slate-700">
+            <div className="p-4 border-b border-slate-700">
               <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                 <Radio className="w-5 h-5 mr-2" />
                 Input Sources
@@ -410,7 +410,7 @@ export default function BartenderInterface() {
                       className={`w-full p-3 text-left rounded-lg border-2 transition-all ${
                         selectedInput === input.id
                           ? 'border-blue-500 bg-blue-50 shadow-md'
-                          : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                          : 'border-slate-700 hover:border-slate-700 hover:shadow-sm'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -430,7 +430,7 @@ export default function BartenderInterface() {
                   ))}
                   
                   {/* Quick Action Buttons */}
-                  <div className="pt-3 border-t border-gray-200 space-y-2">
+                  <div className="pt-3 border-t border-slate-700 space-y-2">
                     <h4 className="text-sm font-medium text-slate-200 mb-2">Quick Actions</h4>
                     
                     <button
@@ -454,7 +454,7 @@ export default function BartenderInterface() {
                     {selectedInput && (
                       <button
                         onClick={() => setSelectedInput(null)}
-                        className="w-full px-3 py-2 text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                        className="w-full px-3 py-2 text-sm bg-slate-800 or bg-slate-9000 text-white rounded-md hover:bg-gray-600"
                       >
                         Clear Selection
                       </button>
@@ -468,8 +468,8 @@ export default function BartenderInterface() {
 
         {/* TV Layout Panel */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-full">
-            <div className="p-4 border-b border-gray-200">
+          <div className="bg-slate-800 or bg-slate-900 rounded-lg shadow-lg border border-slate-700 h-full">
+            <div className="p-4 border-b border-slate-700">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                   <Tv className="w-5 h-5 mr-2" />
@@ -517,9 +517,9 @@ export default function BartenderInterface() {
             
             <div className="p-4 h-full">
               {tvLayout.imageUrl ? (
-                <div className="relative w-full h-96 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
+                <div className="relative w-full h-96 border-2 border-dashed border-slate-700 rounded-lg overflow-hidden">
                   {(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600 p-6">
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 or bg-slate-900 text-gray-600 p-6">
                       <svg className="w-16 h-16 mb-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                       </svg>
@@ -553,7 +553,7 @@ export default function BartenderInterface() {
                                 className={`p-2 rounded border text-xs cursor-pointer transition-colors ${
                                   selectedInput 
                                     ? 'border-blue-300 bg-blue-50 hover:bg-blue-100' 
-                                    : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+                                    : 'border-slate-700 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900'
                                 }`}
                               >
                                 <div className="font-medium">Output {zone.outputNumber}</div>
@@ -594,7 +594,7 @@ export default function BartenderInterface() {
                       title={`Output ${zone.outputNumber}: ${zone.label}`}
                     >
                       <div className="flex items-center justify-center h-full">
-                        <div className="bg-white/90 px-2 py-1 rounded text-xs font-medium">
+                        <div className="bg-slate-800 or bg-slate-900/90 px-2 py-1 rounded text-xs font-medium">
                           {zone.outputNumber}
                         </div>
                       </div>
@@ -609,7 +609,7 @@ export default function BartenderInterface() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-96 border-2 border-dashed border-gray-300 rounded-lg">
+                <div className="flex items-center justify-center h-96 border-2 border-dashed border-slate-700 rounded-lg">
                   <div className="text-center">
                     <Tv className="w-16 h-16 mx-auto text-slate-500 mb-4" />
                     <h4 className="text-lg font-medium text-slate-100 mb-2">Upload Your Bar Layout</h4>
@@ -645,7 +645,7 @@ export default function BartenderInterface() {
       </div>
 
       {/* Status Bar */}
-      <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <div className="mt-6 bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center space-x-4">
             <span className="font-medium">Status:</span>

@@ -600,7 +600,7 @@ export default function BartenderRemotePage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
             {/* Video Inputs */}
             <div className="lg:col-span-1">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center">
                   <Radio className="mr-2 w-5 h-5" />
                   Input Sources
@@ -635,7 +635,7 @@ export default function BartenderRemotePage() {
                             className={`w-full p-3 rounded-lg text-left transition-all relative ${
                               selectedInput === input.channelNumber
                                 ? 'bg-blue-500 text-white shadow-lg'
-                                : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                                : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
                             }`}
                           >
                             <div className="flex items-center justify-between">
@@ -689,7 +689,7 @@ export default function BartenderRemotePage() {
 
               {/* IR Device Status Panel */}
               {selectedInput && (
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mt-4">
+                <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 mt-4">
                   <h3 className="text-lg font-bold text-white mb-3 flex items-center">
                     <Settings className="mr-2 w-4 h-4" />
                     Device Control
@@ -824,7 +824,7 @@ export default function BartenderRemotePage() {
 
             {/* TV Layout */}
             <div className="lg:col-span-2">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 h-full">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-full">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-white flex items-center">
                     <MapPin className="mr-2 w-5 h-5" />
@@ -887,7 +887,7 @@ export default function BartenderRemotePage() {
                         title={`Output ${zone.outputNumber}: ${zone.label}${selectedInput ? ' - Click to route' : ''}`}
                       >
                         <div className="flex items-center justify-center h-full">
-                          <div className="bg-white/90 px-2 py-1 rounded text-xs font-bold text-slate-100">
+                          <div className="bg-slate-800 or bg-slate-900/90 px-2 py-1 rounded text-xs font-bold text-slate-100">
                             {zone.outputNumber}
                           </div>
                         </div>
@@ -937,7 +937,7 @@ export default function BartenderRemotePage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
             {/* Audio Zones with Volume Sliders */}
             <div className="lg:col-span-3">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center">
                   <Sliders className="mr-2 w-5 h-5" />
                   Audio Zones
@@ -954,7 +954,7 @@ export default function BartenderRemotePage() {
                     const assignedInput = AUDIO_INPUTS.find(input => input.channelNumber === zone.currentInput)
                     
                     return (
-                      <div key={zone.id} className="bg-white/5 rounded-lg p-3">
+                      <div key={zone.id} className="bg-slate-800 or bg-slate-900/5 rounded-lg p-3">
                         {/* Zone Assignment Area */}
                         <div 
                           className={`text-center p-2 rounded cursor-pointer transition-all mb-3 ${
@@ -1009,7 +1009,7 @@ export default function BartenderRemotePage() {
 
             {/* Audio Input Selection - Right Side */}
             <div className="lg:col-span-1">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
                 <h2 className="text-lg font-bold text-white mb-4 flex items-center">
                   <Speaker className="mr-2 w-4 h-4" />
                   Audio Inputs
@@ -1023,7 +1023,7 @@ export default function BartenderRemotePage() {
                       className={`w-full p-3 rounded-lg text-left transition-all ${
                         selectedAudioInput === input.channelNumber
                           ? 'bg-purple-500 text-white shadow-lg'
-                          : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                          : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:text-white'
                       }`}
                     >
                       <div className="flex items-center space-x-2">
@@ -1063,14 +1063,14 @@ export default function BartenderRemotePage() {
       </div>
 
       {/* Bottom Tab Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-white/10">
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700/10">
         <div className="flex justify-around items-center py-2">
           <button
             onClick={() => setActiveTab('video')}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'video'
                 ? 'bg-blue-500/30 text-blue-300'
-                : 'text-slate-500 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800 or bg-slate-900/5'
             }`}
           >
             <Tv className="w-4 h-4" />
@@ -1082,7 +1082,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'audio'
                 ? 'bg-purple-500/30 text-purple-300'
-                : 'text-slate-500 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800 or bg-slate-900/5'
             }`}
           >
             <Volume2 className="w-4 h-4" />
@@ -1094,7 +1094,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'music'
                 ? 'bg-indigo-500/30 text-indigo-300'
-                : 'text-slate-500 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800 or bg-slate-900/5'
             }`}
           >
             <Music2 className="w-4 h-4" />
@@ -1106,7 +1106,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'guide'
                 ? 'bg-green-500/30 text-green-300'
-                : 'text-slate-500 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800 or bg-slate-900/5'
             }`}
           >
             <Calendar className="w-4 h-4" />
@@ -1118,7 +1118,7 @@ export default function BartenderRemotePage() {
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'power'
                 ? 'bg-red-500/30 text-red-300'
-                : 'text-slate-500 hover:text-white hover:bg-white/5'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800 or bg-slate-900/5'
             }`}
           >
             <Power className="w-4 h-4" />

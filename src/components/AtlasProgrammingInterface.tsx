@@ -716,9 +716,9 @@ export default function AtlasProgrammingInterface() {
 
       {/* Processor Selection */}
       {processors.length === 0 ? (
-        <Card className="border-2 border-dashed border-gray-300">
+        <Card className="border-2 border-dashed border-slate-700">
           <CardContent className="text-center py-12">
-            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-24 h-24 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
               <Cpu className="h-12 w-12 text-slate-500" />
             </div>
             <h3 className="text-xl font-semibold text-slate-100 mb-2">No Atlas Processors</h3>
@@ -737,7 +737,7 @@ export default function AtlasProgrammingInterface() {
                 className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
                   selectedProcessor?.id === processor.id 
                     ? 'border-blue-900/200 bg-blue-900/20/50 shadow-lg' 
-                    : 'border-gray-200 hover:border-gray-300'
+                    : 'border-slate-700 hover:border-slate-700'
                 }`}
                 onClick={() => setSelectedProcessor(processor)}
               >
@@ -750,7 +750,7 @@ export default function AtlasProgrammingInterface() {
                     <div className="flex items-center gap-2">
                       <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
                         ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                        ${processor.status === 'offline' ? 'bg-gray-100 text-slate-100 border-gray-300' : ''}
+                        ${processor.status === 'offline' ? 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700' : ''}
                         ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
                       `}>
                         {processor.status}
@@ -903,7 +903,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={input.type}
                                       onChange={(e) => updateInput(input.id, { type: e.target.value as any })}
-                                      className="text-sm text-black border-0 bg-transparent"
+                                      className="text-sm text-slate-100 or text-slate-200 border-0 bg-transparent"
                                     >
                                       <option value="microphone">Microphone</option>
                                       <option value="line">Line Input</option>
@@ -914,7 +914,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-gray-100 text-slate-200 text-xs">
+                                  <Badge variant="secondary" className="bg-slate-800 or bg-slate-900 text-slate-200 text-xs">
                                     Physical: {input.physicalInput}
                                   </Badge>
                                   {input.stereoLink && (
@@ -956,7 +956,7 @@ export default function AtlasProgrammingInterface() {
                                   <select
                                     value={input.physicalInput}
                                     onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm text-black"
+                                    className="w-full p-2 border rounded-md text-sm text-slate-100 or text-slate-200"
                                   >
                                     <option value={input.physicalInput}>Input {input.physicalInput}</option>
                                     {getAvailablePhysicalInputs().map(physical => (
@@ -971,7 +971,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={input.stereoMode}
                                       onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
-                                      className="w-full p-1 border rounded text-xs text-black"
+                                      className="w-full p-1 border rounded text-xs text-slate-100 or text-slate-200"
                                     >
                                       <option value="mono">Mono</option>
                                       <option value="left">Stereo Left</option>
@@ -1003,7 +1003,7 @@ export default function AtlasProgrammingInterface() {
                                               linkStereoInputs(input.id, parseInt(e.target.value))
                                             }
                                           }}
-                                          className="w-full p-1 border rounded text-xs text-black"
+                                          className="w-full p-1 border rounded text-xs text-slate-100 or text-slate-200"
                                           value=""
                                         >
                                           <option value="">Link with...</option>
@@ -1031,7 +1031,7 @@ export default function AtlasProgrammingInterface() {
                                     step="1"
                                     value={input.gainDb}
                                     onChange={(e) => updateInput(input.id, { gainDb: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
                                   />
                                 </div>
 
@@ -1201,7 +1201,7 @@ export default function AtlasProgrammingInterface() {
                                     <select
                                       value={output.type}
                                       onChange={(e) => updateOutput(output.id, { type: e.target.value as any })}
-                                      className="text-sm text-black border-0 bg-transparent"
+                                      className="text-sm text-slate-100 or text-slate-200 border-0 bg-transparent"
                                     >
                                       <option value="speaker">Speaker Zone</option>
                                       <option value="dante">Dante Output</option>
@@ -1211,7 +1211,7 @@ export default function AtlasProgrammingInterface() {
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-gray-100 text-slate-200 text-xs">
+                                  <Badge variant="secondary" className="bg-slate-800 or bg-slate-900 text-slate-200 text-xs">
                                     Physical: {output.physicalOutput}
                                   </Badge>
                                   {output.groupId && (
@@ -1253,7 +1253,7 @@ export default function AtlasProgrammingInterface() {
                                   <select
                                     value={output.physicalOutput}
                                     onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm text-black"
+                                    className="w-full p-2 border rounded-md text-sm text-slate-100 or text-slate-200"
                                   >
                                     <option value={output.physicalOutput}>Output {output.physicalOutput}</option>
                                     {getAvailablePhysicalOutputs().map(physical => (
@@ -1330,7 +1330,7 @@ export default function AtlasProgrammingInterface() {
                                                   const groupName = `Zone ${Math.min(output.physicalOutput, adjacentOutput.physicalOutput)}-${Math.max(output.physicalOutput, adjacentOutput.physicalOutput)}`
                                                   createOutputGroup([output.id, adjacentOutput.id], groupName)
                                                 }}
-                                                className="w-full text-xs p-1 bg-gray-100 hover:bg-gray-200 rounded border text-slate-200"
+                                                className="w-full text-xs p-1 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded border text-slate-200"
                                               >
                                                 + {adjacentOutput.name}
                                               </button>
@@ -1352,7 +1352,7 @@ export default function AtlasProgrammingInterface() {
                                     step="1"
                                     value={output.levelDb}
                                     onChange={(e) => updateOutput(output.id, { levelDb: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
                                   />
                                 </div>
 
@@ -1368,7 +1368,7 @@ export default function AtlasProgrammingInterface() {
                                     step="1"
                                     value={output.delay}
                                     onChange={(e) => updateOutput(output.id, { delay: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
                                   />
                                 </div>
 
@@ -1485,9 +1485,9 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="space-y-4">
                       {scenes.length === 0 ? (
-                        <Card className="border-2 border-dashed border-gray-300">
+                        <Card className="border-2 border-dashed border-slate-700">
                           <CardContent className="text-center py-8">
-                            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <div className="mx-auto w-16 h-16 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
                               <Play className="h-8 w-8 text-slate-500" />
                             </div>
                             <h4 className="text-lg font-semibold text-slate-100 mb-2">No Scenes Created</h4>
@@ -1561,16 +1561,16 @@ export default function AtlasProgrammingInterface() {
                       </p>
                     </div>
 
-                    <Card className="border-2 border-dashed border-gray-300">
+                    <Card className="border-2 border-dashed border-slate-700">
                       <CardContent className="text-center py-8">
-                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <div className="mx-auto w-16 h-16 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
                           <MessageSquare className="h-8 w-8 text-slate-500" />
                         </div>
                         <h4 className="text-lg font-semibold text-slate-100 mb-2">Message Playbook</h4>
                         <p className="text-gray-600 mb-4">
                           Upload and configure pre-recorded messages for automatic playback
                         </p>
-                        <Button variant="outline" className="border-gray-300">
+                        <Button variant="outline" className="border-slate-700">
                           <Upload className="h-4 w-4 mr-2" />
                           Upload Message Files
                         </Button>

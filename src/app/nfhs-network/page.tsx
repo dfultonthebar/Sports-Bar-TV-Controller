@@ -248,13 +248,13 @@ export default function NFHSNetworkPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
-      <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
+      <header className="bg-slate-800 or bg-slate-900/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link
                 href="/"
-                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg transition-colors"
               >
                 <span>←</span>
                 <span>Back</span>
@@ -293,7 +293,7 @@ export default function NFHSNetworkPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
             <div className="flex items-center space-x-3">
               <div className="bg-red-100 rounded-lg p-3">
                 <Play className="w-6 h-6 text-red-600" />
@@ -305,7 +305,7 @@ export default function NFHSNetworkPage() {
             </div>
           </div>
           
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
             <div className="flex items-center space-x-3">
               <div className="bg-blue-100 rounded-lg p-3">
                 <Clock className="w-6 h-6 text-blue-600" />
@@ -317,7 +317,7 @@ export default function NFHSNetworkPage() {
             </div>
           </div>
           
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
             <div className="flex items-center space-x-3">
               <div className="bg-green-100 rounded-lg p-3">
                 <Smartphone className="w-6 h-6 text-green-600" />
@@ -329,7 +329,7 @@ export default function NFHSNetworkPage() {
             </div>
           </div>
           
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
+          <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50">
             <div className="flex items-center space-x-3">
               <div className="bg-purple-100 rounded-lg p-3">
                 <Users className="w-6 h-6 text-purple-600" />
@@ -343,7 +343,7 @@ export default function NFHSNetworkPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50 mb-8">
+        <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl p-6 border border-slate-200/50 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
@@ -420,7 +420,7 @@ export default function NFHSNetworkPage() {
         </div>
 
         {/* Games List */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/50">
+        <div className="bg-slate-800 or bg-slate-900/80 backdrop-blur-sm rounded-xl border border-slate-200/50">
           <div className="p-6 border-b border-slate-200/50">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">High School Games</h3>
@@ -455,7 +455,7 @@ export default function NFHSNetworkPage() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <div className={`rounded-lg p-2 ${
-                          game.status === 'live' ? 'bg-red-100' : 'bg-slate-100'
+                          game.status === 'live' ? 'bg-red-100' : 'bg-slate-800 or bg-slate-900'
                         }`}>
                           <Trophy className={`w-4 h-4 ${
                             game.status === 'live' ? 'text-red-600' : 'text-slate-600'

@@ -126,9 +126,9 @@ export default function DeviceSubscriptionPanel({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'text-green-600 bg-green-100'
-      case 'inactive': return 'text-gray-600 bg-gray-100'
+      case 'inactive': return 'text-gray-600 bg-slate-800 or bg-slate-900'
       case 'expired': return 'text-red-600 bg-red-100'
-      default: return 'text-gray-600 bg-gray-100'
+      default: return 'text-gray-600 bg-slate-800 or bg-slate-900'
     }
   }
 
@@ -144,7 +144,7 @@ export default function DeviceSubscriptionPanel({
   const sportsCount = subscriptionData?.subscriptions.filter(sub => sub.type === 'sports' && sub.status === 'active').length || 0
 
   return (
-    <div className="bg-white rounded-lg border shadow-lg">
+    <div className="bg-slate-800 or bg-slate-900 rounded-lg border shadow-lg">
       {/* Header */}
       <div className="border-b p-4">
         <div className="flex items-center justify-between">
@@ -260,14 +260,14 @@ export default function DeviceSubscriptionPanel({
         {subscriptionData && subscriptionData.subscriptions.length > 0 && (
           <div>
             {/* Filter Tabs */}
-            <div className="flex space-x-1 mb-4 bg-gray-100 p-1 rounded-lg">
+            <div className="flex space-x-1 mb-4 bg-slate-800 or bg-slate-900 p-1 rounded-lg">
               {(['all', 'streaming', 'sports', 'premium', 'addon'] as const).map(type => (
                 <button
                   key={type}
                   onClick={() => setFilter(type)}
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                     filter === type
-                      ? 'bg-white text-blue-700 shadow-sm'
+                      ? 'bg-slate-800 or bg-slate-900 text-blue-700 shadow-sm'
                       : 'text-gray-600 hover:text-slate-100'
                   }`}
                 >
@@ -279,14 +279,14 @@ export default function DeviceSubscriptionPanel({
             {/* Subscriptions Grid */}
             <div className="space-y-3">
               {filteredSubscriptions.map(subscription => (
-                <div key={subscription.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                <div key={subscription.id} className="border rounded-lg p-4 hover:bg-slate-800 or bg-slate-900">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-3">
                       <div className={`p-2 rounded-lg ${
                         subscription.type === 'sports' ? 'bg-orange-100 text-orange-600' :
                         subscription.type === 'streaming' ? 'bg-purple-100 text-purple-600' :
                         subscription.type === 'premium' ? 'bg-yellow-100 text-yellow-600' :
-                        'bg-gray-100 text-gray-600'
+                        'bg-slate-800 or bg-slate-900 text-gray-600'
                       }`}>
                         {getSubscriptionIcon(subscription.type)}
                       </div>

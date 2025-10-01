@@ -641,8 +641,8 @@ export default function SportsGuide() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 p-6">
         {/* Input Selection Panel - Left Side */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-xl">
-            <div className="p-6 border-b border-gray-200">
+          <div className="bg-slate-800 or bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-700 shadow-xl">
+            <div className="p-6 border-b border-slate-700">
               <h3 className="text-xl font-bold text-slate-100 flex items-center space-x-3">
                 <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
                   <Radio className="w-5 h-5 text-white" />
@@ -655,7 +655,7 @@ export default function SportsGuide() {
           <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
             {matrixInputs.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
-                <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                <div className="bg-slate-800 or bg-slate-900 rounded-full p-4 w-16 h-16 mx-auto mb-4">
                   <Radio className="w-8 h-8 mx-auto text-slate-500" />
                 </div>
                 <p className="text-sm font-medium">No inputs configured</p>
@@ -674,14 +674,14 @@ export default function SportsGuide() {
                       className={`w-full p-4 rounded-xl text-left transition-all duration-200 border ${
                         selectedInput === input.id
                           ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg border-blue-400/50 scale-105'
-                          : 'bg-gray-50 text-slate-100 hover:bg-gray-100 hover:text-slate-100 border-gray-200 hover:border-gray-300'
+                          : 'bg-slate-800 or bg-slate-900 text-slate-100 hover:bg-slate-800 or bg-slate-900 hover:text-slate-100 border-slate-700 hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center space-x-3">
                         <div className={`p-2 rounded-lg ${
                           selectedInput === input.id 
-                            ? 'bg-white/20' 
-                            : 'bg-gray-200'
+                            ? 'bg-slate-800 or bg-slate-900/20' 
+                            : 'bg-slate-800 or bg-slate-900'
                         }`}>
                           <IconComponent className="w-4 h-4" />
                         </div>
@@ -785,7 +785,7 @@ export default function SportsGuide() {
         {/* Main Content Area - Right Side */}
         <div className="lg:col-span-3 space-y-8">
           {/* Header */}
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 border border-gray-200 shadow-xl">
+          <div className="bg-slate-800 or bg-slate-900/95 backdrop-blur-xl rounded-2xl p-8 border border-slate-700 shadow-xl">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-4 shadow-lg">
@@ -810,13 +810,13 @@ export default function SportsGuide() {
             
             {sportsGuide.length > 0 && (
               <>
-                <div className="flex bg-gray-100 backdrop-blur-sm rounded-xl p-2 border border-gray-200">
+                <div className="flex bg-slate-800 or bg-slate-900 backdrop-blur-sm rounded-xl p-2 border border-slate-700">
                   <button
                     onClick={() => setViewMode('list')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       viewMode === 'list' 
                         ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
-                        : 'text-slate-200 hover:text-slate-100 hover:bg-gray-200'
+                        : 'text-slate-200 hover:text-slate-100 hover:bg-slate-800 or bg-slate-900'
                     }`}
                   >
                     <List className="w-4 h-4" />
@@ -827,7 +827,7 @@ export default function SportsGuide() {
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       viewMode === 'grid' 
                         ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
-                        : 'text-slate-200 hover:text-slate-100 hover:bg-gray-200'
+                        : 'text-slate-200 hover:text-slate-100 hover:bg-slate-800 or bg-slate-900'
                     }`}
                   >
                     <Grid3X3 className="w-4 h-4" />
@@ -864,7 +864,7 @@ export default function SportsGuide() {
                 placeholder="Search leagues..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 bg-white border border-gray-300 text-slate-100 placeholder-gray-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 text-base"
+                className="w-full pl-12 pr-4 py-4 bg-slate-800 or bg-slate-900 border border-slate-700 text-slate-100 placeholder-gray-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 text-base"
               />
             </div>
             
@@ -873,26 +873,26 @@ export default function SportsGuide() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="pl-12 pr-8 py-4 bg-white border border-gray-300 text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
+                className="pl-12 pr-8 py-4 bg-slate-800 or bg-slate-900 border border-slate-700 text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
               >
-                <option value="all" className="bg-white">All Categories</option>
-                <option value="professional" className="bg-white">Professional</option>
-                <option value="college" className="bg-white">College</option>
-                <option value="high-school" className="bg-white">High School</option>
-                <option value="international" className="bg-white">International</option>
+                <option value="all" className="bg-slate-800 or bg-slate-900">All Categories</option>
+                <option value="professional" className="bg-slate-800 or bg-slate-900">Professional</option>
+                <option value="college" className="bg-slate-800 or bg-slate-900">College</option>
+                <option value="high-school" className="bg-slate-800 or bg-slate-900">High School</option>
+                <option value="international" className="bg-slate-800 or bg-slate-900">International</option>
               </select>
             </div>
           </div>
         
           {/* Tab Navigation */}
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-lg">
+          <div className="bg-slate-800 or bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-700 shadow-lg">
             <div className="flex space-x-2 p-3">
               <button
                 onClick={() => setActiveTab('sports-guide')}
                 className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-base font-semibold transition-all duration-200 ${
                   activeTab === 'sports-guide'
                     ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg border border-blue-400/50'
-                    : 'text-slate-200 hover:text-slate-100 hover:bg-gray-100 border border-transparent'
+                    : 'text-slate-200 hover:text-slate-100 hover:bg-slate-800 or bg-slate-900 border border-transparent'
                 }`}
               >
                 <Calendar className="w-5 h-5" />
@@ -903,7 +903,7 @@ export default function SportsGuide() {
                 className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-base font-semibold transition-all duration-200 ${
                   activeTab === 'tv-programming'
                     ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg border border-blue-400/50'
-                    : 'text-slate-200 hover:text-slate-100 hover:bg-gray-100 border border-transparent'
+                    : 'text-slate-200 hover:text-slate-100 hover:bg-slate-800 or bg-slate-900 border border-transparent'
                 }`}
               >
                 <Tv className="w-5 h-5" />
@@ -941,8 +941,8 @@ export default function SportsGuide() {
         <>
           {/* Scheduler Section */}
       {showScheduler && (
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
-          <div className="p-6 border-b border-white/20">
+        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-xl border border-slate-700/20">
+          <div className="p-6 border-b border-slate-700/20">
             <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
               <Zap className="w-5 h-5 text-yellow-400" />
               <span>Automated Sports Guide Updates</span>
@@ -952,10 +952,10 @@ export default function SportsGuide() {
           
           <div className="p-6">
             {scheduledRoutines.map((routine) => (
-              <div key={routine.id} className="flex items-center justify-between p-4 border border-white/20 rounded-lg bg-white/5">
+              <div key={routine.id} className="flex items-center justify-between p-4 border border-slate-700/20 rounded-lg bg-slate-800 or bg-slate-900/5">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${routine.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
+                    <div className={`w-3 h-3 rounded-full ${routine.enabled ? 'bg-green-400' : 'bg-slate-800 or bg-slate-9000'}`} />
                     <div>
                       <h4 className="font-medium text-white">{routine.name}</h4>
                       <p className="text-sm text-blue-200">
@@ -974,7 +974,7 @@ export default function SportsGuide() {
                     className={`px-3 py-1 rounded-md text-sm font-medium ${
                       routine.enabled 
                         ? 'bg-green-100 text-green-800 hover:bg-green-200' 
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'bg-slate-800 or bg-slate-900 text-gray-600 hover:bg-slate-800 or bg-slate-900'
                     }`}
                   >
                     {routine.enabled ? 'Enabled' : 'Disabled'}
@@ -1004,8 +1004,8 @@ export default function SportsGuide() {
       )}
 
           {/* League Selection */}
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-xl">
-            <div className="p-8 border-b border-gray-200">
+          <div className="bg-slate-800 or bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-700 shadow-xl">
+            <div className="p-8 border-b border-slate-700">
               <h3 className="text-2xl font-bold text-slate-100 flex items-center space-x-3">
                 <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
                   <Star className="w-6 h-6 text-white" />
@@ -1017,13 +1017,13 @@ export default function SportsGuide() {
             
             <div className="p-8 space-y-6">
               {Object.entries(leaguesByCategory).map(([category, leagues]) => (
-                <div key={category} className="border border-gray-200 rounded-xl bg-gray-50 overflow-hidden shadow-lg">
+                <div key={category} className="border border-slate-700 rounded-xl bg-slate-800 or bg-slate-900 overflow-hidden shadow-lg">
                   <button
                     onClick={() => toggleLeagueExpansion(category)}
-                    className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-100 transition-all duration-200"
+                    className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-800 or bg-slate-900 transition-all duration-200"
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="text-3xl bg-gray-200 p-3 rounded-lg">
+                      <div className="text-3xl bg-slate-800 or bg-slate-900 p-3 rounded-lg">
                         {getCategoryIcon(category)}
                       </div>
                       <div>
@@ -1034,28 +1034,28 @@ export default function SportsGuide() {
                       </div>
                     </div>
                     <div className={`p-2 rounded-lg transition-all duration-200 ${
-                      expandedLeagues.has(category) ? 'bg-blue-100 rotate-180' : 'bg-gray-200'
+                      expandedLeagues.has(category) ? 'bg-blue-100 rotate-180' : 'bg-slate-800 or bg-slate-900'
                     }`}>
                       <ChevronDown className="w-6 h-6 text-gray-600" />
                     </div>
                   </button>
                   
                   {expandedLeagues.has(category) && (
-                    <div className="border-t border-gray-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white">
+                    <div className="border-t border-slate-700 p-6 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800 or bg-slate-900">
                       {leagues.map((league) => (
                         <label
                           key={league.id}
                           className={`flex items-center space-x-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:scale-105 ${
                             selectedLeagues.includes(league.id)
                               ? 'border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 shadow-lg'
-                              : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
+                              : 'border-slate-700 hover:border-slate-700 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900'
                           }`}
                         >
                           <input
                             type="checkbox"
                             checked={selectedLeagues.includes(league.id)}
                             onChange={() => toggleLeague(league.id)}
-                            className="w-5 h-5 text-blue-600 bg-white border-gray-300 rounded focus:ring-2 focus:ring-blue-500 transition-all"
+                            className="w-5 h-5 text-blue-600 bg-slate-800 or bg-slate-900 border-slate-700 rounded focus:ring-2 focus:ring-blue-500 transition-all"
                           />
                           <div className="flex-1">
                             <div className="font-semibold text-slate-100 text-base">{league.name}</div>
@@ -1081,14 +1081,14 @@ export default function SportsGuide() {
               >
                 {isLoading ? (
                   <>
-                    <div className="animate-spin rounded-full h-6 w-6 border-3 border-white border-t-transparent"></div>
+                    <div className="animate-spin rounded-full h-6 w-6 border-3 border-slate-700 border-t-transparent"></div>
                     <span>Generating Guide...</span>
                   </>
                 ) : (
                   <>
                     <Calendar className="w-6 h-6" />
                     <span>Generate Sports Guide</span>
-                    <div className="bg-white/20 px-2 py-1 rounded-lg text-xs font-medium">
+                    <div className="bg-slate-800 or bg-slate-900/20 px-2 py-1 rounded-lg text-xs font-medium">
                       {selectedLeagues.length} {selectedLeagues.length === 1 ? 'league' : 'leagues'}
                     </div>
                   </>
@@ -1117,8 +1117,8 @@ export default function SportsGuide() {
 
       {/* Sports Guide Results */}
       {sportsGuide.length > 0 && (
-        <div className="bg-white/95 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg">
-          <div className="p-6 border-b border-gray-200">
+        <div className="bg-slate-800 or bg-slate-900/95 backdrop-blur-sm rounded-xl border border-slate-700 shadow-lg">
+          <div className="p-6 border-b border-slate-700">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-100">Your Sports Guide</h3>
               <div className="text-sm text-slate-300">
@@ -1141,7 +1141,7 @@ export default function SportsGuide() {
                     className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all border ${
                       selectedDay === index
                         ? 'bg-blue-600 text-white shadow-lg border-blue-500'
-                        : 'bg-gray-100 text-slate-200 border-gray-200 hover:bg-gray-200 hover:text-slate-100'
+                        : 'bg-slate-800 or bg-slate-900 text-slate-200 border-slate-700 hover:bg-slate-800 or bg-slate-900 hover:text-slate-100'
                     }`}
                   >
                     {day.label}
@@ -1161,7 +1161,7 @@ export default function SportsGuide() {
                     className={`border rounded-lg p-4 hover:shadow-xl transition-all shadow-lg ${
                       isHighSchoolGame(game) 
                         ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                        : 'border-slate-700 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -1263,7 +1263,7 @@ export default function SportsGuide() {
                           )
                           
                           return (
-                            <div key={`${timeSlot.time}-${channel}`} className="p-2 border border-white/20 bg-white/5 rounded-md min-h-[60px]">
+                            <div key={`${timeSlot.time}-${channel}`} className="p-2 border border-slate-700/20 bg-slate-800 or bg-slate-900/5 rounded-md min-h-[60px]">
                               {game ? (
                                 <button
                                   onClick={() => handleChannelClick(game.channel)}
@@ -1305,7 +1305,7 @@ export default function SportsGuide() {
         {/* Empty State */}
         {selectedLeagues.length === 0 && (
           <div className="text-center py-12">
-            <div className="bg-white/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+            <div className="bg-slate-800 or bg-slate-900/10 rounded-full p-4 w-16 h-16 mx-auto mb-4">
               <Calendar className="w-8 h-8 text-blue-300 mx-auto" />
             </div>
             <h3 className="text-lg font-medium text-white mb-2">No Leagues Selected</h3>

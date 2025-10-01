@@ -285,7 +285,7 @@ export default function MatrixControl() {
     switch (status) {
       case 'connected': return 'text-green-600 bg-green-100'
       case 'error': return 'text-red-600 bg-red-100'
-      default: return 'text-gray-600 bg-gray-100'
+      default: return 'text-gray-600 bg-slate-800 or bg-slate-900'
     }
   }
 
@@ -852,7 +852,7 @@ export default function MatrixControl() {
             />
 
             {/* AI Insights Summary */}
-            <div className="bg-gray-50 rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900 rounded-lg p-4">
               <h4 className="font-semibold text-slate-100 mb-2">💡 How to Use the AI Monitor</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-200">
                 <div>

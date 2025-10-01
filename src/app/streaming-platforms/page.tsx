@@ -248,13 +248,13 @@ export default function StreamingPlatformsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50">
       {/* Header */}
-      <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
+      <header className="bg-slate-800 or bg-slate-900/90 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link
                 href="/"
-                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-800 or bg-slate-900 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back</span>
@@ -284,7 +284,7 @@ export default function StreamingPlatformsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tab Navigation */}
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 mb-8">
+        <div className="bg-slate-800 or bg-slate-900 rounded-2xl shadow-lg border border-slate-200 mb-8">
           <div className="border-b border-slate-200">
             <nav className="flex space-x-8 px-6">
               {[
@@ -351,7 +351,7 @@ export default function StreamingPlatformsPage() {
                             ? 'bg-green-100 text-green-700'
                             : platform.authStatus === 'expired'
                             ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-gray-100 text-gray-600'
+                            : 'bg-slate-800 or bg-slate-900 text-gray-600'
                         }`}>
                           {platform.authStatus === 'connected' ? 'Connected' :
                            platform.authStatus === 'expired' ? 'Expired' : 'Not Connected'}
@@ -368,7 +368,7 @@ export default function StreamingPlatformsPage() {
                               </span>
                             ))}
                             {platform.features.length > 3 && (
-                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                              <span className="text-xs px-2 py-1 bg-slate-800 or bg-slate-900 text-gray-600 rounded-full">
                                 +{platform.features.length - 3} more
                               </span>
                             )}
@@ -508,7 +508,7 @@ export default function StreamingPlatformsPage() {
                       <div className="flex space-x-3">
                         <button
                           onClick={() => setSelectedPlatform(null)}
-                          className="flex-1 px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                          className="flex-1 px-4 py-2 text-slate-700 bg-slate-800 or bg-slate-900 rounded-lg hover:bg-slate-800 or bg-slate-900 transition-colors"
                         >
                           Cancel
                         </button>

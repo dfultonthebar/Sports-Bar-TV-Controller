@@ -137,7 +137,7 @@ export default function DocumentUpload() {
 
       <div
         className={`relative border-2 border-dashed rounded-lg p-6 ${
-          dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
+          dragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-700'
         } ${uploading ? 'opacity-50' : ''}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -211,7 +211,7 @@ export default function DocumentUpload() {
           </h4>
           <div className="space-y-2">
             {uploadedFiles.map((file) => (
-              <div key={file.id} className="flex items-center justify-between bg-white p-3 rounded border">
+              <div key={file.id} className="flex items-center justify-between bg-slate-800 or bg-slate-900 p-3 rounded border">
                 <div className="flex items-center space-x-3">
                   <span className="text-green-600">📄</span>
                   <div>

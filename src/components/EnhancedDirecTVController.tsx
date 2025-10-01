@@ -143,7 +143,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
       case 'high': return 'bg-red-100 text-red-800 border-red-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-200'
-      default: return 'bg-gray-100 text-slate-100 border-gray-200'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700'
     }
   }
 
@@ -175,7 +175,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
             {/* Device Health Metrics */}
             {healthMetrics && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-3 rounded-lg border">
+                <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg border">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Response Time</span>
                     <span className={`font-bold ${getHealthColor(100 - healthMetrics.responseTime / 10)}`}>
@@ -183,7 +183,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
                     </span>
                   </div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border">
+                <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg border">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Connection</span>
                     <span className={`font-bold ${getHealthColor(healthMetrics.connectionStability)}`}>
@@ -191,7 +191,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
                     </span>
                   </div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border">
+                <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg border">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Success Rate</span>
                     <span className={`font-bold ${getHealthColor(healthMetrics.commandSuccessRate)}`}>
@@ -210,7 +210,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
                   Smart Alerts
                 </h4>
                 {smartAlerts.map((alert) => (
-                  <div key={alert.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                  <div key={alert.id} className="flex items-center justify-between p-3 bg-slate-800 or bg-slate-900 rounded-lg border">
                     <div className="flex items-center gap-3">
                       <Badge className={getSeverityColor(alert.severity)}>
                         {alert.severity}
@@ -241,7 +241,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {aiSuggestions.map((suggestion, index) => (
                     <div key={index} 
-                         className="bg-white p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer"
+                         className="bg-slate-800 or bg-slate-900 p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer"
                          onClick={() => handleSmartChannelChange(suggestion)}>
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
@@ -270,7 +270,7 @@ export default function EnhancedDirecTVController({ device, onDeviceUpdate }: En
             )}
 
             {/* AI Status */}
-            <div className="flex items-center justify-between bg-white p-3 rounded-lg border">
+            <div className="flex items-center justify-between bg-slate-800 or bg-slate-900 p-3 rounded-lg border">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-500" />
                 <span className="text-sm">AI Analysis Active</span>

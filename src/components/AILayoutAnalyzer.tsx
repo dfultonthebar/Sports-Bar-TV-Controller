@@ -118,7 +118,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
       case 'high': return 'text-red-600 bg-red-50'
       case 'medium': return 'text-orange-600 bg-orange-50'
       case 'low': return 'text-green-600 bg-green-50'
-      default: return 'text-gray-600 bg-gray-50'
+      default: return 'text-gray-600 bg-slate-800 or bg-slate-900'
     }
   }
 
@@ -132,7 +132,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border p-6">
+    <div className="bg-slate-800 or bg-slate-900 rounded-lg shadow-sm border p-6">
       <div className="flex items-center space-x-3 mb-6">
         <Brain className="w-6 h-6 text-blue-600" />
         <h3 className="text-lg font-semibold text-slate-100">AI Layout Analyzer</h3>
@@ -157,7 +157,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
           >
             {analyzing ? (
               <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <div className="animate-spin w-4 h-4 border-2 border-slate-700 border-t-transparent rounded-full"></div>
                 <span>Analyzing Layout...</span>
               </>
             ) : (
@@ -205,7 +205,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
             </h4>
             <div className="grid gap-3">
               {analysis.locations.map((location) => (
-                <div key={location.number} className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
+                <div key={location.number} className="bg-slate-800 or bg-slate-900 rounded-lg p-3 flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="bg-blue-100 text-blue-800 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold">
                       {location.number}
@@ -256,7 +256,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
             <button
               onClick={analyzeLayout}
               disabled={analyzing}
-              className="bg-gray-100 text-slate-200 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center space-x-2"
+              className="bg-slate-800 or bg-slate-900 text-slate-200 px-4 py-2 rounded-lg hover:bg-slate-800 or bg-slate-900 disabled:opacity-50 flex items-center space-x-2"
             >
               <Brain className="w-4 h-4" />
               <span>Reanalyze Layout</span>

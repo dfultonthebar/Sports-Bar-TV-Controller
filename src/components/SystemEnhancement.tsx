@@ -105,7 +105,7 @@ export default function SystemEnhancement() {
       case 'Easy': return 'bg-green-100 text-green-800'
       case 'Medium': return 'bg-yellow-100 text-yellow-800'
       case 'Advanced': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-slate-100'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100'
     }
   }
 
@@ -129,7 +129,7 @@ export default function SystemEnhancement() {
             className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 ${
               selectedCategory === category.id
                 ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-slate-200 hover:bg-gray-200'
+                : 'bg-slate-800 or bg-slate-900 text-slate-200 hover:bg-slate-800 or bg-slate-900'
             }`}
           >
             <span>{category.icon}</span>
@@ -141,7 +141,7 @@ export default function SystemEnhancement() {
       {/* Enhancement Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filteredEnhancements.map((enhancement) => (
-          <div key={enhancement.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <div key={enhancement.id} className="bg-slate-800 or bg-slate-900 border border-slate-700 rounded-lg shadow-sm p-6">
             <div className="flex items-start justify-between mb-4">
               <h4 className="text-lg font-semibold text-slate-100">
                 {enhancement.title}
@@ -179,7 +179,7 @@ export default function SystemEnhancement() {
       {/* Enhancement Detail Modal */}
       {selectedEnhancement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-800 or bg-slate-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-slate-100">
@@ -230,7 +230,7 @@ export default function SystemEnhancement() {
                   <p className="text-gray-600">{selectedEnhancement.implementation}</p>
                 </div>
 
-                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between bg-slate-800 or bg-slate-900 p-4 rounded-lg">
                   <div>
                     <span className="text-sm text-slate-400">Estimated Cost</span>
                     <p className="text-lg font-semibold text-green-600">{selectedEnhancement.estimatedCost}</p>
@@ -246,7 +246,7 @@ export default function SystemEnhancement() {
                 <div className="flex gap-4">
                   <button
                     onClick={() => setSelectedEnhancement(null)}
-                    className="flex-1 bg-gray-100 text-slate-200 px-4 py-2 rounded-md hover:bg-gray-200"
+                    className="flex-1 bg-slate-800 or bg-slate-900 text-slate-200 px-4 py-2 rounded-md hover:bg-slate-800 or bg-slate-900"
                   >
                     Close
                   </button>

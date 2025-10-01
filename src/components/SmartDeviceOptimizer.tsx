@@ -119,7 +119,7 @@ export default function SmartDeviceOptimizer() {
       case 'high': return 'bg-red-100 text-red-800 border-red-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-slate-100 border-gray-200'
+      default: return 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700'
     }
   }
 
@@ -267,7 +267,7 @@ export default function SmartDeviceOptimizer() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg">
                       <p className="text-sm font-medium text-slate-100 mb-1">Action:</p>
                       <p className="text-sm text-slate-300">{rule.action}</p>
                     </div>
@@ -352,7 +352,7 @@ export default function SmartDeviceOptimizer() {
                       </div>
                     </div>
                     
-                    <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="bg-slate-800 or bg-slate-900 p-3 rounded-lg">
                       <p className="text-sm font-medium text-slate-100 mb-1">Implementation:</p>
                       <p className="text-sm text-slate-300">{suggestion.implementation}</p>
                     </div>
