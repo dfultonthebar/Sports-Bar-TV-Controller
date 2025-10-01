@@ -1,12 +1,10 @@
 
 #!/bin/bash
 
-# Sports Bar AI Assistant - Local AI Setup Script
-# This script sets up the local AI analysis system
+# Sports Bar AI Assistant - Local AI (Ollama) Installation Script
+# This script installs Ollama and sets up local AI models
 
-set -e  # Exit on any error
-
-echo "🤖 Setting up Local AI Analysis System for Sports Bar AI Assistant..."
+echo "🤖 Installing Local AI (Ollama) for Sports Bar AI Assistant..."
 echo "=================================================================="
 
 # Check if we're in the right directory
@@ -14,6 +12,65 @@ if [ ! -f "package.json" ] || [ ! -d "src" ]; then
     echo "❌ Error: Please run this script from the Sports Bar AI Assistant root directory"
     exit 1
 fi
+
+# Check if Ollama is already installed
+if command -v ollama &> /dev/null; then
+    OLLAMA_VERSION=$(ollama --version 2>&1 || echo "unknown")
+    echo "✅ Ollama is already installed: $OLLAMA_VERSION"
+    echo "   Skipping installation..."
+else
+    echo "📦 Installing Ollama..."
+    
+    # Install Ollama using the official install script
+    curl -fsSL https://ollama.com/install.sh | sh
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Ollama installed successfully!"
+    else
+        echo "❌ Failed to install Ollama"
+        echo "   Please visit https://ollama.com/download for manual installation"
+        exit 1
+    fi
+fi
+
+# Start Ollama service if not running
+echo "🔄 Checking Ollama service..."
+if ! pgrep -x "ollama" > /dev/null; then
+    echo "   Starting Ollama service..."
+    ollama serve > /dev/null 2>&1 &
+    sleep 3
+    echo "✅ Ollama service started"
+else
+    echo "✅ Ollama service is already running"
+fi
+
+# Pull recommended AI models
+echo ""
+echo "📥 Pulling recommended AI models..."
+echo "   This may take a few minutes depending on your internet connection..."
+echo ""
+
+# Pull llama2 (7B - good balance of speed and quality)
+echo "📥 Pulling llama2 (7B)..."
+if ollama pull llama2 2>&1 | grep -q "success"; then
+    echo "✅ llama2 installed successfully"
+else
+    ollama pull llama2
+    echo "✅ llama2 model ready"
+fi
+
+# Pull mistral (7B - faster, good for quick queries)
+echo "📥 Pulling mistral (7B)..."
+if ollama pull mistral 2>&1 | grep -q "success"; then
+    echo "✅ mistral installed successfully"
+else
+    ollama pull mistral
+    echo "✅ mistral model ready"
+fi
+
+echo ""
+echo "✅ Local AI models installed successfully!"
+echo ""
 
 # Check Python installation
 echo "📋 Checking Python installation..."
@@ -215,31 +272,44 @@ else
 fi
 
 echo ""
-echo "🎉 Local AI Analysis System Setup Complete!"
+echo "🎉 Local AI Setup Complete!"
 echo "========================================="
 echo ""
 echo "📋 Setup Summary:"
+echo "   ✅ Ollama installed and running"
+echo "   ✅ AI models installed (llama2, mistral)"
 echo "   ✅ Python environment verified"
 echo "   ✅ AI analysis directory structure created"
 echo "   ✅ Analysis scripts configured"
 echo "   ✅ Test scripts created"
 echo "   ✅ Log cleanup script installed"
 echo ""
-echo "🚀 Available Commands:"
+echo "🤖 Ollama Commands:"
+echo "   ollama list           # List installed models"
+echo "   ollama run llama2     # Chat with llama2"
+echo "   ollama run mistral    # Chat with mistral"
+echo "   ollama ps             # Show running models"
+echo "   ollama serve          # Start Ollama service"
+echo ""
+echo "🚀 Application Commands:"
 echo "   npm run test-ai       # Test AI system"
 echo "   npm run ai-status     # Check AI status"
 echo "   npm run cleanup-logs  # Clean old logs"
 echo ""
 echo "📖 Usage:"
-echo "   The AI system will automatically analyze logs when:"
+echo "   The AI system will automatically analyze logs and provide"
+echo "   intelligent insights when:"
 echo "   - Exporting logs with AI insights enabled"
 echo "   - Critical errors are detected"
 echo "   - Accessing the AI analysis API endpoints"
+echo "   - Using the AI-powered device configuration pages"
 echo ""
 echo "🔧 Next Steps:"
-echo "   1. Start your Sports Bar AI Assistant application"
-echo "   2. Visit the Logging Management Dashboard"
-echo "   3. Test the AI analysis features"
-echo "   4. Download logs with AI insights enabled"
+echo "   1. Test Ollama: ollama run llama2"
+echo "   2. Start your Sports Bar AI Assistant application"
+echo "   3. Visit the AI Keys management page (/ai-keys)"
+echo "   4. Configure your preferred AI provider (Cloud or Local)"
+echo "   5. Test the AI features in device configuration"
 echo ""
-echo "✨ Your Sports Bar AI Assistant now has local AI-powered log analysis!"
+echo "✨ Your Sports Bar AI Assistant now has LOCAL AI capabilities!"
+echo "   No API keys required for local AI features!"
