@@ -13,7 +13,8 @@ import {
   EyeOff,
   Save,
   Loader2,
-  Key
+  Key,
+  Trash2
 } from 'lucide-react'
 
 interface SoundtrackPlayer {
@@ -40,11 +41,13 @@ export default function SoundtrackConfiguration() {
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [diagnosing, setDiagnosing] = useState(false)
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     loadConfiguration()
@@ -77,7 +80,7 @@ export default function SoundtrackConfiguration() {
 
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
-      setError('Please enter an API key')
+      setError('Please enter an API token')
       return
     }
 
@@ -94,12 +97,12 @@ export default function SoundtrackConfiguration() {
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to save API key')
+        throw new Error(data.error || 'Failed to save API token')
       }
 
       const data = await response.json()
       setConfig(data.config)
-      setSuccess('API key saved successfully! Reloading players...')
+      setSuccess('API token saved successfully! Loading sound zones...')
       setApiKey('')
       
       // Reload to get updated players
@@ -111,6 +114,41 @@ export default function SoundtrackConfiguration() {
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const deleteConfiguration = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+
+    try {
+      setDeleting(true)
+      setError(null)
+      setSuccess(null)
+
+      const response = await fetch('/api/soundtrack/config', {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to delete configuration')
+      }
+
+      setConfig(null)
+      setPlayers([])
+      setSuccess('Configuration deleted successfully')
+      setConfirmDelete(false)
+      
+      setTimeout(() => {
+        setSuccess(null)
+      }, 3000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -262,19 +300,19 @@ export default function SoundtrackConfiguration() {
         </div>
       )}
 
-      {/* API Key Configuration */}
+      {/* API Token Configuration */}
       <div className="bg-slate-800 rounded-lg p-6">
         <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
           <Key className="w-5 h-5 mr-2 text-blue-400" />
-          API Key
+          API Token
         </h3>
         
         {config ? (
           <div className="space-y-4">
             <div className="bg-green-900/30 border border-green-800 rounded-lg p-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-green-300 font-medium">API Key Configured</div>
+                <div className="flex-1">
+                  <div className="text-green-300 font-medium">API Token Configured</div>
                   <div className="text-sm text-green-400 mt-1">
                     Account: {config.accountName || 'Connected'}
                   </div>
@@ -282,14 +320,49 @@ export default function SoundtrackConfiguration() {
                     Last tested: {config.lastTested ? new Date(config.lastTested).toLocaleString() : 'Never'}
                   </div>
                 </div>
-                <Badge variant="secondary" className="bg-green-800/50 text-green-200">
-                  {config.status}
-                </Badge>
+                <div className="flex items-center gap-3">
+                  <Badge variant="secondary" className="bg-green-800/50 text-green-200">
+                    {config.status}
+                  </Badge>
+                  <Button
+                    onClick={deleteConfiguration}
+                    disabled={deleting}
+                    variant={confirmDelete ? "destructive" : "outline"}
+                    size="sm"
+                    className={confirmDelete ? 'bg-red-600 hover:bg-red-700' : ''}
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : confirmDelete ? (
+                      <>
+                        <AlertCircle className="w-4 h-4 mr-2" />
+                        Click to Confirm
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </>
+                    )}
+                  </Button>
+                  {confirmDelete && (
+                    <Button
+                      onClick={() => setConfirmDelete(false)}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="text-sm text-slate-400">
-              <p>To update the API key, enter a new one below:</p>
+              <p>To update the API token, enter a new one below:</p>
             </div>
           </div>
         ) : (
@@ -297,9 +370,17 @@ export default function SoundtrackConfiguration() {
             <div className="flex items-center">
               <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 flex-shrink-0" />
               <div className="text-yellow-300">
-                <div className="font-medium">No API key configured</div>
+                <div className="font-medium">No API token configured</div>
                 <div className="text-sm opacity-90 mt-1">
-                  Enter your Soundtrack Your Brand API key below to get started
+                  Get your API token from{' '}
+                  <a 
+                    href="https://api.soundtrackyourbrand.com/v2/docs" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="underline hover:text-yellow-200"
+                  >
+                    Soundtrack Your Brand API Docs
+                  </a>
                 </div>
               </div>
             </div>
@@ -312,8 +393,13 @@ export default function SoundtrackConfiguration() {
               type={showApiKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your Soundtrack API key"
+              placeholder="Enter your Soundtrack API token"
               className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 pr-24"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && apiKey.trim()) {
+                  saveApiKey()
+                }
+              }}
             />
             <button
               onClick={() => setShowApiKey(!showApiKey)}
@@ -336,15 +422,16 @@ export default function SoundtrackConfiguration() {
             ) : (
               <>
                 <Save className="w-4 h-4 mr-2" />
-                Save API Key
+                Save API Token
               </>
             )}
           </Button>
 
           <div className="text-xs text-slate-500 space-y-1">
-            <p>• API key format: Base64-encoded credentials (e.g., {apiKey.slice(0, 20) || 'eG5uYUR1U2hhQ0hGW...'})</p>
-            <p>• Get your API key from Soundtrack Your Brand dashboard</p>
-            <p>• The key will be encrypted and stored securely</p>
+            <p>• API token format: Base64-encoded credentials from Soundtrack dashboard</p>
+            <p>• Request API access at: <a href="https://api.soundtrackyourbrand.com/v2/docs" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Soundtrack API Docs</a></p>
+            <p>• The token will be encrypted and stored securely</p>
+            <p>• Token format example: {apiKey.slice(0, 20) || 'eG5uYUR1U2hhQ0hGW...'}</p>
           </div>
 
           {config && (
@@ -375,17 +462,17 @@ export default function SoundtrackConfiguration() {
         </div>
       </div>
 
-      {/* Player Selection */}
+      {/* Sound Zone Selection */}
       {config && players.length > 0 && (
         <div className="bg-slate-800 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
             <Music2 className="w-5 h-5 mr-2 text-purple-400" />
-            Music Players
+            Sound Zones
           </h3>
           
           <div className="mb-4 text-sm text-slate-400">
-            <p>Select which players bartenders can control from the remote interface.</p>
-            <p className="mt-1">Players will appear in the order you specify.</p>
+            <p>Select which sound zones bartenders can control from the remote interface.</p>
+            <p className="mt-1">Sound zones will appear in the order you specify.</p>
           </div>
 
           <div className="space-y-3">
@@ -440,7 +527,7 @@ export default function SoundtrackConfiguration() {
               <div className="flex items-center text-yellow-300">
                 <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
                 <span className="text-sm">
-                  No players are visible to bartenders. Click "Visible" to enable at least one player.
+                  No sound zones are visible to bartenders. Click "Visible" to enable at least one zone.
                 </span>
               </div>
             </div>
@@ -451,10 +538,10 @@ export default function SoundtrackConfiguration() {
       {config && players.length === 0 && (
         <div className="bg-slate-800 rounded-lg p-6 text-center">
           <Music2 className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-          <p className="text-slate-400">No players found in your Soundtrack account</p>
+          <p className="text-slate-400">No sound zones found in your Soundtrack account</p>
           <Button onClick={loadConfiguration} variant="outline" size="sm" className="mt-4">
             <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh Players
+            Refresh Sound Zones
           </Button>
         </div>
       )}

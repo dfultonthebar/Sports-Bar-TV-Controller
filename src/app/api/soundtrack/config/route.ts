@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import { getSoundtrackAPI, setSoundtrackAPIKey } from '@/lib/soundtrack-your-brand'
+import { getSoundtrackAPI, setSoundtrackAPIToken, clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 const prisma = new PrismaClient()
 
@@ -19,11 +19,12 @@ export async function GET() {
     if (!config) {
       return NextResponse.json({ 
         success: false, 
-        message: 'No Soundtrack configuration found' 
+        message: 'No Soundtrack configuration found',
+        hasConfig: false
       }, { status: 404 })
     }
 
-    // Don't expose the full API key
+    // Don't expose the full API token
     const safeConfig = {
       ...config,
       apiKey: config.apiKey ? '***' + config.apiKey.slice(-4) : null
@@ -32,7 +33,8 @@ export async function GET() {
     return NextResponse.json({ 
       success: true, 
       config: safeConfig,
-      players: config.players
+      players: config.players,
+      hasConfig: true
     })
   } catch (error: any) {
     console.error('Error fetching Soundtrack config:', error)
@@ -52,24 +54,30 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ 
         success: false, 
-        error: 'API key is required' 
+        error: 'API token is required' 
       }, { status: 400 })
     }
 
-    // Test the API key by fetching account info
-    setSoundtrackAPIKey(apiKey)
+    // Test the API token by fetching account info
+    setSoundtrackAPIToken(apiKey)
     const api = getSoundtrackAPI()
     
     let accountInfo
     try {
       accountInfo = await api.getAccount()
     } catch (error: any) {
+      clearSoundtrackAPI()
       return NextResponse.json({ 
         success: false, 
-        error: 'Invalid API key or unable to connect to Soundtrack' 
+        error: error.message || 'Invalid API token or unable to connect to Soundtrack' 
       }, { status: 400 })
     }
 
+    // Extract account information
+    const firstAccount = accountInfo.accounts && accountInfo.accounts.length > 0 
+      ? accountInfo.accounts[0] 
+      : null
+    
     // Save or update configuration
     const existingConfig = await prisma.soundtrackConfig.findFirst()
 
@@ -78,8 +86,8 @@ export async function POST(request: NextRequest) {
           where: { id: existingConfig.id },
           data: {
             apiKey,
-            accountId: accountInfo.id || accountInfo.account?.id,
-            accountName: accountInfo.name || accountInfo.account?.name,
+            accountId: firstAccount?.id || accountInfo.id,
+            accountName: firstAccount?.name || 'Soundtrack Account',
             status: 'active',
             lastTested: new Date()
           }
@@ -87,42 +95,42 @@ export async function POST(request: NextRequest) {
       : await prisma.soundtrackConfig.create({
           data: {
             apiKey,
-            accountId: accountInfo.id || accountInfo.account?.id,
-            accountName: accountInfo.name || accountInfo.account?.name,
+            accountId: firstAccount?.id || accountInfo.id,
+            accountName: firstAccount?.name || 'Soundtrack Account',
             status: 'active',
             lastTested: new Date()
           }
         })
 
-    // Fetch players from Soundtrack API and sync to database
+    // Fetch sound zones from Soundtrack API and sync to database
     try {
-      const players = await api.listPlayers()
+      const soundZones = await api.listSoundZones(firstAccount?.id)
       
-      // Update or create player records
-      for (const player of players) {
+      // Update or create sound zone (player) records
+      for (const zone of soundZones) {
         await prisma.soundtrackPlayer.upsert({
           where: {
             configId_playerId: {
               configId: config.id,
-              playerId: player.id
+              playerId: zone.id
             }
           },
           create: {
             configId: config.id,
-            playerId: player.id,
-            playerName: player.name,
-            accountId: player.accountId,
+            playerId: zone.id,
+            playerName: zone.name,
+            accountId: zone.account.id,
             bartenderVisible: false,
             displayOrder: 0
           },
           update: {
-            playerName: player.name,
-            accountId: player.accountId
+            playerName: zone.name,
+            accountId: zone.account.id
           }
         })
       }
     } catch (error) {
-      console.error('Error syncing players:', error)
+      console.error('Error syncing sound zones:', error)
     }
 
     return NextResponse.json({ 
@@ -165,6 +173,45 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true, player })
   } catch (error: any) {
     console.error('Error updating player settings:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message 
+    }, { status: 500 })
+  }
+}
+
+// DELETE - Remove Soundtrack configuration
+export async function DELETE() {
+  try {
+    // Find existing config
+    const config = await prisma.soundtrackConfig.findFirst()
+
+    if (!config) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'No configuration to delete' 
+      }, { status: 404 })
+    }
+
+    // Delete all associated players first (cascade)
+    await prisma.soundtrackPlayer.deleteMany({
+      where: { configId: config.id }
+    })
+
+    // Delete the configuration
+    await prisma.soundtrackConfig.delete({
+      where: { id: config.id }
+    })
+
+    // Clear the API singleton
+    clearSoundtrackAPI()
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Soundtrack configuration deleted successfully' 
+    })
+  } catch (error: any) {
+    console.error('Error deleting Soundtrack config:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
