@@ -43,11 +43,11 @@ export default function Home() {
               {/* Main System Controls */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <a 
-                  href="/ai-assistant"
+                  href="/ai-hub"
                   className="block p-6 bg-gradient-to-br from-purple-600/40 to-blue-600/40 rounded-xl border-2 border-purple-400/50 hover:border-purple-400/70 hover:from-purple-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
                 >
-                  <h3 className="font-bold text-purple-200 mb-2">🤖 AI Assistant</h3>
-                  <p className="text-purple-100/90 text-sm">System troubleshooting & coding help</p>
+                  <h3 className="font-bold text-purple-200 mb-2">🤖 AI Hub</h3>
+                  <p className="text-purple-100/90 text-sm">Unified AI management & assistance</p>
                 </a>
                 
                 <a 
@@ -75,11 +75,11 @@ export default function Home() {
                 </a>
                 
                 <a 
-                  href="/logs"
+                  href="/system-admin"
                   className="block p-6 bg-sportsBar-700/80 rounded-xl border border-primary-400/30 hover:bg-sportsBar-600/80 hover:border-primary-400/50 transition-all duration-200"
                 >
-                  <h3 className="font-semibold text-blue-300 mb-2">📊 System Logs</h3>
-                  <p className="text-blue-200/80 text-sm">Monitor system performance</p>
+                  <h3 className="font-semibold text-blue-300 mb-2">⚙️ System Admin</h3>
+                  <p className="text-blue-200/80 text-sm">Logs, backups, sync & tests</p>
                 </a>
               </div>
 
@@ -125,13 +125,7 @@ export default function Home() {
                     <p className="text-blue-100/90 text-sm">CEC + IR with smart fallback</p>
                   </a>
                   
-                  <a 
-                    href="/sports-guide-config"
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-accent-purple/30 hover:bg-sportsBar-600/80 hover:border-accent-purple/50 transition-all duration-200"
-                  >
-                    <h4 className="font-medium text-purple-300 mb-1">🏈 Sports Config</h4>
-                    <p className="text-purple-200/80 text-sm">Configure sports guide settings</p>
-                  </a>
+
                   
                   <a 
                     href="/streaming-platforms"
@@ -188,29 +182,7 @@ export default function Home() {
                     <p className="text-orange-200/80 text-sm">Floor plan & TV zone setup</p>
                   </button>
                   
-                  <a 
-                    href="/ai-keys"
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-accent-purple/30 hover:bg-sportsBar-600/80 hover:border-accent-purple/50 transition-all duration-200"
-                  >
-                    <h4 className="font-medium text-purple-300 mb-1">🧠 AI Keys</h4>
-                    <p className="text-purple-200/80 text-sm">AI API keys & chat setup</p>
-                  </a>
-                  
-                  <a 
-                    href="/config-sync"
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-accent-green/30 hover:bg-sportsBar-600/80 hover:border-accent-green/50 transition-all duration-200"
-                  >
-                    <h4 className="font-medium text-green-300 mb-1">📤 GitHub Sync</h4>
-                    <p className="text-green-200/80 text-sm">Configuration backup & sync</p>
-                  </a>
-                  
-                  <a 
-                    href="/backup-restore"
-                    className="block p-4 bg-gradient-to-br from-cyan-600/40 to-indigo-600/40 rounded-lg border-2 border-cyan-400/50 hover:border-cyan-400/70 hover:from-cyan-600/50 hover:to-indigo-600/50 transition-all duration-200 shadow-lg"
-                  >
-                    <h4 className="font-bold text-cyan-200 mb-1">💾 Backup & Restore</h4>
-                    <p className="text-cyan-100/90 text-sm">System backup management</p>
-                  </a>
+
                   
                   <a 
                     href="/scheduler"
