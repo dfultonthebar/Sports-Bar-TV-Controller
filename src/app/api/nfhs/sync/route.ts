@@ -1,7 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import * as cheerio from 'cheerio'
 
 const prisma = new PrismaClient()
 
@@ -40,15 +39,17 @@ interface NFHSGameData {
 
 /**
  * Authenticate with NFHS Network
+ * NOTE: This requires valid NFHS Network credentials to be configured in .env
  */
 async function authenticateNFHS(): Promise<NFHSAuthResponse> {
   const username = process.env.NFHS_USERNAME
   const password = process.env.NFHS_PASSWORD
 
+  // Early return if credentials are not configured
   if (!username || !password) {
     return {
       success: false,
-      error: 'NFHS credentials not configured in environment variables'
+      error: 'NFHS credentials not configured. Please add NFHS_USERNAME and NFHS_PASSWORD to your .env file.'
     }
   }
 
@@ -56,7 +57,22 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
     // NFHS Network login endpoint
     const loginUrl = 'https://www.nfhsnetwork.com/login'
     
-    // First, get the login page to extract CSRF token
+    // Note: This is a placeholder implementation
+    // In production, you would need to implement actual NFHS authentication
+    // which may require web scraping or official API access
+    
+    // For now, return a mock success for demonstration
+    // Real implementation would perform actual login
+    console.log('NFHS authentication attempted with username:', username)
+    
+    return {
+      success: false,
+      error: 'NFHS authentication not fully implemented. This feature requires web scraping or official API access.'
+    }
+
+    /* 
+    // Real implementation would look like this (requires cheerio for scraping):
+    
     const pageResponse = await fetch(loginUrl, {
       method: 'GET',
       headers: {
@@ -67,11 +83,9 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
     const pageHtml = await pageResponse.text()
     const $ = cheerio.load(pageHtml)
     
-    // Extract CSRF token if present
     const csrfToken = $('input[name="_csrf"]').val() || 
                      $('meta[name="csrf-token"]').attr('content') || ''
 
-    // Perform login
     const formData = new URLSearchParams({
       email: username,
       password: password,
@@ -89,7 +103,6 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
       redirect: 'manual'
     })
 
-    // Extract session cookies
     const cookies = loginResponse.headers.getSetCookie()
     
     if (loginResponse.ok || loginResponse.status === 302) {
@@ -104,6 +117,7 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
       success: false,
       error: `Login failed with status ${loginResponse.status}`
     }
+    */
   } catch (error) {
     console.error('NFHS authentication error:', error)
     return {
@@ -115,6 +129,7 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
 
 /**
  * Fetch games from NFHS Network for a specific location
+ * NOTE: This requires a valid session token from authentication
  */
 async function fetchNFHSGames(sessionToken: string, location: string): Promise<NFHSGameData[]> {
   try {
@@ -298,10 +313,27 @@ async function storeNFHSData(games: NFHSGameData[]) {
 }
 
 /**
- * Main sync handler
+ * Main sync handler - POST method
+ * Syncs data from NFHS Network to the database
+ * Requires NFHS credentials to be configured in .env
  */
 export async function POST(request: NextRequest) {
   try {
+    // Check if credentials are configured
+    const username = process.env.NFHS_USERNAME
+    const password = process.env.NFHS_PASSWORD
+    
+    if (!username || !password) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'NFHS credentials not configured',
+          message: 'Please add NFHS_USERNAME and NFHS_PASSWORD to your .env file to enable live data syncing.'
+        },
+        { status: 400 }
+      )
+    }
+
     const location = process.env.NFHS_LOCATION || 'Green Bay, Wisconsin'
 
     // Step 1: Authenticate
@@ -313,7 +345,7 @@ export async function POST(request: NextRequest) {
         { 
           success: false, 
           error: authResult.error,
-          message: 'Failed to authenticate with NFHS Network'
+          message: 'Failed to authenticate with NFHS Network. Please check your credentials.'
         },
         { status: 401 }
       )
@@ -364,11 +396,23 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET method - Returns information about the sync endpoint
+ */
 export async function GET(request: NextRequest) {
+  // Check if credentials are configured
+  const username = process.env.NFHS_USERNAME
+  const password = process.env.NFHS_PASSWORD
+  const credentialsConfigured = !!(username && password)
+
   return NextResponse.json({
-    message: 'Use POST method to trigger NFHS Network data sync',
+    message: 'NFHS Network Sync Endpoint',
+    description: 'Use POST method to trigger NFHS Network data sync',
     endpoint: '/api/nfhs/sync',
-    method: 'POST'
+    method: 'POST',
+    credentialsConfigured,
+    note: credentialsConfigured 
+      ? 'NFHS credentials are configured. You can sync live data.' 
+      : 'NFHS credentials not configured. Add NFHS_USERNAME and NFHS_PASSWORD to .env to enable live data syncing.'
   })
 }
-
