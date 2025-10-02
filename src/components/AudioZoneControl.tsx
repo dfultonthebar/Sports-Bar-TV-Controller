@@ -13,8 +13,10 @@ import {
   Heart,
   Headphones,
   Power,
-  Lightbulb
+  Lightbulb,
+  Radio
 } from 'lucide-react'
+import WolfpackInputSelector from './WolfpackInputSelector'
 
 interface AudioZone {
   id: string
@@ -29,10 +31,16 @@ interface AudioInput {
   id: string
   name: string
   isActive: boolean
+  type: 'matrix' | 'direct'
+  matrixNumber?: number
 }
 
 export default function AudioZoneControl() {
   const [selectedInput, setSelectedInput] = useState<string | null>('cable4')
+  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [showMatrixSelector, setShowMatrixSelector] = useState(false)
+  const [currentMatrixNumber, setCurrentMatrixNumber] = useState<number>(1)
+  
   const [zones, setZones] = useState<AudioZone[]>([
     { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
     { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
@@ -42,16 +50,20 @@ export default function AudioZoneControl() {
   ])
 
   const [audioInputs] = useState<AudioInput[]>([
-    { id: 'cable4', name: 'Cable 4', isActive: true },
-    { id: 'matrix2', name: 'Matrix 2', isActive: true },
-    { id: 'matrix3', name: 'Matrix 3', isActive: true },
-    { id: 'dtv2', name: 'DTV 2', isActive: true },
-    { id: 'patioband', name: 'Patio Band', isActive: true },
-    { id: 'vipband', name: 'VIP Band', isActive: true },
-    { id: 'pavilionband', name: 'Pavilion Band', isActive: true },
-    { id: 'mic1', name: 'MIC 1', isActive: true },
-    { id: 'mic2', name: 'MIC 2', isActive: true },
-    { id: 'jukebox', name: 'Juke Box', isActive: true },
+    { id: 'cable1', name: 'Cable 1', isActive: true, type: 'direct' },
+    { id: 'cable2', name: 'Cable 2', isActive: true, type: 'direct' },
+    { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+    { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+    { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+    { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+    { id: 'dtv1', name: 'DTV 1', isActive: true, type: 'direct' },
+    { id: 'dtv2', name: 'DTV 2', isActive: true, type: 'direct' },
+    { id: 'patioband', name: 'Patio Band', isActive: true, type: 'direct' },
+    { id: 'vipband', name: 'VIP Band', isActive: true, type: 'direct' },
+    { id: 'pavilionband', name: 'Pavilion Band', isActive: true, type: 'direct' },
+    { id: 'mic1', name: 'MIC 1', isActive: true, type: 'direct' },
+    { id: 'mic2', name: 'MIC 2', isActive: true, type: 'direct' },
+    { id: 'jukebox', name: 'Juke Box', isActive: true, type: 'direct' },
   ])
 
   const updateZoneVolume = (zoneId: string, volumeChange: number) => {
@@ -82,11 +94,46 @@ export default function AudioZoneControl() {
     }))
   }
 
+  const handleInputSelection = (inputId: string) => {
+    const input = audioInputs.find(i => i.id === inputId)
+    
+    if (!input) return
+
+    // If it's a Matrix input, show the Wolfpack selector
+    if (input.type === 'matrix' && input.matrixNumber) {
+      setCurrentMatrixNumber(input.matrixNumber)
+      setShowMatrixSelector(true)
+    } else {
+      // Direct routing for non-Matrix inputs
+      setSelectedInput(inputId)
+      // In a real implementation, this would call the API to route audio
+      console.log(`Direct routing: ${input.name}`)
+    }
+  }
+
+  const handleMatrixInputSelected = (inputNumber: number, inputLabel: string) => {
+    // Update the zone source to show the selected Wolfpack input
+    console.log(`Matrix ${currentMatrixNumber} now routing from: ${inputLabel}`)
+    setSelectedInput(`matrix${currentMatrixNumber}`)
+    // The actual routing is handled by the WolfpackInputSelector component
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
+      {/* Wolfpack Input Selector Modal */}
+      <WolfpackInputSelector
+        isOpen={showMatrixSelector}
+        onClose={() => setShowMatrixSelector(false)}
+        matrixNumber={currentMatrixNumber}
+        onSelectInput={handleMatrixInputSelected}
+      />
+
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-3xl font-bold text-orange-400 mb-2">Audio Channels</h1>
+        <p className="text-gray-400 text-sm">
+          Matrix inputs route video sources for audio • Direct inputs route audio only
+        </p>
       </div>
 
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -97,14 +144,19 @@ export default function AudioZoneControl() {
               {audioInputs.map((input) => (
                 <button
                   key={input.id}
-                  onClick={() => setSelectedInput(input.id)}
+                  onClick={() => handleInputSelection(input.id)}
                   className={`w-full p-3 rounded-lg text-left transition-all flex items-center justify-between ${
                     selectedInput === input.id
-                      ? 'bg-gray-600 text-white'
+                      ? 'bg-orange-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
                   }`}
                 >
-                  <span className="font-medium">{input.name}</span>
+                  <div className="flex items-center space-x-2">
+                    {input.type === 'matrix' && (
+                      <Radio className="w-4 h-4 text-orange-400" />
+                    )}
+                    <span className="font-medium">{input.name}</span>
+                  </div>
                   <ChevronDown className="w-4 h-4 rotate-90" />
                 </button>
               ))}
