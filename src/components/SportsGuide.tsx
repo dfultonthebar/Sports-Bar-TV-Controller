@@ -237,20 +237,11 @@ export default function SportsGuide() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load saved league preferences from localStorage
-    const savedLeagues = localStorage.getItem('selectedSportsLeagues')
-    const savedExpandedCategories = localStorage.getItem('expandedLeagueCategories')
+    // Load saved league preferences from database
+    loadSelectedLeagues()
     
-    if (savedLeagues) {
-      try {
-        const parsed = JSON.parse(savedLeagues)
-        if (Array.isArray(parsed)) {
-          setSelectedLeagues(parsed)
-        }
-      } catch (error) {
-        console.error('Error parsing saved leagues:', error)
-      }
-    }
+    // Load saved expanded categories from localStorage (UI preference only)
+    const savedExpandedCategories = localStorage.getItem('expandedLeagueCategories')
     
     if (savedExpandedCategories) {
       try {
@@ -278,6 +269,25 @@ export default function SportsGuide() {
     }
   }, [selectedLeagues])
 
+  const loadSelectedLeagues = async () => {
+    try {
+      console.log('Loading selected leagues from database...')
+      const response = await fetch('/api/selected-leagues')
+      const result = await response.json()
+      
+      console.log('Selected leagues API response:', result)
+      
+      if (result.success && result.data && Array.isArray(result.data)) {
+        setSelectedLeagues(result.data)
+        console.log('Successfully loaded selected leagues:', result.data.length)
+      } else {
+        console.log('No selected leagues found in database')
+      }
+    } catch (error) {
+      console.error('Error loading selected leagues:', error)
+    }
+  }
+
   const loadAvailableLeagues = async () => {
     try {
       console.log('Loading leagues...')
@@ -289,18 +299,6 @@ export default function SportsGuide() {
       if (result.success && result.data) {
         setAvailableLeagues(result.data)
         console.log('Successfully loaded leagues:', result.data.length)
-        
-        // Auto-select popular leagues for immediate content
-        if (selectedLeagues.length === 0) {
-          const popularLeagues = result.data.filter((league: League) => 
-            ['nfl', 'nba', 'mlb'].includes(league.id)
-          ).map((league: League) => league.id)
-          
-          if (popularLeagues.length > 0) {
-            setSelectedLeagues(popularLeagues.slice(0, 2)) // Select first 2 popular leagues
-            console.log('Auto-selected popular leagues:', popularLeagues.slice(0, 2))
-          }
-        }
       } else {
         console.error('Failed to load leagues:', result.error)
         // Fallback to sample leagues
@@ -393,17 +391,36 @@ export default function SportsGuide() {
     }
   }
 
-  const toggleLeague = (leagueId: string) => {
-    setSelectedLeagues(prev => {
-      const newSelected = prev.includes(leagueId)
-        ? prev.filter(id => id !== leagueId)
-        : [...prev, leagueId]
+  const toggleLeague = async (leagueId: string) => {
+    const newSelected = selectedLeagues.includes(leagueId)
+      ? selectedLeagues.filter(id => id !== leagueId)
+      : [...selectedLeagues, leagueId]
+    
+    // Update state immediately for responsive UI
+    setSelectedLeagues(newSelected)
+    
+    // Save to database
+    try {
+      const response = await fetch('/api/selected-leagues', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ leagueIds: newSelected })
+      })
       
-      // Save to localStorage
-      localStorage.setItem('selectedSportsLeagues', JSON.stringify(newSelected))
+      const result = await response.json()
       
-      return newSelected
-    })
+      if (!result.success) {
+        console.error('Failed to save selected leagues:', result.error)
+        // Optionally show error to user
+      } else {
+        console.log('Successfully saved selected leagues to database')
+      }
+    } catch (error) {
+      console.error('Error saving selected leagues:', error)
+      // Optionally show error to user
+    }
   }
 
   const toggleLeagueExpansion = (category: string) => {
