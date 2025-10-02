@@ -20,7 +20,8 @@ import {
   Zap,
   Radio,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Database
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -74,9 +75,151 @@ interface SyncStatus {
   error?: string
 }
 
+// Mock data for default display (when NFHS credentials are not configured or live data is disabled)
+const MOCK_GAMES: NFHSGame[] = [
+  {
+    id: 'mock-1',
+    homeTeam: {
+      name: 'Wildcats',
+      school: 'Green Bay East High School',
+      city: 'Green Bay',
+      state: 'WI'
+    },
+    awayTeam: {
+      name: 'Panthers',
+      school: 'Green Bay West High School',
+      city: 'Green Bay',
+      state: 'WI'
+    },
+    sport: 'Football',
+    league: 'WIAA',
+    level: 'Varsity',
+    gender: 'Boys',
+    date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    time: '7:00 PM',
+    venue: 'East Stadium',
+    status: 'scheduled',
+    streamUrl: 'https://www.nfhsnetwork.com/events/green-bay-east-vs-west',
+    isNFHSNetwork: true,
+    ticketInfo: 'Tickets available at the gate - $8 adults, $5 students'
+  },
+  {
+    id: 'mock-2',
+    homeTeam: {
+      name: 'Eagles',
+      school: 'Bay Port High School',
+      city: 'Suamico',
+      state: 'WI'
+    },
+    awayTeam: {
+      name: 'Rockets',
+      school: 'De Pere High School',
+      city: 'De Pere',
+      state: 'WI'
+    },
+    sport: 'Basketball',
+    league: 'FRCC',
+    level: 'Varsity',
+    gender: 'Girls',
+    date: new Date(Date.now() + 172800000).toISOString().split('T')[0],
+    time: '7:30 PM',
+    venue: 'Bay Port Gymnasium',
+    status: 'scheduled',
+    streamUrl: 'https://www.nfhsnetwork.com/events/bay-port-vs-de-pere',
+    isNFHSNetwork: true
+  },
+  {
+    id: 'mock-3',
+    homeTeam: {
+      name: 'Knights',
+      school: 'Notre Dame Academy',
+      city: 'Green Bay',
+      state: 'WI'
+    },
+    awayTeam: {
+      name: 'Bulldogs',
+      school: 'Ashwaubenon High School',
+      city: 'Ashwaubenon',
+      state: 'WI'
+    },
+    sport: 'Volleyball',
+    league: 'FRCC',
+    level: 'Varsity',
+    gender: 'Girls',
+    date: new Date().toISOString().split('T')[0],
+    time: '6:00 PM',
+    venue: 'NDA Fieldhouse',
+    status: 'live',
+    streamUrl: 'https://www.nfhsnetwork.com/events/nda-vs-ashwaubenon',
+    isNFHSNetwork: true,
+    homeScore: 2,
+    awayScore: 1
+  },
+  {
+    id: 'mock-4',
+    homeTeam: {
+      name: 'Preble Hornets',
+      school: 'Preble High School',
+      city: 'Green Bay',
+      state: 'WI'
+    },
+    awayTeam: {
+      name: 'Southwest Trojans',
+      school: 'Southwest High School',
+      city: 'Green Bay',
+      state: 'WI'
+    },
+    sport: 'Soccer',
+    league: 'FRCC',
+    level: 'Varsity',
+    gender: 'Boys',
+    date: new Date(Date.now() + 259200000).toISOString().split('T')[0],
+    time: '5:00 PM',
+    venue: 'Preble Soccer Field',
+    status: 'scheduled',
+    isNFHSNetwork: false,
+    ticketInfo: 'Free admission'
+  }
+]
+
+const MOCK_SCHOOLS: NFHSSchool[] = [
+  {
+    id: 'school-1',
+    nfhsId: 'wi-gb-east',
+    name: 'Green Bay East High School',
+    city: 'Green Bay',
+    state: 'WI',
+    district: 'Green Bay Area Public Schools',
+    conferences: ['FRCC'],
+    sports: ['Football', 'Basketball', 'Volleyball', 'Soccer', 'Track'],
+    upcomingGames: 5
+  },
+  {
+    id: 'school-2',
+    nfhsId: 'wi-bay-port',
+    name: 'Bay Port High School',
+    city: 'Suamico',
+    state: 'WI',
+    district: 'Howard-Suamico School District',
+    conferences: ['FRCC'],
+    sports: ['Football', 'Basketball', 'Volleyball', 'Hockey', 'Swimming'],
+    upcomingGames: 8
+  },
+  {
+    id: 'school-3',
+    nfhsId: 'wi-nda',
+    name: 'Notre Dame Academy',
+    city: 'Green Bay',
+    state: 'WI',
+    conferences: ['FRCC'],
+    sports: ['Basketball', 'Volleyball', 'Soccer', 'Tennis'],
+    upcomingGames: 6
+  }
+]
+
 export default function NFHSNetworkPage() {
-  const [games, setGames] = useState<NFHSGame[]>([])
-  const [schools, setSchools] = useState<NFHSSchool[]>([])
+  const [games, setGames] = useState<NFHSGame[]>(MOCK_GAMES)
+  const [schools, setSchools] = useState<NFHSSchool[]>(MOCK_SCHOOLS)
   const [isLoading, setIsLoading] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ syncing: false })
   const [selectedSport, setSelectedSport] = useState<string>('all')
@@ -84,6 +227,10 @@ export default function NFHSNetworkPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showLiveOnly, setShowLiveOnly] = useState(false)
   const [showStreamingOnly, setShowStreamingOnly] = useState(true)
+  
+  // New state for mock vs live data toggle
+  const [useLiveData, setUseLiveData] = useState(false)
+  const [nfhsCredentialsConfigured, setNfhsCredentialsConfigured] = useState(false)
 
   const sports = [
     'Football', 'Basketball', 'Volleyball', 'Soccer', 'Baseball', 
@@ -93,11 +240,45 @@ export default function NFHSNetworkPage() {
 
   const states = ['WI', 'MN', 'IA', 'IL', 'MI', 'IN', 'OH', 'MO']
 
+  // Check if NFHS credentials are configured on mount
   useEffect(() => {
-    loadNFHSGames()
-    loadNearbySchools()
-  }, [selectedSport, selectedState])
+    checkNFHSCredentials()
+  }, [])
 
+  // Load data when filters change or when switching between mock/live data
+  useEffect(() => {
+    if (useLiveData) {
+      loadNFHSGames()
+      loadNearbySchools()
+    } else {
+      // Use mock data
+      setGames(MOCK_GAMES)
+      setSchools(MOCK_SCHOOLS)
+    }
+  }, [selectedSport, selectedState, useLiveData])
+
+  /**
+   * Check if NFHS credentials are configured in environment variables
+   * This determines whether to show the "Enable Live Data" option
+   */
+  const checkNFHSCredentials = async () => {
+    try {
+      const response = await fetch('/api/nfhs/sync', {
+        method: 'GET'
+      })
+      
+      // If the endpoint responds without auth errors, credentials might be configured
+      // We'll do a more thorough check when user tries to sync
+      setNfhsCredentialsConfigured(true)
+    } catch (error) {
+      console.log('NFHS credentials check:', error)
+      setNfhsCredentialsConfigured(false)
+    }
+  }
+
+  /**
+   * Load games from the database (live data mode)
+   */
   const loadNFHSGames = async () => {
     setIsLoading(true)
     try {
@@ -128,6 +309,9 @@ export default function NFHSNetworkPage() {
     }
   }
 
+  /**
+   * Load schools from the database (live data mode)
+   */
   const loadNearbySchools = async () => {
     try {
       const params = new URLSearchParams()
@@ -150,6 +334,10 @@ export default function NFHSNetworkPage() {
     }
   }
 
+  /**
+   * Sync data from NFHS Network (requires credentials)
+   * This fetches fresh data from NFHS and stores it in the database
+   */
   const syncNFHSData = async () => {
     setSyncStatus({ syncing: true, message: 'Syncing with NFHS Network...' })
     
@@ -167,13 +355,16 @@ export default function NFHSNetworkPage() {
           message: data.message
         })
         
+        // Automatically switch to live data mode after successful sync
+        setUseLiveData(true)
+        
         // Reload games and schools after sync
         await loadNFHSGames()
         await loadNearbySchools()
       } else {
         setSyncStatus({
           syncing: false,
-          error: data.error || 'Failed to sync data'
+          error: data.error || 'Failed to sync data. Please check your NFHS credentials in .env file.'
         })
       }
     } catch (error) {
@@ -182,6 +373,24 @@ export default function NFHSNetworkPage() {
         syncing: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       })
+    }
+  }
+
+  /**
+   * Toggle between mock data and live data
+   */
+  const toggleDataSource = () => {
+    const newValue = !useLiveData
+    setUseLiveData(newValue)
+    
+    if (newValue) {
+      // Switching to live data - load from database
+      loadNFHSGames()
+      loadNearbySchools()
+    } else {
+      // Switching to mock data
+      setGames(MOCK_GAMES)
+      setSchools(MOCK_SCHOOLS)
     }
   }
 
@@ -256,6 +465,43 @@ export default function NFHSNetworkPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Data Source Banner */}
+        <div className={`mb-6 p-4 rounded-lg border ${
+          useLiveData 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-blue-50 border-blue-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Database className={`w-5 h-5 ${useLiveData ? 'text-green-600' : 'text-blue-600'}`} />
+              <div>
+                <p className={`text-sm font-medium ${useLiveData ? 'text-green-800' : 'text-blue-800'}`}>
+                  {useLiveData ? 'Live Data Mode' : 'Mock Data Mode'}
+                </p>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {useLiveData 
+                    ? 'Displaying real data from NFHS Network database' 
+                    : 'Displaying sample data for demonstration purposes'}
+                </p>
+              </div>
+            </div>
+            
+            {/* Only show toggle if credentials are configured */}
+            {nfhsCredentialsConfigured && (
+              <button
+                onClick={toggleDataSource}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  useLiveData
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
+                {useLiveData ? 'Switch to Mock Data' : 'Enable Live Data'}
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Sync Status Banner */}
         {(syncStatus.message || syncStatus.error) && (
           <div className={`mb-6 p-4 rounded-lg border ${
@@ -411,7 +657,7 @@ export default function NFHSNetworkPage() {
           
           <div className="flex space-x-3">
             <button
-              onClick={loadNFHSGames}
+              onClick={useLiveData ? loadNFHSGames : () => setGames(MOCK_GAMES)}
               disabled={isLoading}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
@@ -419,14 +665,17 @@ export default function NFHSNetworkPage() {
               <span>Refresh Games</span>
             </button>
             
-            <button
-              onClick={syncNFHSData}
-              disabled={syncStatus.syncing}
-              className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              <Zap className={`w-4 h-4 ${syncStatus.syncing ? 'animate-pulse' : ''}`} />
-              <span>{syncStatus.syncing ? 'Syncing...' : 'Sync NFHS Data'}</span>
-            </button>
+            {/* Only show sync button if credentials are configured and in live data mode */}
+            {nfhsCredentialsConfigured && useLiveData && (
+              <button
+                onClick={syncNFHSData}
+                disabled={syncStatus.syncing}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                <Zap className={`w-4 h-4 ${syncStatus.syncing ? 'animate-pulse' : ''}`} />
+                <span>{syncStatus.syncing ? 'Syncing...' : 'Sync with NFHS'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -451,12 +700,14 @@ export default function NFHSNetworkPage() {
               <div className="text-center py-8">
                 <Play className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                 <p className="text-slate-500 mb-4">No games found matching your criteria</p>
-                <button
-                  onClick={syncNFHSData}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Sync NFHS Data
-                </button>
+                {nfhsCredentialsConfigured && useLiveData && (
+                  <button
+                    onClick={syncNFHSData}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Sync NFHS Data
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid gap-4">
