@@ -1,7 +1,9 @@
+// Next.js route segment config - prevent static generation during build
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import * as cheerio from 'cheerio'
-import { CookieJar } from 'tough-cookie'
 
 const prisma = new PrismaClient()
 
@@ -78,6 +80,9 @@ async function fetchWithCookies(
  * This implementation uses form-based authentication with CSRF token handling
  */
 async function authenticateNFHS(): Promise<NFHSAuthResponse> {
+  // Lazy load cheerio to prevent execution during build
+  const cheerio = await import('cheerio')
+  
   const username = process.env.NFHS_USERNAME
   const password = process.env.NFHS_PASSWORD
 
@@ -232,6 +237,9 @@ async function searchSchools(
   city: string,
   state: string
 ): Promise<Array<{ id: string; name: string; city: string; state: string }>> {
+  // Lazy load cheerio to prevent execution during build
+  const cheerio = await import('cheerio')
+  
   try {
     console.log(`Searching for schools in ${city}, ${state}...`)
     
@@ -287,6 +295,9 @@ async function fetchGamesFromEventsPage(
   cookies: string[],
   location: string
 ): Promise<NFHSGameData[]> {
+  // Lazy load cheerio to prevent execution during build
+  const cheerio = await import('cheerio')
+  
   try {
     console.log('Fetching games from events page...')
     
@@ -394,6 +405,9 @@ async function fetchSchoolGames(
   city: string,
   state: string
 ): Promise<NFHSGameData[]> {
+  // Lazy load cheerio to prevent execution during build
+  const cheerio = await import('cheerio')
+  
   try {
     console.log(`Fetching games for school: ${schoolName}`)
     
