@@ -496,14 +496,95 @@ log ""
 log_success "AI setup complete!"
 
 # =============================================================================
+# ENVIRONMENT VARIABLES CHECK
+# =============================================================================
+log ""
+log "🔐 Checking environment variables..."
+
+# Check if .env exists
+if [ ! -f ".env" ]; then
+    log_warning ".env file not found!"
+    log "   Creating .env from .env.example..."
+    cp .env.example .env
+    log_warning "⚠️  IMPORTANT: Edit .env and add your credentials!"
+    log ""
+fi
+
+# Check for new required environment variables
+MISSING_VARS=()
+
+# Check NFHS credentials (new in this update)
+if ! grep -q "NFHS_USERNAME=" .env 2>/dev/null || [ -z "$(grep NFHS_USERNAME= .env | cut -d'=' -f2)" ]; then
+    MISSING_VARS+=("NFHS_USERNAME")
+fi
+if ! grep -q "NFHS_PASSWORD=" .env 2>/dev/null || [ -z "$(grep NFHS_PASSWORD= .env | cut -d'=' -f2)" ]; then
+    MISSING_VARS+=("NFHS_PASSWORD")
+fi
+if ! grep -q "NFHS_LOCATION=" .env 2>/dev/null || [ -z "$(grep NFHS_LOCATION= .env | cut -d'=' -f2)" ]; then
+    MISSING_VARS+=("NFHS_LOCATION")
+fi
+
+# If there are missing variables, add them from .env.example
+if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+    log_warning "⚠️  New environment variables detected!"
+    log ""
+    log "   Adding new variables to .env file:"
+    
+    for VAR in "${MISSING_VARS[@]}"; do
+        # Get the line from .env.example
+        EXAMPLE_LINE=$(grep "^$VAR=" .env.example 2>/dev/null || echo "$VAR=")
+        
+        # Check if variable exists in .env (even if empty)
+        if ! grep -q "^$VAR=" .env 2>/dev/null; then
+            echo "" >> .env
+            echo "# Added by update script on $(date)" >> .env
+            echo "$EXAMPLE_LINE" >> .env
+            log "   ✅ Added: $VAR"
+        else
+            log "   ℹ️  $VAR exists but is empty"
+        fi
+    done
+    
+    log ""
+    log_warning "📝 ACTION REQUIRED: Configure NFHS Network credentials"
+    log "   Edit your .env file and set:"
+    log "   - NFHS_USERNAME: Your NFHS Network username/email"
+    log "   - NFHS_PASSWORD: Your NFHS Network password"
+    log "   - NFHS_LOCATION: Your location (e.g., 'Green Bay, Wisconsin')"
+    log ""
+    log "   Run: nano .env"
+    log ""
+else
+    log_success "All required environment variables are configured"
+fi
+
+log ""
+
+# =============================================================================
 # DATABASE UPDATE
 # =============================================================================
 if [ -f "prisma/schema.prisma" ]; then
-    log ""
-    log "🗄️  Updating database..."
+    log "🗄️  Updating database schema..."
     export DATABASE_URL="file:./dev.db"
+    
+    # Generate Prisma Client
+    log "   Generating Prisma Client..."
     npx prisma generate
-    npx prisma db push
+    
+    # Check if migrations directory exists and has migrations
+    if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+        log "   Applying database migrations..."
+        npx prisma migrate deploy || {
+            log_warning "Migration deploy failed, falling back to db push..."
+            npx prisma db push
+        }
+    else
+        log "   Syncing database schema..."
+        npx prisma db push
+    fi
+    
+    log_success "Database schema updated successfully"
+    log "   New models added: NFHSGame, NFHSSchool"
     
     # Rename config file based on matrix configuration name
     log ""
