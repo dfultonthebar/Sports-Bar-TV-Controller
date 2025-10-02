@@ -88,7 +88,8 @@ export default function NFHSNetworkPage() {
     try {
       // In a real implementation, this would call the NFHS API
       // Mock data removed - now using real API data
-      setGames(mockGames)
+      const games = generateMockNFHSGames()
+      setGames(games)
     } catch (error) {
       console.error('Error loading NFHS games:', error)
     } finally {
@@ -98,6 +99,14 @@ export default function NFHSNetworkPage() {
 
   const loadNearbySchools = async () => {
     try {
+      const mockSchools = [
+        {
+          id: 'madison-west',
+          name: 'Madison West High School',
+          city: 'Madison',
+          state: selectedState,
+          district: 'Madison Metropolitan School District',
+          conferences: ['Big Eight Conference'],
           sports: ['Football', 'Basketball', 'Volleyball', 'Soccer', 'Swimming']
         },
         {
@@ -127,6 +136,8 @@ export default function NFHSNetworkPage() {
 
   const generateMockNFHSGames = (): NFHSGame[] => {
     // Mock games removed
+    const mockGames: NFHSGame[] = []
+    
     const targetSports = selectedSport === 'all' ? sports.slice(0, 5) : [selectedSport]
     
     const wisConsimSchools = [
