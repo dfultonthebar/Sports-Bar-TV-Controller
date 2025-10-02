@@ -229,8 +229,85 @@ model AudioInputMeter {
   updatedAt     DateTime       @updatedAt
   
   processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  aiGainConfig  AIGainConfiguration?
 
   @@unique([processorId, inputNumber])
+}
+
+model AIGainConfiguration {
+  id                String         @id @default(cuid())
+  inputMeterId      String         @unique
+  processorId       String
+  inputNumber       Int            // 1-10 for AZMP8
+  
+  // Input type and AI control
+  inputType         String         @default("line") // "mic" or "line"
+  aiEnabled         Boolean        @default(false)
+  
+  // Target levels
+  targetLevel       Float          @default(-3.0)   // Target level in dB
+  fastModeThreshold Float          @default(-10.0)  // Switch to slow mode at this level
+  
+  // Current state
+  currentGain       Float          @default(0.0)    // Current gain setting in dB
+  adjustmentMode    String         @default("idle") // "idle", "fast", "slow", "waiting"
+  
+  // Audio presence detection
+  silenceThreshold  Float          @default(-40.0)  // Consider silent below this
+  silenceDuration   Int            @default(60)     // Seconds of silence before waiting
+  lastAudioDetected DateTime?      // Last time audio was above silence threshold
+  
+  // Adjustment parameters
+  fastModeStep      Float          @default(3.0)    // dB per adjustment in fast mode
+  slowModeStep      Float          @default(1.0)    // dB per adjustment in slow mode
+  adjustmentInterval Int           @default(500)    // Milliseconds between adjustments
+  
+  // Safety limits
+  minGain           Float          @default(-20.0)  // Minimum gain in dB
+  maxGain           Float          @default(20.0)   // Maximum gain in dB
+  
+  // Status
+  lastAdjustment    DateTime?      // Last time gain was adjusted
+  adjustmentCount   Int            @default(0)      // Total adjustments made
+  
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  inputMeter        AudioInputMeter @relation(fields: [inputMeterId], references: [id], onDelete: Cascade)
+  adjustmentLogs    AIGainAdjustmentLog[]
+  
+  @@unique([processorId, inputNumber])
+  @@index([aiEnabled])
+}
+
+model AIGainAdjustmentLog {
+  id              String              @id @default(cuid())
+  configId        String
+  processorId     String
+  inputNumber     Int
+  
+  // Adjustment details
+  timestamp       DateTime            @default(now())
+  previousGain    Float               // Gain before adjustment
+  newGain         Float               // Gain after adjustment
+  gainChange      Float               // Change in dB
+  
+  // Audio levels
+  inputLevel      Float               // Input level at time of adjustment
+  targetLevel     Float               // Target level
+  
+  // Adjustment context
+  adjustmentMode  String              // "fast" or "slow"
+  reason          String              // "initial", "tracking", "correction", "manual_override"
+  
+  // Status
+  success         Boolean             @default(true)
+  errorMessage    String?
+  
+  config          AIGainConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@index([processorId, inputNumber, timestamp])
+  @@index([timestamp])
 }
 
 model CECConfiguration {
