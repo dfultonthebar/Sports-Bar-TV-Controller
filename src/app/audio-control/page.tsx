@@ -32,7 +32,7 @@ export default function AudioControlCenterPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="card p-6">
           <Tabs defaultValue="zones" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-slate-800/50">
+            <TabsList className="grid w-full grid-cols-3 bg-slate-800/50">
               <TabsTrigger 
                 value="zones" 
                 className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
@@ -53,13 +53,6 @@ export default function AudioControlCenterPage() {
               >
                 <Disc className="w-4 h-4" />
                 <span>Soundtrack</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="processors" 
-                className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
-              >
-                <Settings className="w-4 h-4" />
-                <span>Processors</span>
               </TabsTrigger>
             </TabsList>
 
@@ -153,20 +146,6 @@ export default function AudioControlCenterPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            </TabsContent>
-
-            {/* Processors Tab */}
-            <TabsContent value="processors" className="mt-6">
-              <div className="space-y-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <Settings className="w-6 h-6 text-blue-400" />
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-100">Audio Processor Management</h2>
-                    <p className="text-slate-300 text-sm">Configure and monitor Atlas IED audio processors</p>
-                  </div>
-                </div>
-                <AudioProcessorManager />
               </div>
             </TabsContent>
           </Tabs>
