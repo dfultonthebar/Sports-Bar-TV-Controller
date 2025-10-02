@@ -9,6 +9,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity, Info } from 'lucide-react'
 import InputLevelMonitor from './InputLevelMonitor'
+import AIGainControlPanel from './AIGainControlPanel'
 import { getModelSpec, formatInputName, type AtlasModelSpec } from '@/lib/atlas-models-config'
 import Image from 'next/image'
 
@@ -702,7 +703,7 @@ export default function AudioProcessorManager() {
                 )}
 
                 <Tabs defaultValue="zones" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsList className="grid w-full grid-cols-3 mb-6">
                     <TabsTrigger value="zones" className="flex items-center gap-2">
                       <Volume2 className="h-4 w-4" />
                       <span className="hidden sm:inline">Audio Zones</span>
@@ -712,6 +713,11 @@ export default function AudioProcessorManager() {
                       <BarChart3 className="h-4 w-4" />
                       <span className="hidden sm:inline">Input Levels</span>
                       <span className="sm:hidden">Levels</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="ai-gain" className="flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      <span className="hidden sm:inline">AI Gain Control</span>
+                      <span className="sm:hidden">AI Gain</span>
                     </TabsTrigger>
                   </TabsList>
                   
@@ -991,6 +997,12 @@ export default function AudioProcessorManager() {
                       <InputLevelMonitor 
                         processorId={selectedProcessor.id} 
                         processorName={selectedProcessor.name}
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="ai-gain" className="space-y-6">
+                      <AIGainControlPanel 
+                        processor={selectedProcessor}
                       />
                     </TabsContent>
                   </Tabs>
