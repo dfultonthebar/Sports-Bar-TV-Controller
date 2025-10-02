@@ -87,3 +87,6 @@ core
 
 # Git files
 FETCH_HEAD
+
+# Use npm only, ignore yarn
+yarn.lock
