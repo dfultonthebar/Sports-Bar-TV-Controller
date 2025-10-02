@@ -275,6 +275,46 @@
   @apply bg-slate-800 text-slate-100;
 }
 
+/* ============================================
+   Dropdown Text Contrast Fix
+   Ensures all dropdown options have proper contrast
+   ============================================ */
+
+/* Global select and option styling for accessibility */
+select {
+  @apply text-slate-100;
+}
+
+/* Ensure all option elements have proper text color */
+select option {
+  @apply bg-slate-800 text-slate-100;
+}
+
+/* For any white or light background dropdowns (if they exist) */
+select.bg-white option,
+select[class*="bg-white"] option {
+  @apply text-gray-900 bg-white;
+}
+
+/* Ensure proper contrast for light-themed selects */
+select.bg-slate-100 option,
+select.bg-slate-200 option,
+select.bg-gray-100 option,
+select.bg-gray-200 option {
+  @apply text-gray-900;
+}
+
+/* Fix for input-dark class used in components */
+.input-dark {
+  @apply bg-slate-800/50 border border-slate-700 text-slate-100 rounded-md;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+  @apply transition-colors duration-200;
+}
+
+.input-dark option {
+  @apply bg-slate-800 text-slate-100;
+}
+
 .form-label-dark {
   @apply block text-sm font-medium text-slate-300 mb-1.5;
 }

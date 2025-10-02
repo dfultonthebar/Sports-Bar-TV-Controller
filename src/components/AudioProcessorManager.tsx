@@ -410,7 +410,7 @@ export default function AudioProcessorManager() {
                     <select
                       value={formData.model}
                       onChange={(e) => setFormData({...formData, model: e.target.value})}
-                      className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="AZM4">AZM4 (4-Zone Controller)</option>
                       <option value="AZM8">AZM8 (8-Zone Controller)</option>
@@ -767,7 +767,7 @@ export default function AudioProcessorManager() {
                                     console.log('Zone number changed to:', newZoneNumber)
                                     setZoneFormData({...zoneFormData, zoneNumber: newZoneNumber})
                                   }}
-                                  className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                  className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                   required
                                 >
                                   {Array.from({length: selectedProcessor.zones}, (_, i) => {
@@ -819,7 +819,7 @@ export default function AudioProcessorManager() {
                                   console.log('Current source changed to:', e.target.value)
                                   setZoneFormData({...zoneFormData, currentSource: e.target.value})
                                 }}
-                                className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                               >
                                 {selectedModelSpec ? (
                                   <>

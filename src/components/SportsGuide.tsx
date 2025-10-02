@@ -890,13 +890,13 @@ export default function SportsGuide() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="pl-12 pr-8 py-4 bg-slate-800 or bg-slate-900 border border-slate-700 text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
+                className="pl-12 pr-8 py-4 bg-slate-800 border border-slate-700 text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200 appearance-none cursor-pointer text-base min-w-[200px]"
               >
-                <option value="all" className="bg-slate-800 or bg-slate-900">All Categories</option>
-                <option value="professional" className="bg-slate-800 or bg-slate-900">Professional</option>
-                <option value="college" className="bg-slate-800 or bg-slate-900">College</option>
-                <option value="high-school" className="bg-slate-800 or bg-slate-900">High School</option>
-                <option value="international" className="bg-slate-800 or bg-slate-900">International</option>
+                <option value="all" className="bg-slate-800 text-slate-100">All Categories</option>
+                <option value="professional" className="bg-slate-800 text-slate-100">Professional</option>
+                <option value="college" className="bg-slate-800 text-slate-100">College</option>
+                <option value="high-school" className="bg-slate-800 text-slate-100">High School</option>
+                <option value="international" className="bg-slate-800 text-slate-100">International</option>
               </select>
             </div>
           </div>
