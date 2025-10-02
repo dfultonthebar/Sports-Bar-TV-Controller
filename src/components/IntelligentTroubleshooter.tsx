@@ -192,12 +192,12 @@ export default function IntelligentTroubleshooter() {
           <select
             value={selectedDevice}
             onChange={(e) => setSelectedDevice(e.target.value)}
-            className="px-3 py-2 border rounded-md"
+            className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-slate-100"
           >
-            <option value="all">All Devices</option>
-            <option value="directv">DirecTV Only</option>
-            <option value="firetv">Fire TV Only</option>
-            <option value="ir">IR Devices Only</option>
+            <option value="all" className="bg-slate-800 text-slate-100">All Devices</option>
+            <option value="directv" className="bg-slate-800 text-slate-100">DirecTV Only</option>
+            <option value="firetv" className="bg-slate-800 text-slate-100">Fire TV Only</option>
+            <option value="ir" className="bg-slate-800 text-slate-100">IR Devices Only</option>
           </select>
           
           <Button
