@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import StreamingPlatformsWidget from '@/components/StreamingPlatformsWidget'
 import LayoutConfiguration from '@/components/LayoutConfiguration'
-import { Settings } from 'lucide-react'
+import { Settings, Music } from 'lucide-react'
 
 export default function Home() {
   const [showLayoutConfig, setShowLayoutConfig] = useState(false)
@@ -88,27 +88,14 @@ export default function Home() {
                 <h3 className="text-lg font-semibold text-slate-200 mb-4">🎵 Music & Audio</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <a 
-                    href="/soundtrack"
-                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-purple-400/30 hover:bg-sportsBar-600/80 hover:border-purple-400/50 transition-all duration-200"
+                    href="/audio-control"
+                    className="block p-6 bg-gradient-to-br from-teal-600/40 to-purple-600/40 rounded-xl border-2 border-teal-400/50 hover:border-teal-400/70 hover:from-teal-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg col-span-1 md:col-span-2 lg:col-span-3"
                   >
-                    <h3 className="font-semibold text-purple-300 mb-2">🎵 Soundtrack Your Brand</h3>
-                    <p className="text-purple-200/80 text-sm">Professional music streaming control</p>
-                  </a>
-                  
-                  <a 
-                    href="/atlas-config"
-                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-teal-400/30 hover:bg-sportsBar-600/80 hover:border-teal-400/50 transition-all duration-200"
-                  >
-                    <h3 className="font-semibold text-teal-300 mb-2">🔊 Audio Zones</h3>
-                    <p className="text-teal-200/80 text-sm">Zone control & volume management</p>
-                  </a>
-                  
-                  <a 
-                    href="/audio-manager"
-                    className="block p-6 bg-sportsBar-700/80 rounded-xl border border-cyan-400/30 hover:bg-sportsBar-600/80 hover:border-cyan-400/50 transition-all duration-200"
-                  >
-                    <h3 className="font-semibold text-cyan-300 mb-2">🎛️ Audio Processor</h3>
-                    <p className="text-cyan-200/80 text-sm">Atlas IED processor configuration</p>
+                    <div className="flex items-center space-x-3 mb-2">
+                      <Music className="w-6 h-6 text-teal-300" />
+                      <h3 className="font-bold text-teal-200 text-xl">🎵 Audio Control Center</h3>
+                    </div>
+                    <p className="text-teal-100/90 text-sm">Complete audio system management - Atlas zones, processors, and Soundtrack streaming in one place</p>
                   </a>
                 </div>
               </div>
@@ -149,14 +136,6 @@ export default function Home() {
                   >
                     <h4 className="font-medium text-yellow-300 mb-1">⚡ CEC TV Control</h4>
                     <p className="text-yellow-200/80 text-sm">HDMI-CEC TV power & input</p>
-                  </a>
-                  
-                  <a 
-                    href="/atlas-config"
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-teal-400/30 hover:bg-sportsBar-600/80 hover:border-teal-400/50 transition-all duration-200"
-                  >
-                    <h4 className="font-medium text-teal-300 mb-1">🔊 Atlas Audio</h4>
-                    <p className="text-teal-200/80 text-sm">Audio system configuration</p>
                   </a>
                   
                   <a 

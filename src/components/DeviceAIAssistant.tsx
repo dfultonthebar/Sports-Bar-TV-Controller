@@ -157,22 +157,22 @@ export default function DeviceAIAssistant() {
           <select
             value={selectedDevice}
             onChange={(e) => setSelectedDevice(e.target.value)}
-            className="px-3 py-2 border rounded-md"
+            className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-slate-100"
           >
-            <option value="all">All Devices</option>
-            <option value="directv">DirecTV Only</option>
-            <option value="firetv">Fire TV Only</option>
-            <option value="ir">IR Devices Only</option>
+            <option value="all" className="bg-slate-800 text-slate-100">All Devices</option>
+            <option value="directv" className="bg-slate-800 text-slate-100">DirecTV Only</option>
+            <option value="firetv" className="bg-slate-800 text-slate-100">Fire TV Only</option>
+            <option value="ir" className="bg-slate-800 text-slate-100">IR Devices Only</option>
           </select>
           
           <select
             value={timeframe}
             onChange={(e) => setTimeframe(e.target.value)}
-            className="px-3 py-2 border rounded-md"
+            className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-slate-100"
           >
-            <option value="1h">Last Hour</option>
-            <option value="24h">Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
+            <option value="1h" className="bg-slate-800 text-slate-100">Last Hour</option>
+            <option value="24h" className="bg-slate-800 text-slate-100">Last 24 Hours</option>
+            <option value="7d" className="bg-slate-800 text-slate-100">Last 7 Days</option>
           </select>
           
           <Button onClick={fetchDeviceAIAnalysis} className="flex items-center gap-2">

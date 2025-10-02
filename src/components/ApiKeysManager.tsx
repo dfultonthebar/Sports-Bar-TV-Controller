@@ -182,7 +182,7 @@ export default function ApiKeysManager() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., My Grok API Key"
-                className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-md px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -194,12 +194,12 @@ export default function ApiKeysManager() {
               <select
                 value={formData.provider}
                 onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
-                <option value="">Select a provider</option>
+                <option value="" className="bg-slate-800 text-slate-100">Select a provider</option>
                 {PROVIDERS.map((provider) => (
-                  <option key={provider.value} value={provider.value}>
+                  <option key={provider.value} value={provider.value} className="bg-slate-800 text-slate-100">
                     {provider.label}
                   </option>
                 ))}
@@ -220,7 +220,7 @@ export default function ApiKeysManager() {
                 value={formData.keyValue}
                 onChange={(e) => setFormData({ ...formData, keyValue: e.target.value })}
                 placeholder={editingKey ? "Leave empty to keep current key" : "Enter your API key"}
-                className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-md px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required={!editingKey}
               />
             </div>
@@ -234,7 +234,7 @@ export default function ApiKeysManager() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Optional description for this API key"
                 rows={2}
-                className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-md px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
