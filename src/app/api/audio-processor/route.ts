@@ -1,11 +1,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { atlasModels } from '@/lib/atlas-models-config'
+import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 
 // Helper function to get input/output counts from model config
 function getModelCounts(model: string) {
-  const modelConfig = atlasModels[model as keyof typeof atlasModels]
+  const modelConfig = ATLAS_MODELS[model as keyof typeof ATLAS_MODELS]
   if (modelConfig) {
     return {
       inputs: modelConfig.inputs.length,
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get model configuration for accurate counts
-    const modelConfig = atlasModels[model as keyof typeof atlasModels]
+    const modelConfig = ATLAS_MODELS[model as keyof typeof ATLAS_MODELS]
     const calculatedZones = zones || modelConfig?.zones || (model.includes('AZM8') || model.includes('AZMP8') ? 8 : 4)
     
     const processor = await prisma.audioProcessor.create({
