@@ -8,7 +8,8 @@ import {
   GitBranch,
   Sparkles,
   Brain,
-  BookOpen
+  BookOpen,
+  Activity
 } from 'lucide-react';
 
 export const navigationItems = [
@@ -18,6 +19,7 @@ export const navigationItems = [
   { icon: Calendar, label: 'Sports Guide', href: '/sports-guide' },
   { icon: Calendar, label: 'Smart Scheduler', href: '/scheduler' },
   { icon: Brain, label: 'AI Assistant', href: '/ai-assistant' },
+  { icon: Activity, label: 'Tests', href: '/tests' },
   { icon: Settings, label: 'Device Config', href: '/device-config' },
   { icon: FileText, label: 'Documents', href: '/documents' },
   { icon: GitBranch, label: 'GitHub Sync', href: '/github-sync' },
