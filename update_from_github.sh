@@ -8,7 +8,7 @@
 # Includes: libCEC, Ollama AI, Required Models, and Color Scheme Standardization
 # 
 # ENHANCEMENTS:
-# - Automatic Yarn/npm detection and usage
+# - Uses npm exclusively for package management
 # - Smart dependency installation (only when package files change)
 # - Graceful server restart with proper process management
 # - Enhanced error handling and logging
@@ -59,63 +59,6 @@ cleanup_on_error() {
 }
 
 trap cleanup_on_error ERR
-
-# =============================================================================
-# PACKAGE MANAGER DETECTION
-# =============================================================================
-detect_package_manager() {
-    # Check if yarn command exists and verify it's the JavaScript package manager
-    local is_js_yarn=false
-    
-    if command -v yarn &> /dev/null; then
-        # Get yarn version and check if it matches JavaScript yarn format (x.x.x)
-        local yarn_version=$(yarn --version 2>/dev/null || echo "")
-        
-        # JavaScript yarn returns version like "1.22.19" or "3.6.0"
-        # Hadoop YARN returns version like "0.32+git" or similar
-        if [[ "$yarn_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            is_js_yarn=true
-            log "   Detected JavaScript yarn (version: $yarn_version)"
-        else
-            log_warning "Detected non-JavaScript yarn (version: $yarn_version)"
-            log_warning "This appears to be Hadoop YARN, not the JavaScript package manager"
-        fi
-    fi
-    
-    # Determine package manager based on lock files and yarn availability
-    if [ -f "$PROJECT_DIR/yarn.lock" ]; then
-        if [ "$is_js_yarn" = true ]; then
-            echo "yarn"
-            return 0
-        else
-            log_warning "yarn.lock found but JavaScript yarn not available"
-            log_warning "Attempting to install JavaScript yarn..."
-            
-            # Try to install yarn globally
-            if npm install -g yarn &> /dev/null; then
-                # Verify the installation worked
-                local new_yarn_version=$(yarn --version 2>/dev/null || echo "")
-                if [[ "$new_yarn_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                    log_success "JavaScript yarn installed successfully (version: $new_yarn_version)"
-                    echo "yarn"
-                    return 0
-                fi
-            fi
-            
-            log_warning "Failed to install JavaScript yarn. Falling back to npm"
-            echo "npm"
-            return 0
-        fi
-    elif [ -f "$PROJECT_DIR/package-lock.json" ]; then
-        echo "npm"
-        return 0
-    else
-        # No lock file found - default to npm for safety
-        log_warning "No package lock file found, defaulting to npm"
-        echo "npm"
-        return 0
-    fi
-}
 
 # =============================================================================
 # PROCESS MANAGEMENT
@@ -192,9 +135,7 @@ check_dependencies_changed() {
         package_json_hash=$(md5sum "$PROJECT_DIR/package.json" | cut -d' ' -f1)
     fi
     
-    if [ -f "$PROJECT_DIR/yarn.lock" ]; then
-        lock_file_hash=$(md5sum "$PROJECT_DIR/yarn.lock" | cut -d' ' -f1)
-    elif [ -f "$PROJECT_DIR/package-lock.json" ]; then
+    if [ -f "$PROJECT_DIR/package-lock.json" ]; then
         lock_file_hash=$(md5sum "$PROJECT_DIR/package-lock.json" | cut -d' ' -f1)
     fi
     
@@ -214,9 +155,7 @@ dependencies_need_update() {
         new_package_hash=$(md5sum "$PROJECT_DIR/package.json" | cut -d' ' -f1)
     fi
     
-    if [ -f "$PROJECT_DIR/yarn.lock" ]; then
-        new_lock_hash=$(md5sum "$PROJECT_DIR/yarn.lock" | cut -d' ' -f1)
-    elif [ -f "$PROJECT_DIR/package-lock.json" ]; then
+    if [ -f "$PROJECT_DIR/package-lock.json" ]; then
         new_lock_hash=$(md5sum "$PROJECT_DIR/package-lock.json" | cut -d' ' -f1)
     fi
     
@@ -228,20 +167,14 @@ dependencies_need_update() {
 }
 
 install_dependencies() {
-    local pkg_manager=$1
+    log "📦 Installing dependencies with npm..."
     
-    log "📦 Installing dependencies with $pkg_manager..."
-    
-    if [ "$pkg_manager" = "yarn" ]; then
-        yarn install --frozen-lockfile
+    # Use npm ci if package-lock.json exists, otherwise npm install
+    if [ -f "$PROJECT_DIR/package-lock.json" ]; then
+        npm ci
     else
-        # Use npm ci if package-lock.json exists, otherwise npm install
-        if [ -f "$PROJECT_DIR/package-lock.json" ]; then
-            npm ci
-        else
-            log_warning "package-lock.json not found, using npm install"
-            npm install
-        fi
+        log_warning "package-lock.json not found, using npm install"
+        npm install
     fi
     
     log_success "Dependencies installed successfully"
@@ -262,9 +195,7 @@ cd "$PROJECT_DIR" || {
     exit 1
 }
 
-# Detect package manager
-PKG_MANAGER=$(detect_package_manager)
-log "📦 Detected package manager: $PKG_MANAGER"
+log "📦 Using npm for package management"
 log ""
 
 # =============================================================================
@@ -434,7 +365,7 @@ log ""
 # =============================================================================
 if dependencies_need_update; then
     log "📦 Package files changed - updating dependencies..."
-    install_dependencies "$PKG_MANAGER"
+    install_dependencies
 else
     log_success "Package files unchanged - skipping dependency installation"
     log "   (This saves time and prevents breaking working dependencies)"
@@ -670,7 +601,7 @@ if start_server; then
     log "📋 What was updated:"
     log "   ✅ Application code from GitHub"
     if dependencies_need_update; then
-        log "   ✅ Dependencies updated with $PKG_MANAGER"
+        log "   ✅ Dependencies updated with npm"
     else
         log "   ✅ Dependencies unchanged (skipped for safety)"
     fi
