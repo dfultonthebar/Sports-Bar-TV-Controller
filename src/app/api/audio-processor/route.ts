@@ -1,6 +1,23 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { atlasModels } from '@/lib/atlas-models-config'
+
+// Helper function to get input/output counts from model config
+function getModelCounts(model: string) {
+  const modelConfig = atlasModels[model as keyof typeof atlasModels]
+  if (modelConfig) {
+    return {
+      inputs: modelConfig.inputs.length,
+      outputs: modelConfig.outputs.length
+    }
+  }
+  // Fallback for unknown models
+  return {
+    inputs: model.includes('AZM8') || model.includes('AZMP8') ? 10 : 6,
+    outputs: model.includes('AZM8') || model.includes('AZMP8') ? 8 : 4
+  }
+}
 
 export async function GET() {
   try {
@@ -8,12 +25,15 @@ export async function GET() {
       orderBy: { name: 'asc' }
     })
     
-    // Add calculated inputs and outputs for each processor
-    const processorsWithCounts = processors.map(processor => ({
-      ...processor,
-      inputs: processor.model.includes('AZM8') ? 8 : 4,
-      outputs: processor.zones
-    }))
+    // Add calculated inputs and outputs for each processor based on model config
+    const processorsWithCounts = processors.map(processor => {
+      const counts = getModelCounts(processor.model)
+      return {
+        ...processor,
+        inputs: counts.inputs,
+        outputs: counts.outputs
+      }
+    })
     
     return NextResponse.json({ processors: processorsWithCounts })
   } catch (error) {
@@ -37,11 +57,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate inputs and outputs based on model
-    const calculatedZones = zones || (model.includes('AZM8') ? 8 : 4)
-    const inputs = model.includes('AZM8') ? 8 : 4
-    const outputs = calculatedZones
-
+    // Get model configuration for accurate counts
+    const modelConfig = atlasModels[model as keyof typeof atlasModels]
+    const calculatedZones = zones || modelConfig?.zones || (model.includes('AZM8') || model.includes('AZMP8') ? 8 : 4)
+    
     const processor = await prisma.audioProcessor.create({
       data: {
         name,
@@ -54,11 +73,12 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Return processor with calculated values for the frontend
+    // Return processor with calculated values from model config
+    const counts = getModelCounts(processor.model)
     const processorWithCounts = {
       ...processor,
-      inputs,
-      outputs
+      inputs: counts.inputs,
+      outputs: counts.outputs
     }
 
     return NextResponse.json({ processor: processorWithCounts })

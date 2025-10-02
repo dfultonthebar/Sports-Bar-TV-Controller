@@ -236,18 +236,34 @@ export const ATLAS_MODELS: Record<string, AtlasModelSpec> = {
       {
         id: 'input_7',
         number: 7,
-        name: 'Input 7',
+        name: 'Input 7 (RCA 1)',
         type: 'unbalanced',
         connector: 'RCA',
-        description: 'Unbalanced stereo RCA input (L)'
+        description: 'Unbalanced RCA mono-summed input 1'
       },
       {
         id: 'input_8',
         number: 8,
-        name: 'Input 8',
+        name: 'Input 8 (RCA 2)',
         type: 'unbalanced',
         connector: 'RCA',
-        description: 'Unbalanced stereo RCA input (R)'
+        description: 'Unbalanced RCA mono-summed input 2'
+      },
+      {
+        id: 'input_9',
+        number: 9,
+        name: 'Input 9 (RCA 3)',
+        type: 'unbalanced',
+        connector: 'RCA',
+        description: 'Unbalanced RCA mono-summed input 3'
+      },
+      {
+        id: 'input_10',
+        number: 10,
+        name: 'Input 10 (RCA 4)',
+        type: 'unbalanced',
+        connector: 'RCA',
+        description: 'Unbalanced RCA mono-summed input 4'
       },
       {
         id: 'matrix_audio_1',
@@ -350,7 +366,7 @@ export const ATLAS_MODELS: Record<string, AtlasModelSpec> = {
     ],
     features: [
       '8 audio zones',
-      '8 physical inputs (6 balanced + 2 RCA)',
+      '10 physical inputs (6 balanced + 4 RCA mono-summed)',
       '4 matrix audio buses',
       'Web-based control interface',
       'RS-232 and TCP/IP control',
@@ -594,18 +610,34 @@ export const ATLAS_MODELS: Record<string, AtlasModelSpec> = {
       {
         id: 'input_7',
         number: 7,
-        name: 'Input 7',
+        name: 'Input 7 (RCA 1)',
         type: 'unbalanced',
         connector: 'RCA',
-        description: 'Unbalanced stereo RCA input (L)'
+        description: 'Unbalanced RCA mono-summed input 1'
       },
       {
         id: 'input_8',
         number: 8,
-        name: 'Input 8',
+        name: 'Input 8 (RCA 2)',
         type: 'unbalanced',
         connector: 'RCA',
-        description: 'Unbalanced stereo RCA input (R)'
+        description: 'Unbalanced RCA mono-summed input 2'
+      },
+      {
+        id: 'input_9',
+        number: 9,
+        name: 'Input 9 (RCA 3)',
+        type: 'unbalanced',
+        connector: 'RCA',
+        description: 'Unbalanced RCA mono-summed input 3'
+      },
+      {
+        id: 'input_10',
+        number: 10,
+        name: 'Input 10 (RCA 4)',
+        type: 'unbalanced',
+        connector: 'RCA',
+        description: 'Unbalanced RCA mono-summed input 4'
       },
       {
         id: 'matrix_audio_1',
@@ -780,7 +812,7 @@ export const ATLAS_MODELS: Record<string, AtlasModelSpec> = {
     ],
     features: [
       '8 audio zones',
-      '8 physical inputs (6 balanced + 2 RCA)',
+      '10 physical inputs (6 balanced + 4 RCA mono-summed)',
       '4 matrix audio buses',
       '1200W total amplification (150W per zone)',
       'Dual outputs per zone (amplified + line-level)',
