@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -14,7 +15,8 @@ import {
   Save,
   Loader2,
   Key,
-  Trash2
+  Trash2,
+  RotateCcw
 } from 'lucide-react'
 
 interface SoundtrackPlayer {
@@ -48,6 +50,8 @@ export default function SoundtrackConfiguration() {
   const [diagnosing, setDiagnosing] = useState(false)
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [confirmClearCache, setConfirmClearCache] = useState(false)
 
   useEffect(() => {
     loadConfiguration()
@@ -152,6 +156,42 @@ export default function SoundtrackConfiguration() {
     }
   }
 
+  const clearTokenCache = async () => {
+    if (!confirmClearCache) {
+      setConfirmClearCache(true)
+      return
+    }
+
+    try {
+      setClearingCache(true)
+      setError(null)
+      setSuccess(null)
+
+      const response = await fetch('/api/soundtrack/cache', {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to clear token cache')
+      }
+
+      const data = await response.json()
+      setSuccess(data.message || 'Token cache cleared successfully!')
+      setConfirmClearCache(false)
+      
+      // Reload configuration to show updated status
+      setTimeout(() => {
+        loadConfiguration()
+        setSuccess(null)
+      }, 2000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setClearingCache(false)
+    }
+  }
+
   const togglePlayerVisibility = async (player: SoundtrackPlayer) => {
     try {
       const response = await fetch('/api/soundtrack/config', {
@@ -248,301 +288,331 @@ export default function SoundtrackConfiguration() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center">
-              <Music2 className="w-8 h-8 mr-3 text-purple-400" />
+              <Music2 className="w-6 h-6 mr-3 text-purple-400" />
               Soundtrack Your Brand Configuration
             </h2>
             <p className="text-slate-300 mt-2">
-              Configure music streaming and select which players bartenders can control
+              Configure your Soundtrack API integration and manage sound zones
             </p>
           </div>
-          <Button onClick={loadConfiguration} variant="outline" size="sm">
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* Status Messages */}
-      {error && (
-        <div className="bg-red-900/30 border border-red-800 rounded-lg p-4 flex items-center">
-          <AlertCircle className="w-5 h-5 text-red-400 mr-3 flex-shrink-0" />
-          <span className="text-red-300">{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-900/30 border border-green-800 rounded-lg p-4 flex items-center">
-          <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
-          <span className="text-green-300">{success}</span>
-        </div>
-      )}
-
-      {/* Diagnostic Results */}
-      {diagnosticResult && !diagnosticResult.success && (
-        <div className="bg-orange-900/30 border border-orange-800 rounded-lg p-6">
-          <h4 className="text-lg font-semibold text-orange-300 mb-3 flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2" />
-            Connection Diagnostic Results
-          </h4>
-          <div className="space-y-3">
-            <p className="text-orange-200">{diagnosticResult.message}</p>
-            {diagnosticResult.recommendations && diagnosticResult.recommendations.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-orange-300 mb-2">Recommendations:</p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-orange-200">
-                  {diagnosticResult.recommendations.map((rec: string, idx: number) => (
-                    <li key={idx}>{rec}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* API Token Configuration */}
-      <div className="bg-slate-800 rounded-lg p-6">
-        <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-          <Key className="w-5 h-5 mr-2 text-blue-400" />
-          API Token
-        </h3>
-        
-        {config ? (
-          <div className="space-y-4">
-            <div className="bg-green-900/30 border border-green-800 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="text-green-300 font-medium">API Token Configured</div>
-                  <div className="text-sm text-green-400 mt-1">
-                    Account: {config.accountName || 'Connected'}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Last tested: {config.lastTested ? new Date(config.lastTested).toLocaleString() : 'Never'}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="secondary" className="bg-green-800/50 text-green-200">
-                    {config.status}
-                  </Badge>
-                  <Button
-                    onClick={deleteConfiguration}
-                    disabled={deleting}
-                    variant={confirmDelete ? "destructive" : "outline"}
-                    size="sm"
-                    className={confirmDelete ? 'bg-red-600 hover:bg-red-700' : ''}
-                  >
-                    {deleting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Deleting...
-                      </>
-                    ) : confirmDelete ? (
-                      <>
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        Click to Confirm
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </>
-                    )}
-                  </Button>
-                  {confirmDelete && (
-                    <Button
-                      onClick={() => setConfirmDelete(false)}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="text-sm text-slate-400">
-              <p>To update the API token, enter a new one below:</p>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-yellow-900/30 border border-yellow-800 rounded-lg p-4 mb-4">
-            <div className="flex items-center">
-              <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 flex-shrink-0" />
-              <div className="text-yellow-300">
-                <div className="font-medium">No API token configured</div>
-                <div className="text-sm opacity-90 mt-1">
-                  Get your API token from{' '}
-                  <a 
-                    href="https://api.soundtrackyourbrand.com/v2/docs" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="underline hover:text-yellow-200"
-                  >
-                    Soundtrack Your Brand API Docs
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          <div className="relative">
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your Soundtrack API token"
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 pr-24"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && apiKey.trim()) {
-                  saveApiKey()
-                }
-              }}
-            />
-            <button
-              onClick={() => setShowApiKey(!showApiKey)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-white transition-colors"
-            >
-              {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-
-          <Button
-            onClick={saveApiKey}
-            disabled={saving || !apiKey.trim()}
-            className="w-full bg-purple-600 hover:bg-purple-700"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving & Testing...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save API Token
-              </>
-            )}
-          </Button>
-
-          <div className="text-xs text-slate-500 space-y-1">
-            <p>• API token format: Base64-encoded credentials from Soundtrack dashboard</p>
-            <p>• Request API access at: <a href="https://api.soundtrackyourbrand.com/v2/docs" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Soundtrack API Docs</a></p>
-            <p>• The token will be encrypted and stored securely</p>
-            <p>• Token format example: {apiKey.slice(0, 20) || 'eG5uYUR1U2hhQ0hGW...'}</p>
-          </div>
-
           {config && (
-            <div className="mt-4 pt-4 border-t border-slate-700">
-              <Button
-                onClick={runDiagnostics}
-                disabled={diagnosing}
-                variant="outline"
-                className="w-full"
-              >
-                {diagnosing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Running Diagnostics...
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    Test API Connection
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-slate-500 mt-2 text-center">
-                Troubleshoot connection issues with the Soundtrack API
-              </p>
-            </div>
+            <Badge variant={config.status === 'active' ? 'default' : 'secondary'}>
+              {config.status === 'active' ? 'Active' : config.status}
+            </Badge>
           )}
         </div>
       </div>
 
-      {/* Sound Zone Selection */}
+      {/* Error/Success Messages */}
+      {error && (
+        <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 flex items-start">
+          <AlertCircle className="w-5 h-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-red-200 font-medium">Error</p>
+            <p className="text-red-300 text-sm mt-1">{error}</p>
+          </div>
+          <button 
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-300 ml-4"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="bg-green-900/20 border border-green-800 rounded-lg p-4 flex items-start">
+          <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-green-200 font-medium">Success</p>
+            <p className="text-green-300 text-sm mt-1">{success}</p>
+          </div>
+          <button 
+            onClick={() => setSuccess(null)}
+            className="text-green-400 hover:text-green-300 ml-4"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* API Token Configuration */}
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+        <div className="flex items-center mb-4">
+          <Key className="w-5 h-5 text-blue-400 mr-2" />
+          <h3 className="text-lg font-semibold text-white">API Token</h3>
+        </div>
+
+        {config ? (
+          <div className="space-y-4">
+            <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-400">Current Token</span>
+                <Badge variant="outline" className="text-green-400 border-green-400">
+                  Configured
+                </Badge>
+              </div>
+              <div className="flex items-center space-x-2">
+                <code className="text-slate-300 font-mono text-sm">
+                  {config.apiKey}
+                </code>
+              </div>
+              {config.accountName && (
+                <div className="mt-3 pt-3 border-t border-slate-700">
+                  <span className="text-sm text-slate-400">Account: </span>
+                  <span className="text-white font-medium">{config.accountName}</span>
+                </div>
+              )}
+              {config.lastTested && (
+                <div className="mt-2">
+                  <span className="text-sm text-slate-400">Last Tested: </span>
+                  <span className="text-slate-300 text-sm">
+                    {new Date(config.lastTested).toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={runDiagnostics}
+                disabled={diagnosing}
+                variant="outline"
+                className="flex items-center"
+              >
+                {diagnosing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Test Connection
+                  </>
+                )}
+              </Button>
+
+              <Button
+                onClick={clearTokenCache}
+                disabled={clearingCache}
+                variant="outline"
+                className="flex items-center border-yellow-600 text-yellow-400 hover:bg-yellow-900/20"
+              >
+                {clearingCache ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    {confirmClearCache ? 'Confirm Clear Cache?' : 'Clear Token Cache'}
+                  </>
+                )}
+              </Button>
+
+              {confirmClearCache && (
+                <Button
+                  onClick={() => setConfirmClearCache(false)}
+                  variant="ghost"
+                  className="text-slate-400"
+                >
+                  Cancel
+                </Button>
+              )}
+
+              <Button
+                onClick={deleteConfiguration}
+                disabled={deleting}
+                variant="outline"
+                className="flex items-center border-red-600 text-red-400 hover:bg-red-900/20"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {confirmDelete ? 'Confirm Delete?' : 'Delete Configuration'}
+                  </>
+                )}
+              </Button>
+
+              {confirmDelete && (
+                <Button
+                  onClick={() => setConfirmDelete(false)}
+                  variant="ghost"
+                  className="text-slate-400"
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+
+            {/* Cache Clear Info */}
+            {confirmClearCache && (
+              <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4 mt-4">
+                <div className="flex items-start">
+                  <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-yellow-200 font-medium">Clear Token Cache</p>
+                    <p className="text-yellow-300 text-sm mt-1">
+                      This will clear the cached authentication token and force fresh authentication on the next API request. 
+                      Your API token will remain saved in the database, but the system will re-authenticate using it.
+                    </p>
+                    <p className="text-yellow-300 text-sm mt-2">
+                      Use this if you're experiencing authentication issues or want to ensure you're using the latest token state.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Enter your Soundtrack Your Brand API Token
+              </label>
+              <div className="flex space-x-2">
+                <div className="flex-1 relative">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Enter API token..."
+                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        saveApiKey()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                  >
+                    {showApiKey ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <Button
+                  onClick={saveApiKey}
+                  disabled={saving || !apiKey.trim()}
+                  className="flex items-center"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Token
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+              <p className="text-blue-200 text-sm">
+                <strong>How to get your API token:</strong>
+              </p>
+              <ol className="text-blue-300 text-sm mt-2 space-y-1 list-decimal list-inside">
+                <li>Log in to your Soundtrack Your Brand account</li>
+                <li>Go to Settings → Integrations</li>
+                <li>Create a new API token or copy an existing one</li>
+                <li>Paste the token above and click Save</li>
+              </ol>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sound Zones / Players */}
       {config && players.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-6">
-          <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-            <Music2 className="w-5 h-5 mr-2 text-purple-400" />
-            Sound Zones
-          </h3>
-          
-          <div className="mb-4 text-sm text-slate-400">
-            <p>Select which sound zones bartenders can control from the remote interface.</p>
-            <p className="mt-1">Sound zones will appear in the order you specify.</p>
+        <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <Music2 className="w-5 h-5 text-purple-400 mr-2" />
+              <h3 className="text-lg font-semibold text-white">Sound Zones</h3>
+            </div>
+            <Badge variant="outline">
+              {players.length} {players.length === 1 ? 'zone' : 'zones'}
+            </Badge>
           </div>
 
           <div className="space-y-3">
-            {players.map((player, index) => (
+            {players.map((player) => (
               <div
                 key={player.id}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-4 hover:border-slate-600 transition-colors"
+                className="bg-slate-900 rounded-lg p-4 border border-slate-700 hover:border-slate-600 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 flex-1">
+                  <div className="flex-1">
+                    <h4 className="text-white font-medium">{player.playerName}</h4>
+                    <p className="text-slate-400 text-sm mt-1">
+                      Player ID: {player.playerId}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-3">
                     <div className="flex items-center space-x-2">
+                      <label className="text-sm text-slate-400">Order:</label>
                       <input
                         type="number"
                         value={player.displayOrder}
                         onChange={(e) => updateDisplayOrder(player, parseInt(e.target.value) || 0)}
                         className="w-16 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-white text-sm"
-                        placeholder="#"
                       />
                     </div>
-                    
-                    <div className="flex-1">
-                      <div className="font-medium text-white">{player.playerName}</div>
-                      <div className="text-sm text-slate-500">ID: {player.playerId}</div>
-                    </div>
+                    <Button
+                      onClick={() => togglePlayerVisibility(player)}
+                      variant="outline"
+                      size="sm"
+                      className={player.bartenderVisible ? 'border-green-600 text-green-400' : ''}
+                    >
+                      {player.bartenderVisible ? (
+                        <>
+                          <Eye className="w-4 h-4 mr-2" />
+                          Visible
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="w-4 h-4 mr-2" />
+                          Hidden
+                        </>
+                      )}
+                    </Button>
                   </div>
-
-                  <Button
-                    onClick={() => togglePlayerVisibility(player)}
-                    variant={player.bartenderVisible ? "default" : "outline"}
-                    size="sm"
-                    className={player.bartenderVisible ? 'bg-green-600 hover:bg-green-700' : ''}
-                  >
-                    {player.bartenderVisible ? (
-                      <>
-                        <Eye className="w-4 h-4 mr-2" />
-                        Visible
-                      </>
-                    ) : (
-                      <>
-                        <EyeOff className="w-4 h-4 mr-2" />
-                        Hidden
-                      </>
-                    )}
-                  </Button>
                 </div>
               </div>
             ))}
           </div>
 
-          {players.filter(p => p.bartenderVisible).length === 0 && (
-            <div className="mt-4 bg-yellow-900/30 border border-yellow-800 rounded-lg p-4">
-              <div className="flex items-center text-yellow-300">
-                <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
-                <span className="text-sm">
-                  No sound zones are visible to bartenders. Click "Visible" to enable at least one zone.
-                </span>
-              </div>
-            </div>
-          )}
+          <div className="mt-4 bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+            <p className="text-blue-200 text-sm">
+              <strong>Bartender Visibility:</strong> Toggle which sound zones appear in the bartender remote control interface.
+            </p>
+          </div>
         </div>
       )}
 
-      {config && players.length === 0 && (
-        <div className="bg-slate-800 rounded-lg p-6 text-center">
-          <Music2 className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-          <p className="text-slate-400">No sound zones found in your Soundtrack account</p>
-          <Button onClick={loadConfiguration} variant="outline" size="sm" className="mt-4">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh Sound Zones
-          </Button>
+      {/* Diagnostic Results */}
+      {diagnosticResult && (
+        <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+          <h3 className="text-lg font-semibold text-white mb-4">Diagnostic Results</h3>
+          <pre className="bg-slate-900 rounded-lg p-4 text-sm text-slate-300 overflow-x-auto">
+            {JSON.stringify(diagnosticResult, null, 2)}
+          </pre>
         </div>
       )}
     </div>
