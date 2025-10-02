@@ -388,3 +388,22 @@ model SelectedLeague {
   
   @@unique([leagueId])
 }
+
+model IndexedFile {
+  id           String   @id @default(cuid())
+  filePath     String   @unique
+  fileName     String
+  fileType     String
+  content      String
+  fileSize     Int
+  lastModified DateTime
+  lastIndexed  DateTime @default(now())
+  hash         String
+  isActive     Boolean  @default(true)
+  metadata     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([fileType])
+  @@index([lastIndexed])
+}

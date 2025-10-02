@@ -1,13 +1,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { searchKnowledgeBase, buildContextFromDocs } from '@/lib/ai-knowledge';
+import { buildEnhancedContext } from '@/lib/ai-knowledge-enhanced';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { message, model = 'llama3.2:3b', useKnowledge = true } = body;
+    const { 
+      message, 
+      model = 'llama3.2:3b', 
+      useKnowledge = true,
+      useCodebase = true 
+    } = body;
     
     if (!message) {
       return NextResponse.json(
@@ -17,21 +22,19 @@ export async function POST(request: NextRequest) {
     }
     
     let fullPrompt = message;
-    let sources: any[] = [];
+    let usedContext = false;
     
-    // Add knowledge base context if enabled
-    if (useKnowledge) {
-      const relevantDocs = searchKnowledgeBase(message, 5);
+    // Add enhanced context (documentation + codebase) if enabled
+    if (useKnowledge || useCodebase) {
+      const context = await buildEnhancedContext(
+        message,
+        useCodebase,
+        useKnowledge
+      );
       
-      if (relevantDocs.length > 0) {
-        const context = buildContextFromDocs(relevantDocs);
+      if (context) {
         fullPrompt = context + '\nUser Question: ' + message;
-        
-        sources = relevantDocs.map(doc => ({
-          source: doc.source,
-          title: doc.title,
-          section: doc.section
-        }));
+        usedContext = true;
       }
     }
     
@@ -57,8 +60,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       response: data.response,
       model: data.model,
-      sources,
-      usedKnowledge: sources.length > 0
+      usedContext,
+      usedCodebase: useCodebase,
+      usedKnowledge: useKnowledge
     });
     
   } catch (error) {
