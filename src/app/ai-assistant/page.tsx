@@ -809,7 +809,7 @@ export default function AIAssistant() {
                             <summary className="text-gray-400 cursor-pointer hover:text-gray-300">
                               Details
                             </summary>
-                            <pre className="mt-2 p-2 bg-slate-950 rounded text-gray-300 overflow-x-auto">
+                            <pre className="mt-2 p-2 bg-slate-800 or bg-slate-900 rounded text-gray-300 overflow-x-auto">
                               {JSON.stringify(log.details, null, 2)}
                             </pre>
                           </details>
@@ -820,7 +820,7 @@ export default function AIAssistant() {
                             <summary className="text-red-400 cursor-pointer hover:text-red-300">
                               Stack Trace
                             </summary>
-                            <pre className="mt-2 p-2 bg-slate-950 rounded text-red-300 overflow-x-auto text-xs">
+                            <pre className="mt-2 p-2 bg-slate-800 or bg-slate-900 rounded text-red-300 overflow-x-auto text-xs">
                               {log.errorStack}
                             </pre>
                           </details>

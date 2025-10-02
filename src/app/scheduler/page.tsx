@@ -573,7 +573,7 @@ export default function SchedulerPage() {
 
                 {/* Output Schedule Info */}
                 {outputScheduleInfo && (
-                  <div className="mb-4 p-4 bg-slate-950 rounded-lg border border-slate-700">
+                  <div className="mb-4 p-4 bg-slate-800 or bg-slate-900 rounded-lg border border-slate-700">
                     <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-amber-400" />
                       Wolfpack Output Schedule Configuration

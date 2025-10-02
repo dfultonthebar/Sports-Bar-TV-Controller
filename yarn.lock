@@ -164,6 +164,11 @@
 "@next/swc-linux-x64-gnu@14.2.33":
   version "14.2.33"
 
+"@next/swc-linux-x64-musl@14.2.33":
+  version "14.2.33"
+  resolved "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-14.2.33.tgz"
+  integrity sha512-345tsIWMzoXaQndUTDv1qypDRiebFxGYx9pYkhwY4hBRaOLt8UGfiWKr9FSSHs25dFIf8ZqIFaPdy5MljdoawA==
+
 "@noble/hashes@^1.1.5":
   version "1.8.0"
 
