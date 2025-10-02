@@ -407,3 +407,73 @@ model IndexedFile {
   @@index([fileType])
   @@index([lastIndexed])
 }
+
+model NFHSSchool {
+  id          String     @id @default(cuid())
+  nfhsId      String     @unique  // NFHS Network school ID
+  name        String
+  city        String
+  state       String
+  district    String?
+  conferences String?    // JSON array of conference names
+  sports      String?    // JSON array of sports offered
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  homeGames   NFHSGame[] @relation("HomeSchool")
+  awayGames   NFHSGame[] @relation("AwaySchool")
+  
+  @@index([state, city])
+}
+
+model NFHSGame {
+  id              String     @id @default(cuid())
+  nfhsEventId     String?    @unique  // NFHS Network event ID
+  
+  // Teams
+  homeSchoolId    String
+  awaySchoolId    String
+  homeTeamName    String
+  awayTeamName    String
+  
+  // Game details
+  sport           String
+  league          String?
+  division        String?
+  level           String?    // Varsity, JV, Freshman, etc.
+  gender          String?    // Boys, Girls, Coed
+  
+  // Schedule
+  gameDate        DateTime
+  gameTime        String
+  venue           String
+  
+  // Status
+  status          String     @default("scheduled") // scheduled, live, completed, cancelled
+  homeScore       Int?
+  awayScore       Int?
+  
+  // Streaming
+  isNFHSNetwork   Boolean    @default(false)
+  streamUrl       String?
+  streamStatus    String?    // available, unavailable, upcoming
+  
+  // Additional info
+  ticketInfo      String?
+  notes           String?
+  
+  // Metadata
+  lastSynced      DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  homeSchool      NFHSSchool @relation("HomeSchool", fields: [homeSchoolId], references: [id], onDelete: Cascade)
+  awaySchool      NFHSSchool @relation("AwaySchool", fields: [awaySchoolId], references: [id], onDelete: Cascade)
+  
+  @@index([gameDate, sport])
+  @@index([homeSchoolId])
+  @@index([awaySchoolId])
+  @@index([status])
+}
+

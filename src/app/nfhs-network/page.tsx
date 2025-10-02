@@ -18,7 +18,9 @@ import {
   Trophy,
   Calendar,
   Zap,
-  Radio
+  Radio,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -39,6 +41,8 @@ interface NFHSGame {
   sport: string
   league: string
   division?: string
+  level?: string
+  gender?: string
   date: string
   time: string
   venue: string
@@ -48,22 +52,33 @@ interface NFHSGame {
   ticketInfo?: string
   homeScore?: number
   awayScore?: number
+  lastSynced?: string
 }
 
 interface NFHSSchool {
   id: string
+  nfhsId: string
   name: string
   city: string
   state: string
   district?: string
   conferences: string[]
   sports: string[]
+  upcomingGames: number
+}
+
+interface SyncStatus {
+  syncing: boolean
+  lastSync?: Date
+  message?: string
+  error?: string
 }
 
 export default function NFHSNetworkPage() {
   const [games, setGames] = useState<NFHSGame[]>([])
   const [schools, setSchools] = useState<NFHSSchool[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ syncing: false })
   const [selectedSport, setSelectedSport] = useState<string>('all')
   const [selectedState, setSelectedState] = useState<string>('WI')
   const [searchTerm, setSearchTerm] = useState('')
@@ -86,12 +101,28 @@ export default function NFHSNetworkPage() {
   const loadNFHSGames = async () => {
     setIsLoading(true)
     try {
-      // In a real implementation, this would call the NFHS API
-      // Mock data removed - now using real API data
-      const games = generateMockNFHSGames()
-      setGames(games)
+      // Build query parameters
+      const params = new URLSearchParams()
+      if (selectedSport !== 'all') {
+        params.append('sport', selectedSport)
+      }
+      if (showStreamingOnly) {
+        params.append('streamingOnly', 'true')
+      }
+      
+      // Fetch from API
+      const response = await fetch(`/api/nfhs/games?${params.toString()}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setGames(data.games)
+      } else {
+        console.error('Failed to load games:', data.error)
+        setGames([])
+      }
     } catch (error) {
       console.error('Error loading NFHS games:', error)
+      setGames([])
     } finally {
       setIsLoading(false)
     }
@@ -99,128 +130,59 @@ export default function NFHSNetworkPage() {
 
   const loadNearbySchools = async () => {
     try {
-      const mockSchools = [
-        {
-          id: 'madison-west',
-          name: 'Madison West High School',
-          city: 'Madison',
-          state: selectedState,
-          district: 'Madison Metropolitan School District',
-          conferences: ['Big Eight Conference'],
-          sports: ['Football', 'Basketball', 'Volleyball', 'Soccer', 'Swimming']
-        },
-        {
-          id: 'milwaukee-hamilton',
-          name: 'Milwaukee Hamilton High School', 
-          city: 'Milwaukee',
-          state: selectedState,
-          district: 'Milwaukee Public Schools',
-          conferences: ['Milwaukee City Conference'],
-          sports: ['Football', 'Basketball', 'Track and Field', 'Wrestling']
-        },
-        {
-          id: 'green-bay-east',
-          name: 'Green Bay East High School',
-          city: 'Green Bay',
-          state: selectedState,
-          district: 'Green Bay Area Public School District',
-          conferences: ['Fox River Classic Conference'],
-          sports: ['Football', 'Basketball', 'Hockey', 'Baseball', 'Softball']
-        }
-      ]
-      setSchools(mockSchools)
+      const params = new URLSearchParams()
+      if (selectedState) {
+        params.append('state', selectedState)
+      }
+      
+      const response = await fetch(`/api/nfhs/schools?${params.toString()}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setSchools(data.schools)
+      } else {
+        console.error('Failed to load schools:', data.error)
+        setSchools([])
+      }
     } catch (error) {
       console.error('Error loading schools:', error)
+      setSchools([])
     }
   }
 
-  const generateMockNFHSGames = (): NFHSGame[] => {
-    // Mock games removed
-    const mockGames: NFHSGame[] = []
+  const syncNFHSData = async () => {
+    setSyncStatus({ syncing: true, message: 'Syncing with NFHS Network...' })
     
-    const targetSports = selectedSport === 'all' ? sports.slice(0, 5) : [selectedSport]
-    
-    const wisConsimSchools = [
-      { name: 'Madison West High School', city: 'Madison', team: 'Regents' },
-      { name: 'Milwaukee Hamilton High School', city: 'Milwaukee', team: 'Chargers' },
-      { name: 'Green Bay East High School', city: 'Green Bay', team: 'Red Devils' },
-      { name: 'Appleton North High School', city: 'Appleton', team: 'Lightning' },
-      { name: 'Stevens Point High School', city: 'Stevens Point', team: 'Panthers' }
-    ]
-
-    // Generate games for the next 5 days
-    const today = new Date()
-    for (let day = 0; day < 5; day++) {
-      const gameDate = new Date(today)
-      gameDate.setDate(gameDate.getDate() + day)
+    try {
+      const response = await fetch('/api/nfhs/sync', {
+        method: 'POST'
+      })
       
-      targetSports.forEach(sport => {
-        const numGames = Math.floor(Math.random() * 2) + 1
+      const data = await response.json()
+      
+      if (data.success) {
+        setSyncStatus({
+          syncing: false,
+          lastSync: new Date(),
+          message: data.message
+        })
         
-        for (let i = 0; i < numGames; i++) {
-          const homeSchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          let awaySchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          while (awaySchool.name === homeSchool.name) {
-            awaySchool = wisConsimSchools[Math.floor(Math.random() * wisConsimSchools.length)]
-          }
-          
-          const isNFHSStream = Math.random() > 0.3 // 70% chance of being streamed
-          const gameHour = Math.floor(Math.random() * 5) + 15 // 3 PM to 7 PM
-          const gameTime = `${gameHour > 12 ? gameHour - 12 : gameHour}:00 PM CST`
-          
-          mockGames.push({
-            id: `nfhs-${sport.toLowerCase()}-${day}-${i}`,
-            homeTeam: {
-              name: homeSchool.team,
-              school: homeSchool.name,
-              city: homeSchool.city,
-              state: selectedState
-            },
-            awayTeam: {
-              name: awaySchool.team,
-              school: awaySchool.name,
-              city: awaySchool.city,
-              state: selectedState
-            },
-            sport,
-            league: `${selectedState} High School ${sport}`,
-            division: 'Conference Regular Season',
-            date: gameDate.toISOString().split('T')[0],
-            time: gameTime,
-            venue: `${homeSchool.name} ${getVenueType(sport)}`,
-            status: Math.random() > 0.8 ? 'live' : 'scheduled',
-            streamUrl: isNFHSStream ? `https://www.nfhsnetwork.com/events/${sport.toLowerCase()}-${Math.floor(Math.random() * 10000)}` : undefined,
-            isNFHSNetwork: isNFHSStream,
-            ticketInfo: Math.random() > 0.6 ? 'Tickets available at the door - $5' : undefined
-          })
-        }
+        // Reload games and schools after sync
+        await loadNFHSGames()
+        await loadNearbySchools()
+      } else {
+        setSyncStatus({
+          syncing: false,
+          error: data.error || 'Failed to sync data'
+        })
+      }
+    } catch (error) {
+      console.error('Sync error:', error)
+      setSyncStatus({
+        syncing: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       })
     }
-
-    return mockGames.sort((a, b) => {
-      const dateA = new Date(`${a.date} ${a.time}`)
-      const dateB = new Date(`${b.date} ${b.time}`)
-      return dateA.getTime() - dateB.getTime()
-    })
-  }
-
-  const getVenueType = (sport: string): string => {
-    const venues = {
-      'Football': 'Stadium',
-      'Basketball': 'Gymnasium',
-      'Volleyball': 'Gymnasium',
-      'Soccer': 'Soccer Field',
-      'Baseball': 'Baseball Diamond',
-      'Softball': 'Softball Field',
-      'Swimming': 'Aquatic Center',
-      'Tennis': 'Tennis Courts',
-      'Track and Field': 'Track Complex',
-      'Wrestling': 'Gymnasium',
-      'Hockey': 'Ice Arena',
-      'Golf': 'Golf Course',
-      'Cross Country': 'Cross Country Course'
-    }
-    return venues[sport] || 'Athletic Facility'
   }
 
   const filteredGames = games.filter(game => {
@@ -294,6 +256,41 @@ export default function NFHSNetworkPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Sync Status Banner */}
+        {(syncStatus.message || syncStatus.error) && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            syncStatus.error 
+              ? 'bg-red-50 border-red-200' 
+              : 'bg-green-50 border-green-200'
+          }`}>
+            <div className="flex items-center space-x-3">
+              {syncStatus.error ? (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              ) : (
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              )}
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${
+                  syncStatus.error ? 'text-red-800' : 'text-green-800'
+                }`}>
+                  {syncStatus.error || syncStatus.message}
+                </p>
+                {syncStatus.lastSync && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Last synced: {syncStatus.lastSync.toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSyncStatus({ syncing: false })}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-sportsBar-800/80 backdrop-blur-sm rounded-xl p-6 border border-sportsBar-700/50">
@@ -357,7 +354,7 @@ export default function NFHSNetworkPage() {
                   placeholder="Search schools, sports..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-sportsBar-600 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-sportsBar-600 rounded-lg focus:ring-2 focus:ring-red-400 focus:border-transparent bg-sportsBar-900 text-slate-100"
                 />
               </div>
             </div>
@@ -367,7 +364,7 @@ export default function NFHSNetworkPage() {
               <select
                 value={selectedSport}
                 onChange={(e) => setSelectedSport(e.target.value)}
-                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent w-full"
               >
                 <option value="all">All Sports</option>
                 {sports.map(sport => (
@@ -381,7 +378,7 @@ export default function NFHSNetworkPage() {
               <select
                 value={selectedState}
                 onChange={(e) => setSelectedState(e.target.value)}
-                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                className="form-select-dark focus:ring-2 focus:ring-red-400 focus:border-transparent w-full"
               >
                 {states.map(state => (
                   <option key={state} value={state}>{state}</option>
@@ -412,14 +409,25 @@ export default function NFHSNetworkPage() {
             </div>
           </div>
           
-          <button
-            onClick={loadNFHSGames}
-            disabled={isLoading}
-            className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh Games</span>
-          </button>
+          <div className="flex space-x-3">
+            <button
+              onClick={loadNFHSGames}
+              disabled={isLoading}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh Games</span>
+            </button>
+            
+            <button
+              onClick={syncNFHSData}
+              disabled={syncStatus.syncing}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              <Zap className={`w-4 h-4 ${syncStatus.syncing ? 'animate-pulse' : ''}`} />
+              <span>{syncStatus.syncing ? 'Syncing...' : 'Sync NFHS Data'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Games List */}
@@ -442,7 +450,13 @@ export default function NFHSNetworkPage() {
             ) : filteredGames.length === 0 ? (
               <div className="text-center py-8">
                 <Play className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500">No games found matching your criteria</p>
+                <p className="text-slate-500 mb-4">No games found matching your criteria</p>
+                <button
+                  onClick={syncNFHSData}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Sync NFHS Data
+                </button>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -451,7 +465,7 @@ export default function NFHSNetworkPage() {
                     key={game.id}
                     className={`border rounded-lg p-4 transition-all hover:shadow-md ${
                       game.status === 'live' 
-                        ? 'border-red-300 bg-red-50' 
+                        ? 'border-red-300 bg-red-50/10' 
                         : 'border-sportsBar-700 hover:border-sportsBar-600'
                     }`}
                   >
@@ -466,7 +480,11 @@ export default function NFHSNetworkPage() {
                         </div>
                         <div>
                           <h4 className="font-medium text-slate-100">{game.sport}</h4>
-                          <p className="text-sm text-slate-500">{game.league}</p>
+                          <p className="text-sm text-slate-500">
+                            {game.league}
+                            {game.level && ` • ${game.level}`}
+                            {game.gender && ` • ${game.gender}`}
+                          </p>
                         </div>
                       </div>
                       
@@ -492,7 +510,7 @@ export default function NFHSNetworkPage() {
                       {game.awayTeam.school} @ {game.homeTeam.school}
                     </div>
                     
-                    <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between bg-sportsBar-900/50 rounded-lg p-3">
                       <div className="flex items-center space-x-4 text-sm text-slate-400">
                         <div className="flex items-center space-x-1">
                           <Calendar className="w-4 h-4" />
