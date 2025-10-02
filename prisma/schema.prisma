@@ -477,3 +477,22 @@ model NFHSGame {
   @@index([status])
 }
 
+model TestLog {
+  id            String   @id @default(cuid())
+  testType      String   // wolfpack_connection, wolfpack_switching, etc.
+  testName      String   // Human-readable test name
+  status        String   // success, failed, error, running, partial
+  inputChannel  Int?     // Input channel number (for switching tests)
+  outputChannel Int?     // Output channel number (for switching tests)
+  command       String?  // Command sent to device
+  response      String?  // Response from device
+  errorMessage  String?  // Error message if failed
+  duration      Int?     // Test duration in milliseconds
+  timestamp     DateTime @default(now())
+  metadata      String?  // JSON string for additional data
+  
+  @@index([testType])
+  @@index([status])
+  @@index([timestamp])
+}
+
