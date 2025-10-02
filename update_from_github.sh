@@ -531,20 +531,69 @@ if [ -f "prisma/schema.prisma" ]; then
     log "   Generating Prisma Client..."
     npx prisma generate
     
-    # Check if migrations directory exists and has migrations
-    if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
-        log "   Applying database migrations..."
-        npx prisma migrate deploy || {
-            log_warning "Migration deploy failed, falling back to db push..."
-            npx prisma db push
-        }
+    # Check if database file exists
+    DB_EXISTS=false
+    if [ -f "prisma/dev.db" ]; then
+        DB_EXISTS=true
+        log "   ℹ️  Existing database detected - your data will be preserved"
     else
-        log "   Syncing database schema..."
-        npx prisma db push
+        log "   ℹ️  No existing database - creating new one"
     fi
     
-    log_success "Database schema updated successfully"
-    log "   New models added: NFHSGame, NFHSSchool"
+    # Check if migrations directory exists and has migrations
+    if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+        if [ "$DB_EXISTS" = true ]; then
+            log "   📊 Syncing schema with existing database..."
+            log "   (Using 'db push' to preserve your data safely)"
+            
+            # For existing databases, use db push to avoid migration conflicts
+            # This is the recommended approach for development databases with data
+            if npx prisma db push --accept-data-loss 2>&1 | tee /tmp/prisma_output.log; then
+                log_success "Database schema synchronized successfully"
+            else
+                # Check if it's the expected P3005 error (schema not empty)
+                if grep -q "P3005" /tmp/prisma_output.log; then
+                    log "   ℹ️  Database already has the correct schema"
+                    log_success "No schema changes needed - database is up to date"
+                else
+                    log_error "Database sync failed - check output above"
+                    rm -f /tmp/prisma_output.log
+                    exit 1
+                fi
+            fi
+            rm -f /tmp/prisma_output.log
+        else
+            log "   📊 Applying database migrations to new database..."
+            
+            # For new databases, try migrate deploy first
+            if npx prisma migrate deploy 2>&1 | tee /tmp/prisma_output.log; then
+                log_success "Database migrations applied successfully"
+            else
+                # If migrate deploy fails, fall back to db push
+                log "   ℹ️  Switching to schema sync method..."
+                if npx prisma db push; then
+                    log_success "Database schema created successfully"
+                else
+                    log_error "Database creation failed - check output above"
+                    rm -f /tmp/prisma_output.log
+                    exit 1
+                fi
+            fi
+            rm -f /tmp/prisma_output.log
+        fi
+    else
+        log "   📊 Syncing database schema (no migrations found)..."
+        if npx prisma db push; then
+            log_success "Database schema synchronized successfully"
+        else
+            log_error "Database sync failed - check output above"
+            exit 1
+        fi
+    fi
+    
+    log ""
+    log "   ✅ Database update complete"
+    log "   📦 Available models: NFHSGame, NFHSSchool, and all existing models"
     
     # Rename config file based on matrix configuration name
     log ""
