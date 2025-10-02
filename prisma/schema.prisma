@@ -378,3 +378,13 @@ model ScheduleLog {
   channelsSet Int      @default(0)
   errors      String?  // JSON array of any errors
 }
+
+model SelectedLeague {
+  id        String   @id @default(cuid())
+  leagueId  String   // League identifier (e.g., "nfl", "nba", "mlb")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([leagueId])
+}
