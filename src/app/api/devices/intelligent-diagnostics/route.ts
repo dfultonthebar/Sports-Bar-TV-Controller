@@ -1,5 +1,5 @@
+
 import { NextRequest, NextResponse } from 'next/server'
-import { connectToDatabase } from '@/lib/mongodb'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,40 +7,100 @@ export async function GET(request: NextRequest) {
     const deviceType = searchParams.get('deviceType')
     const deviceId = searchParams.get('deviceId')
 
-    const db = await connectToDatabase()
+    // Mock diagnostics data
+    const allDiagnostics = [
+      {
+        id: '1',
+        deviceId: '1',
+        deviceName: 'Main Bar DirecTV',
+        deviceType: 'directv',
+        issue: 'Channel Change Latency',
+        severity: 'medium',
+        status: 'active',
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        detectedAt: new Date(Date.now() - 3600000).toISOString(),
+        description: 'Channel switching takes 15% longer than optimal during peak hours',
+        suggestedFix: 'Optimize network buffer settings and enable fast channel switching',
+        autoFixAvailable: true
+      },
+      {
+        id: '2',
+        deviceId: '2',
+        deviceName: 'Corner Booth Fire TV',
+        deviceType: 'firetv',
+        issue: 'WiFi Disconnections',
+        severity: 'high',
+        status: 'active',
+        timestamp: new Date(Date.now() - 7200000).toISOString(),
+        detectedAt: new Date(Date.now() - 7200000).toISOString(),
+        description: 'Device loses WiFi connection 3-4 times per day',
+        suggestedFix: 'Switch to 5GHz network and check signal strength',
+        autoFixAvailable: false
+      },
+      {
+        id: '3',
+        deviceId: '2',
+        deviceName: 'Corner Booth Fire TV',
+        deviceType: 'firetv',
+        issue: 'App Launch Delays',
+        severity: 'medium',
+        status: 'active',
+        timestamp: new Date(Date.now() - 1800000).toISOString(),
+        detectedAt: new Date(Date.now() - 1800000).toISOString(),
+        description: 'Sports streaming apps take 20+ seconds to launch',
+        suggestedFix: 'Clear app cache and restart device',
+        autoFixAvailable: true
+      },
+      {
+        id: '4',
+        deviceId: '3',
+        deviceName: 'Samsung TV #1',
+        deviceType: 'ir',
+        issue: 'IR Blaster Positioning',
+        severity: 'low',
+        status: 'active',
+        timestamp: new Date(Date.now() - 14400000).toISOString(),
+        detectedAt: new Date(Date.now() - 14400000).toISOString(),
+        description: 'IR commands occasionally fail due to suboptimal positioning',
+        suggestedFix: 'Reposition IR blaster for direct line of sight',
+        autoFixAvailable: false
+      },
+      {
+        id: '5',
+        deviceId: '1',
+        deviceName: 'Main Bar DirecTV',
+        deviceType: 'directv',
+        issue: 'Favorites List Outdated',
+        severity: 'low',
+        status: 'resolved',
+        timestamp: new Date(Date.now() - 86400000).toISOString(),
+        detectedAt: new Date(Date.now() - 86400000).toISOString(),
+        description: 'Sports favorites list needs seasonal update',
+        suggestedFix: 'Update favorites with current season channels',
+        autoFixAvailable: false
+      }
+    ]
+
+    // Filter diagnostics based on query parameters
+    let filteredDiagnostics = allDiagnostics
     
-    // Build query based on filters
-    const query: any = {}
     if (deviceType && deviceType !== 'all') {
-      query.deviceType = deviceType
+      filteredDiagnostics = filteredDiagnostics.filter(d => d.deviceType === deviceType)
     }
+    
     if (deviceId) {
-      query.deviceId = deviceId
+      filteredDiagnostics = filteredDiagnostics.filter(d => d.deviceId === deviceId)
     }
 
-    // Get diagnostics from database
-    const diagnostics = await db.collection('diagnostics')
-      .find(query)
-      .sort({ timestamp: -1 })
-      .limit(100)
-      .toArray()
+    // Sort by timestamp (most recent first) and limit to 100
+    filteredDiagnostics = filteredDiagnostics
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 100)
 
     return NextResponse.json({
       success: true,
-      diagnostics: diagnostics.map(d => ({
-        id: d._id.toString(),
-        deviceId: d.deviceId,
-        deviceName: d.deviceName,
-        deviceType: d.deviceType,
-        issue: d.issue,
-        severity: d.severity,
-        status: d.status,
-        detectedAt: d.timestamp || d.detectedAt,
-        description: d.description,
-        suggestedFix: d.suggestedFix,
-        autoFixAvailable: d.autoFixAvailable || false
-      })),
-      total: diagnostics.length
+      diagnostics: filteredDiagnostics,
+      total: filteredDiagnostics.length
     })
 
   } catch (error) {

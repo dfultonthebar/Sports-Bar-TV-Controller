@@ -1,27 +1,36 @@
+
 import { NextRequest, NextResponse } from 'next/server'
-import { connectToDatabase } from '@/lib/mongodb'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const deviceFilter = searchParams.get('deviceType') || 'all'
 
-    const db = await connectToDatabase()
+    // Mock device data for demonstration
+    const mockDevices = [
+      { id: '1', name: 'Main Bar DirecTV', type: 'directv', status: 'online' },
+      { id: '2', name: 'Corner Booth Fire TV', type: 'firetv', status: 'online' },
+      { id: '3', name: 'Samsung TV #1', type: 'ir', status: 'online' },
+      { id: '4', name: 'Side Dining DirecTV', type: 'directv', status: 'online' },
+      { id: '5', name: 'Main Wall Fire TV', type: 'firetv', status: 'online' }
+    ]
+
+    // Mock diagnostics data
+    const mockDiagnostics = [
+      { deviceId: '1', severity: 'medium', status: 'active', issue: 'Channel Change Latency', type: 'performance' },
+      { deviceId: '2', severity: 'high', status: 'active', issue: 'WiFi Disconnections', type: 'connection' },
+      { deviceId: '2', severity: 'medium', status: 'active', issue: 'App Launch Delays', type: 'performance' },
+      { deviceId: '3', severity: 'low', status: 'active', issue: 'IR Blaster Positioning', type: 'hardware' }
+    ]
     
-    // Get real device data from database
-    const devices = await db.collection('devices').find({}).toArray()
-    
-    // Get real diagnostics data
-    const diagnostics = await db.collection('diagnostics').find({}).toArray()
-    
-    // Generate insights from real data
+    // Generate insights from mock data
     const insights = []
     const recommendations = []
     const metrics: any = {}
     
     // Analyze devices for insights
-    for (const device of devices) {
-      const deviceDiagnostics = diagnostics.filter(d => d.deviceId === device._id.toString())
+    for (const device of mockDevices) {
+      const deviceDiagnostics = mockDiagnostics.filter(d => d.deviceId === device.id)
       
       if (deviceDiagnostics.length > 0) {
         const recentIssues = deviceDiagnostics.filter(d => 
@@ -30,9 +39,9 @@ export async function GET(request: NextRequest) {
         
         if (recentIssues > 0) {
           insights.push({
-            id: device._id.toString(),
-            deviceId: device._id.toString(),
-            deviceName: device.name || device.deviceId,
+            id: device.id,
+            deviceId: device.id,
+            deviceName: device.name,
             deviceType: device.type,
             insight: `Device has ${recentIssues} high-priority issues requiring attention`,
             severity: recentIssues > 2 ? 'high' : 'medium',
@@ -61,9 +70,9 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Generate recommendations based on real data
+    // Generate recommendations based on mock data
     const issueTypes = new Map()
-    for (const diag of diagnostics) {
+    for (const diag of mockDiagnostics) {
       if (diag.status !== 'resolved') {
         const key = diag.issue || diag.type
         issueTypes.set(key, (issueTypes.get(key) || 0) + 1)
@@ -71,14 +80,14 @@ export async function GET(request: NextRequest) {
     }
     
     for (const [issue, count] of issueTypes.entries()) {
-      if (count > 2) {
+      if (count >= 1) {
         recommendations.push({
           id: `rec-${issue.replace(/\s+/g, '-')}`,
           title: `Address recurring ${issue}`,
-          description: `${count} devices are experiencing ${issue}. Consider systematic resolution.`,
-          priority: count > 5 ? 'high' : 'medium',
-          deviceTypes: [...new Set(diagnostics.filter(d => d.issue === issue).map(d => d.deviceType))],
-          estimatedImpact: count > 5 ? 'High' : 'Medium',
+          description: `${count} device(s) experiencing ${issue}. Consider systematic resolution.`,
+          priority: count > 2 ? 'high' : 'medium',
+          deviceTypes: [...new Set(mockDiagnostics.filter(d => d.issue === issue).map(d => mockDevices.find(dev => dev.id === d.deviceId)?.type).filter(Boolean))],
+          estimatedImpact: count > 2 ? 'High' : 'Medium',
           implementationTime: '1-2 hours'
         })
       }
@@ -101,7 +110,7 @@ export async function GET(request: NextRequest) {
       recommendations: filteredRecommendations,
       metrics: metrics,
       analysisTimestamp: new Date().toISOString(),
-      totalDevicesAnalyzed: devices.length
+      totalDevicesAnalyzed: mockDevices.length
     })
 
   } catch (error) {
