@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const bartenderOnly = searchParams.get('bartenderOnly') === 'true'
 
-    // Get configuration with API key
+    // Get configuration with CACHED API key from database
     const config = await prisma.soundtrackConfig.findFirst()
     
     if (!config) {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       orderBy: { displayOrder: 'asc' }
     })
 
-    // Fetch live sound zone (player) data from Soundtrack API
+    // Use CACHED token from database - no re-authentication needed
     const api = getSoundtrackAPI(config.apiKey)
     const liveSoundZones = await api.listSoundZones()
 
@@ -76,7 +76,7 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Get API key from config
+    // Get CACHED API key from database
     const config = await prisma.soundtrackConfig.findFirst()
     if (!config) {
       return NextResponse.json({ 
@@ -85,6 +85,7 @@ export async function PATCH(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // Use cached token - no authentication needed
     const api = getSoundtrackAPI(config.apiKey)
     
     // Update the sound zone with the provided parameters

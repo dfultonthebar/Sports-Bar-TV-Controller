@@ -58,11 +58,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Test the API token with basic connection test
+    // AUTHENTICATE ONCE: Test the API token before saving
+    // This is the ONLY time we authenticate - token is then cached in database
     setSoundtrackAPIToken(apiKey)
     const api = getSoundtrackAPI()
     
-    // Use the new testConnection method which is more robust
     let testResult
     try {
       testResult = await api.testConnection()
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
           details: testResult.details
         }, { status: 400 })
       }
+      console.log('[Soundtrack] Token validated successfully - will be cached in database')
     } catch (error: any) {
       clearSoundtrackAPI()
       return NextResponse.json({ 
@@ -119,7 +120,8 @@ export async function POST(request: NextRequest) {
           }
         })
 
-    // Try to fetch sound zones - this is now optional and won't fail the save
+    // Fetch sound zones ONCE during initial setup
+    // After this, we'll use the cached token from database for all operations
     let zonesWarning = null
     try {
       const soundZones = await api.listSoundZones(firstAccount?.id)
@@ -148,6 +150,7 @@ export async function POST(request: NextRequest) {
             }
           })
         }
+        console.log(`[Soundtrack] Synced ${soundZones.length} sound zones`)
       } else {
         zonesWarning = 'No sound zones found. Please configure players in your Soundtrack account.'
       }

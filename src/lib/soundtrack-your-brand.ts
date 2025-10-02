@@ -1,10 +1,17 @@
-
 /**
  * Soundtrack Your Brand API Integration
  * https://api.soundtrackyourbrand.com/v2/docs
  * 
- * This integration uses the Soundtrack Your Brand GraphQL and REST APIs
- * Authentication: Basic Auth with API token
+ * RATE LIMITING:
+ * - Maximum tokens: 3600
+ * - Token regeneration: 50 tokens per second
+ * - Tokens deducted based on query complexity
+ * 
+ * AUTHENTICATION STRATEGY:
+ * - Authenticate ONCE when token is saved
+ * - Reuse token for all subsequent requests
+ * - Token stored in database
+ * - Only re-authenticate on 401 error
  */
 
 export interface SoundtrackAccount {
@@ -54,34 +61,70 @@ export interface NowPlaying {
   }
 }
 
+class RateLimiter {
+  private requestTimestamps: number[] = []
+  private readonly maxRequestsPerSecond = 10
+  private readonly minRequestInterval = 100
+  private lastRequestTime = 0
+
+  async waitIfNeeded(): Promise<void> {
+    const now = Date.now()
+    
+    const timeSinceLastRequest = now - this.lastRequestTime
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const waitTime = this.minRequestInterval - timeSinceLastRequest
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+    }
+
+    this.requestTimestamps = this.requestTimestamps.filter(
+      timestamp => now - timestamp < 1000
+    )
+
+    if (this.requestTimestamps.length >= this.maxRequestsPerSecond) {
+      const oldestTimestamp = this.requestTimestamps[0]
+      const waitTime = 1000 - (now - oldestTimestamp) + 10
+      if (waitTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+      }
+    }
+
+    this.lastRequestTime = Date.now()
+    this.requestTimestamps.push(this.lastRequestTime)
+  }
+
+  getStatus(): { requestsInLastSecond: number; canMakeRequest: boolean } {
+    const now = Date.now()
+    this.requestTimestamps = this.requestTimestamps.filter(
+      timestamp => now - timestamp < 1000
+    )
+    return {
+      requestsInLastSecond: this.requestTimestamps.length,
+      canMakeRequest: this.requestTimestamps.length < this.maxRequestsPerSecond
+    }
+  }
+}
+
 export class SoundtrackYourBrandAPI {
   private apiToken: string
   private baseUrl = 'https://api.soundtrackyourbrand.com/v2'
+  private rateLimiter = new RateLimiter()
+  private tokenValidated = false
 
   constructor(apiToken: string) {
     this.apiToken = apiToken
   }
 
-  /**
-   * Encode the API token for Basic Authentication
-   * Soundtrack API requires the token to be base64 encoded with a colon appended
-   */
   private getAuthHeader(): string {
-    // Basic Authentication format: base64(token:)
-    // The colon after the token indicates an empty password
     const credentials = `${this.apiToken}:`
     const base64Credentials = Buffer.from(credentials).toString('base64')
     return `Basic ${base64Credentials}`
   }
 
-  /**
-   * Make an authenticated request to the Soundtrack API
-   * Uses Basic Authentication as required by Soundtrack
-   */
   private async request(endpoint: string, options: RequestInit = {}) {
+    await this.rateLimiter.waitIfNeeded()
+
     const url = `${this.baseUrl}${endpoint}`
     
-    // Soundtrack API uses Basic Authentication with base64 encoded token
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -92,8 +135,13 @@ export class SoundtrackYourBrandAPI {
       },
     })
 
+    const rateLimitCost = response.headers.get('x-ratelimiting-cost')
+    const tokensAvailable = response.headers.get('x-ratelimiting-tokens-available')
+    if (rateLimitCost || tokensAvailable) {
+      console.log(`[Soundtrack] Rate limit - Cost: ${rateLimitCost}, Available: ${tokensAvailable}`)
+    }
+
     if (!response.ok) {
-      // Provide detailed error messages
       let errorMessage = `Soundtrack API error: ${response.status} ${response.statusText}`
       
       try {
@@ -102,26 +150,30 @@ export class SoundtrackYourBrandAPI {
           errorMessage = errorData.message || errorData.error
         }
       } catch (e) {
-        // Could not parse error response
+        // Could not parse error
       }
       
       if (response.status === 404) {
-        errorMessage = 'Soundtrack API endpoint not found. Please verify your account has access to this feature.'
+        errorMessage = 'Soundtrack API endpoint not found.'
       } else if (response.status === 401) {
-        errorMessage = 'Authentication failed. Please check your API token is correct and not expired.'
+        this.tokenValidated = false
+        errorMessage = 'Authentication failed. Token may be expired.'
       } else if (response.status === 403) {
-        errorMessage = 'Access forbidden. Your account may not have permission for this feature.'
+        errorMessage = 'Access forbidden. Check account permissions.'
+      } else if (response.status === 429) {
+        errorMessage = 'Rate limit exceeded. Please wait before trying again.'
       }
       
       throw new Error(errorMessage)
     }
 
+    if (!this.tokenValidated) {
+      this.tokenValidated = true
+    }
+
     return response.json()
   }
 
-  /**
-   * Make a GraphQL query to the Soundtrack API
-   */
   private async graphql(query: string, variables: any = {}) {
     return this.request('', {
       method: 'POST',
@@ -129,12 +181,16 @@ export class SoundtrackYourBrandAPI {
     })
   }
 
-  /**
-   * Test API connection with comprehensive diagnostics
-   */
+  isTokenValidated(): boolean {
+    return this.tokenValidated
+  }
+
+  getRateLimitStatus() {
+    return this.rateLimiter.getStatus()
+  }
+
   async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
     try {
-      // Test with the correct 'me' query structure
       const testQuery = `
         query {
           me {
@@ -158,18 +214,17 @@ export class SoundtrackYourBrandAPI {
       if (result.errors) {
         return {
           success: false,
-          message: result.errors[0]?.message || 'Failed to connect to Soundtrack API',
-          details: {
-            errors: result.errors
-          }
+          message: result.errors[0]?.message || 'Failed to connect',
+          details: { errors: result.errors }
         }
       }
       
       if (result.data?.me) {
         const accounts = result.data.me.accounts?.edges || []
+        this.tokenValidated = true
         return {
           success: true,
-          message: 'Successfully connected to Soundtrack Your Brand API',
+          message: 'Successfully connected to Soundtrack API',
           details: {
             clientType: result.data.me.__typename,
             accountsFound: accounts.length
@@ -179,20 +234,16 @@ export class SoundtrackYourBrandAPI {
       
       return {
         success: false,
-        message: 'Unexpected API response structure'
+        message: 'Unexpected API response'
       }
     } catch (error: any) {
       return {
         success: false,
-        message: error.message || 'Could not connect to Soundtrack API'
+        message: error.message || 'Connection failed'
       }
     }
   }
 
-  /**
-   * Get current user's account information
-   * Uses the 'me' query with PublicAPIClient inline fragment
-   */
   async getAccount(): Promise<SoundtrackAccount> {
     const query = `
       query {
@@ -214,7 +265,7 @@ export class SoundtrackYourBrandAPI {
     const result = await this.graphql(query)
     
     if (result.errors) {
-      throw new Error(result.errors[0]?.message || 'Failed to fetch account information')
+      throw new Error(result.errors[0]?.message || 'Failed to fetch account')
     }
     
     const accounts = result.data?.me?.accounts?.edges?.map((edge: any) => ({
@@ -223,7 +274,7 @@ export class SoundtrackYourBrandAPI {
     })) || []
     
     if (accounts.length === 0) {
-      throw new Error('No accounts found for this Soundtrack API token')
+      throw new Error('No accounts found')
     }
     
     return {
@@ -233,10 +284,6 @@ export class SoundtrackYourBrandAPI {
     }
   }
 
-  /**
-   * List all sound zones (players) for the account
-   * Uses the correct 'me' query with PublicAPIClient structure
-   */
   async listSoundZones(accountId?: string): Promise<SoundtrackSoundZone[]> {
     const query = `
       query {
@@ -280,7 +327,6 @@ export class SoundtrackYourBrandAPI {
     const accounts = result.data?.me?.accounts?.edges || []
     const soundZones: SoundtrackSoundZone[] = []
     
-    // Flatten sound zones from all accounts
     for (const accountEdge of accounts) {
       const account = accountEdge.node
       const zones = account.soundZones?.edges || []
@@ -299,7 +345,6 @@ export class SoundtrackYourBrandAPI {
       }
     }
     
-    // Filter by account ID if provided
     if (accountId) {
       return soundZones.filter(zone => zone.account.id === accountId)
     }
@@ -307,9 +352,6 @@ export class SoundtrackYourBrandAPI {
     return soundZones
   }
 
-  /**
-   * Get a specific sound zone
-   */
   async getSoundZone(soundZoneId: string): Promise<SoundtrackSoundZone> {
     const query = `
       query GetSoundZone($id: ID!) {
@@ -341,9 +383,6 @@ export class SoundtrackYourBrandAPI {
     return result.data.soundZone
   }
 
-  /**
-   * List available stations for an account
-   */
   async listStations(accountId: string): Promise<SoundtrackStation[]> {
     const query = `
       query ListStations($accountId: ID!) {
@@ -365,9 +404,6 @@ export class SoundtrackYourBrandAPI {
     return result.data?.account?.stations || []
   }
 
-  /**
-   * Update a sound zone (play, pause, volume, station)
-   */
   async updateSoundZone(soundZoneId: string, data: {
     stationId?: string
     volume?: number
@@ -406,39 +442,24 @@ export class SoundtrackYourBrandAPI {
     return result.data.updateSoundZone.soundZone
   }
 
-  /**
-   * Play a sound zone (optionally change station)
-   */
   async play(soundZoneId: string, stationId?: string): Promise<void> {
     const data: any = { playing: true }
     if (stationId) data.stationId = stationId
     await this.updateSoundZone(soundZoneId, data)
   }
 
-  /**
-   * Pause a sound zone
-   */
   async pause(soundZoneId: string): Promise<void> {
     await this.updateSoundZone(soundZoneId, { playing: false })
   }
 
-  /**
-   * Set volume for a sound zone
-   */
   async setVolume(soundZoneId: string, volume: number): Promise<void> {
     await this.updateSoundZone(soundZoneId, { volume: Math.max(0, Math.min(100, volume)) })
   }
 
-  /**
-   * Change station on a sound zone
-   */
   async changeStation(soundZoneId: string, stationId: string): Promise<void> {
     await this.updateSoundZone(soundZoneId, { stationId })
   }
 
-  /**
-   * Get now playing information for a sound zone
-   */
   async getNowPlaying(soundZoneId: string): Promise<NowPlaying | null> {
     try {
       const query = `
@@ -472,14 +493,13 @@ export class SoundtrackYourBrandAPI {
   }
 }
 
-// Singleton instance
 let soundtrackAPI: SoundtrackYourBrandAPI | null = null
 
 export function getSoundtrackAPI(apiToken?: string): SoundtrackYourBrandAPI {
   if (!soundtrackAPI) {
     const token = apiToken || process.env.SOUNDTRACK_API_TOKEN
     if (!token) {
-      throw new Error('Soundtrack Your Brand API token not configured')
+      throw new Error('Soundtrack API token not configured')
     }
     soundtrackAPI = new SoundtrackYourBrandAPI(token)
   }

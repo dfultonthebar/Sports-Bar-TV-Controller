@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use the enhanced testConnection method with fallback patterns
+    // Test connection - this validates the token ONCE before saving
+    console.log('[Soundtrack] Testing API token...')
     const api = new SoundtrackYourBrandAPI(apiKey)
     const testResult = await api.testConnection()
 
