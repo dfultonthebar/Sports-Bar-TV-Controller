@@ -573,3 +573,30 @@ model TestLog {
   @@index([timestamp])
 }
 
+model WolfpackMatrixRouting {
+  id                  String   @id @default(cuid())
+  matrixOutputNumber  Int      // 1-4 (Wolfpack Matrix outputs that feed Atlas Matrix inputs)
+  wolfpackInputNumber Int?     // Current Wolfpack input routed to this Matrix output
+  wolfpackInputLabel  String?  // Label of the Wolfpack input (cached for display)
+  atlasInputLabel     String?  // Label for this Matrix input on Atlas (e.g., "Matrix 1")
+  isActive            Boolean  @default(true)
+  lastRouted          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@unique([matrixOutputNumber])
+  @@index([matrixOutputNumber])
+}
+
+model WolfpackMatrixState {
+  id                  String   @id @default(cuid())
+  matrixOutputNumber  Int      // 1-4
+  wolfpackInputNumber Int      // Current input number
+  wolfpackInputLabel  String   // Input label
+  channelInfo         String?  // Current channel info (JSON)
+  routedAt            DateTime @default(now())
+  
+  @@index([matrixOutputNumber])
+  @@index([routedAt])
+}
+
