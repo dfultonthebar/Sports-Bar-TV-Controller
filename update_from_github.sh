@@ -332,18 +332,66 @@ fi
 log ""
 
 # =============================================================================
-# BACKUP LOCAL CONFIGURATION
 # =============================================================================
-log "💾 Backing up local configuration..."
+# BACKUP LOCAL CONFIGURATION (ENHANCED)
+# =============================================================================
+log "💾 Backing up local configuration and database..."
 BACKUP_DIR="$HOME/sports-bar-backups"
-BACKUP_FILE="$BACKUP_DIR/config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/config-backup-$TIMESTAMP.tar.gz"
+DB_BACKUP_DIR="$BACKUP_DIR/database-backups"
+DB_SQL_BACKUP="$DB_BACKUP_DIR/dev-db-$TIMESTAMP.sql"
 
 mkdir -p "$BACKUP_DIR"
+mkdir -p "$DB_BACKUP_DIR"
 
 # Get the current config filename based on matrix configuration
 CONFIG_FILENAME=$(node scripts/get-config-filename.js 2>/dev/null || echo "local.local.json")
 
-# Backup local config files, .env, and database
+# =============================================================================
+# DATABASE BACKUP (SQL DUMP)
+# =============================================================================
+if [ -f "prisma/dev.db" ]; then
+    log "   📊 Creating SQL dump of database..."
+    
+    # Create SQL dump for better reliability and portability
+    if command -v sqlite3 &> /dev/null; then
+        sqlite3 prisma/dev.db .dump > "$DB_SQL_BACKUP" 2>/dev/null || {
+            log_warning "SQL dump failed, will rely on binary backup"
+            rm -f "$DB_SQL_BACKUP"
+        }
+        
+        if [ -f "$DB_SQL_BACKUP" ]; then
+            # Compress the SQL dump
+            gzip "$DB_SQL_BACKUP"
+            DB_SQL_BACKUP="${DB_SQL_BACKUP}.gz"
+            
+            # Get database statistics
+            DB_SIZE=$(du -h prisma/dev.db | cut -f1)
+            SQL_SIZE=$(du -h "$DB_SQL_BACKUP" | cut -f1)
+            
+            log_success "Database SQL dump created: $DB_SQL_BACKUP"
+            log "      Database size: $DB_SIZE, SQL dump size: $SQL_SIZE"
+            
+            # Keep only last 10 SQL backups
+            cd "$DB_BACKUP_DIR"
+            ls -t dev-db-*.sql.gz 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true
+            cd - > /dev/null
+        fi
+    else
+        log_warning "sqlite3 command not found - SQL dump skipped"
+        log "      Binary database backup will still be included in tar.gz"
+    fi
+else
+    log "   ℹ️  No database file found (first run?)"
+fi
+
+# =============================================================================
+# CONFIGURATION FILES BACKUP
+# =============================================================================
+log "   📦 Creating compressed backup of all configuration files..."
+
+# Backup local config files, .env, database, and data files
 tar -czf "$BACKUP_FILE" \
     config/*.local.json \
     .env \
@@ -353,20 +401,114 @@ tar -czf "$BACKUP_FILE" \
     data/atlas-configs/ \
     2>/dev/null || true
 
+# =============================================================================
+# BACKUP VERIFICATION
+# =============================================================================
 if [ -f "$BACKUP_FILE" ]; then
-    log_success "Configuration backed up to: $BACKUP_FILE"
+    # Verify backup integrity
+    if tar -tzf "$BACKUP_FILE" > /dev/null 2>&1; then
+        BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+        FILE_COUNT=$(tar -tzf "$BACKUP_FILE" 2>/dev/null | wc -l)
+        
+        log_success "Configuration backup created: $BACKUP_FILE"
+        log "      Backup size: $BACKUP_SIZE, Files: $FILE_COUNT"
+        
+        # List what was backed up
+        log "      Contents:"
+        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "prisma/dev.db"; then
+            log "        ✅ Database (prisma/dev.db)"
+        fi
+        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q ".env"; then
+            log "        ✅ Environment variables (.env)"
+        fi
+        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "config/.*\.local\.json"; then
+            log "        ✅ Local configuration files"
+        fi
+        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "data/.*\.json"; then
+            log "        ✅ Data files (subscriptions, credentials)"
+        fi
+    else
+        log_error "Backup file created but verification failed!"
+        log_error "Backup may be corrupted: $BACKUP_FILE"
+    fi
     
     # Keep only last 7 backups
     cd "$BACKUP_DIR"
     ls -t config-backup-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
     cd - > /dev/null
+    
+    # Create backup manifest
+    MANIFEST_FILE="$BACKUP_DIR/backup-manifest-$TIMESTAMP.txt"
+    cat > "$MANIFEST_FILE" << EOF
+Sports Bar TV Controller - Backup Manifest
+==========================================
+Backup Date: $(date '+%Y-%m-%d %H:%M:%S')
+Backup Files:
+  - Configuration: $BACKUP_FILE ($BACKUP_SIZE)
+  - SQL Dump: ${DB_SQL_BACKUP:-"Not created"} ${SQL_SIZE:+"($SQL_SIZE)"}
+
+Database Tables Backed Up:
+  - MatrixConfiguration (Wolfpack matrix settings)
+  - MatrixInput (Input configurations and labels)
+  - MatrixOutput (Output/TV configurations)
+  - MatrixRoute (Routing configurations)
+  - MatrixScene (Saved scenes)
+  - AudioProcessor (AZMP8 processor settings)
+  - AudioZone (Audio zone configurations)
+  - AudioScene (Audio scenes)
+  - AudioMessage (Audio messages)
+  - AudioInputMeter (Input meter settings)
+  - AIGainConfiguration (AI gain control settings)
+  - CECConfiguration (HDMI-CEC settings)
+  - TVProvider (Cable/Satellite provider info)
+  - ProviderInput (Provider-to-input mappings)
+  - HomeTeam (Favorite teams)
+  - SportsGuideConfiguration (Sports guide settings)
+  - SoundtrackConfig (Soundtrack API credentials)
+  - SoundtrackPlayer (Soundtrack player configs)
+  - Schedule (Automated schedules)
+  - WolfpackMatrixRouting (Wolfpack routing state)
+  - WolfpackMatrixState (Current routing state)
+  - NFHSSchool (High school sports data)
+  - NFHSGame (Game schedules)
+  - ApiKey (AI API keys)
+  - User (User accounts)
+  - Equipment (Equipment inventory)
+  - Document (Uploaded documents)
+
+Configuration Files Backed Up:
+  - config/*.local.json (System/device/sports settings)
+  - .env (API keys and secrets)
+  - data/*.json (Subscriptions, credentials, device configs)
+  - data/scene-logs/ (Scene execution logs)
+  - data/atlas-configs/ (Atlas matrix configurations)
+
+Restore Instructions:
+  To restore this backup:
+    1. Stop the application: pm2 stop sports-bar-tv-controller
+    2. Extract backup: tar -xzf $BACKUP_FILE
+    3. Or restore from SQL: gunzip -c ${DB_SQL_BACKUP:-dev-db-TIMESTAMP.sql.gz} | sqlite3 prisma/dev.db
+    4. Restart application: pm2 restart sports-bar-tv-controller
+
+  For detailed restore instructions, see: BACKUP_RESTORE_GUIDE.md
+EOF
+    
+    log "      📋 Backup manifest: $MANIFEST_FILE"
+    
 else
     log "ℹ️  No local configuration to backup (first run?)"
 fi
 
 log ""
-
-# =============================================================================
+log "💡 Backup Summary:"
+log "   📁 Backup location: $BACKUP_DIR"
+log "   📦 Latest backup: $BACKUP_FILE"
+if [ -f "$DB_SQL_BACKUP" ]; then
+    log "   📊 SQL dump: $DB_SQL_BACKUP"
+fi
+log "   📋 Manifest: ${MANIFEST_FILE:-Not created}"
+log "   🔄 Retention: Last 7 backups kept (older ones auto-deleted)"
+log ""
 # GIT STATUS CHECK
 # =============================================================================
 log "📊 Checking git status..."
