@@ -8,7 +8,8 @@ import {
   ChevronUp, 
   ChevronDown,
   Radio,
-  AlertCircle
+  AlertCircle,
+  Users
 } from 'lucide-react'
 import WolfpackInputSelector from './WolfpackInputSelector'
 
@@ -19,6 +20,8 @@ interface AudioZone {
   volume: number
   isMuted: boolean
   isActive: boolean
+  isGroup?: boolean
+  outputIds?: string[]
 }
 
 interface AudioInput {
@@ -27,20 +30,38 @@ interface AudioInput {
   isActive: boolean
   type: 'matrix' | 'atlas'
   matrixNumber?: number
+  inputType?: string
+  connector?: string
+  description?: string
 }
 
 interface AtlasInputConfig {
-  id: number
+  id: string
+  number: number
   name: string
-  type: 'microphone' | 'line' | 'dante' | 'zone'
-  physicalInput: number
+  type: string
+  connector: string
+  description: string
+  priority?: string
+  isCustom: boolean
 }
 
 interface AtlasOutputConfig {
-  id: number
+  id: string
+  number: number
   name: string
-  type: 'speaker' | 'dante' | 'zone'
-  physicalOutput: number
+  type: string
+  levelDb: number
+  muted: boolean
+  groupId?: string | null
+  isCustom: boolean
+}
+
+interface AtlasZoneGroup {
+  id: string
+  name: string
+  outputIds: string[]
+  outputs: AtlasOutputConfig[]
   levelDb: number
   muted: boolean
 }
@@ -56,25 +77,35 @@ export default function AudioZoneControl() {
   const [zones, setZones] = useState<AudioZone[]>([])
   const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
 
-  // Fetch Atlas configuration on component mount
+  // Fetch dynamic Atlas configuration on component mount
   useEffect(() => {
-    fetchAtlasConfiguration()
+    fetchDynamicAtlasConfiguration()
   }, [])
 
-  const fetchAtlasConfiguration = async () => {
+  const fetchDynamicAtlasConfiguration = async () => {
     setLoading(true)
     setError(null)
     
     try {
-      // Fetch Atlas configuration
-      const response = await fetch('/api/atlas/configuration?processorId=atlas-001')
-      const data = await response.json()
+      const processorId = 'atlas-001' // Default processor ID
+      
+      // Fetch inputs from new API endpoint
+      const inputsResponse = await fetch(`/api/audio-processor/inputs?processorId=${processorId}`)
+      const inputsData = await inputsResponse.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch Atlas configuration')
+      if (!inputsResponse.ok) {
+        throw new Error(inputsData.error || 'Failed to fetch inputs')
       }
 
-      // Build inputs list: Matrix 1-4 first, then Atlas inputs
+      // Fetch outputs/zones from new API endpoint (with group detection)
+      const outputsResponse = await fetch(`/api/audio-processor/outputs?processorId=${processorId}&includeGroups=true`)
+      const outputsData = await outputsResponse.json()
+
+      if (!outputsResponse.ok) {
+        throw new Error(outputsData.error || 'Failed to fetch outputs')
+      }
+
+      // Build inputs list: Matrix 1-4 first (special inputs for video routing), then Atlas inputs
       const matrixInputs: AudioInput[] = [
         { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
         { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
@@ -82,27 +113,56 @@ export default function AudioZoneControl() {
         { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
       ]
 
-      // Add Atlas inputs
-      const atlasInputs: AudioInput[] = (data.inputs || []).map((input: AtlasInputConfig) => ({
-        id: `atlas-input-${input.id}`,
-        name: input.name,
-        isActive: true,
-        type: 'atlas' as const
-      }))
+      // Add Atlas inputs from API
+      const atlasInputs: AudioInput[] = (inputsData.inputs || [])
+        .filter((input: AtlasInputConfig) => input.type !== 'matrix_audio') // Exclude internal matrix audio buses from UI
+        .map((input: AtlasInputConfig) => ({
+          id: input.id,
+          name: input.name,
+          isActive: true,
+          type: 'atlas' as const,
+          inputType: input.type,
+          connector: input.connector,
+          description: input.description
+        }))
 
       setAudioInputs([...matrixInputs, ...atlasInputs])
 
-      // Build zones from Atlas outputs
-      const atlasZones: AudioZone[] = (data.outputs || []).map((output: AtlasOutputConfig) => ({
-        id: `zone-${output.id}`,
-        name: output.name,
-        currentSource: 'Spotify', // Default source
-        volume: Math.round((output.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
-        isMuted: output.muted,
-        isActive: true
-      }))
+      // Build zones from Atlas outputs and groups
+      const atlasZones: AudioZone[] = []
 
-      // If no outputs configured, use default zones
+      // Add zone groups first (if any)
+      if (outputsData.groups && outputsData.groups.length > 0) {
+        outputsData.groups.forEach((group: AtlasZoneGroup) => {
+          atlasZones.push({
+            id: group.id,
+            name: group.name,
+            currentSource: 'Spotify', // Default source
+            volume: Math.round((group.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
+            isMuted: group.muted,
+            isActive: true,
+            isGroup: true,
+            outputIds: group.outputIds
+          })
+        })
+      }
+
+      // Add individual outputs/zones
+      if (outputsData.outputs && outputsData.outputs.length > 0) {
+        outputsData.outputs.forEach((output: AtlasOutputConfig) => {
+          atlasZones.push({
+            id: output.id,
+            name: output.name,
+            currentSource: 'Spotify', // Default source
+            volume: Math.round((output.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
+            isMuted: output.muted,
+            isActive: true,
+            isGroup: false
+          })
+        })
+      }
+
+      // If no outputs configured, use default zones as fallback
       if (atlasZones.length === 0) {
         setZones([
           { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
@@ -115,8 +175,15 @@ export default function AudioZoneControl() {
         setZones(atlasZones)
       }
 
+      console.log('Dynamic Atlas configuration loaded:', {
+        inputs: inputsData.inputs?.length || 0,
+        outputs: outputsData.outputs?.length || 0,
+        groups: outputsData.groups?.length || 0,
+        model: inputsData.model
+      })
+
     } catch (err) {
-      console.error('Error fetching Atlas configuration:', err)
+      console.error('Error fetching dynamic Atlas configuration:', err)
       setError(err instanceof Error ? err.message : 'Failed to load configuration')
       
       // Fallback to Matrix inputs only if Atlas config fails
@@ -173,15 +240,15 @@ export default function AudioZoneControl() {
     
     if (!input) return
 
-    // If it's a Matrix input, show the Wolfpack selector
+    // If it's a Matrix input, show the Wolfpack selector for video routing
     if (input.type === 'matrix' && input.matrixNumber) {
       setCurrentMatrixNumber(input.matrixNumber)
       setShowMatrixSelector(true)
     } else {
-      // Direct routing for Atlas inputs
+      // Direct routing for Atlas inputs (audio only)
       setSelectedInput(inputId)
       // In a real implementation, this would call the API to route audio
-      console.log(`Direct routing: ${input.name}`)
+      console.log(`Direct audio routing: ${input.name}`)
     }
   }
 
@@ -241,6 +308,7 @@ export default function AudioZoneControl() {
                       ? 'bg-orange-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
                   }`}
+                  title={input.description || input.name}
                 >
                   <div className="flex items-center space-x-2">
                     {input.type === 'matrix' && (
@@ -262,8 +330,9 @@ export default function AudioZoneControl() {
               <div key={zone.id} className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4">
                 {/* Zone Header */}
                 <div className="text-center mb-4">
-                  <div className="bg-orange-500 text-slate-100 px-3 py-1 rounded text-sm font-bold mb-2">
-                    {zone.name}
+                  <div className={`${zone.isGroup ? 'bg-purple-600' : 'bg-orange-500'} text-slate-100 px-3 py-1 rounded text-sm font-bold mb-2 flex items-center justify-center space-x-1`}>
+                    {zone.isGroup && <Users className="w-3 h-3" />}
+                    <span>{zone.name}</span>
                   </div>
                   <div className="text-white font-medium">
                     {zone.currentSource}
