@@ -26,6 +26,7 @@ import {
   Smartphone,
   Monitor
 } from 'lucide-react'
+import ChannelPresetGrid from './ChannelPresetGrid'
 
 interface MatrixInput {
   id: string
@@ -819,6 +820,107 @@ export default function BartenderRemoteControl() {
     }
   }
 
+  // Handler for channel preset clicks
+  const handlePresetClick = async (preset: any) => {
+    if (!selectedInput) {
+      setCommandStatus('Please select a TV input first')
+      return
+    }
+
+    const input = inputs.find(i => i.channelNumber === selectedInput)
+    if (!input) {
+      setCommandStatus('Invalid input selected')
+      return
+    }
+
+    setCommandStatus(`Tuning to ${preset.name} (Ch ${preset.channelNumber})...`)
+
+    try {
+      // Send channel change command using the existing sendChannelCommand function
+      if (selectedDirecTVDevice) {
+        // For DirecTV devices, use IP control
+        await sendDirecTVChannelChange(preset.channelNumber)
+      } else if (selectedDevice) {
+        // For cable boxes, use IR control
+        await sendChannelCommand(preset.channelNumber, selectedDevice)
+      } else {
+        setCommandStatus('No device configured for this input')
+        return
+      }
+
+      setCommandStatus(`✓ Tuned to ${preset.name} (Ch ${preset.channelNumber})`)
+      
+      // Log the operation
+      try {
+        await fetch('/api/logs/operations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'channel_preset',
+            action: 'Preset Channel Change',
+            device: input.label,
+            details: {
+              presetId: preset.id,
+              presetName: preset.name,
+              channelNumber: preset.channelNumber,
+              deviceType: preset.deviceType,
+              inputNumber: selectedInput
+            },
+            success: true
+          })
+        })
+      } catch (logError) {
+        console.error('Failed to log preset usage:', logError)
+      }
+
+      // Clear status after 3 seconds
+      setTimeout(() => setCommandStatus(''), 3000)
+    } catch (error) {
+      console.error('Error tuning to preset:', error)
+      setCommandStatus(`✗ Failed to tune to ${preset.name}`)
+      setTimeout(() => setCommandStatus(''), 3000)
+    }
+  }
+
+  // Helper function for DirecTV channel changes
+  const sendDirecTVChannelChange = async (channelNumber: string) => {
+    if (!selectedDirecTVDevice) return
+
+    const digits = channelNumber.split('')
+    const baseUrl = `http://${selectedDirecTVDevice.ipAddress}:${selectedDirecTVDevice.port}`
+
+    for (const digit of digits) {
+      await fetch(`${baseUrl}/remote/processKey?key=${digit}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await fetch(`${baseUrl}/remote/processKey?key=enter`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  // Determine the device type for the selected input
+  const getSelectedInputDeviceType = (): 'cable' | 'directv' | null => {
+    if (!selectedInput) return null
+    
+    // Check if it's a DirecTV device
+    if (selectedDirecTVDevice) return 'directv'
+    
+    // Check if it's a cable box (IR device)
+    if (selectedDevice) {
+      // You can add more sophisticated logic here based on device type
+      // For now, assume IR devices are cable boxes
+      return 'cable'
+    }
+    
+    return null
+  }
+
   return (
     <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       {/* Header */}
@@ -1081,6 +1183,15 @@ export default function BartenderRemoteControl() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Channel Preset Quick Access - Show only for Cable Box or DirecTV */}
+                    {getSelectedInputDeviceType() && (
+                      <ChannelPresetGrid
+                        deviceType={getSelectedInputDeviceType()!}
+                        onPresetClick={handlePresetClick}
+                        maxVisible={6}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8">
