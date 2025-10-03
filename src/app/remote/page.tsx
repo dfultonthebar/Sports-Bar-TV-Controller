@@ -30,6 +30,7 @@ import SportsGuide from '@/components/SportsGuide'
 import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
+import AudioZoneControl from '@/components/AudioZoneControl'
 
 interface MatrixInput {
   id: string
@@ -105,21 +106,6 @@ interface RemoteCommand {
   color?: string
 }
 
-interface AudioZone {
-  id: string
-  name: string
-  volume: number
-  currentInput?: number
-  isMuted: boolean
-}
-
-interface AudioInput {
-  id: string
-  name: string
-  channelNumber: number
-  type: string
-}
-
 const CHANNEL_COMMANDS: RemoteCommand[] = [
   { display: '1', command: '1' },
   { display: '2', command: '2' },
@@ -142,15 +128,6 @@ const CONTROL_COMMANDS: RemoteCommand[] = [
   { display: 'Mute', command: 'MUTE', icon: VolumeX, color: 'bg-orange-500' },
 ]
 
-const AUDIO_INPUTS: AudioInput[] = [
-  { id: '1', name: 'Main Audio', channelNumber: 1, type: 'Main' },
-  { id: '2', name: 'Music Stream', channelNumber: 2, type: 'Streaming' },
-  { id: '3', name: 'Game Audio', channelNumber: 3, type: 'Gaming' },
-  { id: '4', name: 'Ambient Music', channelNumber: 4, type: 'Background' },
-  { id: '5', name: 'Sports Audio', channelNumber: 5, type: 'Sports' },
-  { id: '6', name: 'Announcements', channelNumber: 6, type: 'PA' },
-]
-
 export default function BartenderRemotePage() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
@@ -168,17 +145,8 @@ export default function BartenderRemotePage() {
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   
-  // New tab and audio states
+  // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
-  const [selectedAudioInput, setSelectedAudioInput] = useState<number | null>(null)
-  const [audioZones, setAudioZones] = useState<AudioZone[]>([
-    { id: '1', name: 'Main Bar', volume: 75, isMuted: false },
-    { id: '2', name: 'Upper Level', volume: 60, currentInput: 1, isMuted: false },
-    { id: '3', name: 'Lower Level', volume: 65, currentInput: 2, isMuted: false },
-    { id: '4', name: 'South Section', volume: 70, currentInput: 3, isMuted: false },
-    { id: '5', name: 'North Section', volume: 68, currentInput: 1, isMuted: false },
-    { id: '6', name: 'Patio', volume: 55, isMuted: false },
-  ])
 
 
 
@@ -510,38 +478,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-  // Audio functions
-  const selectAudioInput = (inputNumber: number) => {
-    setSelectedAudioInput(inputNumber)
-    const input = AUDIO_INPUTS.find(i => i.channelNumber === inputNumber)
-    setCommandStatus(`Selected audio input: ${input?.name || `Input ${inputNumber}`}`)
-  }
-
-  const assignInputToZone = async (zoneId: string, inputNumber: number) => {
-    setAudioZones(zones => zones.map(zone => 
-      zone.id === zoneId ? { ...zone, currentInput: inputNumber } : zone
-    ))
-    
-    const zone = audioZones.find(z => z.id === zoneId)
-    const input = AUDIO_INPUTS.find(i => i.channelNumber === inputNumber)
-    setCommandStatus(`✅ Assigned "${input?.name}" to "${zone?.name}"`)
-    
-    // Clear status after 3 seconds
-    setTimeout(() => setCommandStatus(''), 3000)
-  }
-
-  const updateZoneVolume = async (zoneId: string, volume: number) => {
-    setAudioZones(zones => zones.map(zone => 
-      zone.id === zoneId ? { ...zone, volume } : zone
-    ))
-  }
-
-  const toggleZoneMute = async (zoneId: string) => {
-    setAudioZones(zones => zones.map(zone => 
-      zone.id === zoneId ? { ...zone, isMuted: !zone.isMuted } : zone
-    ))
-  }
-
   const getInputIcon = (inputType: string) => {
     switch (inputType.toLowerCase()) {
       case 'cable': return '📺'
@@ -549,18 +485,6 @@ export default function BartenderRemotePage() {
       case 'streaming': return '📱'
       case 'gaming': return '🎮'
       default: return '📺'
-    }
-  }
-
-  const getAudioInputIcon = (inputType: string) => {
-    switch (inputType.toLowerCase()) {
-      case 'main': return '🎵'
-      case 'streaming': return '📻'
-      case 'gaming': return '🎮'
-      case 'background': return '🎶'
-      case 'sports': return '⚽'
-      case 'pa': return '📢'
-      default: return '🎵'
     }
   }
 
@@ -934,124 +858,8 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'audio' && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
-            {/* Audio Zones with Volume Sliders */}
-            <div className="lg:col-span-3">
-              <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-lg p-4">
-                <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-                  <Sliders className="mr-2 w-5 h-5" />
-                  Audio Zones
-                </h2>
-                <p className="text-sm text-blue-300 mb-4">
-                  {selectedAudioInput 
-                    ? 'Click on zone names to assign the selected input' 
-                    : 'Select an audio input first, then click zone names to assign'
-                  }
-                </p>
-                
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {audioZones.map((zone) => {
-                    const assignedInput = AUDIO_INPUTS.find(input => input.channelNumber === zone.currentInput)
-                    
-                    return (
-                      <div key={zone.id} className="bg-sportsBar-800/5 rounded-lg p-3">
-                        {/* Zone Assignment Area */}
-                        <div 
-                          className={`text-center p-2 rounded cursor-pointer transition-all mb-3 ${
-                            selectedAudioInput 
-                              ? 'bg-purple-500/30 hover:bg-purple-500/50 border border-purple-400' 
-                              : 'bg-gray-500/20 border border-gray-500/30'
-                          }`}
-                          onClick={() => selectedAudioInput && assignInputToZone(zone.id, selectedAudioInput)}
-                          title={selectedAudioInput ? 'Click to assign input to this zone' : 'Select an input first'}
-                        >
-                          <div className="font-medium text-white text-sm">{zone.name}</div>
-                          <div className="text-xs text-gray-300 mt-1">
-                            {assignedInput ? `🎵 ${assignedInput.name}` : '⚪ No Input'}
-                          </div>
-                        </div>
-                        
-                        {/* Volume Slider */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs text-gray-300">
-                            <span>Volume</span>
-                            <span>{zone.volume}%</span>
-                          </div>
-                          
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={zone.isMuted ? 0 : zone.volume}
-                            onChange={(e) => updateZoneVolume(zone.id, parseInt(e.target.value))}
-                            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-                          />
-                          
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => toggleZoneMute(zone.id)}
-                              className={`p-1 rounded text-xs transition-colors ${
-                                zone.isMuted 
-                                  ? 'bg-red-500/30 text-red-300 border border-red-500/50' 
-                                  : 'bg-gray-500/30 text-gray-300 border border-gray-500/50 hover:bg-gray-500/50'
-                              }`}
-                            >
-                              {zone.isMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Audio Input Selection - Right Side */}
-            <div className="lg:col-span-1">
-              <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-lg p-4">
-                <h2 className="text-lg font-bold text-white mb-4 flex items-center">
-                  <Speaker className="mr-2 w-4 h-4" />
-                  Audio Inputs
-                </h2>
-                
-                <div className="space-y-2">
-                  {AUDIO_INPUTS.map((input) => (
-                    <button
-                      key={input.id}
-                      onClick={() => selectAudioInput(input.channelNumber)}
-                      className={`w-full p-3 rounded-lg text-left transition-all ${
-                        selectedAudioInput === input.channelNumber
-                          ? 'bg-purple-500 text-white shadow-lg'
-                          : 'bg-sportsBar-800/5 text-gray-300 hover:bg-sportsBar-800/10 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <span className="text-lg">{getAudioInputIcon(input.type)}</span>
-                        <div>
-                          <div className="font-medium text-sm">{input.name}</div>
-                          <div className="text-xs opacity-80">
-                            Ch {input.channelNumber} • {input.type}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                  
-                  {selectedAudioInput && (
-                    <button
-                      onClick={() => {
-                        setSelectedAudioInput(null)
-                        setCommandStatus('')
-                      }}
-                      className="w-full mt-3 px-3 py-2 text-sm bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg hover:bg-gray-500/30 transition-all"
-                    >
-                      Clear Selection
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div className="max-w-7xl mx-auto">
+            <AudioZoneControl />
           </div>
         )}
 
