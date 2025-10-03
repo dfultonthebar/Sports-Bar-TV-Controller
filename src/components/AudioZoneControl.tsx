@@ -12,6 +12,8 @@ import {
   Users
 } from 'lucide-react'
 import WolfpackInputSelector from './WolfpackInputSelector'
+import ChannelPresetPopup from './ChannelPresetPopup'
+import { detectDeviceType, shouldShowChannelPresets } from '@/lib/inputDeviceMap'
 
 interface AudioZone {
   id: string
@@ -76,6 +78,12 @@ export default function AudioZoneControl() {
   
   const [zones, setZones] = useState<AudioZone[]>([])
   const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
+  
+  // Channel preset popup state
+  const [showChannelPresets, setShowChannelPresets] = useState(false)
+  const [channelPresetDeviceType, setChannelPresetDeviceType] = useState<'cable' | 'directv'>('cable')
+  const [channelPresetInputLabel, setChannelPresetInputLabel] = useState('')
+  const [channelPresetDeviceIp, setChannelPresetDeviceIp] = useState<string | undefined>(undefined)
 
   // Fetch dynamic Atlas configuration on component mount
   useEffect(() => {
@@ -257,6 +265,18 @@ export default function AudioZoneControl() {
     console.log(`Matrix ${currentMatrixNumber} now routing from: ${inputLabel}`)
     setSelectedInput(`matrix${currentMatrixNumber}`)
     // The actual routing is handled by the WolfpackInputSelector component
+    
+    // Check if this input should trigger channel presets popup
+    if (shouldShowChannelPresets(inputLabel)) {
+      const deviceType = detectDeviceType(inputLabel)
+      if (deviceType === 'cable' || deviceType === 'directv') {
+        setChannelPresetDeviceType(deviceType)
+        setChannelPresetInputLabel(inputLabel)
+        // For DirecTV, you might want to set the device IP here if available
+        // setChannelPresetDeviceIp('192.168.1.100') // Example
+        setShowChannelPresets(true)
+      }
+    }
   }
 
   if (loading) {
@@ -278,6 +298,15 @@ export default function AudioZoneControl() {
         onClose={() => setShowMatrixSelector(false)}
         matrixNumber={currentMatrixNumber}
         onSelectInput={handleMatrixInputSelected}
+      />
+
+      {/* Channel Preset Popup */}
+      <ChannelPresetPopup
+        isOpen={showChannelPresets}
+        onClose={() => setShowChannelPresets(false)}
+        deviceType={channelPresetDeviceType}
+        deviceIp={channelPresetDeviceIp}
+        inputLabel={channelPresetInputLabel}
       />
 
       {/* Header */}

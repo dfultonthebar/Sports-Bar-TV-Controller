@@ -600,3 +600,17 @@ model WolfpackMatrixState {
   @@index([routedAt])
 }
 
+model ChannelPreset {
+  id          String   @id @default(cuid())
+  name        String   // User-friendly name like "ESPN", "Fox Sports", "NFL RedZone"
+  channelNumber String // Channel number to tune to (e.g., "206", "212")
+  deviceType  String   // "cable" or "directv"
+  order       Int      @default(0) // Display order in the list
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([deviceType, order])
+  @@index([isActive])
+}
+
