@@ -1,8 +1,8 @@
 
-import cron from 'node-cron'
+import cron, { ScheduledTask } from 'node-cron'
 import { reorderAllPresets } from './presetReorderService'
 
-let cronJob: cron.ScheduledTask | null = null
+let cronJob: ScheduledTask | null = null
 
 /**
  * Initialize the monthly preset reordering cron job
