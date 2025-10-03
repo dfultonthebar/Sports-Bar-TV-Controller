@@ -354,6 +354,42 @@ CONFIG_FILENAME=$(node scripts/get-config-filename.js 2>/dev/null || echo "local
 # Get database path from .env or use default
 DB_PATH=$(grep "DATABASE_URL" .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' | sed 's|file:./||' || echo "prisma/dev.db")
 
+# CRITICAL FIX: Validate database path and find actual location
+# The .env might have the wrong path, so we need to find the real database
+if [ ! -f "$DB_PATH" ]; then
+    log_warning "Database not found at path from .env: $DB_PATH"
+    log "   Searching for actual database location..."
+    
+    # Try common locations
+    POSSIBLE_PATHS=(
+        "prisma/$DB_PATH"
+        "prisma/data/sports_bar.db"
+        "data/sports_bar.db"
+        "prisma/dev.db"
+    )
+    
+    FOUND=false
+    for POSSIBLE_PATH in "${POSSIBLE_PATHS[@]}"; do
+        if [ -f "$POSSIBLE_PATH" ]; then
+            log_success "Found database at: $POSSIBLE_PATH"
+            DB_PATH="$POSSIBLE_PATH"
+            FOUND=true
+            break
+        fi
+    done
+    
+    if [ "$FOUND" = false ]; then
+        log_warning "Could not find existing database file"
+        log "   This appears to be a first-time setup"
+    else
+        # Update .env with correct path for future runs
+        CORRECT_URL="file:./$DB_PATH"
+        log "   Updating .env with correct database path..."
+        sed -i.bak "s|DATABASE_URL=.*|DATABASE_URL=\"$CORRECT_URL\"|" .env
+        log_success ".env updated with correct path: $CORRECT_URL"
+    fi
+fi
+
 if [ -f "$DB_PATH" ]; then
     log "   📊 Creating SQL dump of database..."
     log "      Database location: $DB_PATH"
@@ -808,6 +844,40 @@ if [ -f "prisma/schema.prisma" ]; then
     
     # Get database path from .env (don't override it!)
     DB_PATH=$(grep "DATABASE_URL" .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' | sed 's|file:./||' || echo "prisma/dev.db")
+    
+    # CRITICAL FIX: Validate database path and find actual location (same as backup section)
+    if [ ! -f "$DB_PATH" ]; then
+        log_warning "Database not found at path from .env: $DB_PATH"
+        log "   Searching for actual database location..."
+        
+        # Try common locations
+        POSSIBLE_PATHS=(
+            "prisma/$DB_PATH"
+            "prisma/data/sports_bar.db"
+            "data/sports_bar.db"
+            "prisma/dev.db"
+        )
+        
+        FOUND=false
+        for POSSIBLE_PATH in "${POSSIBLE_PATHS[@]}"; do
+            if [ -f "$POSSIBLE_PATH" ]; then
+                log_success "Found database at: $POSSIBLE_PATH"
+                DB_PATH="$POSSIBLE_PATH"
+                FOUND=true
+                break
+            fi
+        done
+        
+        if [ "$FOUND" = false ]; then
+            log "   No existing database found - will create new one"
+        else
+            # Update .env with correct path for future runs
+            CORRECT_URL="file:./$DB_PATH"
+            log "   Updating .env with correct database path..."
+            sed -i.bak "s|DATABASE_URL=.*|DATABASE_URL=\"$CORRECT_URL\"|" .env
+            log_success ".env updated with correct path: $CORRECT_URL"
+        fi
+    fi
     
     # Ensure DATABASE_URL is set from .env (source it to get the actual value)
     if [ -f ".env" ]; then
