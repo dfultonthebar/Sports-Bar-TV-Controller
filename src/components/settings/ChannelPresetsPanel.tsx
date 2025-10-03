@@ -316,7 +316,9 @@ export default function ChannelPresetsPanel() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g., ESPN, Fox Sports"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                    autoComplete="off"
+                    autoFocus
                   />
                 </div>
                 <div>
@@ -328,7 +330,8 @@ export default function ChannelPresetsPanel() {
                     value={formData.channelNumber}
                     onChange={(e) => setFormData({ ...formData, channelNumber: e.target.value })}
                     placeholder="e.g., 206, 212"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                    autoComplete="off"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -370,7 +373,9 @@ export default function ChannelPresetsPanel() {
                           type="text"
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                          autoComplete="off"
+                          autoFocus
                         />
                       </div>
                       <div>
@@ -381,7 +386,8 @@ export default function ChannelPresetsPanel() {
                           type="text"
                           value={formData.channelNumber}
                           onChange={(e) => setFormData({ ...formData, channelNumber: e.target.value })}
-                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                          autoComplete="off"
                         />
                       </div>
                       <div className="flex gap-2">
