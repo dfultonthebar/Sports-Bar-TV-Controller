@@ -275,6 +275,36 @@
   @apply bg-slate-800 text-slate-100;
 }
 
+/* ============================================
+   Global Select/Dropdown Text Contrast Fix
+   ============================================ */
+
+/* Ensure ALL native select elements have black text in dropdown lists */
+select {
+  @apply text-slate-100;
+}
+
+select option {
+  @apply bg-white text-black;
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+select optgroup {
+  @apply bg-white text-black font-semibold;
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* Hover state for options (browser-dependent) */
+select option:hover,
+select option:focus,
+select option:checked {
+  @apply bg-blue-100 text-black;
+  color: #000000 !important;
+  background-color: #dbeafe !important;
+}
+
 .form-label-dark {
   @apply block text-sm font-medium text-slate-300 mb-1.5;
 }
