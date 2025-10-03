@@ -351,12 +351,16 @@ CONFIG_FILENAME=$(node scripts/get-config-filename.js 2>/dev/null || echo "local
 # =============================================================================
 # DATABASE BACKUP (SQL DUMP)
 # =============================================================================
-if [ -f "prisma/dev.db" ]; then
+# Get database path from .env or use default
+DB_PATH=$(grep "DATABASE_URL" .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' | sed 's|file:./||' || echo "prisma/dev.db")
+
+if [ -f "$DB_PATH" ]; then
     log "   📊 Creating SQL dump of database..."
+    log "      Database location: $DB_PATH"
     
     # Create SQL dump for better reliability and portability
     if command -v sqlite3 &> /dev/null; then
-        sqlite3 prisma/dev.db .dump > "$DB_SQL_BACKUP" 2>/dev/null || {
+        sqlite3 "$DB_PATH" .dump > "$DB_SQL_BACKUP" 2>/dev/null || {
             log_warning "SQL dump failed, will rely on binary backup"
             rm -f "$DB_SQL_BACKUP"
         }
@@ -367,7 +371,7 @@ if [ -f "prisma/dev.db" ]; then
             DB_SQL_BACKUP="${DB_SQL_BACKUP}.gz"
             
             # Get database statistics
-            DB_SIZE=$(du -h prisma/dev.db | cut -f1)
+            DB_SIZE=$(du -h "$DB_PATH" | cut -f1)
             SQL_SIZE=$(du -h "$DB_SQL_BACKUP" | cut -f1)
             
             log_success "Database SQL dump created: $DB_SQL_BACKUP"
@@ -383,7 +387,7 @@ if [ -f "prisma/dev.db" ]; then
         log "      Binary database backup will still be included in tar.gz"
     fi
 else
-    log "   ℹ️  No database file found (first run?)"
+    log "   ℹ️  No database file found at $DB_PATH (first run?)"
 fi
 
 # =============================================================================
@@ -392,10 +396,11 @@ fi
 log "   📦 Creating compressed backup of all configuration files..."
 
 # Backup local config files, .env, database, and data files
+# Use the correct database path from environment
 tar -czf "$BACKUP_FILE" \
     config/*.local.json \
     .env \
-    prisma/dev.db \
+    "$DB_PATH" \
     data/*.json \
     data/scene-logs/ \
     data/atlas-configs/ \
@@ -415,8 +420,8 @@ if [ -f "$BACKUP_FILE" ]; then
         
         # List what was backed up
         log "      Contents:"
-        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "prisma/dev.db"; then
-            log "        ✅ Database (prisma/dev.db)"
+        if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "$DB_PATH"; then
+            log "        ✅ Database ($DB_PATH)"
         fi
         if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q ".env"; then
             log "        ✅ Environment variables (.env)"
@@ -800,7 +805,18 @@ log ""
 # =============================================================================
 if [ -f "prisma/schema.prisma" ]; then
     log "🗄️  Updating database schema..."
-    export DATABASE_URL="file:./dev.db"
+    
+    # Get database path from .env (don't override it!)
+    DB_PATH=$(grep "DATABASE_URL" .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' | sed 's|file:./||' || echo "prisma/dev.db")
+    
+    # Ensure DATABASE_URL is set from .env (source it to get the actual value)
+    if [ -f ".env" ]; then
+        export $(grep "^DATABASE_URL=" .env | xargs)
+        log "   Using database: $DB_PATH"
+    else
+        export DATABASE_URL="file:./prisma/dev.db"
+        log_warning "No .env file found, using default database path"
+    fi
     
     # Generate Prisma Client
     log "   Generating Prisma Client..."
@@ -808,45 +824,51 @@ if [ -f "prisma/schema.prisma" ]; then
     
     # Check if database file exists
     DB_EXISTS=false
-    if [ -f "prisma/dev.db" ]; then
+    if [ -f "$DB_PATH" ]; then
         DB_EXISTS=true
-        log "   ℹ️  Existing database detected - your data will be preserved"
+        log "   ℹ️  Existing database detected at $DB_PATH - your data will be preserved"
     else
-        log "   ℹ️  No existing database - creating new one"
+        log "   ℹ️  No existing database at $DB_PATH - creating new one"
     fi
     
     # Check if migrations directory exists and has migrations
     if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
         if [ "$DB_EXISTS" = true ]; then
-            log "   📊 Syncing schema with existing database..."
-            log "   (Using 'db push' to preserve your data safely)"
+            log "   📊 Applying migrations to existing database..."
+            log "   🔒 SAFE MODE: Your data will be preserved"
             
-            # For existing databases, use db push to avoid migration conflicts
-            # This is the recommended approach for development databases with data
-            if npx prisma db push --accept-data-loss 2>&1 | tee /tmp/prisma_output.log; then
-                log_success "Database schema synchronized successfully"
+            # CRITICAL FIX: Use migrate deploy for existing databases
+            # This applies migrations WITHOUT dropping data
+            # NEVER use --accept-data-loss flag - it deletes all data!
+            if npx prisma migrate deploy 2>&1 | tee /tmp/prisma_output.log; then
+                log_success "Database migrations applied successfully"
+                log "   ✅ All your data has been preserved"
             else
-                # Check if it's the expected P3005 error (schema not empty)
-                if grep -q "P3005" /tmp/prisma_output.log; then
-                    log "   ℹ️  Database already has the correct schema"
+                # Check if migrations are already applied
+                if grep -q "No pending migrations" /tmp/prisma_output.log; then
+                    log "   ℹ️  Database is already up to date"
+                    log_success "No migrations needed - all data preserved"
+                elif grep -q "P3005" /tmp/prisma_output.log; then
+                    log "   ℹ️  Database schema is current"
                     log_success "No schema changes needed - database is up to date"
                 else
-                    log_error "Database sync failed - check output above"
+                    log_error "Migration failed - check output above"
+                    log_error "Your data is still safe in the backup"
                     rm -f /tmp/prisma_output.log
                     exit 1
                 fi
             fi
             rm -f /tmp/prisma_output.log
         else
-            log "   📊 Applying database migrations to new database..."
+            log "   📊 Creating new database with migrations..."
             
-            # For new databases, try migrate deploy first
+            # For new databases, use migrate deploy
             if npx prisma migrate deploy 2>&1 | tee /tmp/prisma_output.log; then
-                log_success "Database migrations applied successfully"
+                log_success "Database created successfully"
             else
-                # If migrate deploy fails, fall back to db push
+                # If migrate deploy fails, fall back to db push (WITHOUT --accept-data-loss)
                 log "   ℹ️  Switching to schema sync method..."
-                if npx prisma db push; then
+                if npx prisma db push 2>&1 | tee /tmp/prisma_output.log; then
                     log_success "Database schema created successfully"
                 else
                     log_error "Database creation failed - check output above"
@@ -858,12 +880,21 @@ if [ -f "prisma/schema.prisma" ]; then
         fi
     else
         log "   📊 Syncing database schema (no migrations found)..."
-        if npx prisma db push; then
+        # CRITICAL: Never use --accept-data-loss flag
+        if npx prisma db push 2>&1 | tee /tmp/prisma_output.log; then
             log_success "Database schema synchronized successfully"
         else
-            log_error "Database sync failed - check output above"
-            exit 1
+            # Check if it's just a "no changes" message
+            if grep -q "already in sync" /tmp/prisma_output.log || grep -q "P3005" /tmp/prisma_output.log; then
+                log "   ℹ️  Database schema is already current"
+                log_success "No changes needed"
+            else
+                log_error "Database sync failed - check output above"
+                rm -f /tmp/prisma_output.log
+                exit 1
+            fi
         fi
+        rm -f /tmp/prisma_output.log
     fi
     
     log ""
