@@ -16,11 +16,29 @@ cd /home/ubuntu/Sports-Bar-TV-Controller
 ```
 
 This script automatically:
+- **Creates automatic backup** of all your settings
 - Stops running processes
 - Pulls latest changes from GitHub  
 - Installs dependencies with npm (no yarn conflicts)
 - Updates database schema if needed
 - Rebuilds and restarts the application
+
+### ❓ Do My Settings Persist After Updates?
+
+**YES!** Your configurations persist automatically. The database file (`prisma/dev.db`) is protected by `.gitignore` and never overwritten by updates.
+
+**You do NOT need to manually restore settings after normal updates.**
+
+📖 **For complete details, see:** [UPDATE_PROCESS.md](./UPDATE_PROCESS.md)
+
+### 🛡️ Backup & Restore
+
+Automatic backups are created before every update as a safety net. You only need to restore if:
+- A migration fails and corrupts the database (rare)
+- You accidentally delete important configurations
+- You want to rollback after an update
+
+📖 **For restore procedures, see:** [BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)
 
 ## 🚀 **Fresh Installation**
 
