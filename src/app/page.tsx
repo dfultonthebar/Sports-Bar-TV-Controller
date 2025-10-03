@@ -70,8 +70,8 @@ export default function Home() {
                   href="/remote"
                   className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-green/30 hover:bg-sportsBar-600/80 hover:border-accent-green/50 transition-all duration-200"
                 >
-                  <h3 className="font-semibold text-green-300 mb-2">📱 Remote Control</h3>
-                  <p className="text-green-200/80 text-sm">Control TVs and audio systems</p>
+                  <h3 className="font-semibold text-green-300 mb-2">🎵 Audio Control Center</h3>
+                  <p className="text-green-200/80 text-sm">Complete audio system management</p>
                 </a>
                 
                 <a 
@@ -83,23 +83,7 @@ export default function Home() {
                 </a>
               </div>
 
-              {/* Music & Audio */}
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold text-slate-200 mb-4">🎵 Music & Audio</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <a 
-                    href="/audio-control"
-                    className="block p-6 bg-gradient-to-br from-teal-600/40 to-purple-600/40 rounded-xl border-2 border-teal-400/50 hover:border-teal-400/70 hover:from-teal-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg col-span-1 md:col-span-2 lg:col-span-3"
-                  >
-                    <div className="flex items-center space-x-3 mb-2">
-                      <Music className="w-6 h-6 text-teal-300" />
-                      <h3 className="font-bold text-teal-200 text-xl">🎵 Audio Control Center</h3>
-                    </div>
-                    <p className="text-teal-100/90 text-sm">Complete audio system management - Atlas zones, processors, and Soundtrack streaming in one place</p>
-                  </a>
-                </div>
-              </div>
-              
+
               {/* Configuration & AV Management */}
               <div className="mt-8">
                 <h3 className="text-lg font-semibold text-slate-200 mb-4">⚙️ Configuration & AV Management</h3>

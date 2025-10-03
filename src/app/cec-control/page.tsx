@@ -81,10 +81,10 @@ export default function CECControlPage() {
                   Configure Matrix CEC Input
                 </Link>
                 <Link 
-                  href="/bartender-remote"
+                  href="/remote"
                   className="block px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-md text-slate-200 text-sm"
                 >
-                  Bartender Remote (with CEC)
+                  Audio Control Center
                 </Link>
                 <Link 
                   href="/tv-control"
