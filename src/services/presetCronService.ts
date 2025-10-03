@@ -1,4 +1,3 @@
-
 import cron, { ScheduledTask } from 'node-cron'
 import { reorderAllPresets } from './presetReorderService'
 
@@ -26,7 +25,6 @@ export function initializePresetCronJob() {
       console.error('[Preset Cron] Error during monthly reordering:', error)
     }
   }, {
-    scheduled: true,
     timezone: 'America/New_York' // Adjust to your timezone
   })
 
