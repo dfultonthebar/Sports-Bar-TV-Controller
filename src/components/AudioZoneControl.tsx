@@ -7,14 +7,8 @@ import {
   VolumeX,
   ChevronUp, 
   ChevronDown,
-  Home,
-  Calculator,
-  Tv,
-  Heart,
-  Headphones,
-  Power,
-  Lightbulb,
-  Radio
+  Radio,
+  AlertCircle
 } from 'lucide-react'
 import WolfpackInputSelector from './WolfpackInputSelector'
 
@@ -31,40 +25,120 @@ interface AudioInput {
   id: string
   name: string
   isActive: boolean
-  type: 'matrix' | 'direct'
+  type: 'matrix' | 'atlas'
   matrixNumber?: number
 }
 
+interface AtlasInputConfig {
+  id: number
+  name: string
+  type: 'microphone' | 'line' | 'dante' | 'zone'
+  physicalInput: number
+}
+
+interface AtlasOutputConfig {
+  id: number
+  name: string
+  type: 'speaker' | 'dante' | 'zone'
+  physicalOutput: number
+  levelDb: number
+  muted: boolean
+}
+
 export default function AudioZoneControl() {
-  const [selectedInput, setSelectedInput] = useState<string | null>('cable4')
+  const [selectedInput, setSelectedInput] = useState<string | null>('matrix1')
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [showMatrixSelector, setShowMatrixSelector] = useState(false)
   const [currentMatrixNumber, setCurrentMatrixNumber] = useState<number>(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
-  const [zones, setZones] = useState<AudioZone[]>([
-    { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
-    { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-    { id: 'partyroom', name: 'Party Room', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-    { id: 'upstairs', name: 'Upstairs', currentSource: 'Spotify', volume: 42, isMuted: false, isActive: true },
-    { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-  ])
+  const [zones, setZones] = useState<AudioZone[]>([])
+  const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
 
-  const [audioInputs] = useState<AudioInput[]>([
-    { id: 'cable1', name: 'Cable 1', isActive: true, type: 'direct' },
-    { id: 'cable2', name: 'Cable 2', isActive: true, type: 'direct' },
-    { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
-    { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
-    { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
-    { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
-    { id: 'dtv1', name: 'DTV 1', isActive: true, type: 'direct' },
-    { id: 'dtv2', name: 'DTV 2', isActive: true, type: 'direct' },
-    { id: 'patioband', name: 'Patio Band', isActive: true, type: 'direct' },
-    { id: 'vipband', name: 'VIP Band', isActive: true, type: 'direct' },
-    { id: 'pavilionband', name: 'Pavilion Band', isActive: true, type: 'direct' },
-    { id: 'mic1', name: 'MIC 1', isActive: true, type: 'direct' },
-    { id: 'mic2', name: 'MIC 2', isActive: true, type: 'direct' },
-    { id: 'jukebox', name: 'Juke Box', isActive: true, type: 'direct' },
-  ])
+  // Fetch Atlas configuration on component mount
+  useEffect(() => {
+    fetchAtlasConfiguration()
+  }, [])
+
+  const fetchAtlasConfiguration = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Fetch Atlas configuration
+      const response = await fetch('/api/atlas/configuration?processorId=atlas-001')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch Atlas configuration')
+      }
+
+      // Build inputs list: Matrix 1-4 first, then Atlas inputs
+      const matrixInputs: AudioInput[] = [
+        { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+        { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+        { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+        { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+      ]
+
+      // Add Atlas inputs
+      const atlasInputs: AudioInput[] = (data.inputs || []).map((input: AtlasInputConfig) => ({
+        id: `atlas-input-${input.id}`,
+        name: input.name,
+        isActive: true,
+        type: 'atlas' as const
+      }))
+
+      setAudioInputs([...matrixInputs, ...atlasInputs])
+
+      // Build zones from Atlas outputs
+      const atlasZones: AudioZone[] = (data.outputs || []).map((output: AtlasOutputConfig) => ({
+        id: `zone-${output.id}`,
+        name: output.name,
+        currentSource: 'Spotify', // Default source
+        volume: Math.round((output.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
+        isMuted: output.muted,
+        isActive: true
+      }))
+
+      // If no outputs configured, use default zones
+      if (atlasZones.length === 0) {
+        setZones([
+          { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
+          { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+          { id: 'partyroom', name: 'Party Room', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+          { id: 'upstairs', name: 'Upstairs', currentSource: 'Spotify', volume: 42, isMuted: false, isActive: true },
+          { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+        ])
+      } else {
+        setZones(atlasZones)
+      }
+
+    } catch (err) {
+      console.error('Error fetching Atlas configuration:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load configuration')
+      
+      // Fallback to Matrix inputs only if Atlas config fails
+      setAudioInputs([
+        { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+        { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+        { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+        { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+      ])
+      
+      // Fallback to default zones
+      setZones([
+        { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
+        { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+        { id: 'partyroom', name: 'Party Room', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+        { id: 'upstairs', name: 'Upstairs', currentSource: 'Spotify', volume: 42, isMuted: false, isActive: true },
+        { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const updateZoneVolume = (zoneId: string, volumeChange: number) => {
     setZones(zones.map(zone => {
@@ -104,7 +178,7 @@ export default function AudioZoneControl() {
       setCurrentMatrixNumber(input.matrixNumber)
       setShowMatrixSelector(true)
     } else {
-      // Direct routing for non-Matrix inputs
+      // Direct routing for Atlas inputs
       setSelectedInput(inputId)
       // In a real implementation, this would call the API to route audio
       console.log(`Direct routing: ${input.name}`)
@@ -116,6 +190,17 @@ export default function AudioZoneControl() {
     console.log(`Matrix ${currentMatrixNumber} now routing from: ${inputLabel}`)
     setSelectedInput(`matrix${currentMatrixNumber}`)
     // The actual routing is handled by the WolfpackInputSelector component
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
+          <p className="text-gray-400">Loading Audio Control Center...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -132,8 +217,14 @@ export default function AudioZoneControl() {
       <div className="text-center mb-6">
         <h1 className="text-3xl font-bold text-orange-400 mb-2">Audio Channels</h1>
         <p className="text-gray-400 text-sm">
-          Matrix inputs route video sources for audio • Direct inputs route audio only
+          Matrix inputs route video sources for audio • Atlas inputs route audio directly
         </p>
+        {error && (
+          <div className="mt-4 bg-yellow-500/20 border border-yellow-500 text-yellow-200 px-4 py-2 rounded-lg inline-flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">Using fallback configuration: {error}</span>
+          </div>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -166,12 +257,12 @@ export default function AudioZoneControl() {
 
         {/* Main Audio Control Area */}
         <div className="lg:col-span-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {zones.map((zone) => (
               <div key={zone.id} className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4">
                 {/* Zone Header */}
                 <div className="text-center mb-4">
-                  <div className="bg-orange-500 text-slate-100 or text-slate-200 px-3 py-1 rounded text-sm font-bold mb-2">
+                  <div className="bg-orange-500 text-slate-100 px-3 py-1 rounded text-sm font-bold mb-2">
                     {zone.name}
                   </div>
                   <div className="text-white font-medium">
@@ -223,42 +314,6 @@ export default function AudioZoneControl() {
                 </div>
               </div>
             ))}
-          </div>
-
-          {/* Bottom Control Bar */}
-          <div className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4">
-            <div className="flex justify-center items-center space-x-6">
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Home className="w-6 h-6" />
-              </button>
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Calculator className="w-6 h-6" />
-              </button>
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Tv className="w-6 h-6" />
-              </button>
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Heart className="w-6 h-6" />
-              </button>
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Volume2 className="w-6 h-6" />
-              </button>
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Headphones className="w-6 h-6" />
-              </button>
-
-              {/* 50th Anniversary Logo Placeholder */}
-              <div className="bg-gray-700 text-white p-3 rounded-full">
-                <div className="text-xs font-bold">50</div>
-              </div>
-
-              <button className="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-lg transition-all">
-                <Lightbulb className="w-6 h-6" />
-              </button>
-              <button className="bg-red-600 hover:bg-red-500 text-white p-3 rounded-lg transition-all">
-                <Power className="w-6 h-6" />
-              </button>
-            </div>
           </div>
         </div>
       </div>
