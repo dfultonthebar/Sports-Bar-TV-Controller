@@ -77,7 +77,7 @@ check_pm2_installed() {
 install_pm2() {
     log "📦 Installing PM2 globally..."
     
-    if echo "6809233DjD$$$" | sudo -S npm install -g pm2; then
+    if sudo -n npm install -g pm2 2>/dev/null; then
         log_success "PM2 installed successfully"
         
         # Verify installation
@@ -90,6 +90,8 @@ install_pm2() {
         fi
     else
         log_error "Failed to install PM2"
+        log_error "Passwordless sudo is not configured. Please run: sudo visudo"
+        log_error "Add this line: $USER ALL=(ALL) NOPASSWD: ALL"
         return 1
     fi
 }
@@ -108,14 +110,16 @@ setup_pm2_startup() {
     
     if [ -n "$startup_cmd" ]; then
         log "   Executing PM2 startup configuration..."
-        echo "6809233DjD$$$" | eval "$startup_cmd" 2>&1 | tee -a "$LOG_FILE"
+        # Remove 'sudo' from the command and run with sudo -n
+        startup_cmd_no_sudo=$(echo "$startup_cmd" | sed 's/^sudo //')
         
-        if [ $? -eq 0 ]; then
+        if sudo -n bash -c "$startup_cmd_no_sudo" 2>&1 | tee -a "$LOG_FILE"; then
             log_success "PM2 startup configured successfully"
             return 0
         else
             log_warning "PM2 startup configuration may have failed"
-            log_warning "You may need to run 'pm2 startup' manually"
+            log_warning "Passwordless sudo is required. Please run: sudo visudo"
+            log_warning "Add this line: $USER ALL=(ALL) NOPASSWD: ALL"
             return 1
         fi
     else
@@ -300,6 +304,30 @@ install_dependencies() {
 log "=========================================="
 log "🔄 Starting Sports Bar AI Assistant Update"
 log "=========================================="
+log ""
+
+# =============================================================================
+# PASSWORDLESS SUDO CHECK
+# =============================================================================
+log "🔐 Checking passwordless sudo configuration..."
+
+if sudo -n true 2>/dev/null; then
+    log_success "Passwordless sudo is configured"
+else
+    log_error "Passwordless sudo is NOT configured!"
+    log ""
+    log "The update script requires passwordless sudo to run without prompts."
+    log "This is a one-time setup that improves security and automation."
+    log ""
+    log "To configure passwordless sudo, run:"
+    log "  ./scripts/setup-passwordless-sudo.sh"
+    log ""
+    log "Or manually add this line to /etc/sudoers.d/sports-bar-tv-controller:"
+    log "  $USER ALL=(ALL) NOPASSWD: ALL"
+    log ""
+    exit 1
+fi
+
 log ""
 
 # Change to project directory
@@ -721,9 +749,14 @@ log ""
 # =============================================================================
 if ! command -v cec-client &> /dev/null; then
     log "📺 Installing HDMI-CEC support (libCEC)..."
-    echo "6809233DjD$$$" | sudo -S apt update
-    echo "6809233DjD$$$" | sudo -S apt install -y cec-utils libcec6 libcec-dev
-    log_success "libCEC installed successfully"
+    if sudo -n apt update && sudo -n apt install -y cec-utils libcec6 libcec-dev; then
+        log_success "libCEC installed successfully"
+    else
+        log_error "Failed to install libCEC"
+        log_error "Passwordless sudo is required. Please run: sudo visudo"
+        log_error "Add this line: $USER ALL=(ALL) NOPASSWD: ALL"
+        exit 1
+    fi
 else
     log_success "libCEC already installed"
 fi
