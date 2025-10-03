@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -18,12 +17,14 @@ import {
   Play,
   RefreshCw,
   Filter,
-  XCircle
+  XCircle,
+  Power
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LogAnalyticsDashboard from '@/components/LogAnalyticsDashboard'
 import GitHubConfigSync from '@/components/GitHubConfigSync'
+import SystemControlPanel from '@/components/SystemControlPanel'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
@@ -378,8 +379,12 @@ export default function SystemAdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs defaultValue="logs" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-sportsBar-800/50 p-1">
+        <Tabs defaultValue="power" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
+            <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Power className="w-4 h-4 mr-2" />
+              Power
+            </TabsTrigger>
             <TabsTrigger value="logs" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <FileText className="w-4 h-4 mr-2" />
               Logs
@@ -397,6 +402,11 @@ export default function SystemAdminPage() {
               Tests
             </TabsTrigger>
           </TabsList>
+
+          {/* Power Controls Tab */}
+          <TabsContent value="power" className="space-y-6">
+            <SystemControlPanel />
+          </TabsContent>
 
           {/* Logs Tab */}
           <TabsContent value="logs" className="space-y-6">
