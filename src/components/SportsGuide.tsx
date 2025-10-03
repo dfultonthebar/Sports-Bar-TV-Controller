@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import ProgrammingScheduler from './ProgrammingScheduler'
 import EnhancedChannelGrid from './EnhancedChannelGrid'
+import ChannelPresetsPanel from './settings/ChannelPresetsPanel'
 
 interface League {
   id: string
@@ -227,7 +228,7 @@ export default function SportsGuide() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [scheduledRoutines, setScheduledRoutines] = useState<ScheduledRoutine[]>([])
   const [showScheduler, setShowScheduler] = useState(false)
-  const [activeTab, setActiveTab] = useState<'sports-guide' | 'tv-programming' | 'scheduler'>('sports-guide')
+  const [activeTab, setActiveTab] = useState<'sports-guide' | 'tv-programming' | 'scheduler' | 'channel-presets'>('sports-guide')
   const [selectedDay, setSelectedDay] = useState(0) // 0 = today, 1 = tomorrow, etc.
   
   // New state for input and provider management
@@ -937,6 +938,17 @@ export default function SportsGuide() {
                 <Settings className="w-5 h-5" />
                 <span>Scheduler</span>
               </button>
+              <button
+                onClick={() => setActiveTab('channel-presets')}
+                className={`flex items-center space-x-2 px-6 py-3 rounded-xl text-base font-semibold transition-all duration-200 ${
+                  activeTab === 'channel-presets'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg border border-blue-400/50'
+                    : 'text-slate-200 hover:text-white hover:bg-slate-700/50 border border-transparent'
+                }`}
+              >
+                <Radio className="w-5 h-5" />
+                <span>Channel Presets</span>
+              </button>
             </div>
           </div>
       </div>
@@ -951,6 +963,12 @@ export default function SportsGuide() {
       {activeTab === 'scheduler' && (
         <div className="lg:col-span-3">
           <ProgrammingScheduler />
+        </div>
+      )}
+      
+      {activeTab === 'channel-presets' && (
+        <div className="lg:col-span-3">
+          <ChannelPresetsPanel />
         </div>
       )}
       
