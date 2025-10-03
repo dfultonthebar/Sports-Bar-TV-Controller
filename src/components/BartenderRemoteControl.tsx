@@ -1429,7 +1429,9 @@ export default function BartenderRemoteControl() {
                 </div>
                 
                 <WolfpackInputSelector
-                  onSelect={(inputNumber) => {
+                  isOpen={showMatrixSelector}
+                  matrixNumber={currentMatrixNumber}
+                  onSelectInput={(inputNumber, inputLabel) => {
                     // Route the selected input to the matrix output
                     routeMatrixInput(currentMatrixNumber, inputNumber, selectedAudioZone)
                     setShowMatrixSelector(false)
