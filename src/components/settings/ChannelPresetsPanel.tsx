@@ -21,6 +21,8 @@ interface ChannelPreset {
   deviceType: string
   order: number
   isActive: boolean
+  usageCount: number
+  lastUsed: string | null
 }
 
 export default function ChannelPresetsPanel() {
@@ -34,6 +36,7 @@ export default function ChannelPresetsPanel() {
     name: '',
     channelNumber: ''
   })
+  const [isReordering, setIsReordering] = useState(false)
 
   useEffect(() => {
     fetchPresets()
@@ -192,6 +195,33 @@ export default function ChannelPresetsPanel() {
     }
   }
 
+  const handleAutoReorder = async () => {
+    if (!confirm('This will automatically reorder presets based on usage patterns. Continue?')) {
+      return
+    }
+
+    setIsReordering(true)
+    try {
+      const response = await fetch('/api/channel-presets/reorder', {
+        method: 'POST'
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        await fetchPresets()
+        alert('Presets reordered successfully based on usage!')
+      } else {
+        alert(data.error || 'Failed to reorder presets')
+      }
+    } catch (err) {
+      console.error('Error reordering presets:', err)
+      alert('Failed to reorder presets')
+    } finally {
+      setIsReordering(false)
+    }
+  }
+
   return (
     <div className="bg-gray-900 rounded-lg p-6">
       <div className="mb-6">
@@ -242,15 +272,34 @@ export default function ChannelPresetsPanel() {
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Add Button */}
+          {/* Action Buttons */}
           {!isAdding && (
-            <button
-              onClick={handleAdd}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg p-3 flex items-center justify-center gap-2 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Add Channel Preset
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAdd}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg p-3 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Add Channel Preset
+              </button>
+              {presets.length > 0 && (
+                <button
+                  onClick={handleAutoReorder}
+                  disabled={isReordering}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg px-4 py-3 flex items-center justify-center gap-2 transition-colors"
+                  title="Automatically reorder presets based on usage"
+                >
+                  {isReordering ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <>
+                      <GripVertical className="w-5 h-5" />
+                      Auto-Reorder
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           )}
 
           {/* Add Form */}
@@ -374,6 +423,14 @@ export default function ChannelPresetsPanel() {
                       <div className="flex-1">
                         <div className="text-white font-medium">{preset.name}</div>
                         <div className="text-sm text-gray-400">Channel {preset.channelNumber}</div>
+                        {preset.usageCount > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Used {preset.usageCount} time{preset.usageCount !== 1 ? 's' : ''}
+                            {preset.lastUsed && (
+                              <> • Last: {new Date(preset.lastUsed).toLocaleDateString()}</>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button

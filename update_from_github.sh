@@ -431,6 +431,17 @@ fi
 # =============================================================================
 log "   📦 Creating compressed backup of all configuration files..."
 
+# Backup channel presets separately first
+PRESET_BACKUP_FILE=""
+if [ -f "$PROJECT_DIR/scripts/backup-channel-presets.sh" ]; then
+    log "   📋 Backing up channel presets..."
+    if PRESET_BACKUP_FILE=$("$PROJECT_DIR/scripts/backup-channel-presets.sh" 2>&1 | tail -1); then
+        log "      ✅ Channel presets backed up: $PRESET_BACKUP_FILE"
+    else
+        log_warning "Channel preset backup failed, continuing with main backup"
+    fi
+fi
+
 # Backup local config files, .env, database, and data files
 # Use the correct database path from environment
 tar -czf "$BACKUP_FILE" \
@@ -597,6 +608,22 @@ else
     log_error "Failed to pull changes from GitHub"
     log_error "Please resolve any conflicts manually"
     exit 1
+fi
+
+log ""
+
+# =============================================================================
+# RESTORE CHANNEL PRESETS (if backup exists)
+# =============================================================================
+if [ -n "$PRESET_BACKUP_FILE" ] && [ -f "$PRESET_BACKUP_FILE" ]; then
+    log "📋 Restoring channel presets from backup..."
+    if [ -f "$PROJECT_DIR/scripts/restore-channel-presets.sh" ]; then
+        if "$PROJECT_DIR/scripts/restore-channel-presets.sh"; then
+            log_success "Channel presets restored successfully"
+        else
+            log_warning "Channel preset restoration failed, but continuing"
+        fi
+    fi
 fi
 
 log ""

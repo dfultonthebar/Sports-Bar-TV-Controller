@@ -1,0 +1,20 @@
+
+// This is a partial update - showing only the ChannelPreset model changes
+// The full schema.prisma will be updated with file_str_replace
+
+model ChannelPreset {
+  id          String   @id @default(cuid())
+  name        String   // User-friendly name like "ESPN", "Fox Sports", "NFL RedZone"
+  channelNumber String // Channel number to tune to (e.g., "206", "212")
+  deviceType  String   // "cable" or "directv"
+  order       Int      @default(0) // Display order in the list
+  isActive    Boolean  @default(true)
+  usageCount  Int      @default(0) // Track how many times this preset has been used
+  lastUsed    DateTime? // Track when this preset was last used
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([deviceType, order])
+  @@index([isActive])
+  @@index([usageCount])
+}
