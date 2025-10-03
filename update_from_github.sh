@@ -1,16 +1,18 @@
 #!/bin/bash
 
 # =============================================================================
-# UPDATE FROM GITHUB (Enhanced with Safety Checks)
+# UPDATE FROM GITHUB (Enhanced with PM2 Process Management)
 # =============================================================================
 # This script safely updates your local system from GitHub
 # Automatically installs Ollama and downloads all required AI models
-# Includes: libCEC, Ollama AI, Required Models, and Color Scheme Standardization
+# Includes: libCEC, Ollama AI, Required Models, PM2 Process Management
 # 
 # ENHANCEMENTS:
 # - Uses npm exclusively for package management
+# - PM2 process management for production-grade reliability
 # - Smart dependency installation (only when package files change)
 # - Graceful server restart with proper process management
+# - Auto-restart on crashes and startup on boot
 # - Enhanced error handling and logging
 # - Safety checks to prevent breaking the working system
 # =============================================================================
@@ -25,6 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="/home/ubuntu/Sports-Bar-TV-Controller"
 LOG_FILE="$PROJECT_DIR/update.log"
 SERVER_PORT=3000
+PM2_APP_NAME="sports-bar-tv-controller"
 
 # =============================================================================
 # LOGGING FUNCTIONS
@@ -61,16 +64,89 @@ cleanup_on_error() {
 trap cleanup_on_error ERR
 
 # =============================================================================
+# PM2 MANAGEMENT
+# =============================================================================
+check_pm2_installed() {
+    if command -v pm2 &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+install_pm2() {
+    log "📦 Installing PM2 globally..."
+    
+    if sudo npm install -g pm2; then
+        log_success "PM2 installed successfully"
+        
+        # Verify installation
+        if command -v pm2 &> /dev/null; then
+            log "   PM2 version: $(pm2 --version)"
+            return 0
+        else
+            log_error "PM2 installation verification failed"
+            return 1
+        fi
+    else
+        log_error "Failed to install PM2"
+        return 1
+    fi
+}
+
+setup_pm2_startup() {
+    log "🔧 Configuring PM2 startup on boot..."
+    
+    # Check if PM2 startup is already configured
+    if pm2 startup | grep -q "already configured"; then
+        log "   ℹ️  PM2 startup already configured"
+        return 0
+    fi
+    
+    # Get the startup command
+    local startup_cmd=$(pm2 startup | grep "sudo env" | tail -1)
+    
+    if [ -n "$startup_cmd" ]; then
+        log "   Executing PM2 startup configuration..."
+        eval "$startup_cmd" 2>&1 | tee -a "$LOG_FILE"
+        
+        if [ $? -eq 0 ]; then
+            log_success "PM2 startup configured successfully"
+            return 0
+        else
+            log_warning "PM2 startup configuration may have failed"
+            log_warning "You may need to run 'pm2 startup' manually"
+            return 1
+        fi
+    else
+        log_warning "Could not determine PM2 startup command"
+        log "   Run 'pm2 startup' manually to configure"
+        return 1
+    fi
+}
+
+# =============================================================================
 # PROCESS MANAGEMENT
 # =============================================================================
 stop_server() {
     log "⏹️  Stopping running server..."
     
-    # Find process on port 3000
+    if check_pm2_installed; then
+        # Check if app is running in PM2
+        if pm2 list | grep -q "$PM2_APP_NAME"; then
+            log "   Stopping PM2 process: $PM2_APP_NAME"
+            pm2 stop "$PM2_APP_NAME" 2>&1 | tee -a "$LOG_FILE"
+            log_success "PM2 process stopped"
+        else
+            log "   No PM2 process found for $PM2_APP_NAME"
+        fi
+    fi
+    
+    # Also check for any processes on the port (fallback)
     local pid=$(lsof -ti:$SERVER_PORT 2>/dev/null || true)
     
     if [ -n "$pid" ]; then
-        log "Found server process (PID: $pid) on port $SERVER_PORT"
+        log "   Found process on port $SERVER_PORT (PID: $pid)"
         kill -TERM "$pid" 2>/dev/null || true
         
         # Wait for graceful shutdown (max 10 seconds)
@@ -82,31 +158,43 @@ stop_server() {
         
         # Force kill if still running
         if kill -0 "$pid" 2>/dev/null; then
-            log_warning "Server didn't stop gracefully, forcing shutdown..."
+            log_warning "Process didn't stop gracefully, forcing shutdown..."
             kill -9 "$pid" 2>/dev/null || true
         fi
         
-        log_success "Server stopped successfully"
-    else
-        log "No server process found on port $SERVER_PORT"
+        log_success "Port $SERVER_PORT cleared"
     fi
     
-    # Also stop any npm/next processes
+    # Clean up any stray npm/next processes
     pkill -f "npm.*start" 2>/dev/null || true
     pkill -f "next" 2>/dev/null || true
     sleep 2
 }
 
 start_server() {
-    log "🚀 Starting server..."
+    log "🚀 Starting server with PM2..."
     
-    # Start server in background with nohup
-    nohup npm start > "$PROJECT_DIR/server.log" 2>&1 &
-    local server_pid=$!
+    # Check if PM2 is installed
+    if ! check_pm2_installed; then
+        log_error "PM2 is not installed. This should not happen!"
+        return 1
+    fi
     
-    log "Server started (PID: $server_pid)"
+    # Check if app already exists in PM2
+    if pm2 list | grep -q "$PM2_APP_NAME"; then
+        log "   Restarting existing PM2 process..."
+        pm2 restart "$PM2_APP_NAME" 2>&1 | tee -a "$LOG_FILE"
+    else
+        log "   Starting new PM2 process..."
+        pm2 start npm --name "$PM2_APP_NAME" -- start 2>&1 | tee -a "$LOG_FILE"
+    fi
+    
+    # Save PM2 process list
+    log "   Saving PM2 process list..."
+    pm2 save 2>&1 | tee -a "$LOG_FILE"
     
     # Wait for server to be ready (max 30 seconds)
+    log "   Waiting for server to be ready..."
     local count=0
     local max_attempts=30
     
@@ -119,8 +207,33 @@ start_server() {
         count=$((count + 1))
     done
     
-    log_warning "Server started but not responding yet. Check server.log for details"
+    log_warning "Server started but not responding yet"
+    log "   Check PM2 logs: pm2 logs $PM2_APP_NAME"
     return 1
+}
+
+verify_server_running() {
+    log "🔍 Verifying server status..."
+    
+    # Check PM2 status
+    if pm2 list | grep -q "$PM2_APP_NAME.*online"; then
+        log_success "PM2 process is running"
+        
+        # Check if server is responding
+        if curl -s http://localhost:$SERVER_PORT > /dev/null 2>&1; then
+            log_success "Server is responding on port $SERVER_PORT"
+            return 0
+        else
+            log_warning "PM2 process running but server not responding"
+            log "   Check logs: pm2 logs $PM2_APP_NAME"
+            return 1
+        fi
+    else
+        log_error "PM2 process is not running"
+        log "   Check status: pm2 status"
+        log "   Check logs: pm2 logs $PM2_APP_NAME"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -196,6 +309,26 @@ cd "$PROJECT_DIR" || {
 }
 
 log "📦 Using npm for package management"
+log ""
+
+# =============================================================================
+# PM2 INSTALLATION CHECK
+# =============================================================================
+log "🔧 Checking PM2 installation..."
+
+if check_pm2_installed; then
+    log_success "PM2 is already installed (version: $(pm2 --version))"
+else
+    log "PM2 not found - installing..."
+    if install_pm2; then
+        log_success "PM2 installation complete"
+    else
+        log_error "Failed to install PM2"
+        log_error "PM2 is required for production-grade process management"
+        exit 1
+    fi
+fi
+
 log ""
 
 # =============================================================================
@@ -634,10 +767,31 @@ else
 fi
 
 # =============================================================================
+# PM2 STARTUP CONFIGURATION
+# =============================================================================
+log ""
+log "🔧 Configuring PM2 for system startup..."
+
+# Only configure startup if not already done
+if ! pm2 startup 2>&1 | grep -q "already configured"; then
+    setup_pm2_startup
+else
+    log_success "PM2 startup already configured"
+fi
+
+log ""
+
+# =============================================================================
 # RESTART SERVER
 # =============================================================================
 log ""
 if start_server; then
+    log ""
+    
+    # Verify server is actually running
+    sleep 3
+    verify_server_running
+    
     log ""
     log "=========================================="
     log_success "Update successful! Application is running"
@@ -654,6 +808,9 @@ if start_server; then
     else
         log "   ✅ Dependencies unchanged (skipped for safety)"
     fi
+    log "   ✅ PM2 process manager installed and configured"
+    log "   ✅ Application running under PM2 (auto-restart enabled)"
+    log "   ✅ PM2 startup on boot configured"
     log "   ✅ libCEC support verified"
     log "   ✅ Local AI (Ollama) verified"
     log "   ✅ Database schema updated (data preserved)"
@@ -684,13 +841,28 @@ if start_server; then
     log "   Check ai-style-reports/ for detailed component analysis"
     log "   Run './scripts/run-style-analysis.sh' for interactive tools"
     log ""
+    log "🔧 PM2 Process Management:"
+    log "   View status:    pm2 status"
+    log "   View logs:      pm2 logs $PM2_APP_NAME"
+    log "   Restart app:    pm2 restart $PM2_APP_NAME"
+    log "   Stop app:       pm2 stop $PM2_APP_NAME"
+    log "   Monitor:        pm2 monit"
+    log "   Web dashboard:  pm2 plus (optional)"
+    log ""
     log "💡 Tip: Your local settings are safe during updates!"
     log "   Edit config: nano config/local.local.json"
     log ""
     log "📝 Full update log saved to: $LOG_FILE"
 else
     log_error "Server started but not responding properly"
-    log_error "Check server.log and $LOG_FILE for details"
+    log_error "Check logs for details:"
+    log_error "   PM2 logs: pm2 logs $PM2_APP_NAME"
+    log_error "   Update log: $LOG_FILE"
+    log ""
+    log "🔧 Troubleshooting:"
+    log "   Check PM2 status: pm2 status"
+    log "   View PM2 logs:    pm2 logs $PM2_APP_NAME --lines 50"
+    log "   Restart app:      pm2 restart $PM2_APP_NAME"
     log ""
     log "🔧 Configuration Status:"
     if [ -f "$BACKUP_FILE" ]; then
