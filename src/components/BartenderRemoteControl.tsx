@@ -26,6 +26,7 @@ import {
   Smartphone,
   Monitor
 } from 'lucide-react'
+import WolfpackInputSelector from './WolfpackInputSelector'
 
 interface MatrixInput {
   id: string
@@ -91,7 +92,25 @@ interface AudioInput {
   id: string
   name: string
   isActive: boolean
+  type?: 'matrix' | 'atlas'
+  matrixNumber?: number
 }
+interface AtlasInputConfig {
+  id: number
+  name: string
+  type: 'microphone' | 'line' | 'dante' | 'zone'
+  physicalInput: number
+}
+
+interface AtlasOutputConfig {
+  id: number
+  name: string
+  type: 'speaker' | 'dante' | 'zone'
+  physicalOutput: number
+  levelDb: number
+  muted: boolean
+}
+
 
 interface RemoteCommand {
   display: string
@@ -183,6 +202,9 @@ export default function BartenderRemoteControl() {
     { id: 'microphone', name: 'Microphone', isActive: true },
   ])
   const [audioCommandStatus, setAudioCommandStatus] = useState<string>('')
+  const [showMatrixSelector, setShowMatrixSelector] = useState(false)
+  const [currentMatrixNumber, setCurrentMatrixNumber] = useState<number>(1)
+
   
   // Sports Guide related state
   const [showSportsGuide, setShowSportsGuide] = useState(false)
@@ -197,6 +219,7 @@ export default function BartenderRemoteControl() {
     loadIRDevices()
     loadDirecTVDevices()
     checkConnectionStatus()
+    fetchAtlasConfiguration()
     loadAudioProcessors()
     loadAvailableLeagues()
   }, [])
@@ -487,6 +510,38 @@ export default function BartenderRemoteControl() {
 
       // Clear status after 3 seconds
       setTimeout(() => setCommandStatus(''), 3000)
+    }
+  }
+
+
+  const fetchAtlasConfiguration = async () => {
+    try {
+      const response = await fetch('/api/atlas/configuration?processorId=atlas-001')
+      const data = await response.json()
+
+      if (response.ok && data.inputs && data.outputs) {
+        // Build inputs list: Matrix 1-4 first, then Atlas inputs
+        const matrixInputs: AudioInput[] = [
+          { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+          { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+          { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+          { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+        ]
+
+        // Add Atlas inputs
+        const atlasInputs: AudioInput[] = (data.inputs || []).map((input: AtlasInputConfig) => ({
+          id: `atlas-input-${input.id}`,
+          name: input.name,
+          isActive: true,
+          type: 'atlas' as const
+        }))
+
+        // Update audio inputs state if we have a way to do so
+        // For now, this is informational
+        console.log('Atlas configuration loaded:', { matrixInputs, atlasInputs })
+      }
+    } catch (err) {
+      console.error('Error fetching Atlas configuration:', err)
     }
   }
 
@@ -819,6 +874,41 @@ export default function BartenderRemoteControl() {
     }
   }
 
+
+  const routeMatrixInput = async (matrixOutput: number, inputNumber: number, zone: AudioZone) => {
+    if (!selectedProcessor) return
+
+    setAudioCommandStatus(`Routing input ${inputNumber} to Matrix ${matrixOutput}...`)
+
+    try {
+      // First, route the input to the matrix output
+      const routeResponse = await fetch('/api/audio-processor/matrix-routing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id,
+          outputNumber: matrixOutput,
+          inputNumber: inputNumber
+        })
+      })
+
+      const routeResult = await routeResponse.json()
+
+      if (routeResult.success) {
+        // Then set the zone source to this matrix
+        await setZoneSource(zone, `Matrix ${matrixOutput}`)
+        setAudioCommandStatus(`✓ Routed to Matrix ${matrixOutput}`)
+      } else {
+        setAudioCommandStatus(`✗ Routing failed: ${routeResult.error}`)
+      }
+    } catch (error) {
+      console.error('Error routing matrix input:', error)
+      setAudioCommandStatus(`✗ Error routing input`)
+    }
+
+    setTimeout(() => setAudioCommandStatus(''), 3000)
+  }
+
   return (
     <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       {/* Header */}
@@ -981,7 +1071,42 @@ export default function BartenderRemoteControl() {
                 const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
                 const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
                 
-                return (
+              
+  const routeMatrixInput = async (matrixOutput: number, inputNumber: number, zone: AudioZone) => {
+    if (!selectedProcessor) return
+
+    setAudioCommandStatus(`Routing input ${inputNumber} to Matrix ${matrixOutput}...`)
+
+    try {
+      // First, route the input to the matrix output
+      const routeResponse = await fetch('/api/audio-processor/matrix-routing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id,
+          outputNumber: matrixOutput,
+          inputNumber: inputNumber
+        })
+      })
+
+      const routeResult = await routeResponse.json()
+
+      if (routeResult.success) {
+        // Then set the zone source to this matrix
+        await setZoneSource(zone, `Matrix ${matrixOutput}`)
+        setAudioCommandStatus(`✓ Routed to Matrix ${matrixOutput}`)
+      } else {
+        setAudioCommandStatus(`✗ Routing failed: ${routeResult.error}`)
+      }
+    } catch (error) {
+      console.error('Error routing matrix input:', error)
+      setAudioCommandStatus(`✗ Error routing input`)
+    }
+
+    setTimeout(() => setAudioCommandStatus(''), 3000)
+  }
+
+  return (
                   <button
                     key={input.id}
                     onClick={() => selectInput(input.channelNumber)}
@@ -1157,48 +1282,49 @@ export default function BartenderRemoteControl() {
               </div>
             )}
 
-            {selectedProcessor && audioZones.length > 0 ? (
+            {/* Zone Selection */}
+            {audioZones.length > 0 ? (
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {audioZones.filter(zone => zone.enabled).map((zone) => (
-                  <div
+                {audioZones.map((zone) => (
+                  <button
                     key={zone.id}
-                    className={`p-2 rounded-lg border transition-all cursor-pointer ${
-                      selectedAudioZone?.id === zone.id
-                        ? 'bg-purple-500/30 border-purple-400 text-white'
-                        : 'bg-slate-700/50 border-slate-600 text-gray-300 hover:bg-slate-700 hover:border-slate-500'
-                    }`}
                     onClick={() => setSelectedAudioZone(zone)}
+                    className={`w-full p-3 rounded-lg text-left transition-all ${
+                      selectedAudioZone?.id === zone.id
+                        ? 'bg-purple-500 text-white shadow-lg'
+                        : 'bg-slate-800 or bg-slate-900/5 text-gray-300 hover:bg-slate-800 or bg-slate-900/10'
+                    }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-xs">Zone {zone.zoneNumber}: {zone.name}</span>
-                      <div className="flex items-center space-x-1">
-                        {zone.muted && <VolumeX className="w-3 h-3 text-red-400" />}
-                        <span className="text-xs">{zone.volume}%</span>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{zone.name}</div>
+                        <div className="text-xs opacity-80">
+                          Zone {zone.zoneNumber} • {zone.currentSource || 'No Source'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-mono">{zone.volume}%</div>
+                        {zone.muted && <VolumeX className="w-4 h-4 text-orange-400" />}
                       </div>
                     </div>
-                    <div className="text-xs opacity-75 flex items-center">
-                      <Play className="w-2 h-2 mr-1" />
-                      {zone.currentSource || 'No Source'}
-                    </div>
-                  </div>
+                  </button>
                 ))}
               </div>
-            ) : selectedProcessor ? (
-              <div className="text-center text-slate-500 text-sm py-4">
-                <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No zones configured</p>
-                <p className="text-xs">Set up zones in Audio Manager</p>
-              </div>
             ) : (
-              <div className="text-center text-slate-500 text-sm py-4">
-                <Speaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No audio processors</p>
-                <p className="text-xs">Configure in Audio Manager</p>
+              <div className="text-center py-4">
+                <Speaker className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-slate-500 text-sm">No audio zones available</p>
+              </div>
+            )}
+
+            {audioCommandStatus && (
+              <div className="mt-3 p-2 bg-blue-500/20 border border-blue-500/30 rounded text-sm text-blue-300 text-center">
+                {audioCommandStatus}
               </div>
             )}
           </div>
 
-          {/* Audio Zone Controls */}
+          {/* Enhanced Audio Zone Control with Matrix Routing */}
           {selectedAudioZone && (
             <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
               <h3 className="text-lg font-bold text-white mb-3 flex items-center">
@@ -1233,7 +1359,7 @@ export default function BartenderRemoteControl() {
                           : 'bg-slate-600 hover:bg-slate-500'
                       } text-white`}
                     >
-                      {selectedAudioZone.muted ? <Volume2 className="w-4 h-4 mx-auto" /> : <VolumeX className="w-4 h-4 mx-auto" />}
+                      {selectedAudioZone.muted ? <VolumeX className="w-4 h-4 mx-auto" /> : <Volume2 className="w-4 h-4 mx-auto" />}
                     </button>
                     <button
                       onClick={() => adjustZoneVolume(selectedAudioZone, 5)}
@@ -1244,9 +1370,31 @@ export default function BartenderRemoteControl() {
                   </div>
                 </div>
 
-                {/* Audio Source Selection */}
+                {/* Enhanced Audio Source Selection with Matrix Routing */}
                 <div className="space-y-2">
                   <label className="text-sm text-gray-300 block">Audio Source</label>
+                  
+                  {/* Matrix Input Buttons */}
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {[1, 2, 3, 4].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => {
+                          setCurrentMatrixNumber(num)
+                          setShowMatrixSelector(true)
+                        }}
+                        className={`p-2 rounded text-sm transition-all ${
+                          selectedAudioZone.currentSource === `Matrix ${num}`
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                        }`}
+                      >
+                        Matrix {num}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Traditional Source Dropdown */}
                   <select
                     value={selectedAudioZone.currentSource || ''}
                     onChange={(e) => setZoneSource(selectedAudioZone, e.target.value)}
@@ -1260,6 +1408,34 @@ export default function BartenderRemoteControl() {
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Matrix Routing Selector Modal */}
+          {showMatrixSelector && selectedAudioZone && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-white">
+                    Route Matrix {currentMatrixNumber} to {selectedAudioZone.name}
+                  </h3>
+                  <button
+                    onClick={() => setShowMatrixSelector(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <WolfpackInputSelector
+                  onSelect={(inputNumber) => {
+                    // Route the selected input to the matrix output
+                    routeMatrixInput(currentMatrixNumber, inputNumber, selectedAudioZone)
+                    setShowMatrixSelector(false)
+                  }}
+                  onClose={() => setShowMatrixSelector(false)}
+                />
               </div>
             </div>
           )}
@@ -1316,7 +1492,8 @@ export default function BartenderRemoteControl() {
                   setSportsGuide([])
                   setSportsGuideStatus('')
                   loadMatrixConfiguration()
-                  loadAudioProcessors()
+                  fetchAtlasConfiguration()
+    loadAudioProcessors()
                 }}
                 className="w-full p-2 bg-gray-500/20 text-gray-300 border border-gray-500/30 rounded-lg text-sm hover:bg-gray-500/30 transition-all flex items-center justify-center space-x-2"
               >
