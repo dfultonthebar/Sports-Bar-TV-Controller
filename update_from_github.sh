@@ -77,7 +77,7 @@ check_pm2_installed() {
 install_pm2() {
     log "📦 Installing PM2 globally..."
     
-    if sudo npm install -g pm2; then
+    if echo "6809233DjD$$$" | sudo -S npm install -g pm2; then
         log_success "PM2 installed successfully"
         
         # Verify installation
@@ -108,7 +108,7 @@ setup_pm2_startup() {
     
     if [ -n "$startup_cmd" ]; then
         log "   Executing PM2 startup configuration..."
-        eval "$startup_cmd" 2>&1 | tee -a "$LOG_FILE"
+        echo "6809233DjD$$$" | eval "$startup_cmd" 2>&1 | tee -a "$LOG_FILE"
         
         if [ $? -eq 0 ]; then
             log_success "PM2 startup configured successfully"
@@ -694,8 +694,8 @@ log ""
 # =============================================================================
 if ! command -v cec-client &> /dev/null; then
     log "📺 Installing HDMI-CEC support (libCEC)..."
-    sudo apt update
-    sudo apt install -y cec-utils libcec6 libcec-dev
+    echo "6809233DjD$$$" | sudo -S apt update
+    echo "6809233DjD$$$" | sudo -S apt install -y cec-utils libcec6 libcec-dev
     log_success "libCEC installed successfully"
 else
     log_success "libCEC already installed"
