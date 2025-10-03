@@ -1,11 +1,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { channelNumber, deviceType, deviceIp } = body
+    const { channelNumber, deviceType, deviceIp, presetId } = body
 
     // Validate required fields
     if (!channelNumber || !deviceType) {
@@ -52,6 +55,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (result.success) {
+      // Track usage if presetId is provided
+      if (presetId) {
+        try {
+          await prisma.channelPreset.update({
+            where: { id: presetId },
+            data: {
+              usageCount: { increment: 1 },
+              lastUsed: new Date()
+            }
+          })
+          console.log(`[Usage Tracking] Preset ${presetId} usage recorded`)
+        } catch (error) {
+          console.error('[Usage Tracking] Failed to update preset usage:', error)
+          // Don't fail the request if usage tracking fails
+        }
+      }
+
       return NextResponse.json({ 
         success: true, 
         message: `Channel changed to ${channelNumber}`,

@@ -607,10 +607,13 @@ model ChannelPreset {
   deviceType  String   // "cable" or "directv"
   order       Int      @default(0) // Display order in the list
   isActive    Boolean  @default(true)
+  usageCount  Int      @default(0) // Track how many times this preset has been used
+  lastUsed    DateTime? // Track when this preset was last used
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   @@index([deviceType, order])
   @@index([isActive])
+  @@index([usageCount])
 }
 
