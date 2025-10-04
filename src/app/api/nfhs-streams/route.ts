@@ -63,8 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<NFHSStream
     const allGames = await nfhsAPI.getHighSchoolGames(
       requestParams.state,
       requestParams.sport,
-      new Date().toISOString().split('T')[0],
-      new Date(Date.now() + (requestParams.daysAhead || 7) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      new Date().toISOString().split('T')[0]
     )
 
     // Filter by location if specified
@@ -157,8 +156,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<NFHSStrea
       games = await nfhsAPI.getHighSchoolGames(
         body.state,
         body.sport,
-        new Date().toISOString().split('T')[0],
-        new Date(Date.now() + (body.daysAhead || 7) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        new Date().toISOString().split('T')[0]
       )
     }
 
