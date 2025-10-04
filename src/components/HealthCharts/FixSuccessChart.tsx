@@ -71,7 +71,7 @@ export default function FixSuccessChart() {
                     strokeWidth="12"
                     fill="none"
                     strokeDasharray={`${2 * Math.PI * 70}`}
-                    strokeDashoffset={`${2 * Math.PI * 70 * (1 - parseFloat(successRate) / 100)}`}
+                    strokeDashoffset={`${2 * Math.PI * 70 * (1 - parseFloat(successRate || "0") / 100)}`}
                     className="text-green-500"
                     strokeLinecap="round"
                   />

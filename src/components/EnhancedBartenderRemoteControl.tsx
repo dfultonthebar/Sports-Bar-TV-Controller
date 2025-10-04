@@ -233,7 +233,7 @@ export default function EnhancedBartenderRemoteControl() {
         logError(
           new Error(`${failures.length} device operations failed`), 
           'input_change_partial_failure',
-          { failures: failures.map(f => f.reason) }
+          { failures: failures.map((f: any) => f.reason) }
         )
       }
 
