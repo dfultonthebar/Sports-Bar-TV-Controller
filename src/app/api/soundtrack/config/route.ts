@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     // Try to get account info, but don't fail if it doesn't work
     let accountInfo
-    let firstAccount = null
+    let firstAccount: any = null
     try {
       accountInfo = await api.getAccount()
       firstAccount = accountInfo.accounts && accountInfo.accounts.length > 0 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch sound zones ONCE during initial setup
     // After this, we'll use the cached token from database for all operations
-    let zonesWarning = null
+    let zonesWarning: string | null = null
     try {
       const soundZones = await api.listSoundZones(firstAccount?.id)
       
