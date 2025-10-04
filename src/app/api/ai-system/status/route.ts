@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         reason: 'AI system not available or test failed'
       },
       systemInfo,
-      recommendations: []
+      recommendations: [] as string[]
     }
 
     // Add recommendations based on status
