@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     console.log('File saved to:', filepath)
 
     let imageUrl = `/uploads/layouts/${filename}`
-    let convertedImageUrl = null
+    let convertedImageUrl: string | null = null
 
     // Convert PDF to image if needed
     if (file.type === 'application/pdf') {
