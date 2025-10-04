@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
+import ChannelPresetGrid from './ChannelPresetGrid'
 import { 
   Power, 
   Volume2, 
@@ -128,6 +129,16 @@ interface DeviceGuideData {
   programs: GameListing[]
   apps?: StreamingApp[]
   lastUpdated: string
+}
+
+interface ChannelPreset {
+  id: string
+  name: string
+  channelNumber: string
+  deviceType: 'cable' | 'directv'
+  order: number
+  usageCount: number
+  lastUsed: Date | null
 }
 
 export default function EnhancedChannelGuideBartenderRemote() {
@@ -578,6 +589,38 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
   }
 
+  const handlePresetClick = async (preset: ChannelPreset) => {
+    if (!selectedDevice) {
+      setCommandStatus('No device selected')
+      return
+    }
+
+    setLoading(true)
+    setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber})...`)
+
+    try {
+      // Send channel command
+      await sendChannelCommand(preset.channelNumber)
+      
+      setCommandStatus(`Now watching: ${preset.name}`)
+      setLastOperationTime(new Date())
+
+      logDeviceInteraction('channel_preset', selectedDevice.id, 'tune_channel', true, undefined, {
+        presetId: preset.id,
+        presetName: preset.name,
+        channelNumber: preset.channelNumber,
+        deviceType: preset.deviceType
+      })
+
+    } catch (error) {
+      logError(error as Error, 'preset_tune')
+      setCommandStatus(`Failed to tune: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
+      setTimeout(() => setCommandStatus(''), 5000)
+    }
+  }
+
   const getInputIcon = (inputType: string) => {
     switch (inputType.toLowerCase()) {
       case 'cable': return <Cable className="w-4 h-4" />
@@ -672,6 +715,20 @@ export default function EnhancedChannelGuideBartenderRemote() {
               })}
             </div>
           </div>
+
+          {/* Channel Presets - Show when input with cable/DirecTV device is selected */}
+          {selectedInput && selectedDevice && (
+            <>
+              {(getDeviceTypeForInput(selectedInput) === 'cable' || 
+                getDeviceTypeForInput(selectedInput) === 'satellite') && (
+                <ChannelPresetGrid
+                  deviceType={getDeviceTypeForInput(selectedInput) === 'satellite' ? 'directv' : 'cable'}
+                  onPresetClick={handlePresetClick}
+                  maxVisible={6}
+                />
+              )}
+            </>
+          )}
         </div>
 
         {/* Main Panel - Channel Guide */}
