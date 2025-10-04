@@ -152,9 +152,8 @@ const TVGuideConfigurationPanel: React.FC = () => {
         const tvGuideKeys = result.data.filter((key: ApiKey) => 
           key.provider === 'gracenote' || 
           key.provider === 'spectrum-business' ||
-          key.provider === 'xai' ||
           key.provider === 'openai' ||
-          key.provider === 'anthropic'
+          key.provider === 'ollama'
         )
         setApiKeys(tvGuideKeys)
       }
