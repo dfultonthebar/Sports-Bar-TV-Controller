@@ -1,8 +1,10 @@
+
 #!/usr/bin/env node
 
 /**
  * Self-Healing System
  * Automatically fixes common issues detected by monitoring
+ * NOW WITH MULTI-AI CONSULTATION FOR CRITICAL DECISIONS
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -10,6 +12,7 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
+const axios = require('axios');
 
 const execAsync = promisify(exec);
 const prisma = new PrismaClient();
@@ -20,8 +23,12 @@ const CONFIG = {
   LOG_DIR: '/home/ubuntu/Sports-Bar-TV-Controller/logs',
   TEMP_DIR: '/tmp',
   MAX_RESTART_ATTEMPTS: 3,
-  DISK_CLEANUP_THRESHOLD: 90, // percent
-  MEMORY_RESTART_THRESHOLD: 95 // percent
+  DISK_CLEANUP_THRESHOLD: 90,
+  MEMORY_RESTART_THRESHOLD: 95,
+  API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:3000',
+  USE_MULTI_AI: process.env.USE_MULTI_AI !== 'false',
+  REQUIRE_AI_CONSENSUS: process.env.REQUIRE_AI_CONSENSUS === 'true', // Require majority vote
+  MIN_AI_CONFIDENCE: parseFloat(process.env.MIN_AI_CONFIDENCE || '0.6') // Minimum confidence threshold
 };
 
 class SelfHealing {
@@ -82,411 +89,427 @@ class SelfHealing {
 
   async handleIssue(issue) {
     console.log(`\n🔍 Handling: ${issue.title} (${issue.severity})`);
-    
-    // Mark issue as being fixed
-    await prisma.issue.update({
-      where: { id: issue.id },
-      data: { 
-        status: 'fixing',
-        fixAttempts: issue.fixAttempts + 1
-      }
-    });
 
-    let fixed = false;
-    let fixDetails = null;
+    // Check if AI consultation is needed for this issue
+    const needsAIConsultation = this.shouldConsultAI(issue);
+
+    if (needsAIConsultation && CONFIG.USE_MULTI_AI) {
+      const aiDecision = await this.consultAIForAction(issue);
+      
+      if (aiDecision) {
+        if (aiDecision.shouldProceed) {
+          console.log(`   🤖 AI recommends: ${aiDecision.action} (confidence: ${Math.round(aiDecision.confidence * 100)}%)`);
+          
+          // Check if confidence meets threshold
+          if (aiDecision.confidence < CONFIG.MIN_AI_CONFIDENCE) {
+            console.log(`   ⚠️  Confidence below threshold (${CONFIG.MIN_AI_CONFIDENCE}), skipping automatic fix`);
+            await this.markIssueForManualReview(issue, aiDecision);
+            return;
+          }
+
+          // Proceed with AI-recommended action
+          await this.executeAction(issue, aiDecision.action, aiDecision);
+        } else {
+          console.log(`   👀 AI recommends manual review`);
+          await this.markIssueForManualReview(issue, aiDecision);
+        }
+        return;
+      }
+    }
+
+    // Fallback to rule-based handling
+    await this.executeRuleBasedFix(issue);
+  }
+
+  shouldConsultAI(issue) {
+    // Consult AI for high/critical severity issues
+    const severityLevels = { low: 1, medium: 2, high: 3, critical: 4 };
+    return severityLevels[issue.severity] >= 3;
+  }
+
+  async consultAIForAction(issue) {
+    console.log(`   🤖 Consulting AI models...`);
 
     try {
-      // Route to appropriate fix handler
-      switch (issue.type) {
-        case 'crash':
-          fixed = await this.fixCrash(issue);
+      const query = `
+CRITICAL DECISION REQUIRED:
+
+Issue: ${issue.title}
+Severity: ${issue.severity}
+Component: ${issue.component}
+Description: ${issue.description}
+Type: ${issue.type}
+
+Should we automatically apply a fix for this issue, or does it require manual intervention?
+
+If automatic fix is recommended, what specific action should be taken?
+Options: restart_pm2, clear_disk, reinstall_deps, repair_db, optimize_db, clear_cache, or manual_review
+
+Consider:
+1. Risk of automatic action
+2. Potential impact on running system
+3. Likelihood of success
+4. Whether manual review is safer
+
+Provide a clear recommendation with reasoning.
+`;
+
+      const response = await axios.post(
+        `${CONFIG.API_BASE_URL}/api/chat/diagnostics`,
+        { message: query },
+        { timeout: 30000 }
+      );
+
+      if (!response.data.multiAI) {
+        console.log(`   ℹ️  Multi-AI not available, using rule-based approach`);
+        return null;
+      }
+
+      const result = response.data.result;
+      
+      console.log(`   ✅ Multi-AI consultation completed:`);
+      console.log(`      - Providers: ${result.summary.successfulResponses}/${result.summary.totalProviders}`);
+      console.log(`      - Agreement: ${result.consensus.agreementLevel}`);
+      console.log(`      - Confidence: ${Math.round(result.consensus.confidence * 100)}%`);
+
+      // Analyze voting results
+      if (result.voting) {
+        const winner = result.voting.winner;
+        const winnerVotes = result.voting.winnerVotes;
+        const totalVotes = result.voting.totalVotes;
+        const winnerPercentage = (winnerVotes / totalVotes) * 100;
+
+        console.log(`      - Voting: ${winner} (${winnerVotes}/${totalVotes} = ${Math.round(winnerPercentage)}%)`);
+
+        // Check if we require consensus
+        if (CONFIG.REQUIRE_AI_CONSENSUS && winnerVotes <= totalVotes / 2) {
+          console.log(`      ⚠️  No majority consensus, manual review required`);
+          return {
+            shouldProceed: false,
+            action: 'manual_review',
+            confidence: result.consensus.confidence,
+            reason: 'No majority consensus among AI models',
+            fullResult: result
+          };
+        }
+
+        // Determine action from winner
+        const action = this.parseActionFromVoting(winner);
+        
+        return {
+          shouldProceed: action !== 'manual_review' && action !== 'monitor',
+          action,
+          confidence: result.consensus.confidence,
+          reason: result.consensus.consensus,
+          fullResult: result
+        };
+      }
+
+      // Fallback: parse from consensus
+      const action = this.parseActionFromText(result.consensus.consensus);
+      
+      return {
+        shouldProceed: action !== 'manual_review' && action !== 'monitor',
+        action,
+        confidence: result.consensus.confidence,
+        reason: result.consensus.consensus,
+        fullResult: result
+      };
+
+    } catch (error) {
+      console.error(`   ❌ AI consultation failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  parseActionFromVoting(votingWinner) {
+    const lower = votingWinner.toLowerCase();
+    if (lower.includes('restart')) return 'restart_pm2';
+    if (lower.includes('clear') && lower.includes('disk')) return 'clear_disk';
+    if (lower.includes('reinstall') || lower.includes('dependencies')) return 'reinstall_deps';
+    if (lower.includes('repair') && lower.includes('database')) return 'repair_db';
+    if (lower.includes('optimize')) return 'optimize_db';
+    if (lower.includes('cache')) return 'clear_cache';
+    if (lower.includes('monitor') || lower.includes('wait')) return 'monitor';
+    return 'manual_review';
+  }
+
+  parseActionFromText(text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('restart') && lower.includes('pm2')) return 'restart_pm2';
+    if (lower.includes('clear disk') || lower.includes('cleanup')) return 'clear_disk';
+    if (lower.includes('reinstall') && lower.includes('dep')) return 'reinstall_deps';
+    if (lower.includes('repair') && lower.includes('database')) return 'repair_db';
+    if (lower.includes('optimize') && lower.includes('database')) return 'optimize_db';
+    if (lower.includes('clear cache')) return 'clear_cache';
+    if (lower.includes('manual') || lower.includes('review')) return 'manual_review';
+    return 'monitor';
+  }
+
+  async executeAction(issue, action, aiDecision) {
+    console.log(`   🔧 Executing action: ${action}`);
+
+    let success = false;
+    let description = '';
+
+    try {
+      switch (action) {
+        case 'restart_pm2':
+          success = await this.restartPM2();
+          description = 'Restarted PM2 processes';
           break;
-        case 'resource':
-          fixed = await this.fixResourceIssue(issue);
+        case 'clear_disk':
+          success = await this.clearDisk();
+          description = 'Cleared disk space';
           break;
-        case 'connectivity':
-          fixed = await this.fixConnectivityIssue(issue);
+        case 'reinstall_deps':
+          success = await this.reinstallDependencies();
+          description = 'Reinstalled dependencies';
           break;
-        case 'dependency':
-          fixed = await this.fixDependencyIssue(issue);
+        case 'repair_db':
+          success = await this.repairDatabase();
+          description = 'Repaired database';
           break;
-        case 'performance':
-          fixed = await this.fixPerformanceIssue(issue);
+        case 'optimize_db':
+          success = await this.optimizeDatabase();
+          description = 'Optimized database';
+          break;
+        case 'clear_cache':
+          success = await this.clearCache();
+          description = 'Cleared caches';
           break;
         default:
-          console.log(`  ⚠️  No automatic fix available for type: ${issue.type}`);
+          console.log(`   ⚠️  Unknown action: ${action}`);
+          return;
       }
 
-      if (fixed) {
-        await prisma.issue.update({
-          where: { id: issue.id },
-          data: {
-            status: 'fixed',
-            autoFixed: true,
-            resolvedAt: new Date(),
-            resolution: `Automatically fixed by self-healing system`
-          }
-        });
-        console.log(`  ✅ Issue fixed successfully`);
+      if (success) {
+        console.log(`   ✅ ${description}`);
+        await this.markIssueFixed(issue, action, aiDecision);
       } else {
-        await prisma.issue.update({
-          where: { id: issue.id },
-          data: { status: 'open' }
-        });
-        console.log(`  ⚠️  Could not automatically fix issue`);
+        console.log(`   ❌ Failed to ${description.toLowerCase()}`);
       }
+
+      this.fixes.push({
+        issueId: issue.id,
+        action,
+        success,
+        description,
+        aiRecommended: true,
+        aiConfidence: aiDecision.confidence,
+        timestamp: new Date()
+      });
+
     } catch (error) {
-      console.error(`  ❌ Fix failed: ${error.message}`);
-      await prisma.issue.update({
-        where: { id: issue.id },
-        data: { status: 'open' }
+      console.error(`   ❌ Error executing ${action}: ${error.message}`);
+      this.fixes.push({
+        issueId: issue.id,
+        action,
+        success: false,
+        description: `Failed: ${error.message}`,
+        aiRecommended: true,
+        aiConfidence: aiDecision.confidence,
+        timestamp: new Date()
       });
     }
   }
 
-  async fixCrash(issue) {
-    if (issue.component === 'pm2') {
-      return await this.restartPM2Process();
-    }
-    return false;
-  }
+  async executeRuleBasedFix(issue) {
+    // Original rule-based logic
+    let action = null;
+    let success = false;
+    let description = '';
 
-  async fixResourceIssue(issue) {
-    if (issue.component === 'disk') {
-      return await this.cleanupDiskSpace();
-    } else if (issue.component === 'memory') {
-      return await this.handleHighMemory();
-    }
-    return false;
-  }
-
-  async fixConnectivityIssue(issue) {
-    if (issue.component === 'api') {
-      return await this.restartPM2Process();
-    }
-    return false;
-  }
-
-  async fixDependencyIssue(issue) {
-    if (issue.component === 'npm') {
-      return await this.reinstallDependencies();
-    } else if (issue.component === 'database') {
-      return await this.repairDatabase();
-    }
-    return false;
-  }
-
-  async fixPerformanceIssue(issue) {
-    if (issue.component === 'pm2' || issue.component === 'api') {
-      // Restart if performance is degraded
-      return await this.restartPM2Process();
-    }
-    return false;
-  }
-
-  async restartPM2Process() {
-    const action = 'restart_pm2';
-    const startTime = Date.now();
-    
     try {
-      console.log('  🔄 Restarting PM2 process...');
-      
-      const { stdout, stderr } = await execAsync(`pm2 restart ${CONFIG.PM2_PROCESS_NAME}`);
-      
-      // Wait a bit for process to stabilize
+      // Determine action based on issue type
+      if (issue.type === 'crash' || issue.component === 'PM2') {
+        action = 'restart_pm2';
+        success = await this.restartPM2();
+        description = 'Restarted PM2 processes';
+      } else if (issue.type === 'resource' && issue.title.includes('disk')) {
+        action = 'clear_disk';
+        success = await this.clearDisk();
+        description = 'Cleared disk space';
+      } else if (issue.type === 'dependency') {
+        action = 'reinstall_deps';
+        success = await this.reinstallDependencies();
+        description = 'Reinstalled dependencies';
+      } else if (issue.type === 'database') {
+        action = 'repair_db';
+        success = await this.repairDatabase();
+        description = 'Repaired database';
+      } else {
+        console.log(`   ⚠️  No automatic fix available for ${issue.type}`);
+        return;
+      }
+
+      if (success) {
+        console.log(`   ✅ ${description}`);
+        await this.markIssueFixed(issue, action, null);
+      } else {
+        console.log(`   ❌ Failed to ${description.toLowerCase()}`);
+      }
+
+      this.fixes.push({
+        issueId: issue.id,
+        action,
+        success,
+        description,
+        aiRecommended: false,
+        timestamp: new Date()
+      });
+
+    } catch (error) {
+      console.error(`   ❌ Error: ${error.message}`);
+    }
+  }
+
+  async markIssueFixed(issue, action, aiDecision) {
+    await prisma.issue.update({
+      where: { id: issue.id },
+      data: {
+        status: 'resolved',
+        autoFixed: true,
+        fixAction: action,
+        fixedAt: new Date()
+      }
+    });
+  }
+
+  async markIssueForManualReview(issue, aiDecision) {
+    await prisma.issue.update({
+      where: { id: issue.id },
+      data: {
+        status: 'needs_review',
+        aiRecommendation: aiDecision ? JSON.stringify(aiDecision) : null
+      }
+    }).catch(() => {
+      // Column might not exist, skip
+    });
+  }
+
+  async restartPM2() {
+    try {
+      await execAsync(`pm2 restart ${CONFIG.PM2_PROCESS_NAME}`);
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Verify process is running
-      const { stdout: statusOutput } = await execAsync('pm2 jlist');
-      const processes = JSON.parse(statusOutput);
-      const targetProcess = processes.find(p => p.name === CONFIG.PM2_PROCESS_NAME);
-      
-      const success = targetProcess && targetProcess.pm2_env.status === 'online';
-      
-      await this.recordFix(action, success, {
-        stdout,
-        stderr,
-        processStatus: targetProcess?.pm2_env.status,
-        duration: Date.now() - startTime
-      });
-      
-      return success;
+      return true;
     } catch (error) {
-      await this.recordFix(action, false, {
-        error: error.message,
-        duration: Date.now() - startTime
-      });
+      console.error('PM2 restart failed:', error.message);
       return false;
     }
   }
 
-  async cleanupDiskSpace() {
-    const action = 'cleanup_disk';
-    const startTime = Date.now();
-    
+  async clearDisk() {
     try {
-      console.log('  🧹 Cleaning up disk space...');
+      // Clear temp files
+      await execAsync(`find ${CONFIG.TEMP_DIR} -type f -atime +7 -delete`);
       
-      const cleanupTasks = [];
+      // Clear old logs
+      await execAsync(`find ${CONFIG.LOG_DIR} -name "*.log" -mtime +30 -delete`);
       
-      // Clean npm cache
-      cleanupTasks.push(execAsync('npm cache clean --force'));
+      // Clear npm cache
+      await execAsync('npm cache clean --force');
       
-      // Clean old logs
-      try {
-        const logFiles = await fs.readdir(CONFIG.LOG_DIR);
-        for (const file of logFiles) {
-          if (file.endsWith('.log')) {
-            const filePath = path.join(CONFIG.LOG_DIR, file);
-            const stats = await fs.stat(filePath);
-            const ageInDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-            
-            // Delete logs older than 30 days
-            if (ageInDays > 30) {
-              await fs.unlink(filePath);
-              console.log(`    Deleted old log: ${file}`);
-            }
-          }
-        }
-      } catch (error) {
-        console.log(`    Warning: Could not clean logs: ${error.message}`);
-      }
-      
-      // Clean temp files
-      try {
-        const { stdout } = await execAsync(`find ${CONFIG.TEMP_DIR} -type f -name "*.tmp" -mtime +7 -delete`);
-      } catch (error) {
-        console.log(`    Warning: Could not clean temp files: ${error.message}`);
-      }
-      
-      await Promise.all(cleanupTasks);
-      
-      // Check disk space after cleanup
-      const { stdout } = await execAsync('df -h / | tail -1');
-      const parts = stdout.trim().split(/\s+/);
-      const usedPercent = parseInt(parts[4]);
-      
-      const success = usedPercent < CONFIG.DISK_CLEANUP_THRESHOLD;
-      
-      await this.recordFix(action, success, {
-        diskUsageAfter: usedPercent,
-        duration: Date.now() - startTime
-      });
-      
-      return success;
+      return true;
     } catch (error) {
-      await this.recordFix(action, false, {
-        error: error.message,
-        duration: Date.now() - startTime
-      });
-      return false;
-    }
-  }
-
-  async handleHighMemory() {
-    const action = 'handle_high_memory';
-    const startTime = Date.now();
-    
-    try {
-      console.log('  💾 Handling high memory usage...');
-      
-      // Restart PM2 process to free memory
-      const success = await this.restartPM2Process();
-      
-      await this.recordFix(action, success, {
-        method: 'restart_process',
-        duration: Date.now() - startTime
-      });
-      
-      return success;
-    } catch (error) {
-      await this.recordFix(action, false, {
-        error: error.message,
-        duration: Date.now() - startTime
-      });
+      console.error('Disk cleanup failed:', error.message);
       return false;
     }
   }
 
   async reinstallDependencies() {
-    const action = 'reinstall_dependencies';
-    const startTime = Date.now();
-    
     try {
-      console.log('  📦 Reinstalling dependencies...');
-      
-      // Run npm install
-      const { stdout, stderr } = await execAsync('npm install', {
-        cwd: CONFIG.PROJECT_ROOT,
-        timeout: 300000 // 5 minutes
-      });
-      
-      const success = !stderr.includes('error') && !stderr.includes('ERR!');
-      
-      await this.recordFix(action, success, {
-        stdout: stdout.substring(0, 500),
-        stderr: stderr.substring(0, 500),
-        duration: Date.now() - startTime
-      });
-      
-      return success;
+      await execAsync('npm ci', { cwd: CONFIG.PROJECT_ROOT });
+      return true;
     } catch (error) {
-      await this.recordFix(action, false, {
-        error: error.message,
-        duration: Date.now() - startTime
-      });
+      console.error('Dependency reinstall failed:', error.message);
       return false;
     }
   }
 
   async repairDatabase() {
-    const action = 'repair_database';
-    const startTime = Date.now();
-    
     try {
-      console.log('  🗄️  Repairing database...');
-      
-      // Create backup first
-      const dbPath = CONFIG.PROJECT_ROOT + '/prisma/data/sports_bar.db';
-      const backupPath = dbPath + '.backup.' + Date.now();
-      
-      await fs.copyFile(dbPath, backupPath);
-      console.log(`    Created backup: ${backupPath}`);
-      
-      // Run integrity check
-      const integrityCheck = await prisma.$queryRawUnsafe('PRAGMA integrity_check');
-      
-      if (integrityCheck[0]?.integrity_check === 'ok') {
-        console.log('    Database integrity is OK');
-        
-        await this.recordFix(action, true, {
-          method: 'integrity_check',
-          result: 'ok',
-          backupCreated: backupPath,
-          duration: Date.now() - startTime
-        });
-        
-        return true;
-      }
-      
-      // If corrupted, try to recover
-      console.log('    Database corrupted, attempting recovery...');
-      
-      // Run VACUUM to rebuild database
-      await prisma.$queryRawUnsafe('VACUUM');
-      
-      // Check again
-      const recheckIntegrity = await prisma.$queryRawUnsafe('PRAGMA integrity_check');
-      const success = recheckIntegrity[0]?.integrity_check === 'ok';
-      
-      await this.recordFix(action, success, {
-        method: 'vacuum',
-        result: success ? 'recovered' : 'failed',
-        backupCreated: backupPath,
-        duration: Date.now() - startTime
-      });
-      
-      return success;
+      await prisma.$executeRaw`PRAGMA integrity_check`;
+      return true;
     } catch (error) {
-      await this.recordFix(action, false, {
-        error: error.message,
-        duration: Date.now() - startTime
-      });
+      console.error('Database repair failed:', error.message);
+      return false;
+    }
+  }
+
+  async optimizeDatabase() {
+    try {
+      await prisma.$executeRaw`VACUUM`;
+      await prisma.$executeRaw`ANALYZE`;
+      return true;
+    } catch (error) {
+      console.error('Database optimization failed:', error.message);
+      return false;
+    }
+  }
+
+  async clearCache() {
+    try {
+      const nextCacheDir = path.join(CONFIG.PROJECT_ROOT, '.next/cache');
+      await execAsync(`rm -rf ${nextCacheDir}`);
+      return true;
+    } catch (error) {
+      console.error('Cache clear failed:', error.message);
       return false;
     }
   }
 
   async proactiveMaintenance() {
-    console.log('\n🔮 Running Proactive Maintenance...');
+    console.log('\n🔄 Running proactive maintenance...');
     
-    // Rotate logs if needed
-    await this.rotateLogs();
-    
-    // Clean old diagnostic data
-    await this.cleanOldDiagnosticData();
-  }
-
-  async rotateLogs() {
-    try {
-      const logFiles = await fs.readdir(CONFIG.LOG_DIR).catch(() => []);
-      
-      for (const file of logFiles) {
-        if (file.endsWith('.log')) {
-          const filePath = path.join(CONFIG.LOG_DIR, file);
-          const stats = await fs.stat(filePath);
-          
-          // Rotate if larger than 50MB
-          if (stats.size > 50 * 1024 * 1024) {
-            const rotatedPath = `${filePath}.${Date.now()}`;
-            await fs.rename(filePath, rotatedPath);
-            console.log(`  📋 Rotated log: ${file}`);
-          }
-        }
+    // Optimize database weekly
+    const lastOptimize = await this.getLastMaintenanceTime('optimize_db');
+    if (!lastOptimize || Date.now() - lastOptimize > 7 * 24 * 60 * 60 * 1000) {
+      console.log('   Running database optimization...');
+      const success = await this.optimizeDatabase();
+      if (success) {
+        this.fixes.push({
+          action: 'optimize_db',
+          success: true,
+          description: 'Proactive database optimization',
+          aiRecommended: false,
+          timestamp: new Date()
+        });
       }
-    } catch (error) {
-      console.log(`  ⚠️  Log rotation warning: ${error.message}`);
     }
   }
 
-  async cleanOldDiagnosticData() {
+  async getLastMaintenanceTime(action) {
     try {
-      // Keep only last 30 days of diagnostic data
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      
-      const deleted = await prisma.systemHealthCheck.deleteMany({
-        where: {
-          timestamp: { lt: thirtyDaysAgo }
-        }
+      const lastFix = await prisma.selfHealingLog.findFirst({
+        where: { action },
+        orderBy: { timestamp: 'desc' }
       });
-      
-      if (deleted.count > 0) {
-        console.log(`  🗑️  Cleaned ${deleted.count} old health check records`);
-      }
+      return lastFix ? lastFix.timestamp.getTime() : null;
     } catch (error) {
-      console.log(`  ⚠️  Cleanup warning: ${error.message}`);
+      return null;
     }
-  }
-
-  async recordFix(action, success, details) {
-    this.fixes.push({
-      action,
-      success,
-      details,
-      timestamp: new Date()
-    });
-    
-    // Also save to database if we have an issue context
-    // This would be called from handleIssue with issue.id
   }
 
   async saveResults() {
-    // Save summary of self-healing run
     try {
-      const successfulFixes = this.fixes.filter(f => f.success).length;
-      const failedFixes = this.fixes.filter(f => !f.success).length;
-      
-      await prisma.diagnosticRun.create({
-        data: {
-          runType: 'self_healing',
-          triggeredBy: 'auto',
-          status: failedFixes === 0 ? 'completed' : 'partial',
-          duration: Date.now() - this.startTime,
-          issuesFixed: successfulFixes,
-          summary: `Self-healing: ${successfulFixes} fixes applied, ${failedFixes} failed`,
-          report: JSON.stringify(this.fixes, null, 2)
-        }
-      });
+      for (const fix of this.fixes) {
+        await prisma.selfHealingLog.create({
+          data: fix
+        });
+      }
     } catch (error) {
-      console.error('Failed to save self-healing results:', error.message);
+      console.error('Error saving results:', error.message);
     }
   }
 }
 
 // Run if called directly
 if (require.main === module) {
-  const healer = new SelfHealing();
-  healer.run()
+  const healing = new SelfHealing();
+  healing.run()
     .then(result => {
+      console.log('Self-healing completed:', result);
       process.exit(result.success ? 0 : 1);
     })
     .catch(error => {

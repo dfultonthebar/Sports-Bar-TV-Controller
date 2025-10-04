@@ -4,18 +4,22 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2, AlertCircle, CheckCircle, TrendingUp, Activity } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
+import MultiAIResponse from '@/components/MultiAIResponse'
+import type { MultiAIResult } from '@/lib/multi-ai-consultant'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  multiAI?: boolean
+  multiAIResult?: MultiAIResult
 }
 
 export default function DiagnosticsChatbot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: "Hello! I'm your AI diagnostics assistant. I can help you understand your system's health, explain issues, recommend optimizations, and answer questions about the monitoring system. What would you like to know?",
+      content: "Hello! I'm your AI diagnostics assistant powered by multiple AI models. I can help you understand your system's health, explain issues, recommend optimizations, and answer questions about the monitoring system. What would you like to know?",
       timestamp: new Date()
     }
   ])
@@ -56,11 +60,23 @@ export default function DiagnosticsChatbot() {
 
       const data = await response.json()
 
-      if (data.response) {
+      if (data.multiAI && data.result) {
+        // Multi-AI response
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.response || data.result.consensus.consensus,
+          timestamp: new Date(),
+          multiAI: true,
+          multiAIResult: data.result
+        }
+        setMessages(prev => [...prev, assistantMessage])
+      } else if (data.response) {
+        // Regular response
         const assistantMessage: Message = {
           role: 'assistant',
           content: data.response,
-          timestamp: new Date()
+          timestamp: new Date(),
+          multiAI: false
         }
         setMessages(prev => [...prev, assistantMessage])
       } else {
@@ -114,7 +130,7 @@ export default function DiagnosticsChatbot() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`flex items-start space-x-2 max-w-3xl ${
+                className={`flex items-start space-x-2 max-w-full ${
                   message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}
               >
@@ -131,21 +147,40 @@ export default function DiagnosticsChatbot() {
                     <Bot className="w-5 h-5 text-white" />
                   )}
                 </div>
-                <div
-                  className={`px-4 py-3 rounded-lg ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800/50 text-slate-100'
-                  }`}
-                >
-                  <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                  <div
-                    className={`text-xs mt-1 ${
-                      message.role === 'user' ? 'text-blue-200' : 'text-slate-400'
-                    }`}
-                  >
-                    {message.timestamp.toLocaleTimeString()}
-                  </div>
+                <div className="flex-1 min-w-0">
+                  {message.multiAI && message.multiAIResult ? (
+                    // Multi-AI Response
+                    <div className="space-y-3">
+                      <div className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-500/30">
+                        <div className="flex items-center gap-2 text-sm text-purple-300 mb-1">
+                          <Activity className="w-4 h-4" />
+                          <span className="font-medium">Multi-AI Consultation</span>
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {message.timestamp.toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <MultiAIResponse result={message.multiAIResult} />
+                    </div>
+                  ) : (
+                    // Regular Response
+                    <div
+                      className={`px-4 py-3 rounded-lg ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-800/50 text-slate-100'
+                      }`}
+                    >
+                      <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      <div
+                        className={`text-xs mt-1 ${
+                          message.role === 'user' ? 'text-blue-200' : 'text-slate-400'
+                        }`}
+                      >
+                        {message.timestamp.toLocaleTimeString()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

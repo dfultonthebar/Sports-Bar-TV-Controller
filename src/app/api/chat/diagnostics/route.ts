@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import fs from 'fs'
-import path from 'path'
+import { getMultiAIConsultant } from '@/lib/multi-ai-consultant'
 
 const prisma = new PrismaClient()
 
@@ -48,67 +47,11 @@ SELF-HEALING ACTIONS:
 - optimize_db: Vacuum and optimize database
 - clear_cache: Clear application caches
 
-Your responses should be:
-1. Clear and conversational - explain technical concepts in plain English
-2. Actionable - provide specific recommendations when issues are found
-3. Proactive - suggest preventive measures based on patterns
-4. Contextual - reference actual system data when available
-5. Helpful - guide users through troubleshooting steps
-
-When asked about system health, query the database for recent checks, issues, and fixes. Explain what you find in a way that's easy to understand.`
-
-async function getSystemContext() {
-  try {
-    // Get recent health checks
-    const recentChecks = await prisma.systemHealthCheck.findMany({
-      take: 10,
-      orderBy: { timestamp: 'desc' }
-    })
-
-    // Get active issues
-    const activeIssues = await prisma.issue.findMany({
-      where: { status: 'open' },
-      orderBy: { timestamp: 'desc' }
-    })
-
-    // Get recent fixes
-    const recentFixes = await prisma.fix.findMany({
-      take: 10,
-      orderBy: { timestamp: 'desc' }
-    })
-
-    // Get learning patterns
-    const patterns = await prisma.learningPattern.findMany({
-      orderBy: { occurrences: 'desc' },
-      take: 5
-    })
-
-    // Get recent metrics
-    const recentMetrics = await prisma.systemMetric.findMany({
-      where: {
-        timestamp: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
-        }
-      },
-      orderBy: { timestamp: 'desc' }
-    })
-
-    return {
-      recentChecks,
-      activeIssues,
-      recentFixes,
-      patterns,
-      recentMetrics
-    }
-  } catch (error) {
-    console.error('Error getting system context:', error)
-    return null
-  }
-}
+Provide clear, actionable advice based on the system context provided.`
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, history } = await request.json()
+    const { message } = await request.json()
 
     if (!message) {
       return NextResponse.json(
@@ -117,95 +60,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get system context
-    const context = await getSystemContext()
+    // Gather system context
+    const context = await gatherSystemContext()
 
-    // Build context string
-    let contextString = '\n\nCURRENT SYSTEM STATE:\n'
-    
-    if (context) {
-      contextString += `\nRecent Health Checks (${context.recentChecks.length}):\n`
-      context.recentChecks.forEach(check => {
-        contextString += `- ${check.component}: ${check.status} (${check.checkType} check at ${check.timestamp})\n`
-      })
+    // Get multi-AI consultant
+    const consultant = getMultiAIConsultant()
 
-      contextString += `\nActive Issues (${context.activeIssues.length}):\n`
-      if (context.activeIssues.length === 0) {
-        contextString += '- No active issues detected\n'
-      } else {
-        context.activeIssues.forEach(issue => {
-          contextString += `- [${issue.severity}] ${issue.title} - ${issue.description}\n`
-        })
-      }
-
-      contextString += `\nRecent Fixes (${context.recentFixes.length}):\n`
-      context.recentFixes.forEach(fix => {
-        contextString += `- ${fix.action}: ${fix.success ? 'Success' : 'Failed'} (${fix.timestamp})\n`
-      })
-
-      if (context.patterns.length > 0) {
-        contextString += `\nLearning Patterns:\n`
-        context.patterns.forEach(pattern => {
-          contextString += `- ${pattern.patternType} (${pattern.frequency}, ${pattern.occurrences} occurrences)\n`
-          if (pattern.recommendation) {
-            contextString += `  Recommendation: ${pattern.recommendation}\n`
-          }
-        })
-      }
-
-      // Add metrics summary
-      const cpuMetrics = context.recentMetrics.filter(m => m.metricType === 'cpu')
-      const memoryMetrics = context.recentMetrics.filter(m => m.metricType === 'memory')
-      const diskMetrics = context.recentMetrics.filter(m => m.metricType === 'disk')
-
-      if (cpuMetrics.length > 0 || memoryMetrics.length > 0 || diskMetrics.length > 0) {
-        contextString += `\nRecent Metrics (24h):\n`
-        if (cpuMetrics.length > 0) {
-          const avgCpu = cpuMetrics.reduce((sum, m) => sum + m.value, 0) / cpuMetrics.length
-          contextString += `- CPU: ${avgCpu.toFixed(1)}% average\n`
-        }
-        if (memoryMetrics.length > 0) {
-          const avgMem = memoryMetrics.reduce((sum, m) => sum + m.value, 0) / memoryMetrics.length
-          contextString += `- Memory: ${avgMem.toFixed(1)}% average\n`
-        }
-        if (diskMetrics.length > 0) {
-          const avgDisk = diskMetrics.reduce((sum, m) => sum + m.value, 0) / diskMetrics.length
-          contextString += `- Disk: ${avgDisk.toFixed(1)}% average\n`
-        }
-      }
-    }
-
-    // Try to use OpenAI first, fall back to simple responses
-    const openaiKey = process.env.OPENAI_API_KEY
-    
-    if (openaiKey) {
+    // Check if multi-AI is available
+    if (consultant.isAvailable()) {
+      console.log('Using multi-AI consultation for diagnostics query')
+      
       try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT + contextString },
-              ...(history || []).slice(-10),
-              { role: 'user', content: message }
-            ],
-            temperature: 0.7,
-            max_tokens: 1000
-          })
-        })
+        // Consult all available AI models
+        const multiAIResult = await consultant.consultAll(
+          message,
+          SYSTEM_PROMPT,
+          context
+        )
 
-        if (response.ok) {
-          const data = await response.json()
-          return NextResponse.json({
-            response: data.choices[0].message.content
-          })
-        }
+        // Return the full multi-AI result
+        return NextResponse.json({
+          multiAI: true,
+          result: multiAIResult,
+          response: multiAIResult.consensus.consensus,
+          providers: consultant.getAvailableProviders()
+        })
       } catch (error) {
-        console.error('OpenAI API error:', error)
+        console.error('Multi-AI consultation failed:', error)
+        // Fall through to fallback
       }
     }
 
@@ -288,10 +170,14 @@ export async function POST(request: NextRequest) {
       response += `- Learning patterns identified\n`
       response += `- Monitoring system explanation\n`
       response += `- Performance optimization recommendations\n\n`
-      response += `What would you like to know?`
+      response += `What would you like to know?\n\n`
+      response += `💡 Note: Configure AI API keys (OpenAI, Anthropic, Google, Grok) in .env to enable multi-AI consultation for more comprehensive answers.`
     }
 
-    return NextResponse.json({ response })
+    return NextResponse.json({ 
+      multiAI: false,
+      response 
+    })
 
   } catch (error) {
     console.error('Error in diagnostics chat:', error)
@@ -299,5 +185,71 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to process message' },
       { status: 500 }
     )
+  }
+}
+
+async function gatherSystemContext() {
+  try {
+    // Get active issues
+    const activeIssues = await prisma.issue.findMany({
+      where: { status: 'open' },
+      orderBy: { timestamp: 'desc' },
+      take: 10
+    })
+
+    // Get recent health checks
+    const recentChecks = await prisma.systemHealthCheck.findMany({
+      orderBy: { timestamp: 'desc' },
+      take: 5
+    })
+
+    // Get recent fixes
+    const recentFixes = await prisma.fix.findMany({
+      orderBy: { timestamp: 'desc' },
+      take: 10
+    })
+
+    // Get learning patterns
+    const patterns = await prisma.learningPattern.findMany({
+      orderBy: { lastSeen: 'desc' },
+      take: 5
+    })
+
+    // Get latest metrics
+    const cpuMetric = await prisma.systemMetric.findFirst({
+      where: { metricType: 'cpu' },
+      orderBy: { timestamp: 'desc' }
+    })
+    
+    const memoryMetric = await prisma.systemMetric.findFirst({
+      where: { metricType: 'memory' },
+      orderBy: { timestamp: 'desc' }
+    })
+    
+    const diskMetric = await prisma.systemMetric.findFirst({
+      where: { metricType: 'disk' },
+      orderBy: { timestamp: 'desc' }
+    })
+
+    return {
+      activeIssues,
+      recentChecks,
+      recentFixes,
+      patterns,
+      systemMetrics: (cpuMetric || memoryMetric || diskMetric) ? {
+        cpu: cpuMetric?.value || 0,
+        memory: memoryMetric?.value || 0,
+        disk: diskMetric?.value || 0
+      } : null
+    }
+  } catch (error) {
+    console.error('Error gathering system context:', error)
+    return {
+      activeIssues: [],
+      recentChecks: [],
+      recentFixes: [],
+      patterns: [],
+      systemMetrics: null
+    }
   }
 }
