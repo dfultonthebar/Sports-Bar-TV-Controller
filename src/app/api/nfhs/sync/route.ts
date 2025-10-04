@@ -4,7 +4,6 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import * as cheerio from 'cheerio'
 
 const prisma = new PrismaClient()
 
@@ -44,6 +43,15 @@ interface NFHSGameData {
  * Helper function to delay execution (rate limiting)
  */
 function delay(ms: number): Promise<void> {
+}
+
+/**
+ * Helper function to load cheerio dynamically
+ */
+async function loadCheerio() {
+  const cheerioModule = await import('cheerio')
+  return cheerioModule.load
+
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
@@ -119,7 +127,8 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
 
     // Parse the HTML to get CSRF token
     const loginPageHtml = await loginPageResponse.text()
-    const $ = cheerio.load(loginPageHtml)
+    const load = await loadCheerio()
+    const $ = load(loginPageHtml)
     
     // Look for CSRF token in various common locations
     const csrfToken = 
@@ -205,7 +214,8 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
       } else {
         // Parse response to check for error messages
         const responseHtml = await loginResponse.text()
-        const $response = cheerio.load(responseHtml)
+        const load2 = await loadCheerio()
+        const $response = load2(responseHtml)
         const errorMessage = $response('.alert-danger, .error, .alert-error').text().trim()
         
         return {
@@ -251,7 +261,8 @@ async function searchSchools(
     }
 
     const html = await response.text()
-    const $ = cheerio.load(html)
+    const load = await loadCheerio()
+    const $ = load(html)
     
     const schools: Array<{ id: string; name: string; city: string; state: string }> = []
     
@@ -305,7 +316,8 @@ async function fetchGamesFromEventsPage(
     }
 
     const html = await response.text()
-    const $ = cheerio.load(html)
+    const load = await loadCheerio()
+    const $ = load(html)
     
     const games: NFHSGameData[] = []
     
@@ -416,7 +428,8 @@ async function fetchSchoolGames(
     }
 
     const html = await response.text()
-    const $ = cheerio.load(html)
+    const load = await loadCheerio()
+    const $ = load(html)
     
     const games: NFHSGameData[] = []
     
