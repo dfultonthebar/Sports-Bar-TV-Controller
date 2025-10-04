@@ -4,6 +4,8 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import * as cheerio from 'cheerio'
+import { CookieJar } from 'tough-cookie'
 
 const prisma = new PrismaClient()
 
@@ -47,6 +49,32 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Create realistic browser headers to avoid bot detection
+ */
+function getBrowserHeaders(referer?: string): HeadersInit {
+  return {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': referer ? 'same-origin' : 'none',
+    'Sec-Fetch-User': '?1',
+    'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Cache-Control': 'max-age=0',
+    ...(referer && { 'Referer': referer })
+  }
+}
+
+
+
+
+/**
  * Helper function to make authenticated requests with cookie management
  */
 async function fetchWithCookies(
@@ -55,22 +83,14 @@ async function fetchWithCookies(
   options: RequestInit = {}
 ): Promise<Response> {
   const cookieHeader = cookies.join('; ')
+  const referer = options.headers?.['Referer'] as string | undefined
   
   return fetch(url, {
     ...options,
     headers: {
+      ...getBrowserHeaders(referer),
       ...options.headers,
-      'Cookie': cookieHeader,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Cache-Control': 'max-age=0'
+      'Cookie': cookieHeader
     }
   })
 }
@@ -80,8 +100,6 @@ async function fetchWithCookies(
  * This implementation uses form-based authentication with CSRF token handling
  */
 async function authenticateNFHS(): Promise<NFHSAuthResponse> {
-  // Lazy load cheerio to prevent execution during build
-  const cheerio = await import('cheerio')
   
   const username = process.env.NFHS_USERNAME
   const password = process.env.NFHS_PASSWORD
@@ -100,11 +118,7 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
     const loginPageUrl = 'https://www.nfhsnetwork.com/users/sign_in'
     const loginPageResponse = await fetch(loginPageUrl, {
       method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      }
+      headers: getBrowserHeaders()
     })
 
     if (!loginPageResponse.ok) {
@@ -136,7 +150,7 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
     }
 
     // Rate limiting delay
-    await delay(1000)
+    await delay(1500)
 
     console.log('Step 2: Submitting login credentials...')
 
@@ -153,11 +167,8 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
     const loginResponse = await fetch(loginPageUrl, {
       method: 'POST',
       headers: {
+        ...getBrowserHeaders(loginPageUrl),
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Referer': loginPageUrl,
         'Origin': 'https://www.nfhsnetwork.com',
         'Cookie': initialCookies.join('; ')
       },
@@ -237,8 +248,6 @@ async function searchSchools(
   city: string,
   state: string
 ): Promise<Array<{ id: string; name: string; city: string; state: string }>> {
-  // Lazy load cheerio to prevent execution during build
-  const cheerio = await import('cheerio')
   
   try {
     console.log(`Searching for schools in ${city}, ${state}...`)
@@ -295,8 +304,6 @@ async function fetchGamesFromEventsPage(
   cookies: string[],
   location: string
 ): Promise<NFHSGameData[]> {
-  // Lazy load cheerio to prevent execution during build
-  const cheerio = await import('cheerio')
   
   try {
     console.log('Fetching games from events page...')
@@ -405,8 +412,6 @@ async function fetchSchoolGames(
   city: string,
   state: string
 ): Promise<NFHSGameData[]> {
-  // Lazy load cheerio to prevent execution during build
-  const cheerio = await import('cheerio')
   
   try {
     console.log(`Fetching games for school: ${schoolName}`)
