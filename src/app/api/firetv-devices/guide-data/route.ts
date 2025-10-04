@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const end = endTime ? new Date(endTime).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
     let guideData: any[] = []
-    let deviceInfo = null
+    let deviceInfo: { model: string; androidVersion: string; fireOSVersion: string; serialNumber: string; } | null | undefined = null
 
     try {
       // Connect to Fire TV via ADB
