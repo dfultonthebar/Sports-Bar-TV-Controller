@@ -14,11 +14,9 @@ interface ApiKey {
 }
 
 const PROVIDERS = [
+  { value: 'ollama', label: 'Ollama (Local)', description: 'Local LLM server running on localhost:11434 - RECOMMENDED' },
   { value: 'abacus', label: 'Abacus AI', description: 'Abacus.AI enhanced models with advanced reasoning' },
   { value: 'openai', label: 'OpenAI', description: 'OpenAI GPT models' },
-  { value: 'claude', label: 'Claude (Anthropic)', description: 'Anthropic\'s Claude models' },
-  { value: 'grok', label: 'Grok (X.AI)', description: 'X.AI\'s Grok model' },
-  { value: 'ollama', label: 'Ollama (Local)', description: 'Local LLM server running on localhost:11434' },
   { value: 'localai', label: 'LocalAI', description: 'Local AI server running on localhost:8080' },
   { value: 'custom-local', label: 'Custom Local AI', description: 'Local AI service running on localhost:8000' },
   { value: 'gracenote', label: 'Gracenote API', description: 'Professional TV guide data with comprehensive sports metadata' },
@@ -342,11 +340,9 @@ export default function ApiKeysManager() {
           How to get API keys:
         </h5>
         <ul className="text-sm text-blue-700 space-y-1">
+          <li>• <strong>Ollama (Local) - RECOMMENDED:</strong> Install Ollama locally and pull a model (e.g., <code className="bg-blue-100 px-1 rounded">ollama pull llama3.2</code>) - No API key required</li>
           <li>• <strong>Abacus AI:</strong> Visit <a href="https://abacus.ai/app/route-llm-apis" target="_blank" rel="noopener noreferrer" className="underline">abacus.ai/app/route-llm-apis</a> to get your RouteLLM API key</li>
           <li>• <strong>OpenAI:</strong> Visit <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com/api-keys</a></li>
-          <li>• <strong>Claude (Anthropic):</strong> Visit <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline">console.anthropic.com</a></li>
-          <li>• <strong>Grok (X.AI):</strong> Visit <a href="https://x.ai" target="_blank" rel="noopener noreferrer" className="underline">x.ai</a> to get your API key</li>
-          <li>• <strong>Ollama (Local):</strong> Install Ollama locally and pull a model (e.g., <code className="bg-blue-100 px-1 rounded">ollama pull llama3.2:3b</code>) - No API key required</li>
           <li>• <strong>LocalAI:</strong> Run LocalAI server on port 8080 - No API key required for local usage</li>
           <li>• <strong>Custom Local AI:</strong> Configure your local AI service to run on port 8000 - No API key required</li>
           <li>• <strong>Gracenote API:</strong> Visit <a href="https://developer.gracenote.com" target="_blank" rel="noopener noreferrer" className="underline">developer.gracenote.com</a> to get your API key and Partner ID</li>

@@ -2,7 +2,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { decrypt } from '@/lib/encryption'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
 
@@ -16,6 +15,10 @@ interface AIResponse {
   error?: string
 }
 
+// Local Ollama configuration
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2'
+
 export async function POST(request: NextRequest) {
   try {
     const { message, sessionId } = await request.json()
@@ -23,21 +26,6 @@ export async function POST(request: NextRequest) {
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
-
-    // Get active API keys
-    const activeApiKeys = await prisma.apiKey.findMany({
-      where: { isActive: true },
-    })
-
-    if (activeApiKeys.length === 0) {
-      return NextResponse.json({
-        response: "I'm sorry, but no AI providers are currently configured. Please add API keys in the API Keys tab to enable AI chat functionality."
-      })
-    }
-
-    // Use the first active API key
-    const apiKeyRecord = activeApiKeys[0]
-    const decryptedKey = decrypt(apiKeyRecord.keyValue)
 
     // Enhanced document search with better relevance scoring
     const relevantDocs = await documentSearch.searchDocuments(message, 5)
@@ -133,19 +121,19 @@ Always provide detailed, technical, and actionable responses based on the availa
 
     const allMessages = [systemMessage, ...messages, { role: 'user', content: message }]
 
-    // Get AI response
-    const aiResponse = await makeAPICall(allMessages, apiKeyRecord.provider, decryptedKey)
+    // Get AI response from local Ollama
+    const aiResponse = await callLocalOllama(allMessages)
 
     if (aiResponse.error) {
       await operationLogger.logError({
         level: 'error',
         source: 'chat-api',
-        message: `AI API error: ${aiResponse.error}`,
-        details: { provider: apiKeyRecord.provider, message }
+        message: `Local AI error: ${aiResponse.error}`,
+        details: { message }
       })
       
       return NextResponse.json({
-        response: `I encountered an error: ${aiResponse.error}. Please check your API key configuration.`
+        response: `I encountered an error: ${aiResponse.error}. Please ensure Ollama is running on ${OLLAMA_BASE_URL} with model ${OLLAMA_MODEL}.`
       })
     }
 
@@ -213,88 +201,40 @@ Always provide detailed, technical, and actionable responses based on the availa
   }
 }
 
-async function makeAPICall(messages: ChatMessage[], provider: string, apiKey: string): Promise<AIResponse> {
+async function callLocalOllama(messages: ChatMessage[]): Promise<AIResponse> {
   try {
-    let response: Response
-
-    switch (provider) {
-      case 'claude':
-      case 'anthropic':
-        response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 3000,
-            messages: messages.filter(msg => msg.role !== 'system').map(msg => ({
-              role: msg.role === 'assistant' ? 'assistant' : 'user',
-              content: msg.content
-            })),
-            system: messages.find(msg => msg.role === 'system')?.content || undefined
-          })
-        })
-        break
-
-      case 'openai':
-        response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: messages,
-            max_tokens: 3000
-          })
-        })
-        break
-
-      case 'grok':
-      case 'xai':
-        response = await fetch('https://api.x.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'grok-beta',
-            messages: messages,
-            max_tokens: 3000
-          })
-        })
-        break
-
-      default:
-        return { error: 'Unsupported AI provider', content: '' }
-    }
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        messages: messages,
+        stream: false,
+        options: {
+          temperature: 0.7,
+          num_predict: 3000
+        }
+      })
+    })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error(`API Error (${response.status}):`, errorText)
-      return { error: `API error: ${response.statusText}`, content: '' }
+      console.error(`Ollama API Error (${response.status}):`, errorText)
+      return { 
+        error: `Ollama error: ${response.statusText}. Is Ollama running on ${OLLAMA_BASE_URL}?`, 
+        content: '' 
+      }
     }
 
     const data = await response.json()
-
-    switch (provider) {
-      case 'claude':
-      case 'anthropic':
-        return { content: data.content?.[0]?.text || 'No response from Claude' }
-      case 'openai':
-      case 'grok':
-      case 'xai':
-        return { content: data.choices?.[0]?.message?.content || 'No response from AI' }
-      default:
-        return { error: 'Unknown response format', content: '' }
-    }
+    return { content: data.message?.content || 'No response from local AI' }
   } catch (error) {
-    console.error('API call error:', error)
-    return { error: error instanceof Error ? error.message : 'Unknown error', content: '' }
+    console.error('Local AI call error:', error)
+    return { 
+      error: error instanceof Error ? error.message : 'Unknown error connecting to local AI', 
+      content: '' 
+    }
   }
 }
