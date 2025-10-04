@@ -1,8 +1,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { nfhsAPI, NFHSGame } from '@/lib/sports-apis/nfhs-api'
+import { nfhsPuppeteerAPI } from '@/lib/sports-apis/nfhs-api-puppeteer'
 
 export const dynamic = 'force-dynamic'
+
+// Use Puppeteer API by default to avoid 403 errors
+const USE_PUPPETEER = process.env.NFHS_USE_PUPPETEER !== 'false'
 
 interface NFHSStreamRequest {
   state?: string
@@ -59,8 +63,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<NFHSStream
 
     console.log('🏫 Fetching NFHS Network streams:', requestParams)
 
+    // Choose API based on configuration
+    const api = USE_PUPPETEER ? nfhsPuppeteerAPI : nfhsAPI
+    console.log(`Using ${USE_PUPPETEER ? 'Puppeteer' : 'Standard'} API for NFHS data`)
+
     // Get high school games
-    const allGames = await nfhsAPI.getHighSchoolGames(
+    const allGames = await api.getHighSchoolGames(
       requestParams.state,
       requestParams.sport,
       new Date().toISOString().split('T')[0],
@@ -88,10 +96,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<NFHSStream
     }
 
     // Get live streams
-    const liveGames = await nfhsAPI.getLiveStreams()
+    const liveGames = await api.getLiveStreams()
     
     // Get upcoming streams
-    const upcomingStreams = await nfhsAPI.getUpcomingStreams(requestParams.daysAhead)
+    const upcomingStreams = await api.getUpcomingStreams(requestParams.daysAhead)
 
     // Filter for live only if requested
     if (requestParams.liveOnly) {
@@ -143,18 +151,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<NFHSStrea
     
     console.log('🏫 NFHS Network search request:', body)
 
+    // Choose API based on configuration
+    const api = USE_PUPPETEER ? nfhsPuppeteerAPI : nfhsAPI
+    console.log(`Using ${USE_PUPPETEER ? 'Puppeteer' : 'Standard'} API for NFHS search`)
+
     // Get games by location if specified
     let games: NFHSGame[] = []
     
     if (body.location?.zip || body.location?.city) {
-      games = await nfhsAPI.getGamesByLocation(
+      games = await api.getGamesByLocation(
         body.location.zip,
         body.location.city,
         body.location.state,
         body.radiusMiles
       )
     } else {
-      games = await nfhsAPI.getHighSchoolGames(
+      games = await api.getHighSchoolGames(
         body.state,
         body.sport,
         new Date().toISOString().split('T')[0],
@@ -188,13 +200,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<NFHSStrea
     // Get live games if requested
     let liveGames: NFHSGame[] = []
     if (body.liveOnly) {
-      liveGames = await nfhsAPI.getLiveStreams()
+      liveGames = await api.getLiveStreams()
       games = games.filter(game => 
         liveGames.some(live => live.id === game.id) || 
         game.status === 'live'
       )
     } else {
-      liveGames = await nfhsAPI.getLiveStreams()
+      liveGames = await api.getLiveStreams()
     }
 
     const response: NFHSStreamResponse = {

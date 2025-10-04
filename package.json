@@ -1,37 +1,13 @@
+
 {
-  "name": "sports-bar-ai-assistant",
+  "name": "sports-bar-tv-controller",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test-ai": "python3 ai-analysis/test_ai_system.py",
-    "ai-status": "python3 ai-analysis/check_status.py",
-    "cleanup-logs": "./scripts/cleanup-logs.sh",
-    "force-db-fix": "tsx scripts/force_db_creation.ts"
-  },
-  "devDependencies": {
-    "@prisma/client": "^6.16.2",
-    "@radix-ui/react-dialog": "^1.1.15",
-    "@radix-ui/react-label": "^2.1.7",
-    "@radix-ui/react-select": "^2.2.6",
-    "@radix-ui/react-slot": "^1.2.3",
-    "@types/node": "^24.5.2",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "autoprefixer": "^10.4.21",
-    "better-sqlite3": "^11.0.0",
-    "eslint": "^9.36.0",
-    "eslint-config-next": "^15.5.4",
-    "lucide-react": "^0.544.0",
-    "postcss": "^8.5.6",
-    "prisma": "^6.16.2",
-    "react-hook-form": "^7.63.0",
-    "tailwindcss": "^3.3.3",
-    "tsx": "^4.19.0",
-    "typescript": "^5.9.2"
+    "lint": "next lint"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.35",
@@ -53,6 +29,9 @@
     "next-auth": "4.24.11",
     "node-cron": "^4.2.1",
     "pdf-parse": "^1.1.1",
+    "puppeteer": "^23.5.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "recharts": "^3.2.1",
@@ -61,5 +40,16 @@
     "tough-cookie": "^5.0.0",
     "uuid": "^13.0.0",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "20.5.7",
+    "@types/react": "18.2.21",
+    "@types/react-dom": "18.2.7",
+    "autoprefixer": "10.4.15",
+    "eslint": "8.48.0",
+    "eslint-config-next": "14.2.33",
+    "postcss": "8.4.29",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.2.2"
   }
 }
