@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const start = startTime ? new Date(startTime).toISOString() : new Date().toISOString()
     const end = endTime ? new Date(endTime).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
-    let guideData = []
+    let guideData: any[] = []
     let deviceInfo = null
 
     try {

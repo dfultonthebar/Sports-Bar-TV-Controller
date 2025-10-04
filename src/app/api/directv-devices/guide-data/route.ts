@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const start = startTime ? new Date(startTime).toISOString() : new Date().toISOString()
     const end = endTime ? new Date(endTime).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
-    let guideData = []
+    let guideData: any[] = []
 
     try {
       // DirecTV Guide API endpoints - multiple approaches
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
       ]) as Response
 
-      let channels = []
+      let channels: any[] = []
       if (channelResponse.ok) {
         const channelData = await channelResponse.json()
         channels = channelData.channels || []

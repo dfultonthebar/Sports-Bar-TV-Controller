@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const isWeekend = [0, 6].includes(new Date().getDay())
     
     // Generate smart channel suggestions based on time and context
-    const channelSuggestions = []
+    const channelSuggestions: any[] = []
     
     // Sports suggestions during typical game times
     if ((isWeekend && currentHour >= 13 && currentHour <= 23) || 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate smart alerts
-    const alerts = []
+    const alerts: any[] = []
     
     if (healthMetrics.commandSuccessRate < 90) {
       alerts.push({

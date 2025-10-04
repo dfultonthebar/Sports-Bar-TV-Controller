@@ -72,7 +72,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
 
     try {
       // Fetch current matrix configuration to get available outputs
-      let availableOutputs = []
+      let availableOutputs: any[] = []
       try {
         const configResponse = await fetch('/api/matrix/config')
         if (configResponse.ok) {

@@ -184,7 +184,7 @@ class NFLSundayTicketService {
    * Get market restrictions for a game
    */
   private getMarketRestrictions(homeTeamLocation: string, awayTeamLocation: string): string[] {
-    const restrictions = []
+    const restrictions: any[] = []
     
     if (homeTeamLocation) {
       restrictions.push(`Available in ${homeTeamLocation} market on local TV`)

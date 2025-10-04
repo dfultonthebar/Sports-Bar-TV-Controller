@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
     ]
     
     // Generate insights from mock data
-    const insights = []
-    const recommendations = []
+    const insights: any[] = []
+    const recommendations: any[] = []
     const metrics: any = {}
     
     // Analyze devices for insights

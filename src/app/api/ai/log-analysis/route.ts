@@ -178,7 +178,7 @@ function predictPeakTimes(operations: any[]) {
 }
 
 function generateRecommendations(analysisData: any) {
-  const recommendations = []
+  const recommendations: any[] = []
   
   // Error-based recommendations
   if (analysisData.errorPatterns.errorTrends.error > 5) {

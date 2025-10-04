@@ -620,7 +620,7 @@ export default function SportsGuide() {
   }
 
   const getNextSevenDays = () => {
-    const days = []
+    const days: any[] = []
     for (let i = 0; i < 7; i++) {
       const date = new Date()
       date.setDate(date.getDate() + i)
@@ -644,7 +644,7 @@ export default function SportsGuide() {
   }
 
   const getTimeSlots = () => {
-    const slots = []
+    const slots: any[] = []
     for (let hour = 8; hour <= 23; hour++) {
       slots.push({
         time: `${hour}:00`,
