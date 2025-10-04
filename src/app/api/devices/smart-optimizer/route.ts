@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
       { deviceId: '3', issue: 'IR Blaster Positioning', severity: 'low', status: 'active', deviceType: 'ir', autoFixAvailable: false }
     ]
     
-    const optimizations = []
-    const suggestions = []
+    const optimizations: any[] = []
+    const suggestions: any[] = []
     
     // Analyze each device for optimization opportunities
     for (const device of mockDevices) {

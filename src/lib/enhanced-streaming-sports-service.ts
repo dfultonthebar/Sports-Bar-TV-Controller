@@ -117,7 +117,7 @@ async function mockFetchNFHSEnhancedData(credential: StreamingCredential): Promi
     'La Crosse Central Red Raiders', 'Eau Claire Memorial Old Abes', 'Waukesha West Wolverines'
   ]
 
-  const games = []
+  const games: any[] = []
   const now = new Date()
 
   for (let i = 0; i < 3; i++) {
@@ -166,7 +166,7 @@ async function mockFetchNFHSEnhancedData(credential: StreamingCredential): Promi
 
 // Mock YouTube TV enhanced data
 async function mockFetchYouTubeTVEnhancedData(credential: StreamingCredential): Promise<any[]> {
-  const games = []
+  const games: any[] = []
   const now = new Date()
 
   const channels = [

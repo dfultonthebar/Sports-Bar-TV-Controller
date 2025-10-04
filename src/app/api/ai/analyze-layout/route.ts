@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     console.log('AI Analysis - Parsed Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
     // Get available (active) outputs from matrix configuration
-    let activeOutputs = []
+    let activeOutputs: any[] = []
     if (availableOutputs && Array.isArray(availableOutputs)) {
       activeOutputs = availableOutputs.filter(output => 
         output.status === 'active' || !output.status // default to active if no status
@@ -311,10 +311,10 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
 }
 
 function generateOutputMappings(locations: TVLocation[], matrixOutputs: number = 36, activeOutputs: any[] = []) {
-  const suggestions = []
+  const suggestions: any[] = []
   
   // Get available output numbers (only active ones)
-  let availableOutputNumbers = []
+  let availableOutputNumbers: any[] = []
   if (activeOutputs.length > 0) {
     availableOutputNumbers = activeOutputs.map(output => output.channelNumber).sort((a, b) => a - b)
     console.log('Available output numbers (active only):', availableOutputNumbers)

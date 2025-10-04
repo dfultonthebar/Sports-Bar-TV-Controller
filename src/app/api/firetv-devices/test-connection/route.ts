@@ -107,7 +107,7 @@ async function testFireTVConnection(ip: string, port: number): Promise<{ success
     console.error('Fire TV connection test error:', error)
     
     let errorMessage = 'Connection failed'
-    let suggestions = []
+    let suggestions: any[] = []
     
     if (error instanceof Error) {
       if (error.message.includes('ECONNREFUSED')) {

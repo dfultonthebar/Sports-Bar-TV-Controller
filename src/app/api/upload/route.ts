@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
-    const uploadedFiles = []
+    const uploadedFiles: any[] = []
 
     for (const file of files) {
       console.log(`🔄 Processing file: ${file.name} (${file.size} bytes)`)

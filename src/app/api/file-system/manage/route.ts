@@ -91,7 +91,7 @@ async function getDirectoryTree(directory: string, maxDepth: number = 3, current
 
   try {
     const items = await readdir(directory)
-    const children = []
+    const children: any[] = []
 
     for (const item of items.slice(0, 50)) { // Limit to 50 items per directory
       const itemPath = path.join(directory, item)

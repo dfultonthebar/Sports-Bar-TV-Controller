@@ -195,7 +195,7 @@ export default function EnhancedBartenderRemoteControl() {
       }
 
       // Handle associated devices
-      const deviceOperations = []
+      const deviceOperations: any[] = []
 
       // Switch IR devices
       if (mapping.irDevices && mapping.irDevices.length > 0) {

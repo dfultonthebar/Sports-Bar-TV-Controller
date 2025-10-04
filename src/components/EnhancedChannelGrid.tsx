@@ -154,7 +154,7 @@ export default function EnhancedChannelGrid() {
     return '📺'
   }
 
-  const timeSlots = []
+  const timeSlots: any[] = []
   const baseTime = new Date()
   baseTime.setHours(0, 0, 0, 0)
   

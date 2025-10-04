@@ -163,7 +163,7 @@ async function generateSystemRecommendations(
   errors: any[], 
   documentStatus: any
 ) {
-  const recommendations = []
+  const recommendations: any[] = []
   
   // Performance recommendations
   if (operations.successRate < 90) {

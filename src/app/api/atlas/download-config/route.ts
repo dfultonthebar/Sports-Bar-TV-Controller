@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     // In a real implementation, you would make HTTP requests to get the current configuration
     
     // Simulate fetching input configuration
-    const inputs = []
+    const inputs: any[] = []
     for (let i = 1; i <= 8; i++) {
       try {
         // In a real implementation:
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Simulate fetching output configuration  
-    const outputs = []
+    const outputs: any[] = []
     for (let i = 1; i <= 8; i++) {
       try {
         // In a real implementation:
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Simulate fetching scene configuration
-    const scenes = []
+    const scenes: any[] = []
     try {
       // In a real implementation:
       // const response = await fetch(`${baseUrl}/api/scenes`)

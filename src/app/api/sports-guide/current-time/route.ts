@@ -22,7 +22,7 @@ export async function GET() {
     const localTime = new Date(now.toLocaleString("en-US", { timeZone: timezone }))
     
     // Generate next 7 days for scheduling
-    const next7Days = []
+    const next7Days: any[] = []
     for (let i = 0; i < 7; i++) {
       const date = new Date(localTime)
       date.setDate(date.getDate() + i)

@@ -137,7 +137,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
   const getSportsInfo = (program: UnifiedProgram): string => {
     if (!program.sportsInfo) return ''
     
-    const parts = []
+    const parts: any[] = []
     if (program.sportsInfo.league) parts.push(program.sportsInfo.league)
     if (program.sportsInfo.homeTeam && program.sportsInfo.awayTeam) {
       parts.push(`${program.sportsInfo.awayTeam} @ ${program.sportsInfo.homeTeam}`)

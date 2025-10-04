@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`CEC ${action} requested for outputs: ${targetOutputs.join(', ')}`)
 
-    const results = []
-    const errors = []
+    const results: any[] = []
+    const errors: any[] = []
 
     if (individual) {
       // Individual TV control - process each output separately
@@ -159,7 +159,7 @@ async function controlAllTVs(
   
   console.log(`Starting batch ${action} for outputs: ${outputNumbers.join(', ')}`)
   
-  const results = []
+  const results: any[] = []
   
   // Route CEC input to each output sequentially
   for (const outputNum of outputNumbers) {

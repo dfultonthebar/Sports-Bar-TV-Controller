@@ -362,7 +362,7 @@ export default function TVGuide({ selectedInput, inputs, sendIRCommand }: TVGuid
   }
 
   const getTimeSlots = () => {
-    const slots = []
+    const slots: any[] = []
     for (let i = 0; i < 5; i++) {
       const hour = timeSlotStart + i
       const hour12 = hour > 12 ? hour - 12 : hour

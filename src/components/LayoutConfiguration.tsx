@@ -155,7 +155,7 @@ export default function LayoutConfiguration() {
       // Fetch current matrix outputs
       const matrixResponse = await fetch('/api/matrix/config')
       let matrixOutputs = 36
-      let availableOutputs = []
+      let availableOutputs: any[] = []
 
       if (matrixResponse.ok) {
         const matrixData = await matrixResponse.json()

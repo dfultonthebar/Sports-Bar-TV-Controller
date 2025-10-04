@@ -15,7 +15,7 @@ export async function GET() {
     })
 
     // Get IR devices from JSON file
-    let irDevices = []
+    let irDevices: any[] = []
     try {
       const irDevicesPath = path.join(process.cwd(), 'data', 'ir-devices.json')
       const irDevicesData = fs.readFileSync(irDevicesPath, 'utf8')
@@ -31,7 +31,7 @@ export async function GET() {
     )
 
     // Create device mapping
-    const deviceMapping = []
+    const deviceMapping: any[] = []
     for (let channel = 1; channel <= 6; channel++) {
       const matrixInput = matrixInputs.find(i => i.channelNumber === channel)
       const irDevice = irDevices.find((d: any) => d.inputChannel === channel)

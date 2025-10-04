@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const operations = []
+    const operations: any[] = []
 
     try {
       // Add all changes
