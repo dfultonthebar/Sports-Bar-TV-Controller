@@ -73,7 +73,7 @@ async function executeSchedule(schedule: any) {
     gamesFound: 0,
     tvsControlled: 0,
     channelsSet: 0,
-    errors: []
+    errors: [] as any[]
   };
 
   try {

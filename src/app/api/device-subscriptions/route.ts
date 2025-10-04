@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     console.error('Error loading subscription data:', error)
     return NextResponse.json({
       success: true,
-      devices: []
+      devices: [] as any[]
     })
   }
 }

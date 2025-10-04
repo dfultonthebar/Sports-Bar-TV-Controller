@@ -86,7 +86,7 @@ async function listDirectory(directory: string) {
 
 async function getDirectoryTree(directory: string, maxDepth: number = 3, currentDepth: number = 0): Promise<any> {
   if (currentDepth >= maxDepth) {
-    return { name: path.basename(directory), type: 'directory', path: directory, children: [] }
+    return { name: path.basename(directory), type: 'directory', path: directory, children: [] as any[] }
   }
 
   try {

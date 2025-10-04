@@ -103,7 +103,7 @@ class SpectrumChannelService {
       console.error('Error fetching Spectrum channel lineup:', error)
       return {
         success: false,
-        channels: [],
+        channels: [] as any[],
         lastUpdated: new Date().toISOString(),
         source: 'Error - Fallback data unavailable'
       }

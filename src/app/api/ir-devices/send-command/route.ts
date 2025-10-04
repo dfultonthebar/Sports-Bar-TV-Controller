@@ -23,7 +23,7 @@ async function loadDevices() {
     const data = await readFile(IR_DEVICES_FILE, 'utf8')
     return JSON.parse(data)
   } catch (error) {
-    return { devices: [] }
+    return { devices: [] as any[] }
   }
 }
 

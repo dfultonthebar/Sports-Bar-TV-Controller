@@ -402,7 +402,7 @@ if __name__ == '__main__':
         severity: 'critical',
         category: 'hardware',
         summary: 'Atlas AI analysis failed - system may need attention',
-        audioPatterns: [],
+        audioPatterns: [] as any[],
         hardwareRecommendations: ['Verify Atlas processor connectivity'],
         configurationIssues: ['Unable to analyze current configuration'],
         performanceMetrics: {
@@ -494,9 +494,9 @@ if __name__ == '__main__':
       networkLatency: 8,
       cpuLoad: 45,
       memoryUsage: 60,
-      errorLogs: [],
-      configChanges: [],
-      sceneRecalls: [],
+      errorLogs: [] as any[],
+      configChanges: [] as any[],
+      sceneRecalls: [] as any[],
       lastSeen: new Date().toISOString()
     }
   }

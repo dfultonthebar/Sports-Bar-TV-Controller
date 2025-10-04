@@ -17,7 +17,7 @@ interface ExecuteRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const { command, scriptPath, args = [], workingDirectory, timeout = 30000 }: ExecuteRequest = await request.json()
+    const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 }: ExecuteRequest = await request.json()
 
     if (!command && !scriptPath) {
       return NextResponse.json({ 

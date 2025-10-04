@@ -46,7 +46,7 @@ interface MatrixInput {
 export default function LayoutConfiguration() {
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
-    zones: []
+    zones: [] as any[]
   })
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -249,7 +249,7 @@ export default function LayoutConfiguration() {
 
     const emptyLayout = {
       name: 'Bar Layout',
-      zones: []
+      zones: [] as any[]
     }
 
     setTVLayout(emptyLayout)

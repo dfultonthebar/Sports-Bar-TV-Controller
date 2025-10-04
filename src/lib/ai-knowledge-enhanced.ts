@@ -80,7 +80,7 @@ export async function searchCodebase(
   } catch (error) {
     console.error('Error searching codebase:', error);
     return {
-      files: [],
+      files: [] as any[],
       totalFiles: 0
     };
   }

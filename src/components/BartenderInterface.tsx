@@ -47,7 +47,7 @@ export default function BartenderInterface() {
   const [selectedInput, setSelectedInput] = useState<string | null>(null)
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
-    zones: []
+    zones: [] as any[]
   })
   const [uploadingImage, setUploadingImage] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
@@ -497,8 +497,8 @@ export default function BartenderInterface() {
                   </button>
                   <button
                     onClick={() => {
-                      setTVLayout(prev => ({ ...prev, zones: [] }))
-                      saveTVLayout({ ...tvLayout, zones: [] })
+                      setTVLayout(prev => ({ ...prev, zones: [] as any[] }))
+                      saveTVLayout({ ...tvLayout, zones: [] as any[] })
                     }}
                     className="text-gray-600 hover:text-slate-100"
                     title="Clear TV zones"

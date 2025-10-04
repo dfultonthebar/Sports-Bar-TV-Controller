@@ -9,7 +9,7 @@ export async function POST() {
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error.message, adapters: [] },
+      { success: false, message: error.message, adapters: [] as any[] },
       { status: 500 }
     );
   }
@@ -21,7 +21,7 @@ export async function GET() {
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error.message, adapters: [] },
+      { success: false, message: error.message, adapters: [] as any[] },
       { status: 500 }
     );
   }

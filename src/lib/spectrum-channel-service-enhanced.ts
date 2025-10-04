@@ -141,7 +141,7 @@ class EnhancedSpectrumChannelService {
       console.error('Error in enhanced channel lineup:', error)
       return {
         success: false,
-        channels: [],
+        channels: [] as any[],
         lastUpdated: new Date().toISOString(),
         source: 'Error - No data available',
         apiConfigured: this.apiConfigured

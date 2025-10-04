@@ -48,7 +48,7 @@ export class CECService {
         return {
           success: false,
           message: 'CEC adapter not found. Please connect the Pulse-Eight USB CEC adapter.',
-          adapters: []
+          adapters: [] as any[]
         };
       }
 
@@ -76,7 +76,7 @@ export class CECService {
       return {
         success: false,
         message: `CEC initialization error: ${error.message}`,
-        adapters: []
+        adapters: [] as any[]
       };
     }
   }

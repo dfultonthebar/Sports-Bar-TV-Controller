@@ -26,7 +26,7 @@ export async function GET() {
     return NextResponse.json({ 
       layout: {
         name: 'Bar Layout',
-        zones: []
+        zones: [] as any[]
       }
     })
   }

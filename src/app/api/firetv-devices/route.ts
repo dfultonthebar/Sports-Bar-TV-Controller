@@ -22,7 +22,7 @@ async function loadFireTVDevices() {
     const data = await readFile(FIRETV_DEVICES_FILE, 'utf8')
     return JSON.parse(data)
   } catch (error) {
-    return { devices: [] }
+    return { devices: [] as any[] }
   }
 }
 

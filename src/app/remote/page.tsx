@@ -140,7 +140,7 @@ export default function BartenderRemotePage() {
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
-    zones: []
+    zones: [] as any[]
   })
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)

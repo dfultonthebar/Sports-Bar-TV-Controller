@@ -414,7 +414,7 @@ if __name__ == '__main__':
       summary: `Analyzed ${logs.length} log entries with ${errorLogs.length} errors (${errorRate.toFixed(1)}% error rate)`,
       patterns: ['Basic pattern analysis available'],
       recommendations: errorRate > 10 ? ['High error rate detected - investigate system issues'] : ['System appears stable'],
-      anomalies: [],
+      anomalies: [] as any[],
       insights: [`Total log entries: ${logs.length}`, `Error rate: ${errorRate.toFixed(1)}%`],
       confidence: 0.7
     }
@@ -440,7 +440,7 @@ if __name__ == '__main__':
     } catch {
       return {
         available: false,
-        capabilities: []
+        capabilities: [] as any[]
       }
     }
   }

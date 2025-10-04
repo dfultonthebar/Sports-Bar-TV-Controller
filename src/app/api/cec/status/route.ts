@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error.message, status: 'unknown', devices: [] },
+      { success: false, message: error.message, status: 'unknown', devices: [] as any[] },
       { status: 500 }
     );
   }

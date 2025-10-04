@@ -27,10 +27,10 @@ export async function GET() {
       })
     } else {
       return NextResponse.json({
-        configs: [],
+        configs: [] as any[],
         config: null,
-        inputs: [],
-        outputs: []
+        inputs: [] as any[],
+        outputs: [] as any[]
       })
     }
   } catch (error) {

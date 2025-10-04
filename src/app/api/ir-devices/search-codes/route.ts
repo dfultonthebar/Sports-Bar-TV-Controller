@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
     console.error('Error searching codesets:', error)
     return NextResponse.json({ 
       error: 'Failed to search codesets',
-      codesets: [],
+      codesets: [] as any[],
       message: 'Error occurred during search'
     }, { status: 500 })
   }
