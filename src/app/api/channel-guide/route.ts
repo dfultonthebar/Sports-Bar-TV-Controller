@@ -104,15 +104,15 @@ async function getCableGuideData(inputNumber: number, startTime: string, endTime
 
       return {
         type: 'cable',
-        channels: [],
+        channels: [] as any[],
         programs: sportsPrograms
       }
     } else {
       // Return empty data if Spectrum API is not configured
       return {
         type: 'cable',
-        channels: [],
-        programs: [],
+        channels: [] as any[],
+        programs: [] as any[],
         message: 'Configure Spectrum Business API in TV Guide Config to view real data'
       }
     }
@@ -120,8 +120,8 @@ async function getCableGuideData(inputNumber: number, startTime: string, endTime
     console.error('Error fetching cable guide data:', error)
     return {
       type: 'cable',
-      channels: [],
-      programs: [],
+      channels: [] as any[],
+      programs: [] as any[],
       error: error instanceof Error ? error.message : 'Failed to fetch cable guide data'
     }
   }
@@ -175,15 +175,15 @@ async function getSatelliteGuideData(inputNumber: number, deviceId: string | und
       return {
         type: 'satellite',
         device: targetDevice,
-        channels: [],
+        channels: [] as any[],
         programs
       }
     } else {
       return {
         type: 'satellite',
         device: targetDevice,
-        channels: [],
-        programs: [],
+        channels: [] as any[],
+        programs: [] as any[],
         message: 'No guide data available for DirecTV'
       }
     }
@@ -191,8 +191,8 @@ async function getSatelliteGuideData(inputNumber: number, deviceId: string | und
     console.error('Error fetching DirecTV guide data:', error)
     return {
       type: 'satellite',
-      channels: [],
-      programs: [],
+      channels: [] as any[],
+      programs: [] as any[],
       error: error instanceof Error ? error.message : 'Failed to fetch DirecTV guide data'
     }
   }
@@ -274,7 +274,7 @@ async function getStreamingGuideData(inputNumber: number, deviceId: string | und
       return {
         type: 'streaming',
         device: targetDevice,
-        channels: [],
+        channels: [] as any[],
         programs: sportsPrograms,
         apps: sportsApps
       }
@@ -295,8 +295,8 @@ async function getStreamingGuideData(inputNumber: number, deviceId: string | und
       return {
         type: 'streaming',
         device: targetDevice,
-        channels: [],
-        programs: [],
+        channels: [] as any[],
+        programs: [] as any[],
         apps: sportsApps,
         message: 'No streaming guide data available'
       }
@@ -305,9 +305,9 @@ async function getStreamingGuideData(inputNumber: number, deviceId: string | und
     console.error('Error fetching Fire TV guide data:', error)
     return {
       type: 'streaming',
-      channels: [],
-      programs: [],
-      apps: [],
+      channels: [] as any[],
+      programs: [] as any[],
+      apps: [] as any[],
       error: error instanceof Error ? error.message : 'Failed to fetch Fire TV guide data'
     }
   }

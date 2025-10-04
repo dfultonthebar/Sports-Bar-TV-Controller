@@ -27,7 +27,7 @@ async function loadUnifiedGuideCache() {
     return { 
       lastUpdated: null, 
       devices: {},
-      programs: [],
+      programs: [] as any[],
       summary: {}
     }
   }
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
       timeRange: { start: startTime, end: endTime },
       devices: {},
-      programs: [],
+      programs: [] as any[],
       summary: {
         totalDevices: deviceList.length,
         totalPrograms: 0,

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     console.error('Error retrieving model codes:', error)
     return NextResponse.json({ 
       error: 'Failed to retrieve model codes',
-      codes: []
+      codes: [] as any[]
     }, { status: 500 })
   }
 }

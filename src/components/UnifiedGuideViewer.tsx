@@ -75,7 +75,7 @@ interface UnifiedGuideViewerProps {
 }
 
 export default function UnifiedGuideViewer({ 
-  devices = [], 
+  devices = [] as any[], 
   autoRefresh = false, 
   refreshInterval = 300000 // 5 minutes
 }: UnifiedGuideViewerProps) {

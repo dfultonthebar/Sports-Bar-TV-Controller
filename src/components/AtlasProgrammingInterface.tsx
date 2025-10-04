@@ -201,7 +201,7 @@ export default function AtlasProgrammingInterface() {
       compressor: false,
       gate: false,
       eq: { band1: 0, band2: 0, band3: 0 },
-      routing: []
+      routing: [] as any[]
     }))
   }
 
@@ -250,7 +250,7 @@ export default function AtlasProgrammingInterface() {
       compressor: false,
       gate: false,
       eq: { band1: 0, band2: 0, band3: 0 },
-      routing: []
+      routing: [] as any[]
     }
     setInputs(prev => [...prev, newInput])
   }

@@ -68,7 +68,7 @@ export default function ConfigSyncIndicator({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           commitMessage: 'Quick configuration sync',
-          configChanges: [],
+          configChanges: [] as any[],
           autoCommit: true
         })
       })

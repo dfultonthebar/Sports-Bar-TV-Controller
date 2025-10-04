@@ -253,7 +253,7 @@ function calculateAverageSessionDuration(logs: any[]): number {
   const sessions = logs.reduce((acc, log) => {
     const sessionId = log.sessionId || 'anonymous'
     if (!acc[sessionId]) {
-      acc[sessionId] = []
+      acc[sessionId] = [] as any[]
     }
     acc[sessionId].push(log)
     return acc

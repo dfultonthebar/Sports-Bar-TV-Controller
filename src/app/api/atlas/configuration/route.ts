@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
       // Config doesn't exist, return empty configuration
       return NextResponse.json({
         success: true,
-        inputs: [],
-        outputs: [],
-        scenes: [],
-        messages: []
+        inputs: [] as any[],
+        outputs: [] as any[],
+        scenes: [] as any[],
+        messages: [] as any[]
       })
     }
   } catch (error) {

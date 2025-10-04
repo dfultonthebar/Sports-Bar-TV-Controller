@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       connectionStability: Math.floor(Math.random() * 20) + 80, // 80-100%
       commandSuccessRate: Math.floor(Math.random() * 15) + 85, // 85-100%
       lastHealthCheck: new Date(),
-      predictedIssues: []
+      predictedIssues: [] as any[]
     }
 
     // Add predicted issues based on metrics

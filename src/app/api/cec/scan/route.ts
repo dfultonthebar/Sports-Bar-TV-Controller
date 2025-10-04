@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error.message, devices: [], count: 0 },
+      { success: false, message: error.message, devices: [] as any[], count: 0 },
       { status: 500 }
     );
   }

@@ -62,7 +62,7 @@ const UnifiedTVGuideViewer: React.FC = () => {
         // For sports view, create a simplified guide structure
         setGuideData({
           success: data.success,
-          channels: [], // Will be populated from programs
+          channels: [] as any[], // Will be populated from programs
           programs: data.programs || [],
           sources: { gracenote: { configured: true, used: true }, spectrum: { configured: true, used: true } },
           coverage: {

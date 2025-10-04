@@ -118,9 +118,9 @@ export default function SportsGuideConfigPage() {
   const [newProvider, setNewProvider] = useState<Provider>({
     name: '',
     type: 'cable',
-    channels: [],
-    packages: [],
-    inputIds: []
+    channels: [] as any[],
+    packages: [] as any[],
+    inputIds: [] as any[]
   })
   
   const [newTeam, setNewTeam] = useState<HomeTeam>({
@@ -194,9 +194,9 @@ export default function SportsGuideConfigPage() {
       setNewProvider({
         name: '',
         type: 'cable',
-        channels: [],
-        packages: [],
-        inputIds: []
+        channels: [] as any[],
+        packages: [] as any[],
+        inputIds: [] as any[]
       })
     }
   }

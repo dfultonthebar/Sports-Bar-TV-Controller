@@ -54,7 +54,7 @@ async function loadDeviceList(type: 'firetv' | 'directv') {
     const data = await readFile(filePath, 'utf8')
     return JSON.parse(data)
   } catch (error) {
-    return { devices: [] }
+    return { devices: [] as any[] }
   }
 }
 

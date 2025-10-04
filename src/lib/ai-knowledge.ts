@@ -43,7 +43,7 @@ export function loadKnowledgeBase(): KnowledgeBase {
   } catch (error) {
     console.error('Error loading knowledge base:', error);
     return {
-      documents: [],
+      documents: [] as any[],
       lastUpdated: new Date().toISOString(),
       stats: {
         totalDocuments: 0,

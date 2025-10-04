@@ -394,8 +394,8 @@ class UnifiedTVGuideService {
   private getErrorFallbackData(startTime: Date, endTime: Date): UnifiedGuideData {
     return {
       success: false,
-      channels: [],
-      programs: [],
+      channels: [] as any[],
+      programs: [] as any[],
       sources: {
         gracenote: { configured: false, used: false },
         spectrum: { configured: false, used: false }

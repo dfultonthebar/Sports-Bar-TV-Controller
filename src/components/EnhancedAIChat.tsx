@@ -45,7 +45,7 @@ export default function EnhancedAIChat() {
   const [scriptRequest, setScriptRequest] = useState<ScriptRequest>({
     description: '',
     scriptType: 'bash',
-    requirements: [],
+    requirements: [] as any[],
     context: ''
   })
   const [generatedScript, setGeneratedScript] = useState('')
@@ -54,7 +54,7 @@ export default function EnhancedAIChat() {
   const [featureRequest, setFeatureRequest] = useState<FeatureRequest>({
     featureName: '',
     description: '',
-    requirements: [],
+    requirements: [] as any[],
     technology: 'React/Next.js',
     complexity: 'medium'
   })
