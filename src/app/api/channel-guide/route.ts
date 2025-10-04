@@ -134,7 +134,7 @@ async function getSatelliteGuideData(inputNumber: number, deviceId: string | und
     const deviceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/directv-devices`)
     const deviceData = await deviceResponse.json()
     
-    let targetDevice = null
+    let targetDevice: any = null
     if (deviceId) {
       targetDevice = deviceData.devices?.find((d: any) => d.id === deviceId)
     } else {

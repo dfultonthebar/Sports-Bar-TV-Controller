@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { enhancedLogger } from '@/lib/enhanced-logger'
+import type { LogAnalytics } from '@/lib/enhanced-logger'
+import type { AIAnalysisResult } from '@/lib/local-ai-analyzer'
 import { localAIAnalyzer } from '@/lib/local-ai-analyzer'
 
 // Force dynamic rendering for this API route
@@ -50,13 +52,13 @@ export async function GET(request: NextRequest) {
     const exportLogs = logs.slice(0, maxEntries)
 
     // Generate analytics if requested
-    let analytics = null
+    let analytics: LogAnalytics | null = null
     if (includeAnalytics) {
       analytics = await enhancedLogger.getLogAnalytics(hours)
     }
 
     // Generate AI insights if requested
-    let aiInsights = null
+    let aiInsights: AIAnalysisResult | { error: string; message: string } | null = null
     if (includeAIInsights && exportLogs.length > 0) {
       try {
         aiInsights = await localAIAnalyzer.analyzeLogData(exportLogs, {
@@ -135,7 +137,7 @@ export async function GET(request: NextRequest) {
         includeAnalytics,
         includeAIInsights,
         search,
-        aiAnalysisSuccess: !!aiInsights && !aiInsights.error
+        aiAnalysisSuccess: !!aiInsights && !('error' in aiInsights)
       }
     )
 
@@ -148,7 +150,7 @@ export async function GET(request: NextRequest) {
         exportTime: new Date().toISOString(),
         format,
         ...(analytics && { errorRate: analytics.errorRate }),
-        ...(aiInsights && !aiInsights.error && { 
+        ...(aiInsights && !('error' in aiInsights) && { 
           aiSeverity: aiInsights.severity,
           aiConfidence: aiInsights.confidence 
         })

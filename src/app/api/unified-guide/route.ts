@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       console.log(`🔍 Fetching guide data for ${device.type} device: ${device.name}`)
       
       try {
-        let deviceGuideData = null
+        let deviceGuideData: any = null
 
         if (device.type === 'directv') {
           unifiedData.summary.directvDevices++

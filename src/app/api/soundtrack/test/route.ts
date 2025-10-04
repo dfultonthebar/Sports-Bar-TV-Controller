@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // If test succeeded, try to get more account info
-    let accountInfo = null
+    let accountInfo: any = null
     try {
       const account = await api.getAccount()
       const firstAccount = account.accounts && account.accounts.length > 0 
