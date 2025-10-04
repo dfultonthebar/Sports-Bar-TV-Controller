@@ -126,8 +126,8 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
 
     // Parse the HTML to get CSRF token
     const loginPageHtml = await loginPageResponse.text()
-    const load = await loadCheerio()
-    const $ = load(loginPageHtml)
+    const cheerio = await loadCheerio()
+    const $ = cheerio(loginPageHtml)
     
     // Look for CSRF token in various common locations
     const csrfToken = 
@@ -213,8 +213,8 @@ async function authenticateNFHS(): Promise<NFHSAuthResponse> {
       } else {
         // Parse response to check for error messages
         const responseHtml = await loginResponse.text()
-        const load2 = await loadCheerio()
-        const $response = load2(responseHtml)
+        const cheerio2 = await loadCheerio()
+        const $response = cheerio2(responseHtml)
         const errorMessage = $response('.alert-danger, .error, .alert-error').text().trim()
         
         return {
@@ -260,8 +260,8 @@ async function searchSchools(
     }
 
     const html = await response.text()
-    const load = await loadCheerio()
-    const $ = load(html)
+    const cheerio = await loadCheerio()
+    const $ = cheerio(html)
     
     const schools: Array<{ id: string; name: string; city: string; state: string }> = []
     
@@ -315,8 +315,8 @@ async function fetchGamesFromEventsPage(
     }
 
     const html = await response.text()
-    const load = await loadCheerio()
-    const $ = load(html)
+    const cheerio = await loadCheerio()
+    const $ = cheerio(html)
     
     const games: NFHSGameData[] = []
     
@@ -427,8 +427,8 @@ async function fetchSchoolGames(
     }
 
     const html = await response.text()
-    const load = await loadCheerio()
-    const $ = load(html)
+    const cheerio = await loadCheerio()
+    const $ = cheerio(html)
     
     const games: NFHSGameData[] = []
     
