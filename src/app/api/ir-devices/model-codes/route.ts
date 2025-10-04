@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     // Get specific IR code for a function
     const codes = await globalCacheAPI.getModelCodes(modelId)
     
-    let irCode = null
+    let irCode: string | null = null
     for (const codeset of codes) {
       const func = codeset.functions?.find(f => f.name === functionName)
       if (func) {
