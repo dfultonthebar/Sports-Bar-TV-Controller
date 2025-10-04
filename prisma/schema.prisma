@@ -617,3 +617,216 @@ model ChannelPreset {
   @@index([usageCount])
 }
 
+
+model SystemHealthCheck {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  checkType   String   // "light" or "deep"
+  component   String   // "pm2", "api", "database", "disk", "memory", "network", etc.
+  status      String   // "healthy", "warning", "critical", "error"
+  
+  // Metrics (JSON strings for flexibility)
+  metrics     String?  // JSON object with component-specific metrics
+  details     String?  // Additional details about the check
+  
+  // Response times
+  responseTime Int?    // milliseconds
+  
+  // Thresholds crossed
+  threshold   Float?
+  actualValue Float?
+  
+  // Related issues
+  issueId     String?
+  
+  createdAt   DateTime @default(now())
+  
+  issue       Issue?   @relation(fields: [issueId], references: [id])
+  
+  @@index([timestamp])
+  @@index([component])
+  @@index([status])
+  @@index([checkType])
+}
+
+model Issue {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  
+  // Issue classification
+  type        String   // "crash", "performance", "resource", "connectivity", "dependency", etc.
+  severity    String   // "low", "medium", "high", "critical"
+  component   String   // Which component has the issue
+  
+  // Issue details
+  title       String
+  description String
+  errorMessage String?
+  stackTrace  String?
+  
+  // Status
+  status      String   @default("open") // "open", "fixing", "fixed", "ignored"
+  autoFixed   Boolean  @default(false)
+  fixAttempts Int      @default(0)
+  
+  // Resolution
+  resolvedAt  DateTime?
+  resolution  String?  // Description of how it was resolved
+  
+  // Metadata
+  metadata    String?  // JSON object with additional context
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  healthChecks SystemHealthCheck[]
+  fixes       Fix[]
+  
+  @@index([timestamp])
+  @@index([status])
+  @@index([severity])
+  @@index([component])
+  @@index([type])
+}
+
+model Fix {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  
+  // Related issue
+  issueId     String
+  
+  // Fix details
+  action      String   // "restart_pm2", "clear_disk", "reinstall_deps", "repair_db", etc.
+  description String
+  command     String?  // Command executed (if applicable)
+  
+  // Result
+  success     Boolean
+  details     String?  // JSON object with execution details
+  errorMessage String?
+  
+  // Timing
+  duration    Int?     // milliseconds
+  
+  // Impact
+  servicesAffected String? // JSON array of affected services
+  downtime    Int?     // seconds of downtime caused
+  
+  createdAt   DateTime @default(now())
+  
+  issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  
+  @@index([timestamp])
+  @@index([issueId])
+  @@index([action])
+  @@index([success])
+}
+
+model SystemMetric {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  
+  // Metric type
+  metricType  String   // "cpu", "memory", "disk", "response_time", "request_count", etc.
+  component   String?  // Optional component identifier
+  
+  // Values
+  value       Float
+  unit        String   // "percent", "mb", "ms", "count", etc.
+  
+  // Context
+  label       String?  // Additional label for the metric
+  metadata    String?  // JSON object with additional data
+  
+  // Aggregation support
+  min         Float?
+  max         Float?
+  avg         Float?
+  count       Int?
+  
+  @@index([timestamp])
+  @@index([metricType])
+  @@index([component])
+}
+
+model LearningPattern {
+  id          String   @id @default(cuid())
+  
+  // Pattern identification
+  patternType String   // "recurring_issue", "performance_trend", "resource_pattern", etc.
+  component   String
+  
+  // Pattern details
+  title       String
+  description String
+  
+  // Pattern data
+  occurrences Int      @default(1)
+  firstSeen   DateTime
+  lastSeen    DateTime @default(now())
+  
+  // Pattern characteristics
+  frequency   String?  // "hourly", "daily", "weekly", "sporadic"
+  timeOfDay   String?  // JSON array of hours when pattern occurs
+  dayOfWeek   String?  // JSON array of days when pattern occurs
+  
+  // Predictions
+  prediction  String?  // What we predict will happen
+  confidence  Float?   // 0-1 confidence score
+  
+  // Recommendations
+  recommendation String?
+  preventiveMeasure String?
+  
+  // Status
+  isActive    Boolean  @default(true)
+  severity    String   @default("info") // "info", "warning", "critical"
+  
+  // Metadata
+  metadata    String?  // JSON object with pattern-specific data
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([patternType])
+  @@index([component])
+  @@index([lastSeen])
+  @@index([isActive])
+}
+
+model DiagnosticRun {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  
+  // Run details
+  runType     String   // "light", "deep", "manual"
+  triggeredBy String   // "schedule", "manual", "alert", "self_healing"
+  
+  // Results summary
+  status      String   // "completed", "failed", "partial"
+  duration    Int      // milliseconds
+  
+  // Checks performed
+  checksRun   Int      @default(0)
+  checksPassed Int     @default(0)
+  checksFailed Int     @default(0)
+  checksWarning Int    @default(0)
+  
+  // Issues
+  issuesFound Int      @default(0)
+  issuesFixed Int      @default(0)
+  
+  // Report
+  summary     String?  // Brief summary
+  report      String?  // Full JSON report
+  
+  // Recommendations
+  recommendations String? // JSON array of recommendations
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([timestamp])
+  @@index([runType])
+  @@index([status])
+}
