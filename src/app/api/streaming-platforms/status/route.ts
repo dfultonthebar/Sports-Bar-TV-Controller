@@ -49,10 +49,6 @@ async function checkPlatformStatus(platformId: string, credential: StreamingCred
     
     // Mock connectivity check
     switch (platformId) {
-      case 'nfhs-network':
-        // Mock NFHS Network status check
-        return Math.random() > 0.1 ? 'connected' : 'not-connected'
-        
       case 'youtube-tv':
         // Mock YouTube TV status check
         return Math.random() > 0.05 ? 'connected' : 'not-connected'
@@ -97,7 +93,6 @@ export async function GET(request: NextRequest) {
     
     // Define all available platforms
     const allPlatforms = [
-      'nfhs-network',
       'youtube-tv', 
       'hulu-live',
       'paramount-plus',

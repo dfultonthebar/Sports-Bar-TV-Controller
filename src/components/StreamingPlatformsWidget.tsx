@@ -45,17 +45,6 @@ interface StreamingCredentials {
 
 const STREAMING_PLATFORMS: StreamingPlatform[] = [
   {
-    id: 'nfhs-network',
-    name: 'NFHS Network',
-    description: 'High school sports streaming',
-    loginUrl: 'https://www.nfhsnetwork.com',
-    hasAuth: true,
-    authStatus: 'not-connected',
-    subscriptionType: 'subscription',
-    features: ['Live High School Sports', 'Game Archives', 'Multi-Sport Coverage', 'Wisconsin Schools'],
-    quickLaunchUrl: '/nfhs-network'
-  },
-  {
     id: 'youtube-tv',
     name: 'YouTube TV',
     description: 'Live TV streaming service',

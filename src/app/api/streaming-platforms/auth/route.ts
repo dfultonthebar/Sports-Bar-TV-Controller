@@ -71,13 +71,6 @@ async function authenticateWithPlatform(platformId: string, username: string, pa
     // Mock authentication logic
     // In production, this would make actual API calls to each platform
     switch (platformId) {
-      case 'nfhs-network':
-        // Mock NFHS Network authentication
-        if (username && password) {
-          return { success: true }
-        }
-        return { success: false, error: 'Invalid NFHS Network credentials' }
-        
       case 'youtube-tv':
         // Mock YouTube TV authentication
         if (username.includes('@') && password.length >= 6) {

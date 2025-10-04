@@ -174,6 +174,5 @@ export const CacheKeys = {
   deviceSubscriptions: (deviceId: string) => `device:subs:${deviceId}`,
   atlasAnalysis: (processorId: string) => `atlas:analysis:${processorId}`,
   soundtrackData: (accountId: string) => `soundtrack:${accountId}`,
-  nfhsStreams: (date: string) => `nfhs:${date}`,
   aiAnalysis: (deviceId: string, type: string) => `ai:${type}:${deviceId}`
 }

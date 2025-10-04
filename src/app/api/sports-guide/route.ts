@@ -36,7 +36,7 @@ export interface GameListing {
   awayScore?: string
   venue?: string
   broadcast?: string[]
-  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
+  source?: 'espn' | 'sportsdb' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
 }
 
 const CHANNELS: ChannelInfo[] = [
@@ -348,16 +348,6 @@ const CHANNELS: ChannelInfo[] = [
     deviceType: 'cable'
   },
   {
-    id: 'nfhs-network',
-    name: 'NFHS Network',
-    platforms: ['NFHS Network App', 'Web Browser', 'Roku', 'Apple TV', 'Smart TVs'],
-    type: 'streaming',
-    cost: 'subscription',
-    url: 'https://www.nfhsnetwork.com',
-    appCommand: 'HOME,APPS,NFHS,OK',
-    deviceType: 'streaming'
-  },
-  {
     id: 'sunday-ticket',
     name: 'NFL Sunday Ticket',
     platforms: ['DirecTV', 'DirecTV Stream', 'Sunday Ticket App'],
@@ -422,7 +412,7 @@ export async function POST(request: NextRequest) {
     console.log(`🏆 Fetching enhanced sports data for leagues: ${selectedLeagues.join(', ')}`)
     
     let games: GameListing[] = []
-    let dataSource = 'Live APIs (ESPN + TheSportsDB + NFHS + Sunday Ticket + Streaming Platforms)'
+    let dataSource = 'Live APIs (ESPN + TheSportsDB + Sunday Ticket + Streaming Platforms)'
     let apiSources: string[] = []
     let streamingEnhancedGames = 0
     let connectedPlatforms: string[] = []
@@ -495,7 +485,7 @@ export async function POST(request: NextRequest) {
         console.log(`📊 Live: ${enhancedData.liveGames}, Upcoming: ${enhancedData.upcomingGames}, Completed: ${enhancedData.completedGames}`)
         console.log(`🏆 Professional: ${enhancedData.categories.professional}, College: ${enhancedData.categories.college}`)
         console.log(`🏫 High School: ${enhancedData.categories.highSchool}, International: ${enhancedData.categories.international}`)
-        console.log(`📺 Sunday Ticket: ${enhancedData.sundayTicketGames}, NFHS Streams: ${enhancedData.nfhsStreamingGames}`)
+        console.log(`📺 Sunday Ticket: ${enhancedData.sundayTicketGames}`)
         
       } else {
         console.log('ℹ️ No enhanced API data available - no real data sources returned results')
@@ -607,7 +597,6 @@ export async function GET(request: NextRequest) {
       dataSources: [
         'ESPN API (Free) - NFL, NBA, MLB, NHL, NCAA Football, NCAA Basketball, MLS',
         'TheSportsDB API (Free) - Premier League, Champions League, La Liga, Serie A, Bundesliga',
-        'NFHS Network API - High School Sports (all sports, location-based)',
         'NFL Sunday Ticket Service - Out-of-market NFL games identification',
         'Spectrum Channel Service - Real-time channel lineup (Wisconsin/Madison Market)'
       ],
@@ -633,12 +622,10 @@ export async function GET(request: NextRequest) {
         'la-liga': 'La Liga (TheSportsDB)',
         'serie-a': 'Serie A (TheSportsDB)',
         'bundesliga': 'Bundesliga (TheSportsDB)',
-        'high-school': 'High School Sports (NFHS Network)',
-        'nfhs': 'NFHS Network Streaming Games'
+        'high-school': 'High School Sports'
       },
       specialFeatures: {
         'sundayTicket': 'NFL Sunday Ticket exclusive game identification',
-        'nfhsStreaming': 'NFHS Network live streaming games',
         'locationBased': 'Location-based high school sports discovery',
         'multiCategory': 'Professional, College, High School, and International sports',
         'spectrumIntegration': 'Live Spectrum Business TV channel lineup integration',
@@ -648,7 +635,6 @@ export async function GET(request: NextRequest) {
         'Live game data from multiple real APIs only',
         'Real-time scores and game status',
         'NFL Sunday Ticket exclusive games identification',
-        'NFHS Network high school sports integration (real streams only)',
         'Location-based sports discovery',
         'Multi-category sports coverage (real data only)',
         'No mock data fallbacks - only authentic live data',

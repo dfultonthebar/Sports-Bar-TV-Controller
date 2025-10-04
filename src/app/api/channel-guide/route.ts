@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { cacheService, CacheKeys, CacheTTL } from '@/lib/cache-service'
+import { FireTVDevice } from '@/lib/firetv-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -204,12 +205,12 @@ async function getStreamingGuideData(inputNumber: number, deviceId: string | und
     const deviceResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/firetv-devices`)
     const deviceData = await deviceResponse.json()
     
-    let targetDevice = null
+    let targetDevice: FireTVDevice | undefined = undefined
     if (deviceId) {
-      targetDevice = deviceData.devices?.find((d: any) => d.id === deviceId)
+      targetDevice = deviceData.devices?.find((d: FireTVDevice) => d.id === deviceId)
     } else {
       // Find device by input channel
-      targetDevice = deviceData.devices?.find((d: any) => d.inputChannel === inputNumber)
+      targetDevice = deviceData.devices?.find((d: FireTVDevice) => d.inputChannel === inputNumber)
     }
 
     if (!targetDevice) {

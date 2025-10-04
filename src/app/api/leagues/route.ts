@@ -104,13 +104,6 @@ const LEAGUES: League[] = [
     description: 'Local high school athletics', 
     category: 'high-school', 
     season: '2024-25'
-  },
-  { 
-    id: 'nfhs', 
-    name: 'NFHS Network', 
-    description: 'High school sports streaming', 
-    category: 'high-school', 
-    season: '2024-25'
   }
 ]
 

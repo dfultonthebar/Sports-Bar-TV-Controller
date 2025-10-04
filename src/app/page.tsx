@@ -59,14 +59,6 @@ export default function Home() {
                 </a>
                 
                 <a 
-                  href="/nfhs-network"
-                  className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-red/30 hover:bg-sportsBar-600/80 hover:border-accent-red/50 transition-all duration-200"
-                >
-                  <h3 className="font-semibold text-red-300 mb-2">🏫 NFHS Network</h3>
-                  <p className="text-red-200/80 text-sm">High school sports streaming</p>
-                </a>
-                
-                <a 
                   href="/remote"
                   className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-green/30 hover:bg-sportsBar-600/80 hover:border-accent-green/50 transition-all duration-200"
                 >

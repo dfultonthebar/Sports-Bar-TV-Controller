@@ -62,7 +62,7 @@ interface GameListing {
   description?: string
   priority?: 'high' | 'medium' | 'low'
   status?: 'upcoming' | 'live' | 'completed'
-  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
+  source?: 'espn' | 'sportsdb' | 'sunday-ticket' | 'mock' | 'streaming-enhanced'
   inputId?: string // Which input this is available on
 }
 
@@ -102,8 +102,7 @@ const AVAILABLE_LEAGUES: League[] = [
   { id: 'ncaa-bb', name: 'NCAA Basketball', description: 'College Basketball', category: 'college', season: '2024-25' },
   { id: 'premier', name: 'Premier League', description: 'English Premier League', category: 'international', season: '2024-25' },
   { id: 'champions', name: 'Champions League', description: 'UEFA Champions League', category: 'international', season: '2024-25' },
-  { id: 'high-school', name: 'High School Sports', description: 'Local high school athletics', category: 'high-school', season: '2024-25' },
-  { id: 'nfhs', name: 'NFHS Network', description: 'High school sports streaming', category: 'high-school', season: '2024-25' }
+  { id: 'high-school', name: 'High School Sports', description: 'Local high school athletics', category: 'high-school', season: '2024-25' }
 ]
 
 const DEFAULT_PROVIDERS: Provider[] = [
@@ -196,15 +195,6 @@ const DEFAULT_CHANNELS: ChannelInfo[] = [
     cost: 'subscription',
     providerId: 'streaming-box',
     url: 'https://www.paramountplus.com'
-  },
-  { 
-    id: 'nfhs-network', 
-    name: 'NFHS Network', 
-    platforms: ['NFHS Network App', 'Web Browser', 'Roku'], 
-    type: 'streaming', 
-    cost: 'subscription',
-    providerId: 'streaming-box',
-    url: 'https://www.nfhsnetwork.com'
   },
   { 
     id: 'sunday-ticket', 
@@ -568,9 +558,7 @@ export default function SportsGuide() {
   }
 
   const isHighSchoolGame = (game: GameListing) => {
-    return game.league.toLowerCase().includes('high school') || 
-           game.league.toLowerCase().includes('nfhs') ||
-           game.source === 'nfhs'
+    return game.league.toLowerCase().includes('high school')
   }
 
   const getCostIcon = (cost: string) => {

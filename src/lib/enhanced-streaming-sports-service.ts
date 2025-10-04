@@ -42,7 +42,7 @@ export interface EnhancedGameData {
   awayScore?: number
   venue?: string
   broadcast?: string[]
-  source?: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket' | 'streaming-enhanced'
+  source?: 'espn' | 'sportsdb' | 'sunday-ticket' | 'streaming-enhanced'
   streamingEnhancements?: {
     personalizedRecommendations?: string[]
     dvrAvailable?: boolean
@@ -87,8 +87,6 @@ async function fetchEnhancedStreamingData(platformId: string, credential: Stream
     
     // Mock enhanced data based on platform
     switch (platformId) {
-      case 'nfhs-network':
-        return await mockFetchNFHSEnhancedData(credential)
       case 'youtube-tv':
         return await mockFetchYouTubeTVEnhancedData(credential)
       case 'hulu-live':
@@ -106,62 +104,6 @@ async function fetchEnhancedStreamingData(platformId: string, credential: Stream
     console.error(`Error fetching enhanced data from ${platformId}:`, error)
     return []
   }
-}
-
-// Mock NFHS Network enhanced data
-async function mockFetchNFHSEnhancedData(credential: StreamingCredential): Promise<any[]> {
-  // Mock Wisconsin high school sports with enhanced data
-  const teams = [
-    'Madison West Regents', 'Milwaukee Hamilton Chargers', 'Green Bay East Red Devils',
-    'Appleton North Lightning', 'Stevens Point Panthers', 'Oshkosh North Spartans',
-    'La Crosse Central Red Raiders', 'Eau Claire Memorial Old Abes', 'Waukesha West Wolverines'
-  ]
-
-  const games: any[] = []
-  const now = new Date()
-
-  for (let i = 0; i < 3; i++) {
-    const gameDate = new Date(now)
-    gameDate.setDate(gameDate.getDate() + i)
-    
-    const homeTeam = teams[Math.floor(Math.random() * teams.length)]
-    let awayTeam = teams[Math.floor(Math.random() * teams.length)]
-    while (awayTeam === homeTeam) {
-      awayTeam = teams[Math.floor(Math.random() * teams.length)]
-    }
-
-    games.push({
-      id: `nfhs-enhanced-${i}`,
-      league: 'NFHS Network',
-      homeTeam,
-      awayTeam,
-      gameTime: '7:00 PM',
-      gameDate: gameDate.toISOString().split('T')[0],
-      channel: {
-        id: 'nfhs-network',
-        name: 'NFHS Network',
-        platforms: ['NFHS Network App', 'Web Browser', 'Roku', 'Apple TV'],
-        type: 'streaming' as const,
-        cost: 'subscription' as const,
-        url: 'https://www.nfhsnetwork.com',
-        authRequired: true,
-        userHasAccess: true
-      },
-      description: `Wisconsin High School ${['Football', 'Basketball', 'Volleyball'][Math.floor(Math.random() * 3)]} - Enhanced Coverage`,
-      priority: 'high' as const,
-      status: 'upcoming' as const,
-      source: 'streaming-enhanced' as const,
-      streamingEnhancements: {
-        personalizedRecommendations: ['Your local teams', 'Regional championships'],
-        dvrAvailable: true,
-        multiViewSupported: false,
-        additionalContent: ['Game highlights', 'Player interviews', 'Season recap'],
-        userWatchlist: true
-      }
-    })
-  }
-
-  return games
 }
 
 // Mock YouTube TV enhanced data
@@ -384,7 +326,6 @@ export async function getEnhancedStreamingSportsData(selectedLeagues: string[]):
   if (selectedLeagues.length > 0) {
     const leagueMap: { [key: string]: string } = {
       'nfl': 'NFL',
-      'nfhs': 'NFHS Network',
       'ncaa-fb': 'NCAA Football',
       'premier': 'Premier League',
       'champions': 'Champions League'
@@ -411,7 +352,7 @@ export function getUserStreamingPlatformAccess(): { [platformId: string]: boolea
   const access: { [platformId: string]: boolean } = {}
   
   const platforms = [
-    'nfhs-network', 'youtube-tv', 'hulu-live', 
+    'youtube-tv', 'hulu-live', 
     'paramount-plus', 'peacock', 'amazon-prime'
   ]
   
@@ -429,11 +370,6 @@ export async function getStreamingPlatformRecommendations(platformId: string): P
   }
 
   const recommendations: { [key: string]: string[] } = {
-    'nfhs-network': [
-      'Wisconsin high school playoffs starting this week',
-      'Your local team has an upcoming game',
-      'Regional championship games available'
-    ],
     'youtube-tv': [
       'Your recorded games are ready to watch',
       'NFL RedZone is live now',

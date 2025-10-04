@@ -52,18 +52,6 @@ interface StreamingCredentials {
 
 const STREAMING_PLATFORMS: StreamingPlatform[] = [
   {
-    id: 'nfhs-network',
-    name: 'NFHS Network',
-    description: 'High school sports streaming platform with comprehensive coverage',
-    loginUrl: 'https://www.nfhsnetwork.com',
-    hasAuth: true,
-    authStatus: 'not-connected',
-    subscriptionType: 'subscription',
-    features: ['Live High School Sports', 'Game Archives', 'Multi-Sport Coverage', 'Regional Games'],
-    dataEnhancements: ['Local team schedules', 'Player statistics', 'Regional tournament brackets', 'School-specific notifications'],
-    quickLaunchUrl: '/nfhs-network'
-  },
-  {
     id: 'youtube-tv',
     name: 'YouTube TV',
     description: 'Comprehensive live TV streaming service with extensive sports coverage',

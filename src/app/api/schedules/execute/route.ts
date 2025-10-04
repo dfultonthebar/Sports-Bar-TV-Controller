@@ -235,7 +235,7 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date) 
   // TODO: Integrate with your TV guide APIs
   // - Check DirecTV guide
   // - Check Cable guide (Spectrum)
-  // - Check streaming (NFHS for high school)
+  // - Check streaming services
   
   return games;
 }

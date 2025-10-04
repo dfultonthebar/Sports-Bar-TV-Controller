@@ -2,12 +2,11 @@
 
 /**
  * Enhanced Live Sports Service
- * Integrates ESPN API, The Sports DB, NFHS Network, and NFL Sunday Ticket
+ * Integrates ESPN API, The Sports DB, and NFL Sunday Ticket
  */
 
 import { espnAPI, ESPNGame } from './espn-api'
 import { sportsDBAPI, SportsDBEvent } from './thesportsdb-api'
-import { nfhsAPI, NFHSGame } from './nfhs-api'
 import { nflSundayTicketService, SundayTicketGame } from './nfl-sunday-ticket'
 
 export interface EnhancedUnifiedGame {
@@ -24,9 +23,8 @@ export interface EnhancedUnifiedGame {
   broadcast?: string[]
   description?: string
   priority?: 'high' | 'medium' | 'low'
-  source: 'espn' | 'sportsdb' | 'nfhs' | 'sunday-ticket'
+  source: 'espn' | 'sportsdb' | 'sunday-ticket'
   category: 'professional' | 'college' | 'high-school' | 'international'
-  isNFHSStream?: boolean
   isSundayTicketExclusive?: boolean
   isRedZoneEligible?: boolean
   streamUrl?: string
@@ -56,19 +54,10 @@ export interface EnhancedSportsDataResponse {
     international: number
   }
   sundayTicketGames: number
-  nfhsStreamingGames: number
 }
 
-// Enhanced channel mappings including NFHS and Sunday Ticket
+// Enhanced channel mappings including Sunday Ticket
 const ENHANCED_CHANNEL_MAPPINGS: Record<string, any> = {
-  'NFHS Network': {
-    id: 'nfhs-network',
-    name: 'NFHS Network',
-    platforms: ['NFHS Network App', 'Web Browser', 'Roku', 'Apple TV'],
-    type: 'streaming',
-    cost: 'subscription',
-    deviceType: 'streaming'
-  },
   'NFL Sunday Ticket': {
     id: 'nfl-sunday-ticket',
     name: 'NFL Sunday Ticket',
@@ -164,19 +153,6 @@ class EnhancedLiveSportsService {
         })
       }
 
-      // 4. Fetch high school sports data (NFHS)
-      if (selectedLeagues.includes('high-school') || selectedLeagues.includes('nfhs')) {
-        console.log('Fetching NFHS Network data...')
-        const nfhsGames = location 
-          ? await nfhsAPI.getGamesByLocation(location.zipCode, location.city, location.state)
-          : await nfhsAPI.getHighSchoolGames(location?.state)
-        
-        nfhsGames.forEach(game => {
-          allGames.push(this.convertNFHSGame(game))
-          sources.add('NFHS Network')
-        })
-      }
-
     } catch (error) {
       console.error('Error fetching enhanced sports data:', error)
     }
@@ -201,7 +177,6 @@ class EnhancedLiveSportsService {
     }
 
     const sundayTicketGames = allGames.filter(g => g.isSundayTicketExclusive).length
-    const nfhsStreamingGames = allGames.filter(g => g.isNFHSStream).length
 
     return {
       games: allGames,
@@ -211,8 +186,7 @@ class EnhancedLiveSportsService {
       completedGames,
       sources: Array.from(sources),
       categories,
-      sundayTicketGames,
-      nfhsStreamingGames
+      sundayTicketGames
     }
   }
 
@@ -264,51 +238,6 @@ class EnhancedLiveSportsService {
       source: 'espn',
       category,
       channel: this.getChannelMapping(broadcasts[0])
-    }
-  }
-
-  /**
-   * Convert NFHS game to enhanced unified format
-   */
-  private convertNFHSGame(game: NFHSGame): EnhancedUnifiedGame {
-    // Convert NFHS game status to match the expected status type
-    let status: 'upcoming' | 'live' | 'completed' = 'upcoming'
-    if (game.status === 'completed') {
-      status = 'completed'
-    } else if (game.status === 'live') {
-      status = 'live'
-    } else { // 'scheduled' or any other status becomes 'upcoming'
-      status = 'upcoming'
-    }
-
-    return {
-      id: game.id,
-      league: game.league,
-      homeTeam: `${game.homeTeam.name} (${game.homeTeam.school})`,
-      awayTeam: `${game.awayTeam.name} (${game.awayTeam.school})`,
-      gameTime: game.time,
-      gameDate: game.date,
-      status,
-      homeScore: game.homeScore,
-      awayScore: game.awayScore,
-      venue: game.venue,
-      broadcast: game.isNFHSNetwork ? ['NFHS Network'] : undefined,
-      description: `${game.sport} - ${game.division || 'High School'}`,
-      priority: 'medium',
-      source: 'nfhs',
-      category: 'high-school',
-      isNFHSStream: game.isNFHSNetwork,
-      streamUrl: game.streamUrl,
-      channel: game.isNFHSNetwork 
-        ? ENHANCED_CHANNEL_MAPPINGS['NFHS Network']
-        : {
-            id: 'local-coverage',
-            name: 'Local Coverage',
-            platforms: ['At Venue', 'Local Broadcast'],
-            type: 'ota',
-            cost: 'free',
-            deviceType: 'cable'
-          }
     }
   }
 
@@ -418,83 +347,6 @@ class EnhancedLiveSportsService {
     }
     
     return mapping[leagueName] || leagueName.toLowerCase().replace(/\s+/g, '-')
-  }
-
-  /**
-   * Get enhanced NFHS streaming games with location and team filtering
-   */
-  async getNFHSStreams(state?: string, homeTeam?: string): Promise<EnhancedUnifiedGame[]> {
-    try {
-      console.log(`🏫 Fetching NFHS streams for state: ${state || 'WI'}, homeTeam: ${homeTeam || 'all'}`)
-      
-      // Get upcoming streams with enhanced filtering
-      const nfhsGames = await nfhsAPI.getUpcomingStreams(7)
-      
-      // Filter by state if provided
-      let filteredGames = nfhsGames
-      if (state) {
-        filteredGames = nfhsGames.filter(game => 
-          game.homeTeam.state.toLowerCase() === state.toLowerCase() ||
-          game.awayTeam.state.toLowerCase() === state.toLowerCase()
-        )
-      }
-      
-      // Filter by home team if provided (fuzzy matching)
-      if (homeTeam) {
-        const teamLower = homeTeam.toLowerCase()
-        filteredGames = filteredGames.filter(game => {
-          const homeMatch = 
-            game.homeTeam.name.toLowerCase().includes(teamLower) ||
-            game.homeTeam.school.toLowerCase().includes(teamLower) ||
-            teamLower.includes(game.homeTeam.name.toLowerCase())
-          
-          const awayMatch = 
-            game.awayTeam.name.toLowerCase().includes(teamLower) ||
-            game.awayTeam.school.toLowerCase().includes(teamLower) ||
-            teamLower.includes(game.awayTeam.name.toLowerCase())
-          
-          return homeMatch || awayMatch
-        })
-      }
-      
-      console.log(`✅ Found ${filteredGames.length} NFHS streaming games`)
-      return filteredGames.map(game => this.convertNFHSGame(game))
-    } catch (error) {
-      console.error('Error fetching NFHS streams:', error)
-      return []
-    }
-  }
-
-  /**
-   * Get live NFHS streaming games
-   */
-  async getLiveNFHSStreams(): Promise<EnhancedUnifiedGame[]> {
-    try {
-      const liveGames = await nfhsAPI.getLiveStreams()
-      console.log(`🔴 Found ${liveGames.length} live NFHS streams`)
-      return liveGames.map(game => this.convertNFHSGame(game))
-    } catch (error) {
-      console.error('Error fetching live NFHS streams:', error)
-      return []
-    }
-  }
-
-  /**
-   * Search NFHS games by location
-   */
-  async getNFHSGamesByLocation(
-    city?: string, 
-    state?: string, 
-    radiusMiles: number = 50
-  ): Promise<EnhancedUnifiedGame[]> {
-    try {
-      const locationGames = await nfhsAPI.getGamesByLocation(undefined, city, state, radiusMiles)
-      console.log(`📍 Found ${locationGames.length} NFHS games within ${radiusMiles} miles of ${city}, ${state}`)
-      return locationGames.map(game => this.convertNFHSGame(game))
-    } catch (error) {
-      console.error('Error fetching NFHS games by location:', error)
-      return []
-    }
   }
 
   /**
