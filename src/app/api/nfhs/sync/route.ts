@@ -43,6 +43,7 @@ interface NFHSGameData {
  * Helper function to delay execution (rate limiting)
  */
 function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
@@ -51,8 +52,6 @@ function delay(ms: number): Promise<void> {
 async function loadCheerio() {
   const cheerioModule = await import('cheerio')
   return cheerioModule.load
-
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
