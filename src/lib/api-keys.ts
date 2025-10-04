@@ -28,7 +28,8 @@ export async function getApiKeysByProvider(provider: string): Promise<ApiKeyData
     // Decrypt the key values
     return apiKeys.map(key => ({
       ...key,
-      keyValue: decrypt(key.keyValue)
+      keyValue: decrypt(key.keyValue),
+      description: key.description ?? undefined
     }))
   } catch (error) {
     console.error(`Error fetching API keys for provider ${provider}:`, error)
