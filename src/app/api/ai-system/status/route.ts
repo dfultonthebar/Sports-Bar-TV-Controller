@@ -1,7 +1,7 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { localAIAnalyzer } from '@/lib/local-ai-analyzer'
+import { localAIAnalyzer, AIAnalysisResult } from '@/lib/local-ai-analyzer'
 import { enhancedLogger } from '@/lib/enhanced-logger'
 
 export async function GET(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if we can perform analysis
-    let testAnalysis = null
+    let testAnalysis: AIAnalysisResult | null = null
     if (aiStatus.available) {
       try {
         // Create a small test log for analysis
