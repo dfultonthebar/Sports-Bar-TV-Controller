@@ -51,7 +51,7 @@ function delay(ms: number): Promise<void> {
  */
 async function loadCheerio() {
   const cheerioModule = await import('cheerio')
-  return cheerioModule.load
+  return cheerioModule
 }
 
 /**
