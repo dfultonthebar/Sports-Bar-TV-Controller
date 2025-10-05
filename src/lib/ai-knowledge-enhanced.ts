@@ -31,9 +31,9 @@ export async function searchCodebase(
         isActive: true,
         OR: queryTerms.map(term => ({
           OR: [
-            { content: { contains: term, mode: 'insensitive' } },
-            { filePath: { contains: term, mode: 'insensitive' } },
-            { fileName: { contains: term, mode: 'insensitive' } }
+            { content: { contains: term } },
+            { filePath: { contains: term } },
+            { fileName: { contains: term } }
           ]
         }))
       },
