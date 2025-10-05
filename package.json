@@ -10,7 +10,9 @@
     "test-ai": "python3 ai-analysis/test_ai_system.py",
     "ai-status": "python3 ai-analysis/check_status.py",
     "cleanup-logs": "./scripts/cleanup-logs.sh",
-    "force-db-fix": "tsx scripts/force_db_creation.ts"
+    "force-db-fix": "tsx scripts/force_db_creation.ts",
+    "build-knowledge-base": "tsx scripts/build-knowledge-base.ts",
+    "verify-ai": "tsx scripts/verify-ai-system.ts"
   },
   "devDependencies": {
     "@prisma/client": "^6.16.2",

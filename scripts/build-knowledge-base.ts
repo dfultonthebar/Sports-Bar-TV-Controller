@@ -50,6 +50,12 @@ function extractTextFromMarkdown(filePath: string): string {
 function findAllFiles(dir: string, extensions: string[]): string[] {
   const files: string[] = [];
   
+  // Check if directory exists
+  if (!fs.existsSync(dir)) {
+    console.log(`   ⚠️  Directory not found: ${dir} (skipping)`);
+    return files;
+  }
+  
   function walkDir(currentPath: string) {
     const items = fs.readdirSync(currentPath);
     
