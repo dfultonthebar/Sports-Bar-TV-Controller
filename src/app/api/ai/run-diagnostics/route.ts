@@ -370,7 +370,7 @@ export async function GET(request: NextRequest) {
     if (quick) {
       // Quick health check - just database and AI providers
       const dbCheck = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false)
-      const apiKeys = await prisma.apiKey.findMany().catch(() => [])
+      const apiKeys = await prisma.apiKey.findMany().catch(() => [] as any[])
       const activeProviders = apiKeys.filter(k => k.keyValue && k.keyValue.length > 0)
 
       return NextResponse.json({
