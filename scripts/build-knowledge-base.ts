@@ -50,6 +50,12 @@ function extractTextFromMarkdown(filePath: string): string {
 function findAllFiles(dir: string, extensions: string[]): string[] {
   const files: string[] = [];
   
+  // Check if directory exists
+  if (!fs.existsSync(dir)) {
+    console.log(`   ⚠️  Directory not found: ${dir} (skipping)`);
+    return files;
+  }
+  
   function walkDir(currentPath: string) {
     const items = fs.readdirSync(currentPath);
     
@@ -180,6 +186,36 @@ async function buildKnowledgeBase(): Promise<void> {
     }
   }
   
+  // Process Q&A entries
+  console.log('\n💬 Processing Q&A entries...');
+  const qaFilePath = path.join(PROJECT_ROOT, 'data', 'qa-entries.json');
+  let totalQA = 0;
+  
+  if (fs.existsSync(qaFilePath)) {
+    try {
+      const qaData = JSON.parse(fs.readFileSync(qaFilePath, 'utf-8'));
+      if (Array.isArray(qaData) && qaData.length > 0) {
+        qaData.forEach((entry: any) => {
+          const qaContent = `Q: ${entry.question}\n\nA: ${entry.answer}`;
+          documents.push({
+            source: 'Q&A Training',
+            type: 'markdown',
+            content: qaContent,
+            title: `${entry.category} - ${entry.question.substring(0, 50)}...`,
+            section: 'User Training'
+          });
+          totalCharacters += qaContent.length;
+          totalQA++;
+        });
+        console.log(`  - Added ${totalQA} Q&A entries`);
+      }
+    } catch (error) {
+      console.log('  - No Q&A entries found or error reading file');
+    }
+  } else {
+    console.log('  - No Q&A entries file found');
+  }
+  
   // Create knowledge base object
   const knowledgeBase: KnowledgeBase = {
     documents,
@@ -206,6 +242,7 @@ async function buildKnowledgeBase(): Promise<void> {
   console.log(`   - Total Document Chunks: ${documents.length}`);
   console.log(`   - PDF Documents: ${totalPDFs}`);
   console.log(`   - Markdown Documents: ${totalMarkdown}`);
+  console.log(`   - Q&A Training Entries: ${totalQA}`);
   console.log(`   - Total Characters: ${totalCharacters.toLocaleString()}`);
   console.log(`   - Saved to: ${KNOWLEDGE_BASE_PATH}\n`);
 }
