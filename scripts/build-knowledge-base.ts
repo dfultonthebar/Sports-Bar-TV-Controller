@@ -4,6 +4,7 @@ import path from 'path';
 import pdf from 'pdf-parse';
 
 const PROJECT_ROOT = path.join(__dirname, '..');
+const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
 const UPLOADS_DIR = path.join(PROJECT_ROOT, 'uploads');
 const KNOWLEDGE_BASE_PATH = path.join(PROJECT_ROOT, 'data', 'ai-knowledge-base.json');
 
@@ -123,7 +124,7 @@ async function buildKnowledgeBase(): Promise<void> {
   // Find all PDF files in project and uploads
   console.log('📄 Processing PDF files...');
   const pdfFiles = [
-    ...findAllFiles(PROJECT_ROOT, ['.pdf']),
+    ...findAllFiles(DOCS_DIR, ['.pdf']),
     ...findAllFiles(UPLOADS_DIR, ['.pdf'])
   ];
   
@@ -150,13 +151,13 @@ async function buildKnowledgeBase(): Promise<void> {
   
   // Find all markdown files
   console.log('\n📝 Processing Markdown files...');
-  const mdFiles = findAllFiles(PROJECT_ROOT, ['.md']);
+  const mdFiles = findAllFiles(DOCS_DIR, ['.md']);
   
   for (const mdFile of mdFiles) {
     const relativePath = path.relative(PROJECT_ROOT, mdFile);
     
     // Skip README files and node_modules
-    if (relativePath.includes('node_modules') || relativePath === 'README.md') {
+    if (relativePath.includes('node_modules') || relativePath === '../README.md') {
       continue;
     }
     
