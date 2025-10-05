@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft } from 'lucide-react'
+import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
@@ -483,6 +483,23 @@ export default function AIHubPage() {
                   </div>
                 </div>
               )}
+
+              {/* AI Diagnostics Link */}
+              <Link 
+                href="/ai-diagnostics"
+                className="block mb-6 p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Activity className="w-6 h-6 text-blue-300" />
+                    <div>
+                      <h3 className="font-bold text-blue-200">AI System Diagnostics</h3>
+                      <p className="text-blue-100/90 text-sm">Run comprehensive AI system health checks</p>
+                    </div>
+                  </div>
+                  <div className="text-blue-300">→</div>
+                </div>
+              </Link>
 
               {/* Local Services */}
               <div className="mb-6">
