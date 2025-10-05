@@ -2,13 +2,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity } from 'lucide-react'
+import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, GraduationCap } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
 import SmartDeviceOptimizer from '@/components/SmartDeviceOptimizer'
 import IntelligentTroubleshooter from '@/components/IntelligentTroubleshooter'
+import AITeachingInterface from '@/components/AITeachingInterface'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 
@@ -236,10 +237,14 @@ export default function AIHubPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="assistant" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="assistant" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <MessageSquare className="w-4 h-4 mr-2" />
               AI Assistant
+            </TabsTrigger>
+            <TabsTrigger value="teach" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <GraduationCap className="w-4 h-4 mr-2" />
+              Teach AI
             </TabsTrigger>
             <TabsTrigger value="devices" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Cpu className="w-4 h-4 mr-2" />
@@ -433,6 +438,11 @@ export default function AIHubPage() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          {/* Teach AI Tab */}
+          <TabsContent value="teach" className="space-y-6">
+            <AITeachingInterface />
           </TabsContent>
 
           {/* AI Enhanced Devices Tab */}
