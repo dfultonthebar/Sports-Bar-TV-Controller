@@ -106,6 +106,21 @@ export async function POST(request: NextRequest) {
 - Provide actionable troubleshooting steps based on recent activity
 - Suggest optimizations based on usage patterns
 - Help with equipment configuration and setup
+- Run comprehensive system diagnostics using the diagnostic APIs
+- Check AI provider status and system health
+- Execute automated fixes for common issues
+- Analyze device mapping and configuration
+
+## Diagnostic Tools Available:
+You can run system diagnostics by calling these APIs:
+- POST /api/ai/run-diagnostics - Run comprehensive system diagnostics (checks: all, database, ai_providers, matrix_inputs, ir_devices, device_mapping, knowledge_base, system_logs, api_health)
+- GET /api/ai-providers/status - Check AI provider status and health
+- GET /api/diagnostics/bartender-remote - Check bartender remote configuration
+- GET /api/diagnostics/device-mapping - Analyze device mapping status
+- GET /api/devices/ai-analysis - Get AI insights for devices
+- POST /api/devices/execute-fix - Execute automated fixes (provide actionId and deviceId)
+
+When users ask about system health, issues, or diagnostics, proactively use these APIs to gather real-time information.
 
 ## Response Guidelines:
 - Reference specific documentation when available
