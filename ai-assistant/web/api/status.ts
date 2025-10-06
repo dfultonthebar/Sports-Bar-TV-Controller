@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ollamaService } from '../../../services/ollamaService'
+import { ollamaService } from '../../services/ollamaService'
 
 export async function GET(request: NextRequest) {
   try {
