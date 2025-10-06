@@ -1,0 +1,359 @@
+[
+  {
+    "question": "What is the Sports Bar TV Controller system and what does it do?",
+    "answer": "The Sports Bar TV Controller is a comprehensive AI-powered system for managing sports bar audio/video equipment. It controls Wolfpack HDMI matrix switchers, AtlasIED audio processors, DirecTV/Fire TV devices via IR control, and TVs via HDMI-CEC. The system includes an AI assistant trained on equipment manuals, automated scheduling, channel presets, and real-time device monitoring.",
+    "category": "system",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I install the Sports Bar TV Controller for the first time?",
+    "answer": "Installation is automated: 1) Clone the repository from GitHub, 2) Run './install.sh' which automatically installs Node.js, PostgreSQL, libCEC drivers, and all dependencies, 3) The script sets up the database and creates configuration files, 4) Start the application with 'npm run dev' or 'pm2 start ecosystem.config.js', 5) Access the web interface at http://localhost:3000. The installation script handles everything including HDMI-CEC support.",
+    "category": "setup",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What hardware devices does the system support?",
+    "answer": "The system supports: 1) Wolfpack HDMI matrix switchers (4K models) for video routing, 2) AtlasIED Atmosphere audio processors (AZM4, AZM8, AZMP4, AZMP8, AZM4-D, AZM8-D) for audio control, 3) Global Cache iTach devices for IR control of cable boxes, 4) DirecTV receivers and Fire TV devices, 5) Pulse-Eight USB CEC adapters for TV power control, 6) Any HDMI-CEC compatible TVs. All devices are configured through the web interface.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does the Q&A training system work?",
+    "answer": "The Q&A training system stores question-answer pairs in a Prisma database (QAEntry table) to train the AI assistant. It supports: 1) Automatic generation from documentation files using local AI (Ollama), 2) Manual entry through the web interface, 3) Bulk upload via Q&A documents in multiple formats (Q:/A:, Question:/Answer:, JSON, Markdown), 4) Categories include system, api, features, configuration, troubleshooting, and general. Each entry tracks usage count, confidence score, and source type.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the database schema for QAEntry and what fields does it contain?",
+    "answer": "The QAEntry model contains: id (unique identifier), question (string), answer (string), category (system/api/features/configuration/troubleshooting/general), tags (JSON array), sourceType (manual/auto-generated/uploaded), sourceFile (original file path), confidence (0.0-1.0 score), isActive (boolean), usageCount (tracks usage), lastUsed (timestamp), createdAt, and updatedAt. The model has indexes on category, sourceType, isActive, and usageCount for efficient querying.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure the Wolfpack matrix switcher?",
+    "answer": "Configure the matrix through Settings → Matrix Configuration: 1) Enter the matrix IP address and ports (TCP: 5000, UDP: 4000, default: 4999), 2) Configure input channels (1-32) with labels like 'Cable Box 1', 'DirecTV', device types, and status, 3) Configure output channels with TV labels, resolution (1080p/4K), audio routing to Atlas zones, and CEC settings, 4) Optionally set CEC adapter input channel for TV power control, 5) Test the connection to verify communication. All settings are stored in the MatrixConfiguration database table.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What AtlasIED audio processor models are supported and what are their differences?",
+    "answer": "Supported models: AZM4 (4-zone, 4 balanced + 4 unbalanced inputs), AZM8 (8-zone, 8 balanced + 8 unbalanced inputs), AZMP4 (4-zone with 600W amplifier), AZMP8 (8-zone with 1200W amplifier), AZM4-D (4-zone with Dante network audio), AZM8-D (8-zone with Dante network audio). All models have control network via Ethernet. AZMP models include built-in amplification. -D models add Dante digital audio networking with primary/secondary ports for redundancy.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does HDMI-CEC TV control work in the system?",
+    "answer": "HDMI-CEC control uses a Pulse-Eight USB CEC adapter connected to the server and routed through the Wolfpack matrix: 1) The adapter connects to a dedicated matrix input (e.g., Input 10), 2) LibCEC software (automatically installed) sends commands via USB, 3) Commands are routed through the matrix to specific TV outputs, 4) Supported commands include power on/off, input switching, volume control, and mute, 5) The system can scan for CEC devices and auto-detect TV brands/models, 6) CEC controls are available in the bartender remote and dedicated CEC control page.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What API endpoints are available for Q&A management?",
+    "answer": "Q&A API endpoints at /api/ai/qa-entries: GET (list all entries with optional filters for category/sourceType, or search with query parameter, or get statistics with stats=true), POST (create new entry with question, answer, category, tags), PUT (update entry by id with any fields), DELETE (remove entry by id). Additional endpoints: /api/ai/qa-generate (generate Q&As from docs), /api/ai/qa-upload (bulk upload Q&A documents). All endpoints return JSON responses.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I update the system from GitHub without losing my configuration?",
+    "answer": "Run './update.sh' which automatically: 1) Creates a backup of all config files, database, and .env to ~/sports-bar-backups/, 2) Pulls latest code from GitHub, 3) Preserves all *.local.json files (gitignored), 4) Installs any new dependencies, 5) Checks for and installs libCEC if missing, 6) Runs database migrations, 7) Restarts the application. Your local configuration, API keys, device settings, and database are never overwritten. Backups are kept for 7 days.",
+    "category": "setup",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What configuration files are used and which ones should I edit?",
+    "answer": "Configuration files in config/ directory: 1) *.template.json files provide default structure (don't edit), 2) *.local.json files store your system-specific settings (edit these), 3) local.local.json has network/system settings, 4) devices.local.json has device inventory, 5) sports-teams.local.json has team preferences. Run './scripts/init-local-config.sh' to initialize. All .local.json files are gitignored and preserved during updates. Sensitive credentials go in .env file.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I set up IR control for DirecTV and Fire TV devices?",
+    "answer": "IR control uses Global Cache iTach devices: 1) Connect iTach to your network and to IR emitters on each device, 2) Configure in Settings → IR Devices, 3) Add device mappings with iTach IP, port, and IR output number, 4) Select device type (DirecTV, Fire TV, etc.) which loads appropriate IR codes, 5) Test commands to verify control, 6) Map devices to matrix inputs for integrated control. The system includes pre-programmed IR codes for DirecTV channel control, guide navigation, and Fire TV app launching.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What gets backed up automatically and where are backups stored?",
+    "answer": "Automatic backups include: 1) Database (prisma/dev.db) with all configurations, routes, scenes, API keys, 2) Config files (config/*.local.json), 3) Environment variables (.env), 4) Data files (data/*.json, data/atlas-configs/), 5) Streaming credentials and device subscriptions. Backups are stored in ~/sports-bar-backups/ as config-backup-YYYYMMDD-HHMMSS.tar.gz files. SQL dumps are in database-backups/ subdirectory. Last 7 backups are retained. Backups run before each update and before database migrations.",
+    "category": "setup",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I restore from a backup if something goes wrong?",
+    "answer": "To restore: 1) Stop the application (pm2 stop sports-bar-app), 2) Navigate to project directory, 3) Extract backup: 'tar -xzf ~/sports-bar-backups/config-backup-YYYYMMDD-HHMMSS.tar.gz', 4) Restart application (pm2 restart sports-bar-app). For SQL-only restore: 'sqlite3 prisma/dev.db < ~/sports-bar-backups/database-backups/dev-db-YYYYMMDD-HHMMSS.sql'. The backup contains complete database, all config files, .env, and data files. Always verify backup integrity before major changes.",
+    "category": "troubleshooting",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What AI models and providers are supported?",
+    "answer": "Supported AI providers: 1) Local AI via Ollama (llama3.2:3b, mistral, etc.) for privacy and no API costs, 2) Claude (Anthropic) for advanced reasoning, 3) ChatGPT/OpenAI for general tasks, 4) Grok (xAI) for real-time information. API keys are stored encrypted in the ApiKey database table. Configure in Settings → AI Configuration. The system uses local AI by default for Q&A generation and knowledge base queries. Each provider has specific use cases: Claude for device insights, local AI for document processing.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does the AI assistant access equipment manuals and documentation?",
+    "answer": "The AI assistant has access to: 1) 60 PDF manuals (Atlas, Wolfpack, DirecTV, Fire TV, Global Cache) stored in the Document table with extracted text content, 2) 116 markdown documentation files covering setup, configuration, troubleshooting, 3) Q&A training database with categorized question-answer pairs, 4) Codebase knowledge from TypeScript/JavaScript files. The knowledge base is rebuilt via /api/ai/rebuild-knowledge-base which processes all documents and generates embeddings for semantic search. The assistant cites sources in responses.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What are channel presets and how do I configure them?",
+    "answer": "Channel presets provide quick access to frequently watched channels: 1) Configure in Channel Presets page, 2) Create presets with channel number, name, logo, and associated device (DirecTV, Fire TV), 3) Organize by category (Sports, News, Entertainment), 4) Presets appear in the bartender remote for one-click channel changes, 5) System sends IR commands to the appropriate device to tune the channel, 6) Presets can be linked to matrix scenes for complete room setups. Supports both DirecTV channel numbers and Fire TV app launches.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure audio zones with the AtlasIED processor?",
+    "answer": "Configure audio zones through Settings → Audio Configuration: 1) Add AudioProcessor with model (AZM4/AZM8/etc.), IP address, and port, 2) Configure each zone (1-4 or 1-8 depending on model) with name, description, and source, 3) Set volume levels (0-100) and mute status, 4) Map zones to matrix audio outputs for integrated control, 5) Create audio scenes to save zone configurations, 6) Enable AI-powered gain control for automatic level adjustment. Each zone can have independent source, volume, and mute settings.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the Smart Scheduler and how does it work?",
+    "answer": "The Smart Scheduler automates daily operations: 1) Create schedules for morning setup (turn on TVs, set channels, adjust audio), 2) Configure game day routines (route specific games to designated TVs), 3) Set nightly closing procedures (turn off equipment, save state), 4) Schedules can trigger matrix routes, audio scenes, CEC commands, and IR controls, 5) Supports recurring schedules (daily, weekly, specific days), 6) Integrates with sports guide data to automatically tune to games. Schedules are stored in the Schedule database table and executed by the system scheduler.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I troubleshoot a TV with no signal?",
+    "answer": "Troubleshooting steps: 1) Check matrix routing - verify correct input is routed to the TV output, 2) Verify input device is powered on and outputting signal, 3) Check HDMI cable connections at matrix and TV, 4) Test with a known working input to isolate the issue, 5) Check TV input selection via CEC or manual remote, 6) Verify matrix configuration shows correct input/output labels, 7) Check matrix connection status in Settings, 8) Review system logs for routing errors. The AI assistant can guide through systematic troubleshooting based on symptoms.",
+    "category": "troubleshooting",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is Soundtrack Your Brand integration and how do I set it up?",
+    "answer": "Soundtrack Your Brand provides licensed background music: 1) Sign up for Soundtrack account and get API credentials, 2) Configure in Settings → Soundtrack with API key/token, 3) System stores credentials in SoundtrackConfig database table, 4) Configure players for different zones/areas, 5) Control playback through the web interface, 6) Integrate with audio zones for automatic routing, 7) Schedule music for different times of day. The integration handles authentication, playlist management, and playback control. Credentials are automatically backed up.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I use the bartender remote interface?",
+    "answer": "The bartender remote (/remote page) provides quick access to common controls: 1) Matrix routing with visual input/output selection, 2) Channel presets for instant channel changes, 3) Audio zone controls (volume, mute, source), 4) CEC TV power controls (on/off, input switching), 5) Saved scenes for one-click room setups, 6) Device status indicators, 7) Compact layout optimized for tablets and mobile devices. The remote consolidates all control functions into a single interface for efficient bar management.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What are matrix scenes and how do I create them?",
+    "answer": "Matrix scenes save complete routing configurations: 1) Set up desired input-to-output routing in Matrix Control, 2) Click 'Save Scene' and provide name and description, 3) Scene stores all active routes as JSON in MatrixScene table, 4) Recall scenes with one click to instantly restore routing, 5) Scenes can include audio routing to Atlas zones, 6) Use scenes for common setups (Game Day, Morning Setup, Special Events), 7) Scenes can be triggered by schedules or the bartender remote. Each scene has a unique scene number and can be edited or deleted.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does CEC TV discovery work?",
+    "answer": "CEC TV discovery automatically detects connected TVs: 1) Navigate to CEC Control page, 2) Click 'Scan for Devices' to query the CEC bus, 3) System sends CEC commands through the Pulse-Eight adapter, 4) Detected TVs report their physical address, brand, and model via CEC OSD name, 5) Information is stored in MatrixOutput table (tvBrand, tvModel, cecAddress), 6) Discovery timestamp is recorded (lastDiscovery), 7) Use discovered information for targeted CEC commands. Discovery helps identify which TVs are on which matrix outputs.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What database models are used for matrix configuration?",
+    "answer": "Matrix database models: 1) MatrixConfiguration - stores matrix IP, ports, protocol, connection status, CEC input channel, 2) MatrixInput - input channels with labels, device types, input types (HDMI/Component), status, 3) MatrixOutput - output channels with TV labels, resolution, audio routing, CEC info, daily schedule flags, 4) MatrixRoute - active routing state (input to output mappings), 5) MatrixScene - saved routing configurations with JSON route data, 6) WolfpackMatrixRouting - Wolfpack-to-Atlas routing mappings, 7) WolfpackMatrixState - current routing state. All models use Prisma ORM with SQLite.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure daily automatic TV turn-on and turn-off?",
+    "answer": "Configure automatic TV scheduling: 1) In Matrix Configuration, edit each output (TV), 2) Enable 'dailyTurnOn' flag for TVs that should turn on automatically in the morning, 3) Enable 'dailyTurnOff' flag for TVs that should turn off at closing, 4) Create schedules in Smart Scheduler with CEC power commands, 5) Set schedule times (e.g., 10:00 AM turn-on, 2:00 AM turn-off), 6) System uses CEC commands routed through matrix to control TV power, 7) Flags are stored in MatrixOutput table. This automates daily opening and closing routines.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the AI diagnostics system?",
+    "answer": "The AI diagnostics system provides intelligent troubleshooting: 1) Analyzes system logs for errors and warnings, 2) Monitors device connection status (matrix, audio, IR devices), 3) Checks configuration consistency, 4) Identifies common issues (disconnected devices, routing errors, CEC failures), 5) Provides step-by-step resolution guidance, 6) Accessible via /api/ai/run-diagnostics endpoint, 7) Results include severity levels, affected components, and recommended actions. The system uses AI to correlate symptoms and suggest solutions based on documentation and past issues.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I upload Q&A training documents?",
+    "answer": "Upload Q&A documents via /api/ai/qa-upload: 1) Prepare document in supported format (Q:/A:, Question:/Answer:, JSON array, or Markdown with ## Question/## Answer headers), 2) Send POST request with file as multipart/form-data, 3) System parses the document and extracts Q&A pairs, 4) Each pair is validated (requires both question and answer), 5) Successfully parsed entries are saved to QAEntry table with sourceType='uploaded', 6) Response includes count of successful entries and any parsing errors, 7) Uploaded Q&As are immediately available to the AI assistant. Supports bulk import of training data.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What are the different Q&A categories and when should each be used?",
+    "answer": "Q&A categories: 1) 'system' - overall system architecture, components, how things work together, 2) 'api' - API endpoints, request/response formats, database schemas, integration details, 3) 'features' - functionality descriptions, what the system can do, feature usage, 4) 'configuration' - setup procedures, device configuration, settings management, 5) 'troubleshooting' - problem diagnosis, error resolution, common issues, 6) 'general' - miscellaneous information not fitting other categories. Categories help the AI assistant find relevant answers quickly and are indexed in the database for efficient querying.",
+    "category": "system",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does the AI assistant handle source citations?",
+    "answer": "The AI assistant provides source citations: 1) Each response includes references to source documents (PDF manuals, markdown docs, Q&A entries), 2) Citations show document name, page number (for PDFs), and relevant section, 3) Sources are ranked by relevance to the query, 4) Users can click citations to view original documents, 5) The system tracks which Q&A entries are used (usageCount, lastUsed fields), 6) Citations build trust by showing where information comes from. The knowledge base system maintains document metadata for accurate attribution.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the difference between TCP and UDP protocols for matrix control?",
+    "answer": "Matrix protocol differences: 1) TCP (port 5000) - reliable, connection-oriented, guarantees command delivery, used for critical operations like routing changes, 2) UDP (port 4000) - faster, connectionless, no delivery guarantee, used for status queries and non-critical commands, 3) Default protocol (port 4999) - typically TCP for Wolfpack matrices, 4) Configure in MatrixConfiguration with protocol field, 5) TCP is recommended for routing commands to ensure they execute, 6) UDP can be faster for frequent status polling. The system supports both and can be configured per installation.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I check if libCEC is installed correctly?",
+    "answer": "Verify libCEC installation: 1) Run 'cec-client -l' to list CEC adapters - should show Pulse-Eight device, 2) Run 'echo \"scan\" | cec-client -s -d 1' to scan for CEC devices on the bus, 3) Check for /dev/ttyACM0 or similar device file, 4) Verify packages: 'dpkg -l | grep cec' should show libcec6, cec-utils, python3-cec, 5) Test in application via /api/cec/initialize endpoint, 6) Check CEC Control page for adapter detection. If not working, run './install.sh' or './update.sh' which automatically installs libCEC.",
+    "category": "troubleshooting",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the audio input meter feature?",
+    "answer": "Audio input meters monitor signal levels: 1) Configure in AudioInputMeter table with processor ID and input number, 2) Set threshold levels for low/high signal warnings, 3) System polls Atlas processor for real-time input levels, 4) Visual meters show current levels in the UI, 5) Alerts trigger when levels exceed thresholds, 6) Helps identify audio issues (no signal, clipping, low levels), 7) Integrates with AI diagnostics for automatic troubleshooting. Useful for monitoring microphone inputs and music sources.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How does AI-powered gain control work?",
+    "answer": "AI gain control automatically adjusts audio levels: 1) Configure in AIGainConfiguration table with target levels and adjustment parameters, 2) System monitors input meters continuously, 3) AI analyzes signal patterns and adjusts gain to maintain consistent levels, 4) Prevents audio clipping and ensures adequate volume, 5) Learns from manual adjustments to improve over time, 6) Can be enabled per input or zone, 7) Provides automatic level management without constant manual adjustment. Particularly useful for varying input sources like microphones and streaming audio.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What are provider inputs and how do they relate to TV guides?",
+    "answer": "Provider inputs link matrix inputs to TV guide data: 1) ProviderInput table maps MatrixInput to TVProvider, 2) Associates physical inputs (DirecTV box, cable box) with guide data sources, 3) Enables channel lineup information for each input, 4) Powers the sports guide feature with accurate channel numbers, 5) Supports multiple providers (DirecTV, Spectrum, etc.), 6) Configure in Matrix Configuration by selecting provider for each input, 7) System uses this mapping to show correct channels in the guide and for automated tuning.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure sports guide settings?",
+    "answer": "Configure sports guide in SportsGuideConfiguration: 1) Set zip code for local channel availability, 2) Select timezone for accurate game times, 3) Choose preferred TV providers (DirecTV, Spectrum, etc.), 4) Configure favorite sports and teams, 5) Set update frequency for guide data, 6) Enable notifications for upcoming games, 7) Settings stored in database and used by sports guide API. The guide shows games with channel numbers specific to your providers and location.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the Wolfpack-Atlas integration?",
+    "answer": "Wolfpack-Atlas integration routes matrix audio to Atlas zones: 1) WolfpackMatrixRouting table maps matrix audio outputs (1-4) to Atlas zones, 2) When routing video, system automatically routes corresponding audio, 3) Configure in Matrix Configuration by setting audioOutput field for each output, 4) Enables synchronized audio/video routing, 5) Supports zone-specific audio for different areas, 6) WolfpackMatrixState tracks current routing state, 7) Allows independent audio control while maintaining video routing. Essential for multi-zone sports bar setups.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I generate Q&A pairs automatically from documentation?",
+    "answer": "Automatic Q&A generation via /api/ai/qa-generate: 1) System scans docs/ folder for markdown files and key documentation, 2) Examines codebase for API and architecture information, 3) Uses local AI (Ollama) to generate 3-5 Q&A pairs per file, 4) Automatically categorizes based on content (api, configuration, troubleshooting, etc.), 5) Assigns confidence scores based on source quality, 6) Stores in QAEntry table with sourceType='auto-generated', 7) Returns job ID to check generation status. Process runs asynchronously and can generate hundreds of Q&As from comprehensive documentation.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What environment variables are required in the .env file?",
+    "answer": "Required .env variables: 1) DATABASE_URL - SQLite database path (e.g., 'file:./dev.db'), 2) Optional API keys: CLAUDE_API_KEY, OPENAI_API_KEY, GROK_API_KEY for AI providers, 3) SPECTRUM_API_KEY, GRACENOTE_API_KEY for TV guide data, 4) API_BASE_URL for external API access (default: http://localhost:3000), 5) Wolfpack matrix credentials if required, 6) Security settings for production deployments. The .env file is gitignored and automatically backed up. Never commit sensitive credentials to version control.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I access the AI assistant and what can I ask it?",
+    "answer": "Access AI assistant at /ai-assistant page: 1) Ask equipment configuration questions ('How do I configure Atlas zone 1?'), 2) Request troubleshooting help ('TV 7 has no signal, what should I check?'), 3) Query API documentation ('What endpoints are available for matrix control?'), 4) Get setup guidance ('Show me DirecTV IR codes'), 5) Ask about system features ('How does CEC TV power control work?'), 6) Request best practices ('Suggest optimal matrix configuration'). The assistant has access to 60 PDF manuals, 116 documentation files, and Q&A training database. Responses include source citations.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the knowledge base rebuild process?",
+    "answer": "Knowledge base rebuild via /api/ai/rebuild-knowledge-base: 1) Scans all PDF manuals in the Document table, 2) Extracts text content from PDFs if not already extracted, 3) Processes all markdown documentation files, 4) Generates embeddings for semantic search, 5) Updates Q&A training database with new entries, 6) Indexes content for fast retrieval, 7) Process can take several minutes for large document sets. Run after adding new manuals or documentation. The rebuilt knowledge base improves AI assistant accuracy and coverage.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I troubleshoot audio processor connection issues?",
+    "answer": "Troubleshoot Atlas audio processor: 1) Verify IP address and port in AudioProcessor configuration, 2) Ping the processor IP to check network connectivity, 3) Check processor status field - should show 'online', 4) Verify processor is powered on and network cable is connected, 5) Check firewall rules allowing port 80 (default) traffic, 6) Test with processor's web interface directly in browser, 7) Review lastSeen timestamp to see when last communication occurred, 8) Check system logs for connection errors. The AI diagnostics system can help identify specific issues.",
+    "category": "troubleshooting",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the purpose of the confidence score in Q&A entries?",
+    "answer": "Confidence scores (0.0-1.0) indicate Q&A reliability: 1) Manual entries get 1.0 (highest confidence), 2) Auto-generated entries get scores based on source quality and AI certainty, 3) Uploaded entries get 1.0 unless specified otherwise, 4) Lower scores indicate less certain or potentially outdated information, 5) AI assistant can prioritize high-confidence answers, 6) Scores help identify entries that need review or verification, 7) Stored in QAEntry.confidence field. Use confidence to filter training data quality.",
+    "category": "system",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I manage API keys for AI providers?",
+    "answer": "Manage API keys in Settings → AI Configuration: 1) Add keys via web interface or ApiKey database table, 2) Each key has name (display name), provider (xai/anthropic/openai), keyValue (encrypted), 3) Toggle isActive to enable/disable without deleting, 4) Keys are encrypted before storage for security, 5) Multiple keys per provider supported for load balancing, 6) Description field for notes about key usage or limits, 7) Keys are automatically backed up with database. Never expose keys in logs or client-side code.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the chat session feature?",
+    "answer": "Chat sessions store AI assistant conversations: 1) ChatSession table stores conversation history, 2) Each session has unique ID, optional title, and messages as JSON, 3) Messages include user queries and AI responses, 4) Sessions persist across page reloads, 5) Users can review past conversations, 6) Helps track troubleshooting history and solutions, 7) Sessions can be searched and filtered. Useful for documenting complex issues and their resolutions.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure device subscriptions for streaming services?",
+    "answer": "Configure device subscriptions in data/device-subscriptions.json: 1) List available streaming services (Netflix, Hulu, ESPN+, etc.), 2) Map services to devices (DirecTV, Fire TV) that have access, 3) Include provider information (DirecTV CHOICE, Spectrum Select), 4) Track subscription status and renewal dates, 5) Used by sports guide to show available games, 6) Helps bartenders know which devices can access specific content, 7) File is automatically backed up. Update when adding new services or devices.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the equipment inventory system?",
+    "answer": "Equipment inventory in Equipment table: 1) Tracks all physical devices (TVs, receivers, processors, etc.), 2) Fields include name, type, brand, model, location, status, 3) Status can be active, inactive, maintenance, or retired, 4) Notes field for additional information (serial numbers, purchase dates), 5) Helps manage hardware lifecycle, 6) Links to configuration tables for active devices, 7) Useful for maintenance scheduling and replacement planning. Provides complete hardware inventory for the sports bar.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I use the log analysis feature?",
+    "answer": "Log analysis via /api/ai/log-analysis: 1) System collects logs from all components (matrix, audio, CEC, IR), 2) AI analyzes logs for patterns, errors, and warnings, 3) Identifies recurring issues and correlates events, 4) Provides insights into system health and performance, 5) Suggests preventive maintenance based on log patterns, 6) Accessible through AI assistant with queries like 'analyze recent errors', 7) Results include severity, affected components, and recommended actions. Helps proactive troubleshooting before issues impact operations.",
+    "category": "features",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What is the document upload feature for AI training?",
+    "answer": "Document upload via /api/ai/upload-documents: 1) Upload PDF manuals, guides, or documentation, 2) System extracts text content automatically, 3) Stores in Document table with filename, path, size, mime type, 4) Extracted content is indexed for AI assistant queries, 5) Supports batch uploads of multiple files, 6) Generates embeddings for semantic search, 7) Documents become immediately available to AI assistant. Use to add equipment manuals, vendor documentation, or custom guides to the knowledge base.",
+    "category": "api",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "How do I configure CEC input channel for TV control?",
+    "answer": "Configure CEC input in Matrix Configuration: 1) Connect Pulse-Eight CEC adapter to a dedicated matrix input (e.g., Input 10), 2) In MatrixConfiguration, set cecInputChannel field to that input number, 3) System routes CEC commands through this input to reach TVs, 4) All TV outputs can receive CEC commands via matrix routing, 5) Only one CEC input needed for entire system, 6) Test by sending power commands from CEC Control page, 7) Setting is stored in database and persists across restarts. Essential for centralized TV power control.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  },
+  {
+    "question": "What are the different device types supported for matrix inputs?",
+    "answer": "Supported matrix input device types: 1) Cable Box - traditional cable TV receivers, 2) DirecTV Receiver - satellite TV with IR control, 3) Fire TV - streaming devices with app launching, 4) Apple TV - streaming with limited IR control, 5) Roku - streaming devices, 6) Gaming Console - Xbox, PlayStation, etc., 7) Computer/PC - HDMI output from computers, 8) Camera - security or broadcast cameras, 9) Other - miscellaneous devices. Device type determines available control options and IR code sets. Configure in MatrixInput.deviceType field.",
+    "category": "configuration",
+    "sourceType": "documentation",
+    "confidence": 1.0
+  }
+]
