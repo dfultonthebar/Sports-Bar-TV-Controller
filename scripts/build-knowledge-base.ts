@@ -3,29 +3,34 @@ import fs from 'fs';
 import path from 'path';
 import pdf from 'pdf-parse';
 
-const PROJECT_ROOT = path.join(__dirname, '..');
-const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
-const UPLOADS_DIR = path.join(PROJECT_ROOT, 'uploads');
-const KNOWLEDGE_BASE_PATH = path.join(PROJECT_ROOT, 'data', 'ai-knowledge-base.json');
-
 interface DocumentChunk {
-  source: string;
-  type: 'pdf' | 'markdown';
+  id: string;
   content: string;
-  title?: string;
-  section?: string;
+  source: string;
+  type: 'pdf' | 'markdown' | 'code';
+  metadata: {
+    filename: string;
+    path: string;
+    size: number;
+    lastModified: string;
+  };
 }
 
 interface KnowledgeBase {
-  documents: DocumentChunk[];
-  lastUpdated: string;
-  stats: {
-    totalDocuments: number;
-    totalPDFs: number;
-    totalMarkdown: number;
+  chunks: DocumentChunk[];
+  metadata: {
+    totalChunks: number;
+    totalFiles: number;
+    pdfCount: number;
+    markdownCount: number;
+    codeCount: number;
     totalCharacters: number;
+    buildDate: string;
   };
 }
+
+const CHUNK_SIZE = 2000; // Characters per chunk
+const CHUNK_OVERLAP = 200; // Overlap between chunks
 
 async function extractTextFromPDF(filePath: string): Promise<string> {
   try {
@@ -33,7 +38,7 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
     const data = await pdf(dataBuffer);
     return data.text;
   } catch (error) {
-    console.error(`Error extracting text from ${filePath}:`, error);
+    console.error(`Error reading PDF ${filePath}:`, error);
     return '';
   }
 }
@@ -42,213 +47,164 @@ function extractTextFromMarkdown(filePath: string): string {
   try {
     return fs.readFileSync(filePath, 'utf-8');
   } catch (error) {
-    console.error(`Error reading markdown from ${filePath}:`, error);
+    console.error(`Error reading Markdown ${filePath}:`, error);
     return '';
   }
 }
 
-function findAllFiles(dir: string, extensions: string[]): string[] {
-  const files: string[] = [];
+function chunkText(text: string, filename: string, filepath: string, type: 'pdf' | 'markdown' | 'code'): DocumentChunk[] {
+  const chunks: DocumentChunk[] = [];
+  const stats = fs.statSync(filepath);
   
-  // Check if directory exists
-  if (!fs.existsSync(dir)) {
-    console.log(`   ⚠️  Directory not found: ${dir} (skipping)`);
-    return files;
-  }
-  
-  function walkDir(currentPath: string) {
-    const items = fs.readdirSync(currentPath);
-    
-    for (const item of items) {
-      const fullPath = path.join(currentPath, item);
-      const stat = fs.statSync(fullPath);
-      
-      if (stat.isDirectory()) {
-        // Skip node_modules and hidden directories
-        if (!item.startsWith('.') && item !== 'node_modules' && item !== '.next') {
-          walkDir(fullPath);
-        }
-      } else if (stat.isFile()) {
-        const ext = path.extname(item).toLowerCase();
-        if (extensions.includes(ext)) {
-          files.push(fullPath);
-        }
-      }
+  for (let i = 0; i < text.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {
+    const chunk = text.slice(i, i + CHUNK_SIZE);
+    if (chunk.trim().length > 0) {
+      chunks.push({
+        id: `${filename}-${chunks.length}`,
+        content: chunk,
+        source: filepath,
+        type,
+        metadata: {
+          filename,
+          path: filepath,
+          size: stats.size,
+          lastModified: stats.mtime.toISOString(),
+        },
+      });
     }
-  }
-  
-  walkDir(dir);
-  return files;
-}
-
-function chunkText(text: string, maxLength: number = 4000): string[] {
-  const chunks: string[] = [];
-  let currentChunk = '';
-  const lines = text.split('\n');
-  
-  for (const line of lines) {
-    if ((currentChunk + line).length > maxLength) {
-      if (currentChunk) {
-        chunks.push(currentChunk.trim());
-        currentChunk = '';
-      }
-      // If a single line is too long, split it
-      if (line.length > maxLength) {
-        const words = line.split(' ');
-        for (const word of words) {
-          if ((currentChunk + word).length > maxLength) {
-            if (currentChunk) {
-              chunks.push(currentChunk.trim());
-              currentChunk = '';
-            }
-          }
-          currentChunk += word + ' ';
-        }
-      } else {
-        currentChunk = line + '\n';
-      }
-    } else {
-      currentChunk += line + '\n';
-    }
-  }
-  
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
   }
   
   return chunks;
 }
 
-async function buildKnowledgeBase(): Promise<void> {
+async function processDirectory(dirPath: string, baseDir: string): Promise<DocumentChunk[]> {
+  const chunks: DocumentChunk[] = [];
+  
+  if (!fs.existsSync(dirPath)) {
+    console.log(`Directory ${dirPath} does not exist, skipping...`);
+    return chunks;
+  }
+  
+  const files = fs.readdirSync(dirPath);
+  
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    const stat = fs.statSync(filePath);
+    
+    if (stat.isDirectory()) {
+      const subChunks = await processDirectory(filePath, baseDir);
+      chunks.push(...subChunks);
+    } else if (file.endsWith('.pdf')) {
+      console.log(`Processing PDF: ${file}`);
+      const text = await extractTextFromPDF(filePath);
+      const fileChunks = chunkText(text, file, filePath, 'pdf');
+      chunks.push(...fileChunks);
+    } else if (file.endsWith('.md')) {
+      console.log(`Processing Markdown: ${file}`);
+      const text = extractTextFromMarkdown(filePath);
+      const fileChunks = chunkText(text, file, filePath, 'markdown');
+      chunks.push(...fileChunks);
+    }
+  }
+  
+  return chunks;
+}
+
+async function processCodebase(srcDir: string): Promise<DocumentChunk[]> {
+  const chunks: DocumentChunk[] = [];
+  
+  if (!fs.existsSync(srcDir)) {
+    console.log(`Source directory ${srcDir} does not exist, skipping...`);
+    return chunks;
+  }
+  
+  function walkDir(dir: string) {
+    const files = fs.readdirSync(dir);
+    
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      const stat = fs.statSync(filePath);
+      
+      if (stat.isDirectory() && !file.startsWith('.') && file !== 'node_modules') {
+        walkDir(filePath);
+      } else if (file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.js') || file.endsWith('.jsx')) {
+        console.log(`Processing code file: ${file}`);
+        const text = fs.readFileSync(filePath, 'utf-8');
+        const fileChunks = chunkText(text, file, filePath, 'code');
+        chunks.push(...fileChunks);
+      }
+    }
+  }
+  
+  walkDir(srcDir);
+  return chunks;
+}
+
+async function buildKnowledgeBase() {
   console.log('🔨 Building AI Knowledge Base...\n');
   
-  const documents: DocumentChunk[] = [];
-  let totalPDFs = 0;
-  let totalMarkdown = 0;
-  let totalCharacters = 0;
-  
-  // Find all PDF files in project and uploads
-  console.log('📄 Processing PDF files...');
-  const pdfFiles = [
-    ...findAllFiles(DOCS_DIR, ['.pdf']),
-    ...findAllFiles(UPLOADS_DIR, ['.pdf'])
-  ];
-  
-  for (const pdfFile of pdfFiles) {
-    const relativePath = path.relative(PROJECT_ROOT, pdfFile);
-    console.log(`  - ${relativePath}`);
-    
-    const text = await extractTextFromPDF(pdfFile);
-    if (text && text.length > 100) {
-      const chunks = chunkText(text, 3000);
-      chunks.forEach((chunk, index) => {
-        documents.push({
-          source: relativePath,
-          type: 'pdf',
-          content: chunk,
-          title: path.basename(pdfFile, '.pdf'),
-          section: chunks.length > 1 ? `Part ${index + 1} of ${chunks.length}` : undefined
-        });
-      });
-      totalPDFs++;
-      totalCharacters += text.length;
-    }
-  }
-  
-  // Find all markdown files
-  console.log('\n📝 Processing Markdown files...');
-  const mdFiles = findAllFiles(DOCS_DIR, ['.md']);
-  
-  for (const mdFile of mdFiles) {
-    const relativePath = path.relative(PROJECT_ROOT, mdFile);
-    
-    // Skip README files and node_modules
-    if (relativePath.includes('node_modules') || relativePath === '../README.md') {
-      continue;
-    }
-    
-    console.log(`  - ${relativePath}`);
-    
-    const text = extractTextFromMarkdown(mdFile);
-    if (text && text.length > 100) {
-      const chunks = chunkText(text, 3000);
-      chunks.forEach((chunk, index) => {
-        documents.push({
-          source: relativePath,
-          type: 'markdown',
-          content: chunk,
-          title: path.basename(mdFile, '.md'),
-          section: chunks.length > 1 ? `Part ${index + 1} of ${chunks.length}` : undefined
-        });
-      });
-      totalMarkdown++;
-      totalCharacters += text.length;
-    }
-  }
-  
-  // Process Q&A entries
-  console.log('\n💬 Processing Q&A entries...');
-  const qaFilePath = path.join(PROJECT_ROOT, 'data', 'qa-entries.json');
-  let totalQA = 0;
-  
-  if (fs.existsSync(qaFilePath)) {
-    try {
-      const qaData = JSON.parse(fs.readFileSync(qaFilePath, 'utf-8'));
-      if (Array.isArray(qaData) && qaData.length > 0) {
-        qaData.forEach((entry: any) => {
-          const qaContent = `Q: ${entry.question}\n\nA: ${entry.answer}`;
-          documents.push({
-            source: 'Q&A Training',
-            type: 'markdown',
-            content: qaContent,
-            title: `${entry.category} - ${entry.question.substring(0, 50)}...`,
-            section: 'User Training'
-          });
-          totalCharacters += qaContent.length;
-          totalQA++;
-        });
-        console.log(`  - Added ${totalQA} Q&A entries`);
-      }
-    } catch (error) {
-      console.log('  - No Q&A entries found or error reading file');
-    }
-  } else {
-    console.log('  - No Q&A entries file found');
-  }
-  
-  // Create knowledge base object
-  const knowledgeBase: KnowledgeBase = {
-    documents,
-    lastUpdated: new Date().toISOString(),
-    stats: {
-      totalDocuments: documents.length,
-      totalPDFs,
-      totalMarkdown,
-      totalCharacters
-    }
-  };
+  const projectRoot = process.cwd();
+  const docsDir = path.join(projectRoot, 'docs');
+  const uploadsDir = path.join(projectRoot, 'uploads');
+  const srcDir = path.join(projectRoot, 'src');
+  const dataDir = path.join(projectRoot, 'data');
+  const outputPath = path.join(dataDir, 'ai-knowledge-base.json');
   
   // Ensure data directory exists
-  const dataDir = path.dirname(KNOWLEDGE_BASE_PATH);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
   
-  // Write knowledge base to file
-  fs.writeFileSync(KNOWLEDGE_BASE_PATH, JSON.stringify(knowledgeBase, null, 2));
+  let allChunks: DocumentChunk[] = [];
   
-  console.log('\n✅ Knowledge Base Built Successfully!');
-  console.log(`\n📊 Statistics:`);
-  console.log(`   - Total Document Chunks: ${documents.length}`);
-  console.log(`   - PDF Documents: ${totalPDFs}`);
-  console.log(`   - Markdown Documents: ${totalMarkdown}`);
-  console.log(`   - Q&A Training Entries: ${totalQA}`);
+  // Process docs directory
+  console.log('📚 Processing documentation...');
+  const docChunks = await processDirectory(docsDir, projectRoot);
+  allChunks.push(...docChunks);
+  
+  // Process uploads directory (if exists)
+  if (fs.existsSync(uploadsDir)) {
+    console.log('📁 Processing uploads...');
+    const uploadChunks = await processDirectory(uploadsDir, projectRoot);
+    allChunks.push(...uploadChunks);
+  }
+  
+  // Process codebase
+  console.log('💻 Processing codebase...');
+  const codeChunks = await processCodebase(srcDir);
+  allChunks.push(...codeChunks);
+  
+  // Calculate statistics
+  const pdfCount = allChunks.filter(c => c.type === 'pdf').length;
+  const markdownCount = allChunks.filter(c => c.type === 'markdown').length;
+  const codeCount = allChunks.filter(c => c.type === 'code').length;
+  const totalCharacters = allChunks.reduce((sum, chunk) => sum + chunk.content.length, 0);
+  
+  const knowledgeBase: KnowledgeBase = {
+    chunks: allChunks,
+    metadata: {
+      totalChunks: allChunks.length,
+      totalFiles: new Set(allChunks.map(c => c.source)).size,
+      pdfCount,
+      markdownCount,
+      codeCount,
+      totalCharacters,
+      buildDate: new Date().toISOString(),
+    },
+  };
+  
+  // Save to file
+  fs.writeFileSync(outputPath, JSON.stringify(knowledgeBase, null, 2));
+  
+  console.log('\n✅ Knowledge Base Built Successfully!\n');
+  console.log('📊 Statistics:');
+  console.log(`   - Total Document Chunks: ${knowledgeBase.metadata.totalChunks}`);
+  console.log(`   - Total Files: ${knowledgeBase.metadata.totalFiles}`);
+  console.log(`   - PDF Chunks: ${pdfCount}`);
+  console.log(`   - Markdown Chunks: ${markdownCount}`);
+  console.log(`   - Code Chunks: ${codeCount}`);
   console.log(`   - Total Characters: ${totalCharacters.toLocaleString()}`);
-  console.log(`   - Saved to: ${KNOWLEDGE_BASE_PATH}\n`);
+  console.log(`   - Saved to: ${outputPath}\n`);
 }
 
-// Run the script
-buildKnowledgeBase().catch(error => {
-  console.error('❌ Error building knowledge base:', error);
-  process.exit(1);
-});
+buildKnowledgeBase().catch(console.error);

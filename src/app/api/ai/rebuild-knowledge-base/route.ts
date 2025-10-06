@@ -1,38 +1,47 @@
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import path from 'path';
 
 const execAsync = promisify(exec);
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const scriptPath = path.join(process.cwd(), 'build-knowledge-base.sh');
+    console.log('Starting knowledge base rebuild...');
     
-    // Execute the knowledge base build script
-    const { stdout, stderr } = await execAsync(scriptPath);
+    // Execute the build script
+    const { stdout, stderr } = await execAsync('npm run build-knowledge-base', {
+      cwd: process.cwd(),
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
     
-    console.log('Knowledge base rebuild output:', stdout);
+    console.log('Build output:', stdout);
     if (stderr) {
-      console.error('Knowledge base rebuild errors:', stderr);
+      console.error('Build errors:', stderr);
     }
     
     return NextResponse.json({
       success: true,
       message: 'Knowledge base rebuilt successfully',
-      output: stdout
+      output: stdout,
     });
-    
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error rebuilding knowledge base:', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
-        error: 'Failed to rebuild knowledge base',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: error.message,
+        output: error.stdout || '',
       },
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return NextResponse.json({
+    endpoint: '/api/ai/rebuild-knowledge-base',
+    method: 'POST',
+    description: 'Rebuilds the AI knowledge base from documentation files',
+  });
 }
