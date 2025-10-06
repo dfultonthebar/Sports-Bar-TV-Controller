@@ -111,8 +111,8 @@ export async function POST(request: NextRequest) {
         context += buildContextFromDocs(relevantDocs);
         sources = relevantDocs.map(doc => ({
           source: doc.source,
-          title: doc.title,
-          section: doc.section
+          title: doc.metadata.filename,
+          type: doc.type
         }));
       }
     }
