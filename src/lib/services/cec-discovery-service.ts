@@ -7,6 +7,7 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { autoFetchDocumentation } from '@/lib/tvDocs'
 
 const prisma = new PrismaClient()
 
@@ -195,6 +196,14 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
         })
         
         console.log(`[CEC Discovery] Output ${output.channelNumber}: Detected ${brand} - ${model}`)
+        
+        // Auto-fetch documentation for newly discovered TV
+        if (brand !== 'Unknown') {
+          autoFetchDocumentation(brand, model, output.channelNumber)
+            .catch(error => {
+              console.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error)
+            })
+        }
       } else {
         results.push({
           outputNumber: output.channelNumber,
@@ -277,6 +286,14 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
       })
       
       console.log(`[CEC Discovery] Output ${outputNumber}: Detected ${brand} - ${model}`)
+      
+      // Auto-fetch documentation for newly discovered TV
+      if (brand !== 'Unknown') {
+        autoFetchDocumentation(brand, model, outputNumber)
+          .catch(error => {
+            console.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error)
+          })
+      }
       
       return {
         outputNumber,
