@@ -238,7 +238,7 @@ export default function QATrainingPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Total Q&As</p>
-                  <p className="text-3xl font-bold text-slate-100">{statistics.total}</p>
+                  <p className="text-3xl font-bold text-slate-100">{statistics.total || 0}</p>
                 </div>
                 <BarChart3 className="w-8 h-8 text-blue-400" />
               </div>
@@ -247,7 +247,7 @@ export default function QATrainingPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Active</p>
-                  <p className="text-3xl font-bold text-green-400">{statistics.active}</p>
+                  <p className="text-3xl font-bold text-green-400">{statistics.active || 0}</p>
                 </div>
                 <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
               </div>
@@ -255,23 +255,31 @@ export default function QATrainingPage() {
             <div className="card p-6">
               <div>
                 <p className="text-slate-400 text-sm mb-2">By Category</p>
-                {statistics.byCategory.slice(0, 3).map((cat) => (
-                  <div key={cat.category} className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-300">{cat.category}</span>
-                    <span className="text-slate-100 font-semibold">{cat._count}</span>
-                  </div>
-                ))}
+                {statistics.byCategory && statistics.byCategory.length > 0 ? (
+                  statistics.byCategory.slice(0, 3).map((cat) => (
+                    <div key={cat.category} className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-300">{cat.category}</span>
+                      <span className="text-slate-100 font-semibold">{cat._count}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-500 text-sm">No data</p>
+                )}
               </div>
             </div>
             <div className="card p-6">
               <div>
                 <p className="text-slate-400 text-sm mb-2">By Source</p>
-                {statistics.bySourceType.map((src) => (
-                  <div key={src.sourceType} className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-300">{src.sourceType}</span>
-                    <span className="text-slate-100 font-semibold">{src._count}</span>
-                  </div>
-                ))}
+                {statistics.bySourceType && statistics.bySourceType.length > 0 ? (
+                  statistics.bySourceType.map((src) => (
+                    <div key={src.sourceType} className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-300">{src.sourceType}</span>
+                      <span className="text-slate-100 font-semibold">{src._count}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-500 text-sm">No data</p>
+                )}
               </div>
             </div>
           </div>
