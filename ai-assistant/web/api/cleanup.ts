@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { cleanupOperations } from '../../../core/cleanup/cleanupOperations'
+import { cleanupOperations } from '../../core/cleanup/cleanupOperations'
 
 export async function POST(request: NextRequest) {
   try {
