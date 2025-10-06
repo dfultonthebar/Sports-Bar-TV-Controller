@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-interface DocumentChunk {
+export interface DocumentChunk {
   id: string;
   content: string;
   source: string;
