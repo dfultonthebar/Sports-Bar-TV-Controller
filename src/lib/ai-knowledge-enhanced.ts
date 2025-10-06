@@ -103,10 +103,10 @@ export async function buildEnhancedContext(
       const queryLower = query.toLowerCase();
       const queryTerms = queryLower.split(/\s+/).filter(term => term.length > 2);
       
-      const scoredDocs = kb.documents.map(doc => {
+      const scoredDocs = kb.chunks.map(doc => {
         let score = 0;
         const contentLower = doc.content.toLowerCase();
-        const titleLower = (doc.title || '').toLowerCase();
+        const titleLower = (doc.metadata.filename || '').toLowerCase();
         
         for (const term of queryTerms) {
           if (titleLower.includes(term)) score += 5;
@@ -127,7 +127,7 @@ export async function buildEnhancedContext(
       if (relevantDocs.length > 0) {
         context += '\n\n=== DOCUMENTATION CONTEXT ===\n\n';
         relevantDocs.forEach((doc, index) => {
-          context += `[Document ${index + 1}: ${doc.title || doc.source}]\n`;
+          context += `[Document ${index + 1}: ${doc.metadata.filename || doc.source}]\n`;
           context += doc.content.substring(0, 2000); // Limit doc length
           context += '\n\n---\n\n';
         });
