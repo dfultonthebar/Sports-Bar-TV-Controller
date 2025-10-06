@@ -435,14 +435,18 @@ export async function getQAStatistics() {
   const total = await prisma.qAEntry.count();
   const active = await prisma.qAEntry.count({ where: { isActive: true } });
   
-  const byCategory = await prisma.qAEntry.groupBy({
+  const byCategoryRaw = await prisma.qAEntry.groupBy({
     by: ['category'],
-    _count: true,
+    _count: {
+      _all: true,
+    },
   });
 
-  const bySourceType = await prisma.qAEntry.groupBy({
+  const bySourceTypeRaw = await prisma.qAEntry.groupBy({
     by: ['sourceType'],
-    _count: true,
+    _count: {
+      _all: true,
+    },
   });
 
   const topUsed = await prisma.qAEntry.findMany({
@@ -456,6 +460,17 @@ export async function getQAStatistics() {
       category: true,
     },
   });
+
+  // Transform the groupBy results to match the expected format
+  const byCategory = byCategoryRaw.map(item => ({
+    category: item.category,
+    _count: item._count._all,
+  }));
+
+  const bySourceType = bySourceTypeRaw.map(item => ({
+    sourceType: item.sourceType,
+    _count: item._count._all,
+  }));
 
   return {
     total,
