@@ -50,6 +50,10 @@ export function loadKnowledgeBase(): KnowledgeBase {
   cachedKnowledgeBase = JSON.parse(data);
   cacheTimestamp = now;
   
+  if (!cachedKnowledgeBase) {
+    throw new Error('Failed to parse knowledge base');
+  }
+  
   return cachedKnowledgeBase;
 }
 
