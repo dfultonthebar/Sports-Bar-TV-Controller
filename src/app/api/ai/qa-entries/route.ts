@@ -1,67 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import path from 'path';
-import { existsSync } from 'fs';
+import {
+  getAllQAEntries,
+  searchQAEntries,
+  updateQAEntry,
+  deleteQAEntry,
+  getQAStatistics,
+} from '@/lib/services/qa-generator';
 
-interface QAEntry {
-  id: string;
-  question: string;
-  answer: string;
-  category: string;
-  createdAt: string;
-}
-
-const QA_FILE_PATH = path.join(process.cwd(), 'data', 'qa-entries.json');
-
-async function ensureDataDir() {
-  const dataDir = path.join(process.cwd(), 'data');
-  if (!existsSync(dataDir)) {
-    await mkdir(dataDir, { recursive: true });
-  }
-}
-
-async function loadQAEntries(): Promise<QAEntry[]> {
-  try {
-    await ensureDataDir();
-    if (!existsSync(QA_FILE_PATH)) {
-      return [];
-    }
-    const data = await readFile(QA_FILE_PATH, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error loading Q&A entries:', error);
-    return [];
-  }
-}
-
-async function saveQAEntries(entries: QAEntry[]): Promise<void> {
-  await ensureDataDir();
-  await writeFile(QA_FILE_PATH, JSON.stringify(entries, null, 2), 'utf-8');
-}
-
-// GET - Retrieve all Q&A entries
+// GET - List all Q&A entries or search
 export async function GET(request: NextRequest) {
   try {
-    const entries = await loadQAEntries();
-    return NextResponse.json({
-      success: true,
-      entries,
-      count: entries.length
-    });
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get('query');
+    const category = searchParams.get('category');
+    const sourceType = searchParams.get('sourceType');
+    const stats = searchParams.get('stats');
+
+    // Return statistics
+    if (stats === 'true') {
+      const statistics = await getQAStatistics();
+      return NextResponse.json(statistics);
+    }
+
+    // Search Q&As
+    if (query) {
+      const results = await searchQAEntries(query);
+      return NextResponse.json(results);
+    }
+
+    // List all Q&As with filters
+    const filters: any = {};
+    if (category && category !== 'all') filters.category = category;
+    if (sourceType && sourceType !== 'all') filters.sourceType = sourceType;
+
+    const entries = await getAllQAEntries(filters);
+    return NextResponse.json(entries);
   } catch (error) {
-    console.error('Error in GET /api/ai/qa-entries:', error);
+    console.error('Error fetching Q&A entries:', error);
     return NextResponse.json(
-      { error: 'Failed to load Q&A entries' },
+      { error: 'Failed to fetch Q&A entries' },
       { status: 500 }
     );
   }
 }
 
-// POST - Add a new Q&A entry
+// POST - Create new Q&A entry
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { question, answer, category } = body;
+    const { question, answer, category, tags } = body;
 
     if (!question || !answer) {
       return NextResponse.json(
@@ -70,34 +57,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const entries = await loadQAEntries();
-    
-    const newEntry: QAEntry = {
-      id: `qa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      question: question.trim(),
-      answer: answer.trim(),
-      category: category || 'general',
-      createdAt: new Date().toISOString()
-    };
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
 
-    entries.push(newEntry);
-    await saveQAEntries(entries);
-
-    return NextResponse.json({
-      success: true,
-      entry: newEntry,
-      message: 'Q&A entry added successfully'
+    const entry = await prisma.qAEntry.create({
+      data: {
+        question,
+        answer,
+        category: category || 'general',
+        tags: tags ? JSON.stringify(tags) : null,
+        sourceType: 'manual',
+        confidence: 1.0,
+      },
     });
+
+    await prisma.$disconnect();
+    return NextResponse.json(entry);
   } catch (error) {
-    console.error('Error in POST /api/ai/qa-entries:', error);
+    console.error('Error creating Q&A entry:', error);
     return NextResponse.json(
-      { error: 'Failed to add Q&A entry' },
+      { error: 'Failed to create Q&A entry' },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Remove a Q&A entry
+// PUT - Update Q&A entry
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, question, answer, category, tags, isActive } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const updateData: any = {};
+    if (question !== undefined) updateData.question = question;
+    if (answer !== undefined) updateData.answer = answer;
+    if (category !== undefined) updateData.category = category;
+    if (tags !== undefined) updateData.tags = JSON.stringify(tags);
+    if (isActive !== undefined) updateData.isActive = isActive;
+
+    const entry = await updateQAEntry(id, updateData);
+    return NextResponse.json(entry);
+  } catch (error) {
+    console.error('Error updating Q&A entry:', error);
+    return NextResponse.json(
+      { error: 'Failed to update Q&A entry' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Delete Q&A entry
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -105,29 +121,15 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: 'Entry ID is required' },
+        { error: 'ID is required' },
         { status: 400 }
       );
     }
 
-    const entries = await loadQAEntries();
-    const filteredEntries = entries.filter(entry => entry.id !== id);
-
-    if (filteredEntries.length === entries.length) {
-      return NextResponse.json(
-        { error: 'Entry not found' },
-        { status: 404 }
-      );
-    }
-
-    await saveQAEntries(filteredEntries);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Q&A entry deleted successfully'
-    });
+    await deleteQAEntry(id);
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in DELETE /api/ai/qa-entries:', error);
+    console.error('Error deleting Q&A entry:', error);
     return NextResponse.json(
       { error: 'Failed to delete Q&A entry' },
       { status: 500 }
