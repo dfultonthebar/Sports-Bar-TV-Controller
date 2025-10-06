@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
@@ -276,7 +277,7 @@ export default function AITeachingInterface() {
     <div className="space-y-6">
       {/* Quick Link to Q&A Training System */}
       <div className="mb-6">
-        <a href="/ai-hub/qa-training" className="block">
+        <Link href="/ai-hub/qa-training" className="block">
           <div className="card p-6 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-2 border-blue-500/50 hover:border-blue-400 transition-all cursor-pointer">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
@@ -297,7 +298,7 @@ export default function AITeachingInterface() {
               </div>
             </div>
           </div>
-        </a>
+        </Link>
       </div>
 
       {/* Header */}
