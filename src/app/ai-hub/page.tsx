@@ -236,6 +236,54 @@ export default function AIHubPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Quick Actions Section */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link 
+            href="/ai-diagnostics"
+            className="p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+          >
+            <div className="flex items-center space-x-3 mb-2">
+              <Activity className="w-6 h-6 text-blue-300" />
+              <h3 className="font-bold text-blue-200">AI System Diagnostics</h3>
+            </div>
+            <p className="text-blue-100/90 text-sm">Run comprehensive AI system health checks and monitor performance</p>
+          </Link>
+
+          <div className="p-4 bg-gradient-to-br from-green-600/40 to-teal-600/40 rounded-xl border-2 border-green-400/50">
+            <div className="flex items-center space-x-3 mb-2">
+              <CheckCircle className="w-6 h-6 text-green-300" />
+              <h3 className="font-bold text-green-200">System Status</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <div className="text-green-100/70">Active Devices</div>
+                <div className="text-xl font-bold text-green-200">{activeDevices.directv + activeDevices.firetv + activeDevices.ir}</div>
+              </div>
+              <div>
+                <div className="text-green-100/70">Health Score</div>
+                <div className="text-xl font-bold text-green-200">{systemStats.avgHealthScore}%</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-gradient-to-br from-purple-600/40 to-pink-600/40 rounded-xl border-2 border-purple-400/50">
+            <div className="flex items-center space-x-3 mb-2">
+              <Brain className="w-6 h-6 text-purple-300" />
+              <h3 className="font-bold text-purple-200">AI Performance</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <div className="text-purple-100/70">Optimizations</div>
+                <div className="text-xl font-bold text-purple-200">{systemStats.totalOptimizations}</div>
+              </div>
+              <div>
+                <div className="text-purple-100/70">Uptime</div>
+                <div className="text-xl font-bold text-purple-200">{systemStats.aiUptime}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <Tabs defaultValue="assistant" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="assistant" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
