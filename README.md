@@ -98,6 +98,37 @@ After installation/update, access at:
 - **HDMI-CEC control for TVs via Pulse-Eight USB CEC Adapter**
   - Power control (on/standby) for individual TVs or broadcast to all
   - Device discovery and monitoring
+- **🤖 AI Code Assistant** (NEW!)
+  - Local AI-powered code analysis and improvements
+  - Automated dependency management with one-command setup
+  - Risk-based change approval system
+  - Automatic backups and PR creation
+  - See [ai-assistant/README.md](./ai-assistant/README.md) for details
+
+## 🤖 **AI Code Assistant - Quick Setup**
+
+Get started with the AI Code Assistant in one command:
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run setup:ai
+```
+
+This will automatically:
+- ✓ Install Ollama (if needed)
+- ✓ Pull the DeepSeek Coder AI model
+- ✓ Configure all dependencies
+- ✓ Verify system readiness
+
+**Check if everything is ready:**
+```bash
+npm run check:ai
+```
+
+**Access the AI Assistant:**
+- Dashboard: http://localhost:3000/ai-assistant
+
+For more details, see [ai-assistant/README.md](./ai-assistant/README.md)
   - Integrated with matrix input selection
   - Automatic driver installation (libCEC)
 

@@ -46,32 +46,81 @@ Local AI-powered code assistant for the Sports Bar TV Controller project. Uses O
 
 ## Installation
 
+### Quick Setup (Recommended)
+
+The easiest way to get started is with our automated setup script:
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run setup:ai
+```
+
+This single command will:
+- ✓ Detect your operating system (Linux/macOS/Windows)
+- ✓ Check Node.js version
+- ✓ Install Ollama if not present
+- ✓ Start Ollama service
+- ✓ Pull the DeepSeek Coder model (~3.8GB)
+- ✓ Install npm dependencies
+- ✓ Create required directories
+- ✓ Run system readiness checks
+- ✓ Provide clear status and next steps
+
+**That's it!** The setup script handles everything automatically.
+
+### Alternative: Bash Script (Linux/macOS only)
+
+If you prefer bash or need more control:
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run setup:ai:bash
+```
+
+### Manual Setup
+
+If you prefer to set up manually:
+
+1. **Install Ollama**
+   ```bash
+   # Linux
+   curl -fsSL https://ollama.com/install.sh | sh
+   
+   # macOS
+   brew install ollama
+   # or download from https://ollama.com/download
+   
+   # Windows
+   # Download from https://ollama.com/download
+   ```
+
+2. **Start Ollama Service**
+   ```bash
+   ollama serve
+   ```
+
+3. **Pull AI Model**
+   ```bash
+   ollama pull deepseek-coder:6.7b
+   ```
+
+4. **Install Dependencies**
+   ```bash
+   cd ~/Sports-Bar-TV-Controller
+   npm install
+   ```
+
+5. **Verify Installation**
+   ```bash
+   npm run check:ai
+   ```
+
 ### Prerequisites
 
 - Node.js 18+ and npm
 - Git
-- Ollama (installed automatically)
-
-### Setup
-
-1. **Install Ollama and Model** (Already done)
-   ```bash
-   # Ollama is already installed and running
-   # DeepSeek Coder model is already pulled
-   ollama list  # Verify installation
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   cd ~/Sports-Bar-TV-Controller
-   npm install uuid  # Add missing dependency
-   ```
-
-3. **Initialize AI Assistant**
-   ```bash
-   # The AI assistant is integrated into your existing Next.js app
-   # No separate initialization needed
-   ```
+- ~4GB free disk space (for AI model)
+- Internet connection (for initial setup)
 
 ## Usage
 
