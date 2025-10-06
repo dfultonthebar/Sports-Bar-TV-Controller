@@ -22,9 +22,9 @@ interface QAEntry {
 interface QAStatistics {
   total: number;
   active: number;
-  byCategory?: Array<{ category: string; _count: number }>;
-  bySourceType?: Array<{ sourceType: string; _count: number }>;
-  topUsed?: Array<{ id: string; question: string; usageCount: number; category: string }>;
+  byCategory?: Array<{ category: string; _count: number }> | null;
+  bySourceType?: Array<{ sourceType: string; _count: number }> | null;
+  topUsed?: Array<{ id: string; question: string; usageCount: number; category: string }> | null;
 }
 
 interface GenerationJob {
@@ -82,9 +82,27 @@ export default function QATrainingPage() {
     try {
       const response = await fetch('/api/ai/qa-entries?stats=true');
       const data = await response.json();
-      setStatistics(data);
+      
+      // Ensure data structure is valid before setting state
+      const validatedData: QAStatistics = {
+        total: data?.total || 0,
+        active: data?.active || 0,
+        byCategory: Array.isArray(data?.byCategory) ? data.byCategory.filter((cat: any) => cat && cat.category && typeof cat._count !== 'undefined') : null,
+        bySourceType: Array.isArray(data?.bySourceType) ? data.bySourceType.filter((src: any) => src && src.sourceType && typeof src._count !== 'undefined') : null,
+        topUsed: Array.isArray(data?.topUsed) ? data.topUsed : null,
+      };
+      
+      setStatistics(validatedData);
     } catch (error) {
       console.error('Error loading statistics:', error);
+      // Set safe default values on error
+      setStatistics({
+        total: 0,
+        active: 0,
+        byCategory: null,
+        bySourceType: null,
+        topUsed: null,
+      });
     }
   };
 
@@ -257,10 +275,12 @@ export default function QATrainingPage() {
                 <p className="text-slate-400 text-sm mb-2">By Category</p>
                 {statistics.byCategory && Array.isArray(statistics.byCategory) && statistics.byCategory.length > 0 ? (
                   statistics.byCategory.slice(0, 3).map((cat) => (
-                    <div key={cat.category} className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-300">{cat.category}</span>
-                      <span className="text-slate-100 font-semibold">{cat._count}</span>
-                    </div>
+                    cat && cat.category && typeof cat._count !== 'undefined' ? (
+                      <div key={cat.category} className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-300">{cat.category}</span>
+                        <span className="text-slate-100 font-semibold">{cat._count}</span>
+                      </div>
+                    ) : null
                   ))
                 ) : (
                   <p className="text-slate-500 text-sm">No data</p>
@@ -272,10 +292,12 @@ export default function QATrainingPage() {
                 <p className="text-slate-400 text-sm mb-2">By Source</p>
                 {statistics.bySourceType && Array.isArray(statistics.bySourceType) && statistics.bySourceType.length > 0 ? (
                   statistics.bySourceType.map((src) => (
-                    <div key={src.sourceType} className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-300">{src.sourceType}</span>
-                      <span className="text-slate-100 font-semibold">{src._count}</span>
-                    </div>
+                    src && src.sourceType && typeof src._count !== 'undefined' ? (
+                      <div key={src.sourceType} className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-300">{src.sourceType}</span>
+                        <span className="text-slate-100 font-semibold">{src._count}</span>
+                      </div>
+                    ) : null
                   ))
                 ) : (
                   <p className="text-slate-500 text-sm">No data</p>
