@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -54,7 +55,7 @@ export default function AITeachingInterface() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([])
   
-  // Q&A state
+  // Q&A state - Initialize with empty array to prevent undefined errors
   const [qaEntries, setQaEntries] = useState<KnowledgeEntry[]>([])
   const [newQuestion, setNewQuestion] = useState('')
   const [newAnswer, setNewAnswer] = useState('')
@@ -90,10 +91,22 @@ export default function AITeachingInterface() {
       const response = await fetch('/api/ai/qa-entries')
       if (response.ok) {
         const data = await response.json()
-        setQaEntries(data.entries || [])
+        // Handle both array response and object with entries property
+        if (Array.isArray(data)) {
+          setQaEntries(data)
+        } else if (data.entries && Array.isArray(data.entries)) {
+          setQaEntries(data.entries)
+        } else {
+          console.warn('Unexpected Q&A entries response format:', data)
+          setQaEntries([])
+        }
+      } else {
+        console.error('Failed to load Q&A entries:', response.status)
+        setQaEntries([])
       }
     } catch (error) {
       console.error('Error loading Q&A entries:', error)
+      setQaEntries([])
     }
   }
 
@@ -167,7 +180,7 @@ export default function AITeachingInterface() {
 
       const data = await response.json()
 
-      if (data.success) {
+      if (response.ok && data.id) {
         setMessage({
           type: 'success',
           text: 'Q&A entry added successfully'
@@ -209,6 +222,11 @@ export default function AITeachingInterface() {
         })
         await loadQAEntries()
         await rebuildKnowledgeBase()
+      } else {
+        setMessage({
+          type: 'error',
+          text: 'Failed to delete Q&A entry'
+        })
       }
     } catch (error) {
       setMessage({

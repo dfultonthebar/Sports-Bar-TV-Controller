@@ -1,4 +1,5 @@
 
+
 /**
  * Q&A Generator Service
  * Automatically generates question-answer pairs from repository files and documentation
@@ -332,22 +333,43 @@ function parseGeneratedQAs(
     // Try to extract JSON from the response
     const jsonMatch = generatedText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.warn('No JSON array found in generated text');
+      console.warn('No JSON array found in generated text for:', sourceFile);
       return [];
     }
 
-    const qas = JSON.parse(jsonMatch[0]);
+    const jsonString = jsonMatch[0];
+    
+    // Validate JSON string is not empty or malformed
+    if (!jsonString || jsonString.trim().length < 3) {
+      console.warn('Empty or invalid JSON string for:', sourceFile);
+      return [];
+    }
+
+    let qas;
+    try {
+      qas = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error('Error parsing generated Q&As:', parseError);
+      console.error('Attempted to parse:', jsonString.substring(0, 200));
+      return [];
+    }
+
+    // Ensure qas is an array
+    if (!Array.isArray(qas)) {
+      console.warn('Parsed result is not an array for:', sourceFile);
+      return [];
+    }
     
     return qas.map((qa: any) => ({
       question: qa.question || '',
       answer: qa.answer || '',
       category,
-      tags: qa.tags || [],
-      confidence: qa.confidence || 0.8,
+      tags: Array.isArray(qa.tags) ? qa.tags : [],
+      confidence: typeof qa.confidence === 'number' ? qa.confidence : 0.8,
       sourceFile,
     })).filter((qa: GeneratedQA) => qa.question && qa.answer);
   } catch (error) {
-    console.error('Error parsing generated Q&As:', error);
+    console.error('Error parsing generated Q&As for:', sourceFile, error);
     return [];
   }
 }
