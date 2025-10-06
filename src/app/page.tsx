@@ -1,13 +1,19 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import StreamingPlatformsWidget from '@/components/StreamingPlatformsWidget'
 import LayoutConfiguration from '@/components/LayoutConfiguration'
 import { Settings, Music } from 'lucide-react'
 
 export default function Home() {
   const [showLayoutConfig, setShowLayoutConfig] = useState(false)
+  const [currentTime, setCurrentTime] = useState<string>('')
+  
+  // Only render time on client side to avoid hydration mismatch
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleString())
+  }, [])
 
   return (
     <div className="min-h-screen bg-sports-gradient">
@@ -234,7 +240,7 @@ export default function Home() {
               <div className="text-center">
                 <div className="text-sm text-slate-300">Last Updated</div>
                 <div className="text-xs text-slate-400 mt-1">
-                  {new Date().toLocaleString()}
+                  {currentTime || 'Loading...'}
                 </div>
               </div>
             </div>
