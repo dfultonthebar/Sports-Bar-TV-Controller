@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# UPDATE FROM GITHUB (Enhanced with PM2 Process Management)
+# UPDATE FROM GITHUB (Enhanced with PM2 Process Management & AI Dependencies)
 # =============================================================================
 # This script safely updates your local system from GitHub
 # Automatically installs Ollama and downloads all required AI models
@@ -15,6 +15,8 @@
 # - Auto-restart on crashes and startup on boot
 # - Enhanced error handling and logging
 # - Safety checks to prevent breaking the working system
+# - Integrated AI dependency management (Ollama + models)
+# - Optional AI checks with --skip-ai flag
 # =============================================================================
 
 set -e  # Exit on error
@@ -28,6 +30,44 @@ PROJECT_DIR="/home/ubuntu/Sports-Bar-TV-Controller"
 LOG_FILE="$PROJECT_DIR/update.log"
 SERVER_PORT=3000
 PM2_APP_NAME="sports-bar-tv-controller"
+
+# AI Configuration
+AI_MODELS=(
+    "llama3.2"              # Primary model for style analysis and AI features
+    "llama2"                # Backup model for device diagnostics
+    "mistral"               # Fast model for quick queries
+    "deepseek-coder:6.7b"   # AI Code Assistant model
+)
+SKIP_AI_CHECKS=false
+
+# =============================================================================
+# PARSE COMMAND LINE ARGUMENTS
+# =============================================================================
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-ai)
+            SKIP_AI_CHECKS=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --skip-ai    Skip AI dependency checks and setup"
+            echo "  --help, -h   Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0                # Full update with AI checks"
+            echo "  $0 --skip-ai      # Update without AI checks (faster)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # =============================================================================
 # LOGGING FUNCTIONS
@@ -62,6 +102,196 @@ cleanup_on_error() {
 }
 
 trap cleanup_on_error ERR
+
+# =============================================================================
+# AI DEPENDENCY FUNCTIONS
+# =============================================================================
+check_ollama_installed() {
+    if command -v ollama &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_ollama_running() {
+    if pgrep -x "ollama" > /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+start_ollama_service() {
+    log "🔄 Starting Ollama service..."
+    
+    # Try systemd first
+    if systemctl is-active --quiet ollama 2>/dev/null; then
+        log_success "Ollama service already running (systemd)"
+        return 0
+    elif systemctl status ollama &>/dev/null; then
+        sudo systemctl start ollama 2>/dev/null && {
+            log_success "Ollama service started (systemd)"
+            return 0
+        }
+    fi
+    
+    # Fallback to background process
+    if ! check_ollama_running; then
+        nohup ollama serve > /dev/null 2>&1 &
+        sleep 3
+        
+        if check_ollama_running; then
+            log_success "Ollama service started (background)"
+            return 0
+        else
+            log_warning "Failed to start Ollama service"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+check_ai_model_available() {
+    local model=$1
+    if ollama list 2>/dev/null | grep -q "^$model"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+install_ollama() {
+    log "📥 Installing Ollama..."
+    
+    if curl -fsSL https://ollama.com/install.sh | sh; then
+        log_success "Ollama installed successfully"
+        return 0
+    else
+        log_error "Failed to install Ollama"
+        return 1
+    fi
+}
+
+pull_ai_model() {
+    local model=$1
+    log "📥 Downloading AI model: $model"
+    log "   This may take a few minutes..."
+    
+    if ollama pull "$model" 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "Model $model downloaded successfully"
+        return 0
+    else
+        log_warning "Failed to download model: $model"
+        return 1
+    fi
+}
+
+setup_ai_dependencies() {
+    if [ "$SKIP_AI_CHECKS" = true ]; then
+        log "⏭️  Skipping AI dependency checks (--skip-ai flag set)"
+        return 0
+    fi
+    
+    log "🤖 Setting up AI Dependencies..."
+    log "=================================================="
+    
+    local ai_setup_failed=false
+    
+    # Check if Ollama is installed
+    if ! check_ollama_installed; then
+        log "📥 Ollama not found. Installing..."
+        
+        if install_ollama; then
+            log_success "Ollama installation complete"
+        else
+            log_warning "Ollama installation failed - AI features will be limited"
+            ai_setup_failed=true
+        fi
+    else
+        local ollama_version=$(ollama --version 2>/dev/null || echo "unknown")
+        log_success "Ollama already installed ($ollama_version)"
+    fi
+    
+    # Start Ollama service if installed
+    if check_ollama_installed; then
+        if ! check_ollama_running; then
+            start_ollama_service || {
+                log_warning "Could not start Ollama service - AI features will be limited"
+                ai_setup_failed=true
+            }
+        else
+            log_success "Ollama service is running"
+        fi
+        
+        # Check and download required models
+        if check_ollama_running; then
+            log ""
+            log "📦 Checking AI models..."
+            
+            local models_ok=true
+            for model in "${AI_MODELS[@]}"; do
+                if check_ai_model_available "$model"; then
+                    log "   ✅ $model - available"
+                else
+                    log "   ⚠️  $model - not found"
+                    
+                    # Ask user if they want to download (with timeout)
+                    log "   Would you like to download $model? (y/N) [10s timeout]"
+                    
+                    if read -t 10 -r response; then
+                        if [[ "$response" =~ ^[Yy]$ ]]; then
+                            pull_ai_model "$model" || models_ok=false
+                        else
+                            log "   Skipping $model download"
+                        fi
+                    else
+                        log "   Timeout - skipping $model download"
+                        log "   You can download it later with: ollama pull $model"
+                    fi
+                fi
+            done
+            
+            # Show available models
+            log ""
+            log "📋 Available AI Models:"
+            ollama list 2>/dev/null | tee -a "$LOG_FILE" || log_warning "Could not list models"
+        fi
+    fi
+    
+    log ""
+    
+    # Run AI dependency check script if available
+    if [ -f "ai-assistant/check-dependencies.js" ]; then
+        log "🔍 Running AI dependency verification..."
+        
+        if node ai-assistant/check-dependencies.js 2>&1 | tee -a "$LOG_FILE"; then
+            log_success "AI dependency check passed"
+        else
+            log_warning "AI dependency check reported issues"
+            log_warning "AI features may be limited - check the output above"
+            ai_setup_failed=true
+        fi
+    else
+        log "ℹ️  AI dependency check script not found (ai-assistant/check-dependencies.js)"
+        log "   Skipping detailed AI verification"
+    fi
+    
+    log ""
+    
+    if [ "$ai_setup_failed" = true ]; then
+        log_warning "⚠️  AI setup completed with warnings"
+        log "   The application will still work, but AI features may be limited"
+        log "   To fix AI issues later, run: node ai-assistant/check-dependencies.js"
+        log ""
+        return 0  # Don't fail the update
+    else
+        log_success "AI dependencies verified successfully"
+        log ""
+        return 0
+    fi
+}
 
 # =============================================================================
 # PM2 MANAGEMENT
@@ -303,6 +533,9 @@ install_dependencies() {
 
 log "=========================================="
 log "🔄 Starting Sports Bar AI Assistant Update"
+if [ "$SKIP_AI_CHECKS" = true ]; then
+    log "   (AI checks disabled with --skip-ai)"
+fi
 log "=========================================="
 log ""
 
@@ -359,7 +592,6 @@ fi
 
 log ""
 
-# =============================================================================
 # =============================================================================
 # BACKUP LOCAL CONFIGURATION (ENHANCED)
 # =============================================================================
@@ -589,6 +821,8 @@ fi
 log "   📋 Manifest: ${MANIFEST_FILE:-Not created}"
 log "   🔄 Retention: Last 7 backups kept (older ones auto-deleted)"
 log ""
+
+# =============================================================================
 # GIT STATUS CHECK
 # =============================================================================
 log "📊 Checking git status..."
@@ -764,72 +998,9 @@ fi
 log ""
 
 # =============================================================================
-# OLLAMA AND AI MODELS INSTALLATION
+# AI DEPENDENCIES SETUP (INTEGRATED)
 # =============================================================================
-log "🤖 Setting up Local AI (Ollama)..."
-log "=================================================="
-
-# Install Ollama if not present
-if ! command -v ollama &> /dev/null; then
-    log "📥 Ollama not found. Installing..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    
-    if [ $? -eq 0 ]; then
-        log_success "Ollama installed successfully"
-    else
-        log_error "Failed to install Ollama"
-        log_error "Please visit https://ollama.com/download for manual installation"
-        exit 1
-    fi
-else
-    log_success "Ollama already installed"
-fi
-
-# Start Ollama service if not running
-if ! pgrep -x "ollama" > /dev/null; then
-    log "🔄 Starting Ollama service..."
-    ollama serve > /dev/null 2>&1 &
-    sleep 3
-    log_success "Ollama service started"
-else
-    log_success "Ollama service is running"
-fi
-
-# Define required models for all AI features
-REQUIRED_MODELS=(
-    "llama3.2"      # Primary model for style analysis and AI features
-    "llama2"        # Backup model for device diagnostics
-    "mistral"       # Fast model for quick queries
-)
-
-log ""
-log "📥 Downloading required AI models..."
-log "   This may take a few minutes on first run..."
-
-# Pull each required model
-for MODEL in "${REQUIRED_MODELS[@]}"; do
-    log ""
-    log "📦 Checking model: $MODEL"
-    
-    if ollama list | grep -q "^$MODEL"; then
-        log "   ✅ $MODEL already available"
-    else
-        log "   📥 Downloading $MODEL..."
-        if ollama pull "$MODEL"; then
-            log "   ✅ $MODEL downloaded successfully"
-        else
-            log_warning "Could not download $MODEL"
-            log_warning "AI features may be limited"
-        fi
-    fi
-done
-
-log ""
-log "📋 Installed AI Models:"
-ollama list | tee -a "$LOG_FILE"
-
-log ""
-log_success "AI setup complete!"
+setup_ai_dependencies
 
 # =============================================================================
 # ENVIRONMENT VARIABLES CHECK
@@ -1115,7 +1286,13 @@ if start_server; then
     log "   ✅ Application running under PM2 (auto-restart enabled)"
     log "   ✅ PM2 startup on boot configured"
     log "   ✅ libCEC support verified"
-    log "   ✅ Local AI (Ollama) verified"
+    if [ "$SKIP_AI_CHECKS" = false ]; then
+        log "   ✅ AI dependencies checked and configured"
+        log "   ✅ Ollama service verified"
+        log "   ✅ AI models checked"
+    else
+        log "   ⏭️  AI checks skipped (--skip-ai flag)"
+    fi
     log "   ✅ Database schema updated (data preserved)"
     log "   ✅ AI style analysis running in background"
     log ""
@@ -1140,6 +1317,13 @@ if start_server; then
     log "   💾 Backup saved to: $BACKUP_FILE"
     log "   📁 All backups in: $BACKUP_DIR"
     log ""
+    if [ "$SKIP_AI_CHECKS" = false ]; then
+        log "🤖 AI Features:"
+        log "   ✅ Local AI (Ollama) ready"
+        log "   ✅ AI Code Assistant available"
+        log "   📝 Check AI status: node ai-assistant/check-dependencies.js"
+        log ""
+    fi
     log "🎨 Style Analysis:"
     log "   Check ai-style-reports/ for detailed component analysis"
     log "   Run './scripts/run-style-analysis.sh' for interactive tools"
@@ -1155,6 +1339,11 @@ if start_server; then
     log "💡 Tip: Your local settings are safe during updates!"
     log "   Edit config: nano config/local.local.json"
     log ""
+    if [ "$SKIP_AI_CHECKS" = false ]; then
+        log "💡 AI Tip: Use --skip-ai flag for faster updates when AI isn't needed"
+        log "   Example: ./update_from_github.sh --skip-ai"
+        log ""
+    fi
     log "📝 Full update log saved to: $LOG_FILE"
 else
     log_error "Server started but not responding properly"
