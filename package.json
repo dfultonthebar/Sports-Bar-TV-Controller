@@ -12,7 +12,10 @@
     "cleanup-logs": "./scripts/cleanup-logs.sh",
     "force-db-fix": "tsx scripts/force_db_creation.ts",
     "build-knowledge-base": "tsx scripts/build-knowledge-base.ts",
-    "verify-ai": "tsx scripts/verify-ai-system.ts"
+    "verify-ai": "tsx scripts/verify-ai-system.ts",
+    "setup:ai": "node ai-assistant/setup.js",
+    "setup:ai:bash": "bash ai-assistant/setup.sh",
+    "check:ai": "node ai-assistant/check-dependencies.js"
   },
   "devDependencies": {
     "@prisma/client": "^6.16.2",

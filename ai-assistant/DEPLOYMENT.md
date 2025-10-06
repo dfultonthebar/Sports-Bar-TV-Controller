@@ -1,7 +1,67 @@
 
 # AI Code Assistant - Deployment Guide
 
-## Quick Start
+## Quick Start (Automated Setup)
+
+### One-Command Setup
+
+The fastest way to get started:
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run setup:ai
+```
+
+This automated setup script will:
+1. Detect your operating system
+2. Check Node.js version (requires 18+)
+3. Install Ollama if not present
+4. Start Ollama service
+5. Pull the DeepSeek Coder model
+6. Install npm dependencies
+7. Create required directories
+8. Run system readiness checks
+
+**Setup time:** 5-10 minutes (depending on internet speed for model download)
+
+### Verify Installation
+
+After setup completes, verify everything is working:
+
+```bash
+npm run check:ai
+```
+
+This will check:
+- Node.js version
+- Ollama installation and service status
+- AI model availability
+- npm dependencies
+- Directory structure
+- Model generation capability
+
+### Start the Application
+
+```bash
+# Development mode
+npm run dev
+
+# Production mode
+npm run build
+npm start
+```
+
+### Access the UI
+
+Open your browser and navigate to:
+- **Dashboard**: http://localhost:3000/ai-assistant
+- **API Status**: http://localhost:3000/api/ai-assistant/status
+
+---
+
+## Manual Setup (Advanced)
+
+If you prefer manual control or the automated setup fails:
 
 ### 1. Prerequisites Check
 
@@ -16,17 +76,21 @@ ollama --version
 curl http://localhost:11434/api/tags
 ```
 
-### 2. Install Dependencies
+### 2. Install Ollama
 
+**Linux:**
 ```bash
-cd ~/Sports-Bar-TV-Controller
-
-# Install required npm packages
-npm install uuid
-
-# Verify installation
-npm list uuid
+curl -fsSL https://ollama.com/install.sh | sh
 ```
+
+**macOS:**
+```bash
+brew install ollama
+# or download from https://ollama.com/download
+```
+
+**Windows:**
+Download from https://ollama.com/download
 
 ### 3. Start Ollama Service
 
@@ -41,17 +105,47 @@ pgrep -f "ollama serve"
 ollama list
 ```
 
-### 4. Initialize AI Assistant
+### 4. Pull AI Model
 
 ```bash
-# Create backup directory
+# Pull DeepSeek Coder model (~3.8GB)
+ollama pull deepseek-coder:6.7b
+
+# Verify model is available
+ollama list
+```
+
+### 5. Install Dependencies
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+
+# Install all npm packages
+npm install
+
+# Verify critical dependencies
+npm list uuid
+```
+
+### 6. Initialize AI Assistant
+
+```bash
+# Create required directories
 mkdir -p .ai-assistant/backups
+mkdir -p .ai-assistant/logs
 
 # Verify directory structure
 ls -la ai-assistant/
 ```
 
-### 5. Start the Application
+### 7. Verify Setup
+
+```bash
+# Run dependency check
+npm run check:ai
+```
+
+### 8. Start the Application
 
 ```bash
 # Development mode
@@ -61,12 +155,6 @@ npm run dev
 npm run build
 npm start
 ```
-
-### 6. Access the UI
-
-Open your browser and navigate to:
-- **Dashboard**: http://localhost:3000/ai-assistant
-- **API Status**: http://localhost:3000/api/ai-assistant/status
 
 ## Integration with Existing App
 
