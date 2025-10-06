@@ -192,7 +192,7 @@ export async function listDownloadedManuals(): Promise<Array<{ filename: string;
     await ensureManualsDirectory()
     
     const files = await fs.readdir(MANUALS_DIR)
-    const manuals = []
+    const manuals: Array<{ filename: string; size: number; path: string }> = []
     
     for (const file of files) {
       const filePath = path.join(MANUALS_DIR, file)
