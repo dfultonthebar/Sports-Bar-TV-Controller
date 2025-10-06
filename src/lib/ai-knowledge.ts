@@ -2,115 +2,113 @@
 import fs from 'fs';
 import path from 'path';
 
-export interface DocumentChunk {
-  source: string;
-  type: 'pdf' | 'markdown';
+interface DocumentChunk {
+  id: string;
   content: string;
-  title?: string;
-  section?: string;
-}
-
-export interface KnowledgeBase {
-  documents: DocumentChunk[];
-  lastUpdated: string;
-  stats: {
-    totalDocuments: number;
-    totalPDFs: number;
-    totalMarkdown: number;
-    totalCharacters: number;
+  source: string;
+  type: 'pdf' | 'markdown' | 'code';
+  metadata: {
+    filename: string;
+    path: string;
+    size: number;
+    lastModified: string;
   };
 }
 
-let knowledgeBaseCache: KnowledgeBase | null = null;
-let lastLoadTime: number = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+interface KnowledgeBase {
+  chunks: DocumentChunk[];
+  metadata: {
+    totalChunks: number;
+    totalFiles: number;
+    pdfCount: number;
+    markdownCount: number;
+    codeCount: number;
+    totalCharacters: number;
+    buildDate: string;
+  };
+}
+
+let cachedKnowledgeBase: KnowledgeBase | null = null;
+let cacheTimestamp: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export function loadKnowledgeBase(): KnowledgeBase {
   const now = Date.now();
   
   // Return cached version if still valid
-  if (knowledgeBaseCache && (now - lastLoadTime) < CACHE_DURATION) {
-    return knowledgeBaseCache;
+  if (cachedKnowledgeBase && (now - cacheTimestamp) < CACHE_TTL) {
+    return cachedKnowledgeBase;
   }
   
-  const knowledgeBasePath = path.join(process.cwd(), 'data', 'ai-knowledge-base.json');
+  const kbPath = path.join(process.cwd(), 'data', 'ai-knowledge-base.json');
   
-  try {
-    const data = fs.readFileSync(knowledgeBasePath, 'utf-8');
-    knowledgeBaseCache = JSON.parse(data);
-    lastLoadTime = now;
-    return knowledgeBaseCache!;
-  } catch (error) {
-    console.error('Error loading knowledge base:', error);
-    return {
-      documents: [] as any[],
-      lastUpdated: new Date().toISOString(),
-      stats: {
-        totalDocuments: 0,
-        totalPDFs: 0,
-        totalMarkdown: 0,
-        totalCharacters: 0
-      }
-    };
+  if (!fs.existsSync(kbPath)) {
+    throw new Error('Knowledge base not found. Please run: npm run build-knowledge-base');
   }
+  
+  const data = fs.readFileSync(kbPath, 'utf-8');
+  cachedKnowledgeBase = JSON.parse(data);
+  cacheTimestamp = now;
+  
+  return cachedKnowledgeBase;
 }
 
-export function searchKnowledgeBase(query: string, maxResults: number = 5): DocumentChunk[] {
+export function searchKnowledgeBase(query: string, limit: number = 10): DocumentChunk[] {
   const kb = loadKnowledgeBase();
   const queryLower = query.toLowerCase();
   const queryTerms = queryLower.split(/\s+/).filter(term => term.length > 2);
   
-  // Score each document based on relevance
-  const scoredDocs = kb.documents.map(doc => {
+  // Score each chunk based on relevance
+  const scoredChunks = kb.chunks.map(chunk => {
+    const contentLower = chunk.content.toLowerCase();
     let score = 0;
-    const contentLower = doc.content.toLowerCase();
-    const titleLower = (doc.title || '').toLowerCase();
-    const sourceLower = doc.source.toLowerCase();
     
-    // Count term matches
-    for (const term of queryTerms) {
-      // Title matches are worth more
-      if (titleLower.includes(term)) score += 5;
-      if (sourceLower.includes(term)) score += 3;
-      
-      // Count occurrences in content
-      const regex = new RegExp(term, 'gi');
-      const matches = contentLower.match(regex);
-      if (matches) {
-        score += matches.length;
-      }
+    // Exact phrase match gets highest score
+    if (contentLower.includes(queryLower)) {
+      score += 100;
     }
     
-    return { doc, score };
+    // Individual term matches
+    queryTerms.forEach(term => {
+      const matches = (contentLower.match(new RegExp(term, 'g')) || []).length;
+      score += matches * 10;
+    });
+    
+    // Boost for documentation over code
+    if (chunk.type === 'markdown' || chunk.type === 'pdf') {
+      score *= 1.5;
+    }
+    
+    return { chunk, score };
   });
   
   // Sort by score and return top results
-  return scoredDocs
+  return scoredChunks
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, maxResults)
-    .map(item => item.doc);
+    .slice(0, limit)
+    .map(item => item.chunk);
 }
 
-export function buildContextFromDocs(docs: DocumentChunk[]): string {
-  if (docs.length === 0) {
-    return '';
+export function getKnowledgeBaseStats() {
+  const kb = loadKnowledgeBase();
+  return kb.metadata;
+}
+
+export function buildContext(query: string, maxChunks: number = 5): string {
+  const relevantChunks = searchKnowledgeBase(query, maxChunks);
+  
+  if (relevantChunks.length === 0) {
+    return 'No relevant documentation found for this query.';
   }
   
-  let context = '\n\n=== SYSTEM DOCUMENTATION CONTEXT ===\n\n';
+  let context = 'Relevant documentation:\n\n';
   
-  docs.forEach((doc, index) => {
-    context += `[Document ${index + 1}: ${doc.title || doc.source}`;
-    if (doc.section) {
-      context += ` - ${doc.section}`;
-    }
-    context += ']\n';
-    context += doc.content;
-    context += '\n\n---\n\n';
+  relevantChunks.forEach((chunk, index) => {
+    context += `--- Document ${index + 1} (${chunk.metadata.filename}) ---\n`;
+    context += chunk.content;
+    context += '\n\n';
   });
-  
-  context += '=== END DOCUMENTATION CONTEXT ===\n\n';
-  context += 'Based on the above documentation, please provide an accurate and helpful response.\n\n';
   
   return context;
 }

@@ -1,57 +1,56 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { searchKnowledgeBase, buildContextFromDocs, loadKnowledgeBase } from '@/lib/ai-knowledge';
+import { searchKnowledgeBase, getKnowledgeBaseStats, buildContext } from '@/lib/ai-knowledge';
 
-// Get knowledge base stats
-export async function GET() {
+export async function POST(request: NextRequest) {
   try {
-    const kb = loadKnowledgeBase();
+    const body = await request.json();
+    const { query, limit = 10 } = body;
+    
+    if (!query) {
+      return NextResponse.json(
+        { error: 'Query parameter is required' },
+        { status: 400 }
+      );
+    }
+    
+    const results = searchKnowledgeBase(query, limit);
+    const context = buildContext(query, 5);
     
     return NextResponse.json({
-      stats: kb.stats,
-      lastUpdated: kb.lastUpdated,
-      documentSources: Array.from(new Set(kb.documents.map(d => d.source)))
+      success: true,
+      query,
+      results,
+      context,
+      count: results.length,
     });
-  } catch (error) {
-    console.error('Error getting knowledge base stats:', error);
+  } catch (error: any) {
+    console.error('Error querying knowledge base:', error);
     return NextResponse.json(
-      { error: 'Failed to load knowledge base' },
+      {
+        success: false,
+        error: error.message,
+      },
       { status: 500 }
     );
   }
 }
 
-// Search knowledge base
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { query, maxResults = 5 } = body;
-    
-    if (!query) {
-      return NextResponse.json(
-        { error: 'Query is required' },
-        { status: 400 }
-      );
-    }
-    
-    const relevantDocs = searchKnowledgeBase(query, maxResults);
-    const context = buildContextFromDocs(relevantDocs);
+    const stats = getKnowledgeBaseStats();
     
     return NextResponse.json({
-      query,
-      relevantDocuments: relevantDocs.length,
-      sources: relevantDocs.map(doc => ({
-        source: doc.source,
-        title: doc.title,
-        section: doc.section,
-        excerpt: doc.content.substring(0, 200) + '...'
-      })),
-      context
+      success: true,
+      stats,
     });
-  } catch (error) {
-    console.error('Error searching knowledge base:', error);
+  } catch (error: any) {
+    console.error('Error getting knowledge base stats:', error);
     return NextResponse.json(
-      { error: 'Failed to search knowledge base' },
+      {
+        success: false,
+        error: error.message,
+      },
       { status: 500 }
     );
   }
