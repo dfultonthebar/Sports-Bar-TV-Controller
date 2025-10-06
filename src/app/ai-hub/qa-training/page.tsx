@@ -22,9 +22,9 @@ interface QAEntry {
 interface QAStatistics {
   total: number;
   active: number;
-  byCategory: Array<{ category: string; _count: number }>;
-  bySourceType: Array<{ sourceType: string; _count: number }>;
-  topUsed: Array<{ id: string; question: string; usageCount: number; category: string }>;
+  byCategory?: Array<{ category: string; _count: number }>;
+  bySourceType?: Array<{ sourceType: string; _count: number }>;
+  topUsed?: Array<{ id: string; question: string; usageCount: number; category: string }>;
 }
 
 interface GenerationJob {
@@ -255,7 +255,7 @@ export default function QATrainingPage() {
             <div className="card p-6">
               <div>
                 <p className="text-slate-400 text-sm mb-2">By Category</p>
-                {statistics.byCategory && statistics.byCategory.length > 0 ? (
+                {statistics.byCategory && Array.isArray(statistics.byCategory) && statistics.byCategory.length > 0 ? (
                   statistics.byCategory.slice(0, 3).map((cat) => (
                     <div key={cat.category} className="flex justify-between text-sm mb-1">
                       <span className="text-slate-300">{cat.category}</span>
@@ -270,7 +270,7 @@ export default function QATrainingPage() {
             <div className="card p-6">
               <div>
                 <p className="text-slate-400 text-sm mb-2">By Source</p>
-                {statistics.bySourceType && statistics.bySourceType.length > 0 ? (
+                {statistics.bySourceType && Array.isArray(statistics.bySourceType) && statistics.bySourceType.length > 0 ? (
                   statistics.bySourceType.map((src) => (
                     <div key={src.sourceType} className="flex justify-between text-sm mb-1">
                       <span className="text-slate-300">{src.sourceType}</span>
