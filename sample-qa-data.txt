@@ -1,0 +1,45 @@
+
+Q: What is the Sports Bar TV Controller system?
+A: The Sports Bar TV Controller is an AI-powered management system for sports bars that controls TVs, audio systems, and streaming platforms. It integrates with Atlas Matrix switchers, Wolfpack Matrix systems, DirecTV receivers, Fire TV devices, and professional audio processors to provide centralized control of all AV equipment.
+
+Q: How do I configure a new TV in the system?
+A: To configure a new TV: 1) Go to the Matrix Configuration page, 2) Add a new Matrix Output with the TV's channel number, 3) Set the TV label (e.g., "Main Bar TV"), 4) Configure the resolution (1080p or 4K), 5) Optionally run CEC discovery to auto-detect the TV brand and model, 6) Save the configuration. The TV will now be available for routing and control.
+
+Q: What API endpoints are available for TV control?
+A: The system provides several API endpoints: /api/matrix/route for routing inputs to outputs, /api/matrix/scenes for managing preset scenes, /api/cec/power for TV power control, /api/cec/discovery for TV discovery, /api/audio/zones for audio zone control, and /api/scheduler for automated scheduling. All endpoints accept JSON payloads and return JSON responses.
+
+Q: How does the AI assistant help with troubleshooting?
+A: The AI assistant can analyze system logs, identify error patterns, suggest solutions for common issues, and provide step-by-step troubleshooting guidance. It has access to the complete system documentation and can answer questions about configuration, API usage, and system architecture. You can access it through the AI Hub page.
+
+Q: What is the difference between Atlas Matrix and Wolfpack Matrix?
+A: Atlas Matrix is the main HDMI matrix switcher (typically 32x32) that routes video sources to TVs throughout the venue. Wolfpack Matrix is a secondary 8x8 matrix that feeds into the Atlas Matrix, allowing for additional input sources. The Wolfpack outputs connect to Atlas inputs, creating a cascaded routing system for maximum flexibility.
+
+Q: How do I schedule automatic channel changes?
+A: Use the Smart Scheduler feature: 1) Navigate to the Scheduler page, 2) Create a new schedule entry, 3) Select the game or event you want to display, 4) Choose which TVs should show it, 5) Set the start time (or use auto-detection for live games), 6) The system will automatically route the correct input and tune to the right channel at the scheduled time.
+
+Q: What audio processors are supported?
+A: The system supports AtlasIED audio processors including AZM4, AZM8, AZMP4, and AZMP8 models. These provide zone-based audio control, source routing, volume management, and AI-powered input gain control for live audio sources like bands or DJs.
+
+Q: How does CEC TV discovery work?
+A: CEC (Consumer Electronics Control) discovery uses the HDMI-CEC protocol to automatically detect connected TVs. When you run discovery, the system sends CEC commands through the matrix switcher to query each TV for its brand, model, and capabilities. This information is stored and used for power control and other TV-specific features.
+
+Q: Can I control the system remotely?
+A: Yes, the system provides a web-based interface accessible from any device on your network. You can control TVs, audio zones, view schedules, and access the AI assistant from computers, tablets, or smartphones. For external access, you'll need to configure port forwarding or VPN access to your network.
+
+Q: What should I do if a TV isn't responding to commands?
+A: First, check the Matrix Configuration to ensure the TV is properly configured. Verify the output channel number matches the physical connection. Run CEC discovery to re-establish communication. Check that the TV supports CEC (may be called Anynet+, Bravia Sync, etc. depending on brand). Ensure the matrix switcher is powered on and connected. If issues persist, check the system logs in the AI Hub for specific error messages.
+
+Q: How do I add a new streaming device?
+A: To add a streaming device: 1) Physically connect it to an available Atlas Matrix input, 2) Go to Matrix Configuration, 3) Add or edit the Matrix Input for that channel, 4) Set the label (e.g., "Fire TV 1"), 5) Set the device type (Fire TV, Cable Box, DirecTV, etc.), 6) Save the configuration. The device is now available for routing to any TV.
+
+Q: What is the AI input gain control feature?
+A: AI input gain control automatically adjusts audio input levels for live sources like microphones or DJ equipment. It monitors the input signal level and intelligently adjusts the gain to maintain optimal audio levels, preventing both distortion from too-loud signals and inaudibility from too-quiet signals. It uses fast mode for quick adjustments and slow mode for fine-tuning.
+
+Q: How do I backup my system configuration?
+A: The system automatically backs up configuration data to the database. For manual backups, you can export configuration files from the Settings page. Important files include device configurations, channel presets, audio scenes, and scheduler entries. Store backups in a safe location and test restoration procedures periodically.
+
+Q: What sports APIs does the system integrate with?
+A: The system integrates with ESPN API for live scores and schedules, TheSportsDB for team information and logos, and supports NFL Sunday Ticket for NFL games. It can automatically detect live games, display scores, and schedule channel changes based on game times.
+
+Q: How do I create a custom scene?
+A: To create a scene: 1) Set up your desired routing configuration manually, 2) Go to the Scenes page, 3) Click "Save Current as Scene", 4) Give it a descriptive name (e.g., "Sunday Football Setup"), 5) The scene will save all current input-to-output routes. You can recall this scene anytime with one click to instantly restore that configuration.
