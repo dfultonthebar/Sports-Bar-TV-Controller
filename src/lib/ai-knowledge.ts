@@ -112,3 +112,21 @@ export function buildContext(query: string, maxChunks: number = 5): string {
   
   return context;
 }
+
+export function buildContextFromDocs(chunks: DocumentChunk[]): string {
+  if (chunks.length === 0) {
+    return 'No relevant documentation found for this query.';
+  }
+  
+  let context = '## Relevant Documentation:\n\n';
+  
+  chunks.forEach((chunk, index) => {
+    context += `### Document ${index + 1}: ${chunk.metadata.filename}\n`;
+    context += `Source: ${chunk.source}\n`;
+    context += `Type: ${chunk.type}\n\n`;
+    context += chunk.content;
+    context += '\n\n';
+  });
+  
+  return context;
+}
