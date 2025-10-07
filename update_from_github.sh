@@ -624,9 +624,11 @@ prompt_for_benchmark() {
     log "  q - Run quick benchmark (~5 minutes)"
     log "  N - Skip benchmark (default)"
     log ""
+    log "⏱️  Auto-skip in 10 seconds if no response..."
+    log ""
     
-    # Read user input with 15 second timeout
-    if read -t 15 -p "Run benchmark? (y/q/N): " response; then
+    # Read user input with 10 second timeout
+    if read -t 10 -p "Run benchmark? (y/q/N): " response; then
         case "$response" in
             [Yy]*)
                 RUN_BENCHMARK=true
@@ -645,7 +647,8 @@ prompt_for_benchmark() {
         esac
     else
         log ""
-        log "Timeout - skipping benchmark"
+        log "⏱️  No response within 10 seconds - automatically skipping benchmark"
+        log "   (You can run benchmark later with: ./update_from_github.sh --benchmark)"
         RUN_BENCHMARK=false
     fi
     
@@ -1110,6 +1113,22 @@ else
     log_success "Package files unchanged - skipping dependency installation"
     log "   (This saves time and prevents breaking working dependencies)"
 fi
+# =============================================================================
+# DATABASE MIGRATION (Fire Cube Integration)
+# =============================================================================
+log "🗄️  Running database migrations..."
+if npx prisma migrate deploy 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "Database migrations applied successfully"
+else
+    log_error "Failed to apply database migrations"
+    log_error "This may cause issues with Fire Cube integration"
+    log_error "Please check the error above and try running manually:"
+    log_error "   npx prisma migrate deploy"
+    exit 1
+fi
+
+log ""
+
 
 log ""
 
@@ -1129,6 +1148,30 @@ if ! command -v cec-client &> /dev/null; then
 else
     log_success "libCEC already installed"
 fi
+
+# =============================================================================
+# ADB INSTALLATION CHECK (Fire Cube Integration)
+# =============================================================================
+if ! command -v adb &> /dev/null; then
+    log "📱 Installing ADB (Android Debug Bridge) for Fire Cube support..."
+    if sudo -n apt-get update && sudo -n apt-get install -y adb; then
+        log_success "ADB installed successfully"
+        # Verify installation
+        if command -v adb &> /dev/null; then
+            log "   ADB version: $(adb --version | head -n 1)"
+        fi
+    else
+        log_error "Failed to install ADB"
+        log_error "Passwordless sudo is required. Please run: sudo visudo"
+        log_error "Add this line: $USER ALL=(ALL) NOPASSWD: ALL"
+        exit 1
+    fi
+else
+    log_success "ADB already installed"
+    log "   ADB version: $(adb --version | head -n 1)"
+fi
+
+log ""
 
 log ""
 
