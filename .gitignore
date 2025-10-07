@@ -60,6 +60,8 @@ next-env.d.ts
 # Database
 prisma/*.db
 prisma/*.db-journal
+data/*.db
+data/*.db-journal
 
 # User data files (subscriptions, credentials, device configs)
 data/*.json
@@ -90,3 +92,10 @@ FETCH_HEAD
 
 # Use npm only, ignore yarn
 yarn.lock
+
+# Build artifacts and temporary files
+benchmark-reports/
+next/
+*.tgz
+*.tar.gz
+!**/backups/*.tar.gz
