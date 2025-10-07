@@ -17,6 +17,7 @@ Complete guide for deploying the Sports Bar TV Controller in various environment
 8. [Maintenance](#maintenance)
 9. [Security](#security)
 10. [Performance Optimization](#performance-optimization)
+11. [Uninstall and Reinstall](#uninstall-and-reinstall)
 
 ---
 
@@ -1508,10 +1509,125 @@ cd ~/Sports-Bar-TV-Controller
 
 ---
 
+## 🗑️ Uninstall and Reinstall
+
+### Uninstalling the Application
+
+The Sports Bar TV Controller includes a comprehensive uninstall script that safely removes the application and optionally its dependencies.
+
+#### Quick Uninstall
+
+```bash
+# Interactive uninstall (asks for confirmation at each step)
+./uninstall.sh
+
+# Non-interactive uninstall (auto-confirms all prompts)
+./uninstall.sh --yes
+
+# One-line uninstall from GitHub
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/uninstall.sh | bash
+```
+
+#### Uninstall Options
+
+**Keep Dependencies (Faster Reinstall)**
+```bash
+# Keep Node.js and Ollama installed
+./uninstall.sh --yes --keep-nodejs --keep-ollama
+```
+
+**Backup Before Uninstall**
+```bash
+# Create backup of database, .env, knowledge base, and logs
+./uninstall.sh --backup --yes
+```
+
+**Dry Run (See What Would Be Removed)**
+```bash
+# Preview what will be removed without actually removing anything
+./uninstall.sh --dry-run
+```
+
+#### What Gets Removed
+
+1. **Services**
+   - PM2 processes
+   - Systemd service
+   - Ollama service (optional)
+
+2. **Application Files**
+   - Installation directory
+   - Database files
+   - Knowledge base
+   - Logs and temporary files
+
+3. **System Files**
+   - Systemd service files
+   - PM2 configuration
+   - Environment files
+
+4. **Dependencies** (optional)
+   - Node.js and npm
+   - Ollama and all models
+
+### Reinstalling the Application
+
+#### Quick Reinstall
+
+The fastest way to reinstall (keeps Node.js and Ollama):
+
+```bash
+# Local reinstall
+./install.sh --reinstall --force
+
+# One-line reinstall from GitHub
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash -s -- --reinstall --force
+```
+
+#### Interactive Reinstall
+
+For more control over the reinstall process:
+
+```bash
+# Interactive reinstall (asks for confirmation)
+./install.sh --reinstall
+```
+
+#### Reinstall Process
+
+1. Downloads uninstall script from GitHub
+2. Runs uninstall with appropriate flags
+3. Keeps Node.js and Ollama by default (faster)
+4. Proceeds with normal installation
+5. Rebuilds database and knowledge base
+6. Restarts services
+
+#### When to Reinstall
+
+- **Corrupted Installation:** Files are damaged or missing
+- **Configuration Issues:** Settings are misconfigured
+- **Update Problems:** Update failed or caused issues
+- **Clean Slate:** Want to start fresh with default settings
+- **Testing:** Need to test installation process
+
+### Detailed Uninstall Documentation
+
+For comprehensive uninstall documentation, including:
+- All command-line options and flags
+- Interactive vs non-interactive modes
+- Selective uninstall procedures
+- Backup and restore procedures
+- Troubleshooting uninstall issues
+
+See **[UNINSTALL_GUIDE.md](./UNINSTALL_GUIDE.md)** for complete details.
+
+---
+
 ## 📚 Additional Resources
 
 - **[README.md](./README.md)** - Quick start and overview
 - **[NUC_DEPLOYMENT.md](./NUC_DEPLOYMENT.md)** - Intel NUC-specific guide
+- **[UNINSTALL_GUIDE.md](./UNINSTALL_GUIDE.md)** - Uninstall and reinstall procedures
 - **[UPDATE_PROCESS.md](./UPDATE_PROCESS.md)** - Update procedures
 - **[BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)** - Backup and restore
 - **[ai-assistant/README.md](./ai-assistant/README.md)** - AI Code Assistant
