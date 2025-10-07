@@ -302,3 +302,45 @@ diff benchmark-reports/baseline-report-20251007-*.md benchmark-reports/baseline-
 ---
 
 **No more yarn headaches - just smooth updates!** 🎉
+
+## Uninstall
+
+To uninstall the Sports Bar TV Controller:
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+./uninstall.sh
+```
+
+For more options and detailed instructions, see [UNINSTALL_GUIDE.md](UNINSTALL_GUIDE.md).
+
+### Quick Uninstall Options
+
+```bash
+# Interactive uninstall (asks for confirmation)
+./uninstall.sh
+
+# Non-interactive uninstall
+./uninstall.sh --yes
+
+# Keep dependencies (Node.js and Ollama)
+./uninstall.sh --yes --keep-nodejs --keep-ollama
+
+# Backup before uninstall
+./uninstall.sh --backup --yes
+
+# See what would be removed (dry run)
+./uninstall.sh --dry-run
+```
+
+### Reinstall
+
+To reinstall the application:
+
+```bash
+# Quick reinstall (keeps dependencies)
+./install.sh --reinstall --force
+
+# Or one-line from GitHub
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash -s -- --reinstall --force
+```
