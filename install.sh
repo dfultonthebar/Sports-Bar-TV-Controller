@@ -778,27 +778,102 @@ build_application() {
 setup_pm2() {
     print_header "PHASE 7: Setting Up PM2 Process Manager"
     
-    # Install PM2 globally if not already installed
+    # Configure npm global prefix for user installation
+    local NPM_GLOBAL_DIR="$HOME/.npm-global"
+    
+    # Set npm prefix if not already set
+    if [ "$(npm config get prefix)" != "$NPM_GLOBAL_DIR" ]; then
+        log_and_print "Configuring npm global prefix..."
+        npm config set prefix "$NPM_GLOBAL_DIR"
+    fi
+    
+    # Ensure npm global bin is in PATH for current session
+    if [[ ":$PATH:" != *":$NPM_GLOBAL_DIR/bin:"* ]]; then
+        export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
+        log_and_print "Added npm global bin to PATH"
+    fi
+    
+    # Add to .profile for persistence (if not already there)
+    if [ -f "$HOME/.profile" ]; then
+        if ! grep -q "\.npm-global/bin" "$HOME/.profile" 2>/dev/null; then
+            echo '' >> "$HOME/.profile"
+            echo '# npm global packages' >> "$HOME/.profile"
+            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.profile"
+            log_and_print "Added npm global bin to .profile"
+        fi
+    fi
+    
+    # Clean up duplicate entries in .bashrc (if they exist)
+    if [ -f "$HOME/.bashrc" ]; then
+        local bashrc_backup="$HOME/.bashrc.backup-$(date +%Y%m%d-%H%M%S)"
+        if grep -c "\.npm-global/bin" "$HOME/.bashrc" 2>/dev/null | grep -q "[2-9]"; then
+            log_and_print "Cleaning up duplicate PATH entries in .bashrc..."
+            cp "$HOME/.bashrc" "$bashrc_backup"
+            # Remove all npm-global PATH entries
+            sed -i '/\.npm-global\/bin/d' "$HOME/.bashrc"
+            # Add single entry
+            echo '' >> "$HOME/.bashrc"
+            echo '# npm global packages' >> "$HOME/.bashrc"
+            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
+            log_and_print "Cleaned up .bashrc (backup: $bashrc_backup)"
+        elif ! grep -q "\.npm-global/bin" "$HOME/.bashrc" 2>/dev/null; then
+            echo '' >> "$HOME/.bashrc"
+            echo '# npm global packages' >> "$HOME/.bashrc"
+            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
+            log_and_print "Added npm global bin to .bashrc"
+        fi
+    fi
+    
+    # Install PM2 globally (user installation, not sudo)
     if ! check_command pm2; then
         log_and_print "Installing PM2..."
-        sudo npm install -g pm2 >> "$LOG_FILE" 2>&1
+        npm install -g pm2 >> "$LOG_FILE" 2>&1
+        
+        # Verify installation
+        if ! check_command pm2; then
+            print_error "PM2 installation failed"
+            print_error "PM2 should be at: $NPM_GLOBAL_DIR/bin/pm2"
+            exit 1
+        fi
+        
+        log_and_print "PM2 installed successfully: $(pm2 --version)"
+    else
+        log_and_print "PM2 already installed: $(pm2 --version)"
     fi
     
     cd "$INSTALL_DIR"
     
-    # Stop any existing PM2 processes
-    pm2 stop all >> "$LOG_FILE" 2>&1 || true
-    pm2 delete all >> "$LOG_FILE" 2>&1 || true
+    # Stop any existing PM2 processes for this app
+    if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME"; then
+        log_and_print "Stopping existing PM2 process..."
+        pm2 stop "$SERVICE_NAME" >> "$LOG_FILE" 2>&1 || true
+        pm2 delete "$SERVICE_NAME" >> "$LOG_FILE" 2>&1 || true
+    fi
     
     # Start application with PM2
     log_and_print "Starting application with PM2..."
     pm2 start npm --name "$SERVICE_NAME" -- start >> "$LOG_FILE" 2>&1
     
+    # Wait for app to start
+    sleep 3
+    
+    # Verify app is running
+    if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME.*online"; then
+        log_and_print "Application started successfully"
+    else
+        print_warning "Application may not have started correctly"
+        print_warning "Check PM2 logs: pm2 logs $SERVICE_NAME"
+    fi
+    
     # Save PM2 configuration
     pm2 save >> "$LOG_FILE" 2>&1
     
-    # Setup PM2 startup script
-    pm2 startup >> "$LOG_FILE" 2>&1 || true
+    # Setup PM2 startup script (requires sudo, but optional)
+    log_and_print "Configuring PM2 startup..."
+    if pm2 startup 2>&1 | tee -a "$LOG_FILE" | grep -q "sudo"; then
+        print_warning "PM2 startup requires sudo to configure auto-start on boot"
+        print_warning "Run the command shown above to enable auto-start"
+    fi
     
     print_success "PM2 configured and application started"
 }
@@ -875,6 +950,12 @@ print_final_instructions() {
     echo -e "  Restart app: ${YELLOW}pm2 restart $SERVICE_NAME${NC}"
     echo -e "  Stop app: ${YELLOW}pm2 stop $SERVICE_NAME${NC}"
     echo -e "  App status: ${YELLOW}pm2 status${NC}"
+    echo ""
+    
+    echo -e "${CYAN}Important Notes:${NC}"
+    echo -e "  • PM2 is installed in: ${YELLOW}$HOME/.npm-global/bin${NC}"
+    echo -e "  • If 'pm2' command not found, run: ${YELLOW}source ~/.profile${NC}"
+    echo -e "  • Or log out and log back in to refresh your PATH"
     echo ""
     
     echo -e "${CYAN}Uninstall:${NC}"
