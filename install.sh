@@ -343,6 +343,12 @@ install_nodejs() {
 # Ollama is installed as part of Phase 1 because it's a system-level service
 # that the application will depend on. Installing it early ensures the service
 # is ready before application configuration.
+#
+# Required AI Models:
+# - llama3.2:3b  : Primary model for enhanced chat, tool chat, and log analysis
+# - phi3:mini    : Lightweight model for general chat interface
+# - llama2       : Backup model for device diagnostics
+# - mistral      : Fast model for quick queries
 #############################################################################
 
 install_ollama() {
@@ -363,24 +369,157 @@ install_ollama() {
     
     # Wait for Ollama to be ready
     print_info "Waiting for Ollama to be ready..."
-    sleep 5
-    
-    # Pull required models
-    print_info "Pulling required AI models (this may take a while)..."
-    
-    log_and_print "Pulling llama3.2:3b model..."
-    ollama pull llama3.2:3b >> "$LOG_FILE" 2>&1 &
-    local pull_pid=$!
-    
-    # Show progress
-    while kill -0 $pull_pid 2>/dev/null; do
-        echo -n "."
+    local max_wait=30
+    local waited=0
+    while ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do
+        if [ $waited -ge $max_wait ]; then
+            print_error "Ollama service failed to start within ${max_wait}s"
+            return 1
+        fi
         sleep 2
+        waited=$((waited + 2))
     done
+    print_success "Ollama service is ready"
+    
+    # Download all required AI models
+    download_ollama_models
+}
+
+#############################################################################
+# Download Required Ollama Models
+#############################################################################
+# This function downloads all AI models required by the application.
+# Models are pulled sequentially to avoid resource contention and ensure
+# reliable downloads. Each model is verified after download.
+#
+# The function includes:
+# - Progress indicators for each model
+# - Retry logic for network failures
+# - Verification of successful downloads
+# - Clear error messages and troubleshooting guidance
+#############################################################################
+
+download_ollama_models() {
+    print_header "Downloading Required AI Models"
+    
+    # Define all required models with descriptions
+    # Format: "model_name:tag|description"
+    local REQUIRED_MODELS=(
+        "llama3.2:3b|Primary model for enhanced chat, tool chat, and log analysis"
+        "phi3:mini|Lightweight model for general chat interface"
+        "llama2|Backup model for device diagnostics"
+        "mistral|Fast model for quick queries"
+    )
+    
+    local total_models=${#REQUIRED_MODELS[@]}
+    local current_model=0
+    local failed_models=()
+    
+    print_info "Downloading ${total_models} AI models (this may take 10-30 minutes depending on your connection)..."
     echo ""
     
-    wait $pull_pid
-    print_success "AI models installed"
+    # Pull each model sequentially
+    for model_entry in "${REQUIRED_MODELS[@]}"; do
+        current_model=$((current_model + 1))
+        
+        # Parse model name and description
+        local model_name="${model_entry%%|*}"
+        local model_desc="${model_entry##*|}"
+        
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}Model ${current_model} of ${total_models}: ${model_name}${NC}"
+        echo -e "${CYAN}Purpose: ${model_desc}${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        
+        # Check if model is already installed
+        if ollama list | grep -q "^${model_name}"; then
+            print_success "Model ${model_name} is already installed"
+            echo ""
+            continue
+        fi
+        
+        # Try to pull the model with retry logic
+        local max_retries=3
+        local retry_count=0
+        local pull_success=false
+        
+        while [ $retry_count -lt $max_retries ]; do
+            if [ $retry_count -gt 0 ]; then
+                print_warning "Retry attempt ${retry_count} of $((max_retries - 1)) for ${model_name}..."
+            fi
+            
+            print_info "Downloading ${model_name}... (this may take several minutes)"
+            
+            # Pull model and capture output
+            if ollama pull "$model_name" >> "$LOG_FILE" 2>&1; then
+                pull_success=true
+                break
+            else
+                retry_count=$((retry_count + 1))
+                if [ $retry_count -lt $max_retries ]; then
+                    print_warning "Download failed, waiting 5 seconds before retry..."
+                    sleep 5
+                fi
+            fi
+        done
+        
+        # Verify the model was successfully downloaded
+        if [ "$pull_success" = true ]; then
+            if ollama list | grep -q "^${model_name}"; then
+                print_success "Model ${model_name} downloaded and verified successfully"
+            else
+                print_error "Model ${model_name} download reported success but verification failed"
+                failed_models+=("$model_name")
+            fi
+        else
+            print_error "Failed to download ${model_name} after ${max_retries} attempts"
+            failed_models+=("$model_name")
+        fi
+        
+        echo ""
+    done
+    
+    # Display summary of installed models
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    print_header "AI Models Installation Summary"
+    echo ""
+    print_info "Installed AI Models:"
+    ollama list
+    echo ""
+    
+    # Check for failures and provide guidance
+    if [ ${#failed_models[@]} -gt 0 ]; then
+        print_warning "Some models failed to download:"
+        for failed_model in "${failed_models[@]}"; do
+            echo -e "  ${RED}✗${NC} $failed_model"
+        done
+        echo ""
+        print_warning "The application will still work, but some AI features may be limited."
+        echo ""
+        print_info "Troubleshooting steps:"
+        echo "  1. Check your internet connection"
+        echo "  2. Verify Ollama service is running: sudo systemctl status ollama"
+        echo "  3. Check available disk space: df -h"
+        echo "  4. Try manually pulling models later: ollama pull <model-name>"
+        echo "  5. View detailed logs: tail -f $LOG_FILE"
+        echo ""
+        print_info "You can continue with the installation. Failed models can be downloaded later."
+        echo ""
+        
+        # Don't fail the installation, just warn
+        return 0
+    else
+        print_success "All required AI models downloaded successfully!"
+        echo ""
+        print_info "AI Features Ready:"
+        echo "  ✓ Enhanced Chat (llama3.2:3b)"
+        echo "  ✓ Tool Chat (llama3.2:3b)"
+        echo "  ✓ Log Analysis (llama3.2:3b)"
+        echo "  ✓ General Chat (phi3:mini)"
+        echo "  ✓ Device Diagnostics (llama2)"
+        echo "  ✓ Quick Queries (mistral)"
+        echo ""
+    fi
 }
 
 #############################################################################
