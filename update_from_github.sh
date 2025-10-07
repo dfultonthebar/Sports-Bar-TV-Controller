@@ -624,9 +624,11 @@ prompt_for_benchmark() {
     log "  q - Run quick benchmark (~5 minutes)"
     log "  N - Skip benchmark (default)"
     log ""
+    log "⏱️  Auto-skip in 10 seconds if no response..."
+    log ""
     
-    # Read user input with 15 second timeout
-    if read -t 15 -p "Run benchmark? (y/q/N): " response; then
+    # Read user input with 10 second timeout
+    if read -t 10 -p "Run benchmark? (y/q/N): " response; then
         case "$response" in
             [Yy]*)
                 RUN_BENCHMARK=true
@@ -645,7 +647,8 @@ prompt_for_benchmark() {
         esac
     else
         log ""
-        log "Timeout - skipping benchmark"
+        log "⏱️  No response within 10 seconds - automatically skipping benchmark"
+        log "   (You can run benchmark later with: ./update_from_github.sh --benchmark)"
         RUN_BENCHMARK=false
     fi
     
