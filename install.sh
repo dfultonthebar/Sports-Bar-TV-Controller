@@ -72,7 +72,7 @@ if [[ "$INSTALL_DIR" == /opt/* ]] || [[ "$INSTALL_DIR" == /usr/* ]]; then
     SERVICE_USER="${SERVICE_USER:-sportsbar}"
 else
     USE_SERVICE_USER=false
-    SERVICE_USER="$USER"
+    SERVICE_USER="${USER:-$(whoami)}"
 fi
 
 #############################################################################
@@ -168,7 +168,7 @@ check_root() {
         fi
         IS_ROOT=true
     else
-        print_info "Running as non-root user: $USER"
+        print_info "Running as non-root user: ${USER:-$(whoami)}"
         IS_ROOT=false
         
         if ! check_command sudo; then
