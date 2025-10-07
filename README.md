@@ -3,90 +3,196 @@
 
 AI-powered assistant for sports bar AV system management, troubleshooting, and matrix control.
 
-## 🚀 Quick Installation
+---
 
-Get started with a single command! This one-line installer will automatically set up everything you need:
+## 🚀 **Quick Start - One-Line Installer**
+
+Get your Sports Bar TV Controller up and running in minutes with our automated installer:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
 ```
 
-### Installation Location
+**That's it!** The installer handles everything automatically:
+- ✅ Node.js v22 installation
+- ✅ Ollama AI platform with 4 optimized models
+- ✅ SQLite database setup and migration
+- ✅ Knowledge base building (2,700+ AI training chunks)
+- ✅ Application build and deployment
+- ✅ Optional systemd service configuration
 
-**By default, the application installs to your home directory:**
-- Installation path: `$HOME/Sports-Bar-TV-Controller`
-- Runs as your current user (no separate service user needed)
-- Simple permissions - no sudo required for most operations
+**Installation Time:** 5-10 minutes (depending on internet speed)
 
-**For custom installation location:**
+**Access your application at:** http://localhost:3000
+
+---
+
+## 📋 **System Requirements**
+
+### Minimum Requirements
+- **Operating System:** Ubuntu 20.04+ or Debian 11+ (64-bit)
+- **CPU:** 2 cores (4+ recommended for AI features)
+- **RAM:** 4GB (8GB+ recommended for AI features)
+- **Disk Space:** 10GB free (20GB+ recommended)
+- **Network:** Active internet connection for installation
+
+### Recommended for Production
+- **CPU:** Intel NUC13ANHi5 or equivalent (4+ cores)
+- **RAM:** 16GB+ for optimal AI performance
+- **Disk:** SSD with 50GB+ free space
+- **Network:** Gigabit Ethernet
+
+### Supported Hardware
+- **Matrix Switchers:** Wolf Pack HDMI matrices
+- **IR Control:** Global Cache iTach IP2IR (cable boxes, DirecTV, Fire TV)
+- **Audio Processors:** AtlasIED Atmosphere (AZM4/AZM8)
+- **CEC Control:** Pulse-Eight USB CEC Adapter for TV power control
+- **TVs:** Any HDMI-CEC capable displays
+
+---
+
+## 🎯 **Installation Options**
+
+### Default Installation (Home Directory)
+Installs to `$HOME/Sports-Bar-TV-Controller` with your user permissions:
+
 ```bash
-# Install to a specific directory
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+```
+
+**Benefits:**
+- No sudo required for most operations
+- Simple permissions management
+- Easy to update and maintain
+- Runs as your current user
+
+### Custom Installation Directory
+Install to any location you prefer:
+
+```bash
+# Install to custom directory
 curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/custom/path bash
 
 # System-wide installation (creates service user)
 curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/opt/sportsbar bash
 ```
 
-### Prerequisites
-- **Operating System**: Ubuntu 20.04+ or Debian 11+ (64-bit)
-- **User Access**: sudo privileges recommended (but not required for home directory install)
-- **Network**: Active internet connection
-- **Disk Space**: At least 2GB free space
+### Skip Ollama Installation
+If you already have Ollama installed:
 
-### What Gets Installed
-The installer automatically handles:
-- ✅ Node.js 20.x (via NodeSource repository)
-- ✅ SQLite database (no separate database server needed)
-- ✅ All project dependencies
-- ✅ System service configuration (optional, requires sudo)
-- ✅ Automatic startup on boot (optional)
-
-### After Installation
-Once complete, access your application at:
-- **Local**: http://localhost:3000
-- **Network**: http://[your-server-ip]:3000
-
-**If systemd service was configured:**
 ```bash
-sudo systemctl status sportsbar-assistant    # Check status
-sudo systemctl restart sportsbar-assistant   # Restart service
-sudo systemctl stop sportsbar-assistant      # Stop service
-sudo systemctl start sportsbar-assistant     # Start service
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | SKIP_OLLAMA=true bash
 ```
 
-**If running manually (no systemd service):**
+### Specify Branch
+Install from a specific branch:
+
 ```bash
-cd ~/Sports-Bar-TV-Controller
-npm start                          # Start in production mode
-# or
-npm run dev                        # Start in development mode
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | REPO_BRANCH=develop bash
 ```
 
 ---
 
-## ✅ **YARN ISSUES PERMANENTLY FIXED!**
+## 📦 **What Gets Installed**
 
-**No more yarn configuration conflicts!** This project now uses npm consistently.
+### Core Components
+1. **Node.js v22.x** - Latest LTS version via NodeSource repository
+2. **SQLite Database** - Lightweight, embedded database (no separate server needed)
+3. **Application Dependencies** - All npm packages automatically installed
+4. **Ollama AI Platform** - Local AI inference engine
+5. **AI Models** (4 models, ~15GB total):
+   - `llama3.2:latest` - General purpose AI (2GB)
+   - `llama2:latest` - Fallback model (3.8GB)
+   - `mistral:latest` - Fast responses (4.1GB)
+   - `phi3:mini` - Lightweight model (2.3GB)
 
-## 🔄 **Updating from GitHub (Recommended)**
+### AI Features
+- **Knowledge Base:** 2,700+ training chunks from documentation
+- **Q&A Generation:** Automatic question-answer pairs for troubleshooting
+- **Code Analysis:** AI-powered code review and improvements
+- **Chatbot Streaming:** Real-time AI responses
+- **Tool Integration:** File system access and code execution
 
-Use the automated update script to pull latest changes without any yarn issues:
+### Optional Components
+- **Systemd Service** - Automatic startup on boot (requires sudo)
+- **libCEC Drivers** - For HDMI-CEC TV control via Pulse-Eight adapter
+
+---
+
+## ✅ **Post-Installation**
+
+### Verify Installation
+
+```bash
+# Check application status
+curl http://localhost:3000
+
+# Check AI system
+curl http://localhost:3000/api/ai/status
+
+# Check Ollama models
+ollama list
+```
+
+### Access the Application
+
+- **Local Access:** http://localhost:3000
+- **Network Access:** http://[your-server-ip]:3000
+
+### Default Pages
+- **Home:** Dashboard and quick actions
+- **AI Hub:** Chat with AI assistant
+- **Matrix Control:** HDMI matrix switching
+- **Device Config:** Configure TVs, audio, and IR devices
+- **CEC Discovery:** Detect and control HDMI-CEC devices
+
+### Managing the Service
+
+**If systemd service was configured:**
+
+```bash
+# Check status
+sudo systemctl status sportsbar-assistant
+
+# Start/Stop/Restart
+sudo systemctl start sportsbar-assistant
+sudo systemctl stop sportsbar-assistant
+sudo systemctl restart sportsbar-assistant
+
+# View logs
+sudo journalctl -u sportsbar-assistant -f
+```
+
+**If running manually:**
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm start                    # Production mode
+# or
+npm run dev                  # Development mode with hot reload
+```
+
+---
+
+## 🔄 **Updating Your Installation**
+
+### Automated Update (Recommended)
+
+Use the built-in update script that handles everything safely:
 
 ```bash
 cd ~/Sports-Bar-TV-Controller
 ./update_from_github.sh
 ```
 
-**Note:** If you installed to a custom location, replace `~/Sports-Bar-TV-Controller` with your installation directory.
-
-This script automatically:
-- **Creates automatic backup** of all your settings
-- Stops running processes
-- Pulls latest changes from GitHub  
-- Installs dependencies with npm (no yarn conflicts)
-- Updates database schema if needed
-- Rebuilds and restarts the application
-- **Optionally runs system benchmark** to track performance
+**The update script automatically:**
+- ✅ Creates backup of your settings and database
+- ✅ Stops running processes
+- ✅ Pulls latest changes from GitHub
+- ✅ Installs new dependencies
+- ✅ Updates database schema
+- ✅ Rebuilds the application
+- ✅ Restarts services
 
 ### Update Options
 
@@ -104,79 +210,7 @@ This script automatically:
 ./update_from_github.sh --benchmark-quick
 ```
 
-### 📊 System Benchmarking
-
-Track your system's performance over time with built-in benchmarking:
-
-**During Updates:**
-- The update script will prompt you to run a benchmark (optional)
-- Choose full benchmark (~15-20 min) or quick benchmark (~5 min)
-- Results are saved to `benchmark-reports/` directory
-
-**Manual Benchmarking:**
-```bash
-# Full benchmark
-./scripts/system-benchmark.sh
-
-# Quick benchmark
-./scripts/system-benchmark.sh --quick
-```
-
-**What's Measured:**
-- Hardware specifications (CPU, RAM, disk, GPU, network)
-- CPU performance (single-core, multi-core)
-- Disk I/O (sequential, random read/write)
-- Memory bandwidth
-- PostgreSQL performance
-- Ollama AI response times
-- Next.js application response times
-- System health (temperature, load, processes)
-
-**Use Cases:**
-- Establish baseline before hardware upgrades
-- Track performance degradation over time
-- Compare systems (old vs new hardware)
-- Monitor impact of software updates
-- Troubleshoot performance issues
-
-### ❓ Do My Settings Persist After Updates?
-
-**YES!** Your configurations persist automatically. The database file (`prisma/dev.db`) is protected by `.gitignore` and never overwritten by updates.
-
-**You do NOT need to manually restore settings after normal updates.**
-
-📖 **For complete details, see:** [UPDATE_PROCESS.md](./UPDATE_PROCESS.md)
-
-### 🛡️ Backup & Restore
-
-Automatic backups are created before every update as a safety net. You only need to restore if:
-- A migration fails and corrupts the database (rare)
-- You accidentally delete important configurations
-- You want to rollback after an update
-
-📖 **For restore procedures, see:** [BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)
-
-## 🚀 **Fresh Installation**
-
-For a completely clean installation:
-
-```bash
-cd ~
-./fresh_install.sh
-```
-
-## 🔧 **One-time Yarn Fix (If Needed)**
-
-If you're updating from an old installation that still has yarn issues:
-
-```bash
-cd ~/Sports-Bar-TV-Controller
-./permanent_fix_yarn.sh
-```
-
-This converts your existing installation to use npm permanently.
-
-## 📋 **Manual Update Process**
+### Manual Update
 
 If you prefer manual control:
 
@@ -190,107 +224,226 @@ npm run build
 npm start
 ```
 
-## 🌐 **Access Your Application**
+### Settings Persistence
 
-After installation/update, access at:
-- Local: http://localhost:3000
-- Network: http://[your-ip]:3000
+**Your settings are automatically preserved!** The database file (`prisma/data/sports_bar.db`) is protected by `.gitignore` and never overwritten by updates.
 
-## 📁 **Project Structure**
+You do NOT need to manually restore settings after normal updates.
 
-- `src/app/` - Next.js application pages and components
-- `prisma/` - Database schema and migrations
-- `lib/` - Utility functions and configurations
-- `components/` - Reusable UI components
-- `scripts/` - Utility scripts including system benchmark
-- `benchmark-reports/` - System benchmark results and comparisons
+📖 **For complete update details, see:** [UPDATE_PROCESS.md](./UPDATE_PROCESS.md)
 
-## 🔑 **Features**
+---
 
-- AI-powered chat for AV troubleshooting
-- Document upload and analysis
-- API key management for multiple AI providers
-- Matrix control system integration
-- System enhancement tools
-- Wolf Pack matrix control
-- **System Performance Benchmarking** (NEW!)
-  - Track performance over time
-  - Compare before/after hardware upgrades
-  - Quick and full benchmark modes
-  - Detailed reports in Markdown and JSON formats
-- **HDMI-CEC control for TVs via Pulse-Eight USB CEC Adapter**
-  - Power control (on/standby) for individual TVs or broadcast to all
-  - Device discovery and monitoring
-- **🤖 AI Code Assistant**
-  - Local AI-powered code analysis and improvements
-  - Automated dependency management with one-command setup
-  - Risk-based change approval system
-  - Automatic backups and PR creation
-  - See [ai-assistant/README.md](./ai-assistant/README.md) for details
+## 🛠️ **Troubleshooting**
 
-## 🤖 **AI Code Assistant - Quick Setup**
+### Installation Issues
 
-Get started with the AI Code Assistant in one command:
+#### Problem: Installation fails with "USER: unbound variable"
+**Solution:** This is fixed in the latest version. Re-run the installer:
+```bash
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+```
+
+#### Problem: Node.js installation fails
+**Solution:** Manually install Node.js v22:
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+#### Problem: Ollama models fail to download
+**Solution:** Download models manually:
+```bash
+ollama pull llama3.2:latest
+ollama pull llama2:latest
+ollama pull mistral:latest
+ollama pull phi3:mini
+```
+
+#### Problem: Permission denied errors
+**Solution:** Fix directory permissions:
+```bash
+sudo chown -R $USER:$USER ~/Sports-Bar-TV-Controller
+chmod -R 755 ~/Sports-Bar-TV-Controller
+```
+
+### Runtime Issues
+
+#### Problem: Application won't start
+**Solution:** Check logs and restart:
+```bash
+# Check for errors
+cd ~/Sports-Bar-TV-Controller
+npm run build
+
+# Check port availability
+sudo lsof -i :3000
+
+# Restart application
+npm start
+```
+
+#### Problem: AI features not working
+**Solution:** Verify Ollama and knowledge base:
+```bash
+# Check Ollama status
+systemctl status ollama
+
+# Verify models
+ollama list
+
+# Rebuild knowledge base
+cd ~/Sports-Bar-TV-Controller
+npm run build:kb
+```
+
+#### Problem: Database errors
+**Solution:** Reset and migrate database:
+```bash
+cd ~/Sports-Bar-TV-Controller
+npx prisma db push --force-reset
+npm run build:kb
+```
+
+#### Problem: Port 3000 already in use
+**Solution:** Change port or kill existing process:
+```bash
+# Find process using port 3000
+sudo lsof -i :3000
+
+# Kill process (replace PID)
+kill -9 <PID>
+
+# Or change port in .env
+echo "PORT=3001" >> .env
+```
+
+### Checking Logs
+
+```bash
+# Application logs
+cd ~/Sports-Bar-TV-Controller
+tail -f logs/app.log
+
+# Systemd service logs
+sudo journalctl -u sportsbar-assistant -f
+
+# Ollama logs
+sudo journalctl -u ollama -f
+
+# Installation logs
+ls -lt /tmp/sportsbar-install-*.log | head -1
+```
+
+### Rebuilding Knowledge Base
+
+If AI responses are poor or outdated:
 
 ```bash
 cd ~/Sports-Bar-TV-Controller
-npm run setup:ai
+npm run build:kb
 ```
 
-This will automatically:
-- ✓ Install Ollama (if needed)
-- ✓ Pull the DeepSeek Coder AI model
-- ✓ Configure all dependencies
-- ✓ Verify system readiness
+This rebuilds the AI knowledge base from all documentation files.
 
-**Check if everything is ready:**
-```bash
-npm run check:ai
-```
+### Complete Reinstall
 
-**Access the AI Assistant:**
-- Dashboard: http://localhost:3000/ai-assistant
-
-For more details, see [ai-assistant/README.md](./ai-assistant/README.md)
-  - Integrated with matrix input selection
-  - Automatic driver installation (libCEC)
-
-## 🛠️ **Development**
+If all else fails, perform a fresh installation:
 
 ```bash
-npm run dev    # Start development server
-npm run build  # Build for production
-npm start      # Start production server
+# Backup your database
+cp ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db ~/sports_bar.db.backup
+
+# Remove old installation
+rm -rf ~/Sports-Bar-TV-Controller
+
+# Fresh install
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+
+# Restore database (optional)
+cp ~/sports_bar.db.backup ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
 ```
 
-## 🔌 **Hardware Requirements**
+---
 
-### HDMI-CEC Control
-For TV power control via HDMI-CEC, you'll need:
-- **Pulse-Eight USB CEC Adapter** connected to your server
-- HDMI connection from the server to your matrix switcher
-- TVs that support HDMI-CEC (most modern TVs)
+## 🎯 **Key Features**
 
-The installation script automatically installs **libCEC** drivers. Just plug in your Pulse-Eight adapter and the system will detect it!
+### AI-Powered Assistant
+- **Natural Language Chat:** Ask questions about your AV system
+- **Troubleshooting:** Get instant help with technical issues
+- **Documentation Search:** AI searches through all manuals and guides
+- **Code Analysis:** Automated code review and improvements
+- **Streaming Responses:** Real-time AI chat with typing indicators
 
-### Supported Hardware
-- **Matrix Switchers**: Wolf Pack HDMI matrices
-- **IR Control**: Global Cache iTach IP2IR (for cable boxes, DirecTV, Fire TV)
-- **Audio Processors**: AtlasIED Atmosphere (AZM4/AZM8)
-- **TVs**: Any HDMI-CEC capable displays
+### Matrix Control
+- **HDMI Switching:** Control Wolf Pack matrix switchers
+- **Input Selection:** Route any source to any display
+- **Preset Management:** Save and recall favorite configurations
+- **Bulk Operations:** Control multiple displays simultaneously
 
-## 📦 **Package Manager**
+### Device Management
+- **TV Control:** HDMI-CEC power control via Pulse-Eight adapter
+- **IR Control:** Cable boxes, DirecTV, Fire TV via Global Cache
+- **Audio Processing:** AtlasIED Atmosphere zone control
+- **Device Discovery:** Automatic detection of HDMI-CEC devices
 
-This project uses **npm** exclusively to avoid yarn version conflicts. All scripts and documentation assume npm usage.
+### Automation & Scheduling
+- **Channel Presets:** Pre-configure channels for quick access
+- **Scheduled Events:** Automatic switching at specific times
+- **Bulk Updates:** Update multiple devices at once
+- **Backup/Restore:** Save and restore configurations
 
-## 📊 **Benchmark Reports**
+### System Monitoring
+- **Performance Benchmarking:** Track system performance over time
+- **Health Checks:** Monitor CPU, memory, disk, and network
+- **AI Performance:** Measure AI response times
+- **Hardware Specs:** Detailed system information
 
-Benchmark reports are stored in `benchmark-reports/` directory:
-- `baseline-report-YYYYMMDD-HHMMSS.md` - Human-readable Markdown format
-- `baseline-report-YYYYMMDD-HHMMSS.json` - Machine-readable JSON format
-- `comparison-template.md` - Template for comparing two systems
+---
 
-**Viewing Reports:**
+## 📊 **System Benchmarking**
+
+Track your system's performance over time with built-in benchmarking:
+
+### During Updates
+
+The update script will prompt you to run a benchmark (optional):
+- **Full benchmark:** ~15-20 minutes, comprehensive testing
+- **Quick benchmark:** ~5 minutes, essential metrics only
+
+Results are saved to `benchmark-reports/` directory.
+
+### Manual Benchmarking
+
+```bash
+# Full benchmark
+./scripts/system-benchmark.sh
+
+# Quick benchmark
+./scripts/system-benchmark.sh --quick
+```
+
+### What's Measured
+
+- **Hardware:** CPU, RAM, disk, GPU, network specifications
+- **CPU Performance:** Single-core and multi-core benchmarks
+- **Disk I/O:** Sequential and random read/write speeds
+- **Memory:** Bandwidth and latency tests
+- **Database:** SQLite query performance
+- **Ollama AI:** Model loading and response times
+- **Application:** Next.js page load times
+- **System Health:** Temperature, load average, processes
+
+### Use Cases
+
+- Establish baseline before hardware upgrades
+- Track performance degradation over time
+- Compare systems (old vs new hardware)
+- Monitor impact of software updates
+- Troubleshoot performance issues
+
+### Viewing Reports
+
 ```bash
 # View latest report
 cat $(ls -t benchmark-reports/baseline-report-*.md | head -1)
@@ -298,6 +451,219 @@ cat $(ls -t benchmark-reports/baseline-report-*.md | head -1)
 # Compare two reports
 diff benchmark-reports/baseline-report-20251007-*.md benchmark-reports/baseline-report-20251008-*.md
 ```
+
+---
+
+## 🤖 **AI Code Assistant**
+
+Integrated AI-powered code analysis and improvements:
+
+### Quick Setup
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run setup:ai
+```
+
+This automatically:
+- ✓ Installs Ollama (if needed)
+- ✓ Pulls the DeepSeek Coder AI model
+- ✓ Configures all dependencies
+- ✓ Verifies system readiness
+
+### Check Readiness
+
+```bash
+npm run check:ai
+```
+
+### Access the AI Assistant
+
+- **Dashboard:** http://localhost:3000/ai-assistant
+
+### Features
+
+- **Code Analysis:** Automated code review
+- **Dependency Management:** One-command setup
+- **Risk-Based Approval:** Safety checks before changes
+- **Automatic Backups:** Before any modifications
+- **PR Creation:** Automatic pull request generation
+
+📖 **For complete details, see:** [ai-assistant/README.md](./ai-assistant/README.md)
+
+---
+
+## 🔌 **HDMI-CEC Control**
+
+Control TV power via HDMI-CEC using Pulse-Eight USB CEC Adapter:
+
+### Requirements
+
+- **Pulse-Eight USB CEC Adapter** connected to your server
+- HDMI connection from server to matrix switcher
+- TVs that support HDMI-CEC (most modern TVs)
+
+### Features
+
+- Power control (on/standby) for individual TVs
+- Broadcast power commands to all TVs
+- Device discovery and monitoring
+- Automatic driver installation (libCEC)
+- Integrated with matrix input selection
+
+### Setup
+
+The installer automatically installs libCEC drivers. Just:
+1. Plug in your Pulse-Eight adapter
+2. Connect HDMI from server to matrix
+3. Run CEC discovery from the UI
+4. Control TVs from Device Config page
+
+---
+
+## 📁 **Project Structure**
+
+```
+Sports-Bar-TV-Controller/
+├── src/
+│   ├── app/              # Next.js pages and API routes
+│   ├── components/       # React components
+│   └── lib/              # Utility functions and configurations
+├── prisma/
+│   ├── schema.prisma     # Database schema
+│   └── data/             # SQLite database files
+├── scripts/              # Utility scripts
+│   ├── system-benchmark.sh
+│   ├── build-knowledge-base.ts
+│   └── verify-ai-system.ts
+├── docs/                 # Documentation
+├── benchmark-reports/    # Performance benchmark results
+├── .ai-assistant/        # AI code assistant files
+├── install.sh            # One-line installer
+└── update_from_github.sh # Update script
+```
+
+---
+
+## 🔧 **Development**
+
+### Start Development Server
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm run dev
+```
+
+Access at: http://localhost:3000
+
+### Build for Production
+
+```bash
+npm run build
+npm start
+```
+
+### Database Operations
+
+```bash
+# Generate Prisma client
+npx prisma generate
+
+# Push schema changes
+npx prisma db push
+
+# Open Prisma Studio
+npx prisma studio
+```
+
+### Rebuild Knowledge Base
+
+```bash
+npm run build:kb
+```
+
+---
+
+## 📖 **Additional Documentation**
+
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
+- **[NUC_DEPLOYMENT.md](./NUC_DEPLOYMENT.md)** - Intel NUC-specific deployment guide
+- **[UPDATE_PROCESS.md](./UPDATE_PROCESS.md)** - Detailed update procedures
+- **[BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)** - Backup and restore procedures
+- **[ai-assistant/README.md](./ai-assistant/README.md)** - AI Code Assistant documentation
+
+---
+
+## 🆘 **Getting Help**
+
+### Check Documentation
+1. Read the troubleshooting section above
+2. Check the [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
+3. Review installation logs in `/tmp/sportsbar-install-*.log`
+
+### Check Logs
+```bash
+# Application logs
+tail -f ~/Sports-Bar-TV-Controller/logs/app.log
+
+# Service logs
+sudo journalctl -u sportsbar-assistant -f
+
+# Ollama logs
+sudo journalctl -u ollama -f
+```
+
+### Common Issues
+- **Port conflicts:** Change port in `.env` file
+- **Permission errors:** Run `sudo chown -R $USER:$USER ~/Sports-Bar-TV-Controller`
+- **AI not working:** Verify Ollama with `ollama list`
+- **Database errors:** Run `npx prisma db push --force-reset`
+
+### Create an Issue
+If you encounter a bug or have a feature request:
+1. Check existing issues on GitHub
+2. Create a new issue with:
+   - Detailed description
+   - Steps to reproduce
+   - System information
+   - Relevant logs
+
+---
+
+## 🎉 **Success!**
+
+Your Sports Bar TV Controller is now installed and ready to use!
+
+**Next Steps:**
+1. Access the application at http://localhost:3000
+2. Configure your devices in Device Config
+3. Set up matrix switching presets
+4. Try the AI assistant for troubleshooting
+5. Run a system benchmark to establish baseline
+
+**Enjoy your AI-powered AV control system!** 🏈📺🎮
+
+---
+
+## 📝 **Version Information**
+
+- **Installer Version:** 2.0
+- **Node.js:** v22.x
+- **Ollama:** Latest stable
+- **AI Models:** llama3.2, llama2, mistral, phi3:mini
+- **Last Updated:** October 2025
+
+---
+
+## 🙏 **Acknowledgments**
+
+Built with:
+- Next.js 14
+- React 18
+- Prisma ORM
+- Ollama AI
+- TypeScript
+- Tailwind CSS
 
 ---
 
