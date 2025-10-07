@@ -3,6 +3,43 @@
 
 AI-powered assistant for sports bar AV system management, troubleshooting, and matrix control.
 
+## 🚀 Quick Installation
+
+Get started with a single command! This one-line installer will automatically set up everything you need:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+```
+
+### Prerequisites
+- **Operating System**: Ubuntu 20.04+ or Debian 11+ (64-bit)
+- **User Access**: sudo privileges required
+- **Network**: Active internet connection
+- **Disk Space**: At least 2GB free space
+
+### What Gets Installed
+The installer automatically handles:
+- ✅ Node.js 20.x (via NodeSource repository)
+- ✅ PostgreSQL database
+- ✅ All project dependencies
+- ✅ System service configuration
+- ✅ Automatic startup on boot
+
+### After Installation
+Once complete, access your application at:
+- **Local**: http://localhost:3000
+- **Network**: http://[your-server-ip]:3000
+
+The service runs automatically in the background. Use these commands to manage it:
+```bash
+sudo systemctl status sportsbar    # Check status
+sudo systemctl restart sportsbar   # Restart service
+sudo systemctl stop sportsbar      # Stop service
+sudo systemctl start sportsbar     # Start service
+```
+
+---
+
 ## ✅ **YARN ISSUES PERMANENTLY FIXED!**
 
 **No more yarn configuration conflicts!** This project now uses npm consistently.
