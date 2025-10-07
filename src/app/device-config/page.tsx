@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -32,9 +33,14 @@ import {
 export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<any>(null)
+  const [mounted, setMounted] = useState(false)
 
   // Load AI toggle state from localStorage on mount
   useEffect(() => {
+    // Mark component as mounted to prevent hydration issues
+    setMounted(true)
+    
+    // Load localStorage value only on client side
     const savedState = localStorage.getItem('deviceConfigAiEnabled')
     if (savedState !== null) {
       setAiEnhancementsEnabled(savedState === 'true')
@@ -45,7 +51,27 @@ export default function DeviceConfigPage() {
   const toggleAiEnhancements = () => {
     const newState = !aiEnhancementsEnabled
     setAiEnhancementsEnabled(newState)
-    localStorage.setItem('deviceConfigAiEnabled', String(newState))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('deviceConfigAiEnabled', String(newState))
+    }
+  }
+
+  // Prevent rendering until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <SportsBarLayout>
+        <SportsBarHeader
+          title="Device Configuration"
+          subtitle="Configure and manage DirecTV, Fire TV, and IR devices with AI-enhanced capabilities"
+          icon={<Settings className="w-8 h-8 text-blue-400" />}
+        />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-slate-400">Loading...</div>
+          </div>
+        </div>
+      </SportsBarLayout>
+    )
   }
 
   return (
