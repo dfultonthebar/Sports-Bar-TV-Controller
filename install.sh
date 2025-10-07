@@ -690,8 +690,8 @@ main() {
     create_service_user
     clone_repository
     install_app_dependencies
-    setup_database
     configure_environment
+    setup_database
     build_application
     setup_pm2
     set_permissions
