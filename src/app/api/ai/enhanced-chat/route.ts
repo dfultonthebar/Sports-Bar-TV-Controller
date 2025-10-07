@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
       message, 
       model = 'llama3.2:3b', 
       useKnowledge = true,
-      useCodebase = true 
+      useCodebase = true,
+      stream = true
     } = body;
     
     if (!message) {
@@ -25,111 +26,13 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    let fullPrompt = message;
-    let usedContext = false;
-    let contextError: string | null = null;
-    
-    // Add enhanced context (documentation + codebase) if enabled
-    if (useKnowledge || useCodebase) {
-      try {
-        const context = await buildEnhancedContext(
-          message,
-          useCodebase,
-          useKnowledge
-        );
-        
-        if (context) {
-          fullPrompt = context + '\nUser Question: ' + message;
-          usedContext = true;
-        }
-      } catch (error) {
-        console.error('Error building context:', error);
-        contextError = error instanceof Error ? error.message : 'Unknown error';
-        // Continue without context rather than failing completely
-      }
+    // If streaming is requested, use streaming response
+    if (stream) {
+      return handleStreamingResponse(message, model, useKnowledge, useCodebase);
     }
     
-    // Call Ollama API with extended timeout
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
-      
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          prompt: fullPrompt,
-          stream: false
-        }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Ollama API error:', response.status, errorText);
-        throw new Error(`Ollama API error: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      return NextResponse.json({
-        response: data.response,
-        model: data.model,
-        usedContext,
-        usedCodebase: useCodebase,
-        usedKnowledge: useKnowledge,
-        contextError
-      });
-    } catch (fetchError: any) {
-      // Check if it's a timeout error
-      if (fetchError.name === 'AbortError') {
-        console.error('Ollama request timed out:', fetchError);
-        return NextResponse.json(
-          { 
-            error: 'Request timed out',
-            message: 'The AI model took too long to respond. This may happen with complex queries or larger models.',
-            suggestion: 'Try using a smaller model like llama3.2:3b or simplify your question.',
-            ollamaUrl: OLLAMA_BASE_URL
-          },
-          { status: 504 }
-        );
-      }
-      
-      // Check if it's a connection error to Ollama
-      if (fetchError.cause?.code === 'ECONNREFUSED' || fetchError.message?.includes('ECONNREFUSED')) {
-        console.error('Ollama service is not running:', fetchError);
-        return NextResponse.json(
-          { 
-            error: 'Ollama AI service is not running',
-            message: `Cannot connect to Ollama at ${OLLAMA_BASE_URL}. Please ensure Ollama is installed and running.`,
-            suggestion: 'Start Ollama by running: ollama serve',
-            ollamaUrl: OLLAMA_BASE_URL
-          },
-          { status: 503 }
-        );
-      }
-      
-      // Check for headers timeout error
-      if (fetchError.cause?.code === 'UND_ERR_HEADERS_TIMEOUT' || fetchError.message?.includes('HeadersTimeoutError')) {
-        console.error('Headers timeout error:', fetchError);
-        return NextResponse.json(
-          { 
-            error: 'Connection timeout',
-            message: 'The connection to Ollama timed out while waiting for response headers.',
-            suggestion: 'Ollama may be overloaded or the model is taking too long to start. Try again or use a smaller model.',
-            ollamaUrl: OLLAMA_BASE_URL
-          },
-          { status: 504 }
-        );
-      }
-      
-      throw fetchError;
-    }
+    // Otherwise, use non-streaming response (for backward compatibility)
+    return handleNonStreamingResponse(message, model, useKnowledge, useCodebase);
     
   } catch (error) {
     console.error('Error in enhanced chat:', error);
@@ -141,5 +44,259 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+async function handleStreamingResponse(
+  message: string,
+  model: string,
+  useKnowledge: boolean,
+  useCodebase: boolean
+) {
+  const encoder = new TextEncoder();
+  
+  // Create a TransformStream for streaming
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
+  
+  // Start processing in background
+  (async () => {
+    try {
+      let fullPrompt = message;
+      let usedContext = false;
+      let contextError: string | null = null;
+      
+      // Send initial status
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+        type: 'status', 
+        message: 'Building context...' 
+      })}\n\n`));
+      
+      // Add enhanced context (documentation + codebase) if enabled
+      if (useKnowledge || useCodebase) {
+        try {
+          const context = await buildEnhancedContext(
+            message,
+            useCodebase,
+            useKnowledge
+          );
+          
+          if (context) {
+            fullPrompt = context + '\nUser Question: ' + message;
+            usedContext = true;
+          }
+        } catch (error) {
+          console.error('Error building context:', error);
+          contextError = error instanceof Error ? error.message : 'Unknown error';
+          // Continue without context rather than failing completely
+        }
+      }
+      
+      // Send context status
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+        type: 'context', 
+        usedContext,
+        contextError 
+      })}\n\n`));
+      
+      // Send generating status
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+        type: 'status', 
+        message: 'Generating response...' 
+      })}\n\n`));
+      
+      // Call Ollama API with streaming
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          prompt: fullPrompt,
+          stream: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.statusText}`);
+      }
+      
+      // Stream the response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+      
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              if (data.response) {
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+                  type: 'token', 
+                  content: data.response 
+                })}\n\n`));
+              }
+              if (data.done) {
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+                  type: 'done',
+                  model: data.model,
+                  usedContext,
+                  usedCodebase: useCodebase,
+                  usedKnowledge: useKnowledge,
+                  contextError
+                })}\n\n`));
+              }
+            } catch (e) {
+              console.error('Error parsing Ollama response:', e);
+            }
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('Streaming error:', error);
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+        type: 'error', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      })}\n\n`));
+    } finally {
+      await writer.close();
+    }
+  })();
+  
+  // Return streaming response with proper headers
+  return new Response(stream.readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
+async function handleNonStreamingResponse(
+  message: string,
+  model: string,
+  useKnowledge: boolean,
+  useCodebase: boolean
+) {
+  let fullPrompt = message;
+  let usedContext = false;
+  let contextError: string | null = null;
+  
+  // Add enhanced context (documentation + codebase) if enabled
+  if (useKnowledge || useCodebase) {
+    try {
+      const context = await buildEnhancedContext(
+        message,
+        useCodebase,
+        useKnowledge
+      );
+      
+      if (context) {
+        fullPrompt = context + '\nUser Question: ' + message;
+        usedContext = true;
+      }
+    } catch (error) {
+      console.error('Error building context:', error);
+      contextError = error instanceof Error ? error.message : 'Unknown error';
+      // Continue without context rather than failing completely
+    }
+  }
+  
+  // Call Ollama API with extended timeout
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
+    
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        prompt: fullPrompt,
+        stream: false
+      }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Ollama API error:', response.status, errorText);
+      throw new Error(`Ollama API error: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    return NextResponse.json({
+      response: data.response,
+      model: data.model,
+      usedContext,
+      usedCodebase: useCodebase,
+      usedKnowledge: useKnowledge,
+      contextError
+    });
+  } catch (fetchError: any) {
+    // Check if it's a timeout error
+    if (fetchError.name === 'AbortError') {
+      console.error('Ollama request timed out:', fetchError);
+      return NextResponse.json(
+        { 
+          error: 'Request timed out',
+          message: 'The AI model took too long to respond. This may happen with complex queries or larger models.',
+          suggestion: 'Try using a smaller model like llama3.2:3b or simplify your question.',
+          ollamaUrl: OLLAMA_BASE_URL
+        },
+        { status: 504 }
+      );
+    }
+    
+    // Check if it's a connection error to Ollama
+    if (fetchError.cause?.code === 'ECONNREFUSED' || fetchError.message?.includes('ECONNREFUSED')) {
+      console.error('Ollama service is not running:', fetchError);
+      return NextResponse.json(
+        { 
+          error: 'Ollama AI service is not running',
+          message: `Cannot connect to Ollama at ${OLLAMA_BASE_URL}. Please ensure Ollama is installed and running.`,
+          suggestion: 'Start Ollama by running: ollama serve',
+          ollamaUrl: OLLAMA_BASE_URL
+        },
+        { status: 503 }
+      );
+    }
+    
+    // Check for headers timeout error
+    if (fetchError.cause?.code === 'UND_ERR_HEADERS_TIMEOUT' || fetchError.message?.includes('HeadersTimeoutError')) {
+      console.error('Headers timeout error:', fetchError);
+      return NextResponse.json(
+        { 
+          error: 'Connection timeout',
+          message: 'The connection to Ollama timed out while waiting for response headers.',
+          suggestion: 'Ollama may be overloaded or the model is taking too long to start. Try again or use a smaller model.',
+          ollamaUrl: OLLAMA_BASE_URL
+        },
+        { status: 504 }
+      );
+    }
+    
+    throw fetchError;
   }
 }
