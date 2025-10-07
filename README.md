@@ -1,3 +1,4 @@
+
 # 🏈 Sports Bar AI Assistant
 
 AI-powered assistant for sports bar AV system management, troubleshooting, and matrix control.
@@ -22,6 +23,58 @@ This script automatically:
 - Installs dependencies with npm (no yarn conflicts)
 - Updates database schema if needed
 - Rebuilds and restarts the application
+- **Optionally runs system benchmark** to track performance
+
+### Update Options
+
+```bash
+# Standard update
+./update_from_github.sh
+
+# Skip AI checks for faster updates
+./update_from_github.sh --skip-ai
+
+# Update with full system benchmark
+./update_from_github.sh --benchmark
+
+# Update with quick benchmark (~5 minutes)
+./update_from_github.sh --benchmark-quick
+```
+
+### 📊 System Benchmarking
+
+Track your system's performance over time with built-in benchmarking:
+
+**During Updates:**
+- The update script will prompt you to run a benchmark (optional)
+- Choose full benchmark (~15-20 min) or quick benchmark (~5 min)
+- Results are saved to `benchmark-reports/` directory
+
+**Manual Benchmarking:**
+```bash
+# Full benchmark
+./scripts/system-benchmark.sh
+
+# Quick benchmark
+./scripts/system-benchmark.sh --quick
+```
+
+**What's Measured:**
+- Hardware specifications (CPU, RAM, disk, GPU, network)
+- CPU performance (single-core, multi-core)
+- Disk I/O (sequential, random read/write)
+- Memory bandwidth
+- PostgreSQL performance
+- Ollama AI response times
+- Next.js application response times
+- System health (temperature, load, processes)
+
+**Use Cases:**
+- Establish baseline before hardware upgrades
+- Track performance degradation over time
+- Compare systems (old vs new hardware)
+- Monitor impact of software updates
+- Troubleshoot performance issues
 
 ### ❓ Do My Settings Persist After Updates?
 
@@ -86,6 +139,8 @@ After installation/update, access at:
 - `prisma/` - Database schema and migrations
 - `lib/` - Utility functions and configurations
 - `components/` - Reusable UI components
+- `scripts/` - Utility scripts including system benchmark
+- `benchmark-reports/` - System benchmark results and comparisons
 
 ## 🔑 **Features**
 
@@ -95,10 +150,15 @@ After installation/update, access at:
 - Matrix control system integration
 - System enhancement tools
 - Wolf Pack matrix control
+- **System Performance Benchmarking** (NEW!)
+  - Track performance over time
+  - Compare before/after hardware upgrades
+  - Quick and full benchmark modes
+  - Detailed reports in Markdown and JSON formats
 - **HDMI-CEC control for TVs via Pulse-Eight USB CEC Adapter**
   - Power control (on/standby) for individual TVs or broadcast to all
   - Device discovery and monitoring
-- **🤖 AI Code Assistant** (NEW!)
+- **🤖 AI Code Assistant**
   - Local AI-powered code analysis and improvements
   - Automated dependency management with one-command setup
   - Risk-based change approval system
@@ -159,6 +219,22 @@ The installation script automatically installs **libCEC** drivers. Just plug in 
 ## 📦 **Package Manager**
 
 This project uses **npm** exclusively to avoid yarn version conflicts. All scripts and documentation assume npm usage.
+
+## 📊 **Benchmark Reports**
+
+Benchmark reports are stored in `benchmark-reports/` directory:
+- `baseline-report-YYYYMMDD-HHMMSS.md` - Human-readable Markdown format
+- `baseline-report-YYYYMMDD-HHMMSS.json` - Machine-readable JSON format
+- `comparison-template.md` - Template for comparing two systems
+
+**Viewing Reports:**
+```bash
+# View latest report
+cat $(ls -t benchmark-reports/baseline-report-*.md | head -1)
+
+# Compare two reports
+diff benchmark-reports/baseline-report-20251007-*.md benchmark-reports/baseline-report-20251008-*.md
+```
 
 ---
 

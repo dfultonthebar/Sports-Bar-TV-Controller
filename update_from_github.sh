@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # =============================================================================
@@ -17,6 +18,7 @@
 # - Safety checks to prevent breaking the working system
 # - Integrated AI dependency management (Ollama + models)
 # - Optional AI checks with --skip-ai flag
+# - Optional system benchmark with --benchmark flag
 # =============================================================================
 
 set -e  # Exit on error
@@ -40,6 +42,10 @@ AI_MODELS=(
 )
 SKIP_AI_CHECKS=false
 
+# Benchmark Configuration
+RUN_BENCHMARK=false
+BENCHMARK_MODE="full"  # full or quick
+
 # =============================================================================
 # PARSE COMMAND LINE ARGUMENTS
 # =============================================================================
@@ -49,16 +55,29 @@ while [[ $# -gt 0 ]]; do
             SKIP_AI_CHECKS=true
             shift
             ;;
+        --benchmark)
+            RUN_BENCHMARK=true
+            shift
+            ;;
+        --benchmark-quick)
+            RUN_BENCHMARK=true
+            BENCHMARK_MODE="quick"
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --skip-ai    Skip AI dependency checks and setup"
-            echo "  --help, -h   Show this help message"
+            echo "  --skip-ai           Skip AI dependency checks and setup"
+            echo "  --benchmark         Run system benchmark after update (full mode)"
+            echo "  --benchmark-quick   Run quick system benchmark after update"
+            echo "  --help, -h          Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                # Full update with AI checks"
-            echo "  $0 --skip-ai      # Update without AI checks (faster)"
+            echo "  $0                      # Full update with AI checks"
+            echo "  $0 --skip-ai            # Update without AI checks (faster)"
+            echo "  $0 --benchmark          # Update with full benchmark"
+            echo "  $0 --benchmark-quick    # Update with quick benchmark"
             exit 0
             ;;
         *)
@@ -528,6 +547,112 @@ install_dependencies() {
 }
 
 # =============================================================================
+# BENCHMARK FUNCTIONS
+# =============================================================================
+run_system_benchmark() {
+    log ""
+    log "=========================================="
+    log "📊 System Benchmark"
+    log "=========================================="
+    log ""
+    
+    if [ ! -f "scripts/system-benchmark.sh" ]; then
+        log_error "Benchmark script not found: scripts/system-benchmark.sh"
+        return 1
+    fi
+    
+    # Make sure script is executable
+    chmod +x scripts/system-benchmark.sh
+    
+    log "Running system benchmark in $BENCHMARK_MODE mode..."
+    log "This will take a few minutes..."
+    log ""
+    
+    # Run benchmark with appropriate mode
+    if [ "$BENCHMARK_MODE" = "quick" ]; then
+        if bash scripts/system-benchmark.sh --quick 2>&1 | tee -a "$LOG_FILE"; then
+            log ""
+            log_success "Quick benchmark completed successfully"
+        else
+            log_warning "Benchmark completed with warnings"
+        fi
+    else
+        if bash scripts/system-benchmark.sh 2>&1 | tee -a "$LOG_FILE"; then
+            log ""
+            log_success "Full benchmark completed successfully"
+        else
+            log_warning "Benchmark completed with warnings"
+        fi
+    fi
+    
+    # Find the latest benchmark report
+    local latest_report=$(ls -t benchmark-reports/baseline-report-*.md 2>/dev/null | head -1)
+    
+    if [ -n "$latest_report" ]; then
+        log ""
+        log "📊 Benchmark Report Summary:"
+        log "   Full report: $latest_report"
+        log ""
+        
+        # Extract and display key metrics
+        if grep -q "## Hardware Specifications" "$latest_report"; then
+            log "   Key Metrics:"
+            grep -A 20 "## Hardware Specifications" "$latest_report" | grep -E "^\*\*|^-" | head -10 | while read line; do
+                log "   $line"
+            done
+        fi
+        
+        log ""
+        log "💡 To view full report: cat $latest_report"
+        log "💡 To compare with future benchmarks, keep this report"
+    fi
+    
+    log ""
+}
+
+prompt_for_benchmark() {
+    log ""
+    log "=========================================="
+    log "📊 Optional System Benchmark"
+    log "=========================================="
+    log ""
+    log "Would you like to run a system benchmark?"
+    log "This helps track system performance over time."
+    log ""
+    log "Options:"
+    log "  y - Run full benchmark (~15-20 minutes)"
+    log "  q - Run quick benchmark (~5 minutes)"
+    log "  N - Skip benchmark (default)"
+    log ""
+    
+    # Read user input with 15 second timeout
+    if read -t 15 -p "Run benchmark? (y/q/N): " response; then
+        case "$response" in
+            [Yy]*)
+                RUN_BENCHMARK=true
+                BENCHMARK_MODE="full"
+                log "Running full benchmark..."
+                ;;
+            [Qq]*)
+                RUN_BENCHMARK=true
+                BENCHMARK_MODE="quick"
+                log "Running quick benchmark..."
+                ;;
+            *)
+                log "Skipping benchmark"
+                RUN_BENCHMARK=false
+                ;;
+        esac
+    else
+        log ""
+        log "Timeout - skipping benchmark"
+        RUN_BENCHMARK=false
+    fi
+    
+    log ""
+}
+
+# =============================================================================
 # MAIN UPDATE PROCESS
 # =============================================================================
 
@@ -535,6 +660,9 @@ log "=========================================="
 log "🔄 Starting Sports Bar AI Assistant Update"
 if [ "$SKIP_AI_CHECKS" = true ]; then
     log "   (AI checks disabled with --skip-ai)"
+fi
+if [ "$RUN_BENCHMARK" = true ]; then
+    log "   (Benchmark enabled: $BENCHMARK_MODE mode)"
 fi
 log "=========================================="
 log ""
@@ -889,6 +1017,13 @@ if [ -n "$PRESET_BACKUP_FILE" ] && [ -f "$PRESET_BACKUP_FILE" ]; then
 fi
 
 log ""
+
+# =============================================================================
+# PROMPT FOR BENCHMARK (if not already set via command line)
+# =============================================================================
+if [ "$RUN_BENCHMARK" = false ]; then
+    prompt_for_benchmark
+fi
 
 # =============================================================================
 # DATA FILES INITIALIZATION
@@ -1266,6 +1401,13 @@ if start_server; then
     sleep 3
     verify_server_running
     
+    # =============================================================================
+    # RUN BENCHMARK (if requested)
+    # =============================================================================
+    if [ "$RUN_BENCHMARK" = true ]; then
+        run_system_benchmark
+    fi
+    
     log ""
     log "=========================================="
     log_success "Update successful! Application is running"
@@ -1295,6 +1437,9 @@ if start_server; then
     fi
     log "   ✅ Database schema updated (data preserved)"
     log "   ✅ AI style analysis running in background"
+    if [ "$RUN_BENCHMARK" = true ]; then
+        log "   ✅ System benchmark completed ($BENCHMARK_MODE mode)"
+    fi
     log ""
     log "🔧 User Data Preserved:"
     log "   ✅ Database (prisma/dev.db)"
@@ -1328,6 +1473,13 @@ if start_server; then
     log "   Check ai-style-reports/ for detailed component analysis"
     log "   Run './scripts/run-style-analysis.sh' for interactive tools"
     log ""
+    if [ "$RUN_BENCHMARK" = true ]; then
+        log "📊 Benchmark Results:"
+        log "   Reports saved to: benchmark-reports/"
+        log "   View latest: cat $(ls -t benchmark-reports/baseline-report-*.md 2>/dev/null | head -1)"
+        log "   Compare over time to track system performance"
+        log ""
+    fi
     log "🔧 PM2 Process Management:"
     log "   View status:    pm2 status"
     log "   View logs:      pm2 logs $PM2_APP_NAME"
@@ -1344,6 +1496,11 @@ if start_server; then
         log "   Example: ./update_from_github.sh --skip-ai"
         log ""
     fi
+    log "💡 Benchmark Tip: Track performance over time with benchmarks"
+    log "   Full benchmark:  ./update_from_github.sh --benchmark"
+    log "   Quick benchmark: ./update_from_github.sh --benchmark-quick"
+    log "   Manual run:      ./scripts/system-benchmark.sh [--quick]"
+    log ""
     log "📝 Full update log saved to: $LOG_FILE"
 else
     log_error "Server started but not responding properly"
