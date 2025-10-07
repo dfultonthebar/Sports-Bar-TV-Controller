@@ -413,78 +413,93 @@ setup_database() {
     fi
     
     # Set DATABASE_URL environment variable for Prisma
-    export DATABASE_URL="file:./data/sports_bar.db"
-    print_info "Database URL: $DATABASE_URL"
+    # Note: Path is relative to prisma/schema.prisma location, so we use ../data/
+    export DATABASE_URL="file:../data/sports_bar.db"
+    print_info "Database will be created at: $INSTALL_DIR/data/sports_bar.db"
+    log "Database URL: $DATABASE_URL (relative to schema location)"
     
-    # Run Prisma migrations with proper error handling
-    print_info "Running database migrations..."
+    # For initial setup, use 'prisma db push' instead of 'migrate deploy'
+    # This is simpler and doesn't require migration history tracking
+    print_info "Initializing database schema..."
     
-    local PRISMA_CMD="npx prisma migrate deploy --schema=./prisma/schema.prisma"
-    local MIGRATION_SUCCESS=false
+    local DB_PUSH_CMD="npx prisma db push --schema=./prisma/schema.prisma --skip-generate"
+    local DB_SETUP_SUCCESS=false
     
+    # Run database push command
     if [ "$USE_SERVICE_USER" = false ]; then
         # Home directory installation - run as current user
-        if $PRISMA_CMD >> "$LOG_FILE" 2>&1; then
-            MIGRATION_SUCCESS=true
+        if $DB_PUSH_CMD >> "$LOG_FILE" 2>&1; then
+            DB_SETUP_SUCCESS=true
         fi
     elif [ "$IS_ROOT" = true ]; then
         # System-wide installation as root
-        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
-            MIGRATION_SUCCESS=true
+        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && $DB_PUSH_CMD" >> "$LOG_FILE" 2>&1; then
+            DB_SETUP_SUCCESS=true
         fi
     else
         # System-wide installation with sudo
-        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
-            MIGRATION_SUCCESS=true
+        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && $DB_PUSH_CMD" >> "$LOG_FILE" 2>&1; then
+            DB_SETUP_SUCCESS=true
         fi
     fi
     
-    if [ "$MIGRATION_SUCCESS" = true ]; then
-        print_success "Database migrations completed successfully"
-        log "Database migrations completed"
+    if [ "$DB_SETUP_SUCCESS" = false ]; then
+        print_error "Database schema initialization failed"
+        print_error "Check the log file for details: $LOG_FILE"
+        
+        # Show last few lines of log for immediate feedback
+        echo -e "\n${YELLOW}Last 20 lines of log file:${NC}"
+        tail -n 20 "$LOG_FILE"
+        
+        log "Database schema initialization failed"
+        exit 1
+    fi
+    
+    print_success "Database schema initialized successfully"
+    log "Database schema initialized"
+    
+    # Generate Prisma Client
+    print_info "Generating Prisma Client..."
+    
+    local GENERATE_CMD="npx prisma generate --schema=./prisma/schema.prisma"
+    local GENERATE_SUCCESS=false
+    
+    if [ "$USE_SERVICE_USER" = false ]; then
+        if $GENERATE_CMD >> "$LOG_FILE" 2>&1; then
+            GENERATE_SUCCESS=true
+        fi
+    elif [ "$IS_ROOT" = true ]; then
+        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1; then
+            GENERATE_SUCCESS=true
+        fi
     else
-        print_error "Database migration failed"
-        print_info "Attempting to generate Prisma client and retry..."
-        
-        # Try generating the Prisma client first
-        local GENERATE_CMD="npx prisma generate --schema=./prisma/schema.prisma"
-        
-        if [ "$USE_SERVICE_USER" = false ]; then
-            $GENERATE_CMD >> "$LOG_FILE" 2>&1 || true
-        elif [ "$IS_ROOT" = true ]; then
-            su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1 || true
-        else
-            sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1 || true
-        fi
-        
-        # Retry migration
-        if [ "$USE_SERVICE_USER" = false ]; then
-            if $PRISMA_CMD >> "$LOG_FILE" 2>&1; then
-                MIGRATION_SUCCESS=true
-            fi
-        elif [ "$IS_ROOT" = true ]; then
-            if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
-                MIGRATION_SUCCESS=true
-            fi
-        else
-            if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
-                MIGRATION_SUCCESS=true
-            fi
-        fi
-        
-        if [ "$MIGRATION_SUCCESS" = true ]; then
-            print_success "Database migrations completed after retry"
-            log "Database migrations completed after retry"
-        else
-            print_error "Database migration failed after retry"
-            print_error "Check the log file for details: $LOG_FILE"
-            log "Database migration failed"
-            exit 1
+        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1; then
+            GENERATE_SUCCESS=true
         fi
     fi
     
-    print_success "Database initialized"
-    log "Database initialized"
+    if [ "$GENERATE_SUCCESS" = false ]; then
+        print_error "Prisma Client generation failed"
+        print_error "Check the log file for details: $LOG_FILE"
+        log "Prisma Client generation failed"
+        exit 1
+    fi
+    
+    print_success "Prisma Client generated successfully"
+    log "Prisma Client generated"
+    
+    # Verify database file was created
+    if [ -f "$INSTALL_DIR/data/sports_bar.db" ]; then
+        local DB_SIZE=$(du -h "$INSTALL_DIR/data/sports_bar.db" | cut -f1)
+        print_success "Database file created: sports_bar.db ($DB_SIZE)"
+        log "Database file created successfully: $DB_SIZE"
+    else
+        print_warning "Database file not found at expected location"
+        log "Warning: Database file not found at $INSTALL_DIR/data/sports_bar.db"
+    fi
+    
+    print_success "Database setup completed"
+    log "Database setup completed successfully"
 }
 
 create_env_file() {
@@ -554,8 +569,8 @@ build_application() {
     
     local BUILD_SUCCESS=false
     
-    # Ensure DATABASE_URL is set for build process
-    export DATABASE_URL="file:./data/sports_bar.db"
+    # Ensure DATABASE_URL is set for build process (relative to schema location)
+    export DATABASE_URL="file:../data/sports_bar.db"
     
     if [ "$USE_SERVICE_USER" = false ]; then
         # Home directory installation - run as current user
@@ -564,12 +579,12 @@ build_application() {
         fi
     elif [ "$IS_ROOT" = true ]; then
         # System-wide installation as root
-        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
+        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
             BUILD_SUCCESS=true
         fi
     else
         # System-wide installation with sudo
-        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
+        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:../data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
             BUILD_SUCCESS=true
         fi
     fi
