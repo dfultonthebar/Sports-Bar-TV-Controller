@@ -1,28 +1,44 @@
-
 #!/bin/bash
 
 #############################################################################
-# Sports Bar TV Controller - One-Click Installation Script
+# Sports Bar TV Controller - One-Line Installation Script
 # 
 # This script automates the complete installation of the Sports Bar TV 
 # Controller application on a fresh Ubuntu/Debian system.
 #
-# Usage: sudo bash install.sh
+# Usage: 
+#   curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+#   or
+#   wget -qO- https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+#
+# For custom installation directory:
+#   curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/custom/path bash
+#
 #############################################################################
 
 set -e  # Exit on any error
+set -o pipefail  # Catch errors in pipes
 
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Installation directory
-INSTALL_DIR="/home/ubuntu/Sports-Bar-TV-Controller"
+# Installation configuration
+INSTALL_DIR="${INSTALL_DIR:-/opt/sports-bar-tv-controller}"
 SERVICE_NAME="sportsbar-assistant"
 REPO_URL="https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git"
+REPO_BRANCH="${REPO_BRANCH:-main}"
+LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
+
+# Node.js version
+NODE_VERSION="20"
+
+# System user for running the service
+SERVICE_USER="${SERVICE_USER:-sportsbar}"
 
 #############################################################################
 # Helper Functions
@@ -47,17 +63,84 @@ print_warning() {
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    echo -e "${CYAN}ℹ $1${NC}"
+}
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+log_and_print() {
+    echo "$1"
+    log "$1"
+}
+
+check_command() {
+    if command -v "$1" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+prompt_yes_no() {
+    local prompt="$1"
+    local default="${2:-n}"
+    
+    if [ "$default" = "y" ]; then
+        prompt="$prompt [Y/n]: "
+    else
+        prompt="$prompt [y/N]: "
+    fi
+    
+    read -p "$prompt" response
+    response=${response:-$default}
+    
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 check_root() {
-    if [ "$EUID" -ne 0 ]; then 
-        print_error "This script must be run as root (use sudo)"
-        exit 1
+    if [ "$EUID" -eq 0 ]; then
+        print_warning "Running as root. This is acceptable but not required."
+        print_info "The script will create a dedicated service user if needed."
+        IS_ROOT=true
+    else
+        print_info "Running as non-root user. Will use sudo for privileged operations."
+        IS_ROOT=false
+        
+        # Check if sudo is available
+        if ! check_command sudo; then
+            print_error "sudo is not available. Please run as root or install sudo."
+            exit 1
+        fi
+        
+        # Check if user has sudo privileges
+        if ! sudo -n true 2>/dev/null; then
+            print_warning "This script requires sudo privileges for system operations."
+            print_info "You may be prompted for your password."
+            sudo -v || {
+                print_error "Failed to obtain sudo privileges."
+                exit 1
+            }
+        fi
+    fi
+}
+
+run_as_root() {
+    if [ "$IS_ROOT" = true ]; then
+        "$@"
+    else
+        sudo "$@"
     fi
 }
 
 check_os() {
+    print_header "Checking System Requirements"
+    
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS=$NAME
@@ -74,20 +157,70 @@ check_os() {
     fi
 
     print_success "Detected OS: $OS $VER"
+    log "OS: $OS $VER"
+    
+    # Check architecture
+    ARCH=$(uname -m)
+    print_info "Architecture: $ARCH"
+    log "Architecture: $ARCH"
+    
+    # Check available disk space (require at least 2GB)
+    AVAILABLE_SPACE=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+    if [ "$AVAILABLE_SPACE" -lt 2 ]; then
+        print_warning "Low disk space detected: ${AVAILABLE_SPACE}GB available"
+        print_warning "At least 2GB is recommended for installation"
+        if ! prompt_yes_no "Continue anyway?"; then
+            exit 1
+        fi
+    else
+        print_success "Sufficient disk space: ${AVAILABLE_SPACE}GB available"
+    fi
+    
+    # Check memory (recommend at least 1GB)
+    TOTAL_MEM=$(free -g | awk 'NR==2 {print $2}')
+    if [ "$TOTAL_MEM" -lt 1 ]; then
+        print_warning "Low memory detected: ${TOTAL_MEM}GB total"
+        print_warning "At least 1GB RAM is recommended"
+    else
+        print_success "Memory: ${TOTAL_MEM}GB total"
+    fi
 }
 
-#############################################################################
-# Installation Steps
-#############################################################################
+check_existing_installation() {
+    print_header "Checking for Existing Installation"
+    
+    if [ -d "$INSTALL_DIR" ]; then
+        print_warning "Installation directory already exists: $INSTALL_DIR"
+        
+        if prompt_yes_no "Remove existing installation and start fresh?"; then
+            print_info "Backing up existing installation..."
+            BACKUP_DIR="${INSTALL_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
+            run_as_root mv "$INSTALL_DIR" "$BACKUP_DIR"
+            print_success "Existing installation backed up to: $BACKUP_DIR"
+        else
+            print_error "Installation cancelled. Please remove or backup the existing installation manually."
+            exit 1
+        fi
+    fi
+    
+    # Check if service is already running
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        print_warning "Service $SERVICE_NAME is currently running"
+        print_info "Stopping service..."
+        run_as_root systemctl stop "$SERVICE_NAME"
+        print_success "Service stopped"
+    fi
+}
 
 install_system_dependencies() {
     print_header "Installing System Dependencies"
     
     print_info "Updating package lists..."
-    apt-get update -qq
+    run_as_root apt-get update -qq
+    log "Package lists updated"
     
     print_info "Installing required packages..."
-    apt-get install -y -qq \
+    run_as_root apt-get install -y -qq \
         curl \
         wget \
         git \
@@ -98,74 +231,106 @@ install_system_dependencies() {
         libsqlite3-dev \
         ca-certificates \
         gnupg \
-        lsb-release
+        lsb-release \
+        software-properties-common \
+        udev \
+        android-tools-adb \
+        libcec-dev \
+        cec-utils 2>&1 | tee -a "$LOG_FILE" > /dev/null
     
     print_success "System dependencies installed"
+    log "System dependencies installed successfully"
 }
 
 install_nodejs() {
     print_header "Installing Node.js"
     
-    # Check if Node.js is already installed
-    if command -v node &> /dev/null; then
-        NODE_VERSION=$(node -v)
-        print_warning "Node.js is already installed: $NODE_VERSION"
-        
-        # Check if version is acceptable (v18 or higher)
-        MAJOR_VERSION=$(echo $NODE_VERSION | cut -d'.' -f1 | sed 's/v//')
-        if [ "$MAJOR_VERSION" -ge 18 ]; then
-            print_success "Node.js version is acceptable"
-            return 0
+    if check_command node; then
+        CURRENT_NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+        if [ "$CURRENT_NODE_VERSION" -ge "$NODE_VERSION" ]; then
+            print_success "Node.js $(node -v) is already installed"
+            log "Node.js $(node -v) already installed"
+            return
         else
-            print_warning "Node.js version is too old. Installing newer version..."
+            print_warning "Node.js $(node -v) is installed but version $NODE_VERSION is required"
+            print_info "Upgrading Node.js..."
         fi
     fi
     
-    print_info "Setting up NodeSource repository for Node.js 20.x LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    print_info "Installing Node.js $NODE_VERSION..."
     
-    print_info "Installing Node.js..."
-    apt-get install -y -qq nodejs
+    # Install Node.js using NodeSource repository
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | run_as_root bash - >> "$LOG_FILE" 2>&1
+    run_as_root apt-get install -y nodejs >> "$LOG_FILE" 2>&1
     
-    NODE_VERSION=$(node -v)
-    NPM_VERSION=$(npm -v)
-    print_success "Node.js $NODE_VERSION and npm $NPM_VERSION installed"
+    if check_command node && check_command npm; then
+        print_success "Node.js $(node -v) and npm $(npm -v) installed successfully"
+        log "Node.js $(node -v) and npm $(npm -v) installed"
+    else
+        print_error "Failed to install Node.js"
+        exit 1
+    fi
+}
+
+create_service_user() {
+    print_header "Creating Service User"
+    
+    if id "$SERVICE_USER" &>/dev/null; then
+        print_success "User $SERVICE_USER already exists"
+        log "User $SERVICE_USER already exists"
+    else
+        print_info "Creating user $SERVICE_USER..."
+        run_as_root useradd -r -m -s /bin/bash "$SERVICE_USER"
+        print_success "User $SERVICE_USER created"
+        log "User $SERVICE_USER created"
+    fi
+    
+    # Add user to required groups
+    print_info "Adding user to required groups..."
+    run_as_root usermod -a -G plugdev,dialout "$SERVICE_USER" 2>/dev/null || true
+    print_success "User groups configured"
 }
 
 clone_repository() {
     print_header "Cloning Repository"
     
+    print_info "Cloning from $REPO_URL (branch: $REPO_BRANCH)..."
+    
+    # Create parent directory if it doesn't exist
+    run_as_root mkdir -p "$(dirname "$INSTALL_DIR")"
+    
+    # Clone repository
+    run_as_root git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
+    
     if [ -d "$INSTALL_DIR" ]; then
-        print_warning "Directory $INSTALL_DIR already exists"
-        read -p "Do you want to remove it and clone fresh? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Removing existing directory..."
-            rm -rf "$INSTALL_DIR"
-        else
-            print_info "Using existing directory..."
-            return 0
-        fi
+        print_success "Repository cloned successfully"
+        log "Repository cloned to $INSTALL_DIR"
+        
+        # Set ownership
+        run_as_root chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        print_success "Ownership set to $SERVICE_USER"
+    else
+        print_error "Failed to clone repository"
+        exit 1
     fi
-    
-    print_info "Cloning repository from $REPO_URL..."
-    git clone "$REPO_URL" "$INSTALL_DIR"
-    
-    # Set ownership to ubuntu user
-    chown -R ubuntu:ubuntu "$INSTALL_DIR"
-    
-    print_success "Repository cloned to $INSTALL_DIR"
 }
 
-install_npm_packages() {
-    print_header "Installing NPM Packages"
+install_npm_dependencies() {
+    print_header "Installing NPM Dependencies"
     
     cd "$INSTALL_DIR"
     
-    print_info "Installing dependencies (this may take a few minutes)..."
-    sudo -u ubuntu npm install --production=false
+    print_info "Installing Node.js packages (this may take a few minutes)..."
     
-    print_success "NPM packages installed"
+    # Run npm install as service user
+    if [ "$IS_ROOT" = true ]; then
+        su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npm install --production" >> "$LOG_FILE" 2>&1
+    else
+        sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npm install --production" >> "$LOG_FILE" 2>&1
+    fi
+    
+    print_success "NPM dependencies installed"
+    log "NPM dependencies installed"
 }
 
 setup_database() {
@@ -173,56 +338,69 @@ setup_database() {
     
     cd "$INSTALL_DIR"
     
-    # Create data directory if it doesn't exist
-    mkdir -p "$INSTALL_DIR/prisma/data"
-    chown -R ubuntu:ubuntu "$INSTALL_DIR/prisma"
+    # Create data directory
+    print_info "Creating database directory..."
+    run_as_root mkdir -p "$INSTALL_DIR/data"
+    run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/data"
     
-    print_info "Generating Prisma client..."
-    sudo -u ubuntu npx prisma generate
-    
+    # Run Prisma migrations
     print_info "Running database migrations..."
-    sudo -u ubuntu npx prisma migrate deploy || {
-        print_warning "Migration failed, trying to push schema..."
-        sudo -u ubuntu npx prisma db push --accept-data-loss
-    }
+    if [ "$IS_ROOT" = true ]; then
+        su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
+    else
+        sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
+    fi
     
-    print_success "Database setup complete"
+    print_success "Database initialized"
+    log "Database initialized"
 }
 
 create_env_file() {
     print_header "Creating Environment Configuration"
     
-    cd "$INSTALL_DIR"
+    ENV_FILE="$INSTALL_DIR/.env"
     
-    if [ -f ".env" ]; then
+    if [ -f "$ENV_FILE" ]; then
         print_warning ".env file already exists"
-        read -p "Do you want to overwrite it? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if ! prompt_yes_no "Overwrite existing .env file?"; then
             print_info "Keeping existing .env file"
-            return 0
+            return
         fi
     fi
     
     print_info "Creating .env file from template..."
-    cp .env.example .env
     
-    # Generate a random secret for NextAuth
+    # Copy example file
+    run_as_root cp "$INSTALL_DIR/.env.example" "$ENV_FILE"
+    
+    # Generate random secret for NextAuth
     NEXTAUTH_SECRET=$(openssl rand -base64 32)
-    sed -i "s/your-nextauth-secret-here/$NEXTAUTH_SECRET/" .env
     
-    # Get the local IP address
+    # Get local IP address
     LOCAL_IP=$(hostname -I | awk '{print $1}')
-    if [ -n "$LOCAL_IP" ]; then
-        sed -i "s|http://192.168.1.25:3000|http://$LOCAL_IP:3000|" .env
-        print_info "Set NEXTAUTH_URL to http://$LOCAL_IP:3000"
-    fi
     
-    chown ubuntu:ubuntu .env
-    chmod 600 .env
+    # Update .env file with generated values
+    run_as_root sed -i "s|NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=\"$NEXTAUTH_SECRET\"|" "$ENV_FILE"
+    run_as_root sed -i "s|NEXTAUTH_URL=.*|NEXTAUTH_URL=\"http://${LOCAL_IP}:3000\"|" "$ENV_FILE"
+    run_as_root sed -i "s|NODE_ENV=.*|NODE_ENV=\"production\"|" "$ENV_FILE"
     
-    print_success "Environment file created"
-    print_warning "IMPORTANT: Edit $INSTALL_DIR/.env to add your API keys"
+    run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
+    run_as_root chmod 600 "$ENV_FILE"
+    
+    print_success ".env file created"
+    print_info "NextAuth secret generated automatically"
+    print_info "Application URL set to: http://${LOCAL_IP}:3000"
+    log ".env file created with generated secrets"
+    
+    print_warning "\nIMPORTANT: You need to configure API keys in $ENV_FILE"
+    print_info "Required API keys:"
+    print_info "  - ANTHROPIC_API_KEY (for AI features)"
+    print_info "  - OPENAI_API_KEY (optional, for AI features)"
+    print_info "  - SOUNDTRACK_API_KEY (for music control)"
+    print_info "  - GITHUB_TOKEN (for remote updates)"
+    print_info "\nOptional API keys:"
+    print_info "  - ESPN_API_KEY, SPORTS_RADAR_API_KEY (for sports data)"
+    print_info "  - SPECTRUM_API_KEY, GRACENOTE_API_KEY (for TV guide)"
 }
 
 build_application() {
@@ -230,43 +408,154 @@ build_application() {
     
     cd "$INSTALL_DIR"
     
-    print_info "Building Next.js application..."
-    sudo -u ubuntu npm run build
+    print_info "Building Next.js application (this may take several minutes)..."
+    
+    if [ "$IS_ROOT" = true ]; then
+        su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
+    else
+        sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
+    fi
     
     print_success "Application built successfully"
+    log "Application built"
 }
 
-install_systemd_service() {
-    print_header "Installing Systemd Service"
+setup_systemd_service() {
+    print_header "Setting Up Systemd Service"
     
-    print_info "Copying service file..."
-    cp "$INSTALL_DIR/sportsbar-assistant.service" "/etc/systemd/system/$SERVICE_NAME.service"
+    if ! prompt_yes_no "Set up systemd service for auto-start on boot?" "y"; then
+        print_info "Skipping systemd service setup"
+        return
+    fi
+    
+    print_info "Creating systemd service file..."
+    
+    SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+    
+    run_as_root tee "$SERVICE_FILE" > /dev/null <<EOF
+[Unit]
+Description=Sports Bar TV Controller
+After=network.target
+
+[Service]
+Type=simple
+User=$SERVICE_USER
+WorkingDirectory=$INSTALL_DIR
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$SERVICE_NAME
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    run_as_root chmod 644 "$SERVICE_FILE"
     
     print_info "Reloading systemd daemon..."
-    systemctl daemon-reload
+    run_as_root systemctl daemon-reload
     
-    print_info "Enabling service to start on boot..."
-    systemctl enable "$SERVICE_NAME.service"
+    print_info "Enabling service..."
+    run_as_root systemctl enable "$SERVICE_NAME"
     
-    print_success "Systemd service installed and enabled"
+    print_success "Systemd service configured"
+    log "Systemd service configured"
+    
+    if prompt_yes_no "Start the service now?" "y"; then
+        print_info "Starting service..."
+        run_as_root systemctl start "$SERVICE_NAME"
+        sleep 3
+        
+        if systemctl is-active --quiet "$SERVICE_NAME"; then
+            print_success "Service started successfully"
+            log "Service started"
+        else
+            print_error "Service failed to start"
+            print_info "Check logs with: sudo journalctl -u $SERVICE_NAME -f"
+        fi
+    fi
 }
 
-start_service() {
-    print_header "Starting Application"
+configure_firewall() {
+    print_header "Configuring Firewall"
     
-    print_info "Starting $SERVICE_NAME service..."
-    systemctl start "$SERVICE_NAME.service"
-    
-    sleep 3
-    
-    if systemctl is-active --quiet "$SERVICE_NAME.service"; then
-        print_success "Service started successfully"
-    else
-        print_error "Service failed to start"
-        print_info "Checking service status..."
-        systemctl status "$SERVICE_NAME.service" --no-pager
-        return 1
+    if ! check_command ufw; then
+        print_info "UFW firewall not installed, skipping firewall configuration"
+        return
     fi
+    
+    if ! run_as_root ufw status | grep -q "Status: active"; then
+        print_info "UFW firewall is not active, skipping firewall configuration"
+        return
+    fi
+    
+    if prompt_yes_no "Configure firewall to allow port 3000?" "y"; then
+        print_info "Adding firewall rule for port 3000..."
+        run_as_root ufw allow 3000/tcp >> "$LOG_FILE" 2>&1
+        print_success "Firewall configured"
+        log "Firewall rule added for port 3000"
+    fi
+}
+
+print_completion_message() {
+    print_header "Installation Complete!"
+    
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    
+    echo -e "${GREEN}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                ║"
+    echo "║  Sports Bar TV Controller has been installed successfully!    ║"
+    echo "║                                                                ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    echo -e "\n${CYAN}Installation Details:${NC}"
+    echo -e "  Installation Directory: ${GREEN}$INSTALL_DIR${NC}"
+    echo -e "  Service User: ${GREEN}$SERVICE_USER${NC}"
+    echo -e "  Log File: ${GREEN}$LOG_FILE${NC}"
+    
+    echo -e "\n${CYAN}Access Your Application:${NC}"
+    echo -e "  Local: ${GREEN}http://localhost:3000${NC}"
+    echo -e "  Network: ${GREEN}http://${LOCAL_IP}:3000${NC}"
+    
+    echo -e "\n${CYAN}Service Management:${NC}"
+    echo -e "  Start:   ${GREEN}sudo systemctl start $SERVICE_NAME${NC}"
+    echo -e "  Stop:    ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}"
+    echo -e "  Restart: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    echo -e "  Status:  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}"
+    echo -e "  Logs:    ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}"
+    
+    echo -e "\n${YELLOW}⚠ IMPORTANT NEXT STEPS:${NC}"
+    echo -e "  1. Configure API keys in: ${GREEN}$INSTALL_DIR/.env${NC}"
+    echo -e "  2. Restart the service after configuration: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    echo -e "  3. Access the web interface and complete initial setup"
+    
+    echo -e "\n${CYAN}Required API Keys:${NC}"
+    echo -e "  • ANTHROPIC_API_KEY - For AI assistant features"
+    echo -e "  • SOUNDTRACK_API_KEY - For music control"
+    echo -e "  • GITHUB_TOKEN - For remote updates"
+    
+    echo -e "\n${CYAN}Optional Features:${NC}"
+    echo -e "  • Sports data APIs (ESPN, SportsRadar)"
+    echo -e "  • TV guide APIs (Spectrum, Gracenote)"
+    echo -e "  • Local AI (Ollama) - Run: ${GREEN}$INSTALL_DIR/install-ollama.sh${NC}"
+    
+    echo -e "\n${CYAN}Documentation:${NC}"
+    echo -e "  • Installation Guide: ${GREEN}$INSTALL_DIR/INSTALLATION.md${NC}"
+    echo -e "  • Deployment Guide: ${GREEN}$INSTALL_DIR/DEPLOYMENT_INSTRUCTIONS.md${NC}"
+    echo -e "  • README: ${GREEN}$INSTALL_DIR/README.md${NC}"
+    
+    echo -e "\n${CYAN}Support:${NC}"
+    echo -e "  • GitHub: ${GREEN}https://github.com/dfultonthebar/Sports-Bar-TV-Controller${NC}"
+    echo -e "  • Issues: ${GREEN}https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues${NC}"
+    
+    echo -e "\n${GREEN}Thank you for installing Sports Bar TV Controller!${NC}\n"
+    
+    log "Installation completed successfully"
 }
 
 #############################################################################
@@ -274,58 +563,50 @@ start_service() {
 #############################################################################
 
 main() {
-    print_header "Sports Bar TV Controller - Installation"
+    clear
     
+    echo -e "${BLUE}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                ║"
+    echo "║        Sports Bar TV Controller - Installation Script         ║"
+    echo "║                                                                ║"
+    echo "║  This script will install all required dependencies and       ║"
+    echo "║  set up the Sports Bar TV Controller application.             ║"
+    echo "║                                                                ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}\n"
+    
+    log "Installation started"
+    log "Installation directory: $INSTALL_DIR"
+    log "Repository: $REPO_URL (branch: $REPO_BRANCH)"
+    
+    # Pre-installation checks
     check_root
     check_os
+    check_existing_installation
     
-    print_info "This script will install the Sports Bar TV Controller application"
-    print_info "Installation directory: $INSTALL_DIR"
-    echo
-    read -p "Continue with installation? (Y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
-        print_info "Installation cancelled"
-        exit 0
-    fi
-    
-    # Run installation steps
+    # System setup
     install_system_dependencies
     install_nodejs
+    create_service_user
+    
+    # Application setup
     clone_repository
-    install_npm_packages
+    install_npm_dependencies
     setup_database
     create_env_file
     build_application
-    install_systemd_service
-    start_service
     
-    # Print completion message
-    print_header "Installation Complete!"
+    # Service setup
+    setup_systemd_service
+    configure_firewall
     
-    LOCAL_IP=$(hostname -I | awk '{print $1}')
-    
-    echo -e "${GREEN}✓ Sports Bar TV Controller has been successfully installed!${NC}\n"
-    
-    echo -e "${BLUE}Access the application at:${NC}"
-    echo -e "  ${GREEN}http://$LOCAL_IP:3000${NC}"
-    echo -e "  ${GREEN}http://localhost:3000${NC} (if accessing locally)\n"
-    
-    echo -e "${BLUE}Service Management Commands:${NC}"
-    echo -e "  Start:   ${YELLOW}sudo systemctl start $SERVICE_NAME${NC}"
-    echo -e "  Stop:    ${YELLOW}sudo systemctl stop $SERVICE_NAME${NC}"
-    echo -e "  Restart: ${YELLOW}sudo systemctl restart $SERVICE_NAME${NC}"
-    echo -e "  Status:  ${YELLOW}sudo systemctl status $SERVICE_NAME${NC}"
-    echo -e "  Logs:    ${YELLOW}sudo journalctl -u $SERVICE_NAME -f${NC}\n"
-    
-    echo -e "${YELLOW}⚠ IMPORTANT NEXT STEPS:${NC}"
-    echo -e "  1. Edit ${BLUE}$INSTALL_DIR/.env${NC} to add your API keys"
-    echo -e "  2. Restart the service: ${YELLOW}sudo systemctl restart $SERVICE_NAME${NC}"
-    echo -e "  3. Check the logs: ${YELLOW}sudo journalctl -u $SERVICE_NAME -f${NC}\n"
-    
-    echo -e "${BLUE}For more information, see:${NC}"
-    echo -e "  ${GREEN}$INSTALL_DIR/README_INSTALLATION.md${NC}\n"
+    # Completion
+    print_completion_message
 }
 
+# Trap errors and provide helpful message
+trap 'print_error "Installation failed! Check log file: $LOG_FILE"; log "Installation failed with error"; exit 1' ERR
+
 # Run main installation
-main
+main "$@"
