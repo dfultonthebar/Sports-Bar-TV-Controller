@@ -1116,17 +1116,52 @@ fi
 # =============================================================================
 # DATABASE MIGRATION (Fire Cube Integration)
 # =============================================================================
-log "🗄️  Running database migrations..."
-if npx prisma migrate deploy 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "Database migrations applied successfully"
-else
-    log_error "Failed to apply database migrations"
-    log_error "This may cause issues with Fire Cube integration"
-    log_error "Please check the error above and try running manually:"
-    log_error "   npx prisma migrate deploy"
-    exit 1
+log "🗄️  Synchronizing database schema..."
+log "   Using 'prisma db push' for safe, data-preserving updates"
+
+# Set DATABASE_URL from .env
+if [ -f ".env" ]; then
+    export $(grep "^DATABASE_URL=" .env | xargs)
 fi
 
+# Use db push instead of migrate deploy to avoid P3009 errors
+if npx prisma db push --accept-data-loss=false 2>&1 | tee /tmp/prisma_update.log; then
+    log_success "Database schema synchronized successfully"
+    log "   ✅ All your data has been preserved"
+else
+    # Check if it's just a "no changes" or "already in sync" message
+    if grep -q "already in sync" /tmp/prisma_update.log || grep -q "P3005" /tmp/prisma_update.log || grep -q "No changes" /tmp/prisma_update.log; then
+        log_success "Database schema is already up to date"
+        log "   ℹ️  No schema changes needed"
+    elif grep -q "P3009" /tmp/prisma_update.log; then
+        log_error "Failed migration detected in database (P3009)"
+        log_error "This happens when a previous migration was interrupted"
+        log ""
+        log "🔧 To fix this issue, run the database reset utility:"
+        log "   ./scripts/reset-database-migrations.sh"
+        log ""
+        log "This will:"
+        log "  ✅ Backup your database"
+        log "  ✅ Clear failed migration records"
+        log "  ✅ Re-sync the schema (preserving all data)"
+        log ""
+        rm -f /tmp/prisma_update.log
+        exit 1
+    else
+        log_error "Database schema synchronization failed"
+        log_error "Check the error above for details"
+        log ""
+        log "💡 Common solutions:"
+        log "  1. Run: ./scripts/reset-database-migrations.sh"
+        log "  2. Check DATABASE_URL in .env is correct"
+        log "  3. Ensure database file has proper permissions"
+        log ""
+        rm -f /tmp/prisma_update.log
+        exit 1
+    fi
+fi
+
+rm -f /tmp/prisma_update.log
 log ""
 
 
@@ -1316,59 +1351,65 @@ if [ -f "prisma/schema.prisma" ]; then
             log "   📊 Applying migrations to existing database..."
             log "   🔒 SAFE MODE: Your data will be preserved"
             
-            # CRITICAL FIX: Use migrate deploy for existing databases
-            # This applies migrations WITHOUT dropping data
+            # CRITICAL FIX: Use db push for existing databases
+            # This syncs schema WITHOUT dropping data and avoids P3009 errors
             # NEVER use --accept-data-loss flag - it deletes all data!
-            if npx prisma migrate deploy 2>&1 | tee /tmp/prisma_output.log; then
-                log_success "Database migrations applied successfully"
+            log "   Using 'prisma db push' for safe schema synchronization..."
+            
+            if npx prisma db push --accept-data-loss=false 2>&1 | tee /tmp/prisma_output.log; then
+                log_success "Database schema synchronized successfully"
                 log "   ✅ All your data has been preserved"
             else
-                # Check if migrations are already applied
-                if grep -q "No pending migrations" /tmp/prisma_output.log; then
-                    log "   ℹ️  Database is already up to date"
-                    log_success "No migrations needed - all data preserved"
-                elif grep -q "P3005" /tmp/prisma_output.log; then
-                    log "   ℹ️  Database schema is current"
-                    log_success "No schema changes needed - database is up to date"
+                # Check if it's just a "no changes" message
+                if grep -q "already in sync" /tmp/prisma_output.log || grep -q "P3005" /tmp/prisma_output.log || grep -q "No changes" /tmp/prisma_output.log; then
+                    log "   ℹ️  Database schema is already up to date"
+                    log_success "No schema changes needed - all data preserved"
+                elif grep -q "P3009" /tmp/prisma_output.log; then
+                    log_error "Failed migration detected in database (P3009)"
+                    log_error "Run: ./scripts/reset-database-migrations.sh to fix"
+                    rm -f /tmp/prisma_output.log
+                    exit 1
                 else
-                    log_error "Migration failed - check output above"
+                    log_error "Schema synchronization failed - check output above"
                     log_error "Your data is still safe in the backup"
+                    log_error "Try running: ./scripts/reset-database-migrations.sh"
                     rm -f /tmp/prisma_output.log
                     exit 1
                 fi
             fi
             rm -f /tmp/prisma_output.log
         else
-            log "   📊 Creating new database with migrations..."
+            log "   📊 Creating new database..."
             
-            # For new databases, use migrate deploy
-            if npx prisma migrate deploy 2>&1 | tee /tmp/prisma_output.log; then
+            # For new databases, use db push (simpler and more reliable)
+            log "   Using 'prisma db push' to create database schema..."
+            
+            if npx prisma db push --accept-data-loss=false 2>&1 | tee /tmp/prisma_output.log; then
                 log_success "Database created successfully"
             else
-                # If migrate deploy fails, fall back to db push (WITHOUT --accept-data-loss)
-                log "   ℹ️  Switching to schema sync method..."
-                if npx prisma db push 2>&1 | tee /tmp/prisma_output.log; then
-                    log_success "Database schema created successfully"
-                else
-                    log_error "Database creation failed - check output above"
-                    rm -f /tmp/prisma_output.log
-                    exit 1
-                fi
+                log_error "Database creation failed - check output above"
+                log_error "Common issues:"
+                log_error "  - Check DATABASE_URL in .env is correct"
+                log_error "  - Ensure database directory exists and is writable"
+                log_error "  - Verify Prisma schema is valid"
+                rm -f /tmp/prisma_output.log
+                exit 1
             fi
             rm -f /tmp/prisma_output.log
         fi
     else
         log "   📊 Syncing database schema (no migrations found)..."
         # CRITICAL: Never use --accept-data-loss flag
-        if npx prisma db push 2>&1 | tee /tmp/prisma_output.log; then
+        if npx prisma db push --accept-data-loss=false 2>&1 | tee /tmp/prisma_output.log; then
             log_success "Database schema synchronized successfully"
         else
             # Check if it's just a "no changes" message
-            if grep -q "already in sync" /tmp/prisma_output.log || grep -q "P3005" /tmp/prisma_output.log; then
+            if grep -q "already in sync" /tmp/prisma_output.log || grep -q "P3005" /tmp/prisma_output.log || grep -q "No changes" /tmp/prisma_output.log; then
                 log "   ℹ️  Database schema is already current"
                 log_success "No changes needed"
             else
                 log_error "Database sync failed - check output above"
+                log_error "Try running: ./scripts/reset-database-migrations.sh"
                 rm -f /tmp/prisma_output.log
                 exit 1
             fi
