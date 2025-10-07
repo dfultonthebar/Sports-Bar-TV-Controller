@@ -4,10 +4,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
+import {
+  executeTool,
+  getAvailableTools,
+  createDefaultContext,
+  ToolDefinition,
+} from '@/lib/ai-tools'
 
 interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  toolCalls?: ToolCall[]
+  toolResults?: ToolResult[]
+}
+
+interface ToolCall {
+  id: string
+  name: string
+  parameters: Record<string, any>
+}
+
+interface ToolResult {
+  id: string
+  name: string
+  result: any
+  success: boolean
+  error?: string
 }
 
 interface AIResponse {
@@ -21,7 +43,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2'
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, sessionId } = await request.json()
+    const { message, sessionId, enableTools = true } = await request.json()
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
@@ -77,6 +99,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Get available AI tools
+    const availableTools = enableTools ? getAvailableTools() : []
+    const toolsPrompt = enableTools ? buildToolsPrompt(availableTools) : ''
+
     // Get or create chat session
     let session
     if (sessionId) {
@@ -85,12 +111,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const messages = session ? JSON.parse(session.messages || '[]') : []
+    const messages: ChatMessage[] = session ? JSON.parse(session.messages || '[]') : []
     
-    // Enhanced system message with better context
+    // Enhanced system message with AI tools support
     const systemMessage: ChatMessage = {
       role: 'system',
-      content: `You are an advanced Sports Bar AI Assistant specializing in AV system management, troubleshooting, and operational support. You have access to comprehensive documentation and real-time system logs.
+      content: `You are an advanced Sports Bar AI Assistant specializing in AV system management, troubleshooting, and operational support. You have access to comprehensive documentation, real-time system logs, and powerful AI tools.
 
 ## Your Expertise:
 - Audio/Visual equipment troubleshooting and configuration
@@ -110,17 +136,25 @@ export async function POST(request: NextRequest) {
 - Check AI provider status and system health
 - Execute automated fixes for common issues
 - Analyze device mapping and configuration
+- **Access file system to read code and configuration files**
+- **Execute code to analyze and fix issues**
+- **Search through codebase for specific implementations**
 
-## Diagnostic Tools Available:
-You can run system diagnostics by calling these APIs:
-- POST /api/ai/run-diagnostics - Run comprehensive system diagnostics (checks: all, database, ai_providers, matrix_inputs, ir_devices, device_mapping, knowledge_base, system_logs, api_health)
-- GET /api/ai-providers/status - Check AI provider status and health
-- GET /api/diagnostics/bartender-remote - Check bartender remote configuration
-- GET /api/diagnostics/device-mapping - Analyze device mapping status
-- GET /api/devices/ai-analysis - Get AI insights for devices
-- POST /api/devices/execute-fix - Execute automated fixes (provide actionId and deviceId)
+${toolsPrompt}
 
-When users ask about system health, issues, or diagnostics, proactively use these APIs to gather real-time information.
+${context}
+
+## Tool Usage:
+When you need to access files, execute code, or perform system operations, use the available tools by responding in this format:
+
+TOOL_CALL: tool_name
+PARAMETERS:
+{
+  "param1": "value1",
+  "param2": "value2"
+}
+
+You can make multiple tool calls in sequence. After receiving tool results, provide a natural language response to the user explaining what you found and what actions you took.
 
 ## Response Guidelines:
 - Reference specific documentation when available
@@ -128,28 +162,77 @@ When users ask about system health, issues, or diagnostics, proactively use thes
 - Provide step-by-step technical guidance
 - Suggest preventive measures based on observed patterns
 - Highlight any concerning error patterns or trends
+- Use tools proactively when they would help answer the user's question
+- Always explain what you're doing before using tools
 
-${context}
-
-Always provide detailed, technical, and actionable responses based on the available documentation and system activity data.`
+Always provide detailed, technical, and actionable responses based on the available documentation, system activity data, and tool capabilities.`
     }
 
-    const allMessages = [systemMessage, ...messages, { role: 'user', content: message }]
+    const allMessages: ChatMessage[] = [systemMessage, ...messages, { role: 'user', content: message }]
 
-    // Get AI response from local Ollama
-    const aiResponse = await callLocalOllama(allMessages)
+    // Main conversation loop with tool calling
+    let response = ''
+    let toolCalls: ToolCall[] = []
+    let toolResults: ToolResult[] = []
+    let iterations = 0
+    const maxIterations = 5
 
-    if (aiResponse.error) {
-      await operationLogger.logError({
-        level: 'error',
-        source: 'chat-api',
-        message: `Local AI error: ${aiResponse.error}`,
-        details: { message }
-      })
-      
-      return NextResponse.json({
-        response: `I encountered an error: ${aiResponse.error}. Please ensure Ollama is running on ${OLLAMA_BASE_URL} with model ${OLLAMA_MODEL}.`
-      })
+    while (iterations < maxIterations) {
+      iterations++
+
+      // Get AI response from local Ollama
+      const aiResponse = await callLocalOllama(allMessages)
+
+      if (aiResponse.error) {
+        await operationLogger.logError({
+          level: 'error',
+          source: 'chat-api',
+          message: `Local AI error: ${aiResponse.error}`,
+          details: { message }
+        })
+        
+        return NextResponse.json({
+          response: `I encountered an error: ${aiResponse.error}. Please ensure Ollama is running on ${OLLAMA_BASE_URL} with model ${OLLAMA_MODEL}.`
+        })
+      }
+
+      response = aiResponse.content || ''
+
+      // Check if AI wants to use tools
+      if (enableTools && response.includes('TOOL_CALL:')) {
+        const parsedToolCalls = parseToolCalls(response)
+
+        if (parsedToolCalls.length > 0) {
+          // Execute tools
+          const context = createDefaultContext({
+            sessionId,
+            maxExecutionTime: 30000,
+          })
+
+          const results = await executeTools(parsedToolCalls, context)
+          toolCalls.push(...parsedToolCalls)
+          toolResults.push(...results)
+
+          // Add tool results to conversation
+          const toolResultsMessage = formatToolResults(results)
+          allMessages.push({
+            role: 'assistant',
+            content: response,
+            toolCalls: parsedToolCalls,
+          })
+          allMessages.push({
+            role: 'tool',
+            content: toolResultsMessage,
+            toolResults: results,
+          })
+
+          // Continue conversation with tool results
+          continue
+        }
+      }
+
+      // No more tool calls, break the loop
+      break
     }
 
     // Log successful AI interaction
@@ -159,14 +242,21 @@ Always provide detailed, technical, and actionable responses based on the availa
       details: { 
         query: message.substring(0, 100),
         documentsFound: relevantDocs.length,
-        responseLength: aiResponse.content?.length || 0
+        responseLength: response.length,
+        toolsUsed: toolCalls.length,
+        iterations
       },
       success: true
     })
 
     // Add user message and AI response to session
     messages.push({ role: 'user', content: message })
-    messages.push({ role: 'assistant', content: aiResponse.content })
+    messages.push({ 
+      role: 'assistant', 
+      content: response,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      toolResults: toolResults.length > 0 ? toolResults : undefined
+    })
 
     // Save or update session
     if (session) {
@@ -184,7 +274,7 @@ Always provide detailed, technical, and actionable responses based on the availa
     }
 
     return NextResponse.json({
-      response: aiResponse.content,
+      response,
       sessionId: session.id,
       relevantDocuments: relevantDocs.map(doc => ({
         id: doc.id,
@@ -196,7 +286,11 @@ Always provide detailed, technical, and actionable responses based on the availa
         totalOperations: operationSummary.totalOperations,
         successRate: operationSummary.successRate,
         errorCount: operationSummary.errorCount
-      } : undefined
+      } : undefined,
+      toolsEnabled: enableTools,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      toolResults: toolResults.length > 0 ? toolResults : undefined,
+      iterations
     })
   } catch (error) {
     console.error('Chat error:', error)
@@ -216,8 +310,132 @@ Always provide detailed, technical, and actionable responses based on the availa
   }
 }
 
+/**
+ * Build tools prompt for system message
+ */
+function buildToolsPrompt(tools: ToolDefinition[]): string {
+  let prompt = '\n## Available AI Tools:\n\n'
+
+  const categories = ['filesystem', 'code_execution', 'analysis', 'system']
+
+  for (const category of categories) {
+    const categoryTools = tools.filter(t => t.category === category)
+    if (categoryTools.length === 0) continue
+
+    prompt += `### ${category.replace('_', ' ').toUpperCase()}\n\n`
+
+    for (const tool of categoryTools) {
+      prompt += `**${tool.name}** (${tool.securityLevel})\n`
+      prompt += `${tool.description}\n`
+      prompt += 'Parameters:\n'
+
+      for (const param of tool.parameters) {
+        const required = param.required ? 'required' : 'optional'
+        prompt += `  - ${param.name} (${param.type}, ${required}): ${param.description}\n`
+      }
+
+      prompt += '\n'
+    }
+  }
+
+  return prompt
+}
+
+/**
+ * Parse tool calls from AI response
+ */
+function parseToolCalls(response: string): ToolCall[] {
+  const toolCalls: ToolCall[] = []
+  const toolCallRegex = /TOOL_CALL:\s*(\w+)\s*PARAMETERS:\s*(\{[\s\S]*?\})/g
+
+  let match
+  while ((match = toolCallRegex.exec(response)) !== null) {
+    try {
+      const toolName = match[1].trim()
+      const parametersStr = match[2].trim()
+      const parameters = JSON.parse(parametersStr)
+
+      toolCalls.push({
+        id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: toolName,
+        parameters,
+      })
+    } catch (error) {
+      console.error('Failed to parse tool call:', error)
+    }
+  }
+
+  return toolCalls
+}
+
+/**
+ * Execute multiple tools
+ */
+async function executeTools(
+  toolCalls: ToolCall[],
+  context: any
+): Promise<ToolResult[]> {
+  const results: ToolResult[] = []
+
+  for (const toolCall of toolCalls) {
+    try {
+      const result = await executeTool(
+        toolCall.name,
+        toolCall.parameters,
+        context
+      )
+
+      results.push({
+        id: toolCall.id,
+        name: toolCall.name,
+        result: result.output,
+        success: result.success,
+        error: result.error,
+      })
+    } catch (error) {
+      results.push({
+        id: toolCall.id,
+        name: toolCall.name,
+        result: null,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  }
+
+  return results
+}
+
+/**
+ * Format tool results for AI
+ */
+function formatToolResults(results: ToolResult[]): string {
+  let formatted = 'TOOL_RESULTS:\n\n'
+
+  for (const result of results) {
+    formatted += `Tool: ${result.name}\n`
+    formatted += `Status: ${result.success ? 'SUCCESS' : 'FAILED'}\n`
+
+    if (result.success) {
+      formatted += `Result:\n${JSON.stringify(result.result, null, 2)}\n`
+    } else {
+      formatted += `Error: ${result.error}\n`
+    }
+
+    formatted += '\n---\n\n'
+  }
+
+  return formatted
+}
+
 async function callLocalOllama(messages: ChatMessage[]): Promise<AIResponse> {
   try {
+    // Convert messages to Ollama format (filter out tool role)
+    const ollamaMessages = messages.map(msg => ({
+      role: msg.role === 'tool' ? 'user' : msg.role,
+      content: msg.content,
+    }))
+
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: {
@@ -225,7 +443,7 @@ async function callLocalOllama(messages: ChatMessage[]): Promise<AIResponse> {
       },
       body: JSON.stringify({
         model: OLLAMA_MODEL,
-        messages: messages,
+        messages: ollamaMessages,
         stream: false,
         options: {
           temperature: 0.7,
