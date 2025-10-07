@@ -449,3 +449,158 @@ export async function getQAGenerationStatus(jobId: string) {
     where: { id: jobId },
   });
 }
+
+/**
+ * Get all Q&A entries from the database
+ */
+export async function getAllQAEntries(filters?: {
+  category?: string;
+  sourceType?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const where: any = {};
+  
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+  
+  if (filters?.sourceType) {
+    where.sourceType = filters.sourceType;
+  }
+
+  const entries = await prisma.qAEntry.findMany({
+    where,
+    take: filters?.limit || 100,
+    skip: filters?.offset || 0,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const total = await prisma.qAEntry.count({ where });
+
+  return {
+    entries,
+    total,
+    limit: filters?.limit || 100,
+    offset: filters?.offset || 0,
+  };
+}
+
+/**
+ * Search Q&A entries
+ */
+export async function searchQAEntries(query: string, filters?: {
+  category?: string;
+  sourceType?: string;
+  limit?: number;
+}) {
+  const where: any = {
+    OR: [
+      { question: { contains: query, mode: 'insensitive' } },
+      { answer: { contains: query, mode: 'insensitive' } },
+      { tags: { has: query } },
+    ],
+  };
+
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+
+  if (filters?.sourceType) {
+    where.sourceType = filters.sourceType;
+  }
+
+  const entries = await prisma.qAEntry.findMany({
+    where,
+    take: filters?.limit || 50,
+    orderBy: { confidence: 'desc' },
+  });
+
+  return {
+    entries,
+    total: entries.length,
+    query,
+  };
+}
+
+/**
+ * Update a Q&A entry
+ */
+export async function updateQAEntry(
+  id: string,
+  data: {
+    question?: string;
+    answer?: string;
+    category?: string;
+    tags?: string[];
+    confidence?: number;
+    isVerified?: boolean;
+  }
+) {
+  return await prisma.qAEntry.update({
+    where: { id },
+    data: {
+      ...data,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Delete a Q&A entry
+ */
+export async function deleteQAEntry(id: string) {
+  return await prisma.qAEntry.delete({
+    where: { id },
+  });
+}
+
+/**
+ * Get Q&A statistics
+ */
+export async function getQAStatistics() {
+  const [
+    totalEntries,
+    verifiedEntries,
+    categoryCounts,
+    sourceTypeCounts,
+    recentJobs,
+  ] = await Promise.all([
+    prisma.qAEntry.count(),
+    prisma.qAEntry.count({ where: { isVerified: true } }),
+    prisma.qAEntry.groupBy({
+      by: ['category'],
+      _count: true,
+    }),
+    prisma.qAEntry.groupBy({
+      by: ['sourceType'],
+      _count: true,
+    }),
+    prisma.qAGenerationJob.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  return {
+    totalEntries,
+    verifiedEntries,
+    unverifiedEntries: totalEntries - verifiedEntries,
+    categoryCounts: categoryCounts.map(c => ({
+      category: c.category,
+      count: c._count,
+    })),
+    sourceTypeCounts: sourceTypeCounts.map(s => ({
+      sourceType: s.sourceType,
+      count: s._count,
+    })),
+    recentJobs: recentJobs.map(job => ({
+      id: job.id,
+      status: job.status,
+      sourceType: job.sourceType,
+      entriesGenerated: job.entriesGenerated,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+    })),
+  };
+}
