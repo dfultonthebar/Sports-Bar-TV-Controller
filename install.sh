@@ -243,35 +243,76 @@ check_system_requirements() {
 }
 
 #############################################################################
-# Install System Dependencies
+# PHASE 1: Install ALL System Dependencies
+#############################################################################
+# This phase installs ALL system-level packages before any application setup.
+# This ensures that all required libraries, compilers, and tools are available
+# before we attempt to install Node packages or run database migrations.
+#
+# Why this order matters:
+# - System packages provide the foundation (compilers, libraries, drivers)
+# - Node.js and npm need these tools to compile native modules
+# - SQLite libraries must be present before Prisma can work with the database
+# - Build tools are required for npm packages with native dependencies
 #############################################################################
 
 install_system_dependencies() {
-    print_header "Installing System Dependencies"
+    print_header "PHASE 1: Installing System Dependencies"
     
     log_and_print "Updating package lists..."
     sudo apt-get update >> "$LOG_FILE" 2>&1
     
-    log_and_print "Installing required packages..."
+    log_and_print "Installing core system packages..."
+    # Core utilities
     sudo apt-get install -y \
         curl \
         wget \
         git \
+        >> "$LOG_FILE" 2>&1
+    
+    log_and_print "Installing build tools and compilers..."
+    # Build tools required for compiling native Node.js modules
+    # - build-essential: gcc, g++, make, and other compilation tools
+    # - python3: Required by node-gyp for building native addons
+    # - python3-pip: Python package manager (may be needed by some npm packages)
+    sudo apt-get install -y \
         build-essential \
         python3 \
         python3-pip \
-        sqlite3 \
         >> "$LOG_FILE" 2>&1
     
-    print_success "System dependencies installed"
+    log_and_print "Installing SQLite database libraries..."
+    # SQLite packages required for Prisma and database operations
+    # - sqlite3: SQLite command-line tool
+    # - libsqlite3-dev: Development headers for SQLite (required for native modules)
+    sudo apt-get install -y \
+        sqlite3 \
+        libsqlite3-dev \
+        >> "$LOG_FILE" 2>&1
+    
+    log_and_print "Installing additional system utilities..."
+    # Additional utilities that may be needed
+    # - ca-certificates: SSL/TLS certificates for secure connections
+    # - gnupg: For verifying package signatures
+    sudo apt-get install -y \
+        ca-certificates \
+        gnupg \
+        >> "$LOG_FILE" 2>&1
+    
+    print_success "All system dependencies installed"
+    print_info "Installed: build tools, Python 3, SQLite libraries, and core utilities"
 }
 
 #############################################################################
-# Install Node.js
+# PHASE 1 (continued): Install Node.js Runtime
+#############################################################################
+# Node.js is installed as part of Phase 1 because it's a system-level runtime
+# that npm packages will depend on. This must be available before installing
+# any application dependencies.
 #############################################################################
 
 install_nodejs() {
-    print_header "Installing Node.js"
+    print_header "PHASE 1: Installing Node.js Runtime"
     
     if check_command node; then
         local current_version=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
@@ -297,11 +338,21 @@ install_nodejs() {
 }
 
 #############################################################################
-# Install Ollama
+# PHASE 1 (continued): Install Ollama AI Runtime
+#############################################################################
+# Ollama is installed as part of Phase 1 because it's a system-level service
+# that the application will depend on. Installing it early ensures the service
+# is ready before application configuration.
+#
+# Required AI Models:
+# - llama3.2:3b  : Primary model for enhanced chat, tool chat, and log analysis
+# - phi3:mini    : Lightweight model for general chat interface
+# - llama2       : Backup model for device diagnostics
+# - mistral      : Fast model for quick queries
 #############################################################################
 
 install_ollama() {
-    print_header "Installing Ollama"
+    print_header "PHASE 1: Installing Ollama AI Runtime"
     
     if check_command ollama; then
         print_success "Ollama is already installed"
@@ -318,24 +369,157 @@ install_ollama() {
     
     # Wait for Ollama to be ready
     print_info "Waiting for Ollama to be ready..."
-    sleep 5
-    
-    # Pull required models
-    print_info "Pulling required AI models (this may take a while)..."
-    
-    log_and_print "Pulling llama3.2:3b model..."
-    ollama pull llama3.2:3b >> "$LOG_FILE" 2>&1 &
-    local pull_pid=$!
-    
-    # Show progress
-    while kill -0 $pull_pid 2>/dev/null; do
-        echo -n "."
+    local max_wait=30
+    local waited=0
+    while ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do
+        if [ $waited -ge $max_wait ]; then
+            print_error "Ollama service failed to start within ${max_wait}s"
+            return 1
+        fi
         sleep 2
+        waited=$((waited + 2))
     done
+    print_success "Ollama service is ready"
+    
+    # Download all required AI models
+    download_ollama_models
+}
+
+#############################################################################
+# Download Required Ollama Models
+#############################################################################
+# This function downloads all AI models required by the application.
+# Models are pulled sequentially to avoid resource contention and ensure
+# reliable downloads. Each model is verified after download.
+#
+# The function includes:
+# - Progress indicators for each model
+# - Retry logic for network failures
+# - Verification of successful downloads
+# - Clear error messages and troubleshooting guidance
+#############################################################################
+
+download_ollama_models() {
+    print_header "Downloading Required AI Models"
+    
+    # Define all required models with descriptions
+    # Format: "model_name:tag|description"
+    local REQUIRED_MODELS=(
+        "llama3.2:3b|Primary model for enhanced chat, tool chat, and log analysis"
+        "phi3:mini|Lightweight model for general chat interface"
+        "llama2|Backup model for device diagnostics"
+        "mistral|Fast model for quick queries"
+    )
+    
+    local total_models=${#REQUIRED_MODELS[@]}
+    local current_model=0
+    local failed_models=()
+    
+    print_info "Downloading ${total_models} AI models (this may take 10-30 minutes depending on your connection)..."
     echo ""
     
-    wait $pull_pid
-    print_success "AI models installed"
+    # Pull each model sequentially
+    for model_entry in "${REQUIRED_MODELS[@]}"; do
+        current_model=$((current_model + 1))
+        
+        # Parse model name and description
+        local model_name="${model_entry%%|*}"
+        local model_desc="${model_entry##*|}"
+        
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}Model ${current_model} of ${total_models}: ${model_name}${NC}"
+        echo -e "${CYAN}Purpose: ${model_desc}${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        
+        # Check if model is already installed
+        if ollama list | grep -q "^${model_name}"; then
+            print_success "Model ${model_name} is already installed"
+            echo ""
+            continue
+        fi
+        
+        # Try to pull the model with retry logic
+        local max_retries=3
+        local retry_count=0
+        local pull_success=false
+        
+        while [ $retry_count -lt $max_retries ]; do
+            if [ $retry_count -gt 0 ]; then
+                print_warning "Retry attempt ${retry_count} of $((max_retries - 1)) for ${model_name}..."
+            fi
+            
+            print_info "Downloading ${model_name}... (this may take several minutes)"
+            
+            # Pull model and capture output
+            if ollama pull "$model_name" >> "$LOG_FILE" 2>&1; then
+                pull_success=true
+                break
+            else
+                retry_count=$((retry_count + 1))
+                if [ $retry_count -lt $max_retries ]; then
+                    print_warning "Download failed, waiting 5 seconds before retry..."
+                    sleep 5
+                fi
+            fi
+        done
+        
+        # Verify the model was successfully downloaded
+        if [ "$pull_success" = true ]; then
+            if ollama list | grep -q "^${model_name}"; then
+                print_success "Model ${model_name} downloaded and verified successfully"
+            else
+                print_error "Model ${model_name} download reported success but verification failed"
+                failed_models+=("$model_name")
+            fi
+        else
+            print_error "Failed to download ${model_name} after ${max_retries} attempts"
+            failed_models+=("$model_name")
+        fi
+        
+        echo ""
+    done
+    
+    # Display summary of installed models
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    print_header "AI Models Installation Summary"
+    echo ""
+    print_info "Installed AI Models:"
+    ollama list
+    echo ""
+    
+    # Check for failures and provide guidance
+    if [ ${#failed_models[@]} -gt 0 ]; then
+        print_warning "Some models failed to download:"
+        for failed_model in "${failed_models[@]}"; do
+            echo -e "  ${RED}✗${NC} $failed_model"
+        done
+        echo ""
+        print_warning "The application will still work, but some AI features may be limited."
+        echo ""
+        print_info "Troubleshooting steps:"
+        echo "  1. Check your internet connection"
+        echo "  2. Verify Ollama service is running: sudo systemctl status ollama"
+        echo "  3. Check available disk space: df -h"
+        echo "  4. Try manually pulling models later: ollama pull <model-name>"
+        echo "  5. View detailed logs: tail -f $LOG_FILE"
+        echo ""
+        print_info "You can continue with the installation. Failed models can be downloaded later."
+        echo ""
+        
+        # Don't fail the installation, just warn
+        return 0
+    else
+        print_success "All required AI models downloaded successfully!"
+        echo ""
+        print_info "AI Features Ready:"
+        echo "  ✓ Enhanced Chat (llama3.2:3b)"
+        echo "  ✓ Tool Chat (llama3.2:3b)"
+        echo "  ✓ Log Analysis (llama3.2:3b)"
+        echo "  ✓ General Chat (phi3:mini)"
+        echo "  ✓ Device Diagnostics (llama2)"
+        echo "  ✓ Quick Queries (mistral)"
+        echo ""
+    fi
 }
 
 #############################################################################
@@ -360,11 +544,15 @@ create_service_user() {
 }
 
 #############################################################################
-# Clone Repository
+# PHASE 2: Clone Repository
+#############################################################################
+# Now that all system dependencies are installed, we can safely clone the
+# application repository. This is done before installing application dependencies
+# because we need the package.json file to know what to install.
 #############################################################################
 
 clone_repository() {
-    print_header "Cloning Repository"
+    print_header "PHASE 2: Cloning Repository"
     
     # Remove existing directory if it exists
     if [ -d "$INSTALL_DIR" ]; then
@@ -383,26 +571,78 @@ clone_repository() {
 }
 
 #############################################################################
-# Install Application Dependencies
+# PHASE 3: Install Application Dependencies
+#############################################################################
+# This phase installs all npm packages required by the application.
+# This MUST happen BEFORE database setup because:
+# - Prisma CLI is installed as an npm package
+# - Database migrations require Prisma to be available
+# - Native modules need the build tools we installed in Phase 1
+#
+# Why this is critical:
+# - Running migrations before npm install will fail because Prisma isn't available
+# - Some npm packages compile native code using the build tools from Phase 1
+# - All application code dependencies must be present before configuration
 #############################################################################
 
 install_app_dependencies() {
-    print_header "Installing Application Dependencies"
+    print_header "PHASE 3: Installing Application Dependencies"
     
     cd "$INSTALL_DIR"
     
-    log_and_print "Installing npm packages..."
+    log_and_print "Installing npm packages (including Prisma)..."
+    print_info "This may take a few minutes as packages are downloaded and compiled..."
+    
+    # Install all npm dependencies
+    # This includes Prisma, Next.js, and all other application dependencies
     npm install >> "$LOG_FILE" 2>&1
     
     print_success "Application dependencies installed"
+    print_info "Prisma CLI and all required packages are now available"
 }
 
 #############################################################################
-# Setup Database
+# PHASE 4: Configure Environment
+#############################################################################
+# Environment configuration must happen BEFORE database setup because:
+# - The .env file contains the DATABASE_URL that Prisma needs
+# - Database migrations will fail without proper environment configuration
+# - Other environment variables may be needed by the migration process
+#############################################################################
+
+configure_environment() {
+    print_header "PHASE 4: Configuring Environment"
+    
+    cd "$INSTALL_DIR"
+    
+    if [ ! -f .env ]; then
+        log_and_print "Creating .env file from template..."
+        cp .env.example .env
+        
+        # Set default values
+        sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"file:./prisma/data/sports_bar.db\"|g" .env
+        sed -i "s|OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=\"http://localhost:11434\"|g" .env
+        
+        print_success "Environment configured"
+        print_info "Database URL and Ollama settings configured in .env"
+    else
+        print_info ".env file already exists, skipping"
+    fi
+}
+
+#############################################################################
+# PHASE 5: Setup Database
+#############################################################################
+# Database setup happens AFTER all dependencies and configuration are ready:
+# - System dependencies (Phase 1): SQLite libraries installed
+# - Application dependencies (Phase 3): Prisma CLI available
+# - Environment configuration (Phase 4): DATABASE_URL configured
+#
+# This ensures that Prisma has everything it needs to successfully run migrations.
 #############################################################################
 
 setup_database() {
-    print_header "Setting Up Database"
+    print_header "PHASE 5: Setting Up Database"
     
     cd "$INSTALL_DIR"
     
@@ -507,34 +747,16 @@ setup_database() {
 }
 
 #############################################################################
-# Configure Environment
+# PHASE 6: Build Application
 #############################################################################
-
-configure_environment() {
-    print_header "Configuring Environment"
-    
-    cd "$INSTALL_DIR"
-    
-    if [ ! -f .env ]; then
-        log_and_print "Creating .env file from template..."
-        cp .env.example .env
-        
-        # Set default values
-        sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"file:./prisma/data/sports_bar.db\"|g" .env
-        sed -i "s|OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=\"http://localhost:11434\"|g" .env
-        
-        print_success "Environment configured"
-    else
-        print_info ".env file already exists, skipping"
-    fi
-}
-
-#############################################################################
-# Build Application
+# Building the application happens after database setup because:
+# - The build process may need to access the database schema
+# - Prisma client generation (done in Phase 5) must complete first
+# - All dependencies and configuration are now in place
 #############################################################################
 
 build_application() {
-    print_header "Building Application"
+    print_header "PHASE 6: Building Application"
     
     cd "$INSTALL_DIR"
     
@@ -545,11 +767,16 @@ build_application() {
 }
 
 #############################################################################
-# Setup PM2
+# PHASE 7: Setup PM2 Process Manager
+#############################################################################
+# PM2 setup is one of the final steps because:
+# - The application must be fully built before it can be run
+# - All dependencies, configuration, and database must be ready
+# - This starts the application as a managed service
 #############################################################################
 
 setup_pm2() {
-    print_header "Setting Up PM2 Process Manager"
+    print_header "PHASE 7: Setting Up PM2 Process Manager"
     
     # Install PM2 globally if not already installed
     if ! check_command pm2; then
@@ -577,7 +804,9 @@ setup_pm2() {
 }
 
 #############################################################################
-# Set Permissions
+# PHASE 8: Set Permissions
+#############################################################################
+# Permissions are set after all files are in place to ensure proper ownership.
 #############################################################################
 
 set_permissions() {
@@ -585,7 +814,7 @@ set_permissions() {
         return 0
     fi
     
-    print_header "Setting Permissions"
+    print_header "PHASE 8: Setting Permissions"
     
     log_and_print "Setting ownership to $SERVICE_USER..."
     sudo chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
@@ -594,11 +823,13 @@ set_permissions() {
 }
 
 #############################################################################
-# Verify Installation
+# PHASE 9: Verify Installation
+#############################################################################
+# Final verification ensures everything is working correctly.
 #############################################################################
 
 verify_installation() {
-    print_header "Verifying Installation"
+    print_header "PHASE 9: Verifying Installation"
     
     # Check if application is running
     if pm2 list | grep -q "$SERVICE_NAME"; then
@@ -666,6 +897,49 @@ trap 'print_error "Installation failed! Check log file: $LOG_FILE"' ERR
 #############################################################################
 # Main Installation Process
 #############################################################################
+# 
+# INSTALLATION PHASES (Best Practice Order):
+# ==========================================
+# 
+# PHASE 1: System Dependencies & Runtimes
+#   - Install ALL system-level packages first (build tools, libraries, drivers)
+#   - Install Node.js runtime (required by npm)
+#   - Install Ollama AI runtime (system service)
+#   Why: Provides the foundation for everything else
+# 
+# PHASE 2: Clone Repository
+#   - Get the application source code
+#   Why: Need package.json to know what dependencies to install
+# 
+# PHASE 3: Application Dependencies
+#   - Run npm install to get all Node packages (including Prisma)
+#   Why: Must happen BEFORE database setup because Prisma CLI is an npm package
+# 
+# PHASE 4: Environment Configuration
+#   - Create .env file with database URL and other settings
+#   Why: Prisma needs DATABASE_URL to run migrations
+# 
+# PHASE 5: Database Setup
+#   - Run Prisma migrations to create database schema
+#   Why: Now we have SQLite libraries (Phase 1), Prisma CLI (Phase 3), and config (Phase 4)
+# 
+# PHASE 6: Build Application
+#   - Compile Next.js application
+#   Why: Build may need database schema and Prisma client (generated in Phase 5)
+# 
+# PHASE 7: Service Setup
+#   - Configure PM2 to run the application
+#   Why: Application must be fully built before it can run
+# 
+# PHASE 8: Permissions
+#   - Set proper file ownership
+#   Why: All files must be in place first
+# 
+# PHASE 9: Verification
+#   - Verify everything is working
+#   Why: Final check before completion
+# 
+#############################################################################
 
 main() {
     # Parse command line arguments
@@ -683,19 +957,42 @@ main() {
     # Start installation
     log "Installation started at $(date)"
     
+    # Pre-installation checks
     check_system_requirements
-    install_system_dependencies
-    install_nodejs
-    install_ollama
+    
+    # PHASE 1: Install ALL system dependencies and runtimes FIRST
+    install_system_dependencies  # System packages, build tools, SQLite libraries
+    install_nodejs              # Node.js runtime (required by npm)
+    install_ollama              # Ollama AI runtime (system service)
+    
+    # User setup (if needed for system-wide installation)
     create_service_user
+    
+    # PHASE 2: Get the application code
     clone_repository
+    
+    # PHASE 3: Install application dependencies (npm packages including Prisma)
     install_app_dependencies
+    
+    # PHASE 4: Configure environment (.env file with DATABASE_URL)
     configure_environment
+    
+    # PHASE 5: Setup database (now that Prisma CLI is available)
     setup_database
+    
+    # PHASE 6: Build the application
     build_application
+    
+    # PHASE 7: Setup process manager and start the service
     setup_pm2
+    
+    # PHASE 8: Set proper permissions
     set_permissions
+    
+    # PHASE 9: Verify everything works
     verify_installation
+    
+    # Show completion message
     print_final_instructions
     
     log "Installation completed at $(date)"
