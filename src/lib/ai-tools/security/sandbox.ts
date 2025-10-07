@@ -6,9 +6,9 @@
 
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
-import ivm from 'isolated-vm';
 import { ToolExecutionResult, CodeExecutionRequest } from '../types';
 import { securityValidator } from './validator';
+import { getIsolatedVM } from './isolated-vm-wrapper';
 
 const execAsync = promisify(exec);
 
@@ -95,6 +95,18 @@ export class SandboxExecutor {
     const { code, timeout = 30000 } = validation.sanitizedInput;
 
     try {
+      // Lazy load isolated-vm
+      const ivm = await getIsolatedVM();
+      
+      // Check if isolated-vm is available
+      if (!ivm) {
+        return {
+          success: false,
+          error: 'JavaScript sandbox not available. Install isolated-vm with: npm rebuild isolated-vm',
+          executionTime: Date.now() - startTime,
+        };
+      }
+
       // Create a new isolate with memory limit
       const isolate = new ivm.Isolate({ memoryLimit: 128 });
       
