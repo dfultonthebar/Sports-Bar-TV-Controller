@@ -4,6 +4,10 @@ import { buildEnhancedContext } from '@/lib/ai-knowledge-enhanced';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
+// Configure route to allow longer execution time for AI responses
+export const maxDuration = 120; // 120 seconds
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -45,8 +49,11 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Call Ollama API
+    // Call Ollama API with extended timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
+      
       const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: 'POST',
         headers: {
@@ -56,8 +63,11 @@ export async function POST(request: NextRequest) {
           model,
           prompt: fullPrompt,
           stream: false
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -76,6 +86,20 @@ export async function POST(request: NextRequest) {
         contextError
       });
     } catch (fetchError: any) {
+      // Check if it's a timeout error
+      if (fetchError.name === 'AbortError') {
+        console.error('Ollama request timed out:', fetchError);
+        return NextResponse.json(
+          { 
+            error: 'Request timed out',
+            message: 'The AI model took too long to respond. This may happen with complex queries or larger models.',
+            suggestion: 'Try using a smaller model like llama3.2:3b or simplify your question.',
+            ollamaUrl: OLLAMA_BASE_URL
+          },
+          { status: 504 }
+        );
+      }
+      
       // Check if it's a connection error to Ollama
       if (fetchError.cause?.code === 'ECONNREFUSED' || fetchError.message?.includes('ECONNREFUSED')) {
         console.error('Ollama service is not running:', fetchError);
@@ -89,6 +113,21 @@ export async function POST(request: NextRequest) {
           { status: 503 }
         );
       }
+      
+      // Check for headers timeout error
+      if (fetchError.cause?.code === 'UND_ERR_HEADERS_TIMEOUT' || fetchError.message?.includes('HeadersTimeoutError')) {
+        console.error('Headers timeout error:', fetchError);
+        return NextResponse.json(
+          { 
+            error: 'Connection timeout',
+            message: 'The connection to Ollama timed out while waiting for response headers.',
+            suggestion: 'Ollama may be overloaded or the model is taking too long to start. Try again or use a smaller model.',
+            ollamaUrl: OLLAMA_BASE_URL
+          },
+          { status: 504 }
+        );
+      }
+      
       throw fetchError;
     }
     
