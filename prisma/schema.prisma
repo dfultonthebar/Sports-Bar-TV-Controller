@@ -587,3 +587,107 @@ model QAGenerationJob {
   @@index([status])
 }
 
+model DirecTVBox {
+  id              String    @id @default(cuid())
+  ipAddress       String    @unique
+  macAddress      String?   @unique
+  model           String?   // HR24, HR34, HR44, HR54, C31, C41, etc.
+  modelFamily     String?   // "genie-server", "genie-client", "hd-dvr", "hd-receiver"
+  location        String?   // User-defined location name
+  shefVersion     String?   // SHEF API version from /info/getVersion
+  isServer        Boolean   @default(false) // True for Genie servers (HR34, HR44, HR54)
+  isClient        Boolean   @default(false) // True for Genie clients (C31, C41, C51, C61)
+  serverMacAddress String?  // MAC address of parent Genie server (for clients)
+  capabilities    String?   // JSON array of supported features
+  status          String    @default("discovered") // discovered, online, offline, error
+  shefEnabled     Boolean   @default(false) // Whether SHEF is enabled on the box
+  lastSeen        DateTime?
+  discoveredAt    DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  clients         DirecTVBox[] @relation("ServerClients")
+  server          DirecTVBox?  @relation("ServerClients", fields: [serverMacAddress], references: [macAddress])
+  
+  @@index([status])
+  @@index([isServer])
+  @@index([model])
+}
+
+model DirecTVChannel {
+  id              String    @id @default(cuid())
+  channelNumber   Int       // Major channel number
+  subChannel      Int?      // Minor channel number (for digital subchannels)
+  channelName     String    // Display name (e.g., "ESPN", "Fox Sports 1")
+  callsign        String?   // Station callsign (e.g., "ESPN", "FS1")
+  network         String?   // Network name
+  stationId       String?   // DirecTV station ID
+  isHD            Boolean   @default(false)
+  isOffAir        Boolean   @default(false)
+  isPPV           Boolean   @default(false)
+  category        String?   // sports, news, entertainment, movies, etc.
+  logoUrl         String?   // URL to channel logo
+  description     String?   // Channel description
+  isActive        Boolean   @default(true)
+  lastVerified    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([channelNumber, subChannel])
+  @@index([channelNumber])
+  @@index([category])
+  @@index([isActive])
+}
+
+model DirecTVCommand {
+  id              String    @id @default(cuid())
+  model           String    // HR24, HR34, HR44, "all", etc.
+  commandType     String    // remote_key, tune, power, info, serial
+  commandName     String    // poweron, poweroff, guide, up, down, etc.
+  commandCode     String    // The actual command to send (e.g., "poweron", "FA90")
+  endpoint        String?   // API endpoint (e.g., "/remote/processKey", "/tv/tune")
+  parameters      String?   // JSON object of parameters
+  description     String?   // Human-readable description
+  category        String?   // navigation, power, playback, channel, etc.
+  isDeprecated    Boolean   @default(false)
+  minShefVersion  String?   // Minimum SHEF version required
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([model, commandType, commandName])
+  @@index([model])
+  @@index([commandType])
+  @@index([category])
+}
+
+model DirecTVDiscoveryLog {
+  id              String    @id @default(cuid())
+  discoveryMethod String    // ssdp, port_scan, manual
+  boxesFound      Int       @default(0)
+  duration        Int?      // Discovery duration in milliseconds
+  ipRange         String?   // IP range scanned
+  status          String    // success, partial, failed
+  errorMessage    String?
+  details         String?   // JSON string with discovery details
+  timestamp       DateTime  @default(now())
+  
+  @@index([timestamp])
+  @@index([status])
+}
+
+model DirecTVGuideRefresh {
+  id              String    @id @default(cuid())
+  boxId           String?   // DirecTV box used for refresh
+  channelsUpdated Int       @default(0)
+  channelsAdded   Int       @default(0)
+  channelsRemoved Int       @default(0)
+  duration        Int?      // Refresh duration in milliseconds
+  status          String    // success, partial, failed
+  errorMessage    String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  @@index([startedAt])
+  @@index([status])
+}
+
