@@ -391,30 +391,45 @@ export async function getAllQAEntries(filters?: {
   sourceType?: string;
   isActive?: boolean;
 }) {
-  return await prisma.qAEntry.findMany({
-    where: filters,
-    orderBy: { createdAt: 'desc' },
-  });
+  try {
+    const entries = await prisma.qAEntry.findMany({
+      where: filters,
+      orderBy: { createdAt: 'desc' },
+    });
+    // Ensure we always return an array
+    return Array.isArray(entries) ? entries : [];
+  } catch (error) {
+    console.error('Error in getAllQAEntries:', error);
+    // Return empty array on error to prevent crashes
+    return [];
+  }
 }
 
 /**
  * Search Q&A entries
  */
 export async function searchQAEntries(query: string, limit: number = 10) {
-  const entries = await prisma.qAEntry.findMany({
-    where: {
-      isActive: true,
-      OR: [
-        { question: { contains: query } },
-        { answer: { contains: query } },
-        { tags: { contains: query } },
-      ],
-    },
-    orderBy: { usageCount: 'desc' },
-    take: limit,
-  });
+  try {
+    const entries = await prisma.qAEntry.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { question: { contains: query } },
+          { answer: { contains: query } },
+          { tags: { contains: query } },
+        ],
+      },
+      orderBy: { usageCount: 'desc' },
+      take: limit,
+    });
 
-  return entries;
+    // Ensure we always return an array
+    return Array.isArray(entries) ? entries : [];
+  } catch (error) {
+    console.error('Error in searchQAEntries:', error);
+    // Return empty array on error to prevent crashes
+    return [];
+  }
 }
 
 /**
