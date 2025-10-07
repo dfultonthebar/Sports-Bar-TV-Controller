@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     
     let fullPrompt = message;
     let usedContext = false;
-    let contextError = null;
+    let contextError: string | null = null;
     
     // Add enhanced context (documentation + codebase) if enabled
     if (useKnowledge || useCodebase) {
