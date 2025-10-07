@@ -979,6 +979,51 @@ stop_server
 log ""
 
 # =============================================================================
+# HANDLE UNTRACKED FILES THAT MIGHT CONFLICT
+# =============================================================================
+log "🔍 Checking for untracked files that might conflict with update..."
+
+# Create temporary directory for backing up conflicting files
+CONFLICT_BACKUP_DIR="$HOME/sports-bar-backups/untracked-conflicts-$TIMESTAMP"
+
+# Check if there are untracked files that would be overwritten by merge
+CONFLICTING_FILES=$(git fetch origin main 2>&1 && git diff --name-only HEAD origin/main | while read file; do
+    if [ -f "$file" ] && ! git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+        echo "$file"
+    fi
+done)
+
+if [ -n "$CONFLICTING_FILES" ]; then
+    log_warning "Found untracked files that conflict with incoming changes:"
+    echo "$CONFLICTING_FILES" | while read file; do
+        log "   - $file"
+    done
+    log ""
+    log "   These files will be backed up and moved to:"
+    log "   $CONFLICT_BACKUP_DIR"
+    log ""
+    
+    # Create backup directory
+    mkdir -p "$CONFLICT_BACKUP_DIR"
+    
+    # Move conflicting files to backup
+    echo "$CONFLICTING_FILES" | while read file; do
+        if [ -f "$file" ]; then
+            # Create parent directory structure in backup
+            file_dir=$(dirname "$file")
+            mkdir -p "$CONFLICT_BACKUP_DIR/$file_dir"
+            
+            # Move file to backup
+            mv "$file" "$CONFLICT_BACKUP_DIR/$file"
+            log "   ✅ Backed up: $file"
+        fi
+    done
+    
+    log_success "Conflicting untracked files backed up successfully"
+    log ""
+fi
+
+# =============================================================================
 # PULL LATEST CHANGES
 # =============================================================================
 log "⬇️  Pulling latest changes from GitHub..."
@@ -1000,7 +1045,43 @@ if git pull origin main; then
 else
     log_error "Failed to pull changes from GitHub"
     log_error "Please resolve any conflicts manually"
+    
+    # If there were backed up files, mention them
+    if [ -d "$CONFLICT_BACKUP_DIR" ] && [ -n "$(ls -A "$CONFLICT_BACKUP_DIR" 2>/dev/null)" ]; then
+        log ""
+        log "   Your conflicting files are backed up at:"
+        log "   $CONFLICT_BACKUP_DIR"
+    fi
+    
     exit 1
+fi
+
+# =============================================================================
+# RESTORE NON-CONFLICTING UNTRACKED FILES (if needed)
+# =============================================================================
+if [ -d "$CONFLICT_BACKUP_DIR" ] && [ -n "$(ls -A "$CONFLICT_BACKUP_DIR" 2>/dev/null)" ]; then
+    log ""
+    log "📋 Checking if backed up files should be restored..."
+    
+    # Check each backed up file
+    find "$CONFLICT_BACKUP_DIR" -type f | while read backup_file; do
+        # Get relative path
+        rel_path="${backup_file#$CONFLICT_BACKUP_DIR/}"
+        
+        # Check if file now exists in repo (was added by pull)
+        if [ -f "$rel_path" ]; then
+            log "   ℹ️  $rel_path - now tracked by git (keeping new version)"
+        else
+            # File is not in repo, restore it
+            file_dir=$(dirname "$rel_path")
+            mkdir -p "$file_dir"
+            cp "$backup_file" "$rel_path"
+            log "   ✅ Restored: $rel_path"
+        fi
+    done
+    
+    log ""
+    log "💡 Backup of conflicting files kept at: $CONFLICT_BACKUP_DIR"
 fi
 
 log ""
