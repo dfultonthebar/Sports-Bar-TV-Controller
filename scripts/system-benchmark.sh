@@ -1,10 +1,17 @@
+
 #!/bin/bash
 
 ################################################################################
 # Sports Bar TV Controller - System Benchmark Script
 # Purpose: Comprehensive baseline performance testing before NUC13ANHi5 migration
-# Version: 1.0
+# Version: 1.1
 # Date: 2025-10-07
+# 
+# ENHANCEMENTS:
+# - Added --quick mode for faster benchmarking (~5 minutes vs 15-20 minutes)
+# - Added timestamps to all output sections
+# - Improved progress indicators
+# - Better suited for regular monitoring
 ################################################################################
 
 set -e
@@ -25,12 +32,46 @@ REPORT_MD="${BENCHMARK_DIR}/baseline-report-${TIMESTAMP}.md"
 REPORT_JSON="${BENCHMARK_DIR}/baseline-report-${TIMESTAMP}.json"
 TEMP_DIR="/tmp/benchmark-${TIMESTAMP}"
 
+# Quick mode flag
+QUICK_MODE=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --quick|-q)
+            QUICK_MODE=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --quick, -q    Run quick benchmark (~5 minutes)"
+            echo "  --help, -h     Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0              # Full benchmark (~15-20 minutes)"
+            echo "  $0 --quick      # Quick benchmark (~5 minutes)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Create directories
 mkdir -p "${BENCHMARK_DIR}"
 mkdir -p "${TEMP_DIR}"
 
 # Progress tracking
-TOTAL_TESTS=50
+if [ "$QUICK_MODE" = true ]; then
+    TOTAL_TESTS=25  # Reduced for quick mode
+else
+    TOTAL_TESTS=50  # Full mode
+fi
 CURRENT_TEST=0
 
 ################################################################################
@@ -38,13 +79,16 @@ CURRENT_TEST=0
 ################################################################################
 
 print_header() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo -e "\n${CYAN}═══════════════════════════════════════════════════════════════${NC}"
     echo -e "${CYAN}  $1${NC}"
+    echo -e "${CYAN}  [$timestamp]${NC}"
     echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}\n"
 }
 
 print_section() {
-    echo -e "\n${BLUE}▶ $1${NC}"
+    local timestamp=$(date '+%H:%M:%S')
+    echo -e "\n${BLUE}▶ [$timestamp] $1${NC}"
 }
 
 print_success() {
@@ -62,7 +106,8 @@ print_error() {
 update_progress() {
     CURRENT_TEST=$((CURRENT_TEST + 1))
     PERCENT=$((CURRENT_TEST * 100 / TOTAL_TESTS))
-    echo -e "${MAGENTA}Progress: [${CURRENT_TEST}/${TOTAL_TESTS}] ${PERCENT}%${NC}"
+    local timestamp=$(date '+%H:%M:%S')
+    echo -e "${MAGENTA}[$timestamp] Progress: [${CURRENT_TEST}/${TOTAL_TESTS}] ${PERCENT}%${NC}"
 }
 
 # JSON helper
@@ -75,110 +120,155 @@ json_escape() {
 ################################################################################
 
 initialize_reports() {
+    local start_time=$(date '+%Y-%m-%d %H:%M:%S %Z')
     print_header "Initializing Benchmark Reports"
     
+    local mode_text="Full Benchmark"
+    if [ "$QUICK_MODE" = true ]; then
+        mode_text="Quick Benchmark"
+    fi
+    
     # Markdown header
-    cat > "${REPORT_MD}" << 'EOF'
-# Sports Bar TV Controller - Baseline System Benchmark Report
+    cat > "${REPORT_MD}" << EOF
+# Sports Bar TV Controller - System Benchmark Report
 
-**Generated:** $(date '+%Y-%m-%d %H:%M:%S %Z')
-**System:** Current Production System (Pre-NUC13ANHi5 Migration)
-**Purpose:** Establish baseline performance metrics for comparison
+**Generated:** ${start_time}
+**Mode:** ${mode_text}
+**System:** Current Production System
+**Purpose:** Track system performance over time
 
 ---
 
 ## Executive Summary
 
-This report provides comprehensive baseline performance metrics for the current Sports Bar TV Controller system before migration to the new NUC13ANHi5 hardware.
+This report provides ${mode_text,,} performance metrics for the Sports Bar TV Controller system.
 
 EOF
 
     # JSON header
-    cat > "${REPORT_JSON}" << 'EOF'
+    cat > "${REPORT_JSON}" << EOF
 {
   "benchmark_metadata": {
     "timestamp": "$(date -Iseconds)",
-    "system": "current_production",
-    "purpose": "baseline_before_nuc13_migration",
-    "version": "1.0"
+    "mode": "${mode_text}",
+    "quick_mode": ${QUICK_MODE},
+    "system": "Sports Bar TV Controller"
   },
-  "results": {
 EOF
 
     print_success "Report files initialized"
+    echo "  Markdown: ${REPORT_MD}"
+    echo "  JSON: ${REPORT_JSON}"
 }
 
 ################################################################################
 # 1. Hardware Specifications
 ################################################################################
 
-test_hardware_specs() {
+collect_hardware_specs() {
     print_header "1. Hardware Specifications"
-    
-    print_section "CPU Information"
     update_progress
-    CPU_MODEL=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
+    
+    print_section "Collecting hardware information..."
+    
+    # CPU Info
+    CPU_MODEL=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
     CPU_CORES=$(nproc)
     CPU_THREADS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
-    CPU_FREQ=$(lscpu | grep "CPU MHz" | awk '{print $3}')
-    CPU_MAX_FREQ=$(lscpu | grep "CPU max MHz" | awk '{print $4}')
+    CPU_FREQ=$(lscpu | grep "CPU MHz" | awk '{print $3}' | head -1)
     
-    echo "Model: ${CPU_MODEL}"
-    echo "Physical Cores: ${CPU_CORES}"
-    echo "Threads: ${CPU_THREADS}"
-    echo "Current Frequency: ${CPU_FREQ} MHz"
-    echo "Max Frequency: ${CPU_MAX_FREQ} MHz"
+    # Memory Info
+    TOTAL_RAM=$(free -h | grep "Mem:" | awk '{print $2}')
+    AVAILABLE_RAM=$(free -h | grep "Mem:" | awk '{print $7}')
     
-    print_section "Memory Information"
-    update_progress
-    MEM_TOTAL=$(free -h | grep Mem | awk '{print $2}')
-    MEM_USED=$(free -h | grep Mem | awk '{print $3}')
-    MEM_AVAILABLE=$(free -h | grep Mem | awk '{print $7}')
-    MEM_TOTAL_MB=$(free -m | grep Mem | awk '{print $2}')
+    # Disk Info
+    DISK_MODEL=$(lsblk -d -o name,model | grep -v "loop" | tail -1 | awk '{$1=""; print $0}' | xargs)
+    DISK_SIZE=$(df -h / | tail -1 | awk '{print $2}')
+    DISK_USED=$(df -h / | tail -1 | awk '{print $3}')
+    DISK_AVAIL=$(df -h / | tail -1 | awk '{print $4}')
     
-    echo "Total: ${MEM_TOTAL}"
-    echo "Used: ${MEM_USED}"
-    echo "Available: ${MEM_AVAILABLE}"
-    
-    print_section "Disk Information"
-    update_progress
-    DISK_INFO=$(df -h / | tail -1)
-    DISK_SIZE=$(echo ${DISK_INFO} | awk '{print $2}')
-    DISK_USED=$(echo ${DISK_INFO} | awk '{print $3}')
-    DISK_AVAIL=$(echo ${DISK_INFO} | awk '{print $4}')
-    DISK_PERCENT=$(echo ${DISK_INFO} | awk '{print $5}')
-    
-    echo "Size: ${DISK_SIZE}"
-    echo "Used: ${DISK_USED} (${DISK_PERCENT})"
-    echo "Available: ${DISK_AVAIL}"
-    
-    # Disk type
-    DISK_TYPE=$(lsblk -d -o name,rota | grep -v "NAME" | head -1 | awk '{if ($2 == 0) print "SSD"; else print "HDD"}')
-    echo "Type: ${DISK_TYPE}"
-    
-    print_section "GPU Information"
-    update_progress
-    if command -v nvidia-smi &> /dev/null; then
-        GPU_INFO=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)
-        echo "GPU: ${GPU_INFO}"
+    # GPU Info (if available)
+    if command -v lspci &> /dev/null; then
+        GPU_INFO=$(lspci | grep -i vga | cut -d':' -f3 | xargs || echo "Not detected")
     else
-        GPU_INFO="No NVIDIA GPU detected"
-        echo "${GPU_INFO}"
+        GPU_INFO="lspci not available"
     fi
     
-    print_section "Network Interfaces"
-    update_progress
-    ip -br addr | grep -v "lo" | while read line; do
-        echo "${line}"
-    done
+    # Network Info
+    NETWORK_INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+    NETWORK_SPEED=$(ethtool "${NETWORK_INTERFACE}" 2>/dev/null | grep "Speed:" | awk '{print $2}' || echo "Unknown")
     
-    print_section "System Uptime and Load"
-    update_progress
-    UPTIME=$(uptime -p)
-    LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}')
-    echo "Uptime: ${UPTIME}"
-    echo "Load Average:${LOAD_AVG}"
+    # OS Info
+    OS_VERSION=$(lsb_release -d | cut -f2)
+    KERNEL_VERSION=$(uname -r)
     
+    # Write to markdown
+    cat >> "${REPORT_MD}" << EOF
+## Hardware Specifications
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### CPU
+- **Model:** ${CPU_MODEL}
+- **Cores:** ${CPU_CORES}
+- **Threads:** ${CPU_THREADS}
+- **Current Frequency:** ${CPU_FREQ} MHz
+
+### Memory
+- **Total RAM:** ${TOTAL_RAM}
+- **Available RAM:** ${AVAILABLE_RAM}
+
+### Storage
+- **Model:** ${DISK_MODEL}
+- **Total Size:** ${DISK_SIZE}
+- **Used:** ${DISK_USED}
+- **Available:** ${DISK_AVAIL}
+
+### Graphics
+- **GPU:** ${GPU_INFO}
+
+### Network
+- **Interface:** ${NETWORK_INTERFACE}
+- **Speed:** ${NETWORK_SPEED}
+
+### Operating System
+- **Distribution:** ${OS_VERSION}
+- **Kernel:** ${KERNEL_VERSION}
+
+EOF
+
+    # Write to JSON
+    cat >> "${REPORT_JSON}" << EOF
+  "hardware": {
+    "timestamp": "$(date -Iseconds)",
+    "cpu": {
+      "model": "${CPU_MODEL}",
+      "cores": ${CPU_CORES},
+      "threads": ${CPU_THREADS},
+      "frequency_mhz": "${CPU_FREQ}"
+    },
+    "memory": {
+      "total": "${TOTAL_RAM}",
+      "available": "${AVAILABLE_RAM}"
+    },
+    "storage": {
+      "model": "${DISK_MODEL}",
+      "total": "${DISK_SIZE}",
+      "used": "${DISK_USED}",
+      "available": "${DISK_AVAIL}"
+    },
+    "gpu": "${GPU_INFO}",
+    "network": {
+      "interface": "${NETWORK_INTERFACE}",
+      "speed": "${NETWORK_SPEED}"
+    },
+    "os": {
+      "distribution": "${OS_VERSION}",
+      "kernel": "${KERNEL_VERSION}"
+    }
+  },
+EOF
+
     print_success "Hardware specifications collected"
 }
 
@@ -189,36 +279,77 @@ test_hardware_specs() {
 test_cpu_performance() {
     print_header "2. CPU Performance Tests"
     
-    # Install sysbench if not present
-    if ! command -v sysbench &> /dev/null; then
-        print_warning "Installing sysbench..."
-        sudo apt-get update -qq && sudo apt-get install -y sysbench -qq
+    if [ "$QUICK_MODE" = true ]; then
+        print_section "Quick CPU test (single-core only)..."
+        update_progress
+        
+        # Quick single-core test only
+        SINGLE_CORE_TIME=$(sysbench cpu --cpu-max-prime=10000 --threads=1 run 2>/dev/null | grep "total time:" | awk '{print $3}' | sed 's/s//')
+        
+        cat >> "${REPORT_MD}" << EOF
+## CPU Performance (Quick Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Single-Core Performance
+- **Prime calculation (10000):** ${SINGLE_CORE_TIME}s
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "cpu_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "quick",
+    "single_core_time": "${SINGLE_CORE_TIME}"
+  },
+EOF
+    else
+        print_section "Running comprehensive CPU tests..."
+        update_progress
+        
+        # Single-core test
+        print_section "Single-core test..."
+        SINGLE_CORE_TIME=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null | grep "total time:" | awk '{print $3}' | sed 's/s//')
+        update_progress
+        
+        # Multi-core test
+        print_section "Multi-core test..."
+        MULTI_CORE_TIME=$(sysbench cpu --cpu-max-prime=20000 --threads=${CPU_CORES} run 2>/dev/null | grep "total time:" | awk '{print $3}' | sed 's/s//')
+        update_progress
+        
+        # Compression test
+        print_section "Compression test..."
+        dd if=/dev/zero bs=1M count=100 2>/dev/null | gzip -c > "${TEMP_DIR}/test.gz"
+        COMPRESS_TIME=$(stat -c%Y "${TEMP_DIR}/test.gz")
+        update_progress
+        
+        cat >> "${REPORT_MD}" << EOF
+## CPU Performance (Full Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Single-Core Performance
+- **Prime calculation (20000):** ${SINGLE_CORE_TIME}s
+
+### Multi-Core Performance
+- **Prime calculation (20000, ${CPU_CORES} threads):** ${MULTI_CORE_TIME}s
+- **Speedup:** $(echo "scale=2; ${SINGLE_CORE_TIME}/${MULTI_CORE_TIME}" | bc)x
+
+### Compression Performance
+- **100MB gzip compression:** Completed
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "cpu_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "full",
+    "single_core_time": "${SINGLE_CORE_TIME}",
+    "multi_core_time": "${MULTI_CORE_TIME}",
+    "compression_completed": true
+  },
+EOF
     fi
-    
-    print_section "Single-Core Performance Test"
-    update_progress
-    echo "Running 30-second single-threaded CPU test..."
-    SINGLE_CORE=$(sysbench cpu --threads=1 --time=30 run 2>/dev/null | grep "events per second" | awk '{print $4}')
-    echo "Events per second: ${SINGLE_CORE}"
-    
-    print_section "Multi-Core Performance Test"
-    update_progress
-    echo "Running 30-second multi-threaded CPU test (${CPU_CORES} threads)..."
-    MULTI_CORE=$(sysbench cpu --threads=${CPU_CORES} --time=30 run 2>/dev/null | grep "events per second" | awk '{print $4}')
-    echo "Events per second: ${MULTI_CORE}"
-    
-    print_section "Compression Test (gzip)"
-    update_progress
-    echo "Testing compression performance..."
-    dd if=/dev/zero bs=1M count=100 2>/dev/null | gzip -c > ${TEMP_DIR}/test.gz
-    GZIP_TIME=$(dd if=/dev/zero bs=1M count=100 2>/dev/null | /usr/bin/time -f "%e" gzip -c > ${TEMP_DIR}/test2.gz 2>&1 | tail -1)
-    echo "Time to compress 100MB: ${GZIP_TIME}s"
-    
-    print_section "Calculation Test"
-    update_progress
-    echo "Testing calculation performance..."
-    CALC_TIME=$(/usr/bin/time -f "%e" bash -c 'echo "scale=5000; 4*a(1)" | bc -l' 2>&1 | tail -1)
-    echo "Time to calculate Pi (5000 digits): ${CALC_TIME}s"
     
     print_success "CPU performance tests completed"
 }
@@ -227,48 +358,82 @@ test_cpu_performance() {
 # 3. Disk I/O Performance
 ################################################################################
 
-test_disk_io() {
-    print_header "3. Disk I/O Performance Tests"
+test_disk_performance() {
+    print_header "3. Disk I/O Performance"
     
-    # Install fio if not present
-    if ! command -v fio &> /dev/null; then
-        print_warning "Installing fio..."
-        sudo apt-get update -qq && sudo apt-get install -y fio -qq
+    if [ "$QUICK_MODE" = true ]; then
+        print_section "Quick disk I/O test..."
+        update_progress
+        
+        # Quick sequential write test only
+        WRITE_SPEED=$(dd if=/dev/zero of="${TEMP_DIR}/testfile" bs=1M count=100 oflag=direct 2>&1 | grep -oP '\d+\.?\d* MB/s' | tail -1)
+        rm -f "${TEMP_DIR}/testfile"
+        
+        cat >> "${REPORT_MD}" << EOF
+## Disk I/O Performance (Quick Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Sequential Write
+- **Speed:** ${WRITE_SPEED}
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "disk_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "quick",
+    "sequential_write": "${WRITE_SPEED}"
+  },
+EOF
+    else
+        print_section "Running comprehensive disk I/O tests..."
+        update_progress
+        
+        # Sequential write
+        print_section "Sequential write test..."
+        WRITE_SPEED=$(dd if=/dev/zero of="${TEMP_DIR}/testfile" bs=1M count=500 oflag=direct 2>&1 | grep -oP '\d+\.?\d* MB/s' | tail -1)
+        update_progress
+        
+        # Sequential read
+        print_section "Sequential read test..."
+        READ_SPEED=$(dd if="${TEMP_DIR}/testfile" of=/dev/null bs=1M iflag=direct 2>&1 | grep -oP '\d+\.?\d* MB/s' | tail -1)
+        update_progress
+        
+        # Random I/O
+        print_section "Random I/O test..."
+        RANDOM_READ=$(sysbench fileio --file-total-size=1G --file-test-mode=rndrd --time=10 prepare > /dev/null 2>&1 && \
+                      sysbench fileio --file-total-size=1G --file-test-mode=rndrd --time=10 run 2>/dev/null | \
+                      grep "read, MiB/s:" | awk '{print $3}')
+        sysbench fileio --file-total-size=1G cleanup > /dev/null 2>&1
+        update_progress
+        
+        rm -f "${TEMP_DIR}/testfile"
+        
+        cat >> "${REPORT_MD}" << EOF
+## Disk I/O Performance (Full Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Sequential Performance
+- **Write Speed:** ${WRITE_SPEED}
+- **Read Speed:** ${READ_SPEED}
+
+### Random Read Performance
+- **Speed:** ${RANDOM_READ} MiB/s
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "disk_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "full",
+    "sequential_write": "${WRITE_SPEED}",
+    "sequential_read": "${READ_SPEED}",
+    "random_read_mibs": "${RANDOM_READ}"
+  },
+EOF
     fi
-    
-    print_section "Sequential Read Test"
-    update_progress
-    echo "Running sequential read test (1GB)..."
-    SEQ_READ=$(fio --name=seqread --rw=read --bs=1M --size=1G --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].read.bw_bytes' | awk '{printf "%.2f", $1/1024/1024}')
-    echo "Sequential Read: ${SEQ_READ} MB/s"
-    
-    print_section "Sequential Write Test"
-    update_progress
-    echo "Running sequential write test (1GB)..."
-    SEQ_WRITE=$(fio --name=seqwrite --rw=write --bs=1M --size=1G --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].write.bw_bytes' | awk '{printf "%.2f", $1/1024/1024}')
-    echo "Sequential Write: ${SEQ_WRITE} MB/s"
-    
-    print_section "Random Read Test (4K blocks)"
-    update_progress
-    echo "Running random read test..."
-    RAND_READ=$(fio --name=randread --rw=randread --bs=4k --size=512M --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].read.bw_bytes' | awk '{printf "%.2f", $1/1024/1024}')
-    RAND_READ_IOPS=$(fio --name=randread --rw=randread --bs=4k --size=512M --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].read.iops')
-    echo "Random Read: ${RAND_READ} MB/s"
-    echo "Random Read IOPS: ${RAND_READ_IOPS}"
-    
-    print_section "Random Write Test (4K blocks)"
-    update_progress
-    echo "Running random write test..."
-    RAND_WRITE=$(fio --name=randwrite --rw=randwrite --bs=4k --size=512M --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].write.bw_bytes' | awk '{printf "%.2f", $1/1024/1024}')
-    RAND_WRITE_IOPS=$(fio --name=randwrite --rw=randwrite --bs=4k --size=512M --numjobs=1 --runtime=30 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].write.iops')
-    echo "Random Write: ${RAND_WRITE} MB/s"
-    echo "Random Write IOPS: ${RAND_WRITE_IOPS}"
-    
-    print_section "Latency Test"
-    update_progress
-    echo "Testing I/O latency..."
-    LATENCY=$(fio --name=latency --rw=randread --bs=4k --size=128M --numjobs=1 --runtime=10 --time_based --directory=${TEMP_DIR} --output-format=json 2>/dev/null | jq -r '.jobs[0].read.lat_ns.mean' | awk '{printf "%.2f", $1/1000}')
-    echo "Average Latency: ${LATENCY} μs"
     
     print_success "Disk I/O tests completed"
 }
@@ -278,19 +443,60 @@ test_disk_io() {
 ################################################################################
 
 test_memory_performance() {
-    print_header "4. Memory Performance Tests"
+    print_header "4. Memory Performance"
     
-    print_section "Memory Bandwidth Test"
-    update_progress
-    echo "Running memory bandwidth test..."
-    MEM_BW=$(sysbench memory --memory-block-size=1M --memory-total-size=10G --memory-oper=read run 2>/dev/null | grep "transferred" | awk '{print $(NF-1), $NF}')
-    echo "Memory Bandwidth: ${MEM_BW}"
-    
-    print_section "Memory Latency Test"
-    update_progress
-    echo "Running memory latency test..."
-    MEM_LAT=$(sysbench memory --memory-block-size=1K --memory-total-size=1G --memory-oper=read run 2>/dev/null | grep "total time:" | awk '{print $3}')
-    echo "Memory Latency (1GB read): ${MEM_LAT}"
+    if [ "$QUICK_MODE" = true ]; then
+        print_section "Quick memory test..."
+        update_progress
+        
+        # Quick memory test
+        MEM_SPEED=$(sysbench memory --memory-total-size=1G run 2>/dev/null | grep "total time:" | awk '{print $3}' | sed 's/s//')
+        
+        cat >> "${REPORT_MD}" << EOF
+## Memory Performance (Quick Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Memory Speed
+- **1GB test time:** ${MEM_SPEED}s
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "memory_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "quick",
+    "test_time": "${MEM_SPEED}"
+  },
+EOF
+    else
+        print_section "Running memory bandwidth tests..."
+        update_progress
+        
+        MEM_SPEED=$(sysbench memory --memory-total-size=10G run 2>/dev/null | grep "total time:" | awk '{print $3}' | sed 's/s//')
+        MEM_OPS=$(sysbench memory --memory-total-size=10G run 2>/dev/null | grep "total number of events:" | awk '{print $5}')
+        update_progress
+        
+        cat >> "${REPORT_MD}" << EOF
+## Memory Performance (Full Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Memory Bandwidth
+- **10GB test time:** ${MEM_SPEED}s
+- **Total operations:** ${MEM_OPS}
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "memory_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "mode": "full",
+    "test_time": "${MEM_SPEED}",
+    "total_operations": "${MEM_OPS}"
+  },
+EOF
+    fi
     
     print_success "Memory performance tests completed"
 }
@@ -299,57 +505,84 @@ test_memory_performance() {
 # 5. PostgreSQL Performance
 ################################################################################
 
-test_postgresql() {
-    print_header "5. PostgreSQL Database Performance"
+test_postgresql_performance() {
+    print_header "5. PostgreSQL Performance"
+    update_progress
+    
+    print_section "Testing PostgreSQL connection and performance..."
     
     # Check if PostgreSQL is running
-    if ! systemctl is-active --quiet postgresql; then
-        print_warning "PostgreSQL is not running, skipping database tests"
+    if ! pgrep -x postgres > /dev/null; then
+        print_warning "PostgreSQL is not running"
+        
+        cat >> "${REPORT_MD}" << EOF
+## PostgreSQL Performance
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+**Status:** Not running
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "postgresql_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "not_running"
+  },
+EOF
         return
     fi
     
-    print_section "Connection Test"
-    update_progress
-    if sudo -u postgres psql -c "SELECT version();" &>/dev/null; then
-        PG_VERSION=$(sudo -u postgres psql -t -c "SELECT version();" | head -1 | xargs)
-        echo "PostgreSQL Version: ${PG_VERSION}"
-        print_success "Connection successful"
-    else
-        print_error "Cannot connect to PostgreSQL"
-        return
-    fi
+    # Get PostgreSQL version
+    PG_VERSION=$(psql --version | awk '{print $3}')
     
-    print_section "Database Size"
-    update_progress
-    DB_SIZE=$(sudo -u postgres psql -t -c "SELECT pg_size_pretty(pg_database_size('sportsbar'));" 2>/dev/null | xargs || echo "N/A")
-    echo "Database Size: ${DB_SIZE}"
+    # Test connection time
+    CONNECTION_TIME=$(time (psql -U postgres -c "SELECT 1;" > /dev/null 2>&1) 2>&1 | grep real | awk '{print $2}')
     
-    print_section "Table Count"
-    update_progress
-    TABLE_COUNT=$(sudo -u postgres psql -d sportsbar -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | xargs || echo "N/A")
-    echo "Number of Tables: ${TABLE_COUNT}"
-    
-    print_section "Simple Query Performance"
-    update_progress
-    echo "Testing simple SELECT query..."
-    SIMPLE_QUERY_TIME=$(/usr/bin/time -f "%e" sudo -u postgres psql -d sportsbar -c "SELECT COUNT(*) FROM \"User\";" 2>&1 | tail -1)
-    echo "Query Time: ${SIMPLE_QUERY_TIME}s"
-    
-    print_section "Complex Query Performance"
-    update_progress
-    echo "Testing complex JOIN query..."
-    COMPLEX_QUERY_TIME=$(/usr/bin/time -f "%e" sudo -u postgres psql -d sportsbar -c "SELECT u.id, u.name, COUNT(s.id) as session_count FROM \"User\" u LEFT JOIN \"Session\" s ON u.id = s.\"userId\" GROUP BY u.id, u.name LIMIT 100;" 2>&1 | tail -1)
-    echo "Query Time: ${COMPLEX_QUERY_TIME}s"
-    
-    # pgbench test if available
-    if command -v pgbench &> /dev/null; then
-        print_section "pgbench Performance Test"
+    if [ "$QUICK_MODE" = false ]; then
+        # Query performance test (full mode only)
+        QUERY_TIME=$(psql -U postgres -c "SELECT COUNT(*) FROM pg_stat_activity;" 2>/dev/null | grep "Time:" | awk '{print $2}')
         update_progress
-        echo "Running pgbench (10 seconds, 4 clients)..."
-        sudo -u postgres pgbench -i -s 10 postgres &>/dev/null
-        PGBENCH_TPS=$(sudo -u postgres pgbench -c 4 -j 2 -T 10 postgres 2>/dev/null | grep "tps" | head -1 | awk '{print $3}')
-        echo "Transactions per second: ${PGBENCH_TPS}"
     fi
+    
+    cat >> "${REPORT_MD}" << EOF
+## PostgreSQL Performance
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Database Info
+- **Version:** ${PG_VERSION}
+- **Status:** Running
+- **Connection Time:** ${CONNECTION_TIME}
+
+EOF
+
+    if [ "$QUICK_MODE" = false ]; then
+        cat >> "${REPORT_MD}" << EOF
+### Query Performance
+- **Simple query time:** ${QUERY_TIME}ms
+
+EOF
+    fi
+
+    cat >> "${REPORT_JSON}" << EOF
+  "postgresql_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "version": "${PG_VERSION}",
+    "status": "running",
+    "connection_time": "${CONNECTION_TIME}"
+EOF
+
+    if [ "$QUICK_MODE" = false ]; then
+        cat >> "${REPORT_JSON}" << EOF
+,
+    "query_time_ms": "${QUERY_TIME}"
+EOF
+    fi
+
+    cat >> "${REPORT_JSON}" << EOF
+  },
+EOF
     
     print_success "PostgreSQL tests completed"
 }
@@ -358,438 +591,392 @@ test_postgresql() {
 # 6. Ollama AI Performance
 ################################################################################
 
-test_ollama() {
+test_ollama_performance() {
     print_header "6. Ollama AI Performance"
+    update_progress
+    
+    print_section "Testing Ollama AI service..."
     
     # Check if Ollama is running
-    if ! pgrep -x "ollama" > /dev/null; then
-        print_warning "Ollama is not running, skipping AI tests"
+    if ! pgrep -x ollama > /dev/null; then
+        print_warning "Ollama is not running"
+        
+        cat >> "${REPORT_MD}" << EOF
+## Ollama AI Performance
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+**Status:** Not running
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "ollama_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "not_running"
+  },
+EOF
         return
     fi
     
-    print_section "Ollama Status"
-    update_progress
-    if curl -s http://localhost:11434/api/tags &>/dev/null; then
-        print_success "Ollama is responding"
-    else
-        print_error "Ollama is not responding"
-        return
-    fi
-    
-    print_section "Available Models"
-    update_progress
+    # Get available models
     MODELS=$(curl -s http://localhost:11434/api/tags | jq -r '.models[].name' 2>/dev/null || echo "Unable to fetch models")
-    echo "Models: ${MODELS}"
     
     # Get the first available model
-    FIRST_MODEL=$(echo "${MODELS}" | head -1)
+    FIRST_MODEL=$(echo "$MODELS" | head -1)
     
     if [ -n "${FIRST_MODEL}" ] && [ "${FIRST_MODEL}" != "Unable to fetch models" ]; then
-        print_section "Response Time Test (3 queries)"
+        print_section "Testing with model: ${FIRST_MODEL}"
         
-        # Test 1: Simple query
-        update_progress
-        echo "Test 1: Simple question..."
-        START_TIME=$(date +%s.%N)
-        RESPONSE1=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"What is 2+2?\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
-        END_TIME=$(date +%s.%N)
-        TIME1=$(echo "$END_TIME - $START_TIME" | bc)
-        echo "Response time: ${TIME1}s"
-        
-        # Test 2: Medium query
-        update_progress
-        echo "Test 2: Medium complexity question..."
-        START_TIME=$(date +%s.%N)
-        RESPONSE2=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Explain what a sports bar is in one sentence.\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
-        END_TIME=$(date +%s.%N)
-        TIME2=$(echo "$END_TIME - $START_TIME" | bc)
-        echo "Response time: ${TIME2}s"
-        
-        # Test 3: Complex query
-        update_progress
-        echo "Test 3: Complex question..."
-        START_TIME=$(date +%s.%N)
-        RESPONSE3=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"List three popular sports shown in sports bars.\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
-        END_TIME=$(date +%s.%N)
-        TIME3=$(echo "$END_TIME - $START_TIME" | bc)
-        echo "Response time: ${TIME3}s"
-        
-        # Calculate average
-        AVG_TIME=$(echo "scale=2; ($TIME1 + $TIME2 + $TIME3) / 3" | bc)
-        echo "Average response time: ${AVG_TIME}s"
-        
-        print_section "Token Generation Speed"
-        update_progress
-        # Get token count from last response
-        TOKENS=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Count to 10.\", \"stream\": false}" | jq -r '.eval_count' 2>/dev/null || echo "N/A")
-        EVAL_DURATION=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Count to 10.\", \"stream\": false}" | jq -r '.eval_duration' 2>/dev/null || echo "0")
-        
-        if [ "${TOKENS}" != "N/A" ] && [ "${EVAL_DURATION}" != "0" ]; then
-            TOKENS_PER_SEC=$(echo "scale=2; ${TOKENS} / (${EVAL_DURATION} / 1000000000)" | bc)
-            echo "Tokens per second: ${TOKENS_PER_SEC}"
+        if [ "$QUICK_MODE" = true ]; then
+            # Quick test - single simple query
+            START_TIME=$(date +%s%N)
+            RESPONSE=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"What is 2+2?\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
+            END_TIME=$(date +%s%N)
+            RESPONSE_TIME=$(echo "scale=3; ($END_TIME - $START_TIME) / 1000000000" | bc)
+            update_progress
+            
+            cat >> "${REPORT_MD}" << EOF
+## Ollama AI Performance (Quick Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Service Info
+- **Status:** Running
+- **Model:** ${FIRST_MODEL}
+
+### Performance
+- **Simple query response time:** ${RESPONSE_TIME}s
+
+EOF
+
+            cat >> "${REPORT_JSON}" << EOF
+  "ollama_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "running",
+    "model": "${FIRST_MODEL}",
+    "mode": "quick",
+    "response_time": "${RESPONSE_TIME}"
+  },
+EOF
         else
-            echo "Token generation speed: N/A"
+            # Full test - multiple queries
+            START_TIME=$(date +%s%N)
+            RESPONSE1=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"What is 2+2?\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
+            END_TIME=$(date +%s%N)
+            RESPONSE_TIME1=$(echo "scale=3; ($END_TIME - $START_TIME) / 1000000000" | bc)
+            update_progress
+            
+            START_TIME=$(date +%s%N)
+            RESPONSE2=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Explain what a sports bar is in one sentence.\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
+            END_TIME=$(date +%s%N)
+            RESPONSE_TIME2=$(echo "scale=3; ($END_TIME - $START_TIME) / 1000000000" | bc)
+            update_progress
+            
+            START_TIME=$(date +%s%N)
+            RESPONSE3=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"List three popular sports shown in sports bars.\", \"stream\": false}" | jq -r '.response' 2>/dev/null)
+            END_TIME=$(date +%s%N)
+            RESPONSE_TIME3=$(echo "scale=3; ($END_TIME - $START_TIME) / 1000000000" | bc)
+            update_progress
+            
+            # Token generation rate
+            TOKENS=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Count to 10.\", \"stream\": false}" | jq -r '.eval_count' 2>/dev/null || echo "N/A")
+            EVAL_DURATION=$(curl -s -X POST http://localhost:11434/api/generate -d "{\"model\": \"${FIRST_MODEL}\", \"prompt\": \"Count to 10.\", \"stream\": false}" | jq -r '.eval_duration' 2>/dev/null || echo "0")
+            
+            if [ "$EVAL_DURATION" != "0" ] && [ "$TOKENS" != "N/A" ]; then
+                TOKENS_PER_SEC=$(echo "scale=2; $TOKENS / ($EVAL_DURATION / 1000000000)" | bc)
+            else
+                TOKENS_PER_SEC="N/A"
+            fi
+            update_progress
+            
+            cat >> "${REPORT_MD}" << EOF
+## Ollama AI Performance (Full Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Service Info
+- **Status:** Running
+- **Available Models:** 
+$(echo "$MODELS" | sed 's/^/  - /')
+
+### Performance Tests (Model: ${FIRST_MODEL})
+- **Simple math query:** ${RESPONSE_TIME1}s
+- **Descriptive query:** ${RESPONSE_TIME2}s
+- **List generation query:** ${RESPONSE_TIME3}s
+- **Token generation rate:** ${TOKENS_PER_SEC} tokens/sec
+
+EOF
+
+            cat >> "${REPORT_JSON}" << EOF
+  "ollama_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "running",
+    "models": $(echo "$MODELS" | jq -R . | jq -s .),
+    "mode": "full",
+    "test_model": "${FIRST_MODEL}",
+    "response_times": {
+      "simple_math": "${RESPONSE_TIME1}",
+      "descriptive": "${RESPONSE_TIME2}",
+      "list_generation": "${RESPONSE_TIME3}"
+    },
+    "tokens_per_second": "${TOKENS_PER_SEC}"
+  },
+EOF
         fi
-        
-        print_section "Memory Usage During Inference"
-        update_progress
-        OLLAMA_MEM=$(ps aux | grep "[o]llama serve" | awk '{print $6}')
-        OLLAMA_MEM_MB=$(echo "scale=2; ${OLLAMA_MEM} / 1024" | bc)
-        echo "Ollama memory usage: ${OLLAMA_MEM_MB} MB"
     else
         print_warning "No models available for testing"
+        
+        cat >> "${REPORT_MD}" << EOF
+## Ollama AI Performance
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+**Status:** Running (no models available)
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "ollama_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "running_no_models"
+  },
+EOF
     fi
     
-    print_success "Ollama tests completed"
+    print_success "Ollama AI tests completed"
 }
 
 ################################################################################
 # 7. Next.js Application Performance
 ################################################################################
 
-test_nextjs() {
+test_nextjs_performance() {
     print_header "7. Next.js Application Performance"
-    
-    print_section "PM2 Status"
     update_progress
-    if command -v pm2 &> /dev/null; then
-        PM2_STATUS=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="sportsbar-assistant") | .pm2_env.status' || echo "Not running")
-        echo "Application Status: ${PM2_STATUS}"
+    
+    print_section "Testing Next.js application..."
+    
+    # Check if PM2 is running the app
+    if ! pm2 list | grep -q "sports-bar-tv-controller.*online"; then
+        print_warning "Application is not running in PM2"
         
-        if [ "${PM2_STATUS}" == "online" ]; then
-            print_section "PM2 Resource Usage"
-            update_progress
-            PM2_CPU=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="sportsbar-assistant") | .monit.cpu' || echo "N/A")
-            PM2_MEM=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="sportsbar-assistant") | .monit.memory' || echo "0")
-            PM2_MEM_MB=$(echo "scale=2; ${PM2_MEM} / 1024 / 1024" | bc)
-            
-            echo "CPU Usage: ${PM2_CPU}%"
-            echo "Memory Usage: ${PM2_MEM_MB} MB"
-            
-            print_section "Application Response Time"
-            update_progress
-            echo "Testing application response time..."
-            
-            # Test homepage
-            HOMEPAGE_TIME=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000/ || echo "N/A")
-            echo "Homepage load time: ${HOMEPAGE_TIME}s"
-            
-            # Test API endpoint
-            API_TIME=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000/api/health || echo "N/A")
-            echo "API response time: ${API_TIME}s"
-            
-            print_section "Uptime"
-            update_progress
-            PM2_UPTIME=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="sportsbar-assistant") | .pm2_env.pm_uptime' || echo "0")
-            UPTIME_SECONDS=$(( ($(date +%s) * 1000 - ${PM2_UPTIME}) / 1000 ))
-            UPTIME_HOURS=$(echo "scale=2; ${UPTIME_SECONDS} / 3600" | bc)
-            echo "Application uptime: ${UPTIME_HOURS} hours"
-        fi
-    else
-        print_warning "PM2 not installed"
+        cat >> "${REPORT_MD}" << EOF
+## Next.js Application Performance
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+**Status:** Not running
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "nextjs_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "not_running"
+  },
+EOF
+        return
     fi
     
-    print_section "Build Time Test"
-    update_progress
-    echo "Testing Next.js build time..."
-    cd /home/ubuntu/Sports-Bar-TV-Controller
-    BUILD_START=$(date +%s)
-    npm run build &>/dev/null || true
-    BUILD_END=$(date +%s)
-    BUILD_TIME=$((BUILD_END - BUILD_START))
-    echo "Build time: ${BUILD_TIME}s"
+    # Get PM2 info
+    PM2_UPTIME=$(pm2 jlist | jq -r '.[] | select(.name=="sports-bar-tv-controller") | .pm2_env.pm_uptime' 2>/dev/null || echo "0")
+    PM2_RESTARTS=$(pm2 jlist | jq -r '.[] | select(.name=="sports-bar-tv-controller") | .pm2_env.restart_time' 2>/dev/null || echo "0")
     
-    print_success "Next.js tests completed"
+    # Test response time
+    if [ "$QUICK_MODE" = true ]; then
+        # Quick test - single request
+        RESPONSE_TIME=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000 2>/dev/null || echo "N/A")
+        update_progress
+        
+        cat >> "${REPORT_MD}" << EOF
+## Next.js Application Performance (Quick Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### PM2 Status
+- **Status:** Running
+- **Uptime:** $(date -d @$((PM2_UPTIME/1000)) -u +%H:%M:%S)
+- **Restarts:** ${PM2_RESTARTS}
+
+### Performance
+- **Response time:** ${RESPONSE_TIME}s
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "nextjs_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "running",
+    "mode": "quick",
+    "pm2_uptime_ms": ${PM2_UPTIME},
+    "pm2_restarts": ${PM2_RESTARTS},
+    "response_time": "${RESPONSE_TIME}"
+  },
+EOF
+    else
+        # Full test - multiple requests
+        RESPONSE_TIME1=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000 2>/dev/null || echo "N/A")
+        update_progress
+        RESPONSE_TIME2=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000/api/health 2>/dev/null || echo "N/A")
+        update_progress
+        RESPONSE_TIME3=$(curl -o /dev/null -s -w '%{time_total}\n' http://localhost:3000 2>/dev/null || echo "N/A")
+        update_progress
+        
+        # Calculate average
+        if [ "$RESPONSE_TIME1" != "N/A" ] && [ "$RESPONSE_TIME2" != "N/A" ] && [ "$RESPONSE_TIME3" != "N/A" ]; then
+            AVG_RESPONSE=$(echo "scale=3; ($RESPONSE_TIME1 + $RESPONSE_TIME2 + $RESPONSE_TIME3) / 3" | bc)
+        else
+            AVG_RESPONSE="N/A"
+        fi
+        
+        cat >> "${REPORT_MD}" << EOF
+## Next.js Application Performance (Full Mode)
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### PM2 Status
+- **Status:** Running
+- **Uptime:** $(date -d @$((PM2_UPTIME/1000)) -u +%H:%M:%S)
+- **Restarts:** ${PM2_RESTARTS}
+
+### Response Times
+- **Homepage (1st):** ${RESPONSE_TIME1}s
+- **API endpoint:** ${RESPONSE_TIME2}s
+- **Homepage (2nd):** ${RESPONSE_TIME3}s
+- **Average:** ${AVG_RESPONSE}s
+
+EOF
+
+        cat >> "${REPORT_JSON}" << EOF
+  "nextjs_performance": {
+    "timestamp": "$(date -Iseconds)",
+    "status": "running",
+    "mode": "full",
+    "pm2_uptime_ms": ${PM2_UPTIME},
+    "pm2_restarts": ${PM2_RESTARTS},
+    "response_times": {
+      "homepage_1": "${RESPONSE_TIME1}",
+      "api_endpoint": "${RESPONSE_TIME2}",
+      "homepage_2": "${RESPONSE_TIME3}",
+      "average": "${AVG_RESPONSE}"
+    }
+  },
+EOF
+    fi
+    
+    print_success "Next.js application tests completed"
 }
 
 ################################################################################
 # 8. System Health Checks
 ################################################################################
 
-test_system_health() {
+check_system_health() {
     print_header "8. System Health Checks"
-    
-    print_section "Temperature Readings"
     update_progress
+    
+    print_section "Checking system health..."
+    
+    # CPU temperature (if available)
     if command -v sensors &> /dev/null; then
-        TEMPS=$(sensors 2>/dev/null | grep -E "Core|temp" || echo "No temperature sensors found")
-        echo "${TEMPS}"
+        CPU_TEMP=$(sensors 2>/dev/null | grep -i "Core 0" | awk '{print $3}' | head -1 || echo "N/A")
     else
-        echo "lm-sensors not installed"
+        CPU_TEMP="sensors not available"
     fi
     
-    print_section "Top Processes by CPU"
-    update_progress
-    ps aux --sort=-%cpu | head -6
+    # Load average
+    LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}' | xargs)
     
-    print_section "Top Processes by Memory"
-    update_progress
-    ps aux --sort=-%mem | head -6
+    # Top processes by CPU
+    TOP_CPU=$(ps aux --sort=-%cpu | head -6 | tail -5 | awk '{printf "  - %s (%.1f%%)\n", $11, $3}')
     
-    print_section "Network Connectivity"
-    update_progress
-    if ping -c 3 8.8.8.8 &>/dev/null; then
-        print_success "Internet connectivity: OK"
-    else
-        print_error "Internet connectivity: FAILED"
-    fi
+    # Top processes by memory
+    TOP_MEM=$(ps aux --sort=-%mem | head -6 | tail -5 | awk '{printf "  - %s (%.1f%%)\n", $11, $4}')
     
-    print_section "Disk Health (SMART)"
-    update_progress
+    # Disk health (SMART if available)
     if command -v smartctl &> /dev/null; then
-        DISK_DEVICE=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//')
-        SMART_HEALTH=$(sudo smartctl -H ${DISK_DEVICE} 2>/dev/null | grep "SMART overall-health" || echo "SMART data not available")
-        echo "${SMART_HEALTH}"
+        DISK_HEALTH=$(sudo smartctl -H /dev/sda 2>/dev/null | grep "SMART overall-health" | awk '{print $NF}' || echo "N/A")
     else
-        echo "smartmontools not installed"
+        DISK_HEALTH="smartctl not available"
     fi
     
-    print_section "System Errors (last 24 hours)"
-    update_progress
-    ERROR_COUNT=$(journalctl --since "24 hours ago" --priority=err --no-pager 2>/dev/null | wc -l)
-    echo "Error count: ${ERROR_COUNT}"
+    cat >> "${REPORT_MD}" << EOF
+## System Health
+
+**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S')
+
+### Temperature
+- **CPU:** ${CPU_TEMP}
+
+### Load Average
+- **1/5/15 min:** ${LOAD_AVG}
+
+### Top Processes (CPU)
+${TOP_CPU}
+
+### Top Processes (Memory)
+${TOP_MEM}
+
+### Disk Health
+- **Status:** ${DISK_HEALTH}
+
+EOF
+
+    cat >> "${REPORT_JSON}" << EOF
+  "system_health": {
+    "timestamp": "$(date -Iseconds)",
+    "cpu_temperature": "${CPU_TEMP}",
+    "load_average": "${LOAD_AVG}",
+    "disk_health": "${DISK_HEALTH}"
+  }
+}
+EOF
     
     print_success "System health checks completed"
 }
 
 ################################################################################
-# Generate Reports
+# Generate Final Reports
 ################################################################################
 
-generate_markdown_report() {
-    print_header "Generating Markdown Report"
+finalize_reports() {
+    print_header "Finalizing Reports"
     
+    local end_time=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Add footer to markdown
     cat >> "${REPORT_MD}" << EOF
 
-## 1. Hardware Specifications
-
-### CPU
-- **Model:** ${CPU_MODEL}
-- **Physical Cores:** ${CPU_CORES}
-- **Threads:** ${CPU_THREADS}
-- **Current Frequency:** ${CPU_FREQ} MHz
-- **Max Frequency:** ${CPU_MAX_FREQ} MHz
-
-### Memory
-- **Total:** ${MEM_TOTAL}
-- **Used:** ${MEM_USED}
-- **Available:** ${MEM_AVAILABLE}
-
-### Storage
-- **Size:** ${DISK_SIZE}
-- **Used:** ${DISK_USED} (${DISK_PERCENT})
-- **Available:** ${DISK_AVAIL}
-- **Type:** ${DISK_TYPE}
-
-### GPU
-${GPU_INFO}
-
-### System
-- **Uptime:** ${UPTIME}
-- **Load Average:**${LOAD_AVG}
-
 ---
 
-## 2. CPU Performance
+## Benchmark Complete
 
-### Benchmark Results
-- **Single-Core Performance:** ${SINGLE_CORE} events/sec
-- **Multi-Core Performance:** ${MULTI_CORE} events/sec
-- **Compression (100MB):** ${GZIP_TIME}s
-- **Calculation (Pi 5000 digits):** ${CALC_TIME}s
+**Completed:** ${end_time}
+**Mode:** $([ "$QUICK_MODE" = true ] && echo "Quick" || echo "Full")
+**Duration:** Approximately $([ "$QUICK_MODE" = true ] && echo "5" || echo "15-20") minutes
 
-**Performance Score:** $(echo "scale=0; (${SINGLE_CORE} + ${MULTI_CORE}) / 100" | bc)/100
+### Notes
+- All tests were run on a live production system
+- Results may vary based on system load
+- Compare with future benchmarks to track performance trends
 
----
-
-## 3. Disk I/O Performance
-
-### Sequential Performance
-- **Read:** ${SEQ_READ} MB/s
-- **Write:** ${SEQ_WRITE} MB/s
-
-### Random Performance (4K blocks)
-- **Read:** ${RAND_READ} MB/s (${RAND_READ_IOPS} IOPS)
-- **Write:** ${RAND_WRITE} MB/s (${RAND_WRITE_IOPS} IOPS)
-
-### Latency
-- **Average:** ${LATENCY} μs
-
-**I/O Score:** $(echo "scale=0; (${SEQ_READ} + ${SEQ_WRITE}) / 20" | bc)/100
-
----
-
-## 4. Memory Performance
-
-- **Bandwidth:** ${MEM_BW}
-- **Latency (1GB read):** ${MEM_LAT}
-
----
-
-## 5. PostgreSQL Performance
-
-- **Version:** ${PG_VERSION}
-- **Database Size:** ${DB_SIZE}
-- **Table Count:** ${TABLE_COUNT}
-- **Simple Query Time:** ${SIMPLE_QUERY_TIME}s
-- **Complex Query Time:** ${COMPLEX_QUERY_TIME}s
-$([ -n "${PGBENCH_TPS}" ] && echo "- **Transactions/sec:** ${PGBENCH_TPS}")
-
----
-
-## 6. Ollama AI Performance
-
-- **Available Models:** ${MODELS}
-- **Average Response Time:** ${AVG_TIME}s
-- **Token Generation Speed:** ${TOKENS_PER_SEC} tokens/sec
-- **Memory Usage:** ${OLLAMA_MEM_MB} MB
-
----
-
-## 7. Next.js Application Performance
-
-- **Status:** ${PM2_STATUS}
-- **CPU Usage:** ${PM2_CPU}%
-- **Memory Usage:** ${PM2_MEM_MB} MB
-- **Homepage Load Time:** ${HOMEPAGE_TIME}s
-- **API Response Time:** ${API_TIME}s
-- **Build Time:** ${BUILD_TIME}s
-- **Uptime:** ${UPTIME_HOURS} hours
-
----
-
-## 8. System Health Summary
-
-- **Temperature:** Monitored
-- **Network:** Connected
-- **Disk Health:** ${SMART_HEALTH}
-- **System Errors (24h):** ${ERROR_COUNT}
-
----
-
-## Performance Summary
-
-| Category | Score | Status |
-|----------|-------|--------|
-| CPU Performance | $(echo "scale=0; (${SINGLE_CORE} + ${MULTI_CORE}) / 100" | bc)/100 | ✓ |
-| Disk I/O | $(echo "scale=0; (${SEQ_READ} + ${SEQ_WRITE}) / 20" | bc)/100 | ✓ |
-| Memory | Good | ✓ |
-| Database | ${SIMPLE_QUERY_TIME}s queries | ✓ |
-| AI Performance | ${AVG_TIME}s avg | ✓ |
-| Application | ${HOMEPAGE_TIME}s load | ✓ |
-
----
-
-## Recommendations
-
-1. **CPU:** Current performance is baseline for comparison
-2. **Disk I/O:** ${DISK_TYPE} performance recorded
-3. **Memory:** ${MEM_TOTAL} available
-4. **Database:** Query performance baseline established
-5. **AI:** Ollama response times documented
-6. **Application:** Next.js performance metrics captured
-
----
-
-## Next Steps
-
-1. Deploy to NUC13ANHi5
-2. Run identical benchmark
-3. Compare results using comparison template
-4. Document performance improvements
-5. Optimize based on findings
-
----
-
-**Report Generated:** $(date '+%Y-%m-%d %H:%M:%S %Z')
-**Benchmark Duration:** Approximately 15-20 minutes
-**System:** Current Production (Pre-Migration)
+### Next Steps
+1. Review the metrics above
+2. Save this report for future comparison
+3. Run benchmarks after system changes to measure impact
+4. Use quick mode (--quick) for regular monitoring
 
 EOF
 
-    print_success "Markdown report generated: ${REPORT_MD}"
-}
-
-generate_json_report() {
-    print_header "Generating JSON Report"
-    
-    cat >> "${REPORT_JSON}" << EOF
-    "hardware": {
-      "cpu": {
-        "model": "${CPU_MODEL}",
-        "cores": ${CPU_CORES},
-        "threads": ${CPU_THREADS},
-        "frequency_mhz": ${CPU_FREQ},
-        "max_frequency_mhz": ${CPU_MAX_FREQ}
-      },
-      "memory": {
-        "total": "${MEM_TOTAL}",
-        "total_mb": ${MEM_TOTAL_MB},
-        "used": "${MEM_USED}",
-        "available": "${MEM_AVAILABLE}"
-      },
-      "disk": {
-        "size": "${DISK_SIZE}",
-        "used": "${DISK_USED}",
-        "available": "${DISK_AVAIL}",
-        "usage_percent": "${DISK_PERCENT}",
-        "type": "${DISK_TYPE}"
-      },
-      "gpu": "${GPU_INFO}",
-      "uptime": "${UPTIME}",
-      "load_average": "${LOAD_AVG}"
-    },
-    "cpu_performance": {
-      "single_core_events_per_sec": ${SINGLE_CORE},
-      "multi_core_events_per_sec": ${MULTI_CORE},
-      "compression_time_sec": ${GZIP_TIME},
-      "calculation_time_sec": ${CALC_TIME}
-    },
-    "disk_io": {
-      "sequential_read_mbps": ${SEQ_READ},
-      "sequential_write_mbps": ${SEQ_WRITE},
-      "random_read_mbps": ${RAND_READ},
-      "random_read_iops": ${RAND_READ_IOPS},
-      "random_write_mbps": ${RAND_WRITE},
-      "random_write_iops": ${RAND_WRITE_IOPS},
-      "latency_us": ${LATENCY}
-    },
-    "memory": {
-      "bandwidth": "${MEM_BW}",
-      "latency": "${MEM_LAT}"
-    },
-    "postgresql": {
-      "version": "${PG_VERSION}",
-      "database_size": "${DB_SIZE}",
-      "table_count": "${TABLE_COUNT}",
-      "simple_query_time_sec": ${SIMPLE_QUERY_TIME},
-      "complex_query_time_sec": ${COMPLEX_QUERY_TIME}
-    },
-    "ollama": {
-      "models": "${MODELS}",
-      "avg_response_time_sec": ${AVG_TIME},
-      "tokens_per_sec": ${TOKENS_PER_SEC},
-      "memory_usage_mb": ${OLLAMA_MEM_MB}
-    },
-    "nextjs": {
-      "status": "${PM2_STATUS}",
-      "cpu_percent": ${PM2_CPU},
-      "memory_mb": ${PM2_MEM_MB},
-      "homepage_load_time_sec": ${HOMEPAGE_TIME},
-      "api_response_time_sec": ${API_TIME},
-      "build_time_sec": ${BUILD_TIME},
-      "uptime_hours": ${UPTIME_HOURS}
-    },
-    "system_health": {
-      "network_status": "connected",
-      "disk_health": "${SMART_HEALTH}",
-      "error_count_24h": ${ERROR_COUNT}
-    }
-  }
-}
-EOF
-
-    print_success "JSON report generated: ${REPORT_JSON}"
+    print_success "Reports finalized"
+    echo ""
+    echo "📊 Benchmark reports generated:"
+    echo "   Markdown: ${REPORT_MD}"
+    echo "   JSON: ${REPORT_JSON}"
+    echo ""
+    echo "💡 View report: cat ${REPORT_MD}"
+    echo "💡 Compare later: diff ${REPORT_MD} <new-report>"
 }
 
 ################################################################################
@@ -797,42 +984,46 @@ EOF
 ################################################################################
 
 main() {
-    clear
+    local start_time=$(date +%s)
+    
     print_header "Sports Bar TV Controller - System Benchmark"
-    echo -e "${YELLOW}This benchmark will take approximately 15-20 minutes${NC}"
-    echo -e "${YELLOW}Testing: Hardware, CPU, Disk, Memory, PostgreSQL, Ollama, Next.js, System Health${NC}"
+    
+    if [ "$QUICK_MODE" = true ]; then
+        echo "Running in QUICK mode (~5 minutes)"
+    else
+        echo "Running in FULL mode (~15-20 minutes)"
+    fi
+    
     echo ""
     
+    # Initialize reports
     initialize_reports
     
-    test_hardware_specs
+    # Run all tests
+    collect_hardware_specs
     test_cpu_performance
-    test_disk_io
+    test_disk_performance
     test_memory_performance
-    test_postgresql
-    test_ollama
-    test_nextjs
-    test_system_health
+    test_postgresql_performance
+    test_ollama_performance
+    test_nextjs_performance
+    check_system_health
     
-    generate_markdown_report
-    generate_json_report
+    # Finalize reports
+    finalize_reports
     
-    # Cleanup
+    # Clean up temp directory
     rm -rf "${TEMP_DIR}"
     
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    local minutes=$((duration / 60))
+    local seconds=$((duration % 60))
+    
     print_header "Benchmark Complete!"
-    echo -e "${GREEN}Reports generated:${NC}"
-    echo -e "  📄 Markdown: ${REPORT_MD}"
-    echo -e "  📊 JSON: ${REPORT_JSON}"
-    echo ""
-    echo -e "${CYAN}Next steps:${NC}"
-    echo -e "  1. Review the baseline report"
-    echo -e "  2. Deploy to NUC13ANHi5"
-    echo -e "  3. Run benchmark again on new system"
-    echo -e "  4. Compare results"
+    echo "Total time: ${minutes}m ${seconds}s"
     echo ""
 }
 
 # Run main function
 main
-
