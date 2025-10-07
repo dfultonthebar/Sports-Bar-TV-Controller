@@ -100,7 +100,7 @@ async function checkOllamaRunning() {
       resolve(false);
     });
     
-    req.setTimeout(2000, () => {
+    req.setTimeout(10000, () => {
       req.destroy();
       logError('Ollama service timeout');
       resolve(false);
@@ -210,7 +210,7 @@ async function testModelGeneration() {
       resolve(true); // Don't fail on this
     });
     
-    req.setTimeout(5000, () => {
+    req.setTimeout(30000, () => {
       req.destroy();
       logWarning('Model generation test timeout');
       resolve(true); // Don't fail on this

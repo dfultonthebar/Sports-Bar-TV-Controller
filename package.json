@@ -69,5 +69,8 @@
     "tough-cookie": "^5.0.0",
     "uuid": "^13.0.0",
     "zod": "^3.25.76"
+  },
+  "optionalDependencies": {
+    "isolated-vm": "^6.0.1"
   }
 }
