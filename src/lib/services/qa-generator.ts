@@ -1,8 +1,8 @@
 
-
 /**
  * Q&A Generator Service
  * Automatically generates question-answer pairs from repository files and documentation
+ * OPTIMIZED: Increased timeout to 180s, added parallel processing with concurrency control
  */
 
 import fs from 'fs';
@@ -12,7 +12,10 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const DEFAULT_MODEL = 'llama3.2:3b';
+const DEFAULT_MODEL = 'phi3:mini'; // OPTIMIZED: Changed to faster model
+const FALLBACK_MODEL = 'llama3.2:3b'; // Fallback if phi3:mini not available
+const QA_GENERATION_TIMEOUT = 180000; // OPTIMIZED: Increased from 60s to 180s
+const MAX_CONCURRENT_FILES = 5; // OPTIMIZED: Process up to 5 files in parallel
 
 export interface QAGenerationOptions {
   sourceType: 'repository' | 'documentation' | 'codebase';
@@ -63,12 +66,39 @@ export async function generateQAsFromRepository(
 }
 
 /**
- * Process Q&A generation job
+ * OPTIMIZED: Concurrency limiter for parallel processing
+ */
+class ConcurrencyLimiter {
+  private running = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(private maxConcurrent: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    while (this.running >= this.maxConcurrent) {
+      await new Promise<void>(resolve => this.queue.push(resolve));
+    }
+
+    this.running++;
+    try {
+      return await fn();
+    } finally {
+      this.running--;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+}
+
+/**
+ * Process Q&A generation job with parallel processing
  */
 async function processQAGeneration(
   jobId: string,
   options: QAGenerationOptions
 ): Promise<void> {
+  const startTime = Date.now();
+  
   try {
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
@@ -77,7 +107,7 @@ async function processQAGeneration(
 
     const files = await collectFilesForGeneration(options);
     
-    console.log(`Starting Q&A generation for ${files.length} files`);
+    console.log(`Starting Q&A generation for ${files.length} files with ${MAX_CONCURRENT_FILES} concurrent workers`);
     
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
@@ -93,18 +123,23 @@ async function processQAGeneration(
     let failedFiles = 0;
     const errors: string[] = [];
 
-    for (const file of files) {
+    // OPTIMIZED: Use concurrency limiter for parallel processing
+    const limiter = new ConcurrencyLimiter(MAX_CONCURRENT_FILES);
+    
+    const processFile = async (file: string, index: number) => {
       try {
-        console.log(`Processing file ${processedFiles + 1}/${files.length}: ${file}`);
+        console.log(`[${index + 1}/${files.length}] Processing: ${file}`);
         
         const qas = await generateQAsFromFile(file, options);
         
         if (qas.length === 0) {
           failedFiles++;
           console.warn(`No Q&As generated for ${file}`);
+          return { success: false, qas: [] };
         }
         
         // Save generated Q&As to database
+        const savedQAs = [];
         for (const qa of qas) {
           try {
             await prisma.qAEntry.create({
@@ -118,39 +153,49 @@ async function processQAGeneration(
                 confidence: qa.confidence,
               },
             });
-            generatedQAs++;
+            savedQAs.push(qa);
           } catch (dbError) {
             console.error(`Error saving Q&A to database:`, dbError);
             errors.push(`DB error for ${file}: ${dbError instanceof Error ? dbError.message : 'Unknown'}`);
           }
         }
 
-        processedFiles++;
-        
-        // Update job progress every 5 files or on last file
-        if (processedFiles % 5 === 0 || processedFiles === files.length) {
-          await prisma.qAGenerationJob.update({
-            where: { id: jobId },
-            data: { processedFiles, generatedQAs },
-          });
-          console.log(`Progress: ${processedFiles}/${files.length} files, ${generatedQAs} Q&As generated`);
-        }
+        console.log(`[${index + 1}/${files.length}] Generated ${savedQAs.length} Q&As from ${file}`);
+        return { success: true, qas: savedQAs };
       } catch (error) {
         failedFiles++;
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Error processing file ${file}:`, errorMsg);
         errors.push(`${file}: ${errorMsg}`);
-        processedFiles++;
+        return { success: false, qas: [] };
       }
-    }
+    };
+
+    // OPTIMIZED: Process files in parallel with concurrency control
+    const results = await Promise.all(
+      files.map((file, index) => 
+        limiter.run(() => processFile(file, index))
+      )
+    );
+
+    // Aggregate results
+    processedFiles = results.length;
+    generatedQAs = results.reduce((sum, r) => sum + r.qas.length, 0);
+
+    // Update progress
+    await prisma.qAGenerationJob.update({
+      where: { id: jobId },
+      data: { processedFiles, generatedQAs },
+    });
+
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`Completed: ${processedFiles} files, ${generatedQAs} Q&As in ${elapsedTime}s`);
 
     // Final update
     const finalStatus = generatedQAs > 0 ? 'completed' : 'failed';
     const errorMessage = errors.length > 0 
       ? `Generated ${generatedQAs} Q&As from ${processedFiles - failedFiles}/${processedFiles} files. Errors: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`
-      : generatedQAs === 0 
-        ? 'No Q&As were generated. Check Ollama connection and logs.'
-        : null;
+      : undefined;
 
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
@@ -163,10 +208,9 @@ async function processQAGeneration(
       },
     });
 
-    console.log(`Q&A generation completed: ${generatedQAs} Q&As from ${processedFiles} files (${failedFiles} failed)`);
-    
+    console.log(`Q&A generation ${finalStatus}: ${generatedQAs} Q&As from ${processedFiles} files`);
   } catch (error) {
-    console.error('Fatal error in Q&A generation:', error);
+    console.error('Q&A generation process failed:', error);
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
       data: {
@@ -175,515 +219,233 @@ async function processQAGeneration(
         completedAt: new Date(),
       },
     });
+    throw error;
   }
 }
 
 /**
- * Collect files for Q&A generation
+ * Collect files for Q&A generation based on options
  */
-async function collectFilesForGeneration(
-  options: QAGenerationOptions
-): Promise<string[]> {
+async function collectFilesForGeneration(options: QAGenerationOptions): Promise<string[]> {
   const files: string[] = [];
-  const rootDir = process.cwd();
+  const projectRoot = process.cwd();
 
-  if (options.sourceType === 'documentation') {
-    // Collect documentation files
-    const docsDir = path.join(rootDir, 'docs');
-    if (fs.existsSync(docsDir)) {
-      const docFiles = fs.readdirSync(docsDir)
-        .filter(f => f.endsWith('.md'))
-        .map(f => path.join(docsDir, f));
-      files.push(...docFiles);
+  if (options.sourcePaths && options.sourcePaths.length > 0) {
+    for (const sourcePath of options.sourcePaths) {
+      const fullPath = path.isAbsolute(sourcePath) 
+        ? sourcePath 
+        : path.join(projectRoot, sourcePath);
+
+      try {
+        const stats = await fs.promises.stat(fullPath);
+        if (stats.isFile()) {
+          files.push(fullPath);
+        } else if (stats.isDirectory()) {
+          const dirFiles = await collectFilesFromDirectory(fullPath);
+          files.push(...dirFiles);
+        }
+      } catch (error) {
+        console.error(`Error accessing path ${fullPath}:`, error);
+      }
     }
-  } else if (options.sourceType === 'codebase') {
-    // Collect important code files
-    const srcDir = path.join(rootDir, 'src');
-    const codeFiles = collectCodeFiles(srcDir);
-    files.push(...codeFiles);
-  } else if (options.sourceType === 'repository') {
-    // Collect both documentation and key code files
-    const docsDir = path.join(rootDir, 'docs');
-    if (fs.existsSync(docsDir)) {
-      const docFiles = fs.readdirSync(docsDir)
-        .filter(f => f.endsWith('.md'))
-        .map(f => path.join(docsDir, f));
-      files.push(...docFiles);
-    }
-    
-    // Add README and other important files
-    const importantFiles = ['README.md', 'INSTALLATION.md'];
-    for (const file of importantFiles) {
-      const filePath = path.join(rootDir, file);
-      if (fs.existsSync(filePath)) {
-        files.push(filePath);
+  } else {
+    // Default: scan common documentation directories
+    const defaultPaths = [
+      path.join(projectRoot, 'docs'),
+      path.join(projectRoot, 'documentation'),
+      path.join(projectRoot, 'README.md'),
+    ];
+
+    for (const defaultPath of defaultPaths) {
+      try {
+        const stats = await fs.promises.stat(defaultPath);
+        if (stats.isFile()) {
+          files.push(defaultPath);
+        } else if (stats.isDirectory()) {
+          const dirFiles = await collectFilesFromDirectory(defaultPath);
+          files.push(...dirFiles);
+        }
+      } catch (error) {
+        // Path doesn't exist, skip
       }
     }
   }
 
-  return files;
+  // Filter for supported file types
+  const supportedExtensions = ['.md', '.txt', '.rst', '.pdf'];
+  return files.filter(file => 
+    supportedExtensions.some(ext => file.toLowerCase().endsWith(ext))
+  );
 }
 
 /**
- * Recursively collect code files
+ * Recursively collect files from a directory
  */
-function collectCodeFiles(dir: string, files: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return files;
+async function collectFilesFromDirectory(dirPath: string): Promise<string[]> {
+  const files: string[] = [];
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
 
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    
-    if (entry.isDirectory()) {
-      // Skip node_modules and other irrelevant directories
-      if (!['node_modules', '.next', '.git', 'dist', 'build'].includes(entry.name)) {
-        collectCodeFiles(fullPath, files);
-      }
-    } else if (entry.isFile()) {
-      // Include TypeScript, JavaScript, and API route files
-      if (entry.name.match(/\.(ts|tsx|js|jsx)$/) && 
-          !entry.name.endsWith('.test.ts') &&
-          !entry.name.endsWith('.spec.ts')) {
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        // Skip node_modules and hidden directories
+        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          const subFiles = await collectFilesFromDirectory(fullPath);
+          files.push(...subFiles);
+        }
+      } else if (entry.isFile()) {
         files.push(fullPath);
       }
     }
+  } catch (error) {
+    console.error(`Error reading directory ${dirPath}:`, error);
   }
 
   return files;
 }
 
 /**
- * Generate Q&A pairs from a single file
+ * Generate Q&As from a single file with optimized timeout
  */
 async function generateQAsFromFile(
   filePath: string,
   options: QAGenerationOptions
 ): Promise<GeneratedQA[]> {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const fileName = path.basename(filePath);
-  const fileExt = path.extname(filePath);
-
-  // Determine category based on file path and content
-  const category = determineCategory(filePath, content);
-
-  // Create prompt for Q&A generation
-  const prompt = createQAGenerationPrompt(content, fileName, fileExt, category);
-
   try {
-    // Call Ollama API to generate Q&As with timeout
+    // Read file content
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    const fileName = path.basename(filePath);
+
+    if (content.length < 100) {
+      console.log(`Skipping ${fileName}: content too short`);
+      return [];
+    }
+
+    // Prepare prompt for Ollama
+    const prompt = `Analyze the following document and generate 3-5 high-quality question-answer pairs that would be useful for a chatbot assistant.
+
+Document: ${fileName}
+Content:
+${content.substring(0, 4000)}
+
+Generate Q&A pairs in JSON format:
+{
+  "qas": [
+    {
+      "question": "Clear, specific question",
+      "answer": "Detailed, accurate answer",
+      "category": "technical|operational|troubleshooting|general",
+      "tags": ["tag1", "tag2"],
+      "confidence": 0.8
+    }
+  ]
+}
+
+Focus on practical, actionable information. Ensure answers are complete and self-contained.`;
+
+    // OPTIMIZED: Call Ollama API with 180s timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), QA_GENERATION_TIMEOUT);
 
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: options.model || DEFAULT_MODEL,
-        prompt,
-        stream: false,
-        options: {
-          temperature: 0.7,
-          top_p: 0.9,
-          num_predict: 2000,
-        },
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Ollama API error for ${fileName}:`, response.status, errorText);
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    // Validate response structure
-    if (!data || typeof data.response !== 'string') {
-      console.error(`Invalid Ollama response structure for ${fileName}:`, data);
-      throw new Error('Invalid response structure from Ollama');
-    }
-
-    const generatedText = data.response;
-    
-    // Log the raw response for debugging
-    console.log(`Generated text for ${fileName} (first 500 chars):`, generatedText.substring(0, 500));
-
-    // Parse the generated Q&As
-    const qas = parseGeneratedQAs(generatedText, category, filePath);
-    
-    if (qas.length === 0) {
-      console.warn(`No Q&As parsed from ${fileName}. Raw response:`, generatedText.substring(0, 1000));
-    } else {
-      console.log(`Successfully generated ${qas.length} Q&As from ${fileName}`);
-    }
-    
-    return qas;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.error(`Timeout generating Q&As for ${filePath}`);
-    } else if (error.cause?.code === 'ECONNREFUSED') {
-      console.error(`Cannot connect to Ollama at ${OLLAMA_BASE_URL} for ${filePath}`);
-    } else {
-      console.error(`Error generating Q&As for ${filePath}:`, error);
-    }
-    return [];
-  }
-}
-
-/**
- * Determine category based on file path and content
- */
-function determineCategory(filePath: string, content: string): string {
-  const lowerPath = filePath.toLowerCase();
-  const lowerContent = content.toLowerCase();
-
-  if (lowerPath.includes('/api/') || lowerPath.includes('route.ts')) {
-    return 'api';
-  } else if (lowerPath.includes('docs/') || lowerPath.endsWith('.md')) {
-    if (lowerContent.includes('installation') || lowerContent.includes('setup')) {
-      return 'configuration';
-    } else if (lowerContent.includes('troubleshoot') || lowerContent.includes('error')) {
-      return 'troubleshooting';
-    } else if (lowerContent.includes('feature') || lowerContent.includes('capability')) {
-      return 'features';
-    }
-    return 'system';
-  } else if (lowerPath.includes('/lib/') || lowerPath.includes('service')) {
-    return 'system';
-  } else if (lowerPath.includes('component')) {
-    return 'features';
-  }
-
-  return 'general';
-}
-
-/**
- * Create prompt for Q&A generation
- */
-function createQAGenerationPrompt(
-  content: string,
-  fileName: string,
-  fileExt: string,
-  category: string
-): string {
-  const contentPreview = content.length > 4000 ? content.substring(0, 4000) + '...' : content;
-
-  return `You are an AI assistant creating training data for a Sports Bar TV Control System. Your task is to generate question-answer pairs in STRICT JSON format.
-
-File: ${fileName}
-Category: ${category}
-Type: ${fileExt === '.md' ? 'documentation' : 'code'}
-
-Content to analyze:
-${contentPreview}
-
-CRITICAL INSTRUCTIONS:
-1. Generate EXACTLY 3-5 question-answer pairs
-2. Return ONLY a valid JSON array, nothing else
-3. No markdown code blocks, no explanations, no additional text
-4. Each Q&A must have: question, answer, tags (array), confidence (number)
-
-REQUIRED JSON FORMAT (copy this structure exactly):
-[
-  {
-    "question": "What is the main purpose of this file?",
-    "answer": "This file handles...",
-    "tags": ["system", "architecture"],
-    "confidence": 0.9
-  },
-  {
-    "question": "How does this component work?",
-    "answer": "The component works by...",
-    "tags": ["features", "usage"],
-    "confidence": 0.85
-  }
-]
-
-Focus areas for questions:
-- System architecture and design patterns
-- API endpoints and their parameters
-- Features and capabilities
-- Configuration options and setup steps
-- Common issues and troubleshooting
-- Integration points and dependencies
-
-Requirements:
-- Questions must be clear and specific (minimum 15 characters)
-- Answers must be detailed and accurate (minimum 30 characters)
-- Use information ONLY from the provided content
-- Make questions conversational and natural
-- Answers should be comprehensive but concise
-
-REMEMBER: Return ONLY the JSON array. Start with [ and end with ]. No other text.`;
-}
-
-/**
- * Parse generated Q&As from AI response
- */
-function parseGeneratedQAs(
-  generatedText: string,
-  category: string,
-  sourceFile: string
-): GeneratedQA[] {
-  try {
-    // Try multiple parsing strategies
-    
-    // Strategy 1: Look for JSON array with flexible whitespace
-    let jsonMatch = generatedText.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-    
-    // Strategy 2: Look for JSON code block
-    if (!jsonMatch) {
-      const codeBlockMatch = generatedText.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-      if (codeBlockMatch) {
-        jsonMatch = [codeBlockMatch[1]];
-      }
-    }
-    
-    // Strategy 3: Look for any array-like structure
-    if (!jsonMatch) {
-      jsonMatch = generatedText.match(/\[[\s\S]*\]/);
-    }
-    
-    if (!jsonMatch) {
-      console.warn('No JSON array found in generated text for:', sourceFile);
-      console.warn('Generated text sample:', generatedText.substring(0, 500));
-      return [];
-    }
-
-    let jsonString = jsonMatch[0];
-    
-    // Clean up common issues
-    jsonString = jsonString
-      .replace(/,\s*\]/g, ']')  // Remove trailing commas
-      .replace(/,\s*\}/g, '}')  // Remove trailing commas in objects
-      .trim();
-    
-    // Validate JSON string is not empty or malformed
-    if (!jsonString || jsonString.trim().length < 3) {
-      console.warn('Empty or invalid JSON string for:', sourceFile);
-      return [];
-    }
-
-    let qas;
     try {
-      qas = JSON.parse(jsonString);
-    } catch (parseError) {
-      console.error('Error parsing generated Q&As:', parseError);
-      console.error('Attempted to parse:', jsonString.substring(0, 500));
-      
-      // Try to fix common JSON issues and retry
-      try {
-        // Fix unescaped quotes and newlines
-        const fixedJson = jsonString
-          .replace(/\n/g, '\\n')
-          .replace(/\r/g, '\\r')
-          .replace(/\t/g, '\\t');
-        qas = JSON.parse(fixedJson);
-        console.log('Successfully parsed after fixing JSON for:', sourceFile);
-      } catch (retryError) {
-        console.error('Retry parsing also failed for:', sourceFile);
-        return [];
-      }
-    }
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: options.model || DEFAULT_MODEL,
+          prompt,
+          stream: false,
+          options: {
+            temperature: 0.7,
+            top_p: 0.9,
+          },
+        }),
+        signal: controller.signal,
+      });
 
-    // Ensure qas is an array
-    if (!Array.isArray(qas)) {
-      console.warn('Parsed result is not an array for:', sourceFile);
-      // Try to wrap single object in array
-      if (typeof qas === 'object' && qas !== null) {
-        qas = [qas];
-      } else {
-        return [];
-      }
-    }
-    
-    // Map and validate Q&As
-    const validQAs = qas
-      .map((qa: any) => {
-        // Handle various response formats
-        const question = qa.question || qa.q || qa.Question || '';
-        const answer = qa.answer || qa.a || qa.Answer || '';
-        const tags = Array.isArray(qa.tags) ? qa.tags : 
-                     (typeof qa.tags === 'string' ? qa.tags.split(',').map((t: string) => t.trim()) : []);
-        const confidence = typeof qa.confidence === 'number' ? qa.confidence : 0.8;
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Ollama API error for ${fileName}:`, response.status, errorText);
         
-        return {
-          question: question.trim(),
-          answer: answer.trim(),
-          category,
-          tags,
-          confidence,
-          sourceFile,
-        };
-      })
-      .filter((qa: GeneratedQA) => {
-        // Validate Q&A has meaningful content
-        const hasQuestion = qa.question && qa.question.length > 10;
-        const hasAnswer = qa.answer && qa.answer.length > 20;
-        
-        if (!hasQuestion || !hasAnswer) {
-          console.warn(`Filtered out invalid Q&A from ${sourceFile}:`, {
-            question: qa.question?.substring(0, 50),
-            answer: qa.answer?.substring(0, 50)
-          });
+        // OPTIMIZED: Try fallback model if primary fails
+        if (options.model === DEFAULT_MODEL) {
+          console.log(`Retrying with fallback model: ${FALLBACK_MODEL}`);
+          return generateQAsFromFile(filePath, { ...options, model: FALLBACK_MODEL });
         }
         
-        return hasQuestion && hasAnswer;
-      });
-    
-    console.log(`Parsed ${validQAs.length} valid Q&As from ${qas.length} total items for ${sourceFile}`);
-    return validQAs;
-    
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.response) {
+        console.error(`Invalid Ollama response structure for ${fileName}:`, data);
+        throw new Error('Invalid response structure from Ollama');
+      }
+
+      // Parse the generated Q&As
+      const qas = parseGeneratedQAs(data.response, fileName);
+      return qas;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Q&A generation timed out after ${QA_GENERATION_TIMEOUT / 1000}s for ${fileName}`);
+      }
+      throw error;
+    }
   } catch (error) {
-    console.error('Error parsing generated Q&As for:', sourceFile, error);
+    if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
+      console.error(`Cannot connect to Ollama at ${OLLAMA_BASE_URL} for ${filePath}`);
+      throw new Error('Ollama service is not running or not accessible');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Parse generated Q&As from Ollama response
+ */
+function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] {
+  try {
+    // Try to extract JSON from the response
+    const jsonMatch = response.match(/\{[\s\S]*"qas"[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn(`No JSON found in response for ${sourceFile}`);
+      return [];
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    
+    if (!parsed.qas || !Array.isArray(parsed.qas)) {
+      console.warn(`Invalid Q&A structure for ${sourceFile}`);
+      return [];
+    }
+
+    return parsed.qas.map((qa: any) => ({
+      question: qa.question || '',
+      answer: qa.answer || '',
+      category: qa.category || 'general',
+      tags: Array.isArray(qa.tags) ? qa.tags : [],
+      confidence: typeof qa.confidence === 'number' ? qa.confidence : 0.7,
+      sourceFile,
+    })).filter((qa: GeneratedQA) => qa.question && qa.answer);
+  } catch (error) {
+    console.error(`Error parsing Q&As for ${sourceFile}:`, error);
     return [];
   }
 }
 
 /**
- * Get generation job status
+ * Get Q&A generation job status
  */
-export async function getGenerationJobStatus(jobId: string) {
+export async function getQAGenerationStatus(jobId: string) {
   return await prisma.qAGenerationJob.findUnique({
     where: { id: jobId },
   });
-}
-
-/**
- * Get all Q&A entries
- */
-export async function getAllQAEntries(filters?: {
-  category?: string;
-  sourceType?: string;
-  isActive?: boolean;
-}) {
-  try {
-    const entries = await prisma.qAEntry.findMany({
-      where: filters,
-      orderBy: { createdAt: 'desc' },
-    });
-    // Ensure we always return an array
-    return Array.isArray(entries) ? entries : [];
-  } catch (error) {
-    console.error('Error in getAllQAEntries:', error);
-    // Return empty array on error to prevent crashes
-    return [];
-  }
-}
-
-/**
- * Search Q&A entries
- */
-export async function searchQAEntries(query: string, limit: number = 10) {
-  try {
-    const entries = await prisma.qAEntry.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { question: { contains: query } },
-          { answer: { contains: query } },
-          { tags: { contains: query } },
-        ],
-      },
-      orderBy: { usageCount: 'desc' },
-      take: limit,
-    });
-
-    // Ensure we always return an array
-    return Array.isArray(entries) ? entries : [];
-  } catch (error) {
-    console.error('Error in searchQAEntries:', error);
-    // Return empty array on error to prevent crashes
-    return [];
-  }
-}
-
-/**
- * Update Q&A entry
- */
-export async function updateQAEntry(
-  id: string,
-  data: Partial<{
-    question: string;
-    answer: string;
-    category: string;
-    tags: string[];
-    isActive: boolean;
-  }>
-) {
-  const updateData: any = { ...data };
-  if (data.tags) {
-    updateData.tags = JSON.stringify(data.tags);
-  }
-
-  return await prisma.qAEntry.update({
-    where: { id },
-    data: updateData,
-  });
-}
-
-/**
- * Delete Q&A entry
- */
-export async function deleteQAEntry(id: string) {
-  return await prisma.qAEntry.delete({
-    where: { id },
-  });
-}
-
-/**
- * Get Q&A statistics
- */
-export async function getQAStatistics() {
-  const total = await prisma.qAEntry.count();
-  const active = await prisma.qAEntry.count({ where: { isActive: true } });
-  
-  const byCategoryRaw = await prisma.qAEntry.groupBy({
-    by: ['category'],
-    _count: {
-      _all: true,
-    },
-  });
-
-  const bySourceTypeRaw = await prisma.qAEntry.groupBy({
-    by: ['sourceType'],
-    _count: {
-      _all: true,
-    },
-  });
-
-  const topUsed = await prisma.qAEntry.findMany({
-    where: { isActive: true },
-    orderBy: { usageCount: 'desc' },
-    take: 10,
-    select: {
-      id: true,
-      question: true,
-      usageCount: true,
-      category: true,
-    },
-  });
-
-  // Transform the groupBy results to match the expected format
-  const byCategory = byCategoryRaw.map(item => ({
-    category: item.category,
-    _count: item._count._all,
-  }));
-
-  const bySourceType = bySourceTypeRaw.map(item => ({
-    sourceType: item.sourceType,
-    _count: item._count._all,
-  }));
-
-  return {
-    total,
-    active,
-    byCategory,
-    bySourceType,
-    topUsed,
-  };
 }

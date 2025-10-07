@@ -1,20 +1,19 @@
-
 /**
- * File System Tools for AI Assistant
- * Provides safe file system operations with security validation
+ * OPTIMIZED File System Tools with Enhanced Security
+ * Implements strict path validation and resource limits
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import { ToolDefinition, ToolExecutionContext, ToolExecutionResult, FileSystemOperation } from './types';
-import { securityValidator } from './security/validator';
+import { enhancedSecurityValidator } from './security/enhanced-validator';
 
 /**
  * Read file content
  */
 export const readFileTool: ToolDefinition = {
   name: 'read_file',
-  description: 'Read the contents of a file from the file system',
+  description: 'Read the contents of a file from the file system with security validation',
   category: 'filesystem',
   securityLevel: 'safe',
   parameters: [
@@ -47,7 +46,8 @@ export async function readFileHandler(
       path: params.path,
     };
 
-    const validation = securityValidator.validateFileSystemOperation(operation);
+    // OPTIMIZED: Use enhanced validator
+    const validation = enhancedSecurityValidator.validateFileSystemOperation(operation);
     if (!validation.allowed) {
       return {
         success: false,
@@ -84,7 +84,7 @@ export async function readFileHandler(
  */
 export const writeFileTool: ToolDefinition = {
   name: 'write_file',
-  description: 'Write content to a file (creates or overwrites)',
+  description: 'Write content to a file (creates or overwrites) with security validation',
   category: 'filesystem',
   securityLevel: 'moderate',
   requiresApproval: true,
@@ -121,10 +121,10 @@ export async function writeFileHandler(
     const operation: FileSystemOperation = {
       operation: 'write',
       path: params.path,
-      content: params.content,
     };
 
-    const validation = securityValidator.validateFileSystemOperation(operation);
+    // OPTIMIZED: Validate file operation
+    const validation = enhancedSecurityValidator.validateFileSystemOperation(operation);
     if (!validation.allowed) {
       return {
         success: false,
@@ -133,7 +133,8 @@ export async function writeFileHandler(
       };
     }
 
-    const contentValidation = securityValidator.sanitizeFileContent(params.content);
+    // OPTIMIZED: Validate content size
+    const contentValidation = enhancedSecurityValidator.sanitizeFileContent(params.content);
     if (!contentValidation.allowed) {
       return {
         success: false,
@@ -154,7 +155,7 @@ export async function writeFileHandler(
       success: true,
       output: {
         path: filePath,
-        bytesWritten: Buffer.byteLength(params.content),
+        size: Buffer.byteLength(params.content),
       },
       executionTime: Date.now() - startTime,
     };
@@ -172,7 +173,7 @@ export async function writeFileHandler(
  */
 export const listDirectoryTool: ToolDefinition = {
   name: 'list_directory',
-  description: 'List files and directories in a given path',
+  description: 'List files and subdirectories in a directory with security validation',
   category: 'filesystem',
   securityLevel: 'safe',
   parameters: [
@@ -185,7 +186,7 @@ export const listDirectoryTool: ToolDefinition = {
     {
       name: 'recursive',
       type: 'boolean',
-      description: 'List recursively (default: false)',
+      description: 'Whether to list recursively',
       required: false,
       default: false,
     },
@@ -200,11 +201,12 @@ export async function listDirectoryHandler(
 
   try {
     const operation: FileSystemOperation = {
-      operation: 'list',
+      operation: 'read',
       path: params.path,
     };
 
-    const validation = securityValidator.validateFileSystemOperation(operation);
+    // OPTIMIZED: Validate directory access
+    const validation = enhancedSecurityValidator.validateFileSystemOperation(operation);
     if (!validation.allowed) {
       return {
         success: false,
@@ -216,27 +218,49 @@ export async function listDirectoryHandler(
     const dirPath = validation.sanitizedInput.path;
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-    const files = await Promise.all(
-      entries.map(async (entry) => {
-        const fullPath = path.join(dirPath, entry.name);
-        const stats = await fs.stat(fullPath);
+    const files = [];
+    const directories = [];
 
-        return {
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      
+      if (entry.isDirectory()) {
+        directories.push({
           name: entry.name,
           path: fullPath,
-          type: entry.isDirectory() ? 'directory' : 'file',
+          type: 'directory',
+        });
+
+        if (params.recursive) {
+          const subResult = await listDirectoryHandler(
+            { path: fullPath, recursive: true },
+            context
+          );
+          if (subResult.success && subResult.output) {
+            files.push(...(subResult.output.files || []));
+            directories.push(...(subResult.output.directories || []));
+          }
+        }
+      } else {
+        const stats = await fs.stat(fullPath);
+        files.push({
+          name: entry.name,
+          path: fullPath,
+          type: 'file',
           size: stats.size,
           modified: stats.mtime,
-        };
-      })
-    );
+        });
+      }
+    }
 
     return {
       success: true,
       output: {
         path: dirPath,
-        entries: files,
-        count: files.length,
+        files,
+        directories,
+        totalFiles: files.length,
+        totalDirectories: directories.length,
       },
       executionTime: Date.now() - startTime,
     };
@@ -254,7 +278,7 @@ export async function listDirectoryHandler(
  */
 export const searchFilesTool: ToolDefinition = {
   name: 'search_files',
-  description: 'Search for files by name pattern in a directory',
+  description: 'Search for files by name pattern in a directory with security validation',
   category: 'filesystem',
   securityLevel: 'safe',
   parameters: [
@@ -267,13 +291,13 @@ export const searchFilesTool: ToolDefinition = {
     {
       name: 'pattern',
       type: 'string',
-      description: 'File name pattern to search for (supports wildcards)',
+      description: 'File name pattern (supports wildcards)',
       required: true,
     },
     {
       name: 'recursive',
       type: 'boolean',
-      description: 'Search recursively (default: true)',
+      description: 'Whether to search recursively',
       required: false,
       default: true,
     },
@@ -288,11 +312,12 @@ export async function searchFilesHandler(
 
   try {
     const operation: FileSystemOperation = {
-      operation: 'search',
+      operation: 'read',
       path: params.path,
     };
 
-    const validation = securityValidator.validateFileSystemOperation(operation);
+    // OPTIMIZED: Validate search path
+    const validation = enhancedSecurityValidator.validateFileSystemOperation(operation);
     if (!validation.allowed) {
       return {
         success: false,
@@ -301,41 +326,40 @@ export async function searchFilesHandler(
       };
     }
 
-    const dirPath = validation.sanitizedInput.path;
-    const pattern = params.pattern.toLowerCase();
-    const recursive = params.recursive !== false;
+    const searchPath = validation.sanitizedInput.path;
+    const pattern = new RegExp(
+      params.pattern.replace(/\*/g, '.*').replace(/\?/g, '.'),
+      'i'
+    );
 
     const results: any[] = [];
 
-    async function searchDir(currentPath: string) {
-      const entries = await fs.readdir(currentPath, { withFileTypes: true });
+    async function searchDir(dirPath: string) {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
       for (const entry of entries) {
-        const fullPath = path.join(currentPath, entry.name);
+        const fullPath = path.join(dirPath, entry.name);
 
-        if (entry.isDirectory() && recursive) {
+        if (entry.isDirectory() && params.recursive) {
           await searchDir(fullPath);
-        } else if (entry.isFile()) {
-          const fileName = entry.name.toLowerCase();
-          if (fileName.includes(pattern) || matchWildcard(fileName, pattern)) {
-            const stats = await fs.stat(fullPath);
-            results.push({
-              name: entry.name,
-              path: fullPath,
-              size: stats.size,
-              modified: stats.mtime,
-            });
-          }
+        } else if (entry.isFile() && pattern.test(entry.name)) {
+          const stats = await fs.stat(fullPath);
+          results.push({
+            name: entry.name,
+            path: fullPath,
+            size: stats.size,
+            modified: stats.mtime,
+          });
         }
       }
     }
 
-    await searchDir(dirPath);
+    await searchDir(searchPath);
 
     return {
       success: true,
       output: {
-        searchPath: dirPath,
+        searchPath,
         pattern: params.pattern,
         results,
         count: results.length,
@@ -352,30 +376,18 @@ export async function searchFilesHandler(
 }
 
 /**
- * Simple wildcard matching
- */
-function matchWildcard(str: string, pattern: string): boolean {
-  const regexPattern = pattern
-    .replace(/\./g, '\\.')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-  const regex = new RegExp(`^${regexPattern}$`, 'i');
-  return regex.test(str);
-}
-
-/**
- * Get file info
+ * Get file information
  */
 export const getFileInfoTool: ToolDefinition = {
   name: 'get_file_info',
-  description: 'Get detailed information about a file or directory',
+  description: 'Get detailed information about a file with security validation',
   category: 'filesystem',
   securityLevel: 'safe',
   parameters: [
     {
       name: 'path',
       type: 'string',
-      description: 'Path to the file or directory',
+      description: 'Path to the file',
       required: true,
     },
   ],
@@ -393,7 +405,8 @@ export async function getFileInfoHandler(
       path: params.path,
     };
 
-    const validation = securityValidator.validateFileSystemOperation(operation);
+    // OPTIMIZED: Validate file access
+    const validation = enhancedSecurityValidator.validateFileSystemOperation(operation);
     if (!validation.allowed) {
       return {
         success: false,
@@ -410,12 +423,14 @@ export async function getFileInfoHandler(
       output: {
         path: filePath,
         name: path.basename(filePath),
-        type: stats.isDirectory() ? 'directory' : 'file',
+        extension: path.extname(filePath),
         size: stats.size,
         created: stats.birthtime,
         modified: stats.mtime,
         accessed: stats.atime,
-        permissions: stats.mode.toString(8).slice(-3),
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        permissions: stats.mode.toString(8),
       },
       executionTime: Date.now() - startTime,
     };
