@@ -25,6 +25,7 @@
 
 set -e  # Exit on any error
 set -o pipefail  # Catch errors in pipes
+set -u  # Exit on undefined variables
 
 # Color codes for output
 RED='\033[0;31m'
@@ -411,17 +412,75 @@ setup_database() {
         run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/data"
     fi
     
-    # Run Prisma migrations
+    # Set DATABASE_URL environment variable for Prisma
+    export DATABASE_URL="file:./data/sports_bar.db"
+    print_info "Database URL: $DATABASE_URL"
+    
+    # Run Prisma migrations with proper error handling
     print_info "Running database migrations..."
+    
+    local PRISMA_CMD="npx prisma migrate deploy --schema=./prisma/schema.prisma"
+    local MIGRATION_SUCCESS=false
+    
     if [ "$USE_SERVICE_USER" = false ]; then
         # Home directory installation - run as current user
-        npx prisma migrate deploy >> "$LOG_FILE" 2>&1
+        if $PRISMA_CMD >> "$LOG_FILE" 2>&1; then
+            MIGRATION_SUCCESS=true
+        fi
     elif [ "$IS_ROOT" = true ]; then
         # System-wide installation as root
-        su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
+        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
+            MIGRATION_SUCCESS=true
+        fi
     else
         # System-wide installation with sudo
-        sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
+        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
+            MIGRATION_SUCCESS=true
+        fi
+    fi
+    
+    if [ "$MIGRATION_SUCCESS" = true ]; then
+        print_success "Database migrations completed successfully"
+        log "Database migrations completed"
+    else
+        print_error "Database migration failed"
+        print_info "Attempting to generate Prisma client and retry..."
+        
+        # Try generating the Prisma client first
+        local GENERATE_CMD="npx prisma generate --schema=./prisma/schema.prisma"
+        
+        if [ "$USE_SERVICE_USER" = false ]; then
+            $GENERATE_CMD >> "$LOG_FILE" 2>&1 || true
+        elif [ "$IS_ROOT" = true ]; then
+            su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1 || true
+        else
+            sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $GENERATE_CMD" >> "$LOG_FILE" 2>&1 || true
+        fi
+        
+        # Retry migration
+        if [ "$USE_SERVICE_USER" = false ]; then
+            if $PRISMA_CMD >> "$LOG_FILE" 2>&1; then
+                MIGRATION_SUCCESS=true
+            fi
+        elif [ "$IS_ROOT" = true ]; then
+            if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
+                MIGRATION_SUCCESS=true
+            fi
+        else
+            if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && $PRISMA_CMD" >> "$LOG_FILE" 2>&1; then
+                MIGRATION_SUCCESS=true
+            fi
+        fi
+        
+        if [ "$MIGRATION_SUCCESS" = true ]; then
+            print_success "Database migrations completed after retry"
+            log "Database migrations completed after retry"
+        else
+            print_error "Database migration failed after retry"
+            print_error "Check the log file for details: $LOG_FILE"
+            log "Database migration failed"
+            exit 1
+        fi
     fi
     
     print_success "Database initialized"
@@ -493,19 +552,42 @@ build_application() {
     
     print_info "Building Next.js application (this may take several minutes)..."
     
+    local BUILD_SUCCESS=false
+    
+    # Ensure DATABASE_URL is set for build process
+    export DATABASE_URL="file:./data/sports_bar.db"
+    
     if [ "$USE_SERVICE_USER" = false ]; then
         # Home directory installation - run as current user
-        npm run build >> "$LOG_FILE" 2>&1
+        if npm run build >> "$LOG_FILE" 2>&1; then
+            BUILD_SUCCESS=true
+        fi
     elif [ "$IS_ROOT" = true ]; then
         # System-wide installation as root
-        su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
+        if su - "$SERVICE_USER" -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
+            BUILD_SUCCESS=true
+        fi
     else
         # System-wide installation with sudo
-        sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
+        if sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && export DATABASE_URL='file:./data/sports_bar.db' && npm run build" >> "$LOG_FILE" 2>&1; then
+            BUILD_SUCCESS=true
+        fi
     fi
     
-    print_success "Application built successfully"
-    log "Application built"
+    if [ "$BUILD_SUCCESS" = true ]; then
+        print_success "Application built successfully"
+        log "Application built successfully"
+    else
+        print_error "Application build failed"
+        print_error "Check the log file for details: $LOG_FILE"
+        log "Application build failed"
+        
+        # Show last few lines of log for immediate feedback
+        echo -e "\n${YELLOW}Last 30 lines of build log:${NC}"
+        tail -n 30 "$LOG_FILE"
+        
+        exit 1
+    fi
 }
 
 setup_systemd_service() {
@@ -689,34 +771,72 @@ main() {
     log "Installation started"
     log "Installation directory: $INSTALL_DIR"
     log "Repository: $REPO_URL (branch: $REPO_BRANCH)"
+    log "Log file: $LOG_FILE"
+    
+    print_info "Installation log will be saved to: $LOG_FILE"
     
     # Pre-installation checks
+    print_info "Step 1/11: Checking system requirements..."
     check_root
     check_os
     check_existing_installation
     
     # System setup
+    print_info "Step 2/11: Installing system dependencies..."
     install_system_dependencies
+    
+    print_info "Step 3/11: Installing Node.js..."
     install_nodejs
+    
+    print_info "Step 4/11: Configuring user..."
     create_service_user
     
     # Application setup
+    print_info "Step 5/11: Cloning repository..."
     clone_repository
+    
+    print_info "Step 6/11: Installing NPM dependencies..."
     install_npm_dependencies
+    
+    print_info "Step 7/11: Setting up database..."
     setup_database
+    
+    print_info "Step 8/11: Creating environment configuration..."
     create_env_file
+    
+    print_info "Step 9/11: Building application..."
     build_application
     
     # Service setup
+    print_info "Step 10/11: Setting up system service..."
     setup_systemd_service
+    
+    print_info "Step 11/11: Configuring firewall..."
     configure_firewall
     
     # Completion
     print_completion_message
+    
+    log "Installation completed successfully"
 }
 
 # Trap errors and provide helpful message
-trap 'print_error "Installation failed! Check log file: $LOG_FILE"; log "Installation failed with error"; exit 1' ERR
+error_handler() {
+    local line_number=$1
+    print_error "Installation failed at line $line_number"
+    print_error "Check log file for details: $LOG_FILE"
+    log "Installation failed at line $line_number"
+    
+    # Show last 20 lines of log file for quick debugging
+    if [ -f "$LOG_FILE" ]; then
+        echo -e "\n${YELLOW}Last 20 lines of log file:${NC}"
+        tail -n 20 "$LOG_FILE"
+    fi
+    
+    exit 1
+}
+
+trap 'error_handler ${LINENO}' ERR
 
 # Run main installation
 main "$@"
