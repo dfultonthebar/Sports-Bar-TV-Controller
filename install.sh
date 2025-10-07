@@ -409,11 +409,99 @@ setup_database() {
     # Create database directory
     mkdir -p prisma/data
     
-    log_and_print "Running database migrations..."
-    npx prisma migrate deploy >> "$LOG_FILE" 2>&1
+    # Function to detect and resolve failed migrations
+    resolve_failed_migrations() {
+        print_info "Checking for failed migrations..."
+        
+        # Check if migrations table exists and has failed entries
+        if [ -f "prisma/data/sports_bar.db" ]; then
+            local failed_count=$(sqlite3 prisma/data/sports_bar.db \
+                "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NULL;" 2>/dev/null || echo "0")
+            
+            if [ "$failed_count" -gt 0 ]; then
+                print_warning "Found $failed_count failed migration(s)"
+                print_info "Marking failed migrations as rolled back..."
+                
+                sqlite3 prisma/data/sports_bar.db \
+                    "UPDATE _prisma_migrations SET rolled_back_at = datetime('now') WHERE finished_at IS NULL;" \
+                    >> "$LOG_FILE" 2>&1 || true
+                
+                print_success "Failed migrations resolved"
+                return 0
+            fi
+        fi
+        
+        return 1
+    }
     
+    # Try running migrations with timeout
+    log_and_print "Running database migrations (with 60s timeout)..."
+    
+    local migration_success=false
+    local migration_output
+    
+    # Run with timeout and capture output
+    if migration_output=$(timeout 60s npx prisma migrate deploy 2>&1); then
+        echo "$migration_output" >> "$LOG_FILE"
+        migration_success=true
+        print_success "Database migrations completed"
+    else
+        local exit_code=$?
+        echo "$migration_output" >> "$LOG_FILE"
+        
+        if [ $exit_code -eq 124 ]; then
+            print_error "Migration timed out after 60 seconds"
+            log "Migration timeout - attempting recovery"
+        else
+            print_error "Migration failed with exit code $exit_code"
+            log "Migration failed - attempting recovery"
+        fi
+        
+        # Try to resolve failed migrations
+        if resolve_failed_migrations; then
+            print_info "Retrying migrations after cleanup..."
+            if timeout 60s npx prisma migrate deploy >> "$LOG_FILE" 2>&1; then
+                migration_success=true
+                print_success "Database migrations completed after retry"
+            fi
+        fi
+        
+        # If still failing, try db push as fallback
+        if [ "$migration_success" = false ]; then
+            print_warning "Migration failed, falling back to prisma db push..."
+            log "Attempting fallback: prisma db push"
+            
+            if timeout 60s npx prisma db push --accept-data-loss >> "$LOG_FILE" 2>&1; then
+                migration_success=true
+                print_success "Database schema pushed successfully (fallback method)"
+            else
+                print_error "Database setup failed completely"
+                log "Both migrate deploy and db push failed"
+                
+                # Provide helpful error message
+                echo ""
+                print_error "Database setup failed. Possible causes:"
+                echo "  1. Database file is locked by another process"
+                echo "  2. Insufficient permissions on prisma/data directory"
+                echo "  3. Corrupted migration state"
+                echo ""
+                echo "To manually fix:"
+                echo "  cd $INSTALL_DIR"
+                echo "  rm -f prisma/data/sports_bar.db*"
+                echo "  npx prisma db push --accept-data-loss"
+                echo ""
+                
+                return 1
+            fi
+        fi
+    fi
+    
+    # Generate Prisma client
     log_and_print "Generating Prisma client..."
-    npx prisma generate >> "$LOG_FILE" 2>&1
+    if ! npx prisma generate >> "$LOG_FILE" 2>&1; then
+        print_error "Failed to generate Prisma client"
+        return 1
+    fi
     
     print_success "Database setup complete"
 }
