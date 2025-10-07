@@ -257,15 +257,32 @@ install_nodejs() {
         fi
     fi
     
-    print_info "Installing Node.js $NODE_VERSION..."
+    print_info "Installing Node.js $NODE_VERSION using NodeSource repository..."
     
-    # Install Node.js using NodeSource repository
+    # Install Node.js using NodeSource repository (globally available)
+    # This ensures npm is available to all users including the service user
     curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | run_as_root bash - >> "$LOG_FILE" 2>&1
     run_as_root apt-get install -y nodejs >> "$LOG_FILE" 2>&1
     
+    # Verify installation
     if check_command node && check_command npm; then
         print_success "Node.js $(node -v) and npm $(npm -v) installed successfully"
         log "Node.js $(node -v) and npm $(npm -v) installed"
+        
+        # Verify npm is accessible globally
+        NPM_PATH=$(which npm)
+        print_info "npm installed at: $NPM_PATH"
+        log "npm path: $NPM_PATH"
+        
+        # Ensure npm is in system PATH for all users
+        if [ ! -f /etc/profile.d/nodejs.sh ]; then
+            run_as_root tee /etc/profile.d/nodejs.sh > /dev/null <<'EOF'
+# Node.js and npm PATH configuration
+export PATH="/usr/bin:$PATH"
+EOF
+            run_as_root chmod +x /etc/profile.d/nodejs.sh
+            print_success "Node.js PATH configuration added to /etc/profile.d/nodejs.sh"
+        fi
     else
         print_error "Failed to install Node.js"
         exit 1

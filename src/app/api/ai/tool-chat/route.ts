@@ -131,7 +131,7 @@ Guidelines:
         }, { status: 503 });
       }
 
-      response = aiResponse.response;
+      response = aiResponse.response || '';
 
       // Check if AI wants to use tools
       if (enableTools && response.includes('TOOL_CALL:')) {
