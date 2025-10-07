@@ -1,8 +1,10 @@
 
+
 'use client'
 
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 
 interface SportsBarHeaderProps {
   title: string
@@ -19,11 +21,30 @@ export default function SportsBarHeader({
   showBackButton = true, 
   actions 
 }: SportsBarHeaderProps) {
-  const currentTime = new Date().toLocaleTimeString('en-US', { 
-    hour12: true, 
-    hour: 'numeric', 
-    minute: '2-digit'
-  })
+  // Fix hydration mismatch: Initialize with empty string and update on client
+  const [currentTime, setCurrentTime] = useState('')
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    // Mark component as mounted to prevent hydration mismatch
+    setMounted(true)
+    
+    // Set initial time
+    const updateTime = () => {
+      setCurrentTime(new Date().toLocaleTimeString('en-US', { 
+        hour12: true, 
+        hour: 'numeric', 
+        minute: '2-digit'
+      }))
+    }
+    
+    updateTime()
+    
+    // Update time every minute
+    const interval = setInterval(updateTime, 60000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <header className="sports-header sticky top-0 z-50">
@@ -50,10 +71,12 @@ export default function SportsBarHeader({
           </div>
           
           <div className="flex items-center space-x-6">
-            {/* Time Display */}
-            <div className="text-sm text-slate-300">
-              {currentTime}
-            </div>
+            {/* Time Display - Only render after mount to prevent hydration mismatch */}
+            {mounted && (
+              <div className="text-sm text-slate-300">
+                {currentTime}
+              </div>
+            )}
             
             {/* Custom Actions */}
             {actions && (
