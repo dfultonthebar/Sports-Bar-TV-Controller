@@ -14,6 +14,13 @@
 # For custom installation directory:
 #   curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/custom/path bash
 #
+# Examples:
+#   # Install to home directory (default)
+#   curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
+#
+#   # Install to custom location
+#   curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/opt/sportsbar bash
+#
 #############################################################################
 
 set -e  # Exit on any error
@@ -28,7 +35,8 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Installation configuration
-INSTALL_DIR="${INSTALL_DIR:-/opt/sports-bar-tv-controller}"
+# Default to user's home directory for simpler, user-friendly installation
+INSTALL_DIR="${INSTALL_DIR:-$HOME/Sports-Bar-TV-Controller}"
 SERVICE_NAME="sportsbar-assistant"
 REPO_URL="https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
@@ -37,8 +45,15 @@ LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
 # Node.js version
 NODE_VERSION="20"
 
-# System user for running the service
-SERVICE_USER="${SERVICE_USER:-sportsbar}"
+# Determine if we need a service user (only for system-wide installations)
+# For home directory installations, use the current user
+if [[ "$INSTALL_DIR" == /opt/* ]] || [[ "$INSTALL_DIR" == /usr/* ]]; then
+    USE_SERVICE_USER=true
+    SERVICE_USER="${SERVICE_USER:-sportsbar}"
+else
+    USE_SERVICE_USER=false
+    SERVICE_USER="$USER"
+fi
 
 #############################################################################
 # Helper Functions
@@ -106,26 +121,25 @@ prompt_yes_no() {
 check_root() {
     if [ "$EUID" -eq 0 ]; then
         print_warning "Running as root. This is acceptable but not required."
-        print_info "The script will create a dedicated service user if needed."
+        if [ "$USE_SERVICE_USER" = true ]; then
+            print_info "The script will create a dedicated service user for system-wide installation."
+        fi
         IS_ROOT=true
     else
-        print_info "Running as non-root user. Will use sudo for privileged operations."
+        print_info "Running as non-root user: $USER"
         IS_ROOT=false
         
-        # Check if sudo is available
+        # Check if sudo is available for system operations
         if ! check_command sudo; then
-            print_error "sudo is not available. Please run as root or install sudo."
-            exit 1
-        fi
-        
-        # Check if user has sudo privileges
-        if ! sudo -n true 2>/dev/null; then
-            print_warning "This script requires sudo privileges for system operations."
-            print_info "You may be prompted for your password."
-            sudo -v || {
-                print_error "Failed to obtain sudo privileges."
-                exit 1
-            }
+            print_warning "sudo is not available. Some system operations may fail."
+            print_info "You can still install to your home directory without sudo."
+        else
+            # Check if user has sudo privileges (optional for home directory installs)
+            if ! sudo -n true 2>/dev/null; then
+                print_info "This script may require sudo privileges for system operations."
+                print_info "You may be prompted for your password."
+                sudo -v 2>/dev/null || print_warning "No sudo access. Continuing with user-level installation."
+            fi
         fi
     fi
 }
@@ -290,6 +304,22 @@ EOF
 }
 
 create_service_user() {
+    # Only create a service user for system-wide installations
+    if [ "$USE_SERVICE_USER" = false ]; then
+        print_header "Using Current User"
+        print_info "Installing as user: $SERVICE_USER"
+        print_info "No separate service user needed for home directory installation"
+        log "Using current user: $SERVICE_USER"
+        
+        # Add current user to required groups if possible
+        if check_command sudo && sudo -n true 2>/dev/null; then
+            print_info "Adding user to required groups..."
+            sudo usermod -a -G plugdev,dialout "$SERVICE_USER" 2>/dev/null || true
+            print_success "User groups configured"
+        fi
+        return
+    fi
+    
     print_header "Creating Service User"
     
     if id "$SERVICE_USER" &>/dev/null; then
@@ -314,18 +344,30 @@ clone_repository() {
     print_info "Cloning from $REPO_URL (branch: $REPO_BRANCH)..."
     
     # Create parent directory if it doesn't exist
-    run_as_root mkdir -p "$(dirname "$INSTALL_DIR")"
+    if [ "$USE_SERVICE_USER" = true ]; then
+        run_as_root mkdir -p "$(dirname "$INSTALL_DIR")"
+    else
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+    fi
     
     # Clone repository
-    run_as_root git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
+    if [ "$USE_SERVICE_USER" = true ]; then
+        run_as_root git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
+    else
+        git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
+    fi
     
     if [ -d "$INSTALL_DIR" ]; then
         print_success "Repository cloned successfully"
         log "Repository cloned to $INSTALL_DIR"
         
-        # Set ownership
-        run_as_root chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-        print_success "Ownership set to $SERVICE_USER"
+        # Set ownership (only needed for system-wide installations)
+        if [ "$USE_SERVICE_USER" = true ]; then
+            run_as_root chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+            print_success "Ownership set to $SERVICE_USER"
+        else
+            print_success "Installation directory: $INSTALL_DIR"
+        fi
     else
         print_error "Failed to clone repository"
         exit 1
@@ -339,10 +381,15 @@ install_npm_dependencies() {
     
     print_info "Installing Node.js packages (this may take a few minutes)..."
     
-    # Run npm install as service user
-    if [ "$IS_ROOT" = true ]; then
+    # Run npm install as appropriate user
+    if [ "$USE_SERVICE_USER" = false ]; then
+        # Home directory installation - run as current user
+        npm install --production >> "$LOG_FILE" 2>&1
+    elif [ "$IS_ROOT" = true ]; then
+        # System-wide installation as root
         su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npm install --production" >> "$LOG_FILE" 2>&1
     else
+        # System-wide installation with sudo
         sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npm install --production" >> "$LOG_FILE" 2>&1
     fi
     
@@ -357,14 +404,23 @@ setup_database() {
     
     # Create data directory
     print_info "Creating database directory..."
-    run_as_root mkdir -p "$INSTALL_DIR/data"
-    run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/data"
+    if [ "$USE_SERVICE_USER" = false ]; then
+        mkdir -p "$INSTALL_DIR/data"
+    else
+        run_as_root mkdir -p "$INSTALL_DIR/data"
+        run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/data"
+    fi
     
     # Run Prisma migrations
     print_info "Running database migrations..."
-    if [ "$IS_ROOT" = true ]; then
+    if [ "$USE_SERVICE_USER" = false ]; then
+        # Home directory installation - run as current user
+        npx prisma migrate deploy >> "$LOG_FILE" 2>&1
+    elif [ "$IS_ROOT" = true ]; then
+        # System-wide installation as root
         su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
     else
+        # System-wide installation with sudo
         sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npx prisma migrate deploy" >> "$LOG_FILE" 2>&1
     fi
     
@@ -388,7 +444,11 @@ create_env_file() {
     print_info "Creating .env file from template..."
     
     # Copy example file
-    run_as_root cp "$INSTALL_DIR/.env.example" "$ENV_FILE"
+    if [ "$USE_SERVICE_USER" = false ]; then
+        cp "$INSTALL_DIR/.env.example" "$ENV_FILE"
+    else
+        run_as_root cp "$INSTALL_DIR/.env.example" "$ENV_FILE"
+    fi
     
     # Generate random secret for NextAuth
     NEXTAUTH_SECRET=$(openssl rand -base64 32)
@@ -397,12 +457,18 @@ create_env_file() {
     LOCAL_IP=$(hostname -I | awk '{print $1}')
     
     # Update .env file with generated values
-    run_as_root sed -i "s|NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=\"$NEXTAUTH_SECRET\"|" "$ENV_FILE"
-    run_as_root sed -i "s|NEXTAUTH_URL=.*|NEXTAUTH_URL=\"http://${LOCAL_IP}:3000\"|" "$ENV_FILE"
-    run_as_root sed -i "s|NODE_ENV=.*|NODE_ENV=\"production\"|" "$ENV_FILE"
-    
-    run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
-    run_as_root chmod 600 "$ENV_FILE"
+    if [ "$USE_SERVICE_USER" = false ]; then
+        sed -i "s|NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=\"$NEXTAUTH_SECRET\"|" "$ENV_FILE"
+        sed -i "s|NEXTAUTH_URL=.*|NEXTAUTH_URL=\"http://${LOCAL_IP}:3000\"|" "$ENV_FILE"
+        sed -i "s|NODE_ENV=.*|NODE_ENV=\"production\"|" "$ENV_FILE"
+        chmod 600 "$ENV_FILE"
+    else
+        run_as_root sed -i "s|NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=\"$NEXTAUTH_SECRET\"|" "$ENV_FILE"
+        run_as_root sed -i "s|NEXTAUTH_URL=.*|NEXTAUTH_URL=\"http://${LOCAL_IP}:3000\"|" "$ENV_FILE"
+        run_as_root sed -i "s|NODE_ENV=.*|NODE_ENV=\"production\"|" "$ENV_FILE"
+        run_as_root chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
+        run_as_root chmod 600 "$ENV_FILE"
+    fi
     
     print_success ".env file created"
     print_info "NextAuth secret generated automatically"
@@ -427,9 +493,14 @@ build_application() {
     
     print_info "Building Next.js application (this may take several minutes)..."
     
-    if [ "$IS_ROOT" = true ]; then
+    if [ "$USE_SERVICE_USER" = false ]; then
+        # Home directory installation - run as current user
+        npm run build >> "$LOG_FILE" 2>&1
+    elif [ "$IS_ROOT" = true ]; then
+        # System-wide installation as root
         su - "$SERVICE_USER" -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
     else
+        # System-wide installation with sudo
         sudo -u "$SERVICE_USER" bash -c "cd $INSTALL_DIR && npm run build" >> "$LOG_FILE" 2>&1
     fi
     
@@ -440,8 +511,16 @@ build_application() {
 setup_systemd_service() {
     print_header "Setting Up Systemd Service"
     
+    # Check if we have sudo access for systemd service
+    if [ "$USE_SERVICE_USER" = false ] && ! check_command sudo; then
+        print_warning "Systemd service setup requires sudo access"
+        print_info "You can run the application manually with: cd $INSTALL_DIR && npm start"
+        return
+    fi
+    
     if ! prompt_yes_no "Set up systemd service for auto-start on boot?" "y"; then
         print_info "Skipping systemd service setup"
+        print_info "You can run the application manually with: cd $INSTALL_DIR && npm start"
         return
     fi
     
@@ -532,23 +611,37 @@ print_completion_message() {
     
     echo -e "\n${CYAN}Installation Details:${NC}"
     echo -e "  Installation Directory: ${GREEN}$INSTALL_DIR${NC}"
-    echo -e "  Service User: ${GREEN}$SERVICE_USER${NC}"
+    echo -e "  Running as User: ${GREEN}$SERVICE_USER${NC}"
     echo -e "  Log File: ${GREEN}$LOG_FILE${NC}"
     
     echo -e "\n${CYAN}Access Your Application:${NC}"
     echo -e "  Local: ${GREEN}http://localhost:3000${NC}"
     echo -e "  Network: ${GREEN}http://${LOCAL_IP}:3000${NC}"
     
-    echo -e "\n${CYAN}Service Management:${NC}"
-    echo -e "  Start:   ${GREEN}sudo systemctl start $SERVICE_NAME${NC}"
-    echo -e "  Stop:    ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}"
-    echo -e "  Restart: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
-    echo -e "  Status:  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}"
-    echo -e "  Logs:    ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}"
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        echo -e "\n${CYAN}Service Management:${NC}"
+        echo -e "  Start:   ${GREEN}sudo systemctl start $SERVICE_NAME${NC}"
+        echo -e "  Stop:    ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}"
+        echo -e "  Restart: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+        echo -e "  Status:  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}"
+        echo -e "  Logs:    ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}"
+    else
+        echo -e "\n${CYAN}Running the Application:${NC}"
+        echo -e "  Start manually: ${GREEN}cd $INSTALL_DIR && npm start${NC}"
+        echo -e "  Development mode: ${GREEN}cd $INSTALL_DIR && npm run dev${NC}"
+        if [ "$USE_SERVICE_USER" = false ]; then
+            echo -e "\n${YELLOW}Note:${NC} Systemd service was not configured."
+            echo -e "  You can set it up later with sudo access if needed."
+        fi
+    fi
     
     echo -e "\n${YELLOW}⚠ IMPORTANT NEXT STEPS:${NC}"
     echo -e "  1. Configure API keys in: ${GREEN}$INSTALL_DIR/.env${NC}"
-    echo -e "  2. Restart the service after configuration: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        echo -e "  2. Restart the service: ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    else
+        echo -e "  2. Start the application: ${GREEN}cd $INSTALL_DIR && npm start${NC}"
+    fi
     echo -e "  3. Access the web interface and complete initial setup"
     
     echo -e "\n${CYAN}Required API Keys:${NC}"

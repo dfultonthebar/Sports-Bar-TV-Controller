@@ -11,31 +11,55 @@ Get started with a single command! This one-line installer will automatically se
 curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | bash
 ```
 
+### Installation Location
+
+**By default, the application installs to your home directory:**
+- Installation path: `$HOME/Sports-Bar-TV-Controller`
+- Runs as your current user (no separate service user needed)
+- Simple permissions - no sudo required for most operations
+
+**For custom installation location:**
+```bash
+# Install to a specific directory
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/custom/path bash
+
+# System-wide installation (creates service user)
+curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/install.sh | INSTALL_DIR=/opt/sportsbar bash
+```
+
 ### Prerequisites
 - **Operating System**: Ubuntu 20.04+ or Debian 11+ (64-bit)
-- **User Access**: sudo privileges required
+- **User Access**: sudo privileges recommended (but not required for home directory install)
 - **Network**: Active internet connection
 - **Disk Space**: At least 2GB free space
 
 ### What Gets Installed
 The installer automatically handles:
 - ✅ Node.js 20.x (via NodeSource repository)
-- ✅ PostgreSQL database
+- ✅ SQLite database (no separate database server needed)
 - ✅ All project dependencies
-- ✅ System service configuration
-- ✅ Automatic startup on boot
+- ✅ System service configuration (optional, requires sudo)
+- ✅ Automatic startup on boot (optional)
 
 ### After Installation
 Once complete, access your application at:
 - **Local**: http://localhost:3000
 - **Network**: http://[your-server-ip]:3000
 
-The service runs automatically in the background. Use these commands to manage it:
+**If systemd service was configured:**
 ```bash
-sudo systemctl status sportsbar    # Check status
-sudo systemctl restart sportsbar   # Restart service
-sudo systemctl stop sportsbar      # Stop service
-sudo systemctl start sportsbar     # Start service
+sudo systemctl status sportsbar-assistant    # Check status
+sudo systemctl restart sportsbar-assistant   # Restart service
+sudo systemctl stop sportsbar-assistant      # Stop service
+sudo systemctl start sportsbar-assistant     # Start service
+```
+
+**If running manually (no systemd service):**
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm start                          # Start in production mode
+# or
+npm run dev                        # Start in development mode
 ```
 
 ---
@@ -49,9 +73,11 @@ sudo systemctl start sportsbar     # Start service
 Use the automated update script to pull latest changes without any yarn issues:
 
 ```bash
-cd /home/ubuntu/Sports-Bar-TV-Controller
+cd ~/Sports-Bar-TV-Controller
 ./update_from_github.sh
 ```
+
+**Note:** If you installed to a custom location, replace `~/Sports-Bar-TV-Controller` with your installation directory.
 
 This script automatically:
 - **Creates automatic backup** of all your settings
@@ -135,7 +161,7 @@ Automatic backups are created before every update as a safety net. You only need
 For a completely clean installation:
 
 ```bash
-cd /home/ubuntu
+cd ~
 ./fresh_install.sh
 ```
 
@@ -144,7 +170,7 @@ cd /home/ubuntu
 If you're updating from an old installation that still has yarn issues:
 
 ```bash
-cd /home/ubuntu/Sports-Bar-TV-Controller
+cd ~/Sports-Bar-TV-Controller
 ./permanent_fix_yarn.sh
 ```
 
@@ -155,7 +181,7 @@ This converts your existing installation to use npm permanently.
 If you prefer manual control:
 
 ```bash
-cd /home/ubuntu/Sports-Bar-TV-Controller
+cd ~/Sports-Bar-TV-Controller
 git pull origin main
 npm install
 npx prisma generate
