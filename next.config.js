@@ -1,3 +1,4 @@
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -13,6 +14,12 @@ const nextConfig = {
       {
         protocol: 'http',
         hostname: 'localhost',
+        port: '3001',
+        pathname: '/uploads/**',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
         port: '',
         pathname: '/uploads/**',
       },
@@ -21,7 +28,8 @@ const nextConfig = {
         hostname: '**',
       },
     ],
-    unoptimized: process.env.NODE_ENV === 'development',
+    // Use unoptimized images to avoid validation issues with local uploads
+    unoptimized: true,
   },
   webpack: (config, { isServer }) => {
     // Exclude isolated-vm from webpack bundling (it's an optional native module)
@@ -34,3 +42,4 @@ const nextConfig = {
 };
 
 module.exports = nextConfig;
+
