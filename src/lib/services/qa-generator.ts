@@ -1,8 +1,9 @@
 
+
 /**
  * Q&A Generator Service
  * Automatically generates question-answer pairs from repository files and documentation
- * OPTIMIZED: Increased timeout to 180s, added parallel processing with concurrency control
+ * OPTIMIZED: Enhanced with chunking, streaming, and improved JSON parsing
  */
 
 import fs from 'fs';
@@ -14,9 +15,11 @@ const prisma = new PrismaClient();
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = 'phi3:mini'; // OPTIMIZED: Changed to faster model
 const FALLBACK_MODEL = 'llama3.2:3b'; // Fallback if phi3:mini not available
-const QA_GENERATION_TIMEOUT = 300000; // OPTIMIZED: Increased from 180s to 300s (5 minutes) for large files
-const MAX_CONCURRENT_FILES = 3; // OPTIMIZED: Reduced from 5 to 3 to prevent Ollama overload
-const MAX_FILE_SIZE_MB = 5; // Skip files larger than 5MB to prevent timeouts
+const QA_GENERATION_TIMEOUT = 600000; // OPTIMIZED: Increased to 600s (10 minutes) for large files
+const MAX_CONCURRENT_FILES = 2; // OPTIMIZED: Reduced to 2 to prevent Ollama overload
+const MAX_FILE_SIZE_MB = 2; // OPTIMIZED: Reduced to 2MB to prevent timeouts
+const CHUNK_SIZE = 3000; // Characters per chunk for large files
+const MAX_RETRIES = 2; // Number of retries for failed requests
 
 export interface QAGenerationOptions {
   sourceType: 'repository' | 'documentation' | 'codebase';
@@ -333,7 +336,35 @@ async function collectFilesFromDirectory(dirPath: string): Promise<string[]> {
 }
 
 /**
- * Generate Q&As from a single file with optimized timeout
+ * NEW: Chunk large content into smaller pieces
+ */
+function chunkContent(content: string, maxChunkSize: number = CHUNK_SIZE): string[] {
+  if (content.length <= maxChunkSize) {
+    return [content];
+  }
+
+  const chunks: string[] = [];
+  let currentChunk = '';
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    if (currentChunk.length + line.length + 1 > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = line;
+    } else {
+      currentChunk += (currentChunk ? '\n' : '') + line;
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+/**
+ * Generate Q&As from a single file with optimized timeout and chunking
  */
 async function generateQAsFromFile(
   filePath: string,
@@ -349,83 +380,135 @@ async function generateQAsFromFile(
       return [];
     }
 
-    // Prepare prompt for Ollama
-    const prompt = `Analyze the following document and generate 3-5 high-quality question-answer pairs that would be useful for a chatbot assistant.
+    // NEW: Chunk large files to prevent timeouts
+    const chunks = chunkContent(content, CHUNK_SIZE);
+    console.log(`Processing ${fileName} in ${chunks.length} chunk(s)`);
 
-Document: ${fileName}
+    const allQAs: GeneratedQA[] = [];
+
+    // Process each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkLabel = chunks.length > 1 ? ` (chunk ${i + 1}/${chunks.length})` : '';
+      
+      console.log(`Processing ${fileName}${chunkLabel}...`);
+
+      // Prepare improved prompt with explicit JSON instructions
+      const prompt = `You are a helpful assistant that generates question-answer pairs from documentation.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with ONLY valid JSON - no other text before or after
+2. Do NOT include markdown code blocks or any formatting
+3. Start your response with { and end with }
+
+Analyze the following document and generate 2-3 high-quality question-answer pairs.
+
+Document: ${fileName}${chunkLabel}
 Content:
-${content.substring(0, 4000)}
+${chunk}
 
-Generate Q&A pairs in JSON format:
+Respond with this EXACT JSON structure (no markdown, no code blocks):
 {
   "qas": [
     {
-      "question": "Clear, specific question",
-      "answer": "Detailed, accurate answer",
-      "category": "technical|operational|troubleshooting|general",
-      "tags": ["tag1", "tag2"],
+      "question": "Clear, specific question about the content",
+      "answer": "Detailed, accurate answer based on the content",
+      "category": "technical",
+      "tags": ["relevant", "tags"],
       "confidence": 0.8
     }
   ]
 }
 
-Focus on practical, actionable information. Ensure answers are complete and self-contained.`;
+Remember: Output ONLY the JSON object, nothing else.`;
 
-    // OPTIMIZED: Call Ollama API with 180s timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), QA_GENERATION_TIMEOUT);
+      // Call Ollama API with retry logic
+      let retries = 0;
+      let qas: GeneratedQA[] = [];
 
-    try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: options.model || DEFAULT_MODEL,
-          prompt,
-          stream: false,
-          options: {
-            temperature: 0.7,
-            top_p: 0.9,
-          },
-        }),
-        signal: controller.signal,
-      });
+      while (retries <= MAX_RETRIES) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), QA_GENERATION_TIMEOUT);
 
-      clearTimeout(timeoutId);
+          const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: options.model || DEFAULT_MODEL,
+              prompt,
+              stream: false,
+              format: 'json', // NEW: Enforce JSON format
+              options: {
+                temperature: 0.3, // OPTIMIZED: Lower temperature for more consistent JSON
+                top_p: 0.9,
+                num_predict: 1000, // Limit response length
+              },
+            }),
+            signal: controller.signal,
+          });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Ollama API error for ${fileName}:`, response.status, errorText);
-        
-        // OPTIMIZED: Try fallback model if primary fails
-        if (options.model === DEFAULT_MODEL) {
-          console.log(`Retrying with fallback model: ${FALLBACK_MODEL}`);
-          return generateQAsFromFile(filePath, { ...options, model: FALLBACK_MODEL });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Ollama API error for ${fileName}${chunkLabel}:`, response.status, errorText);
+            
+            // Try fallback model on first retry
+            if (retries === 0 && options.model === DEFAULT_MODEL) {
+              console.log(`Retrying with fallback model: ${FALLBACK_MODEL}`);
+              options.model = FALLBACK_MODEL;
+              retries++;
+              continue;
+            }
+            
+            throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (!data.response) {
+            console.error(`Invalid Ollama response structure for ${fileName}${chunkLabel}:`, data);
+            throw new Error('Invalid response structure from Ollama');
+          }
+
+          // Parse the generated Q&As with improved error handling
+          qas = parseGeneratedQAs(data.response, fileName);
+          
+          if (qas.length > 0) {
+            allQAs.push(...qas);
+            break; // Success, exit retry loop
+          } else {
+            console.warn(`No valid Q&As parsed from response for ${fileName}${chunkLabel}, retrying...`);
+            retries++;
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            const timeoutSeconds = QA_GENERATION_TIMEOUT / 1000;
+            console.error(`Q&A generation timed out after ${timeoutSeconds}s for ${fileName}${chunkLabel}`);
+            
+            if (retries < MAX_RETRIES) {
+              console.log(`Retrying (${retries + 1}/${MAX_RETRIES})...`);
+              retries++;
+              continue;
+            }
+            
+            throw new Error(`Q&A generation timed out after ${timeoutSeconds}s and ${MAX_RETRIES} retries. Consider reducing file size or increasing timeout.`);
+          }
+          
+          if (retries < MAX_RETRIES) {
+            console.error(`Error on attempt ${retries + 1}:`, error);
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+            continue;
+          }
+          
+          throw error;
         }
-        
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
       }
-
-      const data = await response.json();
-
-      if (!data.response) {
-        console.error(`Invalid Ollama response structure for ${fileName}:`, data);
-        throw new Error('Invalid response structure from Ollama');
-      }
-
-      // Parse the generated Q&As
-      const qas = parseGeneratedQAs(data.response, fileName);
-      return qas;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error instanceof Error && error.name === 'AbortError') {
-        const timeoutSeconds = QA_GENERATION_TIMEOUT / 1000;
-        console.error(`Q&A generation timed out after ${timeoutSeconds}s for ${fileName}`);
-        throw new Error(`Q&A generation timed out after ${timeoutSeconds}s. File may be too large or complex. Consider increasing MAX_FILE_SIZE_MB or QA_GENERATION_TIMEOUT.`);
-      }
-      throw error;
     }
+
+    return allQAs;
   } catch (error) {
     if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
       console.error(`Cannot connect to Ollama at ${OLLAMA_BASE_URL} for ${filePath}`);
@@ -436,34 +519,58 @@ Focus on practical, actionable information. Ensure answers are complete and self
 }
 
 /**
- * Parse generated Q&As from Ollama response
+ * Parse generated Q&As from Ollama response with improved error handling
  */
 function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] {
   try {
-    // Try to extract JSON from the response
-    const jsonMatch = response.match(/\{[\s\S]*"qas"[\s\S]*\}/);
+    // Clean the response - remove markdown code blocks if present
+    let cleanedResponse = response.trim();
+    
+    // Remove markdown code blocks
+    cleanedResponse = cleanedResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    // Try to find JSON object in the response
+    const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn(`No JSON found in response for ${sourceFile}`);
+      console.warn(`No JSON object found in response for ${sourceFile}`);
+      console.warn(`Response preview: ${response.substring(0, 200)}...`);
       return [];
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error(`JSON parse error for ${sourceFile}:`, parseError);
+      console.error(`Attempted to parse: ${jsonMatch[0].substring(0, 200)}...`);
+      return [];
+    }
     
     if (!parsed.qas || !Array.isArray(parsed.qas)) {
-      console.warn(`Invalid Q&A structure for ${sourceFile}`);
+      console.warn(`Invalid Q&A structure for ${sourceFile} - missing or invalid 'qas' array`);
+      console.warn(`Parsed structure:`, JSON.stringify(parsed).substring(0, 200));
       return [];
     }
 
-    return parsed.qas.map((qa: any) => ({
-      question: qa.question || '',
-      answer: qa.answer || '',
-      category: qa.category || 'general',
-      tags: Array.isArray(qa.tags) ? qa.tags : [],
-      confidence: typeof qa.confidence === 'number' ? qa.confidence : 0.7,
-      sourceFile,
-    })).filter((qa: GeneratedQA) => qa.question && qa.answer);
+    const validQAs = parsed.qas
+      .map((qa: any) => ({
+        question: qa.question || '',
+        answer: qa.answer || '',
+        category: qa.category || 'general',
+        tags: Array.isArray(qa.tags) ? qa.tags : [],
+        confidence: typeof qa.confidence === 'number' ? qa.confidence : 0.7,
+        sourceFile,
+      }))
+      .filter((qa: GeneratedQA) => qa.question && qa.answer);
+
+    if (validQAs.length === 0) {
+      console.warn(`No valid Q&As after filtering for ${sourceFile}`);
+    }
+
+    return validQAs;
   } catch (error) {
     console.error(`Error parsing Q&As for ${sourceFile}:`, error);
+    console.error(`Response that failed to parse: ${response.substring(0, 300)}...`);
     return [];
   }
 }

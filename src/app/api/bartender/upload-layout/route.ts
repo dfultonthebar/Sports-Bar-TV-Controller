@@ -1,4 +1,5 @@
 
+
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import { join } from 'path'
@@ -17,6 +18,20 @@ async function ensureUploadDir() {
     await fs.access(UPLOAD_DIR)
   } catch {
     await fs.mkdir(UPLOAD_DIR, { recursive: true })
+  }
+}
+
+/**
+ * NEW: Validate that a file is actually an image
+ */
+async function validateImage(filepath: string): Promise<boolean> {
+  try {
+    const metadata = await sharp(filepath).metadata();
+    // Check if we got valid image metadata
+    return !!(metadata.width && metadata.height && metadata.format);
+  } catch (error) {
+    console.error('Image validation failed:', error);
+    return false;
   }
 }
 
@@ -113,17 +128,40 @@ export async function POST(request: NextRequest) {
             })
             .toFile(optimizedPath)
           
+          // NEW: Validate the converted image
+          const isValidImage = await validateImage(optimizedPath);
+          if (!isValidImage) {
+            console.error('Converted image validation failed');
+            // Clean up invalid file
+            await fs.unlink(optimizedPath).catch(err => console.log('Cleanup error:', err));
+            throw new Error('PDF conversion produced invalid image');
+          }
+          
           // Clean up the original generated file
           await fs.unlink(imagePath).catch(err => console.log('Cleanup error:', err))
           
           convertedImageUrl = `/uploads/layouts/${optimizedFilename}`
           console.log('PDF converted to image:', convertedImageUrl)
+        } else {
+          console.warn('No PNG file generated from PDF conversion');
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error converting PDF to image:', error)
         console.error('Command output:', error.stdout || 'No stdout')
         console.error('Command stderr:', error.stderr || 'No stderr')
         // Continue with PDF - conversion failed but we can still analyze
+      }
+    } else {
+      // NEW: For direct image uploads, validate the image
+      const isValidImage = await validateImage(filepath);
+      if (!isValidImage) {
+        console.error('Uploaded image validation failed');
+        // Clean up invalid file
+        await fs.unlink(filepath).catch(err => console.log('Cleanup error:', err));
+        return NextResponse.json(
+          { error: 'Invalid image file. The file may be corrupted or not a valid image format.' },
+          { status: 400 }
+        )
       }
     }
 
@@ -167,7 +205,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
   } catch (error) {
     console.error('Error uploading file:', error)
     return NextResponse.json(
-      { error: 'Failed to upload file' },
+      { error: error instanceof Error ? error.message : 'Failed to upload file' },
       { status: 500 }
     )
   }
