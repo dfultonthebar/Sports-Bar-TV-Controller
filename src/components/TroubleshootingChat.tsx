@@ -70,6 +70,7 @@ export default function TroubleshootingChat() {
         body: JSON.stringify({
           message: inputText,
           sessionId: sessionId,
+          stream: false,  // CRITICAL FIX: Explicitly request non-streaming response
         }),
       })
 
@@ -106,7 +107,7 @@ export default function TroubleshootingChat() {
       console.error('Chat error:', error)
       const errorMessage: Message = {
         id: messages.length + 2,
-        text: 'Sorry, I encountered a network error. Please try again.',
+        text: `Error: ${error instanceof Error ? error.message : 'Network error. Please try again.'}`,
         sender: 'ai',
         timestamp: new Date()
       }

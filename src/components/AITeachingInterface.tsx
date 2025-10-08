@@ -265,18 +265,27 @@ export default function AITeachingInterface() {
         body: JSON.stringify({
           message: testQuestion,
           useKnowledge: true,
-          useCodebase: false
+          useCodebase: false,
+          stream: false  // CRITICAL FIX: Explicitly request non-streaming response
         })
       })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      }
 
       const data = await response.json()
 
       if (data.response) {
         setTestResponse(data.response)
+      } else if (data.error) {
+        setTestResponse(`Error: ${data.error}${data.message ? '\n\n' + data.message : ''}${data.suggestion ? '\n\nSuggestion: ' + data.suggestion : ''}`)
       } else {
         setTestResponse('Error: No response received')
       }
     } catch (error) {
+      console.error('Test question error:', error)
       setTestResponse('Error: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setIsTesting(false)
