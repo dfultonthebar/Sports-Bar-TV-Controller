@@ -225,10 +225,10 @@ export class SportsContentDetector {
         where: {
           deviceId,
           OR: [
-            { contentTitle: { contains: query, mode: 'insensitive' } },
-            { league: { contains: query, mode: 'insensitive' } },
-            { teams: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } }
+            { contentTitle: { contains: query } },
+            { league: { contains: query } },
+            { teams: { contains: query } },
+            { description: { contains: query } }
           ]
         },
         orderBy: {
@@ -250,8 +250,7 @@ export class SportsContentDetector {
         where: {
           deviceId,
           league: {
-            equals: league,
-            mode: 'insensitive'
+            equals: league
           }
         },
         orderBy: {
