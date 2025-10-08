@@ -564,7 +564,7 @@ export async function updateQAEntry(
     category?: string;
     tags?: string[];
     confidence?: number;
-    isVerified?: boolean;
+    isActive?: boolean;
   }
 ) {
   return await prisma.qAEntry.update({
@@ -597,7 +597,7 @@ export async function getQAStatistics() {
     recentJobs,
   ] = await Promise.all([
     prisma.qAEntry.count(),
-    prisma.qAEntry.count({ where: { isVerified: true } }),
+    prisma.qAEntry.count({ where: { isActive: true } }),
     prisma.qAEntry.groupBy({
       by: ['category'],
       _count: true,
