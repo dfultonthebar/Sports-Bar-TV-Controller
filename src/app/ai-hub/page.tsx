@@ -146,14 +146,25 @@ export default function AIHubPage() {
         body: JSON.stringify({
           message: userMessage,
           useKnowledge: true,
-          useCodebase: true
+          useCodebase: true,
+          stream: false  // CRITICAL FIX: Explicitly request non-streaming response
         })
       })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      }
 
       const data = await response.json()
 
       if (data.response) {
         setChatHistory(prev => [...prev, { role: 'assistant', content: data.response }])
+      } else if (data.error) {
+        setChatHistory(prev => [...prev, { 
+          role: 'assistant', 
+          content: `Error: ${data.error}${data.message ? '\n\n' + data.message : ''}${data.suggestion ? '\n\nSuggestion: ' + data.suggestion : ''}` 
+        }])
       } else {
         setChatHistory(prev => [...prev, { 
           role: 'assistant', 
@@ -161,6 +172,7 @@ export default function AIHubPage() {
         }])
       }
     } catch (error) {
+      console.error('Chat error:', error)
       setChatHistory(prev => [...prev, { 
         role: 'assistant', 
         content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error')
