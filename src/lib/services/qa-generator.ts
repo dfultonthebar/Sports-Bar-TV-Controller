@@ -526,8 +526,8 @@ export async function searchQAEntries(query: string, filters?: {
 }) {
   const where: any = {
     OR: [
-      { question: { contains: query, mode: 'insensitive' } },
-      { answer: { contains: query, mode: 'insensitive' } },
+      { question: { contains: query } },
+      { answer: { contains: query } },
       { tags: { has: query } },
     ],
   };
