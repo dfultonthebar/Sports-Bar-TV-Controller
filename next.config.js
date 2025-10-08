@@ -1,15 +1,27 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // appDir is now stable in Next.js 14, no longer experimental
   typescript: {
     // Temporarily ignore TypeScript errors during build
-    // TODO: Fix TypeScript errors in production
     ignoreBuildErrors: true,
   },
   eslint: {
     // Temporarily ignore ESLint errors during build
     ignoreDuringBuilds: true,
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '',
+        pathname: '/uploads/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+    unoptimized: process.env.NODE_ENV === 'development',
   },
   webpack: (config, { isServer }) => {
     // Exclude isolated-vm from webpack bundling (it's an optional native module)
@@ -19,6 +31,6 @@ const nextConfig = {
     }
     return config;
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

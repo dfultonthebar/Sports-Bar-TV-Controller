@@ -332,13 +332,13 @@ verify_app_running() {
     log_success "PM2 process is online"
     
     # Wait for server to respond (max 30 seconds)
-    log_info "Waiting for server to respond on port $SERVER_PORT..."
+    log_info "Waiting for server to respond on port $(get_server_port)..."
     local count=0
     local max_attempts=30
     
     while [ $count -lt $max_attempts ]; do
-        if curl -s http://localhost:$SERVER_PORT > /dev/null 2>&1; then
-            log_success "Server is responding on port $SERVER_PORT"
+        if curl -s http://localhost:$(get_server_port) > /dev/null 2>&1; then
+            log_success "Server is responding on port $(get_server_port)"
             return 0
         fi
         sleep 1
@@ -425,8 +425,8 @@ main() {
         log "=========================================="
         log ""
         log "🌐 Access your application at:"
-        log "   http://localhost:$SERVER_PORT"
-        log "   http://$(hostname -I | awk '{print $1}'):$SERVER_PORT"
+        log "   http://localhost:$(get_server_port)"
+        log "   http://$(hostname -I | awk '{print $1}'):$(get_server_port)"
         log ""
         log "📋 What was updated:"
         log "   ✅ Latest code from GitHub"
