@@ -477,6 +477,9 @@ export async function getQAGenerationStatus(jobId: string) {
   });
 }
 
+// Alias export for backward compatibility
+export const getGenerationJobStatus = getQAGenerationStatus;
+
 /**
  * Get all Q&A entries from the database
  */
