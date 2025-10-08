@@ -491,7 +491,8 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
       label: label,
       description: location.description,
       priority: priority,
-      audioOutput: audioOutput
+      audioOutput: audioOutput,
+      position: location.position  // Include position data from vision detection
     })
   }
   
