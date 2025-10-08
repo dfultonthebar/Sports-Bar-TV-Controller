@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 
 import { NextResponse } from 'next/server'
 import { TV_BRAND_CONFIGS, getAllBrands, getBrandConfig } from '@/lib/tv-brands-config'
