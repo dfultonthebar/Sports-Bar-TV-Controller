@@ -115,7 +115,7 @@ export default function MatrixControl() {
   const fetchConfigurations = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/matrix-config')
+      const response = await fetch('/api/matrix/config')
       const data = await response.json()
       
       if (response.ok) {
@@ -176,7 +176,7 @@ export default function MatrixControl() {
   const saveConfiguration = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/matrix-config', {
+      const response = await fetch('/api/matrix/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
