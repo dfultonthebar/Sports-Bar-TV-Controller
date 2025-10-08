@@ -3,6 +3,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 
+/**
+ * Layout Storage API - Enhanced to support background images
+ * 
+ * The layout object now supports:
+ * - name: Layout name
+ * - zones: Array of TV zones/positions
+ * - backgroundImage: URL to the uploaded layout image (for visual reference)
+ * 
+ * This allows the frontend to display the uploaded layout image as a background
+ * while positioning TV outputs on top of it.
+ */
+
 const LAYOUT_FILE = join(process.cwd(), 'data', 'tv-layout.json')
 
 // Ensure data directory exists
@@ -26,7 +38,8 @@ export async function GET() {
     return NextResponse.json({ 
       layout: {
         name: 'Bar Layout',
-        zones: [] as any[]
+        zones: [] as any[],
+        backgroundImage: null // Support for layout background image
       }
     })
   }

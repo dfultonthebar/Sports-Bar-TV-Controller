@@ -1,6 +1,22 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+/**
+ * Layout Analysis API - Fixed to support 25+ TV layouts
+ * 
+ * Key fixes:
+ * 1. Removed 12-output limit - now creates outputs for ALL detected TVs
+ * 2. Improved position mapping to handle 25+ TVs with better spacing
+ * 3. Enhanced TV detection to support larger layouts (up to 100 TVs)
+ * 4. Better fallback positioning for grid layouts
+ * 
+ * The API now:
+ * - Detects all TVs from layout descriptions/images
+ * - Creates output mappings for every TV (not limited by active outputs)
+ * - Positions TVs intelligently based on wall locations
+ * - Supports layouts with 25+ TVs like the Graystone layout
+ */
+
 interface TVLocation {
   number: number
   description: string
@@ -195,7 +211,7 @@ function estimateTVCountFromDescription(description: string): number {
     const numbers = countMatches.map(match => {
       const num = parseInt(match.match(/\d+/)?.[0] || '0')
       return num
-    }).filter(n => n > 0 && n <= 50)
+    }).filter(n => n > 0 && n <= 100) // Increased limit to support larger layouts
     
     if (numbers.length > 0) {
       return Math.max(...numbers)
@@ -207,7 +223,7 @@ function estimateTVCountFromDescription(description: string): number {
   if (numberMatches) {
     const numbersSet = new Set(numberMatches.map(n => parseInt(n)))
     const uniqueNumbers = Array.from(numbersSet)
-      .filter(n => n > 0 && n <= 50)
+      .filter(n => n > 0 && n <= 100) // Increased limit to support larger layouts
     
     if (uniqueNumbers.length > 0) {
       return Math.max(...uniqueNumbers)
@@ -215,21 +231,22 @@ function estimateTVCountFromDescription(description: string): number {
   }
   
   // Fallback: estimate based on description length and complexity
-  if (description.length > 2000) return 20
+  if (description.length > 3000) return 30 // Support larger layouts
+  if (description.length > 2000) return 25
   if (description.length > 1000) return 15
   if (description.length > 500) return 10
   return 8
 }
 
 function generateFallbackPosition(number: number, total: number): { x: number, y: number, wall: string } {
-  // Generate a reasonable grid layout
-  const cols = Math.ceil(Math.sqrt(total))
+  // Generate a reasonable grid layout that scales well for 25+ TVs
+  const cols = Math.min(7, Math.ceil(Math.sqrt(total))) // Max 7 columns for better spacing
   const rows = Math.ceil(total / cols)
   
   const col = (number - 1) % cols
   const row = Math.floor((number - 1) / cols)
   
-  const MARGIN = 15
+  const MARGIN = 12 // Slightly smaller margin for more space
   const x = MARGIN + (col * (100 - 2 * MARGIN)) / (cols - 1 || 1)
   const y = MARGIN + (row * (100 - 2 * MARGIN)) / (rows - 1 || 1)
   
@@ -244,8 +261,8 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
   let x = 50, y = 50 // default center
   
   // Minimum distances from edges to prevent corner overlapping
-  const EDGE_MARGIN = 15 // 15% from edges
-  const TV_SPACING = 18    // Minimum spacing between TVs
+  const EDGE_MARGIN = 12 // 12% from edges for more space
+  const TV_SPACING = 15    // Spacing between TVs
   
   switch (wallType) {
     case 'left':
@@ -255,52 +272,64 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
         y = 25 + (markerNumber - 1) * TV_SPACING // TVs 1-3 on main left wall
       } else if (markerNumber >= 13 && markerNumber <= 15) {
         y = 65 + (markerNumber - 13) * TV_SPACING // TVs 13-15 on bottom left section
+      } else if (markerNumber >= 20 && markerNumber <= 22) {
+        y = 35 + (markerNumber - 20) * TV_SPACING // TVs 20-22 on party east
       }
       break
       
     case 'right':
       x = 100 - EDGE_MARGIN
       // Distribute right wall TVs vertically with proper spacing
-      if (markerNumber >= 6 && markerNumber <= 9) {
-        y = 25 + (markerNumber - 6) * TV_SPACING // TVs 6-9 on right wall
+      if (markerNumber >= 5 && markerNumber <= 10) {
+        y = 20 + (markerNumber - 5) * TV_SPACING // TVs 5-10 on dining/right wall
+      } else if (markerNumber === 3 || markerNumber === 4) {
+        y = 75 + (markerNumber - 3) * TV_SPACING // TVs 3-4 on west/bottom right
       }
       break
       
     case 'top':
       y = EDGE_MARGIN
       // Distribute top wall TVs horizontally with proper spacing
-      if (markerNumber === 4) { x = 30 } // Side Area 4 - moved away from corner
-      else if (markerNumber === 16) { x = 20 } // TV 16 
-      else if (markerNumber === 19) { x = 55 } // TV 19 - center area
-      else if (markerNumber === 20) { x = 75 } // TV 20 - moved away from right corner
+      if (markerNumber === 1 || markerNumber === 2) {
+        x = 70 + (markerNumber - 1) * 15 // TVs 1-2 in EAST section
+      } else if (markerNumber >= 13 && markerNumber <= 15) {
+        x = 35 + (markerNumber - 13) * 12 // TVs 13-15 in bar area
+      } else if (markerNumber === 19) { x = 55 } // TV 19 - center bar
+      else if (markerNumber === 20) { x = 25 } // TV 20 - party east
       break
       
     case 'bottom':
       y = 100 - EDGE_MARGIN
       // Distribute bottom wall TVs horizontally with proper spacing
-      if (markerNumber === 10) { x = 25, y = 72 } // Internal wall - adjusted
-      else if (markerNumber === 11) { x = 30 }
-      else if (markerNumber === 12) { x = 40 }
-      else if (markerNumber === 17) { x = 50 }
-      else if (markerNumber === 18) { x = 60 }
+      if (markerNumber >= 23 && markerNumber <= 25) {
+        x = 15 + (markerNumber - 23) * 15 // TVs 23-25 on patio/party west
+      } else if (markerNumber === 12) { x = 45, y = 70 } // TV 12 - central area
+      else if (markerNumber === 16) { x = 40, y = 75 } // TV 16 - central area
+      else if (markerNumber === 18) { x = 50 } // TV 18 - bar area
       break
       
     case 'corner':
       // Corners positioned with safe margins to avoid overlapping
-      if (markerNumber === 5) { // Main Bar Right 5
-        x = 75 // Moved further from right edge
-        y = 20 // Moved further from top edge
+      if (markerNumber === 5) { 
+        x = 75 
+        y = 20 
+      } else if (markerNumber === 21) {
+        x = 20
+        y = 50
+      } else if (markerNumber === 22) {
+        x = 25
+        y = 65
       }
       break
       
     default:
-      // Improved fallback positioning with better spacing
-      const colsPerRow = 6
+      // Improved fallback positioning with better spacing for 25+ TVs
+      const colsPerRow = 7 // Support more TVs per row
       const col = (markerNumber - 1) % colsPerRow
       const row = Math.floor((markerNumber - 1) / colsPerRow)
       
       x = EDGE_MARGIN + (col * (100 - 2 * EDGE_MARGIN)) / (colsPerRow - 1)
-      y = EDGE_MARGIN + (row * (100 - 2 * EDGE_MARGIN)) / 3
+      y = EDGE_MARGIN + (row * (100 - 2 * EDGE_MARGIN)) / 4 // More rows
   }
   
   // Ensure positions stay within valid bounds
@@ -313,22 +342,20 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
 function generateOutputMappings(locations: TVLocation[], matrixOutputs: number = 36, activeOutputs: any[] = []) {
   const suggestions: any[] = []
   
-  // Get available output numbers (only active ones)
-  let availableOutputNumbers: any[] = []
-  if (activeOutputs.length > 0) {
-    availableOutputNumbers = activeOutputs.map(output => output.channelNumber).sort((a, b) => a - b)
-    console.log('Available output numbers (active only):', availableOutputNumbers)
-  } else {
-    // Fallback to all outputs 1-36 if no active output info provided
-    availableOutputNumbers = Array.from({ length: matrixOutputs }, (_, i) => i + 1)
-    console.log('Using all outputs as fallback:', availableOutputNumbers.slice(0, 5), '...')
-  }
+  // Get available output numbers - prioritize using ALL outputs up to matrixOutputs
+  // This ensures we can map all TVs from the layout, not just active ones
+  let availableOutputNumbers: number[] = []
   
-  // Limit locations to available outputs to prevent assigning TVs to unused outputs
-  const maxLocations = Math.min(locations.length, availableOutputNumbers.length)
-  const locationsToProcess = locations.slice(0, maxLocations)
+  // Always generate output numbers for all detected TVs, up to matrix capacity
+  const maxOutputs = Math.max(matrixOutputs, locations.length)
+  availableOutputNumbers = Array.from({ length: maxOutputs }, (_, i) => i + 1)
+  console.log(`Generated ${availableOutputNumbers.length} output numbers for ${locations.length} TV locations`)
   
-  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} active outputs`)
+  // Process ALL locations - don't limit based on active outputs
+  // The frontend/user can decide which outputs to actually use
+  const locationsToProcess = locations
+  
+  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available output slots`)
   
   for (let i = 0; i < locationsToProcess.length; i++) {
     const location = locationsToProcess[i]
@@ -337,10 +364,10 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     // Generate smart labels based on position
     const label = generateSmartLabel(location)
     
-    // Use available output numbers in order
+    // Use output numbers in order (1-to-1 mapping with TV numbers when possible)
     const outputNumber = availableOutputNumbers[i]
     
-    // Get audio output info if available
+    // Get audio output info if available from active outputs
     let audioOutput = ''
     if (activeOutputs.length > 0) {
       const outputConfig = activeOutputs.find(output => output.channelNumber === outputNumber)
@@ -359,9 +386,7 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     })
   }
   
-  if (locations.length > availableOutputNumbers.length) {
-    console.log(`Warning: ${locations.length - availableOutputNumbers.length} TV locations could not be assigned due to insufficient active outputs`)
-  }
+  console.log(`Successfully created ${suggestions.length} output mappings for all TV locations`)
   
   return suggestions
 }
