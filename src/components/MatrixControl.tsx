@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -101,42 +102,47 @@ export default function MatrixControl() {
           name: currentConfig.name,
           ipAddress: currentConfig.ipAddress,
           port: currentConfig.port,
-          tcpPort: currentConfig.tcpPort,
-          udpPort: currentConfig.udpPort,
-          protocol: currentConfig.protocol,
-          connectionStatus: connectionResult?.success ? 'connected' : 
-                           connectionResult?.success === false ? 'error' : 'unknown',
-          lastTested: connectionResult ? new Date().toISOString() : undefined,
-          isActive: currentConfig.isActive
+          protocol: currentConfig.protocol
         },
         inputs: currentConfig.inputs,
         outputs: currentConfig.outputs,
-        systemHealth: {
-          connectionStable: connectionResult?.success || false,
-          commandLatency: Math.random() * 200 + 50, // Simulated for now
-          errorRate: Math.random() * 5,
-          lastError: connectionResult?.success === false ? connectionResult.message : undefined
-        }
+        timestamp: new Date().toISOString()
       }
       setMatrixDataForAI(aiData)
     }
-  }, [currentConfig, connectionResult])
+  }, [currentConfig])
 
   const fetchConfigurations = async () => {
+    setIsLoading(true)
     try {
-      const response = await fetch('/api/matrix/config')
+      const response = await fetch('/api/matrix-config')
+      const data = await response.json()
+      
       if (response.ok) {
-        const data = await response.json()
-        if (data.config) {
+        if (data.configs && data.configs.length > 0) {
+          setConfigs(data.configs)
+          
+          // Find active config or use first one
+          const activeConfig = data.configs.find((c: MatrixConfig) => c.isActive) || data.configs[0]
+          
+          // Ensure we have 36 inputs and outputs
+          const configWithDefaults = {
+            ...activeConfig,
+            inputs: activeConfig.inputs || currentConfig.inputs,
+            outputs: activeConfig.outputs || currentConfig.outputs,
+          }
+          
+          setCurrentConfig(configWithDefaults)
+          setActiveConfigId(activeConfig.id || null)
+        } else if (data.config) {
           // Single config with inputs/outputs
-          const configWithInputsOutputs = {
+          const configWithDefaults = {
             ...data.config,
             inputs: data.inputs || currentConfig.inputs,
             outputs: data.outputs || currentConfig.outputs
           }
-          setConfigs([configWithInputsOutputs])
-          setActiveConfigId(data.config.id)
-          setCurrentConfig(configWithInputsOutputs)
+          setCurrentConfig(configWithDefaults)
+          setActiveConfigId(data.config.id || null)
         } else {
           // No saved config, ensure we have 36 inputs/outputs
           if (currentConfig.inputs.length < 36) {
@@ -162,74 +168,62 @@ export default function MatrixControl() {
       }
     } catch (error) {
       console.error('Error fetching configurations:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const saveConfiguration = async () => {
     setIsLoading(true)
     try {
-      // Prepare data in the format the API expects
-      const configData = {
-        config: {
-          id: activeConfigId,
-          name: currentConfig.name,
-          ipAddress: currentConfig.ipAddress,
-          port: currentConfig.port,
-          tcpPort: currentConfig.tcpPort || 5000,
-          udpPort: currentConfig.udpPort || 4000,
-          protocol: currentConfig.protocol || 'TCP',
-          isActive: currentConfig.isActive !== false
-        },
-        inputs: currentConfig.inputs.map(input => ({
-          channelNumber: input.channelNumber,
-          label: input.label,
-          inputType: input.inputType,
-          deviceType: input.deviceType || 'Other',
-          status: input.status || 'active',
-          isActive: input.status === 'active'
-        })),
-        outputs: currentConfig.outputs.map(output => ({
-          channelNumber: output.channelNumber,
-          label: output.label,
-          resolution: output.resolution,
-          status: output.status || 'active',
-          audioOutput: output.audioOutput || '',
-          isActive: output.status === 'active'
-        }))
-      }
-
-      const response = await fetch('/api/matrix/config', {
+      const response = await fetch('/api/matrix-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(configData)
+        body: JSON.stringify({
+          id: activeConfigId,
+          config: currentConfig,
+          inputs: currentConfig.inputs.map(input => ({
+            channelNumber: input.channelNumber,
+            label: input.label,
+            inputType: input.inputType,
+            deviceType: input.deviceType,
+            status: input.status,
+            isActive: input.status === 'active'
+          })),
+          outputs: currentConfig.outputs.map(output => ({
+            channelNumber: output.channelNumber,
+            label: output.label,
+            resolution: output.resolution,
+            status: output.status,
+            isActive: output.status === 'active',
+            audioOutput: output.audioOutput || '',
+            dailyTurnOn: output.dailyTurnOn || false,
+            dailyTurnOff: output.dailyTurnOff || false
+          }))
+        })
       })
 
       if (response.ok) {
         const data = await response.json()
-        await fetchConfigurations()
-        setActiveConfigId(data.config.id)
+        setActiveConfigId(data.configId)
         alert('Configuration saved successfully!')
+        await fetchConfigurations()
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to save configuration')
+        const error = await response.json()
+        alert(`Failed to save configuration: ${error.error}`)
       }
     } catch (error) {
       console.error('Error saving configuration:', error)
-      alert('Error saving configuration: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      alert('Failed to save configuration')
     } finally {
       setIsLoading(false)
     }
   }
 
   const testConnection = async () => {
-    if (!currentConfig.ipAddress) {
-      alert('Please enter an IP address first')
-      return
-    }
-
     setTestingConnection(true)
     setConnectionResult(null)
-
+    
     try {
       const response = await fetch('/api/matrix/test-connection', {
         method: 'POST',
@@ -237,684 +231,637 @@ export default function MatrixControl() {
         body: JSON.stringify({
           ipAddress: currentConfig.ipAddress,
           port: currentConfig.port,
-          configId: activeConfigId
+          protocol: currentConfig.protocol || 'TCP'
         })
       })
 
-      const result = await response.json()
-      setConnectionResult(result)
-      
-      if (result.success) {
-        await fetchConfigurations()
-      }
+      const data = await response.json()
+      setConnectionResult({
+        success: response.ok,
+        message: data.message || (response.ok ? 'Connection successful!' : 'Connection failed')
+      })
     } catch (error) {
-      setConnectionResult({ 
-        success: false, 
-        message: 'Network error occurred' 
+      setConnectionResult({
+        success: false,
+        message: 'Failed to test connection'
       })
     } finally {
       setTestingConnection(false)
     }
   }
 
-  const loadConfiguration = (config: MatrixConfig) => {
-    setCurrentConfig(config)
-    setActiveConfigId(config.id || null)
-    setConnectionResult(null)
-  }
-
-  const updateInput = (index: number, field: keyof MatrixInput, value: string) => {
+  const updateInput = (index: number, field: keyof MatrixInput, value: any) => {
     const newInputs = [...currentConfig.inputs]
-    if (field === 'status') {
-      newInputs[index] = { ...newInputs[index], [field]: value as MatrixInput['status'] }
-    } else {
-      newInputs[index] = { ...newInputs[index], [field]: value }
+    newInputs[index] = { ...newInputs[index], [field]: value }
+    
+    // If status is changed to unused/no/na, update label to reflect that
+    if (field === 'status' && value !== 'active') {
+      newInputs[index].label = `${value.toUpperCase()} - Input ${newInputs[index].channelNumber}`
     }
+    
     setCurrentConfig({ ...currentConfig, inputs: newInputs })
   }
 
-  const updateOutput = (index: number, field: keyof MatrixOutput, value: string | boolean) => {
+  const updateOutput = (index: number, field: keyof MatrixOutput, value: any) => {
     const newOutputs = [...currentConfig.outputs]
-    if (field === 'status') {
-      newOutputs[index] = { ...newOutputs[index], [field]: value as MatrixOutput['status'] }
-    } else {
-      newOutputs[index] = { ...newOutputs[index], [field]: value }
+    newOutputs[index] = { ...newOutputs[index], [field]: value }
+    
+    // If status is changed to unused/no/na, update label to reflect that
+    if (field === 'status' && value !== 'active') {
+      newOutputs[index].label = `${value.toUpperCase()} - Output ${newOutputs[index].channelNumber}`
     }
+    
     setCurrentConfig({ ...currentConfig, outputs: newOutputs })
   }
 
-  const getConnectionStatusColor = (status?: string) => {
-    switch (status) {
-      case 'connected': return 'text-green-600 bg-green-100'
-      case 'error': return 'text-red-600 bg-red-100'
-      default: return 'text-gray-600 bg-slate-800 or bg-slate-900'
-    }
-  }
-
-  const loadLayoutMapping = async () => {
+  const importFromLayout = async () => {
     try {
-      // Fetch the current TV layout
       const response = await fetch('/api/bartender/layout')
-      if (response.ok) {
-        const data = await response.json()
-        if (data.layout && data.layout.zones) {
+      const data = await response.json()
+      
+      if (response.ok && data.layout && data.layout.zones) {
+        const zones = data.layout.zones
+        
+        if (zones.length > 0) {
           const newOutputs = [...currentConfig.outputs]
           
           // Map layout zones to outputs
-          data.layout.zones.forEach((zone: any) => {
-            const outputIndex = zone.outputNumber - 1
-            if (outputIndex >= 0 && outputIndex < newOutputs.length) {
-              newOutputs[outputIndex] = {
-                ...newOutputs[outputIndex],
-                label: zone.label || `TV ${zone.outputNumber}`,
-                channelNumber: zone.outputNumber
+          zones.forEach((zone: any, index: number) => {
+            if (index < newOutputs.length) {
+              newOutputs[index] = {
+                ...newOutputs[index],
+                label: zone.label || `TV ${zone.tvNumber}`,
+                status: 'active' as const
               }
             }
           })
           
           setCurrentConfig({ ...currentConfig, outputs: newOutputs })
-          alert(`Successfully imported ${data.layout.zones.length} TV positions from layout!`)
+          alert(`Imported ${zones.length} TV zones from layout!`)
         } else {
-          alert('No TV layout found. Please upload and analyze a layout first.')
+          alert('No TV zones found in layout')
         }
+      } else {
+        alert('No layout configuration found')
       }
     } catch (error) {
-      console.error('Error loading layout mapping:', error)
-      alert('Error loading layout mapping. Please try again.')
+      console.error('Error importing from layout:', error)
+      alert('Failed to import from layout')
     }
   }
 
-  const generateSampleLabels = () => {
-    const sampleLabels = [
-      // Main bar area (outputs 1-8)
-      'Main Bar Center TV', 'Main Bar Left TV', 'Main Bar Right TV', 'Main Bar Corner',
-      'Main Bar High Left', 'Main Bar High Right', 'Main Bar Side Wall', 'Main Bar Back Wall',
-      
-      // Side areas (outputs 9-16)
-      'Side Area 1', 'Side Area 2', 'Side Area 3', 'Side Area Corner',
-      'Side Wall Left', 'Side Wall Right', 'Side Dining Area', 'Side Booth Area',
-      
-      // Lower sections (outputs 17-24)
-      'Lower Section 1', 'Lower Section 2', 'Lower Section 3', 'Lower Section Corner',
-      'Pool Table Area', 'Gaming Area', 'Lower Dining', 'Lower Booth',
-      
-      // Additional positions (outputs 25-32)
-      'Upper Level 1', 'Upper Level 2', 'Upper Level 3', 'Upper Level 4',
-      'Private Area 1', 'Private Area 2', 'VIP Section 1', 'VIP Section 2',
-      
-      // Extra outputs (33-36)
-      'Outdoor Patio TV', 'Kitchen Display', 'Office TV', 'Backup Display'
-    ]
-
+  const autoLabelOutputs = () => {
     const newOutputs = currentConfig.outputs.map((output, index) => ({
       ...output,
-      label: sampleLabels[index] || `TV ${output.channelNumber}`
+      label: 
+        // Main bar area (outputs 1-8)
+        index < 8 ? `Main Bar TV ${index + 1}` :
+        // Side areas (outputs 9-16)
+        index < 16 ? `Side Area TV ${index - 7}` :
+        // Lower sections (outputs 17-24)
+        index < 24 ? `Lower Section TV ${index - 15}` :
+        // Additional positions (outputs 25-32)
+        index < 32 ? `Additional TV ${index - 23}` :
+        // Extra outputs (33-36)
+        `Extra Output ${index - 31}`
     }))
-
+    
     setCurrentConfig({ ...currentConfig, outputs: newOutputs })
-    alert('Sample labels applied! Customize them as needed for your layout.')
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="bg-slate-800 rounded-lg shadow-xl p-6 border border-slate-700">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-100 mb-4 flex items-center space-x-2">
-            <span>🔄</span>
-            <span>Matrix Control Configuration</span>
-          </h2>
-          <p className="text-slate-300 leading-relaxed">
-            Configure your Wolf Pack matrix switcher IP settings and manage input/output labels.
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Section Tabs */}
+      <div className="flex space-x-2 border-b border-slate-700">
+        <button
+          onClick={() => setActiveSection('config')}
+          className={`px-6 py-3 font-medium transition-colors ${
+            activeSection === 'config'
+              ? 'text-indigo-400 border-b-2 border-indigo-400'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Configuration
+        </button>
+        <button
+          onClick={() => setActiveSection('inputs')}
+          className={`px-6 py-3 font-medium transition-colors ${
+            activeSection === 'inputs'
+              ? 'text-indigo-400 border-b-2 border-indigo-400'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Inputs (1-36)
+        </button>
+        <button
+          onClick={() => setActiveSection('outputs')}
+          className={`px-6 py-3 font-medium transition-colors ${
+            activeSection === 'outputs'
+              ? 'text-indigo-400 border-b-2 border-indigo-400'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Outputs (1-36)
+        </button>
+        <button
+          onClick={() => setActiveSection('ai')}
+          className={`px-6 py-3 font-medium transition-colors ${
+            activeSection === 'ai'
+              ? 'text-indigo-400 border-b-2 border-indigo-400'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          🤖 AI Monitor
+        </button>
+      </div>
 
-        {/* Section Navigation */}
-        <div className="border-b border-slate-600 mb-6">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'config', name: 'Connection', icon: '🔧' },
-              { id: 'inputs', name: 'Input Labels', icon: '📥' },
-              { id: 'outputs', name: 'Output Labels', icon: '📤' },
-              { id: 'ai', name: 'AI Monitor', icon: '🤖' }
-            ].map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id as any)}
-                className={`${
-                  activeSection === section.id
-                    ? 'border-indigo-400 text-indigo-300'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-500'
-                } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors`}
-              >
-                <span className="text-lg">{section.icon}</span>
-                <span>{section.name}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Configuration Section */}
-        {activeSection === 'config' && (
+      {/* Configuration Section */}
+      {activeSection === 'config' && (
+        <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-slate-100 mb-4">Matrix Configuration</h3>
-              
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Configuration Name
-                </label>
-                <input
-                  type="text"
-                  value={currentConfig.name}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Wolf Pack Matrix"
-                />
+            {/* Basic Configuration */}
+            <div className="border border-slate-600 rounded-lg p-6 bg-slate-700/50">
+              <h3 className="text-lg font-semibold mb-4 text-slate-100">Basic Configuration</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-slate-200">Matrix Name</label>
+                  <input
+                    type="text"
+                    value={currentConfig.name}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                    placeholder="e.g., Wolf Pack Matrix"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-slate-200">IP Address</label>
+                  <input
+                    type="text"
+                    value={currentConfig.ipAddress}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, ipAddress: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                    placeholder="e.g., 192.168.1.100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-slate-200">Protocol</label>
+                  <select
+                    value={currentConfig.protocol || 'TCP'}
+                    onChange={(e) => setCurrentConfig({ ...currentConfig, protocol: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                  >
+                    <option value="TCP">TCP</option>
+                    <option value="UDP">UDP</option>
+                    <option value="HTTP">HTTP</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-slate-200">Main Port</label>
+                    <input
+                      type="number"
+                      value={currentConfig.port}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, port: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-slate-200">TCP Port</label>
+                    <input
+                      type="number"
+                      value={currentConfig.tcpPort || 5000}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, tcpPort: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-slate-200">UDP Port</label>
+                    <input
+                      type="number"
+                      value={currentConfig.udpPort || 4000}
+                      onChange={(e) => setCurrentConfig({ ...currentConfig, udpPort: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <button
+                    onClick={testConnection}
+                    disabled={testingConnection || !currentConfig.ipAddress}
+                    className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {testingConnection ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  {connectionResult && (
+                    <div className={`mt-2 p-3 rounded-md ${
+                      connectionResult.success 
+                        ? 'bg-green-500/20 text-green-200 border border-green-500' 
+                        : 'bg-red-500/20 text-red-200 border border-red-500'
+                    }`}>
+                      {connectionResult.message}
+                    </div>
+                  )}
+                </div>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  IP Address *
-                </label>
-                <input
-                  type="text"
-                  value={currentConfig.ipAddress}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, ipAddress: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="192.168.1.100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Port
-                </label>
-                <input
-                  type="number"
-                  value={currentConfig.port}
-                  onChange={(e) => setCurrentConfig({ ...currentConfig, port: parseInt(e.target.value) || 4999 })}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="4999"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  CEC Adapter Input
-                  <span className="text-xs text-slate-400 ml-2">(optional - for TV control)</span>
-                </label>
-                <select
-                  value={currentConfig.cecInputChannel || ''}
-                  onChange={(e) => setCurrentConfig({ 
-                    ...currentConfig, 
-                    cecInputChannel: e.target.value ? parseInt(e.target.value) : undefined 
-                  })}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">Not Connected</option>
-                  {currentConfig.inputs.map((input) => (
-                    <option key={input.channelNumber} value={input.channelNumber}>
-                      Input {input.channelNumber} - {input.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Select which input channel has the Pulse-Eight CEC adapter connected. 
-                  This input will be routed to TVs when CEC control is needed.
-                </p>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
+            {/* Quick Actions */}
+            <div className="border border-slate-600 rounded-lg p-6 bg-slate-700/50">
+              <h3 className="text-lg font-semibold mb-4 text-slate-100">Quick Actions</h3>
+              <div className="space-y-3">
                 <button
-                  onClick={testConnection}
-                  disabled={testingConnection || !currentConfig.ipAddress}
-                  className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors shadow-lg"
+                  onClick={importFromLayout}
+                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-md hover:bg-blue-700 text-left flex items-center justify-between"
                 >
-                  {testingConnection ? 'Testing...' : 'Test Connection'}
+                  <span>Import TV Zones from Layout</span>
+                  <span className="text-sm opacity-75">Auto-label outputs</span>
+                </button>
+                <button
+                  onClick={autoLabelOutputs}
+                  className="w-full bg-purple-600 text-white px-4 py-3 rounded-md hover:bg-purple-700 text-left flex items-center justify-between"
+                >
+                  <span>Auto-Label All Outputs</span>
+                  <span className="text-sm opacity-75">Standard naming</span>
                 </button>
                 <button
                   onClick={saveConfiguration}
                   disabled={isLoading}
-                  className="flex-1 bg-green-600 text-white px-4 py-3 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors shadow-lg"
+                  className="w-full bg-green-600 text-white px-4 py-3 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? 'Saving...' : 'Save Configuration'}
                 </button>
               </div>
 
-              {connectionResult && (
-                <div className={`p-4 rounded-md ${connectionResult.success ? 'bg-green-900/50 border border-green-600 text-green-200' : 'bg-red-900/50 border border-red-600 text-red-200'}`}>
-                  {connectionResult.message}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-slate-100 mb-4">Saved Configurations</h3>
-              {configs.length === 0 ? (
-                <div className="text-slate-400 text-center py-8 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <span className="text-2xl">📋</span>
-                  <p className="mt-2">No saved configurations yet</p>
-                  <p className="text-sm mt-1">disconnected</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {configs.map((config) => (
-                    <div
-                      key={config.id}
-                      onClick={() => loadConfiguration(config)}
-                      className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                        activeConfigId === config.id ? 'border-indigo-500 bg-indigo-900/30' : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium text-slate-100">{config.name}</div>
-                          <div className="text-sm text-slate-400 mt-1">
-                            {config.ipAddress}:{config.port}
-                          </div>
-                        </div>
-                        <span className={`px-2 py-1 text-xs rounded-full ${getConnectionStatusColor(config.connectionStatus)}`}>
-                          {config.connectionStatus || 'unknown'}
-                        </span>
-                      </div>
-                      {config.lastTested && (
-                        <div className="text-xs text-slate-500 mt-2">
-                          Last tested: {new Date(config.lastTested).toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Info Box */}
+              <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                <h4 className="font-medium text-blue-200 mb-2">💡 Configuration Tips</h4>
+                <ul className="text-sm text-blue-100 space-y-1">
+                  <li>• Test connection before saving</li>
+                  <li>• Import layout to auto-configure outputs</li>
+                  <li>• First 4 outputs route audio to Atlas</li>
+                  <li>• Use status filters to hide unused channels</li>
+                </ul>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Inputs Section */}
-        {activeSection === 'inputs' && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold text-slate-100">Input Channel Labels (1-36)</h3>
-              <span className="text-sm text-slate-400 bg-slate-700/50 px-3 py-1 rounded-full">Configure all 36 input channels</span>
+          {/* Hardware Layout Info */}
+          <div className="border border-indigo-600 rounded-lg p-6 bg-indigo-900/20">
+            <h3 className="text-lg font-semibold mb-4 text-indigo-200">🔌 Wolfpack Hardware Layout</h3>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <div className="font-medium text-indigo-300 mb-2">Card 1</div>
+                <div className="text-slate-300">Inputs 1-4</div>
+                <div className="text-xs text-slate-400 mt-1">HDMI Inputs</div>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <div className="font-medium text-indigo-300 mb-2">Card 2</div>
+                <div className="text-slate-300">Inputs 5-8</div>
+                <div className="text-xs text-slate-400 mt-1">HDMI Inputs</div>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <div className="font-medium text-indigo-300 mb-2">Card 3</div>
+                <div className="text-slate-300">Inputs 9-12</div>
+                <div className="text-xs text-slate-400 mt-1">HDMI Inputs</div>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <div className="font-medium text-green-300 mb-2">Card 1</div>
+                <div className="text-slate-300">Outputs 1-4</div>
+                <div className="text-xs text-slate-400 mt-1">→ Atlas Audio</div>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <div className="font-medium text-green-300 mb-2">Card 2</div>
+                <div className="text-slate-300">Outputs 5-8</div>
+                <div className="text-xs text-slate-400 mt-1">HDMI Outputs</div>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-              {currentConfig.inputs.map((input, index) => {
-                const isUnused = input.status && input.status !== 'active';
-                return (
-                  <div key={index} className={`border rounded-lg p-4 transition-all ${
-                    isUnused 
-                      ? 'border-red-600 bg-red-900/20' 
-                      : 'border-slate-600 bg-slate-700/50'
-                  }`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-slate-100">Input {input.channelNumber}</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">Ch {input.channelNumber}</span>
-                        {isUnused && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-800 text-red-200">
-                            {input.status.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
+            <div className="mt-4 text-sm text-indigo-200">
+              <p className="mb-2">📌 <strong>Important:</strong> Each Wolfpack card has exactly 4 ports (either inputs OR outputs)</p>
+              <p>The configuration interface displays channels in rows of 4 to match the physical hardware layout.</p>
+            </div>
+          </div>
+
+          {/* Status Legend */}
+          <div className="border border-slate-600 rounded-lg p-6 bg-slate-700/50">
+            <h3 className="text-lg font-semibold mb-4 text-slate-100">Status Options</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <div className="font-medium text-green-400 mb-1">Active</div>
+                <div className="text-slate-300">Channel is in use and configured</div>
+              </div>
+              <div>
+                <div className="font-medium text-yellow-400 mb-1">Unused</div>
+                <div className="text-slate-300">Channel exists but not currently used</div>
+              </div>
+              <div>
+                <div className="font-medium text-red-400 mb-1">NO / N/A</div>
+                <div className="text-slate-300">Channel not available or not installed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inputs Section - FIXED: Changed from grid-cols-3 to grid-cols-4 */}
+      {activeSection === 'inputs' && (
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-slate-100">Input Channel Labels (1-36)</h3>
+            <span className="text-sm text-slate-400 bg-slate-700/50 px-3 py-1 rounded-full">Configure all 36 input channels • Rows of 4 match hardware cards</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            {currentConfig.inputs.map((input, index) => {
+              const isUnused = input.status && input.status !== 'active';
+              return (
+                <div key={index} className={`border rounded-lg p-4 transition-all ${
+                  isUnused 
+                    ? 'border-red-600 bg-red-900/20' 
+                    : 'border-slate-600 bg-slate-700/50'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-slate-100">Input {input.channelNumber}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">Ch {input.channelNumber}</span>
+                      {isUnused && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-800 text-red-200">
+                          {input.status.toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                    <div className="space-y-2.5">
+                  </div>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Label</label>
                       <input
                         type="text"
                         value={input.label}
                         onChange={(e) => updateInput(index, 'label', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder={isUnused ? `Unused Input ${input.channelNumber}` : `Input ${input.channelNumber} label`}
-                        disabled={isUnused}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                        placeholder={`Input ${input.channelNumber}`}
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Status</label>
                       <select
-                        value={input.deviceType || 'Other'}
-                        onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        disabled={isUnused}
+                        value={input.status}
+                        onChange={(e) => updateInput(index, 'status', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
                       >
-                        {deviceTypes.map(type => (
-                          <option key={type} value={type}>{type}</option>
+                        {statusOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Input Type</label>
                       <select
                         value={input.inputType}
                         onChange={(e) => updateInput(index, 'inputType', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
                         disabled={isUnused}
                       >
                         {inputTypes.map(type => (
                           <option key={type} value={type}>{type}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Device Type</label>
                       <select
-                        value={input.status || 'active'}
-                        onChange={(e) => updateInput(index, 'status', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        value={input.deviceType}
+                        onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                        disabled={isUnused}
                       >
-                        {statusOptions.map(status => (
-                          <option key={status.value} value={status.value}>{status.label}</option>
+                        {deviceTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
                         ))}
                       </select>
                     </div>
                   </div>
-                )
-              })}
+                </div>
+              )
+            })}
+          </div>
+          
+          {/* Hardware Card Indicators */}
+          <div className="mt-6 p-4 bg-indigo-900/20 border border-indigo-600 rounded-lg">
+            <h4 className="font-medium text-indigo-200 mb-3">🔌 Hardware Card Layout (4 inputs per card)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 text-xs">
+              {Array.from({ length: 9 }, (_, i) => (
+                <div key={i} className="bg-slate-800 p-2 rounded text-center">
+                  <div className="font-medium text-indigo-300">Card {i + 1}</div>
+                  <div className="text-slate-400">Ch {i * 4 + 1}-{i * 4 + 4}</div>
+                </div>
+              ))}
             </div>
-            <div className="mt-6">
+          </div>
+        </div>
+      )}
+
+      {/* Outputs Section - FIXED: Changed from grid-cols-3 to grid-cols-4 */}
+      {activeSection === 'outputs' && (
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-slate-100">Output Channel Labels (1-36)</h3>
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-slate-400 bg-slate-700/50 px-3 py-1 rounded-full">Configure all 36 output channels • Rows of 4 match hardware cards</span>
               <button
-                onClick={saveConfiguration}
-                disabled={isLoading}
-                className="w-full bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors shadow-lg"
+                onClick={importFromLayout}
+                className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
               >
-                {isLoading ? 'Saving Labels...' : 'Save Labels'}
+                Import from Layout
               </button>
             </div>
           </div>
-        )}
 
-        {/* Outputs Section */}
-        {activeSection === 'outputs' && (
-          <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-              <h3 className="text-lg font-semibold text-slate-100">Output Channel Labels & Layout Mapping</h3>
-              <div className="flex space-x-2">
-                <button
-                  onClick={loadLayoutMapping}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 text-sm font-medium transition-colors shadow"
-                >
-                  📍 Import Layout Positions
-                </button>
-                <button
-                  onClick={generateSampleLabels}
-                  className="bg-slate-600 text-white px-4 py-2 rounded-md hover:bg-slate-700 text-sm font-medium transition-colors shadow"
-                >
-                  🏷️ Sample Labels
-                </button>
-              </div>
+          {/* Audio Routing Info */}
+          <div className="mb-6 p-4 bg-green-900/20 border border-green-600 rounded-lg">
+            <h4 className="font-medium text-green-200 mb-2">🔊 Audio Routing to Atlas System</h4>
+            <div className="text-sm text-green-100">
+              <p className="mb-2">The first 4 outputs (Outputs 1-4) are configured to route audio to the Atlas audio processor:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Output 1 → Matrix Audio 1 (Atlas Input 1)</li>
+                <li>Output 2 → Matrix Audio 2 (Atlas Input 2)</li>
+                <li>Output 3 → Matrix Audio 3 (Atlas Input 3)</li>
+                <li>Output 4 → Matrix Audio 4 (Atlas Input 4)</li>
+              </ul>
             </div>
-            
-            {/* Layout Integration Info */}
-            <div className="bg-indigo-900/30 border border-indigo-600/50 rounded-lg p-5 mb-6">
-              <div className="flex items-start space-x-3">
-                <span className="text-2xl">💡</span>
-                <div>
-                  <h4 className="font-semibold text-indigo-300 mb-2">Output Configuration & Audio Routing</h4>
-                  <p className="text-sm text-slate-300 mb-3 leading-relaxed">
-                    Configure output labels to match your TV layout positions and set up audio routing to your Atlas audio matrix:
-                  </p>
-                  <ul className="text-sm text-slate-300 list-disc pl-5 space-y-2 leading-relaxed">
-                    <li><strong className="text-indigo-300">Layout Labels:</strong> Use descriptive names that match your TV positions (e.g., "Main Bar Left", "Side Area 1")</li>
-                    <li><strong className="text-indigo-300">Audio Routing:</strong> Select Matrix Audio 1-4 for outputs that need audio routed to the Atlas system</li>
-                    <li><strong className="text-indigo-300">Unused Outputs:</strong> Mark unused outputs as "NO", "N/A", or "Unused" so the AI won't try to assign TVs to them</li>
-                    <li><strong className="text-indigo-300">Status:</strong> Only "Active" outputs will be used for TV control and layout mapping</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-              {currentConfig.outputs.map((output, index) => {
-                const hasCustomLabel = output.label && !output.label.match(/^Output \d+$/);
-                const isUnused = output.status && output.status !== 'active';
-                const hasAudioOutput = output.audioOutput && output.audioOutput.trim() !== '';
-                const isLayoutMapped = hasCustomLabel && (
-                  output.label.includes('Main Bar') ||
-                  output.label.includes('Side Area') ||
-                  output.label.includes('Lower Section') ||
-                  output.label.includes('TV')
-                );
-                
-                return (
-                  <div key={index} className={`border rounded-lg p-4 transition-all ${
-                    isUnused 
-                      ? 'border-red-600 bg-red-900/20'
-                      : isLayoutMapped 
-                        ? 'border-green-600 bg-green-900/20' 
-                        : hasCustomLabel 
-                          ? 'border-indigo-600 bg-indigo-900/20' 
-                          : 'border-slate-600 bg-slate-700/50'
-                  }`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-slate-100">Output {output.channelNumber}</span>
-                      <div className="flex items-center space-x-1 flex-wrap gap-1">
-                        <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">Ch {output.channelNumber}</span>
-                        {isUnused && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-800 text-red-200">
-                            {output.status.toUpperCase()}
-                          </span>
-                        )}
-                        {!isUnused && isLayoutMapped && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-800 text-green-200">
-                            📍 Mapped
-                          </span>
-                        )}
-                        {!isUnused && hasCustomLabel && !isLayoutMapped && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-800 text-indigo-200">
-                            🏷️ Custom
-                          </span>
-                        )}
-                        {!isUnused && hasAudioOutput && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-800 text-purple-200">
-                            🔊 Audio
-                          </span>
-                        )}
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            {currentConfig.outputs.map((output, index) => {
+              const hasCustomLabel = output.label && !output.label.match(/^Output \d+$/);
+              const isUnused = output.status && output.status !== 'active';
+              const hasAudioOutput = output.audioOutput && output.audioOutput.trim() !== '';
+              const isLayoutMapped = hasCustomLabel && (
+                output.label.includes('Main Bar') ||
+                output.label.includes('Side Area') ||
+                output.label.includes('Lower Section') ||
+                output.label.includes('TV')
+              );
+              
+              return (
+                <div key={index} className={`border rounded-lg p-4 transition-all ${
+                  isUnused 
+                    ? 'border-red-600 bg-red-900/20'
+                    : isLayoutMapped 
+                      ? 'border-green-600 bg-green-900/20' 
+                      : hasCustomLabel 
+                        ? 'border-indigo-600 bg-indigo-900/20' 
+                        : 'border-slate-600 bg-slate-700/50'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-slate-100">Output {output.channelNumber}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">Ch {output.channelNumber}</span>
+                      {hasAudioOutput && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-800 text-green-200">
+                          🔊 Audio
+                        </span>
+                      )}
+                      {isLayoutMapped && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-800 text-blue-200">
+                          📍 Mapped
+                        </span>
+                      )}
+                      {isUnused && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-800 text-red-200">
+                          {output.status.toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                    <div className="space-y-2.5">
+                  </div>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Label</label>
                       <input
                         type="text"
                         value={output.label}
                         onChange={(e) => updateOutput(index, 'label', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder={isUnused ? `Unused Output ${output.channelNumber}` : `e.g., Main Bar Left, Side Area 1, Lower Section TV`}
-                        disabled={isUnused}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                        placeholder={`Output ${output.channelNumber}`}
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Status</label>
+                      <select
+                        value={output.status}
+                        onChange={(e) => updateOutput(index, 'status', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+                      >
+                        {statusOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-slate-300">Resolution</label>
                       <select
                         value={output.resolution}
                         onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-2 py-1.5 text-sm border border-slate-600 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-800 text-slate-100"
                         disabled={isUnused}
                       >
                         {resolutions.map(res => (
                           <option key={res} value={res}>{res}</option>
                         ))}
                       </select>
-                      <select
-                        value={output.status || 'active'}
-                        onChange={(e) => updateOutput(index, 'status', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        {statusOptions.map(status => (
-                          <option key={status.value} value={status.value}>{status.label}</option>
-                        ))}
-                      </select>
-                      {!isUnused && (
+                    </div>
+                    {index < 4 && (
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-green-300">Audio Output</label>
                         <select
                           value={output.audioOutput || ''}
                           onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-2 py-1.5 text-sm border border-green-600 rounded focus:outline-none focus:ring-1 focus:ring-green-500 bg-slate-800 text-slate-100"
+                          disabled={isUnused}
                         >
-                          <option value="">No Audio Output</option>
-                          {audioOutputOptions.slice(1).map(audio => (
-                            <option key={audio} value={audio}>{audio}</option>
+                          {audioOutputOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt || 'None'}</option>
                           ))}
                         </select>
-                      )}
-                      
-                      {/* Daily Turn On/Off Toggles */}
-                      {!isUnused && (
-                        <div className="pt-2 space-y-2 border-t border-slate-600 mt-2">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={output.dailyTurnOn || false}
-                              onChange={(e) => updateOutput(index, 'dailyTurnOn', e.target.checked)}
-                              className="w-4 h-4 text-indigo-600 bg-slate-700 border-slate-600 rounded focus:ring-indigo-500 focus:ring-2"
-                            />
-                            <span className="text-sm text-slate-300">☀️ Daily Turn On</span>
-                          </label>
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={output.dailyTurnOff || false}
-                              onChange={(e) => updateOutput(index, 'dailyTurnOff', e.target.checked)}
-                              className="w-4 h-4 text-indigo-600 bg-slate-700 border-slate-600 rounded focus:ring-indigo-500 focus:ring-2"
-                            />
-                            <span className="text-sm text-slate-300">🌙 Daily Turn Off</span>
-                          </label>
-                        </div>
-                      )}
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-3 pt-2 border-t border-slate-600">
+                      <label className="flex items-center space-x-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={output.dailyTurnOn || false}
+                          onChange={(e) => updateOutput(index, 'dailyTurnOn', e.target.checked)}
+                          className="rounded border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                          disabled={isUnused}
+                        />
+                        <span>Daily ON</span>
+                      </label>
+                      <label className="flex items-center space-x-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={output.dailyTurnOff || false}
+                          onChange={(e) => updateOutput(index, 'dailyTurnOff', e.target.checked)}
+                          className="rounded border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                          disabled={isUnused}
+                        />
+                        <span>Daily OFF</span>
+                      </label>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              )
+            })}
+          </div>
 
-            {/* Layout Mapping Statistics */}
-            <div className="mt-6 p-5 bg-slate-700/50 rounded-lg border border-slate-600">
-              <h4 className="font-semibold text-slate-100 mb-4">Mapping & Status Overview</h4>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-400">
-                    {currentConfig.outputs.filter(o => 
-                      o.status === 'active' && o.label && !o.label.match(/^Output \d+$/) && (
-                        o.label.includes('Main Bar') ||
-                        o.label.includes('Side Area') ||
-                        o.label.includes('Lower Section') ||
-                        o.label.includes('TV')
-                      )
-                    ).length}
+          {/* Hardware Card Indicators */}
+          <div className="mt-6 p-4 bg-indigo-900/20 border border-indigo-600 rounded-lg">
+            <h4 className="font-medium text-indigo-200 mb-3">🔌 Hardware Card Layout (4 outputs per card)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 text-xs">
+              {Array.from({ length: 9 }, (_, i) => (
+                <div key={i} className={`p-2 rounded text-center ${
+                  i === 0 ? 'bg-green-900/30 border border-green-600' : 'bg-slate-800'
+                }`}>
+                  <div className={`font-medium ${i === 0 ? 'text-green-300' : 'text-indigo-300'}`}>
+                    Card {i + 1}
+                    {i === 0 && ' 🔊'}
                   </div>
-                  <div className="text-slate-400 mt-1">Layout Mapped</div>
+                  <div className="text-slate-400">Ch {i * 4 + 1}-{i * 4 + 4}</div>
+                  {i === 0 && <div className="text-green-400 text-[10px] mt-1">→ Atlas Audio</div>}
                 </div>
-                <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-                  <div className="text-2xl font-bold text-indigo-400">
-                    {currentConfig.outputs.filter(o => 
-                      o.status === 'active' && o.label && !o.label.match(/^Output \d+$/)
-                    ).length}
-                  </div>
-                  <div className="text-slate-400 mt-1">Active Custom</div>
-                </div>
-                <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-400">
-                    {currentConfig.outputs.filter(o => 
-                      o.status === 'active' && o.audioOutput && o.audioOutput.trim() !== ''
-                    ).length}
-                  </div>
-                  <div className="text-slate-400 mt-1">Audio Outputs</div>
-                </div>
-                <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-                  <div className="text-2xl font-bold text-red-400">
-                    {currentConfig.outputs.filter(o => 
-                      o.status && o.status !== 'active'
-                    ).length}
-                  </div>
-                  <div className="text-slate-400 mt-1">Unused</div>
-                </div>
-                <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-                  <div className="text-2xl font-bold text-slate-300">36</div>
-                  <div className="text-slate-400 mt-1">Total Outputs</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                onClick={saveConfiguration}
-                disabled={isLoading}
-                className="w-full bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors shadow-lg"
-              >
-                {isLoading ? 'Saving Labels...' : 'Save Labels'}
-              </button>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* AI Monitor Section */}
-        {activeSection === 'ai' && (
-          <div>
-            <div className="mb-6">
-              <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-600/50 rounded-lg p-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <span className="text-4xl">🤖</span>
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-100">Wolfpack Matrix AI Assistant</h3>
-                    <p className="text-slate-300 leading-relaxed">
-                      Advanced AI analysis of your matrix configuration, performance, and optimization opportunities
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div className="bg-slate-800/60 rounded-md p-4 border border-slate-600">
-                    <div className="font-semibold text-indigo-300 mb-2 flex items-center space-x-2">
-                      <span>🔗</span>
-                      <span>Connection Analysis</span>
-                    </div>
-                    <div className="text-slate-300 leading-relaxed">Network connectivity, protocol optimization, and troubleshooting</div>
-                  </div>
-                  <div className="bg-slate-800/60 rounded-md p-4 border border-slate-600">
-                    <div className="font-semibold text-indigo-300 mb-2 flex items-center space-x-2">
-                      <span>🔄</span>
-                      <span>Routing Intelligence</span>
-                    </div>
-                    <div className="text-slate-300 leading-relaxed">Command optimization, switching patterns, and performance insights</div>
-                  </div>
-                  <div className="bg-slate-800/60 rounded-md p-4 border border-slate-600">
-                    <div className="font-semibold text-indigo-300 mb-2 flex items-center space-x-2">
-                      <span>📍</span>
-                      <span>Layout Integration</span>
-                    </div>
-                    <div className="text-slate-300 leading-relaxed">TV mapping analysis, audio routing, and configuration recommendations</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* AI Monitor Section */}
+      {activeSection === 'ai' && (
+        <div>
+          <WolfpackAIMonitor 
+            matrixData={matrixDataForAI}
+            isVisible={showAIMonitor}
+            className="w-full"
+          />
+        </div>
+      )}
 
-            {/* AI Monitor Component */}
-            <WolfpackAIMonitor 
-              matrixData={matrixDataForAI}
-              isVisible={showAIMonitor}
-              className="mb-6"
-            />
-
-            {/* AI Insights Summary */}
-            <div className="bg-slate-800 or bg-slate-900 rounded-lg p-4">
-              <h4 className="font-semibold text-slate-100 mb-2">💡 How to Use the AI Monitor</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-200">
-                <div>
-                  <div className="font-medium mb-1">Real-time Analysis:</div>
-                  <ul className="list-disc pl-4 space-y-1">
-                    <li>Click "Analyze Now" to get instant insights</li>
-                    <li>AI updates automatically when you make changes</li>
-                    <li>Filter by category and priority level</li>
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">Optimization Features:</div>
-                  <ul className="list-disc pl-4 space-y-1">
-                    <li>Connection troubleshooting guidance</li>
-                    <li>Configuration best practices</li>
-                    <li>Performance optimization tips</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+      {/* Save Button (always visible at bottom) */}
+      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4 -mx-6 -mb-6 mt-6">
+        <div className="flex justify-between items-center max-w-7xl mx-auto">
+          <div className="text-sm text-slate-400">
+            {activeSection === 'inputs' && 'Configure input channels and device types'}
+            {activeSection === 'outputs' && 'Configure output channels and audio routing'}
+            {activeSection === 'config' && 'Configure matrix connection settings'}
+            {activeSection === 'ai' && 'AI-powered analysis and recommendations'}
           </div>
-        )}
-
-        {/* Save Button for Inputs/Outputs */}
-        {(activeSection === 'inputs' || activeSection === 'outputs') && (
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={saveConfiguration}
-              disabled={isLoading}
-              className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-            >
-              {isLoading ? 'Saving...' : 'Save Labels'}
-            </button>
-          </div>
-        )}
+          <button
+            onClick={saveConfiguration}
+            disabled={isLoading}
+            className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            {isLoading ? 'Saving...' : 'Save All Changes'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
+
