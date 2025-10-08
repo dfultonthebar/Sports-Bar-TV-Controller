@@ -14,7 +14,7 @@ import {
   Zap,
   Tv
 } from 'lucide-react'
-import Image from 'next/image'
+// Removed next/image import - using regular img tag to avoid validation issues with uploaded files
 
 interface TVLayoutZone {
   id: string
@@ -461,11 +461,10 @@ export default function LayoutConfiguration() {
                       </a>
                     </div>
                   ) : (
-                    <Image
+                    <img
                       src={tvLayout.imageUrl}
                       alt="Bar Layout"
-                      fill
-                      className="object-contain"
+                      className="w-full h-full object-contain"
                     />
                   )}
                   

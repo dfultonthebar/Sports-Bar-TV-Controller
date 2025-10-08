@@ -197,6 +197,44 @@ pull_latest_code() {
 }
 
 # =============================================================================
+# DATABASE MIGRATION
+# =============================================================================
+migrate_database_location() {
+    log_info "Checking database location..."
+    
+    # Check if migration script exists
+    if [ ! -f "$PROJECT_DIR/scripts/migrate-database-location.sh" ]; then
+        log_warning "Migration script not found, skipping database migration"
+        return 0
+    fi
+    
+    # Check current DATABASE_URL in .env
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        CURRENT_DB_URL=$(grep "^DATABASE_URL=" "$PROJECT_DIR/.env" | cut -d'=' -f2- | tr -d '"')
+        EXPECTED_DB_URL="file:./prisma/data/sports_bar.db"
+        
+        if [ "$CURRENT_DB_URL" = "$EXPECTED_DB_URL" ]; then
+            log_success "Database location already correct"
+            return 0
+        fi
+        
+        log_warning "Database location needs migration"
+        log_info "Current: $CURRENT_DB_URL"
+        log_info "Expected: $EXPECTED_DB_URL"
+        
+        # Run migration script
+        if bash "$PROJECT_DIR/scripts/migrate-database-location.sh"; then
+            log_success "Database migration completed successfully"
+        else
+            log_error "Database migration failed"
+            log_warning "Continuing with update, but database may need manual migration"
+        fi
+    else
+        log_warning ".env file not found, will be created from .env.example"
+    fi
+}
+
+# =============================================================================
 # DEPENDENCY MANAGEMENT
 # =============================================================================
 install_dependencies() {
@@ -387,11 +425,15 @@ main() {
     pull_latest_code
     log ""
     
-    # Step 5: Install dependencies
+    # Step 5: Run database migration (if needed)
+    migrate_database_location
+    log ""
+    
+    # Step 6: Install dependencies
     install_dependencies
     log ""
     
-    # Step 6: Build application
+    # Step 7: Build application
     if ! build_application; then
         log_error "Build failed - aborting update"
         log_error "Your previous version is still running"
@@ -399,23 +441,23 @@ main() {
     fi
     log ""
     
-    # Step 7: Stop all PM2 processes
+    # Step 8: Stop all PM2 processes
     stop_all_pm2_processes
     log ""
     
-    # Step 8: Delete all PM2 processes (clear old config)
+    # Step 9: Delete all PM2 processes (clear old config)
     delete_all_pm2_processes
     log ""
     
-    # Step 9: Start with ecosystem.config.js
+    # Step 10: Start with ecosystem.config.js
     start_with_ecosystem
     log ""
     
-    # Step 10: Save PM2 configuration
+    # Step 11: Save PM2 configuration
     save_pm2_config
     log ""
     
-    # Step 11: Verify app is running
+    # Step 12: Verify app is running
     if verify_app_running; then
         log ""
         show_status
