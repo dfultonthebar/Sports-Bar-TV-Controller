@@ -46,22 +46,28 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini' // OPTIMIZED: Faster model
 
 export async function POST(request: NextRequest) {
+  console.log('[CHAT API] POST request received')
   try {
+    console.log('[CHAT API] Parsing request body...')
     const { message, sessionId, enableTools = true, stream = true } = await request.json()
+    console.log('[CHAT API] Request parsed:', { message: message?.substring(0, 50), sessionId, enableTools, stream })
 
     if (!message) {
+      console.log('[CHAT API] No message provided')
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
     // OPTIMIZED: Return streaming response if requested
     if (stream) {
+      console.log('[CHAT API] Handling streaming chat...')
       return handleStreamingChat(message, sessionId, enableTools)
     }
 
     // Fallback to non-streaming for compatibility
+    console.log('[CHAT API] Handling non-streaming chat...')
     return handleNonStreamingChat(message, sessionId, enableTools)
   } catch (error) {
-    console.error('Chat API error:', error)
+    console.error('[CHAT API] Error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -77,25 +83,37 @@ async function handleStreamingChat(
   sessionId: string | undefined,
   enableTools: boolean
 ) {
+  console.log('[HANDLE_STREAMING] Creating encoder and stream')
   const encoder = new TextEncoder()
 
   // Create a TransformStream for streaming
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
+  console.log('[HANDLE_STREAMING] Starting processStreamingChat in background')
   // Start processing in background
   processStreamingChat(message, sessionId, enableTools, writer, encoder)
     .catch(error => {
-      console.error('Streaming chat error:', error)
-      writer.write(encoder.encode(`data: ${JSON.stringify({ 
-        type: 'error', 
-        error: error.message 
-      })}\n\n`))
+      console.error('[HANDLE_STREAMING] Streaming chat error:', error)
+      try {
+        writer.write(encoder.encode(`data: ${JSON.stringify({ 
+          type: 'error', 
+          error: error.message 
+        })}\n\n`))
+      } catch (writeError) {
+        console.error('[HANDLE_STREAMING] Failed to write error to stream:', writeError)
+      }
     })
     .finally(() => {
-      writer.close()
+      console.log('[HANDLE_STREAMING] Closing writer')
+      try {
+        writer.close()
+      } catch (closeError) {
+        console.error('[HANDLE_STREAMING] Failed to close writer:', closeError)
+      }
     })
 
+  console.log('[HANDLE_STREAMING] Returning streaming response')
   // Return streaming response with proper headers
   return new Response(stream.readable, {
     headers: {
@@ -116,19 +134,32 @@ async function processStreamingChat(
   writer: WritableStreamDefaultWriter,
   encoder: TextEncoder
 ) {
+  console.log('[STREAMING] Starting processStreamingChat')
   // Helper to send SSE message
-  const sendSSE = (data: any) => {
-    writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+  const sendSSE = async (data: any) => {
+    try {
+      await writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+    } catch (error) {
+      console.error('[STREAMING] Failed to write to stream:', error)
+      throw error
+    }
   }
 
   try {
     // Enhanced document search with better relevance scoring
-    sendSSE({ type: 'status', message: 'Searching documentation...' })
+    console.log('[STREAMING] Sending status: Searching documentation...')
+    await sendSSE({ type: 'status', message: 'Searching documentation...' })
+    console.log('[STREAMING] Calling documentSearch.searchDocuments...')
     const relevantDocs = await documentSearch.searchDocuments(message, 5)
+    console.log('[STREAMING] Document search completed, found:', relevantDocs.length)
     
     // Get recent operation logs for context
+    console.log('[STREAMING] Getting recent operations...')
     const recentOperations = await operationLogger.getRecentOperations(24)
+    console.log('[STREAMING] Recent operations retrieved:', recentOperations.length)
+    console.log('[STREAMING] Getting operation summary...')
     const operationSummary = await operationLogger.getOperationSummary(24)
+    console.log('[STREAMING] Operation summary retrieved')
     
     // Build enhanced context
     let context = ''
@@ -174,15 +205,22 @@ async function processStreamingChat(
     }
 
     // Get available AI tools
+    console.log('[STREAMING] Getting available tools...')
     const availableTools = enableTools ? getAvailableTools() : []
+    console.log('[STREAMING] Available tools:', availableTools.length)
     const toolsPrompt = enableTools ? buildToolsPrompt(availableTools) : ''
+    console.log('[STREAMING] Tools prompt built')
 
     // Get or create chat session
+    console.log('[STREAMING] Getting chat session...')
     let session
     if (sessionId) {
       session = await prisma.chatSession.findUnique({
         where: { id: sessionId },
       })
+      console.log('[STREAMING] Session found:', !!session)
+    } else {
+      console.log('[STREAMING] No sessionId provided')
     }
 
     const messages: ChatMessage[] = session ? JSON.parse(session.messages || '[]') : []
@@ -244,7 +282,12 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
     })
 
     // OPTIMIZED: Stream response from Ollama
-    sendSSE({ type: 'status', message: 'Generating response...' })
+    console.log('[STREAMING] Sending status: Generating response...')
+    await sendSSE({ type: 'status', message: 'Generating response...' })
+    
+    console.log('[STREAMING] Calling Ollama API at:', OLLAMA_BASE_URL)
+    console.log('[STREAMING] Using model:', OLLAMA_MODEL)
+    console.log('[STREAMING] Message count:', [systemMessage, ...messages].length)
     
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
@@ -260,22 +303,28 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
       }),
     })
 
+    console.log('[STREAMING] Ollama response status:', response.status)
     if (!response.ok) {
       throw new Error(`Ollama API error: ${response.status}`)
     }
 
     // Stream the response
+    console.log('[STREAMING] Getting response reader...')
     const reader = response.body?.getReader()
     if (!reader) {
       throw new Error('No response body')
     }
 
+    console.log('[STREAMING] Starting to read stream...')
     let fullResponse = ''
     const decoder = new TextDecoder()
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.log('[STREAMING] Stream reading complete')
+        break
+      }
 
       const chunk = decoder.decode(value)
       const lines = chunk.split('\n').filter(line => line.trim())
@@ -289,7 +338,7 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
             fullResponse += content
             
             // Send content chunk to client
-            sendSSE({ 
+            await sendSSE({ 
               type: 'content', 
               content,
               done: false 
@@ -307,12 +356,12 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
 
     // Check for tool calls in the response
     if (enableTools && fullResponse.includes('TOOL_CALL:')) {
-      sendSSE({ type: 'status', message: 'Executing tools...' })
+      await sendSSE({ type: 'status', message: 'Executing tools...' })
       const toolResults = await handleToolCalls(fullResponse)
       
       if (toolResults.length > 0) {
         // Send tool results
-        sendSSE({ 
+        await sendSSE({ 
           type: 'tool_results', 
           results: toolResults 
         })
@@ -325,7 +374,7 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
           toolResults
         )
 
-        sendSSE({ 
+        await sendSSE({ 
           type: 'content', 
           content: followUpResponse,
           done: true 
@@ -352,14 +401,14 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
     }
 
     // Send completion
-    sendSSE({ 
+    await sendSSE({ 
       type: 'done',
       sessionId: sessionId || 'new'
     })
 
   } catch (error) {
     console.error('Streaming error:', error)
-    sendSSE({ 
+    await sendSSE({ 
       type: 'error', 
       error: error instanceof Error ? error.message : 'Unknown error' 
     })
