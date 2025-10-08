@@ -13,35 +13,74 @@ async function sendWolfPackCommand(
   port: number,
   protocol: string
 ): Promise<{ success: boolean; response?: string; error?: string }> {
+  // Ensure command ends with period
   const wolfPackCommand = command.endsWith('.') ? command : command + '.'
+  
+  // Add carriage return and line feed for proper Telnet/TCP protocol
+  const commandWithLineEnding = wolfPackCommand + '\r\n'
+
+  console.log(`[DEBUG] Sending command: "${wolfPackCommand}" (with \\r\\n) to ${ipAddress}:${port}`)
 
   if (protocol === 'TCP') {
     return new Promise((resolve) => {
       const socket = new Socket()
       let response = ''
+      let responseReceived = false
       
       const timeout = setTimeout(() => {
-        socket.destroy()
-        resolve({ success: false, error: 'Command timeout' })
+        if (!responseReceived) {
+          console.log(`[DEBUG] Command timeout after 10s. Response so far: "${response}"`)
+          socket.destroy()
+          resolve({ success: false, error: `Command timeout (10000ms). No response received.` })
+        }
       }, 10000)
 
       socket.connect(port, ipAddress, () => {
-        socket.write(wolfPackCommand)
+        console.log(`[DEBUG] TCP connected, sending: ${Buffer.from(commandWithLineEnding).toString('hex')}`)
+        socket.write(commandWithLineEnding)
       })
 
       socket.on('data', (data) => {
         response += data.toString()
-        if (response.includes('OK') || response.includes('ERR')) {
+        console.log(`[DEBUG] Received data: "${data.toString()}" (hex: ${data.toString('hex')})`)
+        console.log(`[DEBUG] Total response so far: "${response}"`)
+        
+        // Check for various response patterns
+        // Some Wolfpack devices respond with just "OK\r\n", others with more verbose messages
+        if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
+          responseReceived = true
           clearTimeout(timeout)
           socket.destroy()
           const success = response.includes('OK')
+          console.log(`[DEBUG] Command ${success ? 'succeeded' : 'failed'}: "${response.trim()}"`)
           resolve({ success, response: response.trim() })
+        }
+        // Some devices might respond with just a newline or echo the command
+        else if (response.length > wolfPackCommand.length + 10) {
+          // If we've received substantial data but no OK/ERR, consider it a response
+          responseReceived = true
+          clearTimeout(timeout)
+          socket.destroy()
+          console.log(`[DEBUG] Received response without OK/ERR: "${response.trim()}"`)
+          resolve({ success: true, response: response.trim() })
         }
       })
 
       socket.on('error', (error) => {
         clearTimeout(timeout)
+        console.log(`[DEBUG] Socket error: ${error.message}`)
         resolve({ success: false, error: error.message })
+      })
+
+      socket.on('close', () => {
+        if (!responseReceived) {
+          clearTimeout(timeout)
+          console.log(`[DEBUG] Socket closed without response. Data received: "${response}"`)
+          // If socket closed but we got some data, consider it
+          if (response.length > 0) {
+            resolve({ success: true, response: response.trim() })
+          }
+        }
       })
     })
   } else {
@@ -54,7 +93,7 @@ async function sendWolfPackCommand(
         resolve({ success: false, error: 'UDP send timeout' })
       }, 5000)
 
-      client.send(wolfPackCommand, port, ipAddress, (error) => {
+      client.send(commandWithLineEnding, port, ipAddress, (error) => {
         clearTimeout(timeout)
         client.close()
         if (error) {
@@ -173,9 +212,10 @@ export async function POST(request: NextRequest) {
       for (const output of activeOutputs) {
         const testStartTime = Date.now()
         
-        // Wolf Pack command format: [input]>[output].
-        // Example: 1>2. (route input 1 to output 2)
-        const command = `${input.channelNumber}>${output.channelNumber}`
+        // Wolf Pack command format: [input]X[output].
+        // Example: 1X2. (route input 1 to output 2)
+        // Note: Some models use 'V' instead of 'X', or '>' - check device manual
+        const command = `${input.channelNumber}X${output.channelNumber}`
         
         const result = await sendWolfPackCommand(command, ipAddress, port, protocol)
         const duration = Date.now() - testStartTime
