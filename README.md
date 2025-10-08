@@ -3,6 +3,20 @@
 
 AI-powered assistant for sports bar AV system management, troubleshooting, and matrix control.
 
+## 🆕 Latest Updates
+
+### TV Position Detection Fix (Current)
+**Fixed**: TVs are now positioned correctly based on actual layout images using AI vision analysis.
+
+- ✅ Real AI vision integration (OpenAI GPT-4 Vision / Anthropic Claude Vision)
+- ✅ Accurate x/y coordinate detection from uploaded images
+- ✅ Supports 25+ TVs with precise positioning
+- ✅ Fallback grid positioning when API keys not configured
+
+**See**: [TV Position Detection Fix Documentation](docs/TV_POSITION_DETECTION_FIX.md)
+
+**Setup**: Run `./scripts/setup-vision-api.sh` to configure AI vision API keys
+
 ---
 
 ## 🚀 **Quick Start - One-Line Installer**
