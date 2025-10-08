@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateQAsFromRepository, getGenerationJobStatus } from '@/lib/services/qa-generator';
+import { generateQAsFromRepository, getQAGenerationStatus } from '@/lib/services/qa-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const status = await getGenerationJobStatus(jobId);
+    const status = await getQAGenerationStatus(jobId);
 
     if (!status) {
       return NextResponse.json(
