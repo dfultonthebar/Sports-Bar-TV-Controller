@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     await fs.writeFile(filepath, buffer)
     console.log('File saved to:', filepath)
 
-    let imageUrl = `/uploads/layouts/${filename}`
+    let imageUrl = `/api/uploads/layouts/${filename}`
     let convertedImageUrl: string | null = null
 
     // Convert PDF to image if needed
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
           // Clean up the original generated file
           await fs.unlink(imagePath).catch(err => console.log('Cleanup error:', err))
           
-          convertedImageUrl = `/uploads/layouts/${optimizedFilename}`
+          convertedImageUrl = `/api/uploads/layouts/${optimizedFilename}`
           console.log('PDF converted to image:', convertedImageUrl)
         } else {
           console.warn('No PNG file generated from PDF conversion');
