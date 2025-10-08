@@ -105,30 +105,40 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
   const net = require('net')
   
   return new Promise((resolve, reject) => {
+    let responseReceived = false
+    let response = ''
+    
     const client = net.createConnection({ port, host: ipAddress }, () => {
       console.log(`TCP Connected to Wolf Pack at ${ipAddress}:${port}`)
-      client.write(command) // Wolf Pack expects commands without \r\n
+      // Add \r\n for proper Telnet/TCP protocol
+      const commandWithLineEnding = command + '\r\n'
+      console.log(`Sending command: "${command}" (with \\r\\n)`)
+      client.write(commandWithLineEnding)
     })
     
-    client.setTimeout(5000) // 5 second timeout
+    client.setTimeout(10000) // 10 second timeout (increased from 5s)
     
     client.on('data', (data) => {
-      const response = data.toString().trim()
+      response += data.toString()
       console.log(`Wolf Pack TCP response: ${response}`)
       
-      client.end()
-      
-      // Wolf Pack returns "OK" for success, "ERR" for failure
-      if (response === 'OK') {
-        resolve(true)
-      } else {
-        console.error(`Wolf Pack command failed: ${response}`)
-        resolve(false)
+      // Check for response completion
+      if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
+        responseReceived = true
+        client.end()
+        
+        // Wolf Pack returns "OK" for success, "ERR" for failure
+        if (response.includes('OK')) {
+          resolve(true)
+        } else {
+          console.error(`Wolf Pack command failed: ${response}`)
+          resolve(false)
+        }
       }
     })
     
     client.on('timeout', () => {
-      console.error('TCP connection timeout')
+      console.error(`TCP connection timeout. Response so far: "${response}"`)
       client.destroy()
       resolve(false)
     })
@@ -136,6 +146,14 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
     client.on('error', (err) => {
       console.error('TCP connection error:', err.message)
       resolve(false)
+    })
+    
+    client.on('close', () => {
+      if (!responseReceived && response.length > 0) {
+        console.log(`Connection closed. Response received: "${response}"`)
+        // If we got some response but no explicit OK/ERR, consider it based on content
+        resolve(response.length > 0)
+      }
     })
   })
 }
@@ -147,7 +165,9 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket('udp4')
     
-    const message = Buffer.from(command)
+    // Add \r\n for proper protocol
+    const commandWithLineEnding = command + '\r\n'
+    const message = Buffer.from(commandWithLineEnding)
     
     client.send(message, port, ipAddress, (err) => {
       if (err) {
@@ -168,7 +188,7 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
       client.close()
       
       // Wolf Pack returns "OK" for success, "ERR" for failure
-      if (response === 'OK') {
+      if (response.includes('OK')) {
         resolve(true)
       } else {
         console.error(`Wolf Pack command failed: ${response}`)
