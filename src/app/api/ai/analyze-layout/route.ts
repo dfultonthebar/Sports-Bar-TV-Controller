@@ -1,20 +1,27 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 /**
  * Layout Analysis API - Fixed to support 25+ TV layouts
  * 
- * Key fixes:
+ * Key features:
  * 1. Removed 12-output limit - now creates outputs for ALL detected TVs
  * 2. Improved position mapping to handle 25+ TVs with better spacing
  * 3. Enhanced TV detection to support larger layouts (up to 100 TVs)
  * 4. Better fallback positioning for grid layouts
+ * 5. **NEW**: Reads actual Wolfpack output configuration from database
+ * 6. **NEW**: Maps TVs only to configured/active Wolfpack outputs
  * 
  * The API now:
  * - Detects all TVs from layout descriptions/images
- * - Creates output mappings for every TV (not limited by active outputs)
+ * - Queries actual Wolfpack outputs from MatrixConfiguration database
+ * - Creates output mappings using real Wolfpack output numbers (not arbitrary)
  * - Positions TVs intelligently based on wall locations
  * - Supports layouts with 25+ TVs like the Graystone layout
+ * - Warns if more TVs detected than available Wolfpack outputs
  */
 
 interface TVLocation {
@@ -58,14 +65,45 @@ export async function POST(request: NextRequest) {
     const tvLocations = await parseLayoutDescription(layoutDescription, imageUrl)
     console.log('AI Analysis - Parsed Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
-    // Get available (active) outputs from matrix configuration
+    // Get actual Wolfpack outputs from database configuration
     let activeOutputs: any[] = []
-    if (availableOutputs && Array.isArray(availableOutputs)) {
-      activeOutputs = availableOutputs.filter(output => 
-        output.status === 'active' || !output.status // default to active if no status
-      )
-      console.log('AI Analysis - Active Outputs:', activeOutputs.length, 'of', availableOutputs.length, 'total')
+    try {
+      const config = await prisma.matrixConfiguration.findFirst({
+        where: { isActive: true },
+        include: {
+          outputs: {
+            where: { 
+              isActive: true,
+              status: 'active'
+            },
+            orderBy: { channelNumber: 'asc' }
+          }
+        }
+      })
+      
+      if (config && config.outputs) {
+        activeOutputs = config.outputs
+        console.log('AI Analysis - Loaded Wolfpack Outputs from DB:', activeOutputs.length, 'active outputs')
+      } else {
+        console.log('AI Analysis - No active Wolfpack configuration found, using fallback')
+        // Fallback to provided outputs if database query fails
+        if (availableOutputs && Array.isArray(availableOutputs)) {
+          activeOutputs = availableOutputs.filter(output => 
+            output.status === 'active' || !output.status
+          )
+        }
+      }
+    } catch (dbError) {
+      console.error('AI Analysis - Database query failed:', dbError)
+      // Fallback to provided outputs
+      if (availableOutputs && Array.isArray(availableOutputs)) {
+        activeOutputs = availableOutputs.filter(output => 
+          output.status === 'active' || !output.status
+        )
+      }
     }
+    
+    console.log('AI Analysis - Active Outputs:', activeOutputs.length, 'outputs available')
     
     // Generate intelligent output mappings only for active outputs
     const suggestions = generateOutputMappings(tvLocations, matrixOutputs, activeOutputs)
@@ -94,6 +132,8 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to analyze layout' },
       { status: 500 }
     )
+  } finally {
+    await prisma.$disconnect()
   }
 }
 
@@ -342,20 +382,29 @@ function extractPositionFromWall(wallType: string, markerNumber: number): { x: n
 function generateOutputMappings(locations: TVLocation[], matrixOutputs: number = 36, activeOutputs: any[] = []) {
   const suggestions: any[] = []
   
-  // Get available output numbers - prioritize using ALL outputs up to matrixOutputs
-  // This ensures we can map all TVs from the layout, not just active ones
+  // Use actual Wolfpack output numbers from the database configuration
   let availableOutputNumbers: number[] = []
   
-  // Always generate output numbers for all detected TVs, up to matrix capacity
-  const maxOutputs = Math.max(matrixOutputs, locations.length)
-  availableOutputNumbers = Array.from({ length: maxOutputs }, (_, i) => i + 1)
-  console.log(`Generated ${availableOutputNumbers.length} output numbers for ${locations.length} TV locations`)
+  if (activeOutputs.length > 0) {
+    // Extract actual output channel numbers from Wolfpack configuration
+    availableOutputNumbers = activeOutputs.map(output => output.channelNumber).sort((a, b) => a - b)
+    console.log(`Using ${availableOutputNumbers.length} actual Wolfpack output numbers:`, availableOutputNumbers)
+  } else {
+    // Fallback: generate output numbers if no active outputs configured
+    console.warn('No active Wolfpack outputs found - generating fallback output numbers')
+    const maxOutputs = Math.max(matrixOutputs, locations.length)
+    availableOutputNumbers = Array.from({ length: maxOutputs }, (_, i) => i + 1)
+    console.log(`Generated ${availableOutputNumbers.length} fallback output numbers for ${locations.length} TV locations`)
+  }
   
-  // Process ALL locations - don't limit based on active outputs
-  // The frontend/user can decide which outputs to actually use
-  const locationsToProcess = locations
+  // Limit locations to available outputs to prevent mapping to non-existent outputs
+  const locationsToProcess = locations.slice(0, availableOutputNumbers.length)
   
-  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available output slots`)
+  if (locations.length > availableOutputNumbers.length) {
+    console.warn(`Warning: ${locations.length} TVs detected but only ${availableOutputNumbers.length} Wolfpack outputs available. Mapping first ${availableOutputNumbers.length} TVs only.`)
+  }
+  
+  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available Wolfpack outputs`)
   
   for (let i = 0; i < locationsToProcess.length; i++) {
     const location = locationsToProcess[i]
