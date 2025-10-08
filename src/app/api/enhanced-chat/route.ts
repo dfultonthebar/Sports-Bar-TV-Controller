@@ -4,38 +4,51 @@ import { prisma } from '@/lib/db'
 import { EnhancedAIClient } from '@/lib/enhanced-ai-client'
 
 export async function POST(request: NextRequest) {
+  console.log('[ENHANCED-CHAT] POST request received')
   try {
+    console.log('[ENHANCED-CHAT] Parsing request body...')
     const { message, sessionId, chatType = 'general', context } = await request.json()
+    console.log('[ENHANCED-CHAT] Request parsed:', { message: message?.substring(0, 50), sessionId, chatType })
 
     if (!message) {
+      console.log('[ENHANCED-CHAT] No message provided')
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
     // Initialize enhanced AI client
+    console.log('[ENHANCED-CHAT] Initializing EnhancedAIClient...')
     const enhancedAI = new EnhancedAIClient()
 
     // Search for relevant documents based on the message
+    console.log('[ENHANCED-CHAT] Searching for relevant documents...')
     const relevantDocs = await searchRelevantDocuments(message)
+    console.log('[ENHANCED-CHAT] Found documents:', relevantDocs.length)
     const documentContext = relevantDocs.map(doc => 
       `Document: ${doc.originalName}\nContent: ${doc.content?.substring(0, 1500)}...`
     ).join('\n\n')
 
     // Combine context from documents and user-provided context
+    console.log('[ENHANCED-CHAT] Building full context...')
     const fullContext = [documentContext, context].filter(Boolean).join('\n\n')
 
     // Get or create chat session
+    console.log('[ENHANCED-CHAT] Getting chat session...')
     let session
     if (sessionId) {
       session = await prisma.chatSession.findUnique({
         where: { id: sessionId },
       })
+      console.log('[ENHANCED-CHAT] Session found:', !!session)
     }
 
     const messages = session ? JSON.parse(session.messages || '[]') : []
     messages.push({ role: 'user', content: message })
+    console.log('[ENHANCED-CHAT] Message count:', messages.length)
 
     // Get enhanced AI response
+    console.log('[ENHANCED-CHAT] Calling enhancedAI.enhancedChat...')
     const aiResponse = await enhancedAI.enhancedChat(messages, fullContext)
+    console.log('[ENHANCED-CHAT] AI response received:', aiResponse.error ? 'ERROR' : 'SUCCESS')
 
     if (aiResponse.error) {
       return NextResponse.json({
