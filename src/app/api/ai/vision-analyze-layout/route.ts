@@ -126,7 +126,7 @@ Return your analysis as a JSON object with this exact structure:
   "detections": [
     {
       "number": <TV number>,
-      "label": "TV <number>",
+      "label": "TV <number with leading zero>",
       "position": {
         "x": <percentage 0-100>,
         "y": <percentage 0-100>
@@ -140,9 +140,11 @@ Return your analysis as a JSON object with this exact structure:
 Important:
 - Look for numbered markers, TV icons, screen symbols, or labeled positions
 - Calculate positions accurately based on where the TV appears in the image
-- If you see "TV 1", "1", "Marker 1", etc., use that as the number
+- If you see "TV 01", "TV 02", etc., use the exact label format with leading zeros
+- If you see "TV 1", "1", "Marker 1", etc., convert to "TV 01" format with leading zero
+- The label format MUST be "TV 01", "TV 02", ..., "TV 25" (with leading zeros for numbers 1-9)
 - Be precise with x/y coordinates - they should reflect actual positions in the image
-- If no numbers are visible, number them sequentially from 1
+- If no numbers are visible, number them sequentially from 1 using the "TV 01" format
 - Confidence should be 90-100 if clearly visible, 70-89 if partially visible, below 70 if uncertain`
             },
             {
@@ -253,7 +255,7 @@ Return your analysis as a JSON object with this exact structure:
   "detections": [
     {
       "number": <TV number>,
-      "label": "TV <number>",
+      "label": "TV <number with leading zero>",
       "position": {
         "x": <percentage 0-100>,
         "y": <percentage 0-100>
@@ -267,9 +269,11 @@ Return your analysis as a JSON object with this exact structure:
 Important:
 - Look for numbered markers, TV icons, screen symbols, or labeled positions
 - Calculate positions accurately based on where the TV appears in the image
-- If you see "TV 1", "1", "Marker 1", etc., use that as the number
+- If you see "TV 01", "TV 02", etc., use the exact label format with leading zeros
+- If you see "TV 1", "1", "Marker 1", etc., convert to "TV 01" format with leading zero
+- The label format MUST be "TV 01", "TV 02", ..., "TV 25" (with leading zeros for numbers 1-9)
 - Be precise with x/y coordinates - they should reflect actual positions in the image
-- If no numbers are visible, number them sequentially from 1
+- If no numbers are visible, number them sequentially from 1 using the "TV 01" format
 - Confidence should be 90-100 if clearly visible, 70-89 if partially visible, below 70 if uncertain`
             }
           ]
@@ -321,9 +325,13 @@ async function fallbackAnalysis(imageUrl?: string, imagePath?: string): Promise<
     const col = i % cols
     const row = Math.floor(i / cols)
     
+    // Format label with leading zero to match Wolfpack output format (TV 01, TV 02, etc.)
+    const tvNumber = i + 1
+    const formattedLabel = `TV ${tvNumber.toString().padStart(2, '0')}`
+    
     detections.push({
-      number: i + 1,
-      label: `TV ${i + 1}`,
+      number: tvNumber,
+      label: formattedLabel,
       position: {
         x: 15 + (col * 70 / (cols - 1)),
         y: 15 + (row * 70 / (rows - 1))

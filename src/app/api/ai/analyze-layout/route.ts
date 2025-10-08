@@ -469,6 +469,8 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     const priority = determineLocationPriority(location)
     
     // Generate smart labels based on position
+    // Note: Vision API should return labels in "TV 01", "TV 02" format (with leading zeros)
+    // to match Wolfpack output labels
     const label = generateSmartLabel(location)
     
     // Use output numbers in order (1-to-1 mapping with TV numbers when possible)
