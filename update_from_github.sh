@@ -17,7 +17,6 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/Sports-Bar-TV-Controller}"
 readonly LOG_FILE="$PROJECT_DIR/update.log"
-readonly SERVER_PORT=3000
 readonly PM2_APP_NAME="sports-bar-tv-controller"
 readonly BACKUP_DIR="$HOME/sports-bar-backups"
 
@@ -96,6 +95,28 @@ check_prerequisites() {
     fi
     
     log_success "All prerequisites met"
+}
+
+# =============================================================================
+# PORT DETECTION
+# =============================================================================
+get_server_port() {
+    local port=3000  # Default fallback
+    
+    # Try to extract port from ecosystem.config.js
+    if [ -f "$PROJECT_DIR/ecosystem.config.js" ]; then
+        # Extract PORT value from env section
+        local extracted_port=$(grep -A 10 "env:" "$PROJECT_DIR/ecosystem.config.js" | \
+                              grep "PORT:" | \
+                              sed 's/.*PORT:[[:space:]]*\([0-9]*\).*/\1/' | \
+                              head -1)
+        
+        if [ -n "$extracted_port" ] && [ "$extracted_port" -gt 0 ] 2>/dev/null; then
+            port=$extracted_port
+        fi
+    fi
+    
+    echo "$port"
 }
 
 # =============================================================================
@@ -295,6 +316,9 @@ save_pm2_config() {
 # VERIFICATION
 # =============================================================================
 verify_app_running() {
+    # Get the actual port from ecosystem.config.js
+    local SERVER_PORT=$(get_server_port)
+    
     log_info "Verifying application is running..."
     
     # Check PM2 status
