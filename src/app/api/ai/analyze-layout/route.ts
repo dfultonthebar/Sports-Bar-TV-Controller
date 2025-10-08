@@ -61,9 +61,49 @@ export async function POST(request: NextRequest) {
     
     console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs, imageUrl })
     
-    // Parse the AI-analyzed layout description to extract TV locations
-    const tvLocations = await parseLayoutDescription(layoutDescription, imageUrl)
-    console.log('AI Analysis - Parsed Locations:', tvLocations.length, tvLocations.slice(0, 3))
+    // NEW: Use AI Vision to detect TV positions from the actual image
+    let tvLocations: TVLocation[] = []
+    
+    if (imageUrl) {
+      console.log('AI Analysis - Using Vision API to detect TV positions from image')
+      try {
+        const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/ai/vision-analyze-layout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl })
+        })
+        
+        if (visionResponse.ok) {
+          const visionData = await visionResponse.json()
+          if (visionData.analysis && visionData.analysis.detections) {
+            // Convert vision detections to TVLocation format
+            tvLocations = visionData.analysis.detections.map((detection: any) => ({
+              number: detection.number,
+              description: detection.description || `TV ${detection.number}`,
+              position: {
+                x: detection.position.x,
+                y: detection.position.y,
+                wall: determineWallFromPosition(detection.position.x, detection.position.y)
+              }
+            }))
+            console.log('AI Analysis - Vision detected', tvLocations.length, 'TVs with accurate positions')
+          }
+        } else {
+          console.warn('AI Analysis - Vision API failed, falling back to description parsing')
+        }
+      } catch (visionError) {
+        console.error('AI Analysis - Vision API error:', visionError)
+        console.log('AI Analysis - Falling back to description parsing')
+      }
+    }
+    
+    // Fallback: Parse the layout description if vision analysis failed or no image provided
+    if (tvLocations.length === 0) {
+      console.log('AI Analysis - Using description parsing (fallback)')
+      tvLocations = await parseLayoutDescription(layoutDescription, imageUrl)
+    }
+    
+    console.log('AI Analysis - Final Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
     // Get actual Wolfpack outputs from database configuration
     let activeOutputs: any[] = []
@@ -135,6 +175,24 @@ export async function POST(request: NextRequest) {
   } finally {
     await prisma.$disconnect()
   }
+}
+
+function determineWallFromPosition(x: number, y: number): string {
+  // Determine wall based on position percentages
+  const EDGE_THRESHOLD = 20 // Within 20% of edge is considered a wall
+  
+  if (x < EDGE_THRESHOLD) return 'left'
+  if (x > 100 - EDGE_THRESHOLD) return 'right'
+  if (y < EDGE_THRESHOLD) return 'top'
+  if (y > 100 - EDGE_THRESHOLD) return 'bottom'
+  
+  // Check corners
+  if (x < EDGE_THRESHOLD * 1.5 && y < EDGE_THRESHOLD * 1.5) return 'corner'
+  if (x > 100 - EDGE_THRESHOLD * 1.5 && y < EDGE_THRESHOLD * 1.5) return 'corner'
+  if (x < EDGE_THRESHOLD * 1.5 && y > 100 - EDGE_THRESHOLD * 1.5) return 'corner'
+  if (x > 100 - EDGE_THRESHOLD * 1.5 && y > 100 - EDGE_THRESHOLD * 1.5) return 'corner'
+  
+  return 'center'
 }
 
 async function parseLayoutDescription(description: string, imageUrl?: string): Promise<TVLocation[]> {
