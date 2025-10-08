@@ -14,8 +14,9 @@ const prisma = new PrismaClient();
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = 'phi3:mini'; // OPTIMIZED: Changed to faster model
 const FALLBACK_MODEL = 'llama3.2:3b'; // Fallback if phi3:mini not available
-const QA_GENERATION_TIMEOUT = 180000; // OPTIMIZED: Increased from 60s to 180s
-const MAX_CONCURRENT_FILES = 5; // OPTIMIZED: Process up to 5 files in parallel
+const QA_GENERATION_TIMEOUT = 300000; // OPTIMIZED: Increased from 180s to 300s (5 minutes) for large files
+const MAX_CONCURRENT_FILES = 3; // OPTIMIZED: Reduced from 5 to 3 to prevent Ollama overload
+const MAX_FILE_SIZE_MB = 5; // Skip files larger than 5MB to prevent timeouts
 
 export interface QAGenerationOptions {
   sourceType: 'repository' | 'documentation' | 'codebase';
@@ -128,7 +129,28 @@ async function processQAGeneration(
     
     const processFile = async (file: string, index: number) => {
       try {
-        console.log(`[${index + 1}/${files.length}] Processing: ${file}`);
+        // Check if file has already been processed (has Q&As in database)
+        const existingQAs = await prisma.qAEntry.findFirst({
+          where: { sourceFile: file },
+        });
+        
+        if (existingQAs) {
+          console.log(`[${index + 1}/${files.length}] Skipping already processed file: ${file}`);
+          return { success: true, qas: [], skipped: true };
+        }
+        
+        // Check file size before processing
+        const stats = fs.statSync(file);
+        const fileSizeMB = stats.size / (1024 * 1024);
+        
+        if (fileSizeMB > MAX_FILE_SIZE_MB) {
+          console.warn(`[${index + 1}/${files.length}] Skipping large file (${fileSizeMB.toFixed(2)}MB): ${file}`);
+          errors.push(`${file}: File too large (${fileSizeMB.toFixed(2)}MB), skipped to prevent timeout`);
+          failedFiles++;
+          return { success: false, qas: [] };
+        }
+        
+        console.log(`[${index + 1}/${files.length}] Processing (${fileSizeMB.toFixed(2)}MB): ${file}`);
         
         const qas = await generateQAsFromFile(file, options);
         
@@ -179,8 +201,11 @@ async function processQAGeneration(
     );
 
     // Aggregate results
-    processedFiles = results.length;
+    const skippedFiles = results.filter(r => r.skipped).length;
+    processedFiles = results.length - skippedFiles;
     generatedQAs = results.reduce((sum, r) => sum + r.qas.length, 0);
+    
+    console.log(`Summary: ${processedFiles} processed, ${skippedFiles} skipped (already processed), ${failedFiles} failed`);
 
     // Update progress
     await prisma.qAGenerationJob.update({
@@ -395,7 +420,9 @@ Focus on practical, actionable information. Ensure answers are complete and self
       clearTimeout(timeoutId);
       
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Q&A generation timed out after ${QA_GENERATION_TIMEOUT / 1000}s for ${fileName}`);
+        const timeoutSeconds = QA_GENERATION_TIMEOUT / 1000;
+        console.error(`Q&A generation timed out after ${timeoutSeconds}s for ${fileName}`);
+        throw new Error(`Q&A generation timed out after ${timeoutSeconds}s. File may be too large or complex. Consider increasing MAX_FILE_SIZE_MB or QA_GENERATION_TIMEOUT.`);
       }
       throw error;
     }
@@ -448,4 +475,159 @@ export async function getQAGenerationStatus(jobId: string) {
   return await prisma.qAGenerationJob.findUnique({
     where: { id: jobId },
   });
+}
+
+/**
+ * Get all Q&A entries from the database
+ */
+export async function getAllQAEntries(filters?: {
+  category?: string;
+  sourceType?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const where: any = {};
+  
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+  
+  if (filters?.sourceType) {
+    where.sourceType = filters.sourceType;
+  }
+
+  const entries = await prisma.qAEntry.findMany({
+    where,
+    take: filters?.limit || 100,
+    skip: filters?.offset || 0,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const total = await prisma.qAEntry.count({ where });
+
+  return {
+    entries,
+    total,
+    limit: filters?.limit || 100,
+    offset: filters?.offset || 0,
+  };
+}
+
+/**
+ * Search Q&A entries
+ */
+export async function searchQAEntries(query: string, filters?: {
+  category?: string;
+  sourceType?: string;
+  limit?: number;
+}) {
+  const where: any = {
+    OR: [
+      { question: { contains: query, mode: 'insensitive' } },
+      { answer: { contains: query, mode: 'insensitive' } },
+      { tags: { has: query } },
+    ],
+  };
+
+  if (filters?.category) {
+    where.category = filters.category;
+  }
+
+  if (filters?.sourceType) {
+    where.sourceType = filters.sourceType;
+  }
+
+  const entries = await prisma.qAEntry.findMany({
+    where,
+    take: filters?.limit || 50,
+    orderBy: { confidence: 'desc' },
+  });
+
+  return {
+    entries,
+    total: entries.length,
+    query,
+  };
+}
+
+/**
+ * Update a Q&A entry
+ */
+export async function updateQAEntry(
+  id: string,
+  data: {
+    question?: string;
+    answer?: string;
+    category?: string;
+    tags?: string[];
+    confidence?: number;
+    isVerified?: boolean;
+  }
+) {
+  return await prisma.qAEntry.update({
+    where: { id },
+    data: {
+      ...data,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Delete a Q&A entry
+ */
+export async function deleteQAEntry(id: string) {
+  return await prisma.qAEntry.delete({
+    where: { id },
+  });
+}
+
+/**
+ * Get Q&A statistics
+ */
+export async function getQAStatistics() {
+  const [
+    totalEntries,
+    verifiedEntries,
+    categoryCounts,
+    sourceTypeCounts,
+    recentJobs,
+  ] = await Promise.all([
+    prisma.qAEntry.count(),
+    prisma.qAEntry.count({ where: { isVerified: true } }),
+    prisma.qAEntry.groupBy({
+      by: ['category'],
+      _count: true,
+    }),
+    prisma.qAEntry.groupBy({
+      by: ['sourceType'],
+      _count: true,
+    }),
+    prisma.qAGenerationJob.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  return {
+    totalEntries,
+    verifiedEntries,
+    unverifiedEntries: totalEntries - verifiedEntries,
+    categoryCounts: categoryCounts.map(c => ({
+      category: c.category,
+      count: c._count,
+    })),
+    sourceTypeCounts: sourceTypeCounts.map(s => ({
+      sourceType: s.sourceType,
+      count: s._count,
+    })),
+    recentJobs: recentJobs.map(job => ({
+      id: job.id,
+      status: job.status,
+      sourceType: job.sourceType,
+      entriesGenerated: job.entriesGenerated,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+    })),
+  };
 }
