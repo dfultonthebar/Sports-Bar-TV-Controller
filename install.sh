@@ -843,11 +843,62 @@ setup_pm2() {
     
     cd "$INSTALL_DIR"
     
-    # Stop any existing PM2 processes for this app
-    if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME"; then
-        log_and_print "Stopping existing PM2 process..."
-        pm2 stop "$SERVICE_NAME" >> "$LOG_FILE" 2>&1 || true
-        pm2 delete "$SERVICE_NAME" >> "$LOG_FILE" 2>&1 || true
+    # Clean up any existing PM2 processes that might conflict with port 3000
+    print_info "Checking for existing PM2 processes on port 3000..."
+    
+    # Get list of all PM2 processes
+    local pm2_processes=$(pm2 jlist 2>/dev/null || echo "[]")
+    
+    # Check if any processes are using port 3000 or match our service names
+    local processes_to_delete=()
+    
+    # Look for processes with our service name or old variations
+    while IFS= read -r process_name; do
+        if [ -n "$process_name" ]; then
+            processes_to_delete+=("$process_name")
+            print_info "Found existing process: $process_name"
+        fi
+    done < <(echo "$pm2_processes" | jq -r '.[] | select(.name | test("sportsbar|sports-bar-tv")) | .name' 2>/dev/null || true)
+    
+    # Also check for processes using port 3000 by examining their environment/script
+    while IFS= read -r process_info; do
+        if [ -n "$process_info" ]; then
+            local proc_name=$(echo "$process_info" | jq -r '.name' 2>/dev/null || true)
+            local proc_script=$(echo "$process_info" | jq -r '.pm2_env.pm_exec_path // ""' 2>/dev/null || true)
+            
+            # Check if this process might be using port 3000 (Next.js default)
+            if [[ "$proc_script" == *"next"* ]] || [[ "$proc_script" == *"start"* ]]; then
+                if [[ ! " ${processes_to_delete[@]} " =~ " ${proc_name} " ]]; then
+                    print_warning "Found potential port 3000 process: $proc_name"
+                    processes_to_delete+=("$proc_name")
+                fi
+            fi
+        fi
+    done < <(echo "$pm2_processes" | jq -c '.[]' 2>/dev/null || true)
+    
+    # Delete all identified processes
+    if [ ${#processes_to_delete[@]} -gt 0 ]; then
+        print_warning "Cleaning up ${#processes_to_delete[@]} existing PM2 process(es)..."
+        for process_name in "${processes_to_delete[@]}"; do
+            print_info "Stopping and removing: $process_name"
+            pm2 stop "$process_name" >> "$LOG_FILE" 2>&1 || true
+            pm2 delete "$process_name" >> "$LOG_FILE" 2>&1 || true
+        done
+        print_success "Cleaned up existing PM2 processes"
+        
+        # Wait a moment for ports to be released
+        sleep 2
+    else
+        print_info "No existing PM2 processes found that conflict with port 3000"
+    fi
+    
+    # Verify port 3000 is actually free before starting
+    if netstat -tuln 2>/dev/null | grep -q ":3000 " || ss -tuln 2>/dev/null | grep -q ":3000 "; then
+        print_error "Port 3000 is still in use after cleanup!"
+        print_error "Please manually check what's using port 3000:"
+        echo "  sudo lsof -i :3000"
+        echo "  sudo netstat -tulpn | grep :3000"
+        exit 1
     fi
     
     # Start application with PM2
