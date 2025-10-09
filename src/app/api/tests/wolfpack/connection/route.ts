@@ -3,7 +3,7 @@ import { Socket } from 'net'
 import dgram from 'dgram'
 
 // Import PrismaClient directly to avoid bundling issues
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   
   try {
     // Create a new Prisma client instance
-    prisma = new PrismaClient()
+    // Using singleton prisma from @/lib/db
     
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({

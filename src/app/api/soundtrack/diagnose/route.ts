@@ -1,10 +1,9 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
 
-const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
