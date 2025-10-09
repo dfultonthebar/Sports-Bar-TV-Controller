@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity, Info } from 'lucide-react'
+import { Trash2, Plus, Settings, Wifi, WifiOff, Volume2, VolumeX, Play, BarChart3, AlertCircle, CheckCircle, ExternalLink, Zap, Activity, Info, Edit3, Save } from 'lucide-react'
 import InputLevelMonitor from './InputLevelMonitor'
 import AIGainControlPanel from './AIGainControlPanel'
 import { getModelSpec, formatInputName, type AtlasModelSpec } from '@/lib/atlas-models-config'
@@ -43,6 +43,8 @@ export default function AudioProcessorManager() {
   const [zones, setZones] = useState<AudioZone[]>([])
   const [selectedProcessor, setSelectedProcessor] = useState<AudioProcessor | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editingProcessor, setEditingProcessor] = useState<AudioProcessor | null>(null)
   const [showZoneForm, setShowZoneForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error'} | null>(null)
@@ -148,6 +150,71 @@ export default function AudioProcessorManager() {
       }
     } catch (error) {
       console.error('Error adding processor:', error)
+      showMessage('Failed to connect to server', 'error')
+    }
+  }
+
+  const openEditProcessor = (processor: AudioProcessor) => {
+    setEditingProcessor(processor)
+    setFormData({
+      name: processor.name,
+      model: processor.model,
+      ipAddress: processor.ipAddress,
+      port: processor.port,
+      description: processor.description || '',
+      username: 'admin', // Default, will be loaded from server if exists
+      password: '' // Don't pre-fill password for security
+    })
+    setShowEditForm(true)
+    setShowAddForm(false)
+  }
+
+  const updateProcessor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingProcessor) return
+
+    try {
+      const updateData: any = {
+        id: editingProcessor.id,
+        name: formData.name,
+        model: formData.model,
+        ipAddress: formData.ipAddress,
+        port: formData.port,
+        zones: formData.model.includes('8') ? 8 : 4,
+        description: formData.description
+      }
+
+      // Only include credentials if username is provided
+      if (formData.username) {
+        updateData.username = formData.username
+        // Only update password if a new one is provided
+        if (formData.password) {
+          updateData.password = formData.password
+        }
+      }
+
+      const response = await fetch(`/api/audio-processor`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setProcessors(processors.map(p => p.id === editingProcessor.id ? data.processor : p))
+        if (selectedProcessor?.id === editingProcessor.id) {
+          setSelectedProcessor(data.processor)
+        }
+        setShowEditForm(false)
+        setEditingProcessor(null)
+        setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+        showMessage('Audio processor updated successfully')
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to update processor', 'error')
+      }
+    } catch (error) {
+      console.error('Error updating processor:', error)
       showMessage('Failed to connect to server', 'error')
     }
   }
@@ -541,6 +608,176 @@ export default function AudioProcessorManager() {
         </Card>
       )}
 
+      {/* Edit Processor Form */}
+      {showEditForm && (
+        <Card className="border-2 border-green-100 shadow-xl">
+          <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-lg">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <CardTitle className="text-xl text-green-900 flex items-center gap-2">
+                  <Edit3 className="h-5 w-5" />
+                  Edit Audio Processor
+                </CardTitle>
+                <CardDescription className="text-green-700">
+                  Update processor configuration and credentials
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => {
+                  setShowEditForm(false)
+                  setEditingProcessor(null)
+                  setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+                }}
+                variant="ghost"
+                size="sm"
+                className="text-slate-400 hover:text-slate-200"
+              >
+                ✕
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={updateProcessor} className="space-y-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Basic Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Processor Name *</label>
+                    <Input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      placeholder="Main Bar Audio"
+                      required
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Model</label>
+                    <select
+                      value={formData.model}
+                      onChange={(e) => setFormData({...formData, model: e.target.value})}
+                      className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="AZM4">AZM4 (4-Zone Controller)</option>
+                      <option value="AZM8">AZM8 (8-Zone Controller)</option>
+                      <option value="AZMP4">AZMP4 (4-Zone + Power Amplifier)</option>
+                      <option value="AZMP8">AZMP8 (8-Zone + Power Amplifier)</option>
+                      <option value="AZM4-D">AZM4-D (4-Zone + Dante Network)</option>
+                      <option value="AZM8-D">AZM8-D (8-Zone + Dante Network)</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-100">Description</label>
+                  <Input
+                    type="text"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    placeholder="Main dining area audio control"
+                    className="border-slate-700 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              {/* Network Configuration */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Network Configuration</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-slate-100">IP Address *</label>
+                    <Input
+                      type="text"
+                      value={formData.ipAddress}
+                      onChange={(e) => setFormData({...formData, ipAddress: e.target.value})}
+                      placeholder="192.168.1.100"
+                      required
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Static IP address of the processor</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Port</label>
+                    <Input
+                      type="number"
+                      value={formData.port}
+                      onChange={(e) => setFormData({...formData, port: parseInt(e.target.value)})}
+                      placeholder="80"
+                      min="1"
+                      max="65535"
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Usually 80 (HTTP)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Authentication */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Authentication</h4>
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-800 dark:text-blue-300">
+                      <p className="font-medium mb-1">Atlas processors typically require authentication</p>
+                      <p>Default credentials are usually <strong>admin/admin</strong>. If you leave these fields empty, the system will attempt to auto-detect credentials during connection testing.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Username</label>
+                    <Input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => setFormData({...formData, username: e.target.value})}
+                      placeholder="admin"
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Web interface username (default: admin)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Password</label>
+                    <Input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      placeholder="admin"
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Leave blank to keep existing password</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                <Button
+                  type="submit"
+                  className="bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-initial"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Update Processor
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowEditForm(false)
+                    setEditingProcessor(null)
+                    setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+                  }}
+                  variant="outline"
+                  className="flex-1 sm:flex-initial"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       {processors.length === 0 ? (
         <Card className="border-2 border-dashed border-slate-700">
           <CardContent className="text-center py-12">
@@ -576,22 +813,36 @@ export default function AudioProcessorManager() {
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <h3 className="font-semibold text-slate-100">{processor.name}</h3>
                       <p className="text-sm text-slate-300">{processor.model}</p>
                     </div>
-                    <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
-                      ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
-                      ${processor.status === 'offline' ? 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700' : ''}
-                      ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
-                    `}>
-                      <div className="flex items-center gap-1.5">
-                        {processor.status === 'online' && <CheckCircle className="h-3 w-3" />}
-                        {processor.status === 'offline' && <WifiOff className="h-3 w-3" />}
-                        {processor.status === 'error' && <AlertCircle className="h-3 w-3" />}
-                        {processor.status.charAt(0).toUpperCase() + processor.status.slice(1)}
-                      </div>
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
+                        ${processor.status === 'online' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : ''}
+                        ${processor.status === 'offline' ? 'bg-slate-800 or bg-slate-900 text-slate-100 border-slate-700' : ''}
+                        ${processor.status === 'error' ? 'bg-red-100 text-red-800 border-red-300' : ''}
+                      `}>
+                        <div className="flex items-center gap-1.5">
+                          {processor.status === 'online' && <CheckCircle className="h-3 w-3" />}
+                          {processor.status === 'offline' && <WifiOff className="h-3 w-3" />}
+                          {processor.status === 'error' && <AlertCircle className="h-3 w-3" />}
+                          {processor.status.charAt(0).toUpperCase() + processor.status.slice(1)}
+                        </div>
+                      </Badge>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEditProcessor(processor)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-green-600 border-green-200 hover:bg-green-50"
+                        title="Edit Processor"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2 text-xs text-slate-400">

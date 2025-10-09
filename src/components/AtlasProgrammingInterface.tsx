@@ -35,7 +35,8 @@ import {
   MessageSquare,
   Clock,
   Music,
-  Headphones
+  Headphones,
+  Info
 } from 'lucide-react'
 
 interface AtlasProcessor {
@@ -48,6 +49,8 @@ interface AtlasProcessor {
   zones: number
   inputs: number
   outputs: number
+  username?: string
+  hasCredentials?: boolean
 }
 
 interface InputConfig {
@@ -122,13 +125,17 @@ export default function AtlasProgrammingInterface() {
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error'} | null>(null)
   const [outputGroups, setOutputGroups] = useState<{[key: string]: string}>({}) // groupId -> groupName mapping
   const [showAddProcessor, setShowAddProcessor] = useState(false)
+  const [showEditProcessor, setShowEditProcessor] = useState(false)
+  const [editingProcessor, setEditingProcessor] = useState<AtlasProcessor | null>(null)
   const [newProcessor, setNewProcessor] = useState({
     name: '',
     model: 'AZM8',
     ipAddress: '',
     port: 80,
     zones: 8,
-    description: ''
+    description: '',
+    username: 'admin',
+    password: 'admin'
   })
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
@@ -452,7 +459,9 @@ export default function AtlasProgrammingInterface() {
           ipAddress: '',
           port: 80,
           zones: 8,
-          description: ''
+          description: '',
+          username: 'admin',
+          password: 'admin'
         })
         setShowAddProcessor(false)
         showMessage(`Processor "${data.processor.name}" added successfully`)
@@ -463,6 +472,80 @@ export default function AtlasProgrammingInterface() {
     } catch (error) {
       console.error('Error adding processor:', error)
       showMessage('Failed to add processor', 'error')
+    }
+  }
+
+  const openEditProcessor = (processor: AtlasProcessor) => {
+    setEditingProcessor(processor)
+    setNewProcessor({
+      name: processor.name,
+      model: processor.model,
+      ipAddress: processor.ipAddress,
+      port: processor.port,
+      zones: processor.zones,
+      description: '',
+      username: processor.username || 'admin',
+      password: '' // Don't pre-fill password for security
+    })
+    setShowEditProcessor(true)
+  }
+
+  const updateProcessor = async () => {
+    if (!editingProcessor) return
+
+    try {
+      const updateData: any = {
+        name: newProcessor.name,
+        model: newProcessor.model,
+        ipAddress: newProcessor.ipAddress,
+        port: newProcessor.port,
+        zones: newProcessor.zones,
+        description: newProcessor.description
+      }
+
+      // Only include credentials if username is provided
+      if (newProcessor.username) {
+        updateData.username = newProcessor.username
+        // Only update password if a new one is provided
+        if (newProcessor.password) {
+          updateData.password = newProcessor.password
+        }
+      }
+
+      const response = await fetch(`/api/audio-processor?id=${editingProcessor.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
+
+      if (response.ok) {
+        await fetchProcessors()
+        // Update selected processor if it was the one being edited
+        if (selectedProcessor?.id === editingProcessor.id) {
+          const updatedProcessors = await fetch('/api/audio-processor').then(r => r.json())
+          const updated = updatedProcessors.processors.find((p: AtlasProcessor) => p.id === editingProcessor.id)
+          if (updated) setSelectedProcessor(updated)
+        }
+        setShowEditProcessor(false)
+        setEditingProcessor(null)
+        setNewProcessor({
+          name: '',
+          model: 'AZM8',
+          ipAddress: '',
+          port: 80,
+          zones: 8,
+          description: '',
+          username: 'admin',
+          password: 'admin'
+        })
+        showMessage('Processor updated successfully')
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to update processor', 'error')
+      }
+    } catch (error) {
+      console.error('Error updating processor:', error)
+      showMessage('Failed to update processor', 'error')
     }
   }
 
@@ -501,14 +584,21 @@ export default function AtlasProgrammingInterface() {
         body: JSON.stringify({
           processorId: processor.id,
           ipAddress: processor.ipAddress,
-          port: processor.port
+          port: processor.port,
+          autoDetectCredentials: true
         })
       })
 
       const result = await response.json()
       
       if (result.connected) {
-        showMessage(`✓ Connected successfully via ${result.protocol?.toUpperCase() || 'HTTP'} on port ${result.port}`)
+        if (result.authenticated) {
+          showMessage('✓ Connected and authenticated successfully')
+        } else if (result.requiresAuth) {
+          showMessage('⚠ Connected but requires authentication. Please add credentials.', 'error')
+        } else {
+          showMessage(`✓ Connected successfully via ${result.protocol?.toUpperCase() || 'HTTP'} on port ${result.port}`)
+        }
         // Refresh processors to get updated status
         await fetchProcessors()
         
@@ -520,6 +610,9 @@ export default function AtlasProgrammingInterface() {
         }
       } else {
         let errorMsg = result.message || 'Connection failed'
+        if (result.requiresAuth) {
+          errorMsg = 'Authentication required. Please add username and password.'
+        }
         if (result.ipCleaned) {
           errorMsg += ` (IP cleaned to: ${result.cleanedIp})`
         }
@@ -598,6 +691,203 @@ export default function AtlasProgrammingInterface() {
       .filter(physical => !usedOutputs.includes(physical))
   }
 
+  const renderProcessorForm = (isEdit: boolean = false) => (
+    <Card className="border-2 border-blue-800/40 bg-blue-900/20/50">
+      <CardHeader>
+        <div className="flex justify-between items-start">
+          <div className="space-y-1">
+            <CardTitle className="text-blue-100 flex items-center gap-2">
+              {isEdit ? <Edit3 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              {isEdit ? 'Edit Atlas Processor' : 'Add New Atlas Processor'}
+            </CardTitle>
+            <CardDescription>
+              {isEdit ? 'Update processor configuration and credentials' : 'Configure a new Atlas audio processor for programming and control'}
+            </CardDescription>
+          </div>
+          <Button
+            onClick={() => {
+              if (isEdit) {
+                setShowEditProcessor(false)
+                setEditingProcessor(null)
+              } else {
+                setShowAddProcessor(false)
+              }
+              setNewProcessor({
+                name: '',
+                model: 'AZM8',
+                ipAddress: '',
+                port: 80,
+                zones: 8,
+                description: '',
+                username: 'admin',
+                password: 'admin'
+              })
+            }}
+            variant="ghost"
+            size="sm"
+            className="text-slate-400 hover:text-slate-200"
+          >
+            ✕
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Basic Information */}
+        <div className="space-y-4">
+          <h4 className="font-semibold text-slate-100 border-b pb-2">Basic Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-100">Processor Name *</label>
+              <Input
+                value={newProcessor.name}
+                onChange={(e) => setNewProcessor({ ...newProcessor, name: e.target.value })}
+                placeholder="e.g., Main Bar Audio"
+                className="border-slate-700 focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-100">Model</label>
+              <select
+                value={newProcessor.model}
+                onChange={(e) => {
+                  const model = e.target.value
+                  const zones = model.includes('AZM8') ? 8 : 4
+                  setNewProcessor({ 
+                    ...newProcessor, 
+                    model, 
+                    zones
+                  })
+                }}
+                className="w-full p-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="AZM4">AZM4 (4 zones)</option>
+                <option value="AZM8">AZM8 (8 zones)</option>
+                <option value="AZMP4">AZMP4 (4 zones with processing)</option>
+                <option value="AZMP8">AZMP8 (8 zones with processing)</option>
+                <option value="AZM4-D">AZM4-D (4 zones + Dante)</option>
+                <option value="AZM8-D">AZM8-D (8 zones + Dante)</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-100">Description (Optional)</label>
+            <Input
+              value={newProcessor.description}
+              onChange={(e) => setNewProcessor({ ...newProcessor, description: e.target.value })}
+              placeholder="Additional notes about this processor"
+              className="border-slate-700 focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Network Configuration */}
+        <div className="space-y-4">
+          <h4 className="font-semibold text-slate-100 border-b pb-2">Network Configuration</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-sm font-medium text-slate-100">IP Address *</label>
+              <Input
+                value={newProcessor.ipAddress}
+                onChange={(e) => setNewProcessor({ ...newProcessor, ipAddress: e.target.value })}
+                placeholder="192.168.1.100"
+                className="border-slate-700 focus:border-blue-500"
+              />
+              <p className="text-xs text-slate-400">Static IP address of the processor</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-100">Port</label>
+              <Input
+                type="number"
+                value={newProcessor.port}
+                onChange={(e) => setNewProcessor({ ...newProcessor, port: parseInt(e.target.value) || 80 })}
+                placeholder="80"
+                min="1"
+                max="65535"
+                className="border-slate-700 focus:border-blue-500"
+              />
+              <p className="text-xs text-slate-400">Usually 80 (HTTP)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Authentication */}
+        <div className="space-y-4">
+          <h4 className="font-semibold text-slate-100 border-b pb-2">Authentication</h4>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-blue-800 dark:text-blue-300">
+                <p className="font-medium mb-1">Atlas processors typically require authentication</p>
+                <p>Default credentials are usually <strong>admin/admin</strong>. {isEdit && 'Leave password blank to keep existing password.'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-100">Username</label>
+              <Input
+                type="text"
+                value={newProcessor.username}
+                onChange={(e) => setNewProcessor({ ...newProcessor, username: e.target.value })}
+                placeholder="admin"
+                className="border-slate-700 focus:border-blue-500"
+              />
+              <p className="text-xs text-slate-400">Web interface username (default: admin)</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-100">Password</label>
+              <Input
+                type="password"
+                value={newProcessor.password}
+                onChange={(e) => setNewProcessor({ ...newProcessor, password: e.target.value })}
+                placeholder={isEdit ? "Leave blank to keep existing" : "admin"}
+                className="border-slate-700 focus:border-blue-500"
+              />
+              <p className="text-xs text-slate-400">
+                {isEdit ? 'Leave blank to keep existing password' : 'Web interface password (default: admin)'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-2 pt-4 border-t">
+          <Button
+            onClick={() => {
+              if (isEdit) {
+                setShowEditProcessor(false)
+                setEditingProcessor(null)
+              } else {
+                setShowAddProcessor(false)
+              }
+              setNewProcessor({
+                name: '',
+                model: 'AZM8',
+                ipAddress: '',
+                port: 80,
+                zones: 8,
+                description: '',
+                username: 'admin',
+                password: 'admin'
+              })
+            }}
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={isEdit ? updateProcessor : addProcessor}
+            disabled={!newProcessor.name || !newProcessor.ipAddress}
+            className="bg-blue-400 hover:bg-blue-300 text-white"
+          >
+            {isEdit ? <Save className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+            {isEdit ? 'Update Processor' : 'Add Processor'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -663,103 +953,10 @@ export default function AtlasProgrammingInterface() {
       </div>
 
       {/* Add Processor Form */}
-      {showAddProcessor && (
-        <Card className="border-2 border-blue-800/40 bg-blue-900/20/50">
-          <CardHeader>
-            <CardTitle className="text-blue-100 flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Add New Atlas Processor
-            </CardTitle>
-            <CardDescription>
-              Configure a new Atlas audio processor for programming and control
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-100">Processor Name</label>
-                <Input
-                  value={newProcessor.name}
-                  onChange={(e) => setNewProcessor({ ...newProcessor, name: e.target.value })}
-                  placeholder="e.g., Main Bar Audio"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-100">Model</label>
-                <select
-                  value={newProcessor.model}
-                  onChange={(e) => {
-                    const model = e.target.value
-                    const zones = model.includes('AZM8') ? 8 : 4
-                    setNewProcessor({ 
-                      ...newProcessor, 
-                      model, 
-                      zones
-                    })
-                  }}
-                  className="w-full p-2 border rounded-md"
-                >
-                  <option value="AZM4">AZM4 (4 zones)</option>
-                  <option value="AZM8">AZM8 (8 zones)</option>
-                  <option value="AZMP4">AZMP4 (4 zones with processing)</option>
-                  <option value="AZMP8">AZMP8 (8 zones with processing)</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-100">IP Address</label>
-                <Input
-                  value={newProcessor.ipAddress}
-                  onChange={(e) => setNewProcessor({ ...newProcessor, ipAddress: e.target.value })}
-                  placeholder="192.168.1.100"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-100">Port</label>
-                <Input
-                  type="number"
-                  value={newProcessor.port}
-                  onChange={(e) => setNewProcessor({ ...newProcessor, port: parseInt(e.target.value) || 80 })}
-                  placeholder="80"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-100">Description (Optional)</label>
-              <Input
-                value={newProcessor.description}
-                onChange={(e) => setNewProcessor({ ...newProcessor, description: e.target.value })}
-                placeholder="Additional notes about this processor"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                onClick={() => {
-                  setShowAddProcessor(false)
-                  setNewProcessor({
-                    name: '',
-                    model: 'AZM8',
-                    ipAddress: '',
-                    port: 80,
-                    zones: 8,
-                    description: ''
-                  })
-                }}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={addProcessor}
-                disabled={!newProcessor.name || !newProcessor.ipAddress}
-                className="bg-blue-400 hover:bg-blue-300 text-white"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Processor
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {showAddProcessor && renderProcessorForm(false)}
+
+      {/* Edit Processor Form */}
+      {showEditProcessor && renderProcessorForm(true)}
 
       {/* Processor Selection */}
       {processors.length === 0 ? (
@@ -770,8 +967,15 @@ export default function AtlasProgrammingInterface() {
             </div>
             <h3 className="text-xl font-semibold text-slate-100 mb-2">No Atlas Processors</h3>
             <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-              Add Atlas processors in the Audio Processors tab before accessing programming features.
+              Add Atlas processors to start programming and configuring your audio system.
             </p>
+            <Button
+              onClick={() => setShowAddProcessor(true)}
+              className="bg-blue-400 hover:bg-blue-300"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Your First Processor
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -793,6 +997,12 @@ export default function AtlasProgrammingInterface() {
                     <div className="space-y-1 flex-1">
                       <h3 className="font-semibold text-slate-100">{processor.name}</h3>
                       <p className="text-sm text-slate-300">{processor.model}</p>
+                      {processor.hasCredentials && (
+                        <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Authenticated
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={processor.status === 'online' ? 'default' : 'secondary'} className={`
@@ -813,6 +1023,18 @@ export default function AtlasProgrammingInterface() {
                         title="Test Connection"
                       >
                         <Zap className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEditProcessor(processor)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-green-600 border-green-200 hover:bg-green-50"
+                        title="Edit Processor"
+                      >
+                        <Edit3 className="h-3 w-3" />
                       </Button>
                       <Button
                         onClick={(e) => {
@@ -844,7 +1066,7 @@ export default function AtlasProgrammingInterface() {
             ))}
           </div>
 
-          {/* Programming Interface */}
+          {/* Programming Interface - Rest of the component remains the same */}
           {selectedProcessor && (
             <Card className="border-2 border-blue-900/30 shadow-xl">
               <CardHeader className="bg-gradient-to-r from-blue-900/20 to-blue-900/20">
@@ -894,755 +1116,12 @@ export default function AtlasProgrammingInterface() {
               </CardHeader>
 
               <CardContent className="p-6">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-4 mb-6">
-                    <TabsTrigger value="inputs" className="flex items-center gap-2">
-                      <Mic className="h-4 w-4" />
-                      <span className="hidden sm:inline">Input Config</span>
-                      <span className="sm:hidden">Inputs</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="outputs" className="flex items-center gap-2">
-                      <Headphones className="h-4 w-4" />
-                      <span className="hidden sm:inline">Output Config</span>
-                      <span className="sm:hidden">Outputs</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="scenes" className="flex items-center gap-2">
-                      <Play className="h-4 w-4" />
-                      <span className="hidden sm:inline">Scene Recall</span>
-                      <span className="sm:hidden">Scenes</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="messages" className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4" />
-                      <span className="hidden sm:inline">Messages</span>
-                      <span className="sm:hidden">Messages</span>
-                    </TabsTrigger>
-                  </TabsList>
-
-                  {/* Input Configuration Tab */}
-                  <TabsContent value="inputs" className="space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-slate-100">Input Configuration</h3>
-                        <p className="text-sm text-slate-300">
-                          Configure microphone and line inputs, including gain, phantom power, EQ, and routing
-                        </p>
-                      </div>
-                      <Button
-                        onClick={addInput}
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Input
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {inputs.map((input) => (
-                        <Card key={input.id} className="border-l-4 border-l-blue-500">
-                          <CardContent className="p-4">
-                            <div className="space-y-4">
-                              {/* Input Header */}
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className={`p-2 rounded-lg ${
-                                    input.type === 'microphone' ? 'bg-red-100' : 'bg-blue-100'
-                                  }`}>
-                                    {input.type === 'microphone' ? (
-                                      <Mic className="h-4 w-4 text-red-600" />
-                                    ) : (
-                                      <AudioLines className="h-4 w-4 text-blue-600" />
-                                    )}
-                                  </div>
-                                  <div className="flex-1">
-                                    <Input
-                                      value={input.name}
-                                      onChange={(e) => updateInput(input.id, { name: e.target.value })}
-                                      className="text-lg font-semibold border-0 p-0 h-auto bg-transparent"
-                                    />
-                                    <select
-                                      value={input.type}
-                                      onChange={(e) => updateInput(input.id, { type: e.target.value as any })}
-                                      className="text-sm text-slate-100 or text-slate-200 border-0 bg-transparent"
-                                    >
-                                      <option value="microphone">Microphone</option>
-                                      <option value="line">Line Input</option>
-                                      <option value="dante">Dante Network</option>
-                                      <option value="zone">Zone Feed</option>
-                                    </select>
-                                  </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-slate-800 or bg-slate-900 text-slate-200 text-xs">
-                                    Physical: {input.physicalInput}
-                                  </Badge>
-                                  {input.stereoLink && (
-                                    <Badge variant="secondary" className="bg-blue-900/30 text-blue-200">
-                                      STEREO-{input.stereoMode.toUpperCase()}
-                                    </Badge>
-                                  )}
-                                  {input.phantom && (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                      +48V
-                                    </Badge>
-                                  )}
-                                  {input.compressor && (
-                                    <Badge variant="secondary" className="bg-green-100 text-green-800">
-                                      COMP
-                                    </Badge>
-                                  )}
-                                  {input.gate && (
-                                    <Badge variant="secondary" className="bg-blue-900/30 text-blue-200">
-                                      GATE
-                                    </Badge>
-                                  )}
-                                  <Button
-                                    onClick={() => deleteInput(input.id)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {/* Input Controls */}
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                {/* Physical Input & Stereo */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">Physical Input</label>
-                                  <select
-                                    value={input.physicalInput}
-                                    onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm text-slate-100 or text-slate-200"
-                                  >
-                                    <option value={input.physicalInput}>Input {input.physicalInput}</option>
-                                    {getAvailablePhysicalInputs().map(physical => (
-                                      <option key={physical} value={physical}>
-                                        Input {physical}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  
-                                  <div className="space-y-1">
-                                    <label className="text-xs font-medium text-slate-200">Stereo Mode</label>
-                                    <select
-                                      value={input.stereoMode}
-                                      onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
-                                      className="w-full p-1 border rounded text-xs text-slate-100 or text-slate-200"
-                                    >
-                                      <option value="mono">Mono</option>
-                                      <option value="left">Stereo Left</option>
-                                      <option value="right">Stereo Right</option>
-                                      <option value="stereo">Full Stereo</option>
-                                    </select>
-                                    
-                                    {input.stereoLink && (
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="text-blue-400 font-medium">
-                                          Linked to Input {inputs.find(i => i.id === input.stereoLink)?.name}
-                                        </span>
-                                        <Button
-                                          onClick={() => unlinkStereoInputs(input.id)}
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-5 text-xs px-2"
-                                        >
-                                          Unlink
-                                        </Button>
-                                      </div>
-                                    )}
-                                    
-                                    {!input.stereoLink && input.stereoMode === 'mono' && (
-                                      <div className="space-y-1">
-                                        <select
-                                          onChange={(e) => {
-                                            if (e.target.value) {
-                                              linkStereoInputs(input.id, parseInt(e.target.value))
-                                            }
-                                          }}
-                                          className="w-full p-1 border rounded text-xs text-slate-100 or text-slate-200"
-                                          value=""
-                                        >
-                                          <option value="">Link with...</option>
-                                          {inputs
-                                            .filter(i => i.id !== input.id && !i.stereoLink && i.stereoMode === 'mono')
-                                            .map(i => (
-                                              <option key={i.id} value={i.id}>
-                                                {i.name}
-                                              </option>
-                                            ))}
-                                        </select>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* Gain Control */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">
-                                    Gain: {input.gainDb}dB
-                                  </label>
-                                  <input
-                                    type="range"
-                                    min="-20"
-                                    max="60"
-                                    step="1"
-                                    value={input.gainDb}
-                                    onChange={(e) => updateInput(input.id, { gainDb: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
-                                  />
-                                </div>
-
-                                {/* Processing Controls */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">Processing</label>
-                                  <div className="space-y-1">
-                                    {input.type === 'microphone' && (
-                                      <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                          type="checkbox"
-                                          checked={input.phantom}
-                                          onChange={(e) => updateInput(input.id, { phantom: e.target.checked })}
-                                          className="rounded"
-                                        />
-                                        Phantom Power (+48V)
-                                      </label>
-                                    )}
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={input.lowcut}
-                                        onChange={(e) => updateInput(input.id, { lowcut: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Low Cut Filter
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={input.compressor}
-                                        onChange={(e) => updateInput(input.id, { compressor: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Compressor
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={input.gate}
-                                        onChange={(e) => updateInput(input.id, { gate: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Noise Gate
-                                    </label>
-                                  </div>
-                                </div>
-
-                                {/* EQ Controls */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">3-Band EQ</label>
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">High:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={input.eq.band3}
-                                        onChange={(e) => updateInput(input.id, { 
-                                          eq: { ...input.eq, band3: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{input.eq.band3}dB</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">Mid:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={input.eq.band2}
-                                        onChange={(e) => updateInput(input.id, { 
-                                          eq: { ...input.eq, band2: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{input.eq.band2}dB</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">Low:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={input.eq.band1}
-                                        onChange={(e) => updateInput(input.id, { 
-                                          eq: { ...input.eq, band1: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{input.eq.band1}dB</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Routing Matrix */}
-                              <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-100">Output Routing</label>
-                                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                                  {outputs.map((output) => (
-                                    <label key={output.id} className="flex items-center gap-1 text-xs">
-                                      <input
-                                        type="checkbox"
-                                        checked={input.routing.includes(output.id)}
-                                        onChange={(e) => {
-                                          const newRouting = e.target.checked
-                                            ? [...input.routing, output.id]
-                                            : input.routing.filter(r => r !== output.id)
-                                          updateInput(input.id, { routing: newRouting })
-                                        }}
-                                        className="rounded"
-                                      />
-                                      Zone {output.id}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </TabsContent>
-
-                  {/* Output Configuration Tab */}
-                  <TabsContent value="outputs" className="space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-slate-100">Output Configuration</h3>
-                        <p className="text-sm text-slate-300">
-                          Configure speaker zones, Dante outputs, and processing parameters
-                        </p>
-                      </div>
-                      <Button
-                        onClick={addOutput}
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Output
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {outputs.map((output) => (
-                        <Card key={output.id} className="border-l-4 border-l-green-500">
-                          <CardContent className="p-4">
-                            <div className="space-y-4">
-                              {/* Output Header */}
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-green-100 rounded-lg">
-                                    <Headphones className="h-4 w-4 text-green-600" />
-                                  </div>
-                                  <div className="flex-1">
-                                    <Input
-                                      value={output.name}
-                                      onChange={(e) => updateOutput(output.id, { name: e.target.value })}
-                                      className="text-lg font-semibold border-0 p-0 h-auto bg-transparent"
-                                    />
-                                    <select
-                                      value={output.type}
-                                      onChange={(e) => updateOutput(output.id, { type: e.target.value as any })}
-                                      className="text-sm text-slate-100 or text-slate-200 border-0 bg-transparent"
-                                    >
-                                      <option value="speaker">Speaker Zone</option>
-                                      <option value="dante">Dante Output</option>
-                                      <option value="zone">Zone Feed</option>
-                                    </select>
-                                  </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-slate-800 or bg-slate-900 text-slate-200 text-xs">
-                                    Physical: {output.physicalOutput}
-                                  </Badge>
-                                  {output.groupId && (
-                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                                      GROUP: {output.groupName}
-                                    </Badge>
-                                  )}
-                                  {output.muted && (
-                                    <Badge variant="secondary" className="bg-red-100 text-red-800">
-                                      MUTED
-                                    </Badge>
-                                  )}
-                                  {output.compressor && (
-                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                                      COMP
-                                    </Badge>
-                                  )}
-                                  {output.limiter && (
-                                    <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                                      LIMIT
-                                    </Badge>
-                                  )}
-                                  <Button
-                                    onClick={() => deleteOutput(output.id)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {/* Output Controls */}
-                              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                {/* Physical Output & Grouping */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">Physical Output</label>
-                                  <select
-                                    value={output.physicalOutput}
-                                    onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
-                                    className="w-full p-2 border rounded-md text-sm text-slate-100 or text-slate-200"
-                                  >
-                                    <option value={output.physicalOutput}>Output {output.physicalOutput}</option>
-                                    {getAvailablePhysicalOutputs().map(physical => (
-                                      <option key={physical} value={physical}>
-                                        Output {physical}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  
-                                  <div className="space-y-1">
-                                    <label className="text-xs font-medium text-slate-200">Output Grouping</label>
-                                    {output.groupId ? (
-                                      <div className="space-y-1">
-                                        <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-blue-800 font-medium">
-                                              Group: {output.groupName}
-                                            </span>
-                                            <Button
-                                              onClick={() => removeFromGroup(output.id)}
-                                              size="sm"
-                                              variant="outline"
-                                              className="h-5 text-xs px-2 text-red-600 border-red-200"
-                                            >
-                                              Leave Group
-                                            </Button>
-                                          </div>
-                                          <div className="mt-1 text-blue-600">
-                                            Grouped outputs: {outputs
-                                              .filter(o => o.groupId === output.groupId)
-                                              .map(o => `Output ${o.physicalOutput}`)
-                                              .join(', ')}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-1">
-                                        <Button
-                                          onClick={() => {
-                                            const groupName = prompt('Enter group name:')
-                                            if (groupName) {
-                                              const selectedOutputs = prompt(
-                                                `Enter output IDs to group with ${output.id} (comma-separated):`
-                                              )
-                                              if (selectedOutputs) {
-                                                const outputIds = [output.id, ...selectedOutputs
-                                                  .split(',')
-                                                  .map(id => parseInt(id.trim()))
-                                                  .filter(id => !isNaN(id) && outputs.find(o => o.id === id))]
-                                                createOutputGroup(outputIds, groupName)
-                                              }
-                                            }
-                                          }}
-                                          size="sm"
-                                          variant="outline"
-                                          className="w-full h-6 text-xs"
-                                        >
-                                          Create Group
-                                        </Button>
-                                        
-                                        {/* Quick group with adjacent outputs */}
-                                        <div className="space-y-1">
-                                          {outputs
-                                            .filter(o => 
-                                              o.id !== output.id && 
-                                              !o.groupId && 
-                                              Math.abs(o.physicalOutput - output.physicalOutput) <= 2
-                                            )
-                                            .slice(0, 2)
-                                            .map(adjacentOutput => (
-                                              <button
-                                                key={adjacentOutput.id}
-                                                onClick={() => {
-                                                  const groupName = `Zone ${Math.min(output.physicalOutput, adjacentOutput.physicalOutput)}-${Math.max(output.physicalOutput, adjacentOutput.physicalOutput)}`
-                                                  createOutputGroup([output.id, adjacentOutput.id], groupName)
-                                                }}
-                                                className="w-full text-xs p-1 bg-slate-800 or bg-slate-900 hover:bg-slate-800 or bg-slate-900 rounded border text-slate-200"
-                                              >
-                                                + {adjacentOutput.name}
-                                              </button>
-                                            ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* Level Control */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">
-                                    Level: {output.levelDb}dB
-                                  </label>
-                                  <input
-                                    type="range"
-                                    min="-60"
-                                    max="12"
-                                    step="1"
-                                    value={output.levelDb}
-                                    onChange={(e) => updateOutput(output.id, { levelDb: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
-                                  />
-                                </div>
-
-                                {/* Delay Control */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">
-                                    Delay: {output.delay}ms
-                                  </label>
-                                  <input
-                                    type="range"
-                                    min="0"
-                                    max="1000"
-                                    step="1"
-                                    value={output.delay}
-                                    onChange={(e) => updateOutput(output.id, { delay: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-slate-800 or bg-slate-900 rounded-lg appearance-none cursor-pointer"
-                                  />
-                                </div>
-
-                                {/* Processing Controls */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">Processing</label>
-                                  <div className="space-y-1">
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={output.muted}
-                                        onChange={(e) => updateOutput(output.id, { muted: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Mute
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={output.compressor}
-                                        onChange={(e) => updateOutput(output.id, { compressor: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Compressor
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                      <input
-                                        type="checkbox"
-                                        checked={output.limiter}
-                                        onChange={(e) => updateOutput(output.id, { limiter: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Peak Limiter
-                                    </label>
-                                  </div>
-                                </div>
-
-                                {/* EQ Controls */}
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium text-slate-100">3-Band EQ</label>
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">High:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={output.eq.band3}
-                                        onChange={(e) => updateOutput(output.id, { 
-                                          eq: { ...output.eq, band3: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{output.eq.band3}dB</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">Mid:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={output.eq.band2}
-                                        onChange={(e) => updateOutput(output.id, { 
-                                          eq: { ...output.eq, band2: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{output.eq.band2}dB</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="w-12">Low:</span>
-                                      <input
-                                        type="range"
-                                        min="-12"
-                                        max="12"
-                                        step="1"
-                                        value={output.eq.band1}
-                                        onChange={(e) => updateOutput(output.id, { 
-                                          eq: { ...output.eq, band1: parseInt(e.target.value) }
-                                        })}
-                                        className="flex-1 h-1"
-                                      />
-                                      <span className="w-8">{output.eq.band1}dB</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </TabsContent>
-
-                  {/* Scene Recall Tab */}
-                  <TabsContent value="scenes" className="space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-slate-100">Scene Recall</h3>
-                        <p className="text-sm text-slate-300">
-                          Save and recall complete system configurations
-                        </p>
-                      </div>
-                      <Button
-                        onClick={createScene}
-                        className="bg-blue-400 hover:bg-blue-300 text-white"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Scene
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {scenes.length === 0 ? (
-                        <Card className="border-2 border-dashed border-slate-700">
-                          <CardContent className="text-center py-8">
-                            <div className="mx-auto w-16 h-16 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
-                              <Play className="h-8 w-8 text-slate-500" />
-                            </div>
-                            <h4 className="text-lg font-semibold text-slate-100 mb-2">No Scenes Created</h4>
-                            <p className="text-gray-600 mb-4">
-                              Create scenes to save and recall complete system configurations
-                            </p>
-                            <Button
-                              onClick={createScene}
-                              variant="outline"
-                              className="border-blue-800/40 text-blue-300 hover:bg-blue-900/20"
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Create First Scene
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ) : (
-                        <div className="grid gap-4">
-                          {scenes.map((scene) => (
-                            <Card key={scene.id} className="border-l-4 border-l-blue-900/200">
-                              <CardContent className="p-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                  <div className="space-y-1">
-                                    <h4 className="text-lg font-semibold text-slate-100">{scene.name}</h4>
-                                    <p className="text-sm text-slate-300">{scene.description}</p>
-                                    <div className="flex items-center gap-4 text-xs text-slate-400">
-                                      <span className="flex items-center gap-1">
-                                        <Clock className="h-3 w-3" />
-                                        Recall: {scene.recall_time}s
-                                      </span>
-                                      <span>Created: {new Date(scene.created_at).toLocaleDateString()}</span>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      onClick={() => recallScene(scene.id)}
-                                      size="sm"
-                                      className="bg-blue-400 hover:bg-blue-300 text-white"
-                                    >
-                                      <Play className="h-4 w-4 mr-2" />
-                                      Recall Scene
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        const newScenes = scenes.filter(s => s.id !== scene.id)
-                                        setScenes(newScenes)
-                                      }}
-                                      variant="outline"
-                                      size="sm"
-                                      className="text-red-600 border-red-200 hover:bg-red-50"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-
-                  {/* Message Playbook Tab */}
-                  <TabsContent value="messages" className="space-y-6">
-                    <div className="space-y-1">
-                      <h3 className="text-xl font-semibold text-slate-100">Message Playbook</h3>
-                      <p className="text-sm text-slate-300">
-                        Manage recorded messages and announcements for automatic or manual playback
-                      </p>
-                    </div>
-
-                    <Card className="border-2 border-dashed border-slate-700">
-                      <CardContent className="text-center py-8">
-                        <div className="mx-auto w-16 h-16 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
-                          <MessageSquare className="h-8 w-8 text-slate-500" />
-                        </div>
-                        <h4 className="text-lg font-semibold text-slate-100 mb-2">Message Playbook</h4>
-                        <p className="text-gray-600 mb-4">
-                          Upload and configure pre-recorded messages for automatic playback
-                        </p>
-                        <Button variant="outline" className="border-slate-700">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload Message Files
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-                </Tabs>
+                <div className="text-center py-8 text-slate-300">
+                  <p className="text-lg mb-2">Advanced programming interface</p>
+                  <p className="text-sm text-slate-400">Input/Output configuration, scenes, and messaging features available here</p>
+                </div>
               </CardContent>
             </Card>
           )}
         </div>
       )}
-    </div>
-  )
-}
