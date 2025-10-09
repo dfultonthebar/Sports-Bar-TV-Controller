@@ -692,7 +692,7 @@ export default function AtlasProgrammingInterface() {
   }
 
   const renderProcessorForm = (isEdit: boolean = false) => (
-    <Card className="border-2 border-blue-800/40 bg-blue-900/20/50">
+    <Card className="border-2 border-blue-800/40 bg-blue-900/20">
       <CardHeader>
         <div className="flex justify-between items-start">
           <div className="space-y-1">
@@ -962,7 +962,7 @@ export default function AtlasProgrammingInterface() {
       {processors.length === 0 ? (
         <Card className="border-2 border-dashed border-slate-700">
           <CardContent className="text-center py-12">
-            <div className="mx-auto w-24 h-24 bg-slate-800 or bg-slate-900 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-4">
               <Cpu className="h-12 w-12 text-slate-500" />
             </div>
             <h3 className="text-xl font-semibold text-slate-100 mb-2">No Atlas Processors</h3>
@@ -987,7 +987,7 @@ export default function AtlasProgrammingInterface() {
                 key={processor.id} 
                 className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
                   selectedProcessor?.id === processor.id 
-                    ? 'border-blue-900/200 bg-blue-900/20/50 shadow-lg' 
+                    ? 'border-blue-400 bg-blue-900/20 shadow-lg' 
                     : 'border-slate-700 hover:border-slate-700'
                 }`}
                 onClick={() => setSelectedProcessor(processor)}
@@ -1125,3 +1125,6 @@ export default function AtlasProgrammingInterface() {
           )}
         </div>
       )}
+    </div>
+  )
+}
