@@ -35,6 +35,8 @@ interface MatrixConfig {
   outputs: MatrixOutput[]
 }
 
+type TabType = 'inputs' | 'outputs'
+
 export default function MatrixControl() {
   const [configs, setConfigs] = useState<MatrixConfig[]>([])
   const [currentConfig, setCurrentConfig] = useState<MatrixConfig>({
@@ -70,6 +72,7 @@ export default function MatrixControl() {
   const [loading, setLoading] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<TabType>('inputs')
 
   useEffect(() => {
     loadConfigurations()
@@ -252,107 +255,136 @@ export default function MatrixControl() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Inputs Configuration */}
-          <div>
-            <h3 className="text-xl font-semibold mb-4 text-slate-100">Inputs (1-36)</h3>
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-              {currentConfig.inputs.map((input, index) => (
-                <div key={index} className="bg-slate-800 p-3 rounded-md border border-slate-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-slate-200">Input {input.channelNumber}</span>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={input.isActive}
-                        onChange={(e) => updateInput(index, 'isActive', e.target.checked)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-slate-300">Active</span>
-                    </label>
-                  </div>
-                  <input
-                    type="text"
-                    value={input.label}
-                    onChange={(e) => updateInput(index, 'label', e.target.value)}
-                    placeholder="Label"
-                    className="w-full px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-2"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={input.inputType}
-                      onChange={(e) => updateInput(index, 'inputType', e.target.value)}
-                      className="px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100"
-                    >
-                      <option value="HDMI">HDMI</option>
-                      <option value="Component">Component</option>
-                      <option value="Composite">Composite</option>
-                    </select>
-                    <select
-                      value={input.deviceType}
-                      onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
-                      className="px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100"
-                    >
-                      <option value="Cable Box">Cable Box</option>
-                      <option value="DirecTV">DirecTV</option>
-                      <option value="Fire TV">Fire TV</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* Tab Navigation */}
+        <div className="border-b border-slate-700 mb-6">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('inputs')}
+              className={`px-6 py-3 font-medium transition-colors relative ${
+                activeTab === 'inputs'
+                  ? 'text-indigo-400 border-b-2 border-indigo-400'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Inputs (1-36)
+            </button>
+            <button
+              onClick={() => setActiveTab('outputs')}
+              className={`px-6 py-3 font-medium transition-colors relative ${
+                activeTab === 'outputs'
+                  ? 'text-indigo-400 border-b-2 border-indigo-400'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Outputs (1-36)
+            </button>
           </div>
+        </div>
 
-          {/* Outputs Configuration */}
-          <div>
-            <h3 className="text-xl font-semibold mb-4 text-slate-100">Outputs (1-36)</h3>
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-              {currentConfig.outputs.map((output, index) => (
-                <div key={index} className="bg-slate-800 p-3 rounded-md border border-slate-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-slate-200">Output {output.channelNumber}</span>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={output.isActive}
-                        onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-slate-300">Active</span>
-                    </label>
+        {/* Tab Content */}
+        <div className="min-h-[600px]">
+          {activeTab === 'inputs' && (
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-slate-100">Input Configuration</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {currentConfig.inputs.map((input, index) => (
+                  <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-semibold text-slate-200">Input {input.channelNumber}</span>
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={input.isActive}
+                          onChange={(e) => updateInput(index, 'isActive', e.target.checked)}
+                          className="mr-2 w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-sm text-slate-300">Active</span>
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={input.label}
+                      onChange={(e) => updateInput(index, 'label', e.target.value)}
+                      placeholder="Label"
+                      className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="space-y-2">
+                      <select
+                        value={input.inputType}
+                        onChange={(e) => updateInput(index, 'inputType', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="HDMI">HDMI</option>
+                        <option value="Component">Component</option>
+                        <option value="Composite">Composite</option>
+                      </select>
+                      <select
+                        value={input.deviceType}
+                        onChange={(e) => updateInput(index, 'deviceType', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="Cable Box">Cable Box</option>
+                        <option value="DirecTV">DirecTV</option>
+                        <option value="Fire TV">Fire TV</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    value={output.label}
-                    onChange={(e) => updateOutput(index, 'label', e.target.value)}
-                    placeholder="Label"
-                    className="w-full px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-2"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={output.resolution}
-                      onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
-                      className="px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100"
-                    >
-                      <option value="1080p">1080p</option>
-                      <option value="4K">4K</option>
-                      <option value="720p">720p</option>
-                    </select>
-                    {index < 4 && (
-                      <input
-                        type="text"
-                        value={output.audioOutput || ''}
-                        onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
-                        placeholder="Audio Out"
-                        className="px-2 py-1 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100"
-                      />
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {activeTab === 'outputs' && (
+            <div>
+              <h3 className="text-xl font-semibold mb-4 text-slate-100">Output Configuration</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {currentConfig.outputs.map((output, index) => (
+                  <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={output.isActive}
+                          onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
+                          className="mr-2 w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-sm text-slate-300">Active</span>
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={output.label}
+                      onChange={(e) => updateOutput(index, 'label', e.target.value)}
+                      placeholder="Label"
+                      className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="space-y-2">
+                      <select
+                        value={output.resolution}
+                        onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="1080p">1080p</option>
+                        <option value="4K">4K</option>
+                        <option value="720p">720p</option>
+                      </select>
+                      {index < 4 && (
+                        <input
+                          type="text"
+                          value={output.audioOutput || ''}
+                          onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
+                          placeholder="Audio Output"
+                          className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
