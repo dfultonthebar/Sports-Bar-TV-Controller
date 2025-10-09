@@ -4,8 +4,6 @@ import { PrismaClient } from '@prisma/client'
 import { Socket } from 'net'
 import dgram from 'dgram'
 
-const prisma = new PrismaClient()
-
 // Helper function to send Wolf Pack command
 async function sendWolfPackCommand(
   command: string,
@@ -108,8 +106,12 @@ async function sendWolfPackCommand(
 
 export async function POST(request: NextRequest) {
   const overallStartTime = Date.now()
+  let prisma: PrismaClient | null = null
   
   try {
+    // Create a new Prisma client instance
+    prisma = new PrismaClient()
+    
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
       where: { isActive: true },
@@ -299,21 +301,40 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - overallStartTime
     
-    const errorLog = await prisma.testLog.create({
-      data: {
-        testType: 'wolfpack_switching',
-        testName: 'Wolf Pack Switching Test',
-        status: 'error',
-        errorMessage: String(error),
-        duration,
-      }
-    })
-
     console.error('Error running Wolf Pack switching test:', error)
+    
+    try {
+      if (prisma) {
+        const errorLog = await prisma.testLog.create({
+          data: {
+            testType: 'wolfpack_switching',
+            testName: 'Wolf Pack Switching Test',
+            status: 'error',
+            errorMessage: String(error),
+            duration,
+          }
+        })
+        
+        return NextResponse.json({ 
+          success: false, 
+          error: String(error),
+          logId: errorLog.id
+        }, { status: 500 })
+      }
+    } catch (logError) {
+      console.error('Error logging test result:', logError)
+    }
+    
+    // Fallback response - always return valid JSON
     return NextResponse.json({ 
       success: false, 
-      error: String(error),
-      logId: errorLog.id
+      error: 'Internal server error',
+      message: String(error)
     }, { status: 500 })
+  } finally {
+    // Clean up Prisma client
+    if (prisma) {
+      await prisma.$disconnect().catch(e => console.error('Error disconnecting Prisma:', e))
+    }
   }
 }
