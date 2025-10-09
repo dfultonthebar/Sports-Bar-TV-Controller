@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discovery-service'
+import { prisma } from '@/lib/db'
 
 /**
  * POST /api/cec/discovery
@@ -64,11 +65,7 @@ export async function POST(request: NextRequest) {
  * Get last discovery results from database
  */
 export async function GET() {
-  try {
-    const { PrismaClient } = require('@prisma/client')
-    const prisma = new PrismaClient()
-    
-    const outputs = await prisma.matrixOutput.findMany({
+  try {    const outputs = await prisma.matrixOutput.findMany({
       where: {
         isActive: true
       },

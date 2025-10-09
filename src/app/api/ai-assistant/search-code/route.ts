@@ -98,9 +98,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
-  }
 }
 
 function extractSnippets(content: string, terms: string[], maxSnippets = 3): string[] {
