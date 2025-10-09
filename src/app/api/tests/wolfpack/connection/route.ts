@@ -169,7 +169,6 @@ export async function POST(request: NextRequest) {
   } finally {
     // Clean up Prisma client
     if (prisma) {
-      await prisma.$disconnect().catch(e => console.error('Error disconnecting Prisma:', e))
     }
   }
 }

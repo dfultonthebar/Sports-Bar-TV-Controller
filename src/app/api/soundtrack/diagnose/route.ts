@@ -37,8 +37,5 @@ export async function GET(request: NextRequest) {
       success: false,
       error: error.message
     }, { status: 500 })
-  } finally {
-    await prisma.$disconnect()
-  }
 }
 

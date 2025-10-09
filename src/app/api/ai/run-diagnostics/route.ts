@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import fs from 'fs/promises'
 import path from 'path'
 
-const prisma = new PrismaClient()
 
 interface DiagnosticCheck {
   name: string
