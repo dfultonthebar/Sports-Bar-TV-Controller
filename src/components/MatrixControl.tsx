@@ -98,10 +98,17 @@ export default function MatrixControl() {
   const saveConfiguration = async () => {
     setLoading(true)
     try {
+      // Extract inputs and outputs from currentConfig, and send the rest as config
+      const { inputs, outputs, ...configData } = currentConfig
+      
       const response = await fetch('/api/matrix/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentConfig)
+        body: JSON.stringify({
+          config: configData,
+          inputs: inputs,
+          outputs: outputs
+        })
       })
 
       if (response.ok) {
