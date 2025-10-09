@@ -53,7 +53,9 @@ export default function AudioProcessorManager() {
     model: 'AZM4',
     ipAddress: '',
     port: 80,
-    description: ''
+    description: '',
+    username: 'admin',
+    password: 'admin'
   })
 
   const [selectedModelSpec, setSelectedModelSpec] = useState<AtlasModelSpec | null>(null)
@@ -138,7 +140,7 @@ export default function AudioProcessorManager() {
         const data = await response.json()
         setProcessors([...processors, data.processor])
         setShowAddForm(false)
-        setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '' })
+        setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
         showMessage('Audio processor added successfully')
       } else {
         const error = await response.json()
@@ -160,21 +162,33 @@ export default function AudioProcessorManager() {
         body: JSON.stringify({
           processorId: processor.id,
           ipAddress: processor.ipAddress,
-          port: processor.port
+          port: processor.port,
+          autoDetectCredentials: true // Enable auto-detection if no credentials stored
         })
       })
 
       const result = await response.json()
       
       if (result.connected) {
-        showMessage('Connection successful!')
+        if (result.authenticated) {
+          showMessage('Connection successful! Authenticated.')
+        } else if (result.requiresAuth) {
+          showMessage('Processor requires authentication. Please add username and password in processor settings.', 'error')
+        } else {
+          showMessage('Connection successful!')
+        }
+        
         setProcessors(processors.map(p => 
           p.id === processor.id 
             ? { ...p, status: 'online', lastSeen: new Date().toISOString() }
             : p
         ))
       } else {
-        showMessage('Connection failed: ' + result.message, 'error')
+        if (result.requiresAuth) {
+          showMessage('Authentication required. Default credentials: admin/admin', 'error')
+        } else {
+          showMessage('Connection failed: ' + result.message, 'error')
+        }
       }
     } catch (error) {
       console.error('Error testing connection:', error)
@@ -462,6 +476,44 @@ export default function AudioProcessorManager() {
                       className="border-slate-700 focus:border-blue-500"
                     />
                     <p className="text-xs text-slate-400">Usually 80 (HTTP)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Authentication */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-slate-100 border-b pb-2">Authentication</h4>
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-800 dark:text-blue-300">
+                      <p className="font-medium mb-1">Atlas processors typically require authentication</p>
+                      <p>Default credentials are usually <strong>admin/admin</strong>. If you leave these fields empty, the system will attempt to auto-detect credentials during connection testing.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Username</label>
+                    <Input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => setFormData({...formData, username: e.target.value})}
+                      placeholder="admin"
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Web interface username (default: admin)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-100">Password</label>
+                    <Input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      placeholder="admin"
+                      className="border-slate-700 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-slate-400">Web interface password (default: admin)</p>
                   </div>
                 </div>
               </div>

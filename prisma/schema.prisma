@@ -1,146 +1,124 @@
 
-
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider = "prisma-client-js"
-    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "sqlite"
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      String   @default("user")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Equipment {
-  id        String   @id @default(cuid())
-  name      String
-  type      String
-  brand     String?
-  model     String?
-  location  String?
-  status    String   @default("active")
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Document {
-  id           String   @id @default(cuid())
-  filename     String
-  originalName String
-  filePath     String
-  fileSize     Int
-  mimeType     String
-  content      String?  // Extracted text content for AI processing
-  embeddings   String?  // JSON string of embeddings for vector search
-  uploadedAt   DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
-model ApiKey {
+model FireTVDevice {
   id          String   @id @default(cuid())
-  name        String   // e.g., "Grok", "Claude", "OpenAI"
-  provider    String   // e.g., "xai", "anthropic", "openai"
-  keyValue    String   // encrypted API key
-  isActive    Boolean  @default(true)
-  description String?
+  name        String
+  ipAddress   String   @unique
+  macAddress  String?
+  location    String?
+  status      String   @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  schedules   Schedule[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  name        String
+  deviceId    String
+  channelName String
+  channelNumber String?
+  startTime   DateTime
+  endTime     DateTime?
+  recurring   Boolean  @default(false)
+  daysOfWeek  String?  // JSON array of days: ["monday", "tuesday", ...]
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  device      FireTVDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  logs        ScheduleLog[]
+}
+
+model ScheduleLog {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  executedAt  DateTime @default(now())
+  success     Boolean
+  error       String?
+  channelName String
+  deviceName  String
+  
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+}
+
+model HomeTeam {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  sport       String   // "NFL", "NBA", "MLB", "NHL", "Soccer", etc.
+  league      String?  // "NFL", "NBA", "MLB", "NHL", "MLS", "Premier League", etc.
+  logoUrl     String?
+  primaryColor String?
+  secondaryColor String?
+  enabled     Boolean  @default(true)
+  priority    Int      @default(0) // Higher priority teams get preference
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-model ChatSession {
-  id        String   @id @default(cuid())
-  title     String?
-  messages  String   // JSON string of messages
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model MatrixConfiguration {
-  id               String   @id @default(cuid())
-  name             String   // Configuration name
-  ipAddress        String
-  port             Int      @default(23)
-  tcpPort          Int      @default(23)
-  udpPort          Int      @default(4000)
-  protocol         String   @default("TCP")
-  connectionStatus String   @default("disconnected") // connected, disconnected, error
-  lastTested       DateTime?
-  isActive         Boolean  @default(true)
-  cecInputChannel  Int?     // Which input channel has the CEC adapter connected (null if not used)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  
-  inputs   MatrixInput[]
-  outputs  MatrixOutput[]
-}
-
-model MatrixInput {
-  id           String   @id @default(cuid())
-  configId     String
-  channelNumber Int     // 1-32 typically
-  label        String   // User-defined label like "Cable Box 1"
-  inputType    String   @default("HDMI") // HDMI, Component, Composite, etc.
-  deviceType   String   @default("Other") // Cable Box, DirecTV Receiver, Fire TV, etc.
-  status       String   @default("active") // active, unused, no, na
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
-  configuration MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
-  providerInputs ProviderInput[]
-  
-  @@unique([configId, channelNumber])
-}
-
-model MatrixOutput {
-  id            String   @id @default(cuid())
-  configId      String
-  channelNumber Int      // 1-32 typically
-  label         String   // User-defined label like "Main Bar TV"
-  resolution    String   @default("1080p") // 1080p, 4K, 720p, etc.
-  status        String   @default("active") // active, unused, no, na
-  audioOutput   String?  // Matrix Audio 1-4 for routing to Atlas system
-  tvBrand       String?  // Auto-detected TV brand via CEC discovery
-  tvModel       String?  // Auto-detected TV model via CEC OSD name
-  cecAddress    String?  // CEC physical address
-  lastDiscovery DateTime? // Last time CEC discovery was run
-  isActive      Boolean  @default(true)
-  dailyTurnOn   Boolean  @default(false) // Auto turn-on for daily morning schedule
-  dailyTurnOff  Boolean  @default(false) // Auto turn-off for nightly closing schedule
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  configuration MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
-  
-  @@unique([configId, channelNumber])
-}
-
-model MatrixRoute {
-  id        Int      @id @default(autoincrement())
-  inputNum  Int
-  outputNum Int
-  isActive  Boolean  @default(false)
-  createdAt DateTime @default(now())
-}
-
-model MatrixScene {
-  id          Int      @id @default(autoincrement())
-  sceneNum    Int
+model TVLayout {
+  id          String   @id @default(cuid())
   name        String
   description String?
-  routes      String   // JSON string of routes
+  layoutData  String   // JSON string of the layout configuration
+  isActive    Boolean  @default(false)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MatrixConfig {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  config      String   // JSON string of matrix routing configuration
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BartenderRemote {
+  id          String   @id @default(cuid())
+  name        String
+  ipAddress   String   @unique
+  port        Int      @default(80)
+  description String?
+  status      String   @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DeviceMapping {
+  id              String   @id @default(cuid())
+  tvNumber        Int      @unique
+  fireTvDeviceId  String?
+  fireTvName      String?
+  audioZoneId     String?
+  audioZoneName   String?
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SystemSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
 }
 
 model AudioProcessor {
@@ -149,6 +127,8 @@ model AudioProcessor {
   model       String      // "AZM4", "AZM8", "AZMP4", "AZMP8", etc.
   ipAddress   String
   port        Int         @default(80)
+  username    String?     // HTTP Basic Auth username
+  password    String?     // HTTP Basic Auth password (stored encrypted)
   zones       Int         @default(4)
   description String?
   status      String      @default("offline") // "online", "offline", "error"
@@ -178,221 +158,46 @@ model AudioZone {
   updatedAt     DateTime       @updatedAt
   
   processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
-
+  
   @@unique([processorId, zoneNumber])
 }
 
 model AudioScene {
-  id          String         @id @default(cuid())
-  processorId String
-  sceneNumber Int
-  name        String
-  description String?
-  settings    String         // JSON string containing zone settings
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  processorId   String
+  name          String
+  description   String?
+  sceneData     String         // JSON string of zone configurations
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   
-  processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
-
-  @@unique([processorId, sceneNumber])
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
 }
 
 model AudioMessage {
-  id          String         @id @default(cuid())
-  processorId String
-  name        String
-  description String?
-  filePath    String
-  duration    Int?           // Duration in seconds
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  processorId   String
+  name          String
+  audioFile     String         // Path or URL to audio file
+  duration      Int?           // Duration in seconds
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   
-  processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
 }
 
 model AudioInputMeter {
-  id          String         @id @default(cuid())
-  processorId String
-  inputNumber Int
-  level       Float          // Current audio level in dB
-  timestamp   DateTime       @default(now())
+  id            String         @id @default(cuid())
+  processorId   String
+  inputNumber   Int
+  inputName     String
+  level         Float          @default(0) // dB level
+  peak          Float          @default(0) // Peak dB level
+  clipping      Boolean        @default(false)
+  timestamp     DateTime       @default(now())
   
-  processor   AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
-
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  
   @@unique([processorId, inputNumber])
-}
-
-model DirectvBox {
-  id              String   @id @default(cuid())
-  name            String
-  ipAddress       String   @unique
-  port            Int      @default(8080)
-  clientAddress   String   // MAC address or client ID
-  location        String?
-  status          String   @default("offline") // online, offline, error
-  lastSeen        DateTime?
-  firmwareVersion String?
-  model           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model FireTvDevice {
-  id              String   @id @default(cuid())
-  name            String
-  ipAddress       String   @unique
-  port            Int      @default(5555)
-  serialNumber    String?
-  model           String?
-  androidVersion  String?
-  status          String   @default("offline") // online, offline, error
-  lastSeen        DateTime?
-  adbConnected    Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model SportsProvider {
-  id          String   @id @default(cuid())
-  name        String   @unique // "DirecTV", "YouTube TV", "Hulu Live", etc.
-  type        String   // "satellite", "streaming", "cable"
-  isActive    Boolean  @default(true)
-  priority    Int      @default(0) // Higher priority providers shown first
-  logoUrl     String?
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  inputs ProviderInput[]
-}
-
-model ProviderInput {
-  id           String   @id @default(cuid())
-  providerId   String
-  matrixInputId String
-  channelNumber String  // Provider's channel number (e.g., "206" for DirecTV)
-  channelName   String? // Optional channel name
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  provider     SportsProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  matrixInput  MatrixInput    @relation(fields: [matrixInputId], references: [id], onDelete: Cascade)
-  
-  @@unique([providerId, matrixInputId])
-}
-
-model SportsEvent {
-  id              String   @id @default(cuid())
-  title           String
-  sport           String   // "NFL", "NBA", "MLB", etc.
-  league          String?
-  homeTeam        String
-  awayTeam        String
-  startTime       DateTime
-  endTime         DateTime?
-  channel         String?  // Channel name/number
-  network         String?  // ESPN, FOX, CBS, etc.
-  status          String   @default("scheduled") // scheduled, live, completed, cancelled
-  score           String?  // JSON string with score details
-  importance      Int      @default(0) // 0-10 scale for prioritization
-  notes           String?
-  externalId      String?  // ID from external API
-  externalSource  String?  // Source of the data
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@index([startTime])
-  @@index([sport])
-  @@index([status])
-}
-
-model TvSchedule {
-  id          String   @id @default(cuid())
-  outputId    String   // Reference to MatrixOutput
-  dayOfWeek   Int      // 0-6 (Sunday-Saturday)
-  startTime   String   // HH:MM format
-  endTime     String   // HH:MM format
-  inputId     String   // Reference to MatrixInput
-  isActive    Boolean  @default(true)
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([dayOfWeek])
-  @@index([isActive])
-}
-
-model SystemLog {
-  id        String   @id @default(cuid())
-  level     String   // info, warning, error, debug
-  category  String   // system, matrix, audio, directv, firetv, etc.
-  message   String
-  details   String?  // JSON string with additional details
-  timestamp DateTime @default(now())
-  
-  @@index([level])
-  @@index([category])
-  @@index([timestamp])
-}
-
-model TestLog {
-  id            String   @id @default(cuid())
-  testType      String   // wolfpack_connection, wolfpack_switching, directv_connection, etc.
-  testName      String
-  status        String   // success, failed, error, running, partial
-  inputChannel  Int?
-  outputChannel Int?
-  command       String?
-  response      String?
-  errorMessage  String?
-  duration      Int      // Duration in milliseconds
-  timestamp     DateTime @default(now())
-  metadata      String?  // JSON string with additional test details
-  
-  @@index([testType])
-  @@index([status])
-  @@index([timestamp])
-}
-
-model QAEntry {
-  id        String   @id @default(cuid())
-  question  String
-  answer    String
-  category  String?  // Optional category for organization
-  tags      String?  // JSON array of tags
-  source    String?  // Where this Q&A came from
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@index([category])
-}
-
-model Preset {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  routes      String   // JSON string of input->output mappings
-  audioRoutes String?  // JSON string of audio routing settings
-  priority    Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model Schedule {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  presetId    String?  // Optional preset to activate
-  dayOfWeek   Int?     // 0-6, null for all days
-  startTime   String   // HH:MM format
-  endTime     String?  // HH:MM format, null for one-time action
-  action      String   // preset, power_on, power_off, custom
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([isActive])
-  @@index([dayOfWeek])
+  @@index([processorId, timestamp])
 }
