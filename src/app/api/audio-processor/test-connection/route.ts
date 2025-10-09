@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { createAuthHeaders, testCredentials, ATLAS_DEFAULT_CREDENTIALS, encryptPassword } from '@/lib/atlas-auth'
 
 /**
  * Validates and cleans IP address format
@@ -29,12 +30,19 @@ function cleanIpAddress(ipAddress: string): string {
 }
 
 /**
- * Tests connection to Atlas processor using multiple protocols
+ * Tests connection to Atlas processor using multiple protocols and authentication
  * Atlas processors typically use:
  * - Port 80 for HTTP web interface
  * - Port 443 for HTTPS/SSL (cloud communications)
+ * - HTTP Basic Authentication (username/password)
  */
-async function testProcessorConnection(ipAddress: string, port: number, timeout: number = 10000) {
+async function testProcessorConnection(
+  ipAddress: string, 
+  port: number, 
+  username?: string,
+  password?: string,
+  timeout: number = 10000
+) {
   const protocols = [
     { protocol: 'http', port: port || 80 },
     { protocol: 'https', port: 443 }
@@ -51,9 +59,7 @@ async function testProcessorConnection(ipAddress: string, port: number, timeout:
       const response = await fetch(testUrl, {
         method: 'GET',
         signal: controller.signal,
-        headers: {
-          'User-Agent': 'Sports-Bar-AI-Assistant/1.0'
-        },
+        headers: createAuthHeaders(username, password),
         // Disable SSL verification for self-signed certificates
         // @ts-ignore - Node.js specific option
         rejectUnauthorized: false
@@ -61,6 +67,8 @@ async function testProcessorConnection(ipAddress: string, port: number, timeout:
       
       clearTimeout(timeoutId)
       
+      // Check if authentication is required
+      const requiresAuth = response.status === 401 || response.status === 403
       const isConnected = response.status >= 200 && response.status < 500
       
       results.push({
@@ -68,12 +76,24 @@ async function testProcessorConnection(ipAddress: string, port: number, timeout:
         port: testPort,
         connected: isConnected,
         status: response.status,
+        requiresAuth,
+        authenticated: !requiresAuth && isConnected,
         url: testUrl
       })
       
-      // If we get a successful connection, we can stop testing
-      if (isConnected) {
+      // If we get a successful connection (authenticated or no auth required), we can stop testing
+      if (isConnected && !requiresAuth) {
         return { success: true, result: results[results.length - 1], allResults: results }
+      }
+      
+      // If auth is required but we haven't provided credentials, note it
+      if (requiresAuth && (!username || !password)) {
+        return { 
+          success: false, 
+          requiresAuth: true,
+          result: results[results.length - 1],
+          allResults: results 
+        }
       }
       
     } catch (fetchError: any) {
@@ -94,7 +114,7 @@ async function testProcessorConnection(ipAddress: string, port: number, timeout:
 
 export async function POST(request: NextRequest) {
   try {
-    const { processorId, ipAddress, port } = await request.json()
+    const { processorId, ipAddress, port, username, password, autoDetectCredentials } = await request.json()
 
     if (!ipAddress) {
       return NextResponse.json(
@@ -121,30 +141,102 @@ export async function POST(request: NextRequest) {
 
     console.log(`Testing connection to AtlasIED Atmosphere at ${cleanedIp}:${port || 80}`)
 
-    // Test connection with multiple protocols
-    const testResult = await testProcessorConnection(cleanedIp, port || 80, 10000)
+    // If auto-detect credentials is enabled, try common credential combinations
+    if (autoDetectCredentials && (!username || !password)) {
+      console.log('Auto-detecting credentials...')
+      
+      const credentialsList = [
+        { username: ATLAS_DEFAULT_CREDENTIALS.username, password: ATLAS_DEFAULT_CREDENTIALS.password },
+        ...ATLAS_DEFAULT_CREDENTIALS.alternativePasswords.map(pwd => ({
+          username: ATLAS_DEFAULT_CREDENTIALS.username,
+          password: pwd
+        }))
+      ]
+
+      const credentialTest = await testCredentials(cleanedIp, port || 80, credentialsList)
+      
+      if (credentialTest.success && credentialTest.credentials) {
+        // Found working credentials
+        const workingCreds = credentialTest.credentials
+        
+        // Update processor with working credentials if processorId provided
+        if (processorId) {
+          await prisma.audioProcessor.update({
+            where: { id: processorId },
+            data: { 
+              status: 'online',
+              lastSeen: new Date(),
+              ipAddress: cleanedIp,
+              username: workingCreds.username,
+              password: encryptPassword(workingCreds.password)
+            }
+          })
+        }
+
+        return NextResponse.json({
+          connected: true,
+          authenticated: true,
+          credentialsFound: true,
+          username: workingCreds.username,
+          message: `Successfully connected with credentials: ${workingCreds.username}`,
+          webInterface: `http://${cleanedIp}:${port || 80}`,
+          ipCleaned: cleanedIp !== ipAddress,
+          originalIp: ipAddress,
+          cleanedIp: cleanedIp
+        })
+      }
+    }
+
+    // Test connection with provided or no credentials
+    const testResult = await testProcessorConnection(cleanedIp, port || 80, username, password, 10000)
     
     if (testResult.success && testResult.result) {
       // Update processor status in database if processorId provided
       if (processorId) {
+        const updateData: any = { 
+          status: 'online',
+          lastSeen: new Date(),
+          ipAddress: cleanedIp
+        }
+        
+        // Store credentials if provided
+        if (username && password) {
+          updateData.username = username
+          updateData.password = encryptPassword(password)
+        }
+        
         await prisma.audioProcessor.update({
           where: { id: processorId },
-          data: { 
-            status: 'online',
-            lastSeen: new Date(),
-            // Update IP address if it was cleaned
-            ...(cleanedIp !== ipAddress ? { ipAddress: cleanedIp } : {})
-          }
+          data: updateData
         })
       }
 
       return NextResponse.json({
         connected: true,
+        authenticated: testResult.result.authenticated,
         status: testResult.result.status,
         protocol: testResult.result.protocol,
         port: testResult.result.port,
         message: `Successfully connected to AtlasIED Atmosphere processor via ${testResult.result.protocol.toUpperCase()}`,
         webInterface: testResult.result.url,
+        ipCleaned: cleanedIp !== ipAddress,
+        originalIp: ipAddress,
+        cleanedIp: cleanedIp,
+        allResults: testResult.allResults
+      })
+    } else if (testResult.requiresAuth) {
+      // Processor requires authentication
+      return NextResponse.json({
+        connected: true,
+        authenticated: false,
+        requiresAuth: true,
+        message: 'Processor requires authentication. Please provide username and password.',
+        defaultCredentials: {
+          username: ATLAS_DEFAULT_CREDENTIALS.username,
+          password: ATLAS_DEFAULT_CREDENTIALS.password,
+          note: 'Try these common default credentials. Default is usually admin/admin.'
+        },
+        webInterface: `http://${cleanedIp}:${port || 80}`,
         ipCleaned: cleanedIp !== ipAddress,
         originalIp: ipAddress,
         cleanedIp: cleanedIp,
@@ -157,15 +249,14 @@ export async function POST(request: NextRequest) {
           where: { id: processorId },
           data: { 
             status: 'offline',
-            // Update IP address if it was cleaned
-            ...(cleanedIp !== ipAddress ? { ipAddress: cleanedIp } : {})
+            ipAddress: cleanedIp
           }
         })
       }
       
       return NextResponse.json({
         connected: false,
-        message: 'Unable to connect to processor on any protocol',
+        message: 'Unable to connect to processor',
         error: 'connection_failed',
         ipCleaned: cleanedIp !== ipAddress,
         originalIp: ipAddress,
@@ -178,7 +269,8 @@ export async function POST(request: NextRequest) {
             '3. Ensure the processor is on the same network or accessible via routing',
             '4. Try accessing the web interface directly in a browser: http://' + cleanedIp,
             '5. Check firewall settings - Atlas uses ports 80 (HTTP) and 443 (HTTPS)',
-            '6. Verify network connectivity with: ping ' + cleanedIp
+            '6. Verify network connectivity with: ping ' + cleanedIp,
+            '7. If authentication is required, provide username and password (default: admin/admin)'
           ]
         }
       })
