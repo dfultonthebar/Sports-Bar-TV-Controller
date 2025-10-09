@@ -442,7 +442,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
               options: {
                 temperature: 0.3, // OPTIMIZED: Lower temperature for more consistent JSON
                 top_p: 0.9,
-                num_predict: 1000, // Limit response length
+                num_predict: 2048, // FIXED: Increased from 1000 to prevent truncation
               },
             }),
             signal: controller.signal,
@@ -472,15 +472,42 @@ Remember: Output ONLY the JSON object, nothing else.`;
             throw new Error('Invalid response structure from Ollama');
           }
 
+          // FIXED: Check if response was truncated by Ollama
+          const responseText = data.response;
+          const wasTruncated = data.done === false || 
+                               !responseText.trim().endsWith('}') ||
+                               responseText.includes('...');
+          
+          if (wasTruncated) {
+            console.warn(`Response appears truncated for ${fileName}${chunkLabel}`);
+            console.warn(`Response length: ${responseText.length} chars`);
+            console.warn(`Response end: ...${responseText.substring(Math.max(0, responseText.length - 100))}`);
+            
+            if (retries < MAX_RETRIES) {
+              console.log(`Retrying with increased token limit (attempt ${retries + 1}/${MAX_RETRIES})...`);
+              retries++;
+              continue;
+            }
+          }
+
           // Parse the generated Q&As with improved error handling
-          qas = parseGeneratedQAs(data.response, fileName);
+          qas = parseGeneratedQAs(responseText, fileName);
           
           if (qas.length > 0) {
             allQAs.push(...qas);
             break; // Success, exit retry loop
           } else {
-            console.warn(`No valid Q&As parsed from response for ${fileName}${chunkLabel}, retrying...`);
-            retries++;
+            console.warn(`No valid Q&As parsed from response for ${fileName}${chunkLabel}`);
+            
+            if (retries < MAX_RETRIES) {
+              console.log(`Retrying (attempt ${retries + 1}/${MAX_RETRIES})...`);
+              retries++;
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+              continue;
+            }
+            
+            console.error(`Failed to generate valid Q&As after ${MAX_RETRIES} retries`);
+            break;
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
@@ -529,6 +556,18 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
     // Remove markdown code blocks
     cleanedResponse = cleanedResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
     
+    // FIXED: Validate JSON completeness before parsing
+    // Check if response appears truncated (doesn't end with proper closing)
+    const hasOpeningBrace = cleanedResponse.includes('{');
+    const hasClosingBrace = cleanedResponse.includes('}');
+    
+    if (!hasOpeningBrace || !hasClosingBrace) {
+      console.error(`Incomplete JSON response for ${sourceFile} - missing braces`);
+      console.error(`Response preview: ${response.substring(0, 300)}...`);
+      console.error(`Response end: ...${response.substring(Math.max(0, response.length - 100))}`);
+      return [];
+    }
+    
     // Try to find JSON object in the response
     const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -537,12 +576,33 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
       return [];
     }
 
+    const jsonString = jsonMatch[0];
+    
+    // FIXED: Additional validation - check for truncation indicators
+    if (jsonString.includes('...') || !jsonString.trim().endsWith('}')) {
+      console.error(`Response appears truncated for ${sourceFile}`);
+      console.error(`JSON end: ...${jsonString.substring(Math.max(0, jsonString.length - 150))}`);
+      return [];
+    }
+
     let parsed;
     try {
-      parsed = JSON.parse(jsonMatch[0]);
+      parsed = JSON.parse(jsonString);
     } catch (parseError) {
       console.error(`JSON parse error for ${sourceFile}:`, parseError);
-      console.error(`Attempted to parse: ${jsonMatch[0].substring(0, 200)}...`);
+      console.error(`Attempted to parse (first 300 chars): ${jsonString.substring(0, 300)}...`);
+      console.error(`Attempted to parse (last 300 chars): ...${jsonString.substring(Math.max(0, jsonString.length - 300))}`);
+      
+      // FIXED: Log the exact position where parsing failed
+      if (parseError instanceof SyntaxError) {
+        const match = parseError.message.match(/position (\d+)/);
+        if (match) {
+          const position = parseInt(match[1]);
+          const contextStart = Math.max(0, position - 100);
+          const contextEnd = Math.min(jsonString.length, position + 100);
+          console.error(`Parse error context: ...${jsonString.substring(contextStart, contextEnd)}...`);
+        }
+      }
       return [];
     }
     
@@ -570,7 +630,8 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
     return validQAs;
   } catch (error) {
     console.error(`Error parsing Q&As for ${sourceFile}:`, error);
-    console.error(`Response that failed to parse: ${response.substring(0, 300)}...`);
+    console.error(`Response that failed to parse (first 300): ${response.substring(0, 300)}...`);
+    console.error(`Response that failed to parse (last 300): ...${response.substring(Math.max(0, response.length - 300))}`);
     return [];
   }
 }
