@@ -125,19 +125,21 @@ model MatrixInput {
 }
 
 model MatrixOutput {
-  id            String              @id @default(cuid())
-  configId      String
-  channelNumber Int
-  label         String
-  resolution    String              @default("1080p")
-  isActive      Boolean             @default(true)
-  status        String              @default("active")
-  audioOutput   String?
-  powerOn       Boolean             @default(false)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id                  String              @id @default(cuid())
+  configId            String
+  channelNumber       Int
+  label               String
+  resolution          String              @default("1080p")
+  isActive            Boolean             @default(true)
+  status              String              @default("active")
+  audioOutput         String?
+  powerOn             Boolean             @default(false)
+  selectedVideoInput  Int?                // Selected video input for this matrix output (for audio routing)
+  videoInputLabel     String?             // Label of the selected video input
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   
-  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  config              MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
   
   @@unique([configId, channelNumber])
 }

@@ -1,401 +1,286 @@
+# Deployment Instructions for Matrix-Atlas Integration
 
-# Deployment Instructions - Auto TV Documentation Feature
+## Summary of Changes
 
-## Overview
+This feature branch (`feature/matrix-atlas-video-routing`) has been successfully created and pushed to GitHub. A pull request (#178) has been created and is ready for review.
 
-This document provides step-by-step instructions for deploying the Automatic TV Documentation feature to your Sports Bar TV Controller system.
+### What Was Implemented
 
-## Prerequisites
+1. **Database Schema Updates**
+   - Extended `MatrixOutput` model with `selectedVideoInput` and `videoInputLabel` fields
+   - Migration file ready to be applied
 
-- Node.js 18+ installed
-- npm or yarn package manager
-- Prisma database configured and running
-- Write permissions to the project directory
-- Internet connectivity for downloading manuals
+2. **New API Endpoints**
+   - `/api/matrix/video-input-selection` - Video input selection and routing
+   - `/api/atlas/route-matrix-to-zone` - Atlas zone routing integration
 
-## Installation Steps
+3. **UI Enhancements**
+   - Video input selection modal for Matrix outputs (33-36)
+   - Enhanced Matrix output cards with routing UI
+   - Real-time label updates
 
-### 1. Pull Latest Changes
+4. **Documentation**
+   - Comprehensive feature documentation in `MATRIX_ATLAS_INTEGRATION.md`
+   - API specifications and usage examples
+
+## Manual Deployment Steps
+
+Since the SSH connection timed out, please follow these steps manually on the remote server:
+
+### Step 1: SSH into Remote Server
+
+```bash
+ssh ubuntu@24.123.87.42
+# Password: 6809233DjD$$$
+```
+
+### Step 2: Navigate to Project Directory
 
 ```bash
 cd ~/Sports-Bar-TV-Controller
-git fetch origin
-git checkout feat/auto-tv-docs
-git pull origin feat/auto-tv-docs
 ```
 
-### 2. Install Dependencies
+### Step 3: Fetch and Checkout Feature Branch
+
+```bash
+# Fetch latest changes
+git fetch origin
+
+# Checkout feature branch
+git checkout feature/matrix-atlas-video-routing
+
+# Pull latest changes
+git pull origin feature/matrix-atlas-video-routing
+
+# Verify you're on the correct branch
+git branch --show-current
+# Should show: feature/matrix-atlas-video-routing
+```
+
+### Step 4: Install Dependencies (if needed)
 
 ```bash
 npm install
 ```
 
-This will install the new dependencies:
-- `pdf-parse` - For extracting text from PDF manuals
-- `cheerio` - For parsing HTML documentation
-- `axios` - For HTTP requests
-
-### 3. Create Manuals Directory
+### Step 5: Run Database Migration
 
 ```bash
-mkdir -p docs/tv-manuals
-chmod 755 docs/tv-manuals
-```
+# This will add the new fields to MatrixOutput table
+npx prisma migrate dev --name add_video_input_selection
 
-### 4. Run Database Migrations (if needed)
-
-```bash
+# Generate Prisma client
 npx prisma generate
-npx prisma migrate dev
 ```
 
-### 5. Build the Application
+### Step 6: Build the Application
 
 ```bash
 npm run build
 ```
 
-### 6. Test the Installation
-
-```bash
-# Test the TV documentation system
-npx tsx scripts/test-tv-docs.ts
-```
-
-### 7. Restart the Application
+### Step 7: Restart the Application
 
 ```bash
 # If using PM2
-pm2 restart sportsbar-assistant
+pm2 restart all
 
-# If using systemd
-sudo systemctl restart sportsbar-assistant
+# OR if running manually
+pkill -f "next dev" || true
+pkill -f "next start" || true
+npm run start &
 
-# If running manually
-npm start
+# OR for development mode
+npm run dev &
 ```
 
-## Verification
+### Step 8: Verify Deployment
 
-### 1. Check API Endpoints
+1. Open browser and navigate to: `http://24.123.87.42:3001`
+2. Go to Matrix Control page
+3. Click on "Outputs" tab
+4. Look for Matrix outputs (channels 33-36)
+5. You should see "Matrix Audio Routing" section with "Select Video Input" button
 
-Test that the new endpoints are working:
+## Testing the Feature
+
+### Test 1: Video Input Selection
+
+1. Navigate to Matrix Control → Outputs tab
+2. Find Matrix 1 (Output 33)
+3. Click "Select Video Input" button
+4. Modal should appear with available video inputs
+5. Click on any video input (e.g., "Cable Box 1")
+6. Verify:
+   - Toast notification appears
+   - Label updates to match video input
+   - Routing state persists after page refresh
+
+### Test 2: API Endpoints
 
 ```bash
-# Test documentation list endpoint
-curl http://localhost:3000/api/cec/tv-documentation
-
-# Test manual fetch endpoint (replace with actual TV model)
-curl -X POST http://localhost:3000/api/cec/fetch-tv-manual \
-  -H "Content-Type: application/json" \
-  -d '{"manufacturer":"Samsung","model":"UN55TU8000"}'
-```
-
-### 2. Check UI Integration
-
-1. Open the application in your browser: `http://localhost:3000`
-2. Navigate to the CEC Discovery page
-3. Run a CEC discovery scan
-4. Check the TV Documentation panel (should appear on the page)
-5. Verify that discovered TVs are listed
-6. Try clicking "Fetch Manual" for a TV model
-
-### 3. Check File System
-
-```bash
-# Verify manuals directory exists
-ls -la docs/tv-manuals/
-
-# Check for downloaded manuals (after running discovery)
-ls -lh docs/tv-manuals/*.pdf
-```
-
-### 4. Check Logs
-
-```bash
-# Monitor logs for TV documentation activity
-tail -f logs/app.log | grep "TV Docs"
-
-# Check for any errors
-tail -f logs/app.log | grep "ERROR"
-```
-
-## Configuration
-
-### Customize Search Behavior
-
-Edit `src/lib/tvDocs/searchManual.ts` to adjust search queries:
-
-```typescript
-const queries = [
-  `${manufacturer} ${model} manual PDF`,
-  `${manufacturer} ${model} user guide PDF`,
-  // Add more search patterns here
-]
-```
-
-### Adjust Q&A Generation
-
-Edit `src/lib/tvDocs/generateQA.ts` to change Q&A generation settings:
-
-```typescript
-// Maximum chunks to process
-const maxChunks = Math.min(chunks.length, 10)
-
-// Chunk size
-const chunks = splitContentIntoChunks(content, 2000)
-```
-
-### Configure File Size Limits
-
-Edit `src/lib/tvDocs/downloadManual.ts`:
-
-```typescript
-// Minimum file size (100KB)
-const minSize = 100000
-
-// Maximum file size (50MB)
-const maxSize = 52428800
-```
-
-## Usage
-
-### Automatic Mode (Recommended)
-
-The system works automatically:
-
-1. Run CEC discovery from the UI or API
-2. When a TV is detected, documentation fetch starts automatically
-3. Check the TV Documentation panel for progress
-4. Q&A pairs are automatically added to the AI knowledge base
-
-### Manual Mode
-
-To manually fetch documentation:
-
-1. Navigate to TV Documentation panel in the UI
-2. Find the TV model you want
-3. Click "Fetch Manual" button
-4. Wait for completion (may take 1-2 minutes)
-
-### API Usage
-
-```bash
-# Fetch manual for specific TV
-curl -X POST http://localhost:3000/api/cec/fetch-tv-manual \
+# Test video input selection
+curl -X POST http://localhost:3001/api/matrix/video-input-selection \
   -H "Content-Type: application/json" \
   -d '{
-    "manufacturer": "Samsung",
-    "model": "UN55TU8000",
-    "forceRefetch": false
+    "matrixOutputNumber": 3,
+    "videoInputNumber": 5,
+    "videoInputLabel": "Direct TV 1"
   }'
 
-# Get all documentation
-curl http://localhost:3000/api/cec/tv-documentation
+# Get current selections
+curl http://localhost:3001/api/matrix/video-input-selection
+
+# Test Atlas zone routing
+curl -X POST http://localhost:3001/api/atlas/route-matrix-to-zone \
+  -H "Content-Type: application/json" \
+  -d '{
+    "matrixInputNumber": 3,
+    "zoneNumbers": [1, 2, 5]
+  }'
+
+# Get routing state
+curl http://localhost:3001/api/atlas/route-matrix-to-zone
+```
+
+### Test 3: Database Verification
+
+```bash
+# Check if migration was applied
+npx prisma studio
+
+# Or query directly
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+
+# Check MatrixOutput table structure
+.schema MatrixOutput
+
+# Should show selectedVideoInput and videoInputLabel fields
+```
+
+## Merging to Main
+
+Once testing is complete and everything works:
+
+### Option 1: Merge via GitHub UI
+
+1. Go to: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/pull/178
+2. Review the changes
+3. Click "Merge pull request"
+4. Confirm merge
+
+### Option 2: Merge via Command Line
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+
+# Switch to main branch
+git checkout main
+
+# Pull latest changes
+git pull origin main
+
+# Merge feature branch
+git merge feature/matrix-atlas-video-routing
+
+# Push to GitHub
+git push origin main
+
+# Restart application
+pm2 restart all
+# OR
+npm run start &
 ```
 
 ## Troubleshooting
 
-### Issue: Dependencies Not Installing
+### Issue: Migration Fails
 
-**Solution:**
 ```bash
-# Clear npm cache
-npm cache clean --force
+# Reset migration
+npx prisma migrate reset
 
-# Remove node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
+# Re-run migration
+npx prisma migrate dev --name add_video_input_selection
 ```
 
 ### Issue: Build Fails
 
-**Solution:**
 ```bash
-# Check TypeScript errors
-npx tsc --noEmit
-
-# Clear Next.js cache
+# Clear cache
 rm -rf .next
-
-# Rebuild
-npm run build
-```
-
-### Issue: Manuals Not Downloading
-
-**Possible Causes:**
-1. Network connectivity issues
-2. Manual not available online
-3. Search API not configured
-
-**Solution:**
-```bash
-# Check network connectivity
-curl -I https://www.google.com
-
-# Check logs for detailed errors
-tail -f logs/app.log | grep "TV Docs"
-
-# Try manual fetch with different TV model
-curl -X POST http://localhost:3000/api/cec/fetch-tv-manual \
-  -H "Content-Type: application/json" \
-  -d '{"manufacturer":"Sony","model":"XBR55X900H"}'
-```
-
-### Issue: Q&A Pairs Not Generated
-
-**Possible Causes:**
-1. AI service not running
-2. PDF extraction failed
-3. Manual content too short
-
-**Solution:**
-```bash
-# Check AI service status
-curl http://localhost:3000/api/ai/status
-
-# Check manual file
-ls -lh docs/tv-manuals/
-
-# Try extracting PDF manually
-npx tsx -e "
-  const pdf = require('pdf-parse');
-  const fs = require('fs');
-  const data = fs.readFileSync('docs/tv-manuals/Samsung_UN55TU8000_Manual.pdf');
-  pdf(data).then(result => console.log(result.text.substring(0, 500)));
-"
-```
-
-### Issue: Permission Denied
-
-**Solution:**
-```bash
-# Fix directory permissions
-sudo chown -R $USER:$USER docs/tv-manuals
-chmod 755 docs/tv-manuals
-```
-
-## Monitoring
-
-### Check System Status
-
-```bash
-# Check disk usage
-du -sh docs/tv-manuals/
-
-# Count downloaded manuals
-ls -1 docs/tv-manuals/*.pdf 2>/dev/null | wc -l
-
-# Check database for Q&A pairs
-sqlite3 prisma/dev.db "SELECT COUNT(*) FROM QAPair WHERE source LIKE '%Manual%';"
-```
-
-### Monitor Performance
-
-```bash
-# Watch for documentation fetch activity
-watch -n 5 'tail -20 logs/app.log | grep "TV Docs"'
-
-# Monitor memory usage
-ps aux | grep node
-
-# Check API response times
-curl -w "@-" -o /dev/null -s http://localhost:3000/api/cec/tv-documentation <<'EOF'
-    time_namelookup:  %{time_namelookup}\n
-       time_connect:  %{time_connect}\n
-    time_appconnect:  %{time_appconnect}\n
-      time_redirect:  %{time_redirect}\n
-   time_pretransfer:  %{time_pretransfer}\n
- time_starttransfer:  %{time_starttransfer}\n
-                    ----------\n
-         time_total:  %{time_total}\n
-EOF
-```
-
-## Rollback
-
-If you need to rollback the changes:
-
-```bash
-# Switch back to main branch
-git checkout main
+rm -rf node_modules
 
 # Reinstall dependencies
 npm install
 
 # Rebuild
 npm run build
-
-# Restart application
-pm2 restart sportsbar-assistant
 ```
 
-## Backup
+### Issue: API Returns 404
 
-Before deploying, create a backup:
+- Ensure application was rebuilt after pulling changes
+- Check that the application is running
+- Verify the API route files exist in `src/app/api/`
+
+### Issue: Modal Not Appearing
+
+- Check browser console for errors
+- Verify MatrixControl component was updated
+- Clear browser cache and refresh
+
+## Rollback Instructions
+
+If you need to rollback:
 
 ```bash
-# Backup database
-cp prisma/dev.db prisma/dev.db.backup-$(date +%Y%m%d)
+cd ~/Sports-Bar-TV-Controller
 
-# Backup configuration
-tar -czf config-backup-$(date +%Y%m%d).tar.gz config/ .env
+# Switch back to main branch
+git checkout main
 
-# Backup existing manuals (if any)
-tar -czf manuals-backup-$(date +%Y%m%d).tar.gz docs/tv-manuals/
+# Pull latest main
+git pull origin main
+
+# Restart application
+pm2 restart all
 ```
-
-## Production Deployment
-
-For production environments:
-
-1. **Use Environment Variables:**
-   ```bash
-   export NODE_ENV=production
-   export TV_DOCS_MAX_CHUNK_SIZE=2000
-   export TV_DOCS_MAX_CHUNKS=10
-   ```
-
-2. **Enable Logging:**
-   ```bash
-   # Configure log rotation
-   sudo nano /etc/logrotate.d/sportsbar-assistant
-   ```
-
-3. **Set Up Monitoring:**
-   ```bash
-   # Use PM2 monitoring
-   pm2 install pm2-logrotate
-   pm2 set pm2-logrotate:max_size 10M
-   ```
-
-4. **Configure Firewall:**
-   ```bash
-   # Ensure outbound HTTPS is allowed for downloading manuals
-   sudo ufw allow out 443/tcp
-   ```
 
 ## Support
 
 For issues or questions:
-- Check the troubleshooting section above
-- Review logs in `logs/app.log`
-- Check documentation in `docs/AUTO_TV_DOCUMENTATION.md`
-- Create an issue on GitHub
+- Check application logs: `tail -f ~/app.log`
+- Check PM2 logs: `pm2 logs`
+- Review documentation: `MATRIX_ATLAS_INTEGRATION.md`
+- Check database: `npx prisma studio`
 
-## Next Steps
+## GitHub Pull Request
 
-After successful deployment:
+- **PR Number:** #178
+- **PR URL:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller/pull/178
+- **Branch:** feature/matrix-atlas-video-routing
+- **Status:** Open and ready for review
 
-1. Run CEC discovery to detect TVs
-2. Monitor the TV Documentation panel
-3. Verify Q&A pairs are being generated
-4. Test the AI assistant with TV-specific questions
-5. Review and adjust configuration as needed
+## Important Notes
+
+1. **Database Migration:** The migration adds new fields but does NOT modify existing data
+2. **Backward Compatibility:** This feature is fully backward compatible
+3. **No Breaking Changes:** Existing functionality remains unchanged
+4. **GitHub App Access:** Ensure you have given access to the [GitHub App](https://github.com/apps/abacusai/installations/select_target) for full functionality
+
+## Next Steps After Deployment
+
+1. Test video input selection on all Matrix outputs (1-4)
+2. Verify Wolfpack commands are sent correctly
+3. Test Atlas zone routing integration
+4. Monitor application logs for any errors
+5. Gather user feedback
+6. Merge PR to main when ready
 
 ---
 
-**Deployment Date:** October 6, 2025  
-**Version:** 1.0.0  
-**Feature Branch:** feat/auto-tv-docs
+**Deployment Date:** October 9, 2025  
+**Feature Branch:** feature/matrix-atlas-video-routing  
+**Pull Request:** #178  
+**Status:** Ready for manual deployment and testing

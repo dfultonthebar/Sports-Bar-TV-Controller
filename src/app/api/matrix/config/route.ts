@@ -104,7 +104,9 @@ export async function POST(request: NextRequest) {
           isActive: output.isActive,
           status: output.status || 'active',
           audioOutput: output.audioOutput || '',
-          powerOn: output.powerOn || false
+          powerOn: output.powerOn || false,
+          selectedVideoInput: output.selectedVideoInput || null,
+          videoInputLabel: output.videoInputLabel || null
         }))
       })
     }

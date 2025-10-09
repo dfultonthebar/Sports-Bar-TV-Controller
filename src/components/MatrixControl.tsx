@@ -24,6 +24,8 @@ interface MatrixOutput {
   audioOutput?: string
   isActive: boolean
   powerOn: boolean
+  selectedVideoInput?: number
+  videoInputLabel?: string
 }
 
 interface MatrixConfig {
@@ -80,6 +82,8 @@ export default function MatrixControl() {
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<string>('')
   const [activeTab, setActiveTab] = useState<TabType>('inputs')
+  const [showVideoInputModal, setShowVideoInputModal] = useState(false)
+  const [selectedMatrixOutput, setSelectedMatrixOutput] = useState<number | null>(null)
 
   useEffect(() => {
     loadConfigurations()
@@ -184,6 +188,57 @@ export default function MatrixControl() {
     const newOutputs = [...currentConfig.outputs]
     newOutputs[index] = { ...newOutputs[index], [field]: value }
     setCurrentConfig({ ...currentConfig, outputs: newOutputs })
+  }
+
+  const handleVideoInputSelection = async (videoInputNumber: number) => {
+    if (!selectedMatrixOutput) return
+
+    try {
+      const videoInput = currentConfig.inputs.find(i => i.channelNumber === videoInputNumber)
+      if (!videoInput) {
+        toast.error('Video input not found')
+        return
+      }
+
+      const response = await fetch('/api/matrix/video-input-selection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matrixOutputNumber: selectedMatrixOutput,
+          videoInputNumber,
+          videoInputLabel: videoInput.label
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        toast.success(result.message || 'Video input routed successfully')
+        
+        // Update the local state to reflect the change
+        const outputIndex = currentConfig.outputs.findIndex(
+          o => o.channelNumber === 32 + selectedMatrixOutput
+        )
+        if (outputIndex !== -1) {
+          updateOutput(outputIndex, 'selectedVideoInput', videoInputNumber)
+          updateOutput(outputIndex, 'videoInputLabel', videoInput.label)
+          updateOutput(outputIndex, 'label', videoInput.label)
+        }
+        
+        setShowVideoInputModal(false)
+        setSelectedMatrixOutput(null)
+      } else {
+        const error = await response.json()
+        toast.error(error.error || 'Failed to route video input')
+      }
+    } catch (error) {
+      console.error('Error routing video input:', error)
+      toast.error('Failed to route video input')
+    }
+  }
+
+  const openVideoInputModal = (matrixOutputNumber: number) => {
+    setSelectedMatrixOutput(matrixOutputNumber)
+    setShowVideoInputModal(true)
   }
 
   return (
@@ -383,66 +438,186 @@ export default function MatrixControl() {
             <div>
               <h3 className="text-xl font-semibold mb-4 text-slate-100">Output Configuration</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {currentConfig.outputs.map((output, index) => (
-                  <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
-                          className={`p-1.5 rounded transition-colors ${
-                            output.powerOn 
-                              ? 'bg-green-600 hover:bg-green-700 text-white' 
-                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
-                          }`}
-                          title={output.powerOn ? 'Power On' : 'Power Off'}
+                {currentConfig.outputs.map((output, index) => {
+                  const isMatrixOutput = output.channelNumber >= 33 && output.channelNumber <= 36
+                  const matrixNumber = output.channelNumber - 32
+                  
+                  return (
+                    <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
+                            className={`p-1.5 rounded transition-colors ${
+                              output.powerOn 
+                                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                            }`}
+                            title={output.powerOn ? 'Power On' : 'Power Off'}
+                          >
+                            {output.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                          </button>
+                          <label className="flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={output.isActive}
+                              onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
+                              className="w-4 h-4 cursor-pointer"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={output.label}
+                        onChange={(e) => updateOutput(index, 'label', e.target.value)}
+                        placeholder="Label"
+                        className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <div className="space-y-2">
+                        <select
+                          value={output.resolution}
+                          onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
-                          {output.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-                        </button>
-                        <label className="flex items-center cursor-pointer">
+                          <option value="1080p">1080p</option>
+                          <option value="4K">4K</option>
+                          <option value="720p">720p</option>
+                        </select>
+                        
+                        {/* Video Input Selection for Matrix Outputs (33-36) */}
+                        {isMatrixOutput && (
+                          <div className="mt-3 p-3 bg-slate-900 rounded border border-indigo-500/30">
+                            <div className="text-xs font-semibold text-indigo-400 mb-2">
+                              Matrix {matrixNumber} Audio Routing
+                            </div>
+                            <button
+                              onClick={() => openVideoInputModal(matrixNumber)}
+                              className="w-full px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
+                            >
+                              {output.videoInputLabel 
+                                ? `Video: ${output.videoInputLabel}` 
+                                : 'Select Video Input'}
+                            </button>
+                            {output.videoInputLabel && (
+                              <div className="mt-2 text-xs text-slate-400">
+                                Input #{output.selectedVideoInput} → Matrix {matrixNumber}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {index < 4 && (
                           <input
-                            type="checkbox"
-                            checked={output.isActive}
-                            onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
-                            className="w-4 h-4 cursor-pointer"
+                            type="text"
+                            value={output.audioOutput || ''}
+                            onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
+                            placeholder="Audio Output"
+                            className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
-                        </label>
+                        )}
                       </div>
                     </div>
-                    <input
-                      type="text"
-                      value={output.label}
-                      onChange={(e) => updateOutput(index, 'label', e.target.value)}
-                      placeholder="Label"
-                      className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <div className="space-y-2">
-                      <select
-                        value={output.resolution}
-                        onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="1080p">1080p</option>
-                        <option value="4K">4K</option>
-                        <option value="720p">720p</option>
-                      </select>
-                      {index < 4 && (
-                        <input
-                          type="text"
-                          value={output.audioOutput || ''}
-                          onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
-                          placeholder="Audio Output"
-                          className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Video Input Selection Modal */}
+      {showVideoInputModal && selectedMatrixOutput && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-6 z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-100">
+                    Select Video Input for Matrix {selectedMatrixOutput}
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    Choose which video input to route to Matrix {selectedMatrixOutput} output
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowVideoInputModal(false)
+                    setSelectedMatrixOutput(null)
+                  }}
+                  className="text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentConfig.inputs
+                  .filter(input => input.isActive && !input.isCecPort)
+                  .map((input) => (
+                    <button
+                      key={input.channelNumber}
+                      onClick={() => handleVideoInputSelection(input.channelNumber)}
+                      className="bg-slate-900 p-4 rounded-lg border-2 border-slate-700 hover:border-indigo-500 transition-all text-left group"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-indigo-400 mb-1">
+                            Input {input.channelNumber}
+                          </div>
+                          <div className="text-lg font-bold text-slate-100 group-hover:text-indigo-300 transition-colors">
+                            {input.label}
+                          </div>
+                        </div>
+                        <div className="ml-2">
+                          <svg className="w-5 h-5 text-slate-600 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <span className="px-2 py-1 bg-slate-800 rounded">
+                            {input.inputType}
+                          </span>
+                          <span className="px-2 py-1 bg-slate-800 rounded">
+                            {input.deviceType}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+
+              {currentConfig.inputs.filter(input => input.isActive && !input.isCecPort).length === 0 && (
+                <div className="text-center py-12 text-slate-400">
+                  <p className="text-lg">No active video inputs available</p>
+                  <p className="text-sm mt-2">Configure inputs in the Inputs tab first</p>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-6">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowVideoInputModal(false)
+                    setSelectedMatrixOutput(null)
+                  }}
+                  className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
