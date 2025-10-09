@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 
@@ -49,8 +50,8 @@ export async function POST(request: NextRequest) {
       update: {
         name: config.name,
         ipAddress: config.ipAddress,
-        tcpPort: config.tcpPort,
-        udpPort: config.udpPort,
+        tcpPort: config.tcpPort || 23,
+        udpPort: config.udpPort || 4000,
         protocol: config.protocol,
         isActive: config.isActive,
         cecInputChannel: config.cecInputChannel || null
@@ -58,8 +59,8 @@ export async function POST(request: NextRequest) {
       create: {
         name: config.name,
         ipAddress: config.ipAddress,
-        tcpPort: config.tcpPort,
-        udpPort: config.udpPort,
+        tcpPort: config.tcpPort || 23,
+        udpPort: config.udpPort || 4000,
         protocol: config.protocol,
         isActive: config.isActive,
         cecInputChannel: config.cecInputChannel || null
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
           inputType: input.inputType,
           deviceType: input.deviceType || 'Other',
           isActive: input.isActive,
-          status: input.status || 'active'
+          status: input.status || 'active',
+          powerOn: input.powerOn || false,
+          isCecPort: input.isCecPort || false
         }))
       })
     }
@@ -101,7 +104,8 @@ export async function POST(request: NextRequest) {
           resolution: output.resolution,
           isActive: output.isActive,
           status: output.status || 'active',
-          audioOutput: output.audioOutput || ''
+          audioOutput: output.audioOutput || '',
+          powerOn: output.powerOn || false
         }))
       })
     }

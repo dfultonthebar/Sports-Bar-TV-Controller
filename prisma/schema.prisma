@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -87,6 +87,59 @@ model MatrixConfig {
   isActive    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model MatrixConfiguration {
+  id              String   @id @default(cuid())
+  name            String
+  ipAddress       String
+  tcpPort         Int      @default(23)
+  udpPort         Int      @default(4000)
+  protocol        String   @default("TCP")
+  isActive        Boolean  @default(true)
+  cecInputChannel Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  inputs          MatrixInput[]
+  outputs         MatrixOutput[]
+}
+
+model MatrixInput {
+  id            String              @id @default(cuid())
+  configId      String
+  channelNumber Int
+  label         String
+  inputType     String              @default("HDMI")
+  deviceType    String              @default("Other")
+  isActive      Boolean             @default(true)
+  status        String              @default("active")
+  powerOn       Boolean             @default(false)
+  isCecPort     Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
+}
+
+model MatrixOutput {
+  id            String              @id @default(cuid())
+  configId      String
+  channelNumber Int
+  label         String
+  resolution    String              @default("1080p")
+  isActive      Boolean             @default(true)
+  status        String              @default("active")
+  audioOutput   String?
+  powerOn       Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
 }
 
 model BartenderRemote {
@@ -200,4 +253,47 @@ model AudioInputMeter {
   
   @@unique([processorId, inputNumber])
   @@index([processorId, timestamp])
+}
+
+model TestLog {
+  id            String   @id @default(cuid())
+  testType      String   // "wolfpack_connection", "wolfpack_switching", etc.
+  testName      String
+  status        String   // "success", "failed", "error", "running", "partial"
+  inputChannel  Int?
+  outputChannel Int?
+  command       String?
+  response      String?
+  errorMessage  String?
+  duration      Int?     // Duration in milliseconds
+  timestamp     DateTime @default(now())
+  metadata      String?  // JSON string for additional data
+  
+  @@index([testType])
+  @@index([status])
+  @@index([timestamp])
+}
+
+model WolfpackMatrixRouting {
+  id                    String   @id @default(cuid())
+  matrixOutputNumber    Int      @unique
+  wolfpackInputNumber   Int
+  wolfpackInputLabel    String
+  atlasInputLabel       String?
+  isActive              Boolean  @default(true)
+  lastRouted            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model WolfpackMatrixState {
+  id                    String   @id @default(cuid())
+  matrixOutputNumber    Int
+  wolfpackInputNumber   Int
+  wolfpackInputLabel    String
+  channelInfo           String?  // JSON string with channel details
+  routedAt              DateTime @default(now())
+  
+  @@index([matrixOutputNumber])
+  @@index([routedAt])
 }

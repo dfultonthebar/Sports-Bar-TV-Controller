@@ -1116,11 +1116,469 @@ export default function AtlasProgrammingInterface() {
               </CardHeader>
 
               <CardContent className="p-6">
-                <div className="text-center py-8 text-slate-300">
-                  <p className="text-lg mb-2">Advanced programming interface</p>
-                  <p className="text-sm text-slate-400">Input/Output configuration, scenes, and messaging features available here</p>
-                </div>
+                <Tabs defaultValue="inputs" className="w-full">
+                  <TabsList className="grid w-full grid-cols-4 mb-6">
+                    <TabsTrigger value="inputs" className="flex items-center gap-2">
+                      <Mic className="h-4 w-4" />
+                      Inputs ({inputs.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="outputs" className="flex items-center gap-2">
+                      <Volume2 className="h-4 w-4" />
+                      Outputs ({outputs.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="scenes" className="flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Scenes ({scenes.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="messages" className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Messages ({messages.length})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* INPUTS TAB */}
+                  <TabsContent value="inputs" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-slate-200">Input Configuration</h3>
+                      <Button onClick={addInput} size="sm" className="bg-blue-500 hover:bg-blue-600">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Input
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {inputs.map((input) => (
+                        <Card key={input.id} className="border-slate-700 bg-slate-800/50">
+                          <CardHeader className="pb-3">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <Input
+                                  value={input.name}
+                                  onChange={(e) => updateInput(input.id, { name: e.target.value })}
+                                  className="font-semibold text-lg mb-2 bg-slate-900/50 border-slate-600"
+                                  placeholder="Input name"
+                                />
+                                <div className="flex gap-2 mt-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    Physical: {input.physicalInput}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs capitalize">
+                                    {input.type}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <Button
+                                onClick={() => deleteInput(input.id)}
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {/* Input Type */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Type</label>
+                              <select
+                                value={input.type}
+                                onChange={(e) => updateInput(input.id, { type: e.target.value as any })}
+                                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-sm"
+                              >
+                                <option value="microphone">Microphone</option>
+                                <option value="line">Line</option>
+                                <option value="dante">Dante</option>
+                                <option value="zone">Zone</option>
+                              </select>
+                            </div>
+
+                            {/* Physical Input */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Physical Input</label>
+                              <select
+                                value={input.physicalInput}
+                                onChange={(e) => updateInput(input.id, { physicalInput: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-sm"
+                              >
+                                {Array.from({ length: selectedProcessor?.inputs || 8 }, (_, i) => (
+                                  <option key={i + 1} value={i + 1}>Input {i + 1}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Gain */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">
+                                Gain: {input.gainDb} dB
+                              </label>
+                              <input
+                                type="range"
+                                min="-60"
+                                max="12"
+                                step="1"
+                                value={input.gainDb}
+                                onChange={(e) => updateInput(input.id, { gainDb: parseInt(e.target.value) })}
+                                className="w-full"
+                              />
+                            </div>
+
+                            {/* Stereo Mode */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Stereo Mode</label>
+                              <select
+                                value={input.stereoMode}
+                                onChange={(e) => updateInput(input.id, { stereoMode: e.target.value as any })}
+                                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-sm"
+                              >
+                                <option value="mono">Mono</option>
+                                <option value="left">Left</option>
+                                <option value="right">Right</option>
+                                <option value="stereo">Stereo</option>
+                              </select>
+                            </div>
+
+                            {/* Processing Options */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={input.phantom}
+                                  onChange={(e) => updateInput(input.id, { phantom: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Phantom</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={input.lowcut}
+                                  onChange={(e) => updateInput(input.id, { lowcut: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Low Cut</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={input.compressor}
+                                  onChange={(e) => updateInput(input.id, { compressor: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Compressor</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={input.gate}
+                                  onChange={(e) => updateInput(input.id, { gate: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Gate</span>
+                              </label>
+                            </div>
+
+                            {/* Routing */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Route to Outputs</label>
+                              <div className="grid grid-cols-4 gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900/30 rounded border border-slate-700">
+                                {outputs.map((output) => (
+                                  <label key={output.id} className="flex items-center gap-1 text-xs cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={input.routing.includes(output.id)}
+                                      onChange={(e) => {
+                                        const newRouting = e.target.checked
+                                          ? [...input.routing, output.id]
+                                          : input.routing.filter(r => r !== output.id)
+                                        updateInput(input.id, { routing: newRouting })
+                                      }}
+                                      className="rounded"
+                                    />
+                                    <span className="text-slate-300">{output.id}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  {/* OUTPUTS TAB */}
+                  <TabsContent value="outputs" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-slate-200">Output Configuration</h3>
+                      <Button onClick={addOutput} size="sm" className="bg-blue-500 hover:bg-blue-600">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Output
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {outputs.map((output) => (
+                        <Card key={output.id} className="border-slate-700 bg-slate-800/50">
+                          <CardHeader className="pb-3">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <Input
+                                  value={output.name}
+                                  onChange={(e) => updateOutput(output.id, { name: e.target.value })}
+                                  className="font-semibold text-lg mb-2 bg-slate-900/50 border-slate-600"
+                                  placeholder="Output name"
+                                />
+                                <div className="flex gap-2 mt-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    Physical: {output.physicalOutput}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs capitalize">
+                                    {output.type}
+                                  </Badge>
+                                  {output.muted && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Muted
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <Button
+                                onClick={() => deleteOutput(output.id)}
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {/* Output Type */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Type</label>
+                              <select
+                                value={output.type}
+                                onChange={(e) => updateOutput(output.id, { type: e.target.value as any })}
+                                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-sm"
+                              >
+                                <option value="speaker">Speaker</option>
+                                <option value="dante">Dante</option>
+                                <option value="zone">Zone</option>
+                              </select>
+                            </div>
+
+                            {/* Physical Output */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Physical Output</label>
+                              <select
+                                value={output.physicalOutput}
+                                onChange={(e) => updateOutput(output.id, { physicalOutput: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-sm"
+                              >
+                                {Array.from({ length: selectedProcessor?.outputs || 8 }, (_, i) => (
+                                  <option key={i + 1} value={i + 1}>Output {i + 1}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Group */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Group (Optional)</label>
+                              <Input
+                                value={output.groupName || ''}
+                                onChange={(e) => updateOutput(output.id, { groupName: e.target.value })}
+                                className="bg-slate-900/50 border-slate-600 text-sm"
+                                placeholder="e.g., Main Floor, Bar Area"
+                              />
+                            </div>
+
+                            {/* Level */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">
+                                Level: {output.levelDb} dB
+                              </label>
+                              <input
+                                type="range"
+                                min="-60"
+                                max="0"
+                                step="1"
+                                value={output.levelDb}
+                                onChange={(e) => updateOutput(output.id, { levelDb: parseInt(e.target.value) })}
+                                className="w-full"
+                              />
+                            </div>
+
+                            {/* Delay */}
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">
+                                Delay: {output.delay} ms
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={output.delay}
+                                onChange={(e) => updateOutput(output.id, { delay: parseInt(e.target.value) })}
+                                className="w-full"
+                              />
+                            </div>
+
+                            {/* Processing Options */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={output.muted}
+                                  onChange={(e) => updateOutput(output.id, { muted: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Muted</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={output.compressor}
+                                  onChange={(e) => updateOutput(output.id, { compressor: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Compressor</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={output.limiter}
+                                  onChange={(e) => updateOutput(output.id, { limiter: e.target.checked })}
+                                  className="rounded"
+                                />
+                                <span className="text-slate-300">Limiter</span>
+                              </label>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  {/* SCENES TAB */}
+                  <TabsContent value="scenes" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-slate-200">Scene Management</h3>
+                      <Button onClick={createScene} size="sm" className="bg-blue-500 hover:bg-blue-600">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Scene
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {scenes.map((scene) => (
+                        <Card key={scene.id} className="border-slate-700 bg-slate-800/50">
+                          <CardHeader>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <Zap className="h-5 w-5 text-yellow-400" />
+                              {scene.name}
+                            </CardTitle>
+                            {scene.description && (
+                              <CardDescription className="text-slate-400">
+                                {scene.description}
+                              </CardDescription>
+                            )}
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="text-xs text-slate-400 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Mic className="h-3 w-3" />
+                                <span>{scene.inputs.length} inputs configured</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Volume2 className="h-3 w-3" />
+                                <span>{scene.outputs.length} outputs configured</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-3 w-3" />
+                                <span>Recall time: {scene.recall_time}s</span>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={() => recallScene(scene.id)}
+                              className="w-full bg-yellow-600 hover:bg-yellow-500"
+                              size="sm"
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              Recall Scene
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    {scenes.length === 0 && (
+                      <div className="text-center py-12 text-slate-400">
+                        <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg mb-2">No scenes created yet</p>
+                        <p className="text-sm">Create a scene to save your current configuration</p>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {/* MESSAGES TAB */}
+                  <TabsContent value="messages" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-slate-200">Audio Messages</h3>
+                      <Button size="sm" className="bg-blue-500 hover:bg-blue-600">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Message
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {messages.map((message) => (
+                        <Card key={message.id} className="border-slate-700 bg-slate-800/50">
+                          <CardHeader>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <MessageSquare className="h-5 w-5 text-blue-400" />
+                              {message.name}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="text-xs text-slate-400 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Music className="h-3 w-3" />
+                                <span>{message.file}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-3 w-3" />
+                                <span>Duration: {message.duration}s</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Volume2 className="h-3 w-3" />
+                                <span>Volume: {message.volume}%</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Headphones className="h-3 w-3" />
+                                <span>Zones: {message.zones.join(', ')}</span>
+                              </div>
+                            </div>
+                            <Button className="w-full" size="sm" variant="outline">
+                              <Play className="h-4 w-4 mr-2" />
+                              Play Message
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    {messages.length === 0 && (
+                      <div className="text-center py-12 text-slate-400">
+                        <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg mb-2">No messages configured</p>
+                        <p className="text-sm">Add audio messages for announcements and alerts</p>
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </CardContent>
+
             </Card>
           )}
         </div>

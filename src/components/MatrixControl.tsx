@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
+import { Power, PowerOff } from 'lucide-react'
 
 interface MatrixInput {
   channelNumber: number
@@ -11,6 +12,8 @@ interface MatrixInput {
   deviceType: string
   status: string
   isActive: boolean
+  powerOn: boolean
+  isCecPort: boolean
 }
 
 interface MatrixOutput {
@@ -20,6 +23,7 @@ interface MatrixOutput {
   status: string
   audioOutput?: string
   isActive: boolean
+  powerOn: boolean
 }
 
 interface MatrixConfig {
@@ -55,7 +59,9 @@ export default function MatrixControl() {
       inputType: 'HDMI',
       deviceType: 'Other',
       status: 'active',
-      isActive: true
+      isActive: true,
+      powerOn: false,
+      isCecPort: false
     })),
     outputs: Array.from({ length: 36 }, (_, i) => ({
       channelNumber: i + 1,
@@ -66,7 +72,8 @@ export default function MatrixControl() {
       resolution: '1080p',
       status: 'active',
       audioOutput: i < 4 ? `Matrix ${i + 1}` : undefined,
-      isActive: true
+      isActive: true,
+      powerOn: false
     }))
   })
   const [loading, setLoading] = useState(false)
@@ -84,9 +91,21 @@ export default function MatrixControl() {
       if (response.ok) {
         const data = await response.json()
         setConfigs(data.configs || [])
-        if (data.configs && data.configs.length > 0) {
-          const activeConfig = data.configs.find((c: MatrixConfig) => c.isActive) || data.configs[0]
-          setCurrentConfig(activeConfig)
+        if (data.config) {
+          // Merge loaded config with defaults to ensure all fields exist
+          const loadedConfig = {
+            ...data.config,
+            inputs: data.inputs?.map((input: any) => ({
+              ...input,
+              powerOn: input.powerOn ?? false,
+              isCecPort: input.isCecPort ?? false
+            })) || currentConfig.inputs,
+            outputs: data.outputs?.map((output: any) => ({
+              ...output,
+              powerOn: output.powerOn ?? false
+            })) || currentConfig.outputs
+          }
+          setCurrentConfig(loadedConfig)
         }
       }
     } catch (error) {
@@ -101,7 +120,11 @@ export default function MatrixControl() {
       const response = await fetch('/api/matrix/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentConfig)
+        body: JSON.stringify({
+          config: currentConfig,
+          inputs: currentConfig.inputs,
+          outputs: currentConfig.outputs
+        })
       })
 
       if (response.ok) {
@@ -291,15 +314,27 @@ export default function MatrixControl() {
                   <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-semibold text-slate-200">Input {input.channelNumber}</span>
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={input.isActive}
-                          onChange={(e) => updateInput(index, 'isActive', e.target.checked)}
-                          className="mr-2 w-4 h-4 cursor-pointer"
-                        />
-                        <span className="text-sm text-slate-300">Active</span>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateInput(index, 'powerOn', !input.powerOn)}
+                          className={`p-1.5 rounded transition-colors ${
+                            input.powerOn 
+                              ? 'bg-green-600 hover:bg-green-700 text-white' 
+                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                          }`}
+                          title={input.powerOn ? 'Power On' : 'Power Off'}
+                        >
+                          {input.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                        </button>
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={input.isActive}
+                            onChange={(e) => updateInput(index, 'isActive', e.target.checked)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </label>
+                      </div>
                     </div>
                     <input
                       type="text"
@@ -328,6 +363,15 @@ export default function MatrixControl() {
                         <option value="Fire TV">Fire TV</option>
                         <option value="Other">Other</option>
                       </select>
+                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={input.isCecPort}
+                          onChange={(e) => updateInput(index, 'isCecPort', e.target.checked)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span>CEC Port (Hidden from Bartender)</span>
+                      </label>
                     </div>
                   </div>
                 ))}
@@ -343,15 +387,27 @@ export default function MatrixControl() {
                   <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={output.isActive}
-                          onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
-                          className="mr-2 w-4 h-4 cursor-pointer"
-                        />
-                        <span className="text-sm text-slate-300">Active</span>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
+                          className={`p-1.5 rounded transition-colors ${
+                            output.powerOn 
+                              ? 'bg-green-600 hover:bg-green-700 text-white' 
+                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                          }`}
+                          title={output.powerOn ? 'Power On' : 'Power Off'}
+                        >
+                          {output.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                        </button>
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={output.isActive}
+                            onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </label>
+                      </div>
                     </div>
                     <input
                       type="text"
