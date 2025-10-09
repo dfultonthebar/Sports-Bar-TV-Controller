@@ -2,10 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
-const prisma = new PrismaClient()
 
 // GET - Fetch now playing for a player
 export async function GET(request: NextRequest) {

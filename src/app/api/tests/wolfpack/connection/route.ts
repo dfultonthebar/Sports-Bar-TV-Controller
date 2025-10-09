@@ -3,7 +3,7 @@ import { Socket } from 'net'
 import dgram from 'dgram'
 
 // Import PrismaClient directly to avoid bundling issues
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()

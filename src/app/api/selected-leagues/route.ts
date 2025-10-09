@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'

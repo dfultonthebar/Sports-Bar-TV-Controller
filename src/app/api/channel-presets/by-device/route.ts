@@ -2,9 +2,8 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 /**
  * GET /api/channel-presets/by-device?deviceType=cable|directv

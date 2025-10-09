@@ -1,12 +1,11 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
-const prisma = new PrismaClient()
 
 export async function GET() {
   try {

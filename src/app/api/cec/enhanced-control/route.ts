@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { CECCommand, getCECCommandMapping } from '@/lib/enhanced-cec-commands'
 import { getBrandConfig } from '@/lib/tv-brands-config'
 
-const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {

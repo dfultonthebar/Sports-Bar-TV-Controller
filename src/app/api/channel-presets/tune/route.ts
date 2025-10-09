@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
