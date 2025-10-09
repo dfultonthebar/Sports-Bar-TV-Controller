@@ -1,203 +1,279 @@
-
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-model FireTVDevice {
-  id          String   @id @default(cuid())
+model AudioInputMeter {
+  id             String         @id
+  processorId    String
+  inputNumber    Int
+  inputName      String
+  level          Float          @default(0)
+  peak           Float          @default(0)
+  clipping       Boolean        @default(false)
+  timestamp      DateTime       @default(now())
+  AudioProcessor AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, inputNumber])
+  @@index([processorId, timestamp])
+}
+
+model AudioMessage {
+  id             String         @id
+  processorId    String
+  name           String
+  audioFile      String
+  duration       Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  AudioProcessor AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+}
+
+model AudioProcessor {
+  id              String            @id
+  name            String
+  model           String
+  ipAddress       String
+  port            Int               @default(80)
+  username        String?
+  password        String?
+  zones           Int               @default(4)
+  description     String?
+  status          String            @default("offline")
+  lastSeen        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  AudioInputMeter AudioInputMeter[]
+  AudioMessage    AudioMessage[]
+  AudioScene      AudioScene[]
+  AudioZone       AudioZone[]
+
+  @@unique([ipAddress, port])
+}
+
+model AudioScene {
+  id             String         @id
+  processorId    String
+  name           String
+  description    String?
+  sceneData      String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  AudioProcessor AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+}
+
+model AudioZone {
+  id             String         @id
+  processorId    String
+  zoneNumber     Int
+  name           String
+  description    String?
+  currentSource  String?
+  volume         Int            @default(50)
+  muted          Boolean        @default(false)
+  enabled        Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  AudioProcessor AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+
+  @@unique([processorId, zoneNumber])
+}
+
+model BartenderRemote {
+  id          String    @id
   name        String
-  ipAddress   String   @unique
-  macAddress  String?
-  location    String?
-  status      String   @default("offline") // "online", "offline", "error"
+  ipAddress   String    @unique
+  port        Int       @default(80)
+  description String?
+  status      String    @default("offline")
   lastSeen    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+}
+
+model DeviceMapping {
+  id             String   @id
+  tvNumber       Int      @unique
+  fireTvDeviceId String?
+  fireTvName     String?
+  audioZoneId    String?
+  audioZoneName  String?
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+}
+
+model FireTVDevice {
+  id         String     @id
+  name       String
+  ipAddress  String     @unique
+  macAddress String?
+  location   String?
+  status     String     @default("offline")
+  lastSeen   DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime
+  Schedule   Schedule[]
+}
+
+model HomeTeam {
+  id             String   @id
+  name           String   @unique
+  sport          String
+  league         String?
+  logoUrl        String?
+  primaryColor   String?
+  secondaryColor String?
+  enabled        Boolean  @default(true)
+  priority       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+}
+
+model MatrixConfig {
+  id          String   @id
+  name        String
+  description String?
+  config      String
+  isActive    Boolean  @default(false)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  schedules   Schedule[]
+  updatedAt   DateTime
 }
 
 model Schedule {
-  id          String   @id @default(cuid())
-  name        String
-  deviceId    String
-  channelName String
+  id            String        @id
+  name          String
+  deviceId      String
+  channelName   String
   channelNumber String?
-  startTime   DateTime
-  endTime     DateTime?
-  recurring   Boolean  @default(false)
-  daysOfWeek  String?  // JSON array of days: ["monday", "tuesday", ...]
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  device      FireTVDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  logs        ScheduleLog[]
+  startTime     DateTime
+  endTime       DateTime?
+  recurring     Boolean       @default(false)
+  daysOfWeek    String?
+  enabled       Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime
+  FireTVDevice  FireTVDevice  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ScheduleLog   ScheduleLog[]
 }
 
 model ScheduleLog {
-  id          String   @id @default(cuid())
+  id          String   @id
   scheduleId  String
   executedAt  DateTime @default(now())
   success     Boolean
   error       String?
   channelName String
   deviceName  String
-  
-  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-}
-
-model HomeTeam {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  sport       String   // "NFL", "NBA", "MLB", "NHL", "Soccer", etc.
-  league      String?  // "NFL", "NBA", "MLB", "NHL", "MLS", "Premier League", etc.
-  logoUrl     String?
-  primaryColor String?
-  secondaryColor String?
-  enabled     Boolean  @default(true)
-  priority    Int      @default(0) // Higher priority teams get preference
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model TVLayout {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  layoutData  String   // JSON string of the layout configuration
-  isActive    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model MatrixConfig {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  config      String   // JSON string of matrix routing configuration
-  isActive    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model BartenderRemote {
-  id          String   @id @default(cuid())
-  name        String
-  ipAddress   String   @unique
-  port        Int      @default(80)
-  description String?
-  status      String   @default("offline") // "online", "offline", "error"
-  lastSeen    DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model DeviceMapping {
-  id              String   @id @default(cuid())
-  tvNumber        Int      @unique
-  fireTvDeviceId  String?
-  fireTvName      String?
-  audioZoneId     String?
-  audioZoneName   String?
-  description     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  Schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 }
 
 model SystemSettings {
-  id          String   @id @default(cuid())
+  id          String   @id
   key         String   @unique
   value       String
   description String?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime
 }
 
-model AudioProcessor {
-  id          String      @id @default(cuid())
+model TVLayout {
+  id          String   @id
   name        String
-  model       String      // "AZM4", "AZM8", "AZMP4", "AZMP8", etc.
-  ipAddress   String
-  port        Int         @default(80)
-  username    String?     // HTTP Basic Auth username
-  password    String?     // HTTP Basic Auth password (stored encrypted)
-  zones       Int         @default(4)
   description String?
-  status      String      @default("offline") // "online", "offline", "error"
-  lastSeen    DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
-  audioZones      AudioZone[]
-  audioScenes     AudioScene[]
-  audioMessages   AudioMessage[]
-  inputMeters     AudioInputMeter[]
-
-  @@unique([ipAddress, port])
+  layoutData  String
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
 }
 
-model AudioZone {
-  id            String         @id @default(cuid())
-  processorId   String
-  zoneNumber    Int
-  name          String
-  description   String?
-  currentSource String?
-  volume        Int            @default(50)
-  muted         Boolean        @default(false)
-  enabled       Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+model MatrixConfiguration {
+  id                String         @id @default(cuid())
+  name              String
+  ipAddress         String
+  port              Int            @default(4999)
+  tcpPort           Int            @default(5000)
+  udpPort           Int            @default(4000)
+  protocol          String         @default("TCP")
+  connectionStatus  String         @default("disconnected")
+  lastTested        DateTime?
+  isActive          Boolean        @default(true)
+  cecInputChannel   Int?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
   
-  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
-  
-  @@unique([processorId, zoneNumber])
+  inputs            MatrixInput[]
+  outputs           MatrixOutput[]
+  routes            MatrixRoute[]
+  scenes            MatrixScene[]
 }
 
-model AudioScene {
-  id            String         @id @default(cuid())
-  processorId   String
-  name          String
-  description   String?
-  sceneData     String         // JSON string of zone configurations
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+model MatrixInput {
+  id            String              @id @default(cuid())
+  configId      String
+  channelNumber Int
+  label         String
+  inputType     String              @default("HDMI")
+  deviceType    String              @default("Other")
+  status        String              @default("active")
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   
-  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
 }
 
-model AudioMessage {
-  id            String         @id @default(cuid())
-  processorId   String
-  name          String
-  audioFile     String         // Path or URL to audio file
-  duration      Int?           // Duration in seconds
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+model MatrixOutput {
+  id            String              @id @default(cuid())
+  configId      String
+  channelNumber Int
+  label         String
+  resolution    String              @default("1080p")
+  status        String              @default("active")
+  audioOutput   String?
+  tvBrand       String?
+  tvModel       String?
+  cecAddress    String?
+  lastDiscovery DateTime?
+  isActive      Boolean             @default(true)
+  dailyTurnOn   Boolean             @default(false)
+  dailyTurnOff  Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   
-  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
 }
 
-model AudioInputMeter {
-  id            String         @id @default(cuid())
-  processorId   String
-  inputNumber   Int
-  inputName     String
-  level         Float          @default(0) // dB level
-  peak          Float          @default(0) // Peak dB level
-  clipping      Boolean        @default(false)
-  timestamp     DateTime       @default(now())
+model MatrixRoute {
+  id            String              @id @default(cuid())
+  configId      String
+  inputChannel  Int
+  outputChannel Int
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   
-  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
   
-  @@unique([processorId, inputNumber])
-  @@index([processorId, timestamp])
+  @@unique([configId, inputChannel, outputChannel])
+}
+
+model MatrixScene {
+  id          String              @id @default(cuid())
+  configId    String
+  name        String
+  description String?
+  routes      String              // JSON array of routes
+  isActive    Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  
+  config      MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
 }
