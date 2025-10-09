@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
+    // Using singleton prisma from @/lib/db
 
     try {
       const entry = await prisma.qAEntry.create({

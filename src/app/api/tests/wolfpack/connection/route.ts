@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   
   try {
     // Create a new Prisma client instance
-    prisma = new PrismaClient()
+    // Using singleton prisma from @/lib/db
     
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
