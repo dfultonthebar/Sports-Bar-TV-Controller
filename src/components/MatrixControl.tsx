@@ -37,6 +37,68 @@ interface MatrixConfig {
 
 type TabType = 'inputs' | 'outputs'
 
+// Helper function to create default inputs array
+const createDefaultInputs = (): MatrixInput[] => {
+  return Array.from({ length: 36 }, (_, i) => ({
+    channelNumber: i + 1,
+    label: i < 17 ? `Input ${i + 1}` : 
+           i < 32 ? `Additional Input ${i - 16}` :
+           `Matrix ${i - 31}`,
+    inputType: 'HDMI',
+    deviceType: 'Other',
+    status: 'active',
+    isActive: true
+  }))
+}
+
+// Helper function to create default outputs array
+const createDefaultOutputs = (): MatrixOutput[] => {
+  return Array.from({ length: 36 }, (_, i) => ({
+    channelNumber: i + 1,
+    label: i < 5 ? `Matrix ${i + 1}` :
+           i < 29 ? `TV ${String(i - 3).padStart(2, '0')}` :
+           i < 32 ? `Additional TV ${i - 23}` :
+           `Additional Output ${i - 31}`,
+    resolution: '1080p',
+    status: 'active',
+    audioOutput: i < 4 ? `Matrix ${i + 1}` : undefined,
+    isActive: true
+  }))
+}
+
+// Helper function to merge database config with full 36 input/output arrays
+const mergeConfigWithDefaults = (dbConfig: MatrixConfig): MatrixConfig => {
+  const defaultInputs = createDefaultInputs()
+  const defaultOutputs = createDefaultOutputs()
+  
+  // Create a map of database inputs by channel number
+  const dbInputsMap = new Map(
+    dbConfig.inputs.map(input => [input.channelNumber, input])
+  )
+  
+  // Create a map of database outputs by channel number
+  const dbOutputsMap = new Map(
+    dbConfig.outputs.map(output => [output.channelNumber, output])
+  )
+  
+  // Merge: use database values where they exist, otherwise use defaults
+  const mergedInputs = defaultInputs.map(defaultInput => {
+    const dbInput = dbInputsMap.get(defaultInput.channelNumber)
+    return dbInput ? { ...defaultInput, ...dbInput } : defaultInput
+  })
+  
+  const mergedOutputs = defaultOutputs.map(defaultOutput => {
+    const dbOutput = dbOutputsMap.get(defaultOutput.channelNumber)
+    return dbOutput ? { ...defaultOutput, ...dbOutput } : defaultOutput
+  })
+  
+  return {
+    ...dbConfig,
+    inputs: mergedInputs,
+    outputs: mergedOutputs
+  }
+}
+
 export default function MatrixControl() {
   const [configs, setConfigs] = useState<MatrixConfig[]>([])
   const [currentConfig, setCurrentConfig] = useState<MatrixConfig>({
@@ -47,27 +109,8 @@ export default function MatrixControl() {
     udpPort: 4000,
     protocol: 'TCP',
     isActive: true,
-    inputs: Array.from({ length: 36 }, (_, i) => ({
-      channelNumber: i + 1,
-      label: i < 17 ? `Input ${i + 1}` : 
-             i < 32 ? `Additional Input ${i - 16}` :
-             `Matrix ${i - 31}`,
-      inputType: 'HDMI',
-      deviceType: 'Other',
-      status: 'active',
-      isActive: true
-    })),
-    outputs: Array.from({ length: 36 }, (_, i) => ({
-      channelNumber: i + 1,
-      label: i < 5 ? `Matrix ${i + 1}` :
-             i < 29 ? `TV ${String(i - 3).padStart(2, '0')}` :
-             i < 32 ? `Additional TV ${i - 23}` :
-             `Additional Output ${i - 31}`,
-      resolution: '1080p',
-      status: 'active',
-      audioOutput: i < 4 ? `Matrix ${i + 1}` : undefined,
-      isActive: true
-    }))
+    inputs: createDefaultInputs(),
+    outputs: createDefaultOutputs()
   })
   const [loading, setLoading] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
@@ -86,7 +129,9 @@ export default function MatrixControl() {
         setConfigs(data.configs || [])
         if (data.configs && data.configs.length > 0) {
           const activeConfig = data.configs.find((c: MatrixConfig) => c.isActive) || data.configs[0]
-          setCurrentConfig(activeConfig)
+          // Merge the database config with full 36 input/output arrays
+          const mergedConfig = mergeConfigWithDefaults(activeConfig)
+          setCurrentConfig(mergedConfig)
         }
       }
     } catch (error) {
