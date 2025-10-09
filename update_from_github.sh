@@ -180,19 +180,59 @@ create_backup() {
 pull_latest_code() {
     log_info "Pulling latest code from GitHub..."
     
-    # Check git status
+    local has_stashed=false
+    local stash_name="auto-stash-$(date +%Y%m%d-%H%M%S)"
+    
+    # Check for uncommitted changes
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-        log_warning "You have uncommitted local changes"
-        log_warning "These will be preserved, but may cause conflicts"
+        log_warning "Detected uncommitted local changes"
+        log_info "Stashing local changes before pull..."
+        
+        # Stash changes including untracked files
+        if git stash push -u -m "$stash_name" 2>&1 | tee -a "$LOG_FILE"; then
+            has_stashed=true
+            log_success "Local changes stashed successfully"
+        else
+            log_error "Failed to stash local changes"
+            log_error "Please manually commit or stash your changes"
+            exit 1
+        fi
+    else
+        log_info "No local changes detected"
     fi
     
     # Pull from GitHub
-    if git pull origin main; then
+    log_info "Fetching latest changes from GitHub..."
+    if git pull origin main 2>&1 | tee -a "$LOG_FILE"; then
         log_success "Successfully pulled latest changes"
     else
         log_error "Failed to pull changes from GitHub"
-        log_error "Please resolve any conflicts manually"
+        
+        # If we stashed changes, try to restore them
+        if [ "$has_stashed" = true ]; then
+            log_warning "Attempting to restore stashed changes..."
+            git stash pop 2>&1 | tee -a "$LOG_FILE" || true
+        fi
+        
+        log_error "Please resolve any issues manually"
         exit 1
+    fi
+    
+    # Reapply stashed changes if we stashed them
+    if [ "$has_stashed" = true ]; then
+        log_info "Reapplying stashed local changes..."
+        
+        if git stash pop 2>&1 | tee -a "$LOG_FILE"; then
+            log_success "Local changes reapplied successfully"
+        else
+            log_error "Conflict detected while reapplying local changes"
+            log_error "Your changes are still in the stash: $stash_name"
+            log_error "To view stashed changes: git stash list"
+            log_error "To manually apply: git stash pop"
+            log_error "To see conflicts: git status"
+            log_warning "Continuing with update, but you'll need to resolve conflicts manually"
+            # Don't exit - let the update continue, user can fix conflicts later
+        fi
     fi
 }
 
@@ -256,6 +296,29 @@ install_dependencies() {
             log_error "Failed to install dependencies"
             exit 1
         fi
+    fi
+}
+
+# =============================================================================
+# PRISMA CLIENT REGENERATION
+# =============================================================================
+regenerate_prisma_client() {
+    log_info "Regenerating Prisma client..."
+    
+    # Check if Prisma schema exists
+    if [ ! -f "$PROJECT_DIR/prisma/schema.prisma" ]; then
+        log_warning "Prisma schema not found, skipping Prisma client regeneration"
+        return 0
+    fi
+    
+    # Regenerate Prisma client
+    if npx prisma generate 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "Prisma client regenerated successfully"
+    else
+        log_error "Failed to regenerate Prisma client"
+        log_error "This may cause runtime errors with database operations"
+        log_warning "You may need to run 'npx prisma generate' manually"
+        # Don't exit - let the update continue, but warn the user
     fi
 }
 
@@ -433,7 +496,11 @@ main() {
     install_dependencies
     log ""
     
-    # Step 7: Build application
+    # Step 7: Regenerate Prisma client
+    regenerate_prisma_client
+    log ""
+    
+    # Step 8: Build application
     if ! build_application; then
         log_error "Build failed - aborting update"
         log_error "Your previous version is still running"
@@ -441,23 +508,23 @@ main() {
     fi
     log ""
     
-    # Step 8: Stop all PM2 processes
+    # Step 9: Stop all PM2 processes
     stop_all_pm2_processes
     log ""
     
-    # Step 9: Delete all PM2 processes (clear old config)
+    # Step 10: Delete all PM2 processes (clear old config)
     delete_all_pm2_processes
     log ""
     
-    # Step 10: Start with ecosystem.config.js
+    # Step 11: Start with ecosystem.config.js
     start_with_ecosystem
     log ""
     
-    # Step 11: Save PM2 configuration
+    # Step 12: Save PM2 configuration
     save_pm2_config
     log ""
     
-    # Step 12: Verify app is running
+    # Step 13: Verify app is running
     if verify_app_running; then
         log ""
         show_status
@@ -473,6 +540,7 @@ main() {
         log "📋 What was updated:"
         log "   ✅ Latest code from GitHub"
         log "   ✅ Dependencies installed"
+        log "   ✅ Prisma client regenerated"
         log "   ✅ Application rebuilt"
         log "   ✅ PM2 processes cleaned and restarted"
         log "   ✅ Configuration saved"
