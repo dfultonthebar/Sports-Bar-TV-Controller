@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { PrismaClient } = await import('@prisma/client');
-    // Using singleton prisma from @/lib/db
+    const prisma = new PrismaClient();
 
     try {
       const entry = await prisma.qAEntry.create({
@@ -128,8 +128,10 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      await prisma.$disconnect();
       return NextResponse.json(entry);
     } catch (dbError) {
+      await prisma.$disconnect();
       console.error('Database error creating Q&A entry:', dbError);
       await logSystemError(dbError, `POST /api/ai/qa-entries - Database error`);
       return NextResponse.json(

@@ -3,7 +3,7 @@ import { Socket } from 'net'
 import dgram from 'dgram'
 
 // Import PrismaClient directly to avoid bundling issues
-import { prisma } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   
   try {
     // Create a new Prisma client instance
-    // Using singleton prisma from @/lib/db
+    prisma = new PrismaClient()
     
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
@@ -166,7 +166,10 @@ export async function POST(request: NextRequest) {
       error: 'Internal server error',
       message: String(error)
     }, { status: 500 })
+  } finally {
     // Clean up Prisma client
     if (prisma) {
+      await prisma.$disconnect().catch(e => console.error('Error disconnecting Prisma:', e))
+    }
   }
 }

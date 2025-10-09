@@ -1,8 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
+const prisma = new PrismaClient()
 
 // Force dynamic rendering - don't pre-render during build
 export const dynamic = 'force-dynamic'
@@ -28,4 +29,6 @@ export async function GET(request: NextRequest) {
       { success: false, error: error.message },
       { status: 500 }
     )
+  } finally {
+  }
 }

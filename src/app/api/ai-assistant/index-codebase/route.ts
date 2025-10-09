@@ -1,10 +1,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+const prisma = new PrismaClient();
 
 // File extensions to include
 const INCLUDED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.prisma'];
@@ -242,6 +243,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 export async function GET() {
@@ -288,4 +292,7 @@ export async function GET() {
       },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
+  }
 }

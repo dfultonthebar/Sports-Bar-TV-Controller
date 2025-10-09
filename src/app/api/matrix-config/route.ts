@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,4 +29,7 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to fetch matrix configuration', message: error.message },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
+  }
 }

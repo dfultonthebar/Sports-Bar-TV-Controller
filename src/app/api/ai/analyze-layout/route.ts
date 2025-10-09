@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
 
+const prisma = new PrismaClient()
 
 /**
  * Layout Analysis API - Fixed to support 25+ TV layouts
@@ -171,6 +172,8 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to analyze layout' },
       { status: 500 }
     )
+  } finally {
+  }
 }
 
 function determineWallFromPosition(x: number, y: number): string {

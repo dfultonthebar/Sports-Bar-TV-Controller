@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
 
+const prisma = new PrismaClient()
 
 /**
  * Matrix Display API - Provides inputs and outputs formatted in rows of 4
@@ -123,4 +124,6 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to fetch matrix display data' },
       { status: 500 }
     )
+  } finally {
+  }
 }

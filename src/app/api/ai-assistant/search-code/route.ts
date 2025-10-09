@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,6 +98,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 function extractSnippets(content: string, terms: string[], maxSnippets = 3): string[] {
