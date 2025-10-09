@@ -492,6 +492,53 @@ export default function AtlasProgrammingInterface() {
     }
   }
 
+  const testConnection = async (processor: AtlasProcessor) => {
+    try {
+      showMessage('Testing connection...', 'success')
+      const response = await fetch('/api/audio-processor/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: processor.id,
+          ipAddress: processor.ipAddress,
+          port: processor.port
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.connected) {
+        showMessage(`✓ Connected successfully via ${result.protocol?.toUpperCase() || 'HTTP'} on port ${result.port}`)
+        // Refresh processors to get updated status
+        await fetchProcessors()
+        
+        // Show IP cleaning message if applicable
+        if (result.ipCleaned) {
+          setTimeout(() => {
+            showMessage(`IP address was cleaned from "${result.originalIp}" to "${result.cleanedIp}"`, 'success')
+          }, 3000)
+        }
+      } else {
+        let errorMsg = result.message || 'Connection failed'
+        if (result.ipCleaned) {
+          errorMsg += ` (IP cleaned to: ${result.cleanedIp})`
+        }
+        showMessage(errorMsg, 'error')
+        
+        // Show troubleshooting steps
+        if (result.troubleshooting?.steps) {
+          console.log('Troubleshooting steps:', result.troubleshooting.steps.join('\n'))
+        }
+        
+        // Refresh processors to get updated status
+        await fetchProcessors()
+      }
+    } catch (error) {
+      console.error('Error testing connection:', error)
+      showMessage('Failed to test connection', 'error')
+    }
+  }
+
   // Stereo linking functions
   const linkStereoInputs = (leftInputId: number, rightInputId: number) => {
     setInputs(prev => prev.map(input => {
@@ -758,11 +805,24 @@ export default function AtlasProgrammingInterface() {
                       <Button
                         onClick={(e) => {
                           e.stopPropagation()
+                          testConnection(processor)
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-blue-600 border-blue-200 hover:bg-blue-50"
+                        title="Test Connection"
+                      >
+                        <Zap className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
                           deleteProcessor(processor.id)
                         }}
                         variant="outline"
                         size="sm"
                         className="h-6 w-6 p-0 text-red-600 border-red-200 hover:bg-red-50"
+                        title="Delete Processor"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
