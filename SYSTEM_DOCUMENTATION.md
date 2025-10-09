@@ -562,3 +562,346 @@ curl "http://24.123.87.42:3001/api/atlas/meter-monitoring?action=cleanup&hours=2
 
 **Last Updated:** October 9, 2025, 4:20 PM CDT
 
+
+---
+
+## Database Backup and Recovery System
+
+### Overview
+A comprehensive backup system has been implemented to prevent data loss and ensure quick recovery in case of issues.
+
+### Backup Scripts Location
+All backup scripts are located at: `~/backup_scripts/`
+
+### Automated Daily Backups
+
+**Schedule**: Every day at 3:00 AM
+**Retention**: 30 days
+**Location**: `~/db_backups/`
+
+The daily backup script automatically:
+- Creates a full database backup
+- Creates a compressed (.gz) version
+- Logs all operations
+- Cleans up backups older than 30 days
+
+**Manual Execution**:
+```bash
+bash ~/backup_scripts/daily-backup.sh
+```
+
+### Pre-Deployment Backup (MANDATORY)
+
+**⚠️ CRITICAL**: This script MUST be run before ANY deployment or database migration.
+
+**Usage**:
+```bash
+bash ~/backup_scripts/pre-deploy-backup.sh
+```
+
+**Features**:
+- Creates timestamped backup with deployment marker
+- Records git branch and commit information
+- Creates metadata file for tracking
+- Keeps last 10 pre-deployment backups
+- Provides restore command for quick rollback
+
+**Location**: `~/db_backups/pre-deployment/`
+
+### Database Restore
+
+**Usage**:
+```bash
+bash ~/backup_scripts/restore-backup.sh <backup_file_path>
+```
+
+**Example**:
+```bash
+# Restore from daily backup
+bash ~/backup_scripts/restore-backup.sh ~/db_backups/sports_bar_20251009_163329.db
+
+# Restore from pre-deployment backup
+bash ~/backup_scripts/restore-backup.sh ~/db_backups/pre-deployment/pre_deploy_20251009_163329.db
+```
+
+**What it does**:
+1. Creates safety backup of current database
+2. Stops the application (PM2)
+3. Restores database from backup
+4. Sets correct permissions
+5. Regenerates Prisma client
+6. Restarts the application
+7. Verifies application is running
+
+### Post-Deployment Verification
+
+**Usage**:
+```bash
+bash ~/backup_scripts/post-deploy-verify.sh
+```
+
+**Checks**:
+- Database file exists and has valid size
+- Database integrity (SQLite PRAGMA check)
+- Database connection works
+- Critical tables exist (AudioProcessor, SystemSettings, MatrixConfiguration)
+- Application is running (PM2 status)
+- API endpoints are responding
+- Atlas configuration files are present
+
+### Deployment Checklist
+
+#### Before Deployment
+1. ✅ **MANDATORY**: Run pre-deployment backup
+   ```bash
+   bash ~/backup_scripts/pre-deploy-backup.sh
+   ```
+2. ✅ Verify backup created successfully
+3. ✅ Note backup location for potential rollback
+4. ✅ Review changes being deployed
+5. ✅ Check for database schema changes in PR
+
+#### During Deployment
+1. Pull latest code:
+   ```bash
+   cd ~/Sports-Bar-TV-Controller
+   git pull origin main
+   ```
+
+2. Install dependencies (if package.json changed):
+   ```bash
+   npm install
+   ```
+
+3. Run Prisma migrations:
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+4. Build application:
+   ```bash
+   npm run build
+   ```
+
+5. Restart PM2 with updated environment:
+   ```bash
+   pm2 restart sports-bar-tv-controller --update-env
+   ```
+
+#### After Deployment
+1. ✅ **MANDATORY**: Run post-deployment verification
+   ```bash
+   bash ~/backup_scripts/post-deploy-verify.sh
+   ```
+
+2. ✅ Check application logs:
+   ```bash
+   pm2 logs sports-bar-tv-controller --lines 50
+   ```
+
+3. ✅ Test critical endpoints:
+   - Atlas AI Monitor: Check `/api/atlas/ai-analysis`
+   - Audio Processor: Check `/api/audio-processor`
+   - Matrix Control: Check `/api/matrix/config`
+
+4. ✅ Verify Atlas configurations:
+   ```bash
+   ls -lh ~/Sports-Bar-TV-Controller/data/atlas-configs/
+   ```
+
+#### If Issues Detected
+1. 🚨 **STOP** deployment immediately
+2. 🚨 Run restore script:
+   ```bash
+   bash ~/backup_scripts/restore-backup.sh <backup_file>
+   ```
+3. 🚨 Verify restoration successful
+4. 🚨 Document issue for investigation
+5. 🚨 Do NOT proceed until issue is resolved
+
+### Backup Locations
+
+**Daily Backups**:
+- Path: `~/db_backups/`
+- Format: `sports_bar_YYYYMMDD_HHMMSS.db`
+- Compressed: `sports_bar_YYYYMMDD_HHMMSS.db.gz`
+- Retention: 30 days
+
+**Pre-Deployment Backups**:
+- Path: `~/db_backups/pre-deployment/`
+- Format: `pre_deploy_YYYYMMDD_HHMMSS.db`
+- Metadata: `pre_deploy_YYYYMMDD_HHMMSS.db.meta`
+- Compressed: `pre_deploy_YYYYMMDD_HHMMSS.db.gz`
+- Retention: Last 10 backups
+
+**Safety Backups** (created during restore):
+- Path: `~/db_backups/`
+- Format: `pre_restore_YYYYMMDD_HHMMSS.db`
+- Purpose: Automatic backup before any restore operation
+
+### Viewing Backup Logs
+
+**Daily backup log**:
+```bash
+cat ~/db_backups/backup.log
+```
+
+**Deployment backup log**:
+```bash
+cat ~/db_backups/pre-deployment/deployment-backups.log
+```
+
+**Restore log**:
+```bash
+cat ~/db_backups/restore.log
+```
+
+**Cron log** (automated backups):
+```bash
+cat ~/db_backups/cron.log
+```
+
+### Listing Available Backups
+
+**All daily backups**:
+```bash
+ls -lht ~/db_backups/sports_bar_*.db
+```
+
+**All pre-deployment backups**:
+```bash
+ls -lht ~/db_backups/pre-deployment/pre_deploy_*.db
+```
+
+**With metadata**:
+```bash
+# View backup metadata
+cat ~/db_backups/pre-deployment/pre_deploy_YYYYMMDD_HHMMSS.db.meta
+```
+
+### Emergency Recovery Procedure
+
+If the database becomes corrupted or data is lost:
+
+1. **Identify the issue**:
+   ```bash
+   bash ~/backup_scripts/post-deploy-verify.sh
+   ```
+
+2. **List available backups**:
+   ```bash
+   ls -lht ~/db_backups/sports_bar_*.db
+   ls -lht ~/db_backups/pre-deployment/pre_deploy_*.db
+   ```
+
+3. **Choose appropriate backup**:
+   - Use pre-deployment backup if issue occurred after deployment
+   - Use daily backup for other issues
+   - Check backup dates and sizes
+
+4. **Restore database**:
+   ```bash
+   bash ~/backup_scripts/restore-backup.sh <chosen_backup_file>
+   ```
+
+5. **Verify restoration**:
+   ```bash
+   bash ~/backup_scripts/post-deploy-verify.sh
+   ```
+
+6. **Check application**:
+   ```bash
+   pm2 logs sports-bar-tv-controller --lines 50
+   ```
+
+### Database Configuration
+
+**Current Configuration**:
+- Database Type: SQLite
+- Database Path: `/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db`
+- Environment Variable: `DATABASE_URL="file:/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db"`
+- Prisma Client: Singleton pattern at `src/lib/prisma.ts`
+
+**Important Notes**:
+- Always use absolute paths for DATABASE_URL in production
+- Use Prisma singleton pattern in all API routes
+- Never create new PrismaClient instances in API routes
+- Always restart PM2 with `--update-env` flag after .env changes
+
+### Monitoring Backup Health
+
+**Check cron job status**:
+```bash
+crontab -l
+```
+
+**Check last backup**:
+```bash
+ls -lht ~/db_backups/sports_bar_*.db | head -1
+```
+
+**Check backup log**:
+```bash
+tail -50 ~/db_backups/backup.log
+```
+
+**Verify backup integrity**:
+```bash
+sqlite3 ~/db_backups/sports_bar_YYYYMMDD_HHMMSS.db "PRAGMA integrity_check;"
+```
+
+### Troubleshooting
+
+**Issue**: Backup script fails
+- Check disk space: `df -h ~`
+- Check permissions: `ls -ld ~/db_backups`
+- Check database file: `ls -lh ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db`
+- Check logs: `cat ~/db_backups/backup.log`
+
+**Issue**: Restore fails
+- Verify backup file exists and is readable
+- Check database directory permissions
+- Ensure PM2 can be stopped/started
+- Check logs: `cat ~/db_backups/restore.log`
+
+**Issue**: Cron job not running
+- Check cron service: `systemctl status cron`
+- Check cron log: `cat ~/db_backups/cron.log`
+- Verify cron job: `crontab -l`
+- Test script manually: `bash ~/backup_scripts/daily-backup.sh`
+
+### Best Practices
+
+1. **Always backup before deployments** - Use pre-deploy-backup.sh
+2. **Verify backups regularly** - Check backup logs weekly
+3. **Test restore procedure** - Practice in staging environment
+4. **Monitor disk space** - Ensure sufficient space for backups
+5. **Document changes** - Update metadata when making manual changes
+6. **Keep multiple backup types** - Daily + pre-deployment backups
+7. **Verify after restore** - Always run post-deploy-verify.sh
+
+---
+
+## Incident Response - October 9, 2025
+
+### Summary
+On October 9, 2025, after deploying PR #175 and #176, the Atlas AI Monitor showed an error. Investigation revealed Prisma Client initialization issues. The incident was resolved with zero data loss, and a comprehensive backup system was implemented.
+
+**Full Incident Report**: See `/tmp/INCIDENT_REPORT.md` for complete details.
+
+**Key Learnings**:
+- Always backup before deployments
+- Use Prisma singleton pattern consistently
+- Use absolute paths for DATABASE_URL in production
+- Implement automated backup systems
+- Verify deployments with post-deployment checks
+
+**Preventive Measures Implemented**:
+- ✅ Automated daily backups (3 AM)
+- ✅ Pre-deployment backup script (mandatory)
+- ✅ Post-deployment verification script
+- ✅ Database restore script
+- ✅ Updated deployment procedures
+- ✅ Fixed Prisma Client singleton pattern across all API routes
+

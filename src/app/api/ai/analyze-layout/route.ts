@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 /**
  * Layout Analysis API - Fixed to support 25+ TV layouts

@@ -1,9 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
-const prisma = new PrismaClient()
 
 // Force dynamic rendering - don't pre-render during build
 export const dynamic = 'force-dynamic'

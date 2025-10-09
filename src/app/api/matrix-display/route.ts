@@ -2,9 +2,8 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
 
 /**
  * Matrix Display API - Provides inputs and outputs formatted in rows of 4
