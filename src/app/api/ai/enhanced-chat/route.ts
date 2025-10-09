@@ -173,9 +173,7 @@ async function handleStreamingResponse(
         type: 'error', 
         error: error instanceof Error ? error.message : 'Unknown error' 
       })}\n\n`));
-    } finally {
       await writer.close();
-    }
   })();
   
   // Return streaming response with proper headers

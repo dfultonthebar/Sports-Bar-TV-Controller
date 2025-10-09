@@ -166,10 +166,7 @@ export async function POST(request: NextRequest) {
       error: 'Internal server error',
       message: String(error)
     }, { status: 500 })
-  } finally {
     // Clean up Prisma client
     if (prisma) {
-      await prisma.$disconnect().catch(e => console.error('Error disconnecting Prisma:', e))
-    }
   }
 }
