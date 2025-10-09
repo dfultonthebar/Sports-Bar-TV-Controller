@@ -1,10 +1,9 @@
 
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
-const prisma = new PrismaClient()
 const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
 
 async function loadIRDevices() {

@@ -65,8 +65,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const { PrismaClient } = require('@prisma/client')
-    const prisma = new PrismaClient()
+    import { prisma } from '@/lib/db'
     
     const outputs = await prisma.matrixOutput.findMany({
       where: {

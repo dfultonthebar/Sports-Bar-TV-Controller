@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { Socket } from 'net'
 import dgram from 'dgram'
 
-const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {

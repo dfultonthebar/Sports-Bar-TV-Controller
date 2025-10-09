@@ -1,9 +1,8 @@
 
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
-const prisma = new PrismaClient()
 
 /**
  * DELETE /api/soundtrack/cache

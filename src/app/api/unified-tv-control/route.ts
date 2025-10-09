@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { UnifiedTVControl, TVDevice } from '@/lib/unified-tv-control'
 import { CECCommand } from '@/lib/enhanced-cec-commands'
 
-const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {

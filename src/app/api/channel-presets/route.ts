@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 
-const prisma = new PrismaClient()
 
 // GET /api/channel-presets - Get all presets (optionally filtered by deviceType)
 export async function GET(request: NextRequest) {
