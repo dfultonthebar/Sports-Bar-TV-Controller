@@ -243,9 +243,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
-  }
 }
 
 export async function GET() {
@@ -292,7 +289,4 @@ export async function GET() {
       },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
-  }
 }

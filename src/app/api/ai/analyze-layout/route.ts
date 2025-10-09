@@ -172,8 +172,6 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to analyze layout' },
       { status: 500 }
     )
-  } finally {
-  }
 }
 
 function determineWallFromPosition(x: number, y: number): string {
