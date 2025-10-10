@@ -57,16 +57,22 @@ model ScheduleLog {
 
 model HomeTeam {
   id          String   @id @default(cuid())
-  name        String   @unique
-  sport       String   // "NFL", "NBA", "MLB", "NHL", "Soccer", etc.
-  league      String?  // "NFL", "NBA", "MLB", "NHL", "MLS", "Premier League", etc.
+  teamName    String   // Changed from 'name' to 'teamName'
+  sport       String   // "Football", "Basketball", "Baseball", etc.
+  league      String   // "NFL", "NBA", "MLB", "NHL", "MLS", etc.
+  category    String   // "professional", "college", "international"
+  location    String?  // City/region
+  conference  String?  // Conference/division
+  isPrimary   Boolean  @default(false)
   logoUrl     String?
   primaryColor String?
   secondaryColor String?
-  enabled     Boolean  @default(true)
-  priority    Int      @default(0) // Higher priority teams get preference
+  isActive    Boolean  @default(true) // Changed from 'enabled'
+  priority    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  @@unique([teamName, league])
 }
 
 model TVLayout {
@@ -300,4 +306,71 @@ model WolfpackMatrixState {
   
   @@index([matrixOutputNumber])
   @@index([routedAt])
+}
+
+
+// Sports Guide Configuration Models
+model SportsGuideConfiguration {
+  id              String   @id @default(cuid())
+  zipCode         String?
+  city            String?
+  state           String?
+  timezone        String   @default("America/New_York")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TVProvider {
+  id              String          @id @default(cuid())
+  name            String
+  type            String          // "cable", "satellite", "streaming", "iptv"
+  channels        String          // JSON array of channel numbers
+  packages        String          // JSON array of package names
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  providerInputs  ProviderInput[]
+}
+
+model ProviderInput {
+  id              String      @id @default(cuid())
+  providerId      String
+  inputId         String
+  createdAt       DateTime    @default(now())
+  
+  provider        TVProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  
+  @@unique([providerId, inputId])
+}
+
+// TODO Management System Models
+model Todo {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  priority        String        @default("MEDIUM") // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  status          String        @default("PLANNED") // "PLANNED", "IN_PROGRESS", "TESTING", "COMPLETE"
+  category        String?
+  tags            String?       // JSON array of tags
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  
+  documents       TodoDocument[]
+}
+
+model TodoDocument {
+  id              String   @id @default(cuid())
+  todoId          String
+  filename        String
+  filepath        String
+  filesize        Int?
+  mimetype        String?
+  uploadedAt      DateTime @default(now())
+  
+  todo            Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  
+  @@index([todoId])
 }
