@@ -1,0 +1,17 @@
+--- a/src/components/AtlasProgrammingInterface.tsx
++++ b/src/components/AtlasProgrammingInterface.tsx
+@@ -100,6 +100,13 @@ export default function AtlasProgrammingInterface() {
+   const downloadConfiguration = async () => {
+     if (!selectedProcessor) return
+
++    // Warn user before downloading
++    const confirmed = window.confirm(
++      'WARNING: This will load the saved configuration from the application database.\n\n' +
++      'This will NOT read from the Atlas processor itself.\n\n' +
++      'Continue?'
++    )
++    if (!confirmed) return
++
+     try {
+       const response = await fetch(`/api/atlas/download-config`, {
+         method: 'POST',
