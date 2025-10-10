@@ -7,10 +7,10 @@ export async function GET() {
     const config = await prisma.matrixConfiguration.findFirst({
       where: { isActive: true },
       include: {
-        MatrixInput: {
+        inputs: {
           orderBy: { channelNumber: 'asc' }
         },
-        MatrixOutput: {
+        outputs: {
           orderBy: { channelNumber: 'asc' }
         }
       }
@@ -21,8 +21,8 @@ export async function GET() {
       return NextResponse.json({
         configs: [config],
         config,
-        inputs: config.MatrixInput,
-        outputs: config.MatrixOutput
+        inputs: config.inputs,
+        outputs: config.outputs
       })
     } else {
       return NextResponse.json({
