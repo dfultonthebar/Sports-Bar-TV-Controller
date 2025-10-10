@@ -1,3 +1,17 @@
+# ⚠️ CRITICAL: DATABASE BACKUP PROCEDURE - READ THIS FIRST ⚠️
+
+**BEFORE ANY UPDATES, DEPLOYMENTS, OR CHANGES:**
+
+1. **BACKUP DATABASE**: Run `~/Sports-Bar-TV-Controller/scripts/backup_matrix_config.sh`
+2. **VERIFY BACKUP**: Check that backup file exists and contains all data
+3. **PERFORM UPDATE**: Make your changes/updates
+4. **VERIFY DATABASE**: Check that all data is still present after update
+5. **IF DATA MISSING**: Immediately restore from backup
+
+**Failure to follow this procedure may result in permanent data loss!**
+
+---
+
 # Sports Bar TV Controller - System Documentation
 
 ## Table of Contents
@@ -7,9 +21,10 @@
 4. [Database Schema](#database-schema)
 5. [API Endpoints](#api-endpoints)
 6. [Configuration Management](#configuration-management)
-7. [Troubleshooting](#troubleshooting)
-8. [Deployment Guide](#deployment-guide)
-9. [Maintenance and Backup](#maintenance-and-backup)
+7. [Database Backup and Recovery Procedures](#database-backup-and-recovery-procedures)
+8. [Troubleshooting](#troubleshooting)
+9. [Deployment Guide](#deployment-guide)
+10. [Maintenance and Backup](#maintenance-and-backup)
 
 ---
 
@@ -27,7 +42,7 @@ The Sports Bar TV Controller is a comprehensive web application designed to mana
 ### Technology Stack
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
 - **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: PostgreSQL
+- **Database**: SQLite (file-based at `/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db`)
 - **Hardware Integration**: Wolfpack HDMI Matrix Switchers (via HTTP API)
 - **Process Management**: PM2
 
@@ -53,7 +68,11 @@ Sports-Bar-TV-Controller/
 │       ├── wolfpack/           # Wolfpack integration
 │       └── schedule/           # Scheduling endpoints
 ├── prisma/
-│   └── schema.prisma           # Database schema
+│   ├── schema.prisma           # Database schema
+│   └── data/
+│       └── sports_bar.db       # SQLite database file
+├── scripts/
+│   └── backup_matrix_config.sh # Automated backup script
 └── public/                     # Static assets
 ```
 
@@ -86,6 +105,42 @@ Allows granular control over which TVs participate in automated schedules:
 ---
 
 ## Recent Changes and Fixes
+
+### October 2025 - Phase 3: Graystone Matrix Configuration
+
+#### Matrix Configuration Completed
+**Date**: October 10, 2025
+
+**Configuration Details**:
+- **Matrix Name**: Graystone Matrix
+- **IP Address**: 192.168.5.100
+- **Protocol**: TCP
+- **TCP Port**: 23
+
+**Inputs Configured** (18 active, 18 inactive):
+- Inputs 1-4: Cable Box 1-4 (Cable Box)
+- Inputs 5-12: Direct TV 1-8 (Direct TV)
+- Inputs 13-16: Amazon 1-4 (Fire TV)
+- Input 17: Atmosphere (Other)
+- Input 18: CEC (Other)
+- Inputs 19-36: Inactive
+
+**Outputs Configured** (29 active, 7 inactive):
+- Outputs 1-25: TV 01-25 (Power On enabled)
+- Outputs 26-32: Inactive
+- Outputs 33-36: Matrix 1-4 (Audio outputs)
+
+**Implementation Method**:
+- Configuration entered via API endpoint (`/api/matrix/config`)
+- All 36 inputs and 36 outputs configured in single transaction
+- Database verified with correct counts and labels
+- Backup created before and after configuration
+
+**Files Modified**:
+- Database: `/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db`
+- Backup created: `backups/matrix-config/matrix_config_20251009_213841/`
+
+---
 
 ### October 2025 - Critical Fixes and Feature Restoration
 
@@ -228,23 +283,22 @@ if (isSimpleOutput) {
 
 ### Key Models
 
-#### MatrixOutput
-Represents a video output (TV display):
+#### MatrixConfiguration
+Stores Wolfpack matrix switcher configuration:
 ```prisma
-model MatrixOutput {
-  id              Int      @id @default(autoincrement())
-  outputNumber    Int      @unique
-  label           String
-  enabled         Boolean  @default(true)
-  isActive        Boolean  @default(false)
-  currentInput    Int?
-  audioOutput     Int?
-  resolution      String?
-  dailyTurnOn     Boolean  @default(true)   // NEW: Morning schedule participation
-  dailyTurnOff    Boolean  @default(true)   // NEW: "All off" command participation
-  isMatrixOutput  Boolean  @default(true)   // NEW: Differentiates simple vs matrix outputs
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model MatrixConfiguration {
+  id              String        @id @default(uuid())
+  name            String
+  ipAddress       String
+  tcpPort         Int           @default(23)
+  udpPort         Int           @default(4000)
+  protocol        String        @default("TCP")
+  isActive        Boolean       @default(true)
+  cecInputChannel Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  inputs          MatrixInput[]
+  outputs         MatrixOutput[]
 }
 ```
 
@@ -252,30 +306,96 @@ model MatrixOutput {
 Represents a video source:
 ```prisma
 model MatrixInput {
-  id           Int      @id @default(autoincrement())
-  inputNumber  Int      @unique
-  label        String
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String              @id @default(uuid())
+  configId      String
+  channelNumber Int
+  label         String
+  inputType     String              @default("HDMI")
+  deviceType    String              @default("Other")
+  isActive      Boolean             @default(true)
+  status        String              @default("active")
+  powerOn       Boolean             @default(false)
+  isCecPort     Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
 }
 ```
 
-#### WolfpackConfig
-Stores Wolfpack matrix switcher configuration:
+#### MatrixOutput
+Represents a video output (TV display):
 ```prisma
-model WolfpackConfig {
-  id         Int      @id @default(autoincrement())
-  ipAddress  String   @unique
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model MatrixOutput {
+  id            String              @id @default(uuid())
+  configId      String
+  channelNumber Int
+  label         String
+  resolution    String              @default("1080p")
+  isActive      Boolean             @default(true)
+  status        String              @default("active")
+  audioOutput   Boolean?
+  powerOn       Boolean             @default(false)
+  dailyTurnOn   Boolean             @default(true)
+  dailyTurnOff  Boolean             @default(true)
+  isMatrixOutput Boolean            @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
 }
 ```
 
 ---
 
 ## API Endpoints
+
+### Matrix Configuration
+
+#### GET `/api/matrix/config`
+Retrieve active matrix configuration with inputs and outputs:
+```json
+{
+  "config": {
+    "id": "uuid",
+    "name": "Graystone Matrix",
+    "ipAddress": "192.168.5.100",
+    "protocol": "TCP",
+    "tcpPort": 23,
+    "isActive": true
+  },
+  "inputs": [...],
+  "outputs": [...]
+}
+```
+
+#### POST `/api/matrix/config`
+Save or update matrix configuration:
+```json
+{
+  "config": {
+    "name": "Graystone Matrix",
+    "ipAddress": "192.168.5.100",
+    "protocol": "TCP",
+    "tcpPort": 23,
+    "isActive": true
+  },
+  "inputs": [
+    {
+      "channelNumber": 1,
+      "label": "Cable Box 1",
+      "deviceType": "Cable Box",
+      "isActive": true
+    }
+  ],
+  "outputs": [
+    {
+      "channelNumber": 1,
+      "label": "TV 01",
+      "powerOn": true,
+      "isActive": true
+    }
+  ]
+}
+```
 
 ### Matrix Control
 
@@ -349,27 +469,32 @@ Test matrix switching functionality:
 ### Wolfpack Matrix Configuration
 
 #### Initial Setup
-1. Navigate to **System Admin → Wolfpack Configuration**
-2. Enter matrix IP address (e.g., `192.168.1.100`)
-3. Click **Test Connection** to verify connectivity
-4. Click **Test Switching** to verify control functionality
-5. Save configuration
+1. Navigate to **Matrix Control** page
+2. Enter matrix configuration:
+   - Configuration Name (e.g., "Graystone Matrix")
+   - IP Address (e.g., "192.168.5.100")
+   - Protocol (TCP/UDP)
+   - TCP Port (default: 23)
+3. Configure all 36 inputs with labels and device types
+4. Configure all 36 outputs with labels and settings
+5. Click **Save Configuration**
+6. Verify success message
 
 #### Input Configuration
-1. Navigate to **System Admin → Matrix Inputs**
-2. For each input (1-32):
-   - Set descriptive label (e.g., "Cable Box 1", "Apple TV")
-   - Enable/disable as needed
-3. Save changes
+For each input (1-36):
+- Set descriptive label (e.g., "Cable Box 1", "Direct TV 1")
+- Select device type (Cable Box, Direct TV, Fire TV, Other)
+- Enable/disable as needed
+- Configure CEC port if applicable
 
 #### Output Configuration
-1. Navigate to **System Admin → Matrix Outputs**
-2. For each output:
-   - Set descriptive label (e.g., "Main Bar TV 1")
-   - Enable/disable as needed
-   - Set `dailyTurnOn` (participate in morning schedule)
-   - Set `dailyTurnOff` (respond to "all off" command)
-3. Save changes
+For each output (1-36):
+- Set descriptive label (e.g., "TV 01", "Matrix 1")
+- Enable/disable as needed
+- Set power on preference
+- Configure audio output (for audio zones)
+- Set `dailyTurnOn` (participate in morning schedule)
+- Set `dailyTurnOff` (respond to "all off" command)
 
 ### TV Selection Configuration
 
@@ -380,6 +505,212 @@ Test matrix switching functionality:
 **All Off Command (dailyTurnOff)**:
 - Enable for TVs that should turn off with "all off" button
 - Disable for TVs that should remain on (e.g., 24/7 displays)
+
+---
+
+## Database Backup and Recovery Procedures
+
+### ⚠️ CRITICAL: Always Backup Before Changes
+
+**MANDATORY PROCEDURE** before any updates, deployments, or configuration changes:
+
+1. **Create Backup**
+2. **Verify Backup**
+3. **Perform Changes**
+4. **Verify Data Integrity**
+5. **Keep Backup Until Verified**
+
+### Automated Backup Script
+
+The system includes an automated backup script at `~/Sports-Bar-TV-Controller/scripts/backup_matrix_config.sh`.
+
+#### Running the Backup Script
+
+```bash
+cd ~/Sports-Bar-TV-Controller
+bash scripts/backup_matrix_config.sh
+```
+
+#### What Gets Backed Up
+
+The script creates a comprehensive backup including:
+- **Full database file**: Complete SQLite database
+- **SQL exports**: Individual table exports in SQL format
+  - MatrixConfiguration table
+  - MatrixInput table (all 36 inputs)
+  - MatrixOutput table (all 36 outputs)
+- **JSON export**: Active configuration in JSON format
+- **Backup metadata**: Timestamp, statistics, restore instructions
+- **Compressed archive**: `.tar.gz` file for easy storage/transfer
+
+#### Backup Location
+
+Backups are stored in:
+```
+~/Sports-Bar-TV-Controller/backups/matrix-config/
+├── matrix_config_YYYYMMDD_HHMMSS/
+│   ├── sports_bar.db              # Full database backup
+│   ├── matrix_configuration.sql   # Configuration table
+│   ├── matrix_input.sql           # Input table
+│   ├── matrix_output.sql          # Output table
+│   ├── matrix_config.json         # JSON export
+│   └── backup_info.txt            # Backup metadata
+└── matrix_config_YYYYMMDD_HHMMSS.tar.gz  # Compressed archive
+```
+
+#### Backup Verification
+
+After creating a backup, verify it contains data:
+
+```bash
+# Check backup directory exists
+ls -lh ~/Sports-Bar-TV-Controller/backups/matrix-config/
+
+# View backup contents
+tar -tzf ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_*.tar.gz
+
+# Check backup info
+cat ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_*/backup_info.txt
+```
+
+### Manual Database Backup
+
+If the automated script is not available:
+
+```bash
+# Backup full database
+cp ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+   ~/Sports-Bar-TV-Controller/backups/sports_bar_$(date +%Y%m%d_%H%M%S).db
+
+# Export specific tables
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+  ".dump MatrixConfiguration MatrixInput MatrixOutput" \
+  > ~/Sports-Bar-TV-Controller/backups/matrix_config_$(date +%Y%m%d_%H%M%S).sql
+```
+
+### Restoring from Backup
+
+#### Method 1: Full Database Restore (Recommended)
+
+```bash
+# Stop the application
+pm2 stop sports-bar-tv-controller
+
+# Backup current database (just in case)
+cp ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+   ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db.before_restore
+
+# Restore from backup
+cp ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_YYYYMMDD_HHMMSS/sports_bar.db \
+   ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+
+# Start the application
+pm2 start sports-bar-tv-controller
+
+# Verify data is present
+pm2 logs sports-bar-tv-controller
+```
+
+#### Method 2: SQL Import (Selective Restore)
+
+```bash
+# Stop the application
+pm2 stop sports-bar-tv-controller
+
+# Import specific tables
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+  < ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_YYYYMMDD_HHMMSS/matrix_configuration.sql
+
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+  < ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_YYYYMMDD_HHMMSS/matrix_input.sql
+
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+  < ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_YYYYMMDD_HHMMSS/matrix_output.sql
+
+# Start the application
+pm2 start sports-bar-tv-controller
+```
+
+#### Method 3: Extract from Archive
+
+```bash
+# Extract backup archive
+cd ~/Sports-Bar-TV-Controller/backups/matrix-config/
+tar -xzf matrix_config_YYYYMMDD_HHMMSS.tar.gz
+
+# Then use Method 1 or Method 2 above
+```
+
+### Emergency Recovery
+
+If data is lost after an update:
+
+1. **IMMEDIATELY stop the application**:
+   ```bash
+   pm2 stop sports-bar-tv-controller
+   ```
+
+2. **Identify the most recent backup**:
+   ```bash
+   ls -lt ~/Sports-Bar-TV-Controller/backups/matrix-config/
+   ```
+
+3. **Restore from backup** (use Method 1 above)
+
+4. **Verify data integrity**:
+   ```bash
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT COUNT(*) FROM MatrixConfiguration;"
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT COUNT(*) FROM MatrixInput;"
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT COUNT(*) FROM MatrixOutput;"
+   ```
+
+5. **Restart application**:
+   ```bash
+   pm2 start sports-bar-tv-controller
+   ```
+
+### Backup Best Practices
+
+1. **Before ANY changes**:
+   - Always run backup script first
+   - Verify backup was created successfully
+   - Check backup contains expected data
+
+2. **After configuration changes**:
+   - Create a new backup
+   - Label it clearly (e.g., "after_graystone_config")
+   - Keep multiple versions
+
+3. **Regular schedule**:
+   - Daily automated backups (via cron)
+   - Weekly manual verification
+   - Monthly archive to external storage
+
+4. **Retention policy**:
+   - Keep last 7 daily backups
+   - Keep last 4 weekly backups
+   - Keep last 12 monthly backups
+   - Archive major configuration changes permanently
+
+5. **Test restores**:
+   - Periodically test restore procedure
+   - Verify restored data is complete
+   - Document any issues encountered
+
+### Automated Backup Schedule
+
+Add to crontab for automated daily backups:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add this line for daily backup at 2 AM
+0 2 * * * cd ~/Sports-Bar-TV-Controller && bash scripts/backup_matrix_config.sh >> ~/backup.log 2>&1
+```
 
 ---
 
@@ -402,13 +733,13 @@ Test matrix switching functionality:
 
 2. **Check Wolfpack Matrix**:
    - Ensure matrix is powered on
-   - Verify IP address is correct
+   - Verify IP address is correct (192.168.5.100 for Graystone Matrix)
    - Check network cable connections
    - Confirm matrix is on same network/VLAN
 
 3. **Verify Database Connection**:
    ```bash
-   npx prisma db pull  # Test database connectivity
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "SELECT * FROM MatrixConfiguration WHERE isActive = 1;"
    ```
 
 4. **Check Application Logs**:
@@ -421,6 +752,65 @@ Test matrix switching functionality:
    pm2 restart sports-bar-tv-controller
    ```
 
+### Matrix Configuration Not Saving
+
+**Symptoms**:
+- Save button doesn't work
+- Configuration disappears after refresh
+- Error messages in console
+
+**Solutions**:
+
+1. **Check Database Permissions**:
+   ```bash
+   ls -l ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+   # Should be writable by application user
+   ```
+
+2. **Verify Database Integrity**:
+   ```bash
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "PRAGMA integrity_check;"
+   ```
+
+3. **Check Application Logs**:
+   ```bash
+   pm2 logs sports-bar-tv-controller --lines 50
+   ```
+
+4. **Restart Application**:
+   ```bash
+   pm2 restart sports-bar-tv-controller
+   ```
+
+### Configuration Lost After Update
+
+**Symptoms**:
+- Matrix configuration missing
+- Input/output labels reset
+- Settings not persisted
+
+**Solutions**:
+
+1. **IMMEDIATELY Create Backup** (if any data remains):
+   ```bash
+   bash ~/Sports-Bar-TV-Controller/scripts/backup_matrix_config.sh
+   ```
+
+2. **Check for Recent Backups**:
+   ```bash
+   ls -lt ~/Sports-Bar-TV-Controller/backups/matrix-config/
+   ```
+
+3. **Restore from Most Recent Backup**:
+   ```bash
+   # Follow restore procedure in "Database Backup and Recovery Procedures" section
+   ```
+
+4. **If No Backup Available**:
+   - Reconfigure matrix manually
+   - Create backup immediately after reconfiguration
+   - Set up automated backup schedule
+
 ### Matrix Switching Not Working
 
 **Symptoms**:
@@ -430,71 +820,69 @@ Test matrix switching functionality:
 
 **Solutions**:
 
-1. **Test Connection First**:
-   - Use connection test in System Admin
-   - Verify successful connection before switching
+1. **Verify Configuration Saved**:
+   ```bash
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT name, ipAddress, protocol, tcpPort FROM MatrixConfiguration WHERE isActive = 1;"
+   ```
 
-2. **Check Output Configuration**:
-   - Ensure outputs are enabled
-   - Verify output numbers match physical connections
+2. **Test Connection First**:
+   - Navigate to Matrix Control page
+   - Verify configuration is displayed
+   - Check connection status badge
 
-3. **Verify Input Configuration**:
-   - Ensure inputs are enabled
-   - Check input numbers match physical connections
+3. **Check Output Configuration**:
+   ```bash
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT channelNumber, label, isActive FROM MatrixOutput WHERE isActive = 1;"
+   ```
 
-4. **Test Individual Commands**:
+4. **Verify Input Configuration**:
+   ```bash
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+     "SELECT channelNumber, label, isActive FROM MatrixInput WHERE isActive = 1;"
+   ```
+
+5. **Test Individual Commands**:
    - Try routing a single input to single output
    - Test power on/off for single output
    - Check Wolfpack web interface directly
 
-### TV Selection Not Working
+### Database Corruption
 
 **Symptoms**:
-- All TVs turn on despite dailyTurnOn settings
-- "All off" affects wrong TVs
+- Application crashes on startup
+- Database errors in logs
+- Unable to read configuration
 
 **Solutions**:
 
-1. **Verify Database Migration**:
+1. **Stop Application**:
    ```bash
-   npx prisma migrate status
-   npx prisma migrate deploy  # If migrations pending
+   pm2 stop sports-bar-tv-controller
    ```
 
-2. **Check Output Configuration**:
-   - Navigate to System Admin → Matrix Outputs
-   - Verify dailyTurnOn and dailyTurnOff flags are set correctly
-
-3. **Restart Application**:
+2. **Check Database Integrity**:
    ```bash
-   pm2 restart sports-bar-tv-controller
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "PRAGMA integrity_check;"
    ```
 
-### Configuration Lost After Update
-
-**Symptoms**:
-- Wolfpack IP address missing
-- Input/output labels reset
-- Settings not persisted
-
-**Solutions**:
-
-1. **Check Database**:
+3. **If Corrupted, Restore from Backup**:
    ```bash
-   npx prisma studio  # Open database browser
-   # Verify WolfpackConfig, MatrixInput, MatrixOutput tables
+   # Follow restore procedure in "Database Backup and Recovery Procedures" section
    ```
 
-2. **Restore from Backup** (if available):
+4. **If No Backup, Try Recovery**:
    ```bash
-   # Restore database backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
+   # Dump what can be recovered
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db .dump > recovered.sql
+   
+   # Create new database
+   mv ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db.corrupt
+   
+   # Import recovered data
+   sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db < recovered.sql
    ```
-
-3. **Reconfigure Manually**:
-   - Re-enter Wolfpack IP address
-   - Re-label inputs and outputs
-   - Reconfigure TV selection settings
 
 ---
 
@@ -502,7 +890,7 @@ Test matrix switching functionality:
 
 ### Prerequisites
 - Node.js 18+ installed
-- PostgreSQL database running
+- SQLite3 installed
 - PM2 process manager installed
 - Git repository access
 
@@ -526,7 +914,7 @@ Test matrix switching functionality:
    nano .env
    ```
    Set:
-   - `DATABASE_URL`: PostgreSQL connection string
+   - `DATABASE_URL`: SQLite file path (default: `file:///home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db`)
    - `NEXTAUTH_SECRET`: Random secret for authentication
    - `NEXTAUTH_URL`: Application URL
 
@@ -548,56 +936,103 @@ Test matrix switching functionality:
    pm2 startup  # Follow instructions to enable auto-start
    ```
 
+7. **Create Initial Backup**:
+   ```bash
+   bash scripts/backup_matrix_config.sh
+   ```
+
 ### Update Deployment
 
-1. **Pull Latest Changes**:
+**⚠️ CRITICAL: Follow backup procedure before updating!**
+
+1. **Create Pre-Update Backup**:
    ```bash
    cd ~/Sports-Bar-TV-Controller
+   bash scripts/backup_matrix_config.sh
+   ```
+
+2. **Verify Backup Created**:
+   ```bash
+   ls -lh backups/matrix-config/
+   # Verify latest backup exists and has reasonable size
+   ```
+
+3. **Pull Latest Changes**:
+   ```bash
    git pull origin main
    ```
 
-2. **Install Dependencies**:
+4. **Install Dependencies**:
    ```bash
    npm install
    ```
 
-3. **Run Migrations**:
+5. **Run Migrations**:
    ```bash
    npx prisma migrate deploy
    npx prisma generate
    ```
 
-4. **Rebuild Application**:
+6. **Rebuild Application**:
    ```bash
    npm run build
    ```
 
-5. **Restart PM2**:
+7. **Restart PM2**:
    ```bash
    pm2 restart sports-bar-tv-controller --update-env
    ```
+
+8. **Verify Data Integrity**:
+   ```bash
+   # Check configuration still exists
+   sqlite3 prisma/data/sports_bar.db "SELECT COUNT(*) FROM MatrixConfiguration;"
+   sqlite3 prisma/data/sports_bar.db "SELECT COUNT(*) FROM MatrixInput;"
+   sqlite3 prisma/data/sports_bar.db "SELECT COUNT(*) FROM MatrixOutput;"
+   ```
+
+9. **If Data Missing, Restore from Backup**:
+   ```bash
+   # Follow restore procedure in "Database Backup and Recovery Procedures" section
+   ```
+
+10. **Create Post-Update Backup**:
+    ```bash
+    bash scripts/backup_matrix_config.sh
+    ```
 
 ### Rollback Procedure
 
 If deployment fails:
 
-1. **Revert Git Changes**:
+1. **Stop Application**:
+   ```bash
+   pm2 stop sports-bar-tv-controller
+   ```
+
+2. **Restore Database from Backup**:
+   ```bash
+   cp backups/matrix-config/matrix_config_YYYYMMDD_HHMMSS/sports_bar.db \
+      prisma/data/sports_bar.db
+   ```
+
+3. **Revert Git Changes**:
    ```bash
    git log  # Find previous commit hash
    git checkout <previous-commit-hash>
    ```
 
-2. **Rebuild and Restart**:
+4. **Rebuild and Restart**:
    ```bash
    npm install
    npm run build
-   pm2 restart sports-bar-tv-controller
+   pm2 start sports-bar-tv-controller
    ```
 
-3. **Rollback Database** (if needed):
+5. **Verify System Working**:
    ```bash
-   # Restore from backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
+   pm2 logs sports-bar-tv-controller
+   # Check application is running and data is present
    ```
 
 ---
@@ -611,6 +1046,10 @@ If deployment fails:
   ```bash
   pm2 logs sports-bar-tv-controller --lines 100
   ```
+- Verify automated backup ran successfully:
+  ```bash
+  ls -lt ~/Sports-Bar-TV-Controller/backups/matrix-config/ | head -5
+  ```
 
 #### Weekly
 - Check disk space:
@@ -619,6 +1058,7 @@ If deployment fails:
   ```
 - Review application logs for warnings
 - Verify scheduled tasks are running
+- Test backup restoration (on test system)
 
 #### Monthly
 - Update dependencies:
@@ -626,50 +1066,82 @@ If deployment fails:
   npm update
   npm audit fix
   ```
-- Review and optimize database
-- Test backup restoration
+- Review and optimize database:
+  ```bash
+  sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "VACUUM;"
+  ```
+- Archive old backups to external storage
+- Test full disaster recovery procedure
 
 ### Backup Strategy
 
-#### Database Backup
+#### Automated Daily Backup
 
-**Automated Daily Backup**:
+**Setup Cron Job**:
 ```bash
-# Add to crontab (crontab -e)
-0 2 * * * pg_dump sports_bar_tv > /backup/sports_bar_tv_$(date +\%Y\%m\%d).sql
+# Edit crontab
+crontab -e
+
+# Add daily backup at 2 AM
+0 2 * * * cd ~/Sports-Bar-TV-Controller && bash scripts/backup_matrix_config.sh >> ~/backup.log 2>&1
+
+# Add weekly cleanup (keep last 30 days)
+0 3 * * 0 find ~/Sports-Bar-TV-Controller/backups/matrix-config/ -name "matrix_config_*" -mtime +30 -delete
 ```
 
-**Manual Backup**:
+#### Manual Backup Before Changes
+
+**Always run before**:
+- Software updates
+- Configuration changes
+- Database migrations
+- System maintenance
+
 ```bash
-pg_dump sports_bar_tv > backup_$(date +%Y%m%d_%H%M%S).sql
+cd ~/Sports-Bar-TV-Controller
+bash scripts/backup_matrix_config.sh
 ```
 
-**Restore from Backup**:
+#### Backup Verification
+
+**Daily Verification**:
 ```bash
-psql sports_bar_tv < backup_20251010_020000.sql
+# Check latest backup
+ls -lh ~/Sports-Bar-TV-Controller/backups/matrix-config/ | head -3
+
+# Verify backup contents
+tar -tzf ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_*.tar.gz | head -10
 ```
 
-#### Configuration Backup
-
-**Export Configuration**:
+**Weekly Test Restore** (on test system):
 ```bash
-# Backup Wolfpack configuration
-npx prisma studio  # Export WolfpackConfig table to JSON
+# Extract backup
+tar -xzf matrix_config_YYYYMMDD_HHMMSS.tar.gz
 
-# Backup input/output configuration
-npx prisma studio  # Export MatrixInput and MatrixOutput tables to JSON
+# Test database integrity
+sqlite3 matrix_config_YYYYMMDD_HHMMSS/sports_bar.db "PRAGMA integrity_check;"
+
+# Verify data
+sqlite3 matrix_config_YYYYMMDD_HHMMSS/sports_bar.db "SELECT COUNT(*) FROM MatrixConfiguration;"
 ```
 
-**File-Based Backup**:
-```bash
-# Backup entire application directory
-tar -czf sports-bar-backup-$(date +%Y%m%d).tar.gz ~/Sports-Bar-TV-Controller
-```
+#### Backup Retention Policy
 
-#### Backup Retention
-- Daily backups: Keep 7 days
-- Weekly backups: Keep 4 weeks
-- Monthly backups: Keep 12 months
+- **Daily backups**: Keep 7 days
+- **Weekly backups**: Keep 4 weeks  
+- **Monthly backups**: Keep 12 months
+- **Configuration change backups**: Keep indefinitely
+
+#### Off-Site Backup
+
+**Copy to External Storage**:
+```bash
+# Copy to external drive
+cp ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_*.tar.gz /mnt/external/
+
+# Copy to network storage
+scp ~/Sports-Bar-TV-Controller/backups/matrix-config/matrix_config_*.tar.gz user@backup-server:/backups/
+```
 
 ### Monitoring
 
@@ -688,16 +1160,25 @@ pm2 logs sports-bar-tv-controller
 #### Database Health
 ```bash
 # Check database size
-psql -d sports_bar_tv -c "SELECT pg_size_pretty(pg_database_size('sports_bar_tv'));"
+ls -lh ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
 
-# Check table sizes
-psql -d sports_bar_tv -c "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) FROM pg_tables WHERE schemaname = 'public' ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
+# Check table counts
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db << EOF
+SELECT 'MatrixConfiguration' as table_name, COUNT(*) as count FROM MatrixConfiguration
+UNION ALL
+SELECT 'MatrixInput', COUNT(*) FROM MatrixInput
+UNION ALL
+SELECT 'MatrixOutput', COUNT(*) FROM MatrixOutput;
+EOF
+
+# Check database integrity
+sqlite3 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "PRAGMA integrity_check;"
 ```
 
 #### Network Connectivity
 ```bash
 # Test Wolfpack connectivity
-curl http://<wolfpack-ip-address>
+curl http://192.168.5.100
 
 # Check application port
 netstat -tulpn | grep 3001
@@ -712,20 +1193,25 @@ netstat -tulpn | grep 3001
 - Application should be behind firewall
 - Use HTTPS in production (configure reverse proxy)
 
-### Authentication
-- Change default admin credentials immediately
-- Use strong passwords
-- Enable two-factor authentication if available
-
 ### Database Security
-- Use strong database passwords
-- Restrict database access to localhost
-- Regular security updates
+- Restrict database file permissions:
+  ```bash
+  chmod 600 ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+  ```
+- Regular backups with encryption
+- Secure backup storage location
 
 ### Application Security
 - Keep dependencies updated
 - Regular security audits
 - Monitor logs for suspicious activity
+- Use strong authentication
+
+### Backup Security
+- Encrypt backup archives
+- Secure backup storage location
+- Restrict access to backup files
+- Test restore procedures regularly
 
 ---
 
@@ -734,6 +1220,7 @@ netstat -tulpn | grep 3001
 ### Documentation
 - Next.js: https://nextjs.org/docs
 - Prisma: https://www.prisma.io/docs
+- SQLite: https://www.sqlite.org/docs.html
 - Wolfpack API: Refer to Wolfpack matrix documentation
 
 ### Common Issues
@@ -749,25 +1236,37 @@ netstat -tulpn | grep 3001
    - Steps to reproduce
    - Error messages
    - System information
+   - Backup status
 
 ---
 
 ## Changelog
 
-### October 2025
+### October 10, 2025 - Phase 3 Complete
+- ✅ Graystone Matrix configuration entered via API
+- ✅ All 36 inputs configured (18 active, 18 inactive)
+- ✅ All 36 outputs configured (29 active, 7 inactive)
+- ✅ Database verified with correct counts and labels
+- ✅ Backup system tested and verified
+- ✅ Documentation updated with backup procedures
+- ✅ Critical backup warnings added to documentation
+
+### October 2025 - Critical Fixes
 - ✅ Fixed Wolfpack connection test (PrismaClient singleton)
 - ✅ Added TV selection options (dailyTurnOn, dailyTurnOff)
 - ✅ Removed EPG services (Gracenote, TMS, Spectrum Business API)
 - ✅ Converted outputs 1-4 to simple display
 - ✅ Investigated configuration loss (no backups found)
+- ✅ Created automated backup script
 - ✅ Updated system documentation
 
 ### Future Enhancements
 - Custom EPG service integration
 - Configuration export/import functionality
-- Enhanced backup automation
+- Enhanced backup automation with encryption
 - Mobile app development
 - Advanced scheduling features
+- Real-time matrix status monitoring
 
 ---
 
@@ -782,4 +1281,20 @@ netstat -tulpn | grep 3001
 ---
 
 *Last Updated: October 10, 2025*
-*Version: 1.0*
+*Version: 1.1*
+
+---
+
+# ⚠️ CRITICAL: DATABASE BACKUP PROCEDURE - READ THIS FIRST ⚠️
+
+**BEFORE ANY UPDATES, DEPLOYMENTS, OR CHANGES:**
+
+1. **BACKUP DATABASE**: Run `~/Sports-Bar-TV-Controller/scripts/backup_matrix_config.sh`
+2. **VERIFY BACKUP**: Check that backup file exists and contains all data
+3. **PERFORM UPDATE**: Make your changes/updates
+4. **VERIFY DATABASE**: Check that all data is still present after update
+5. **IF DATA MISSING**: Immediately restore from backup
+
+**Failure to follow this procedure may result in permanent data loss!**
+
+---

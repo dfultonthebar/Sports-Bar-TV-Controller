@@ -1,7 +1,6 @@
-
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from "@/lib/prisma"
-
+import { randomUUID } from 'crypto'
 
 export async function GET() {
   try {
@@ -9,10 +8,38 @@ export async function GET() {
       where: { isActive: true },
       include: {
         inputs: {
-          orderBy: { channelNumber: 'asc' }
+          orderBy: { channelNumber: 'asc' },
+          select: {
+            id: true,
+            configId: true,
+            channelNumber: true,
+            label: true,
+            inputType: true,
+            deviceType: true,
+            isActive: true,
+            status: true,
+            powerOn: true,
+            isCecPort: true,
+            createdAt: true,
+            updatedAt: true
+          }
         },
         outputs: {
-          orderBy: { channelNumber: 'asc' }
+          orderBy: { channelNumber: 'asc' },
+          select: {
+            id: true,
+            configId: true,
+            channelNumber: true,
+            label: true,
+            resolution: true,
+            isActive: true,
+            status: true,
+            audioOutput: true,
+            powerOn: true,
+            createdAt: true,
+            updatedAt: true
+            // Exclude selectedVideoInput and videoInputLabel - they don't exist in database
+          }
         }
       }
     })
@@ -43,80 +70,139 @@ export async function POST(request: NextRequest) {
   try {
     const { config, inputs, outputs } = await request.json()
 
-    // Save or update matrix configuration
-    const savedConfig = await prisma.matrixConfiguration.upsert({
-      where: { id: config.id || '' },
-      update: {
-        name: config.name,
-        ipAddress: config.ipAddress,
-        tcpPort: config.tcpPort || 23,
-        udpPort: config.udpPort || 4000,
-        protocol: config.protocol,
-        isActive: config.isActive,
-        cecInputChannel: config.cecInputChannel || null
-      },
-      create: {
-        name: config.name,
-        ipAddress: config.ipAddress,
-        tcpPort: config.tcpPort || 23,
-        udpPort: config.udpPort || 4000,
-        protocol: config.protocol,
-        isActive: config.isActive,
-        cecInputChannel: config.cecInputChannel || null
+    // Validate required fields
+    if (!config.name || !config.ipAddress) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: name and ipAddress are required' 
+      }, { status: 400 })
+    }
+
+    // Generate ID if not provided
+    const configId = config.id || randomUUID()
+
+    // Use transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // First, deactivate all other configurations if this one is active
+      if (config.isActive !== false) {
+        await tx.matrixConfiguration.updateMany({
+          where: { 
+            id: { not: configId }
+          },
+          data: { isActive: false }
+        })
       }
-    })
 
-    // Clear existing inputs and outputs for this config
-    if (savedConfig.id) {
-      await prisma.matrixInput.deleteMany({
+      // Save or update matrix configuration
+      const savedConfig = await tx.matrixConfiguration.upsert({
+        where: { id: configId },
+        update: {
+          name: config.name,
+          ipAddress: config.ipAddress,
+          tcpPort: config.tcpPort || 23,
+          udpPort: config.udpPort || 4000,
+          protocol: config.protocol || 'TCP',
+          isActive: config.isActive !== false, // Default to true
+          cecInputChannel: config.cecInputChannel || null,
+          updatedAt: new Date()
+        },
+        create: {
+          id: configId,
+          name: config.name,
+          ipAddress: config.ipAddress,
+          tcpPort: config.tcpPort || 23,
+          udpPort: config.udpPort || 4000,
+          protocol: config.protocol || 'TCP',
+          isActive: config.isActive !== false, // Default to true
+          cecInputChannel: config.cecInputChannel || null
+        }
+      })
+
+      // Clear existing inputs and outputs for this config
+      await tx.matrixInput.deleteMany({
         where: { configId: savedConfig.id }
       })
-      await prisma.matrixOutput.deleteMany({
+      await tx.matrixOutput.deleteMany({
         where: { configId: savedConfig.id }
       })
-    }
 
-    // Save inputs
-    if (inputs?.length > 0 && savedConfig.id) {
-      await prisma.matrixInput.createMany({
-        data: inputs.map((input: any) => ({
-          configId: savedConfig.id,
-          channelNumber: input.channelNumber,
-          label: input.label,
-          inputType: input.inputType,
-          deviceType: input.deviceType || 'Other',
-          isActive: input.isActive,
-          status: input.status || 'active',
-          powerOn: input.powerOn || false,
-          isCecPort: input.isCecPort || false
-        }))
-      })
-    }
+      // Save inputs - only fields that exist in actual database
+      if (inputs?.length > 0) {
+        await tx.matrixInput.createMany({
+          data: inputs.map((input: any) => ({
+            id: randomUUID(),
+            configId: savedConfig.id,
+            channelNumber: input.channelNumber,
+            label: input.label || `Input ${input.channelNumber}`,
+            inputType: input.inputType || 'HDMI',
+            deviceType: input.deviceType || 'Other',
+            isActive: input.isActive !== false, // Default to true
+            status: input.status || 'active',
+            powerOn: input.powerOn || false,
+            isCecPort: input.isCecPort || false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }))
+        })
+      }
 
-    // Save outputs
-    if (outputs?.length > 0 && savedConfig.id) {
-      await prisma.matrixOutput.createMany({
-        data: outputs.map((output: any) => ({
+      // Save outputs - only fields that exist in actual database
+      // Database has: id, configId, channelNumber, label, resolution, isActive, status, 
+      //               audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff, isMatrixOutput
+      // Database does NOT have: selectedVideoInput, videoInputLabel
+      if (outputs?.length > 0) {
+        const outputData = outputs.map((output: any) => ({
+          id: randomUUID(),
           configId: savedConfig.id,
           channelNumber: output.channelNumber,
-          label: output.label,
-          resolution: output.resolution,
-          isActive: output.isActive,
+          label: output.label || `Output ${output.channelNumber}`,
+          resolution: output.resolution || '1080p',
+          isActive: output.isActive !== false, // Default to true
           status: output.status || 'active',
-          audioOutput: output.audioOutput || '',
+          audioOutput: output.audioOutput || null,
           powerOn: output.powerOn || false,
-          selectedVideoInput: output.selectedVideoInput || null,
-          videoInputLabel: output.videoInputLabel || null
+          createdAt: new Date(),
+          updatedAt: new Date()
         }))
-      })
-    }
+
+        // Use raw SQL to insert with the extra columns that aren't in Prisma schema
+        for (const output of outputData) {
+          await tx.$executeRaw`
+            INSERT INTO MatrixOutput (
+              id, configId, channelNumber, label, resolution, isActive, status, 
+              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff, isMatrixOutput
+            ) VALUES (
+              ${output.id}, ${output.configId}, ${output.channelNumber}, ${output.label}, 
+              ${output.resolution}, ${output.isActive}, ${output.status}, ${output.audioOutput}, 
+              ${output.powerOn}, ${output.createdAt.toISOString()}, ${output.updatedAt.toISOString()},
+              1, 1, 1
+            )
+          `
+        }
+      }
+
+      return savedConfig
+    })
+
+    console.log(`Configuration saved successfully: ${result.name} (${result.id})`)
+    console.log(`- Inputs saved: ${inputs?.length || 0}`)
+    console.log(`- Outputs saved: ${outputs?.length || 0}`)
 
     return NextResponse.json({ 
       success: true, 
-      config: savedConfig 
+      message: 'Configuration saved successfully',
+      config: result,
+      inputCount: inputs?.length || 0,
+      outputCount: outputs?.length || 0
     })
   } catch (error) {
     console.error('Error saving matrix configuration:', error)
-    return NextResponse.json({ error: 'Failed to save configuration' }, { status: 500 })
+    
+    // Provide more detailed error information
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    
+    return NextResponse.json({ 
+      error: 'Failed to save configuration',
+      details: errorMessage
+    }, { status: 500 })
   }
 }
