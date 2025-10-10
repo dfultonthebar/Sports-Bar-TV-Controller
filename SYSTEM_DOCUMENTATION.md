@@ -4,12 +4,15 @@
 1. [System Overview](#system-overview)
 2. [Architecture](#architecture)
 3. [Recent Changes and Fixes](#recent-changes-and-fixes)
-4. [Database Schema](#database-schema)
-5. [API Endpoints](#api-endpoints)
-6. [Configuration Management](#configuration-management)
-7. [Troubleshooting](#troubleshooting)
-8. [Deployment Guide](#deployment-guide)
-9. [Maintenance and Backup](#maintenance-and-backup)
+4. [TODO Management System](#todo-management-system)
+5. [GitHub Auto-Commit Integration](#github-auto-commit-integration)
+6. [Sports Guide API](#sports-guide-api)
+7. [Database Schema](#database-schema)
+8. [API Endpoints](#api-endpoints)
+9. [Configuration Management](#configuration-management)
+10. [Troubleshooting](#troubleshooting)
+11. [Deployment Guide](#deployment-guide)
+12. [Maintenance and Backup](#maintenance-and-backup)
 
 ---
 
@@ -22,6 +25,8 @@ The Sports Bar TV Controller is a comprehensive web application designed to mana
 - **TV Schedule Management**: Automated daily on/off scheduling with selective TV control
 - **Sports Content Guide**: Display and manage sports programming
 - **Multi-Zone Audio**: Control audio routing for different zones
+- **TODO Management**: Integrated task tracking with GitHub auto-commit
+- **AI Hub**: Unified AI management and assistance features
 - **Web-Based Interface**: Responsive UI accessible from any device
 
 ### Technology Stack
@@ -30,6 +35,7 @@ The Sports Bar TV Controller is a comprehensive web application designed to mana
 - **Database**: PostgreSQL
 - **Hardware Integration**: Wolfpack HDMI Matrix Switchers (via HTTP API)
 - **Process Management**: PM2
+- **Version Control**: Git with automated commit integration
 
 ---
 
@@ -40,20 +46,28 @@ The Sports Bar TV Controller is a comprehensive web application designed to mana
 Sports-Bar-TV-Controller/
 ├── src/
 │   ├── app/                    # Next.js app router pages
+│   │   ├── admin/              # Admin pages
+│   │   │   └── todos/          # TODO management admin page
+│   │   ├── ai-hub/             # AI Hub features
+│   │   └── api/                # API routes
+│   │       ├── todos/          # TODO management endpoints
+│   │       ├── sports-guide/   # Sports Guide API endpoints
+│   │       ├── matrix/         # Matrix control endpoints
+│   │       └── wolfpack/       # Wolfpack integration
 │   ├── components/             # React components
 │   │   ├── MatrixControl.tsx   # Matrix output controls
 │   │   ├── SportsGuide.tsx     # Sports programming guide
-│   │   ├── ApiKeysManager.tsx  # API configuration
-│   │   └── tv-guide/           # TV guide components
-│   ├── lib/                    # Utility libraries
-│   │   ├── prisma.ts           # Prisma client singleton
-│   │   └── wolfpack.ts         # Wolfpack API client
-│   └── pages/api/              # API routes
-│       ├── matrix/             # Matrix control endpoints
-│       ├── wolfpack/           # Wolfpack integration
-│       └── schedule/           # Scheduling endpoints
+│   │   ├── TodoList.tsx        # TODO list component
+│   │   ├── TodoForm.tsx        # TODO form component
+│   │   └── TodoDetails.tsx     # TODO details component
+│   └── lib/                    # Utility libraries
+│       ├── prisma.ts           # Prisma client singleton
+│       ├── wolfpack.ts         # Wolfpack API client
+│       └── gitSync.ts          # GitHub auto-commit utility
 ├── prisma/
-│   └── schema.prisma           # Database schema
+│   ├── schema.prisma           # Database schema
+│   └── migrations/             # Database migrations
+├── TODO_LIST.md                # Auto-generated TODO list
 └── public/                     # Static assets
 ```
 
@@ -87,6 +101,82 @@ Allows granular control over which TVs participate in automated schedules:
 
 ## Recent Changes and Fixes
 
+### October 10, 2025 - PR #188: TODO System with GitHub Auto-Commit
+
+#### Overview
+Implemented comprehensive TODO management system with automatic GitHub synchronization. This feature allows tracking development tasks, bugs, and features while automatically committing changes to the repository.
+
+**Pull Request**: [#188 - fix/400-and-git-sync](https://github.com/dfultonthebar/Sports-Bar-TV-Controller/pull/188)
+
+#### Key Features Implemented
+
+1. **TODO Management System**
+   - Full CRUD operations (Create, Read, Update, Delete)
+   - Task prioritization (LOW, MEDIUM, HIGH, CRITICAL)
+   - Status tracking (PLANNED, IN_PROGRESS, TESTING, COMPLETE)
+   - Category and tag support
+   - Document attachment support
+   - Completion validation (requires production testing and main branch merge confirmation)
+
+2. **GitHub Auto-Commit Integration**
+   - Automatic commit on TODO create/update/delete/complete
+   - Auto-generation of TODO_LIST.md file
+   - Descriptive commit messages with TODO titles
+   - Background sync (non-blocking)
+   - Error handling and logging
+
+3. **Database Migrations**
+   - Created `Todo` table with comprehensive fields
+   - Created `TodoDocument` table for file attachments
+   - Proper foreign key relationships and cascading deletes
+
+4. **Admin Interface**
+   - Dedicated admin page at `/admin/todos`
+   - List view with filtering and sorting
+   - Form view for creating/editing TODOs
+   - Details view with document management
+   - Responsive design
+
+#### Files Created/Modified
+
+**New Files**:
+- `src/lib/gitSync.ts` - GitHub synchronization utility
+- `src/app/api/todos/route.ts` - TODO list and create endpoints
+- `src/app/api/todos/[id]/route.ts` - TODO get, update, delete endpoints
+- `src/app/api/todos/[id]/complete/route.ts` - TODO completion with validation
+- `src/app/api/todos/[id]/documents/route.ts` - Document upload/management
+- `src/app/admin/todos/page.tsx` - Admin TODO management page
+- `src/components/TodoList.tsx` - TODO list component
+- `src/components/TodoForm.tsx` - TODO form component
+- `src/components/TodoDetails.tsx` - TODO details component
+- `TODO_LIST.md` - Auto-generated TODO list (do not edit manually)
+
+**Modified Files**:
+- `prisma/schema.prisma` - Added Todo and TodoDocument models
+- Database migrations created for new tables
+
+#### Bug Fixes Included
+
+1. **Sports Guide API 400 Error**
+   - **Issue**: API returning 400 errors due to missing database tables
+   - **Root Cause**: Database migrations not applied on production
+   - **Solution**: Applied migrations and verified table structure
+   - **Status**: ✅ Fixed on production server
+
+2. **TODO List 400 Error**
+   - **Issue**: TODO API endpoints returning 400 errors
+   - **Root Cause**: Missing Todo and TodoDocument tables in database
+   - **Solution**: Created database migrations and applied them
+   - **Status**: ✅ Fixed on production server
+
+#### Testing Status
+- ✅ All features working on production server (http://24.123.87.42:3001)
+- ✅ GitHub auto-commit verified and operational
+- ✅ TODO_LIST.md auto-generation working
+- ⏳ Local testing pending (this task)
+
+---
+
 ### October 2025 - Critical Fixes and Feature Restoration
 
 #### 1. Wolfpack Connection Test Fix
@@ -98,6 +188,61 @@ Allows granular control over which TVs participate in automated schedules:
 - This caused connection pool issues and race conditions
 
 **Solution**:
+```typescript
+// Before (BROKEN):
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+// After (FIXED):
+import prisma from '@/lib/prisma';
+```
+
+**Files Modified**:
+- `src/pages/api/wolfpack/test-connection.ts`
+
+**Testing**: Connection test now successfully validates Wolfpack matrix connectivity.
+
+---
+
+#### 2. TV Selection Options Restoration
+**Issue**: Missing UI controls to select which TVs turn on in morning schedule and respond to "all off" command.
+
+**Solution**:
+- Added `dailyTurnOn` boolean field to MatrixOutput schema
+- Added `dailyTurnOff` boolean field to MatrixOutput schema
+- Existing API endpoint `/api/matrix/outputs-schedule` already supported these fields
+- Database migration required for deployment
+
+**Database Schema Changes**:
+```prisma
+model MatrixOutput {
+  // ... existing fields ...
+  dailyTurnOn  Boolean @default(true)   // Participate in morning schedule
+  dailyTurnOff Boolean @default(true)   // Respond to "all off" command
+}
+```
+
+**Migration Required**: Yes - `npx prisma migrate deploy` on server
+
+**Usage**:
+- Configure per-output in System Admin → Matrix Outputs
+- Morning schedule only turns on TVs with `dailyTurnOn = true`
+- "All Off" command only affects TVs with `dailyTurnOff = true`
+
+---
+
+#### 3. EPG Services Removal
+**Issue**: Application contained references to deprecated/unavailable EPG (Electronic Program Guide) services.
+
+**Services Removed**:
+- **Gracenote API**: Commercial EPG service (requires expensive license)
+- **TMS (Tribune Media Services)**: Deprecated service, no longer available
+- **Spectrum Business API**: Provider-specific, not applicable
+
+**Files Modified**:
+- `src/components/ApiKeysManager.tsx` - Removed EPG provider configuration options
+
+---
 
 ### October 9, 2025 - Outputs 1-4 Configuration Update
 
@@ -245,1227 +390,6 @@ Status: ✅ Verified and operational
 
 ---
 
-```typescript
-// Before (BROKEN):
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-
-// After (FIXED):
-import prisma from '@/lib/prisma';
-```
-
-**Files Modified**:
-- `src/pages/api/wolfpack/test-connection.ts`
-
-**Testing**: Connection test now successfully validates Wolfpack matrix connectivity.
-
----
-
-#### 2. TV Selection Options Restoration
-**Issue**: Missing UI controls to select which TVs turn on in morning schedule and respond to "all off" command.
-
-**Solution**:
-- Added `dailyTurnOn` boolean field to MatrixOutput schema
-- Added `dailyTurnOff` boolean field to MatrixOutput schema
-- Existing API endpoint `/api/matrix/outputs-schedule` already supported these fields
-- Database migration required for deployment
-
-**Database Schema Changes**:
-```prisma
-model MatrixOutput {
-  // ... existing fields ...
-  dailyTurnOn  Boolean @default(true)   // Participate in morning schedule
-  dailyTurnOff Boolean @default(true)   // Respond to "all off" command
-}
-```
-
-**Migration Required**: Yes - `npx prisma migrate deploy` on server
-
-**Usage**:
-- Configure per-output in System Admin → Matrix Outputs
-- Morning schedule only turns on TVs with `dailyTurnOn = true`
-- "All Off" command only affects TVs with `dailyTurnOff = true`
-
----
-
-#### 3. EPG Services Removal
-**Issue**: Application contained references to deprecated/unavailable EPG (Electronic Program Guide) services.
-
-**Services Removed**:
-- **Gracenote API**: Commercial EPG service (requires expensive license)
-- **TMS (Tribune Media Services)**: Deprecated service, no longer available
-- **Spectrum Business API**: Provider-specific, not applicable
-
-**Files Modified**:
-- `src/components/ApiKeysManager.tsx` - Removed EPG provider configuration options
-- `src/components/SportsGuide.tsx` - Removed Spectrum Business provider references
-- `src/components/tv-guide/TVGuideConfigurationPanel.tsx` - Replaced EPG services with notice for future custom service
-
-**Impact**:
-- Cleaner UI without non-functional options
-- Reduced confusion for users
-- Opens path for custom EPG service implementation in future
-
-**Future Enhancement**: Custom EPG service can be added when needed, using free/open APIs or custom data sources.
-
----
-
-#### 4. Matrix Outputs 1-4 Conversion
-**Issue**: Outputs 1-4 were displaying full matrix controls but are not connected to the matrix switcher.
-
-**Solution**: Modified `src/components/MatrixControl.tsx` to differentiate output types:
-
-**Simple Outputs (1-4)** - Display Only:
-- Label (e.g., "TV 1")
-- Resolution (e.g., "1920x1080")
-- No power controls
-- No active checkbox
-- No routing buttons
-- No audio configuration
-
-**Matrix Outputs (33-36)** - Full Controls:
-- All power controls
-- Active status checkbox
-- Source routing buttons (1-32)
-- Audio output configuration
-- Full Wolfpack integration
-
-**Implementation**:
-```typescript
-const isSimpleOutput = outputNumber >= 1 && outputNumber <= 4;
-
-if (isSimpleOutput) {
-  // Render simple display: label + resolution only
-} else {
-  // Render full matrix controls
-}
-```
-
-**Files Modified**:
-- `src/components/MatrixControl.tsx`
-
----
-
-#### 5. Configuration Loss Investigation
-**Issue**: Wolfpack matrix configuration (IP, labels, enabled outputs) was lost.
-
-**Investigation Results**:
-- No backup directory found on server
-- Configuration was stored in database tables
-- Database tables are currently empty (no data)
-- No file-based configuration backups exist
-
-**Root Cause**: Unknown - possible database reset or migration issue
-
-**Impact**:
-- User must reconfigure Wolfpack matrix settings:
-  - Matrix IP address
-  - Matrix name
-  - Input labels and enabled/disabled status
-  - Output labels and enabled/disabled status
-
-**Prevention Measures** (see Maintenance section):
-- Regular database backups
-- Configuration export functionality
-- File-based configuration backup option
-
----
-
-## Database Schema
-
-### Key Models
-
-#### MatrixOutput
-Represents a video output (TV display):
-```prisma
-model MatrixOutput {
-  id              Int      @id @default(autoincrement())
-  outputNumber    Int      @unique
-  label           String
-  enabled         Boolean  @default(true)
-  isActive        Boolean  @default(false)
-  currentInput    Int?
-  audioOutput     Int?
-  resolution      String?
-  dailyTurnOn     Boolean  @default(true)   // NEW: Morning schedule participation
-  dailyTurnOff    Boolean  @default(true)   // NEW: "All off" command participation
-  isMatrixOutput  Boolean  @default(true)   // NEW: Differentiates simple vs matrix outputs
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-```
-
-#### MatrixInput
-Represents a video source:
-```prisma
-model MatrixInput {
-  id           Int      @id @default(autoincrement())
-  inputNumber  Int      @unique
-  label        String
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-```
-
-#### WolfpackConfig
-Stores Wolfpack matrix switcher configuration:
-```prisma
-model WolfpackConfig {
-  id         Int      @id @default(autoincrement())
-  ipAddress  String   @unique
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-```
-
----
-
-## API Endpoints
-
-### Matrix Control
-
-#### GET/POST `/api/matrix/outputs`
-- **GET**: Retrieve all matrix outputs
-- **POST**: Update output configuration
-- **Body**: `{ outputNumber, label, enabled, dailyTurnOn, dailyTurnOff }`
-
-#### GET `/api/matrix/outputs-schedule`
-Retrieve outputs with schedule participation flags:
-```json
-{
-  "outputs": [
-    {
-      "outputNumber": 33,
-      "label": "Main Bar TV",
-      "dailyTurnOn": true,
-      "dailyTurnOff": true
-    }
-  ]
-}
-```
-
-#### POST `/api/matrix/route`
-Route a source to an output:
-```json
-{
-  "input": 5,
-  "output": 33
-}
-```
-
-#### POST `/api/matrix/power`
-Control output power:
-```json
-{
-  "output": 33,
-  "state": "on"  // or "off"
-}
-```
-
-### Wolfpack Integration
-
-#### POST `/api/wolfpack/test-connection`
-Test connectivity to Wolfpack matrix:
-```json
-{
-  "ipAddress": "192.168.1.100"
-}
-```
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Successfully connected to Wolfpack matrix"
-}
-```
-
-#### POST `/api/wolfpack/test-switching`
-Test matrix switching functionality:
-```json
-{
-  "ipAddress": "192.168.1.100"
-}
-```
-
----
-
-## Configuration Management
-
-### Wolfpack Matrix Configuration
-
-#### Initial Setup
-1. Navigate to **System Admin → Wolfpack Configuration**
-2. Enter matrix IP address (e.g., `192.168.1.100`)
-3. Click **Test Connection** to verify connectivity
-4. Click **Test Switching** to verify control functionality
-5. Save configuration
-
-#### Input Configuration
-1. Navigate to **System Admin → Matrix Inputs**
-2. For each input (1-32):
-   - Set descriptive label (e.g., "Cable Box 1", "Apple TV")
-   - Enable/disable as needed
-3. Save changes
-
-#### Output Configuration
-1. Navigate to **System Admin → Matrix Outputs**
-2. For each output:
-   - Set descriptive label (e.g., "Main Bar TV 1")
-   - Enable/disable as needed
-   - Set `dailyTurnOn` (participate in morning schedule)
-   - Set `dailyTurnOff` (respond to "all off" command)
-3. Save changes
-
-### TV Selection Configuration
-
-**Morning Schedule (dailyTurnOn)**:
-- Enable for TVs that should automatically turn on in the morning
-- Disable for TVs that remain off or are manually controlled
-
-**All Off Command (dailyTurnOff)**:
-- Enable for TVs that should turn off with "all off" button
-- Disable for TVs that should remain on (e.g., 24/7 displays)
-
----
-
-## Troubleshooting
-
-### Wolfpack Connection Test Fails
-
-**Symptoms**:
-- Connection test returns error
-- "Failed to connect" message
-- Database-related errors in logs
-
-**Solutions**:
-
-1. **Verify Network Connectivity**:
-   ```bash
-   ping <wolfpack-ip-address>
-   curl http://<wolfpack-ip-address>
-   ```
-
-2. **Check Wolfpack Matrix**:
-   - Ensure matrix is powered on
-   - Verify IP address is correct
-   - Check network cable connections
-   - Confirm matrix is on same network/VLAN
-
-3. **Verify Database Connection**:
-   ```bash
-   npx prisma db pull  # Test database connectivity
-   ```
-
-4. **Check Application Logs**:
-   ```bash
-   pm2 logs sports-bar-tv-controller
-   ```
-
-5. **Restart Application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
-### Matrix Switching Not Working
-
-**Symptoms**:
-- Routing commands fail
-- TVs don't change sources
-- Power commands don't work
-
-**Solutions**:
-
-1. **Test Connection First**:
-   - Use connection test in System Admin
-   - Verify successful connection before switching
-
-2. **Check Output Configuration**:
-   - Ensure outputs are enabled
-   - Verify output numbers match physical connections
-
-3. **Verify Input Configuration**:
-   - Ensure inputs are enabled
-   - Check input numbers match physical connections
-
-4. **Test Individual Commands**:
-   - Try routing a single input to single output
-   - Test power on/off for single output
-   - Check Wolfpack web interface directly
-
-### TV Selection Not Working
-
-**Symptoms**:
-- All TVs turn on despite dailyTurnOn settings
-- "All off" affects wrong TVs
-
-**Solutions**:
-
-1. **Verify Database Migration**:
-   ```bash
-   npx prisma migrate status
-   npx prisma migrate deploy  # If migrations pending
-   ```
-
-2. **Check Output Configuration**:
-   - Navigate to System Admin → Matrix Outputs
-   - Verify dailyTurnOn and dailyTurnOff flags are set correctly
-
-3. **Restart Application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
-### Configuration Lost After Update
-
-**Symptoms**:
-- Wolfpack IP address missing
-- Input/output labels reset
-- Settings not persisted
-
-**Solutions**:
-
-1. **Check Database**:
-   ```bash
-   npx prisma studio  # Open database browser
-   # Verify WolfpackConfig, MatrixInput, MatrixOutput tables
-   ```
-
-2. **Restore from Backup** (if available):
-   ```bash
-   # Restore database backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
-   ```
-
-3. **Reconfigure Manually**:
-   - Re-enter Wolfpack IP address
-   - Re-label inputs and outputs
-   - Reconfigure TV selection settings
-
----
-
-## Deployment Guide
-
-### Prerequisites
-- Node.js 18+ installed
-- PostgreSQL database running
-- PM2 process manager installed
-- Git repository access
-
-### Initial Deployment
-
-1. **Clone Repository**:
-   ```bash
-   cd ~
-   git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
-   cd Sports-Bar-TV-Controller
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment**:
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-   Set:
-   - `DATABASE_URL`: PostgreSQL connection string
-   - `NEXTAUTH_SECRET`: Random secret for authentication
-   - `NEXTAUTH_URL`: Application URL
-
-4. **Initialize Database**:
-   ```bash
-   npx prisma migrate deploy
-   npx prisma generate
-   ```
-
-5. **Build Application**:
-   ```bash
-   npm run build
-   ```
-
-6. **Start with PM2**:
-   ```bash
-   pm2 start npm --name "sports-bar-tv-controller" -- start
-   pm2 save
-   pm2 startup  # Follow instructions to enable auto-start
-   ```
-
-### Update Deployment
-
-1. **Pull Latest Changes**:
-   ```bash
-   cd ~/Sports-Bar-TV-Controller
-   git pull origin main
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Run Migrations**:
-   ```bash
-   npx prisma migrate deploy
-   npx prisma generate
-   ```
-
-4. **Rebuild Application**:
-   ```bash
-   npm run build
-   ```
-
-5. **Restart PM2**:
-   ```bash
-   pm2 restart sports-bar-tv-controller --update-env
-   ```
-
-### Rollback Procedure
-
-If deployment fails:
-
-1. **Revert Git Changes**:
-   ```bash
-   git log  # Find previous commit hash
-   git checkout <previous-commit-hash>
-   ```
-
-2. **Rebuild and Restart**:
-   ```bash
-   npm install
-   npm run build
-   pm2 restart sports-bar-tv-controller
-   ```
-
-3. **Rollback Database** (if needed):
-   ```bash
-   # Restore from backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
-   ```
-
----
-
-## Maintenance and Backup
-
-### Regular Maintenance Tasks
-
-#### Daily
-- Monitor PM2 logs for errors:
-  ```bash
-  pm2 logs sports-bar-tv-controller --lines 100
-  ```
-
-#### Weekly
-- Check disk space:
-  ```bash
-  df -h
-  ```
-- Review application logs for warnings
-- Verify scheduled tasks are running
-
-#### Monthly
-- Update dependencies:
-  ```bash
-  npm update
-  npm audit fix
-  ```
-- Review and optimize database
-- Test backup restoration
-
-### Backup Strategy
-
-#### Database Backup
-
-**Automated Daily Backup**:
-```bash
-# Add to crontab (crontab -e)
-0 2 * * * pg_dump sports_bar_tv > /backup/sports_bar_tv_$(date +\%Y\%m\%d).sql
-```
-
-**Manual Backup**:
-```bash
-pg_dump sports_bar_tv > backup_$(date +%Y%m%d_%H%M%S).sql
-```
-
-**Restore from Backup**:
-```bash
-psql sports_bar_tv < backup_20251010_020000.sql
-```
-
-#### Configuration Backup
-
-**Export Configuration**:
-```bash
-# Backup Wolfpack configuration
-npx prisma studio  # Export WolfpackConfig table to JSON
-
-# Backup input/output configuration
-npx prisma studio  # Export MatrixInput and MatrixOutput tables to JSON
-```
-
-**File-Based Backup**:
-```bash
-# Backup entire application directory
-tar -czf sports-bar-backup-$(date +%Y%m%d).tar.gz ~/Sports-Bar-TV-Controller
-```
-
-#### Backup Retention
-- Daily backups: Keep 7 days
-- Weekly backups: Keep 4 weeks
-- Monthly backups: Keep 12 months
-
-### Monitoring
-
-#### Application Health
-```bash
-# Check PM2 status
-pm2 status
-
-# View resource usage
-pm2 monit
-
-# Check application logs
-pm2 logs sports-bar-tv-controller
-```
-
-#### Database Health
-```bash
-# Check database size
-psql -d sports_bar_tv -c "SELECT pg_size_pretty(pg_database_size('sports_bar_tv'));"
-
-# Check table sizes
-psql -d sports_bar_tv -c "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) FROM pg_tables WHERE schemaname = 'public' ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
-```
-
-#### Network Connectivity
-```bash
-# Test Wolfpack connectivity
-curl http://<wolfpack-ip-address>
-
-# Check application port
-netstat -tulpn | grep 3001
-```
-
----
-
-## Security Considerations
-
-### Network Security
-- Wolfpack matrix should be on isolated VLAN
-- Application should be behind firewall
-- Use HTTPS in production (configure reverse proxy)
-
-### Authentication
-- Change default admin credentials immediately
-- Use strong passwords
-- Enable two-factor authentication if available
-
-### Database Security
-- Use strong database passwords
-- Restrict database access to localhost
-- Regular security updates
-
-### Application Security
-- Keep dependencies updated
-- Regular security audits
-- Monitor logs for suspicious activity
-
----
-
-## Support and Resources
-
-### Documentation
-- Next.js: https://nextjs.org/docs
-- Prisma: https://www.prisma.io/docs
-- Wolfpack API: Refer to Wolfpack matrix documentation
-
-### Common Issues
-- See [Troubleshooting](#troubleshooting) section
-- Check GitHub Issues: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues
-
-### Getting Help
-1. Check this documentation
-2. Review application logs
-3. Search GitHub issues
-4. Create new issue with:
-   - Detailed description
-   - Steps to reproduce
-   - Error messages
-   - System information
-
----
-
-## Changelog
-
-### October 2025
-- ✅ Fixed Wolfpack connection test (PrismaClient singleton)
-- ✅ Added TV selection options (dailyTurnOn, dailyTurnOff)
-- ✅ Removed EPG services (Gracenote, TMS, Spectrum Business API)
-- ✅ Converted outputs 1-4 to simple display
-- ✅ Investigated configuration loss (no backups found)
-- ✅ Updated system documentation
-
-### Future Enhancements
-- Custom EPG service integration
-- Configuration export/import functionality
-- Enhanced backup automation
-- Mobile app development
-- Advanced scheduling features
-
----
-
-## License
-
-[Add license information here]
-
-## Contributors
-
-[Add contributor information here]
-
----
-
-*Last Updated: October 10, 2025*
-*Version: 1.0*
-
----
-
-## October 10, 2025 - Atlas Zone Labels, Matrix Label Updates, and Matrix Test Fixes
-
-### 1. Atlas Zone Output Labels Fixed
-**Issue**: Zone labels in Audio Control Center were showing hardcoded "Matrix 1", "Matrix 2", "Matrix 3", "Matrix 4" instead of actual Atlas configuration labels or selected video input names.
-
-**Root Cause**: 
-- AudioZoneControl.tsx was using hardcoded labels for Matrix 1-4 inputs
-- Component wasn't reading from Atlas processor configuration
-- Labels weren't updating when video inputs were selected for Matrix outputs
-
-**Solution**:
-- Modified AudioZoneControl.tsx to fetch Matrix output labels from video-input-selection API
-- Added `fetchMatrixLabels()` function to retrieve current video input selections
-- Labels now dynamically reflect selected video input names (e.g., "Cable Box 1" instead of "Matrix 1")
-- Falls back to "Matrix 1-4" only if no video input is selected or API unavailable
-- Component refreshes automatically when video input selection changes
-
-**Files Modified**:
-- `src/components/AudioZoneControl.tsx`
-
-**Result**:
-- ✅ Zone labels now show actual video input names when selected
-- ✅ Labels update dynamically when user selects different video inputs
-- ✅ Proper integration with Atlas audio processor configuration
-
----
-
-### 2. Matrix Label Dynamic Updates Implemented
-**Issue**: When user selects a video input for Matrix 1-4 audio outputs (channels 33-36), the matrix label should change to show the video input name, but it wasn't updating dynamically.
-
-**Root Cause**:
-1. The video-input-selection API was correctly updating the database
-2. However, AudioZoneControl component wasn't being notified of the change
-3. No refresh mechanism existed to update labels after video input selection
-
-**Solution**:
-- Added cross-component communication mechanism using window object
-- AudioZoneControl exposes `refreshConfiguration()` function via `window.refreshAudioZoneControl`
-- MatrixControl calls this function after successful video input selection
-- Labels update immediately in both Audio Control Center and Bartender Remote
-
-**Implementation Details**:
-```typescript
-// In AudioZoneControl.tsx
-useEffect(() => {
-  (window as any).refreshAudioZoneControl = refreshConfiguration
-  return () => {
-    delete (window as any).refreshAudioZoneControl
-  }
-}, [])
-
-// In MatrixControl.tsx (after video input selection)
-if (typeof (window as any).refreshAudioZoneControl === 'function') {
-  (window as any).refreshAudioZoneControl()
-}
-```
-
-**Files Modified**:
-- `src/components/AudioZoneControl.tsx` - Added refresh mechanism
-- `src/components/MatrixControl.tsx` - Added refresh trigger
-
-**Result**:
-- ✅ Matrix labels update immediately when video input selected
-- ✅ Example: "Matrix 1" → "Cable Box 1" when Cable Box 1 is selected
-- ✅ Labels persist across page refreshes (stored in database)
-- ✅ Works for all Matrix 1-4 outputs (channels 33-36)
-
----
-
-### 3. Matrix Test Database Error Fixed
-**Issue**: Wolf Pack Connection Test on admin page was failing with database error:
-```
-PrismaClientUnknownRequestError: Invalid prisma.testLog.create() invocation
-```
-
-**Root Cause**:
-- The testLog.create() calls were not properly handling nullable fields
-- Data object structure didn't match Prisma schema expectations exactly
-- Optional fields (duration, response, command, etc.) needed explicit null values
-- Inconsistent error handling in test routes
-
-**Solution**:
-- Updated both test routes to ensure proper data types for all fields
-- Added explicit null values for optional fields instead of undefined
-- Ensured duration is always a valid integer (never 0 or falsy)
-- Improved error handling with try-catch blocks for logging failures
-- Made all testLog.create() calls consistent with schema requirements
-
-**Files Modified**:
-- `src/app/api/tests/wolfpack/connection/route.ts`
-- `src/app/api/tests/wolfpack/switching/route.ts`
-
-**Result**:
-- ✅ Wolf Pack Connection Test now passes without database errors
-- ✅ Test logs are properly saved to database
-- ✅ Error handling improved for better debugging
-- ✅ All test results are correctly recorded
-
----
-
-### Commit Information
-- Branch: `fix/atlas-zone-labels-matrix-updates-test`
-- Date: October 10, 2025
-- GitHub: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
-
-
----
-
-## October 10, 2025 - CRITICAL: Atlas Configuration Restoration and Bug Fixes
-
-### Overview
-Fixed critical bug in Atlas configuration upload/download feature that was wiping out user settings by generating random data. Restored all Atlas configuration from backup and implemented safeguards to prevent future data loss.
-
-### Critical Bug Fixed: Configuration Wipe
-
-#### Problem
-The upload/download configuration feature had a **critical bug** that was generating random configuration data instead of reading from the actual Atlas processor. When users clicked "Download Config", it would:
-1. Generate random input/output settings
-2. Overwrite the saved configuration file
-3. Wipe out all carefully configured settings
-
-#### Root Cause
-The `src/app/api/atlas/download-config/route.ts` file was generating random data for testing purposes, but this code was left in production.
-
-#### Solution Implemented
-**Fixed Files:**
-1. `src/app/api/atlas/download-config/route.ts`
-   - ❌ Before: Generated random configuration data
-   - ✅ After: Reads from saved configuration file
-   - ✅ Returns empty config if no saved file exists (safe default)
-   - ✅ Never generates random data
-
-2. `src/app/api/atlas/upload-config/route.ts`
-   - ✅ Saves configuration to file system BEFORE attempting processor upload
-   - ✅ Creates timestamped backups automatically
-   - ✅ Ensures configuration is never lost even if processor upload fails
-
-### Atlas Configuration Restored
-
-#### Processor Information
-- **Model**: AZMP8 (8 inputs, 8 outputs, 8 zones)
-- **IP Address**: 192.168.5.101:80
-- **Processor ID**: cmgjxa5ai0000260a7xuiepjl
-- **Name**: Graystone Alehouse Main Audio
-- **Status**: Online and authenticated
-- **Authentication**: HTTP Basic Auth (admin/admin)
-
-#### Configuration Backup Location
-- **Primary Config**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl.json`
-- **Backups**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl_backup_*.json`
-
-#### Restored Configuration Details
-
-**7 Inputs Configured:**
-1. **Matrix 1** - Line input, -17dB gain, Low Cut enabled, Routes to outputs 3,5
-2. **Matrix 2** - Line input, -18dB gain, Low Cut enabled, Routes to output 4
-3. **Matrix 3** - Line input, -3dB gain, Low Cut enabled, Routes to outputs 1,6
-4. **Matrix 4** - Line input, +2dB gain, Low Cut enabled, Routes to output 7
-5. **Mic 1** - Microphone, -18dB gain, Compressor enabled, Low Cut enabled, Routes to outputs 2,7
-6. **Mic 2** - Microphone, -4dB gain, Compressor enabled, Low Cut enabled, Routes to outputs 1,4,5,3
-7. **Spotify** - Line input, -17dB gain, Routes to outputs 3,5,2
-
-**7 Outputs Configured:**
-1. **Bar** - Speaker, -20dB, 48ms delay, Limiter enabled
-2. **Bar Sub** - Speaker, -17dB, 94ms delay, Limiter enabled, Group: Bar
-3. **Dining Room** - Speaker, -27dB, 46ms delay, Limiter enabled
-4. **Party Room West** - Speaker, -11dB, 77ms delay, Compressor + Limiter enabled
-5. **Party Room East** - Speaker, -13dB, 22ms delay, Limiter enabled
-6. **Patio** - Speaker, -19dB, 44ms delay, MUTED, Compressor + Limiter enabled
-7. **Bathroom** - Speaker, -19dB, 88ms delay, Limiter enabled
-
-**3 Scenes Configured:**
-- Scene 1, 2, and 3 with various input/output level presets and recall times
-
-### Prevention Measures Implemented
-
-1. **Safe Defaults**: Download now returns empty config if no saved file exists
-2. **Automatic Backups**: Every upload creates a timestamped backup
-3. **File-First Approach**: Configuration saved to file system before any processor communication
-4. **Comprehensive Documentation**: Created ATLAS_RESTORATION_GUIDE.md with restoration procedures
-
-### Additional Status Updates
-
-#### Wolf Pack Tests ✅
-- Connection Test: Functional (test execution working)
-- Switching Test: Functional (test execution working)
-- Database schema fixes from previous PR resolved test logging issues
-- Tests can be run from System Admin > Tests page
-
-#### Atlas AI Monitor ✅
-- Component is functional
-- Requires real-time meter data from Atlas processor
-- API endpoint working correctly at `/api/atlas/ai-analysis`
-- Displays processor status, signal quality, and performance metrics
-
-#### Atlas Connection ✅
-- Atlas processor online at 192.168.5.101:80
-- HTTP Basic Auth configured and working
-- Ping test: Successful (1ms response time)
-- Port 80: Accessible
-- Connection status visible in Audio Control Center
-
-### Important Notes
-
-1. **Atlas Configuration is Independent**: The Atlas processor maintains its own configuration internally. The application's configuration files are for reference and UI display only.
-
-2. **No Data Loss**: All user configuration has been preserved in backup files.
-
-3. **Future Enhancement**: To enable true bidirectional sync with the Atlas processor, the Atlas HTTP API endpoints need to be properly documented and implemented.
-
-### Troubleshooting
-
-#### If Configuration Gets Wiped Again
-
-1. **Stop the application**:
-   ```bash
-   pm2 stop sports-bar-tv-controller
-   ```
-
-2. **Restore from backup**:
-   ```bash
-   cd /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs
-   # Find the most recent backup
-   ls -lt cmgjxa5ai0000260a7xuiepjl_backup_*.json | head -n 1
-   # Copy it to the main config file
-   cp cmgjxa5ai0000260a7xuiepjl_backup_TIMESTAMP.json cmgjxa5ai0000260a7xuiepjl.json
-   ```
-
-3. **Restart the application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
-4. **Verify in UI**:
-   - Navigate to Audio Control Center > Atlas System
-   - Click on processor to open configuration
-   - Verify inputs and outputs show correct names and settings
-
-#### Atlas Shows Offline
-1. Check network connectivity: `ping 192.168.5.101`
-2. Check port accessibility: `nc -zv 192.168.5.101 80`
-3. Verify Atlas processor is powered on
-4. Check firewall rules
-
-#### Configuration Not Loading
-1. Check file exists: `ls -l /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl.json`
-2. Verify JSON is valid: `cat file.json | python3 -m json.tool`
-3. Check file permissions: `chmod 644 file.json`
-
-### Files Modified
-- `src/app/api/atlas/download-config/route.ts` - Fixed to read from saved file
-- `src/app/api/atlas/upload-config/route.ts` - Fixed to save before upload
-- `ATLAS_RESTORATION_GUIDE.md` - New comprehensive guide
-- `restore_atlas_config.js` - Restoration script
-
-### Commit Information
-- **Branch**: `fix/restore-atlas-config-and-connections`
-- **PR**: #185
-- **Commit**: f159621
-- **Date**: October 10, 2025
-- **GitHub**: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/pull/185
-
-### Verification Checklist
-- ✅ Atlas configuration backup verified
-- ✅ Download config returns saved data (not random)
-- ✅ Upload config saves to file system first
-- ✅ Timestamped backups created automatically
-- ✅ Atlas processor reachable at 192.168.5.101
-- ✅ Atlas shows online and authenticated in UI
-- ✅ All 7 inputs restored with correct settings
-- ✅ All 7 outputs restored with correct settings
-- ✅ All 3 scenes restored
-- ✅ Wolf Pack tests functional
-- ✅ Atlas AI Monitor functional
-- ✅ Documentation complete
-
----
-
-
----
-
-## October 10, 2025 - SSH Access Configuration
-
-### SSH Server Access
-The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
-
-**SSH Connection Details:**
-- **Host**: 24.123.87.42
-- **Port**: 224
-- **Username**: ubuntu
-- **Password**: 6809233DjD$$$ (THREE dollar signs)
-- **Authentication Method**: Password only (no SSH key/token)
-
-**Connection Command:**
-```bash
-ssh -p 224 ubuntu@24.123.87.42
-```
-
-**Security Notes:**
-- SSH is configured on non-standard port 224 for additional security
-- Password authentication is enabled (no SSH key required)
-- Ensure password is kept secure and not shared publicly
-- Consider implementing SSH key authentication for enhanced security in future
-
-**Common SSH Operations:**
-```bash
-# Connect to server
-ssh -p 224 ubuntu@24.123.87.42
-
-# Copy files to server (SCP)
-scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
-
-# Copy files from server
-scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
-
-# SSH with port forwarding (for local development)
-ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
-```
-
-**Project Location on Server:**
-- Project Path: `~/Sports-Bar-TV-Controller`
-- Application URL: http://24.123.87.42:3001
-- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
-
-**Deployment Workflow:**
-1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
-2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
-3. Pull latest changes: `git pull origin main`
-4. Install dependencies: `npm install`
-5. Build application: `npm run build`
-6. Restart PM2: `pm2 restart sports-bar-tv-controller`
-7. Check logs: `pm2 logs sports-bar-tv-controller`
-
----
-
-
----
-
-## October 10, 2025 - SSH Access Configuration
-
-### SSH Server Access
-The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
-
-**SSH Connection Details:**
-- **Host**: 24.123.87.42
-- **Port**: 224
-- **Username**: ubuntu
-- **Password**: 6809233DjD$$$ (THREE dollar signs)
-- **Authentication Method**: Password only (no SSH key/token)
-
-**Connection Command:**
-```bash
-ssh -p 224 ubuntu@24.123.87.42
-```
-
-**Security Notes:**
-- SSH is configured on non-standard port 224 for additional security
-- Password authentication is enabled (no SSH key required)
-- Ensure password is kept secure and not shared publicly
-- Consider implementing SSH key authentication for enhanced security in future
-
-**Common SSH Operations:**
-```bash
-# Connect to server
-ssh -p 224 ubuntu@24.123.87.42
-
-# Copy files to server (SCP)
-scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
-
-# Copy files from server
-scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
-
-# SSH with port forwarding (for local development)
-ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
-```
-
-**Project Location on Server:**
-- Project Path: `~/Sports-Bar-TV-Controller`
-- Application URL: http://24.123.87.42:3001
-- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
-
-**Deployment Workflow:**
-1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
-2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
-3. Pull latest changes: `git pull origin main`
-4. Install dependencies: `npm install`
-5. Build application: `npm run build`
-6. Restart PM2: `pm2 restart sports-bar-tv-controller`
-7. Check logs: `pm2 logs sports-bar-tv-controller`
-
----
-
-
----
-
-## October 10, 2025 - Sports Guide API Integration and Atlas AI Monitor Fix
-
-### Sports Guide API Integration
-
-#### Overview
-Integrated The Rail Media's Sports Guide API to provide real-time sports programming information for cable box channel guides. This integration enables the system to display accurate, up-to-date sports listings with channel numbers, times, and team information.
-
-**API Provider**: The Rail Media  
-**API Endpoint**: https://guide.thedailyrail.com/api/v1  
-**User ID**: 258351  
-**Current Support**: Cable box channel guide (Direct TV and streaming services planned for future)
-
-#### Implementation Details
-
-**API Service Client** (`src/lib/sportsGuideApi.ts`):
-- `SportsGuideApi` class for API communication
-- Methods for fetching guide data, verifying API keys, and searching content
-- Support for date range queries and lineup filtering
-- Error handling and type safety with TypeScript interfaces
-
-**API Routes**:
-- `/api/sports-guide/status` - Get current API configuration status
-- `/api/sports-guide/verify-key` - Verify API key validity
-- `/api/sports-guide/update-key` - Update API key (with validation)
-- `/api/sports-guide/channels` - Fetch channel guide data with filtering options
-
-**UI Component** (`src/components/SportsGuideConfig.tsx`):
-- API status display (configured/not configured)
-- API key verification with real-time feedback
-- API key update form with validation
-- User-friendly interface for API management
-- Integrated into Sports Guide Configuration page
-
-#### API Key Management
-
-**Viewing API Status**:
-1. Navigate to Sports Guide Configuration page
-2. Click on "API" tab
-3. View current configuration status, API URL, User ID, and masked API key
-
-**Verifying API Key**:
-1. Click "Verify API Key" button
-2. System makes test request to API
-3. Displays success or error message with details
-
-**Updating API Key**:
-1. Click "Change API Key" or "Configure API Key" button
-2. Enter User ID and API Key
-3. System validates key before saving
-4. Updates .env file and current session
-5. Server restart recommended for full effect
-
-#### Security Considerations
-- API key stored in `.env` file (not committed to repository)
-- `.env` file included in `.gitignore`
-- API key masked in UI (shows only first 8 and last 4 characters)
-- Key validation performed before saving
-- Secure server-side API calls only
-
-#### API Data Structure
-
-**Listing Groups**:
-```typescript
-interface SportsGuideListingGroup {
-  group_title: string;           // e.g., "NFL", "NCAA Basketball"
-  listings: SportsGuideListing[];
-  data_descriptions: string[];   // Field names for listing data
-}
-```
-
-**Listings**:
-```typescript
-interface SportsGuideListing {
-  time: string;                  // Game time
-  stations?: string[];           // TV stations
-  channel_numbers?: {            // Channel numbers by lineup
-    [lineup: string]: {          // e.g., "SAT", "DRTV"
-      [station: string]: number[];
-    };
-  };
-  data: {                        // Game information
-    [key: string]: string;       // e.g., "visiting team", "home team"
-  };
-}
-```
-
-#### Usage Examples
-
-**Fetch Today's Guide**:
-```typescript
-const api = getSportsGuideApi();
-const guide = await api.fetchTodayGuide();
-```
-
-**Fetch Date Range**:
-```typescript
-const guide = await api.fetchDateRangeGuide(7); // Next 7 days
-```
-
-**Search for Specific Team**:
-```typescript
-const results = api.searchGuide(guide, "Cowboys");
-```
-
-**Filter by Lineup**:
-```typescript
-const channels = api.getChannelsByLineup(guide, "DRTV");
-```
-
-#### Future Enhancements
-- Direct TV channel guide integration (via Amazon/Direct TV API)
-- Streaming service guide integration (via Amazon/Direct TV API)
-- Automatic guide refresh scheduling
-- Favorite team filtering
-- Game notifications and alerts
-
-#### Troubleshooting
-
-**API Key Not Working**:
-1. Verify API key is correct (check uploaded file)
-2. Use "Verify API Key" button to test connection
-3. Check server logs for detailed error messages
-4. Ensure User ID matches API key
-
-**No Channel Data**:
-1. Verify API key is configured and valid
-2. Check date range parameters
-3. Ensure lineup parameter is correct (SAT, DRTV, etc.)
-4. Check API rate limits
-
-**Configuration Not Saving**:
-1. Ensure .env file is writable
-2. Check file permissions
-3. Restart server after manual .env changes
-4. Verify no syntax errors in .env file
-
----
-
 ### Atlas AI Monitor Fix
 
 #### Issue Description
@@ -1548,6 +472,1077 @@ const fetchActiveProcessor = async () => {
 
 ---
 
+## TODO Management System
+
+### Overview
+The TODO Management System provides comprehensive task tracking integrated directly into the application. All TODO operations automatically sync with GitHub, maintaining a version-controlled record of all tasks.
+
+### Features
+
+#### Task Management
+- **Create**: Add new tasks with title, description, priority, status, category, and tags
+- **Read**: View all tasks with filtering by status, priority, or category
+- **Update**: Modify task details, change status, update priority
+- **Delete**: Remove completed or obsolete tasks
+- **Complete**: Mark tasks as complete with validation requirements
+
+#### Task Properties
+- **Title**: Brief description of the task (required)
+- **Description**: Detailed information about the task
+- **Priority**: LOW, MEDIUM, HIGH, CRITICAL
+- **Status**: PLANNED, IN_PROGRESS, TESTING, COMPLETE
+- **Category**: Optional categorization (e.g., "Bug Fix", "Feature", "Testing")
+- **Tags**: JSON array of tags for additional organization
+- **Documents**: Attach files to tasks (specifications, screenshots, etc.)
+- **Timestamps**: Created, updated, and completed dates
+
+#### Document Attachments
+- Upload files to tasks (images, PDFs, documents, etc.)
+- Automatic file metadata tracking (filename, size, type)
+- Secure file storage
+- View and download attached documents
+
+#### Completion Validation
+Tasks cannot be marked as complete unless:
+1. **Production Tested**: Confirmed tested on production server
+2. **Merged to Main**: Changes merged to main branch
+
+This ensures quality control and proper deployment workflow.
+
+### Access Points
+
+#### Admin Interface
+**URL**: `http://24.123.87.42:3001/admin/todos`
+
+**Features**:
+- List view with all tasks
+- Create new tasks
+- Edit existing tasks
+- View task details
+- Upload/manage documents
+- Mark tasks complete
+- Delete tasks
+
+#### API Endpoints
+**Base URL**: `http://24.123.87.42:3001/api/todos`
+
+**Endpoints**:
+- `GET /api/todos` - List all TODOs (with optional filters)
+- `POST /api/todos` - Create new TODO
+- `GET /api/todos/:id` - Get single TODO
+- `PUT /api/todos/:id` - Update TODO
+- `DELETE /api/todos/:id` - Delete TODO
+- `POST /api/todos/:id/complete` - Mark TODO as complete
+- `POST /api/todos/:id/documents` - Upload document
+- `GET /api/todos/:id/documents` - List documents
+- `DELETE /api/todos/:id/documents/:docId` - Delete document
+
+### Usage Examples
+
+#### Create TODO via API
+```bash
+curl -X POST http://24.123.87.42:3001/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Fix navigation bug",
+    "description": "Navigation menu not working on mobile",
+    "priority": "HIGH",
+    "status": "PLANNED",
+    "category": "Bug Fix",
+    "tags": ["frontend", "mobile", "navigation"]
+  }'
+```
+
+#### Update TODO Status
+```bash
+curl -X PUT http://24.123.87.42:3001/api/todos/[id] \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "IN_PROGRESS"
+  }'
+```
+
+#### Mark TODO Complete
+```bash
+curl -X POST http://24.123.87.42:3001/api/todos/[id]/complete \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productionTested": true,
+    "mergedToMain": true
+  }'
+```
+
+#### List TODOs with Filters
+```bash
+# Get all high priority tasks
+curl "http://24.123.87.42:3001/api/todos?priority=HIGH"
+
+# Get all in-progress tasks
+curl "http://24.123.87.42:3001/api/todos?status=IN_PROGRESS"
+
+# Get all bug fixes
+curl "http://24.123.87.42:3001/api/todos?category=Bug%20Fix"
+```
+
+### Database Schema
+
+```prisma
+model Todo {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  priority        String        @default("MEDIUM") // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  status          String        @default("PLANNED") // "PLANNED", "IN_PROGRESS", "TESTING", "COMPLETE"
+  category        String?
+  tags            String?       // JSON array of tags
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  
+  documents       TodoDocument[]
+}
+
+model TodoDocument {
+  id              String   @id @default(cuid())
+  todoId          String
+  filename        String
+  filepath        String
+  filesize        Int?
+  mimetype        String?
+  uploadedAt      DateTime @default(now())
+  
+  todo            Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  
+  @@index([todoId])
+}
+```
+
+---
+
+## GitHub Auto-Commit Integration
+
+### Overview
+The GitHub Auto-Commit feature automatically commits TODO changes to the repository, maintaining a version-controlled history of all task management activities. This ensures transparency and provides an audit trail of development work.
+
+### How It Works
+
+#### Git Sync Utility
+**File**: `src/lib/gitSync.ts`
+
+The git sync utility handles all GitHub operations:
+1. Fetches all TODOs from database
+2. Generates markdown content for TODO_LIST.md
+3. Commits changes to repository
+4. Pushes to remote GitHub repository
+
+#### Automatic Triggers
+GitHub sync is automatically triggered on:
+- **TODO Create**: When a new task is created
+- **TODO Update**: When task details are modified
+- **TODO Delete**: When a task is removed
+- **TODO Complete**: When a task is marked as complete
+
+#### Commit Messages
+Descriptive commit messages are automatically generated:
+- Create: `chore: Add TODO - [Task Title]`
+- Update: `chore: Update TODO - [Task Title]`
+- Delete: `chore: Delete TODO - [Task Title]`
+- Complete: `chore: Complete TODO - [Task Title]`
+
+### TODO_LIST.md Auto-Generation
+
+#### File Location
+`TODO_LIST.md` in project root directory
+
+#### Content Structure
+The file is automatically generated with:
+- Header with auto-generation warning
+- Last updated timestamp
+- Tasks organized by status (Planned, In Progress, Testing, Complete)
+- Task details including:
+  - Title
+  - ID
+  - Priority
+  - Status
+  - Category
+  - Description
+  - Tags
+  - Documents (if any)
+  - Timestamps (created, updated, completed)
+- Summary statistics
+
+#### Example Content
+```markdown
+# TODO List
+
+> **⚠️ AUTO-GENERATED FILE - DO NOT EDIT MANUALLY**
+> This file is automatically generated and updated by the TODO management system.
+> Any manual changes will be overwritten.
+
+Last Updated: October 10, 2025, 6:00 AM
+
+---
+
+## 📋 Planned
+
+### Fix navigation bug
+- **ID**: `clx123abc456`
+- **Priority**: HIGH
+- **Status**: PLANNED
+- **Category**: Bug Fix
+- **Description**: Navigation menu not working on mobile devices
+- **Tags**: frontend, mobile, navigation
+- **Created**: 10/10/2025, 5:30:00 AM
+- **Updated**: 10/10/2025, 5:30:00 AM
+
+## 🚧 In Progress
+
+### Implement user authentication
+- **ID**: `clx789def012`
+- **Priority**: CRITICAL
+- **Status**: IN_PROGRESS
+- **Category**: Feature
+- **Description**: Add user login and authentication system
+- **Created**: 10/9/2025, 2:00:00 PM
+- **Updated**: 10/10/2025, 8:00:00 AM
+
+---
+
+**Total TODOs**: 2
+- Planned: 1
+- In Progress: 1
+- Testing: 0
+- Complete: 0
+```
+
+### Implementation Details
+
+#### Background Sync
+- Git sync runs in background (non-blocking)
+- API responses return immediately
+- Sync errors are logged but don't affect API operations
+- Ensures fast API response times
+
+#### Error Handling
+```typescript
+// Sync to GitHub in background (don't wait for it)
+syncTodosToGitHub(`chore: Add TODO - ${title}`).catch(err => {
+  console.error('GitHub sync failed:', err)
+})
+```
+
+#### Git Operations
+The sync utility performs:
+1. Fetch latest TODOs from database
+2. Generate markdown content
+3. Write to TODO_LIST.md
+4. Stage file: `git add TODO_LIST.md`
+5. Commit: `git commit -m "[commit message]"`
+6. Push: `git push origin [branch]`
+
+### Configuration
+
+#### Environment Variables
+Required in `.env` file:
+```env
+GITHUB_REPO_NAME="Sports-Bar-TV-Controller"
+GITHUB_REPO_OWNER="dfultonthebar"
+```
+
+#### Git Configuration
+Ensure git is configured on the server:
+```bash
+git config --global user.name "Sports Bar System"
+git config --global user.email "system@sportsbar.local"
+```
+
+### Benefits
+
+1. **Version Control**: Complete history of all task changes
+2. **Transparency**: All team members can see task updates
+3. **Audit Trail**: Track who did what and when
+4. **Backup**: Tasks are backed up in git repository
+5. **Integration**: Works seamlessly with existing git workflow
+6. **Automation**: No manual commit required
+
+### Troubleshooting
+
+#### Sync Failures
+If GitHub sync fails:
+1. Check git configuration on server
+2. Verify GitHub credentials
+3. Check network connectivity
+4. Review server logs for detailed errors
+5. Ensure write permissions on repository
+
+#### Manual Sync
+To manually trigger sync:
+```bash
+cd ~/Sports-Bar-TV-Controller
+node -e "require('./src/lib/gitSync').syncTodosToGitHub('manual sync')"
+```
+
+#### Verify Sync Status
+Check recent commits:
+```bash
+cd ~/Sports-Bar-TV-Controller
+git log --oneline -10 | grep "TODO"
+```
+
+---
+
+## Sports Guide API
+
+### Overview
+The Sports Guide API provides access to sports programming information, allowing users to find where and when to watch sports events. The system integrates with external sports data providers to deliver comprehensive channel and scheduling information.
+
+### Configuration
+
+#### API Key Setup
+**Configuration Page**: `http://24.123.87.42:3001/sports-guide-config`
+
+**Environment Variable**: `SPORTS_GUIDE_API_KEY`
+
+**Setup Steps**:
+1. Navigate to Sports Guide configuration page
+2. Enter API key in the configuration form
+3. Click "Verify API Key" to test connection
+4. Click "Save Configuration" to store settings
+5. API key is saved to `.env` file automatically
+
+#### API Key Files
+User-provided API key information:
+- `Sports guid api.txt` - API documentation
+- `Sports Guid Api Key.txt` - API key credentials
+
+### Features
+
+#### Channel Guide
+- Fetch current sports programming
+- Search by team, sport, or league
+- Filter by channel lineup (SAT, DRTV, etc.)
+- Date range queries (today, week, custom range)
+
+#### API Endpoints
+
+**Base URL**: `http://24.123.87.42:3001/api/sports-guide`
+
+**Available Endpoints**:
+- `GET /api/sports-guide` - Get sports guide data
+- `GET /api/sports-guide/status` - Check API status
+- `GET /api/sports-guide/channels` - List available channels
+- `GET /api/sports-guide/scheduled` - Get scheduled events
+- `POST /api/sports-guide/update-key` - Update API key
+- `POST /api/sports-guide/verify-key` - Verify API key
+- `GET /api/sports-guide/current-time` - Get current time
+- `POST /api/sports-guide/test-providers` - Test provider connections
+
+**Configuration Endpoint**:
+- `GET /api/sports-guide-config` - Get configuration
+- `POST /api/sports-guide-config` - Save configuration
+
+### Database Model
+
+```prisma
+model SportsGuideConfig {
+  id              String   @id @default(cuid())
+  apiKey          String
+  provider        String   @default("sports_guide")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+### Usage Examples
+
+#### Fetch Today's Guide
+```typescript
+const api = getSportsGuideApi();
+const guide = await api.fetchTodayGuide();
+```
+
+#### Fetch Date Range
+```typescript
+const guide = await api.fetchDateRangeGuide(7); // Next 7 days
+```
+
+#### Search for Specific Team
+```typescript
+const results = api.searchGuide(guide, "Cowboys");
+```
+
+#### Filter by Lineup
+```typescript
+const channels = api.getChannelsByLineup(guide, "DRTV");
+```
+
+### Future Enhancements
+- Direct TV channel guide integration (via Amazon/Direct TV API)
+- Streaming service guide integration (via Amazon/Direct TV API)
+- Automatic guide refresh scheduling
+- Favorite team filtering
+- Game notifications and alerts
+
+### Troubleshooting
+
+#### API Key Not Working
+1. Verify API key is correct (check uploaded file)
+2. Use "Verify API Key" button to test connection
+3. Check server logs for detailed error messages
+4. Ensure User ID matches API key
+
+#### No Channel Data
+1. Verify API key is configured and valid
+2. Check date range parameters
+3. Ensure lineup parameter is correct (SAT, DRTV, etc.)
+4. Check API rate limits
+
+#### Configuration Not Saving
+1. Ensure .env file is writable
+2. Check file permissions
+3. Restart server after manual .env changes
+4. Verify no syntax errors in .env file
+
+#### 400 Errors (FIXED in PR #188)
+**Issue**: Sports Guide API was returning 400 errors
+**Root Cause**: Missing database tables due to unapplied migrations
+**Solution**: Applied database migrations on production server
+**Status**: ✅ Resolved
+
+---
+
+## Database Schema
+
+### Core Models
+
+#### MatrixOutput
+```prisma
+model MatrixOutput {
+  id              String   @id @default(cuid())
+  channelNumber   Int      @unique
+  label           String
+  resolution      String?
+  isActive        Boolean  @default(true)
+  powerOn         Boolean  @default(false)
+  status          String   @default("active")
+  audioOutput     String?
+  dailyTurnOn     Boolean  @default(true)
+  dailyTurnOff    Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+#### Todo (NEW in PR #188)
+```prisma
+model Todo {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  priority        String        @default("MEDIUM")
+  status          String        @default("PLANNED")
+  category        String?
+  tags            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  documents       TodoDocument[]
+}
+```
+
+#### TodoDocument (NEW in PR #188)
+```prisma
+model TodoDocument {
+  id              String   @id @default(cuid())
+  todoId          String
+  filename        String
+  filepath        String
+  filesize        Int?
+  mimetype        String?
+  uploadedAt      DateTime @default(now())
+  todo            Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  
+  @@index([todoId])
+}
+```
+
+#### SportsGuideConfig
+```prisma
+model SportsGuideConfig {
+  id              String   @id @default(cuid())
+  apiKey          String
+  provider        String   @default("sports_guide")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+### Database Migrations
+
+#### Applying Migrations
+```bash
+# Development
+npx prisma migrate dev
+
+# Production
+npx prisma migrate deploy
+
+# Generate Prisma Client
+npx prisma generate
+```
+
+#### Migration History
+- Initial schema setup
+- MatrixOutput dailyTurnOn/dailyTurnOff fields
+- Todo and TodoDocument tables (PR #188)
+- SportsGuideConfig table
+
+---
+
+## API Endpoints
+
+### TODO Management
+
+#### List TODOs
+```
+GET /api/todos
+Query Parameters:
+  - status: Filter by status (PLANNED, IN_PROGRESS, TESTING, COMPLETE)
+  - priority: Filter by priority (LOW, MEDIUM, HIGH, CRITICAL)
+  - category: Filter by category
+
+Response:
+{
+  "success": true,
+  "data": [
+    {
+      "id": "clx123abc456",
+      "title": "Task title",
+      "description": "Task description",
+      "priority": "HIGH",
+      "status": "IN_PROGRESS",
+      "category": "Bug Fix",
+      "tags": "[\"frontend\",\"mobile\"]",
+      "createdAt": "2025-10-10T05:30:00.000Z",
+      "updatedAt": "2025-10-10T08:00:00.000Z",
+      "completedAt": null,
+      "documents": []
+    }
+  ]
+}
+```
+
+#### Create TODO
+```
+POST /api/todos
+Body:
+{
+  "title": "Task title",
+  "description": "Task description",
+  "priority": "HIGH",
+  "status": "PLANNED",
+  "category": "Bug Fix",
+  "tags": ["frontend", "mobile"]
+}
+
+Response:
+{
+  "success": true,
+  "data": { /* TODO object */ }
+}
+```
+
+#### Get Single TODO
+```
+GET /api/todos/:id
+
+Response:
+{
+  "success": true,
+  "data": { /* TODO object with documents */ }
+}
+```
+
+#### Update TODO
+```
+PUT /api/todos/:id
+Body:
+{
+  "title": "Updated title",
+  "status": "IN_PROGRESS",
+  "priority": "CRITICAL"
+}
+
+Response:
+{
+  "success": true,
+  "data": { /* Updated TODO object */ }
+}
+```
+
+#### Delete TODO
+```
+DELETE /api/todos/:id
+
+Response:
+{
+  "success": true,
+  "message": "Todo deleted successfully"
+}
+```
+
+#### Mark TODO Complete
+```
+POST /api/todos/:id/complete
+Body:
+{
+  "productionTested": true,
+  "mergedToMain": true
+}
+
+Response:
+{
+  "success": true,
+  "data": { /* Completed TODO object */ },
+  "message": "Todo marked as complete"
+}
+```
+
+### Matrix Control
+
+#### Get Outputs
+```
+GET /api/matrix/outputs
+
+Response:
+{
+  "success": true,
+  "outputs": [ /* Array of MatrixOutput objects */ ]
+}
+```
+
+#### Update Output
+```
+PUT /api/matrix/outputs/:id
+Body:
+{
+  "powerOn": true,
+  "isActive": true,
+  "dailyTurnOn": true,
+  "dailyTurnOff": true
+}
+
+Response:
+{
+  "success": true,
+  "output": { /* Updated MatrixOutput object */ }
+}
+```
+
+### Sports Guide
+
+#### Get Guide Data
+```
+GET /api/sports-guide
+Query Parameters:
+  - date: Date for guide data
+  - lineup: Channel lineup (SAT, DRTV, etc.)
+
+Response:
+{
+  "success": true,
+  "data": { /* Sports guide data */ }
+}
+```
+
+#### Verify API Key
+```
+POST /api/sports-guide/verify-key
+Body:
+{
+  "apiKey": "your-api-key"
+}
+
+Response:
+{
+  "success": true,
+  "message": "API key is valid"
+}
+```
+
+---
+
+## Configuration Management
+
+### Environment Variables
+
+#### Required Variables
+```env
+# Database
+DATABASE_URL="postgresql://user:password@host:port/database"
+
+# GitHub Integration
+GITHUB_REPO_NAME="Sports-Bar-TV-Controller"
+GITHUB_REPO_OWNER="dfultonthebar"
+
+# Sports Guide API
+SPORTS_GUIDE_API_KEY="your-api-key-here"
+
+# Optional
+SPORTS_RADAR_API_KEY="optional-sportsradar-api-key"
+```
+
+### Application Configuration
+
+#### Server Settings
+- **Production URL**: http://24.123.87.42:3001
+- **Port**: 3001
+- **Process Manager**: PM2
+
+#### Git Configuration
+```bash
+git config --global user.name "Sports Bar System"
+git config --global user.email "system@sportsbar.local"
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### TODO System
+
+**Issue**: TODO API returns 400 error
+**Solution**: 
+1. Check database migrations are applied
+2. Verify Todo and TodoDocument tables exist
+3. Run `npx prisma migrate deploy`
+4. Restart application
+
+**Issue**: GitHub auto-commit not working
+**Solution**:
+1. Check git configuration on server
+2. Verify GitHub credentials
+3. Check network connectivity
+4. Review server logs: `pm2 logs`
+
+#### Sports Guide API
+
+**Issue**: API returns 400 error
+**Solution**:
+1. Verify API key is configured
+2. Check database migrations
+3. Ensure SportsGuideConfig table exists
+4. Restart application
+
+**Issue**: No channel data returned
+**Solution**:
+1. Verify API key is valid
+2. Check date range parameters
+3. Ensure lineup parameter is correct
+4. Check API rate limits
+
+#### Database Issues
+
+**Issue**: Migration fails
+**Solution**:
+1. Check database connection
+2. Verify DATABASE_URL is correct
+3. Ensure database user has proper permissions
+4. Review migration files for errors
+
+**Issue**: Prisma Client errors
+**Solution**:
+1. Run `npx prisma generate`
+2. Restart application
+3. Check Prisma version compatibility
+
+### Logs and Debugging
+
+#### View Application Logs
+```bash
+# PM2 logs
+pm2 logs
+
+# Specific application logs
+pm2 logs sports-bar-controller
+
+# Error logs only
+pm2 logs --err
+```
+
+#### Database Debugging
+```bash
+# Open Prisma Studio
+npx prisma studio
+
+# Check database connection
+npx prisma db pull
+
+# View migration status
+npx prisma migrate status
+```
+
+#### Git Debugging
+```bash
+# Check git status
+cd ~/Sports-Bar-TV-Controller
+git status
+
+# View recent commits
+git log --oneline -20
+
+# Check for uncommitted changes
+git diff
+```
+
+---
+
+## Deployment Guide
+
+### Initial Setup
+
+#### 1. Clone Repository
+```bash
+cd ~
+git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
+cd Sports-Bar-TV-Controller
+```
+
+#### 2. Install Dependencies
+```bash
+npm install
+```
+
+#### 3. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+nano .env
+```
+
+#### 4. Setup Database
+```bash
+# Run migrations
+npx prisma migrate deploy
+
+# Generate Prisma Client
+npx prisma generate
+```
+
+#### 5. Build Application
+```bash
+npm run build
+```
+
+#### 6. Start with PM2
+```bash
+pm2 start npm --name "sports-bar-controller" -- start
+pm2 save
+pm2 startup
+```
+
+### Deploying PR #188
+
+#### Prerequisites
+- Server access (SSH)
+- Git configured
+- PM2 installed
+- Node.js and npm installed
+
+#### Deployment Steps
+
+1. **Pull Latest Changes**
+```bash
+cd ~/Sports-Bar-TV-Controller
+git fetch origin
+git checkout fix/400-and-git-sync
+git pull origin fix/400-and-git-sync
+```
+
+2. **Install Dependencies**
+```bash
+npm install
+```
+
+3. **Run Database Migrations**
+```bash
+npx prisma migrate deploy
+npx prisma generate
+```
+
+4. **Build Application**
+```bash
+npm run build
+```
+
+5. **Restart Application**
+```bash
+pm2 restart sports-bar-controller
+```
+
+6. **Verify Deployment**
+```bash
+# Check application status
+pm2 status
+
+# View logs
+pm2 logs sports-bar-controller --lines 50
+
+# Test TODO API
+curl http://localhost:3001/api/todos
+
+# Test Sports Guide API
+curl http://localhost:3001/api/sports-guide/status
+```
+
+### Production Server Details
+
+**Server Information**:
+- Host: 24.123.87.42
+- Port: 224 (SSH)
+- Username: ubuntu
+- Password: 6809233DjD$$$ (THREE dollar signs)
+- Project Path: ~/Sports-Bar-TV-Controller
+- Application URL: http://24.123.87.42:3001
+
+**SSH Connection**:
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+### Rollback Procedure
+
+If deployment fails:
+
+1. **Revert to Previous Version**
+```bash
+cd ~/Sports-Bar-TV-Controller
+git log --oneline -10  # Find previous commit
+git checkout [previous-commit-hash]
+```
+
+2. **Rebuild and Restart**
+```bash
+npm install
+npm run build
+pm2 restart sports-bar-controller
+```
+
+3. **Verify Rollback**
+```bash
+pm2 logs sports-bar-controller
+curl http://localhost:3001/api/todos
+```
+
+---
+
+## Maintenance and Backup
+
+### Automated Backups
+
+#### Daily Backup System
+- **Schedule**: 3:00 AM daily
+- **Location**: `/home/ubuntu/Sports-Bar-TV-Controller/backups/`
+- **Retention**: 14 days
+- **Script**: `backup_script.js`
+
+#### Manual Backup
+```bash
+cd ~/Sports-Bar-TV-Controller
+node backup_script.js
+```
+
+### Database Maintenance
+
+#### Backup Database
+```bash
+# PostgreSQL backup
+pg_dump -U postgres sports_bar > backup_$(date +%Y%m%d).sql
+
+# Prisma backup (exports schema)
+npx prisma db pull
+```
+
+#### Restore Database
+```bash
+# PostgreSQL restore
+psql -U postgres sports_bar < backup_20251010.sql
+
+# Prisma restore (apply migrations)
+npx prisma migrate deploy
+```
+
+### Application Maintenance
+
+#### Update Dependencies
+```bash
+cd ~/Sports-Bar-TV-Controller
+npm update
+npm audit fix
+```
+
+#### Clean Build
+```bash
+rm -rf .next
+rm -rf node_modules
+npm install
+npm run build
+```
+
+#### PM2 Maintenance
+```bash
+# Update PM2
+npm install -g pm2@latest
+pm2 update
+
+# Save current configuration
+pm2 save
+
+# Restart all applications
+pm2 restart all
+```
+
+### Monitoring
+
+#### Application Health
+```bash
+# Check PM2 status
+pm2 status
+
+# Monitor resources
+pm2 monit
+
+# View logs
+pm2 logs
+```
+
+#### Disk Space
+```bash
+# Check disk usage
+df -h
+
+# Check backup directory size
+du -sh ~/Sports-Bar-TV-Controller/backups/
+
+# Clean old backups (older than 14 days)
+find ~/Sports-Bar-TV-Controller/backups/ -mtime +14 -delete
+```
+
+#### Database Health
+```bash
+# Check database size
+npx prisma db execute --stdin <<< "SELECT pg_size_pretty(pg_database_size('sports_bar'));"
+
+# Check table sizes
+npx prisma studio
+```
+
+---
+
 ## Issue Tracking System
 
 ### Overview
@@ -1615,6 +1610,30 @@ Implemented comprehensive issue tracking system to log all development work, fix
 
 ---
 
-*Last Updated: October 10, 2025, 6:00 AM*
-*Version: 1.1*
+## AI Hub
 
+### Overview
+The AI Hub provides unified access to multiple AI-powered features and tools within the application. It serves as a central location for AI-assisted management and automation capabilities.
+
+### Location
+**URL**: `http://24.123.87.42:3001/ai-hub`
+
+### Features
+The AI Hub contains multiple AI-powered tools and features. Comprehensive testing and documentation of all AI Hub features is planned (see TODO system).
+
+### Access
+- Available from main dashboard
+- Accessible via navigation menu
+- Direct URL: `/ai-hub`
+
+### Testing Status
+⏳ **Pending**: Comprehensive testing of all AI Hub features is scheduled
+- TODO item created for full AI Hub testing
+- Will document all features and capabilities
+- Will identify and fix any issues found
+
+---
+
+*Last Updated: October 10, 2025, 7:00 AM*
+*Version: 2.0*
+*PR #188: TODO System with GitHub Auto-Commit*
