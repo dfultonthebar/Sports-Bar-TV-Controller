@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Save outputs
+      // Save outputs - only include fields that exist in Prisma schema
       if (outputs?.length > 0) {
         await tx.matrixOutput.createMany({
           data: outputs.map((output: any) => ({
@@ -130,9 +130,10 @@ export async function POST(request: NextRequest) {
             status: output.status || 'active',
             audioOutput: output.audioOutput || null,
             powerOn: output.powerOn || false,
+            selectedVideoInput: output.selectedVideoInput || null,
+            videoInputLabel: output.videoInputLabel || null,
             dailyTurnOn: output.dailyTurnOn !== false, // Default to true
             dailyTurnOff: output.dailyTurnOff !== false, // Default to true
-            isMatrixOutput: output.isMatrixOutput !== false, // Default to true
             createdAt: new Date(),
             updatedAt: new Date()
           }))
