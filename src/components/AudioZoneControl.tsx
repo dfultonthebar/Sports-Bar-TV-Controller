@@ -2,39 +2,23 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  Volume2, 
-  VolumeX,
-  ChevronUp, 
-  ChevronDown,
-  Radio,
-  AlertCircle,
-  Users
-} from 'lucide-react'
-import WolfpackInputSelector from './WolfpackInputSelector'
-import ChannelPresetPopup from './ChannelPresetPopup'
-import { detectDeviceType, shouldShowChannelPresets } from '@/lib/inputDeviceMap'
+import { Volume2, VolumeX, Music, Radio, Tv, Wifi } from 'lucide-react'
 
-interface AudioZone {
+interface AudioInput {
+  id: string
+  name: string
+  isActive: boolean
+  type?: 'matrix' | 'atlas' | 'streaming'
+  matrixNumber?: number
+}
+
+interface Zone {
   id: string
   name: string
   currentSource: string
   volume: number
   isMuted: boolean
   isActive: boolean
-  isGroup?: boolean
-  outputIds?: string[]
-}
-
-interface AudioInput {
-  id: string
-  name: string
-  isActive: boolean
-  type: 'matrix' | 'atlas'
-  matrixNumber?: number
-  inputType?: string
-  connector?: string
-  description?: string
 }
 
 interface AtlasInputConfig {
@@ -43,9 +27,7 @@ interface AtlasInputConfig {
   name: string
   type: string
   connector: string
-  description: string
-  priority?: string
-  isCustom: boolean
+  description?: string
 }
 
 interface AtlasOutputConfig {
@@ -53,10 +35,10 @@ interface AtlasOutputConfig {
   number: number
   name: string
   type: string
-  levelDb: number
-  muted: boolean
+  connector: string
+  powerRating?: string
+  description?: string
   groupId?: string | null
-  isCustom: boolean
 }
 
 interface AtlasZoneGroup {
@@ -64,61 +46,67 @@ interface AtlasZoneGroup {
   name: string
   outputIds: string[]
   outputs: AtlasOutputConfig[]
-  levelDb: number
-  muted: boolean
 }
 
 export default function AudioZoneControl() {
-  const [selectedInput, setSelectedInput] = useState<string | null>('matrix1')
-  const [selectedZone, setSelectedZone] = useState<string | null>(null)
-  const [showMatrixSelector, setShowMatrixSelector] = useState(false)
-  const [currentMatrixNumber, setCurrentMatrixNumber] = useState<number>(1)
+  const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
+  const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  const [zones, setZones] = useState<AudioZone[]>([])
-  const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
-  
-  // Channel preset popup state
-  const [showChannelPresets, setShowChannelPresets] = useState(false)
-  const [channelPresetDeviceType, setChannelPresetDeviceType] = useState<'cable' | 'directv'>('cable')
-  const [channelPresetInputLabel, setChannelPresetInputLabel] = useState('')
-  const [channelPresetDeviceIp, setChannelPresetDeviceIp] = useState<string | undefined>(undefined)
+  const [activeProcessorId, setActiveProcessorId] = useState<string | null>(null)
 
-  // Fetch dynamic Atlas configuration on component mount
   useEffect(() => {
+    // Fetch dynamic Atlas configuration on component mount
     fetchDynamicAtlasConfiguration()
   }, [])
 
   const fetchDynamicAtlasConfiguration = async () => {
-    setLoading(true)
-    setError(null)
-    
     try {
-      const processorId = 'atlas-001' // Default processor ID
+      setLoading(true)
+      setError(null)
+
+      // First, get the active audio processor
+      const processorsResponse = await fetch('/api/audio-processor')
+      const processorsData = await processorsResponse.json()
+
+      if (!processorsResponse.ok) {
+        throw new Error(processorsData.error || 'Failed to fetch audio processors')
+      }
+
+      const activeProcessor = processorsData.processors?.find((p: any) => p.isActive)
       
-      // Fetch inputs from new API endpoint
-      const inputsResponse = await fetch(`/api/audio-processor/inputs?processorId=${processorId}`)
+      if (!activeProcessor) {
+        throw new Error('No active audio processor found')
+      }
+
+      setActiveProcessorId(activeProcessor.id)
+
+      // Fetch inputs and outputs for the active processor
+      const [inputsResponse, outputsResponse] = await Promise.all([
+        fetch(`/api/audio-processor/inputs?processorId=${activeProcessor.id}`),
+        fetch(`/api/audio-processor/outputs?processorId=${activeProcessor.id}&includeGroups=true`)
+      ])
+
       const inputsData = await inputsResponse.json()
+      const outputsData = await outputsResponse.json()
 
       if (!inputsResponse.ok) {
         throw new Error(inputsData.error || 'Failed to fetch inputs')
       }
-
-      // Fetch outputs/zones from new API endpoint (with group detection)
-      const outputsResponse = await fetch(`/api/audio-processor/outputs?processorId=${processorId}&includeGroups=true`)
-      const outputsData = await outputsResponse.json()
 
       if (!outputsResponse.ok) {
         throw new Error(outputsData.error || 'Failed to fetch outputs')
       }
 
       // Build inputs list: Matrix 1-4 first (special inputs for video routing), then Atlas inputs
+      // Check if Matrix outputs have custom labels from video input selection
+      const matrixLabels = await fetchMatrixLabels()
+      
       const matrixInputs: AudioInput[] = [
-        { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
-        { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
-        { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
-        { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+        { id: 'matrix1', name: matrixLabels[1] || 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+        { id: 'matrix2', name: matrixLabels[2] || 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+        { id: 'matrix3', name: matrixLabels[3] || 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+        { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
       ]
 
       // Add Atlas inputs from API
@@ -128,29 +116,24 @@ export default function AudioZoneControl() {
           id: input.id,
           name: input.name,
           isActive: true,
-          type: 'atlas' as const,
-          inputType: input.type,
-          connector: input.connector,
-          description: input.description
+          type: 'atlas' as const
         }))
 
       setAudioInputs([...matrixInputs, ...atlasInputs])
 
       // Build zones from Atlas outputs and groups
-      const atlasZones: AudioZone[] = []
+      const allZones: Zone[] = []
 
-      // Add zone groups first (if any)
+      // Add zone groups first
       if (outputsData.groups && outputsData.groups.length > 0) {
         outputsData.groups.forEach((group: AtlasZoneGroup) => {
-          atlasZones.push({
+          allZones.push({
             id: group.id,
             name: group.name,
-            currentSource: 'Spotify', // Default source
-            volume: Math.round((group.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
-            isMuted: group.muted,
-            isActive: true,
-            isGroup: true,
-            outputIds: group.outputIds
+            currentSource: 'Not Set',
+            volume: 50,
+            isMuted: false,
+            isActive: true
           })
         })
       }
@@ -158,261 +141,292 @@ export default function AudioZoneControl() {
       // Add individual outputs/zones
       if (outputsData.outputs && outputsData.outputs.length > 0) {
         outputsData.outputs.forEach((output: AtlasOutputConfig) => {
-          atlasZones.push({
+          allZones.push({
             id: output.id,
             name: output.name,
-            currentSource: 'Spotify', // Default source
-            volume: Math.round((output.levelDb + 60) * (100 / 60)), // Convert dB to 0-100 scale
-            isMuted: output.muted,
-            isActive: true,
-            isGroup: false
+            currentSource: 'Not Set',
+            volume: 50,
+            isMuted: false,
+            isActive: true
           })
         })
       }
 
-      // If no outputs configured, use default zones as fallback
-      if (atlasZones.length === 0) {
-        setZones([
-          { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
-          { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-          { id: 'partyroom', name: 'Party Room', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-          { id: 'upstairs', name: 'Upstairs', currentSource: 'Spotify', volume: 42, isMuted: false, isActive: true },
-          { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-        ])
-      } else {
-        setZones(atlasZones)
-      }
+      setZones(allZones)
 
       console.log('Dynamic Atlas configuration loaded:', {
-        inputs: inputsData.inputs?.length || 0,
-        outputs: outputsData.outputs?.length || 0,
-        groups: outputsData.groups?.length || 0,
-        model: inputsData.model
+        processor: activeProcessor.name,
+        model: activeProcessor.model,
+        matrixInputs: matrixInputs.length,
+        atlasInputs: atlasInputs.length,
+        zones: allZones.length,
+        groups: outputsData.groups?.length || 0
       })
 
+      setLoading(false)
     } catch (err) {
       console.error('Error fetching dynamic Atlas configuration:', err)
       setError(err instanceof Error ? err.message : 'Failed to load configuration')
       
       // Fallback to Matrix inputs only if Atlas config fails
+      const matrixLabels = await fetchMatrixLabels()
       setAudioInputs([
-        { id: 'matrix1', name: 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
-        { id: 'matrix2', name: 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
-        { id: 'matrix3', name: 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
-        { id: 'matrix4', name: 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+        { id: 'matrix1', name: matrixLabels[1] || 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
+        { id: 'matrix2', name: matrixLabels[2] || 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
+        { id: 'matrix3', name: matrixLabels[3] || 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
+        { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
       ])
       
       // Fallback to default zones
       setZones([
         { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
-        { id: 'pavilion', name: 'Pavilion', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-        { id: 'partyroom', name: 'Party Room', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-        { id: 'upstairs', name: 'Upstairs', currentSource: 'Spotify', volume: 42, isMuted: false, isActive: true },
         { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
+        { id: 'diningroom', name: 'Dining Room', currentSource: 'Spotify', volume: 52, isMuted: false, isActive: true },
       ])
-    } finally {
+      
       setLoading(false)
     }
   }
 
-  const updateZoneVolume = (zoneId: string, volumeChange: number) => {
-    setZones(zones.map(zone => {
-      if (zone.id === zoneId) {
-        const newVolume = Math.max(0, Math.min(100, zone.volume + volumeChange))
-        return { ...zone, volume: newVolume }
+  /**
+   * Fetch Matrix output labels from video input selections
+   * This allows Matrix 1-4 labels to reflect the selected video input
+   */
+  const fetchMatrixLabels = async (): Promise<Record<number, string>> => {
+    try {
+      const response = await fetch('/api/matrix/video-input-selection')
+      if (!response.ok) {
+        return {}
       }
-      return zone
-    }))
+      
+      const data = await response.json()
+      if (!data.success || !data.selections) {
+        return {}
+      }
+
+      // Build a map of matrix output number to label
+      const labels: Record<number, string> = {}
+      data.selections.forEach((selection: any) => {
+        if (selection.videoInputLabel) {
+          labels[selection.matrixOutputNumber] = selection.videoInputLabel
+        }
+      })
+
+      return labels
+    } catch (error) {
+      console.error('Error fetching matrix labels:', error)
+      return {}
+    }
   }
 
-  const toggleZoneMute = (zoneId: string) => {
-    setZones(zones.map(zone => {
-      if (zone.id === zoneId) {
-        return { ...zone, isMuted: !zone.isMuted }
-      }
-      return zone
-    }))
+  /**
+   * Refresh configuration after video input selection
+   * This is called from parent components when video input changes
+   */
+  const refreshConfiguration = () => {
+    fetchDynamicAtlasConfiguration()
   }
 
-  const setZoneSource = (zoneId: string, source: string) => {
-    setZones(zones.map(zone => {
-      if (zone.id === zoneId) {
-        return { ...zone, currentSource: source }
+  // Expose refresh function to parent via window object for cross-component communication
+  useEffect(() => {
+    (window as any).refreshAudioZoneControl = refreshConfiguration
+    return () => {
+      delete (window as any).refreshAudioZoneControl
+    }
+  }, [])
+
+  const handleSourceChange = async (zoneId: string, sourceId: string) => {
+    const source = audioInputs.find(input => input.id === sourceId)
+    if (!source) return
+
+    try {
+      // For Matrix inputs, route video to Atlas
+      if (source.type === 'matrix' && source.matrixNumber) {
+        const response = await fetch('/api/atlas/route-matrix-to-zone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            matrixInput: source.matrixNumber,
+            zoneId: zoneId
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          console.error('Failed to route Matrix to zone:', error)
+          return
+        }
       }
-      return zone
-    }))
-  }
 
-  const handleInputSelection = (inputId: string) => {
-    const input = audioInputs.find(i => i.id === inputId)
-    
-    if (!input) return
-
-    // If it's a Matrix input, show the Wolfpack selector for video routing
-    if (input.type === 'matrix' && input.matrixNumber) {
-      setCurrentMatrixNumber(input.matrixNumber)
-      setShowMatrixSelector(true)
-    } else {
       // Direct routing for Atlas inputs (audio only)
-      setSelectedInput(inputId)
-      // In a real implementation, this would call the API to route audio
-      console.log(`Direct audio routing: ${input.name}`)
+      // This would use Atlas API to route the input to the zone
+      
+      // Update local state
+      setZones(zones.map(zone => 
+        zone.id === zoneId 
+          ? { ...zone, currentSource: source.name }
+          : zone
+      ))
+    } catch (error) {
+      console.error('Error routing audio:', error)
     }
   }
 
-  const handleMatrixInputSelected = (inputNumber: number, inputLabel: string) => {
-    // Update the zone source to show the selected Wolfpack input
-    console.log(`Matrix ${currentMatrixNumber} now routing from: ${inputLabel}`)
-    setSelectedInput(`matrix${currentMatrixNumber}`)
-    // The actual routing is handled by the WolfpackInputSelector component
-    
-    // Check if this input should trigger channel presets popup
-    if (shouldShowChannelPresets(inputLabel)) {
-      const deviceType = detectDeviceType(inputLabel)
-      if (deviceType === 'cable' || deviceType === 'directv') {
-        setChannelPresetDeviceType(deviceType)
-        setChannelPresetInputLabel(inputLabel)
-        // For DirecTV, you might want to set the device IP here if available
-        // setChannelPresetDeviceIp('192.168.1.100') // Example
-        setShowChannelPresets(true)
-      }
-    }
+  const handleVolumeChange = (zoneId: string, newVolume: number) => {
+    setZones(zones.map(zone => 
+      zone.id === zoneId 
+        ? { ...zone, volume: newVolume }
+        : zone
+    ))
+  }
+
+  const toggleMute = (zoneId: string) => {
+    setZones(zones.map(zone => 
+      zone.id === zoneId 
+        ? { ...zone, isMuted: !zone.isMuted }
+        : zone
+    ))
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
-          <p className="text-gray-400">Loading Audio Control Center...</p>
+      <div className="bg-slate-800 rounded-lg p-6">
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400"></div>
+          <span className="ml-3 text-slate-300">Loading audio configuration...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-slate-800 rounded-lg p-6">
+        <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
+          <p className="text-red-400 font-medium">Configuration Error</p>
+          <p className="text-red-300 text-sm mt-1">{error}</p>
+          <button
+            onClick={fetchDynamicAtlasConfiguration}
+            className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
-      {/* Wolfpack Input Selector Modal */}
-      <WolfpackInputSelector
-        isOpen={showMatrixSelector}
-        onClose={() => setShowMatrixSelector(false)}
-        matrixNumber={currentMatrixNumber}
-        onSelectInput={handleMatrixInputSelected}
-      />
-
-      {/* Channel Preset Popup */}
-      <ChannelPresetPopup
-        isOpen={showChannelPresets}
-        onClose={() => setShowChannelPresets(false)}
-        deviceType={channelPresetDeviceType}
-        deviceIp={channelPresetDeviceIp}
-        inputLabel={channelPresetInputLabel}
-      />
-
-      {/* Header */}
-      <div className="text-center mb-6">
-        <h1 className="text-3xl font-bold text-orange-400 mb-2">Audio Channels</h1>
-        <p className="text-gray-400 text-sm">
-          Matrix inputs route video sources for audio • Atlas inputs route audio directly
-        </p>
-        {error && (
-          <div className="mt-4 bg-yellow-500/20 border border-yellow-500 text-yellow-200 px-4 py-2 rounded-lg inline-flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4" />
-            <span className="text-sm">Using fallback configuration: {error}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Left Panel - Audio Inputs */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-4">
-            <div className="space-y-2">
-              {audioInputs.map((input) => (
-                <button
-                  key={input.id}
-                  onClick={() => handleInputSelection(input.id)}
-                  className={`w-full p-3 rounded-lg text-left transition-all flex items-center justify-between ${
-                    selectedInput === input.id
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
-                  }`}
-                  title={input.description || input.name}
-                >
-                  <div className="flex items-center space-x-2">
-                    {input.type === 'matrix' && (
-                      <Radio className="w-4 h-4 text-orange-400" />
-                    )}
-                    <span className="font-medium">{input.name}</span>
-                  </div>
-                  <ChevronDown className="w-4 h-4 rotate-90" />
-                </button>
-              ))}
-            </div>
+    <div className="space-y-6">
+      {/* Info Banner */}
+      <div className="bg-gradient-to-r from-teal-900/30 to-blue-900/30 border border-teal-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Music className="w-5 h-5 text-teal-400 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-slate-200 font-medium">Audio Zone Control</p>
+            <p className="text-slate-400 text-sm mt-1">
+              Matrix inputs route video sources for audio • Atlas inputs route audio directly
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* Main Audio Control Area */}
-        <div className="lg:col-span-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {zones.map((zone) => (
-              <div key={zone.id} className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-4">
-                {/* Zone Header */}
-                <div className="text-center mb-4">
-                  <div className={`${zone.isGroup ? 'bg-purple-600' : 'bg-orange-500'} text-slate-100 px-3 py-1 rounded text-sm font-bold mb-2 flex items-center justify-center space-x-1`}>
-                    {zone.isGroup && <Users className="w-3 h-3" />}
-                    <span>{zone.name}</span>
-                  </div>
-                  <div className="text-white font-medium">
-                    {zone.currentSource}
-                  </div>
-                </div>
-
-                {/* Volume Slider Area */}
-                <div className="flex flex-col items-center space-y-4 mb-4">
-                  {/* Volume Display */}
-                  <div className="bg-gray-700 text-white px-3 py-2 rounded font-mono text-lg min-w-[50px] text-center">
-                    {zone.volume}
-                  </div>
-
-                  {/* Volume Controls */}
-                  <div className="flex flex-col space-y-2">
-                    <button
-                      onClick={() => updateZoneVolume(zone.id, 5)}
-                      className="bg-green-600 hover:bg-green-500 text-white p-2 rounded transition-all"
-                    >
-                      <ChevronUp className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => updateZoneVolume(zone.id, -5)}
-                      className="bg-red-600 hover:bg-red-500 text-white p-2 rounded transition-all"
-                    >
-                      <ChevronDown className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Mute and Volume Icons */}
-                <div className="flex justify-center space-x-4">
-                  <button
-                    onClick={() => toggleZoneMute(zone.id)}
-                    className={`p-2 rounded transition-all ${
-                      zone.isMuted 
-                        ? 'bg-red-600 hover:bg-red-500' 
-                        : 'bg-gray-600 hover:bg-gray-500'
-                    } text-white`}
-                  >
-                    <VolumeX className="w-5 h-5" />
-                  </button>
-                  <button
-                    className="bg-gray-600 hover:bg-gray-500 text-white p-2 rounded transition-all"
-                  >
-                    <Volume2 className="w-5 h-5" />
-                  </button>
-                </div>
+      {/* Zone Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {zones.map(zone => (
+          <div 
+            key={zone.id}
+            className="bg-slate-800 rounded-lg p-5 border border-slate-700 hover:border-teal-500/50 transition-all"
+          >
+            {/* Zone Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${zone.isActive ? 'bg-teal-400' : 'bg-slate-600'}`} />
+                <h3 className="text-lg font-semibold text-slate-100">{zone.name}</h3>
               </div>
-            ))}
+              <button
+                onClick={() => toggleMute(zone.id)}
+                className={`p-2 rounded-lg transition-colors ${
+                  zone.isMuted 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                }`}
+              >
+                {zone.isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {/* Current Source */}
+            <div className="mb-4">
+              <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">
+                Current Source
+              </label>
+              <div className="bg-slate-900 rounded-lg p-3 border border-slate-700">
+                <p className="text-teal-400 font-medium">{zone.currentSource}</p>
+              </div>
+            </div>
+
+            {/* Source Selection */}
+            <div className="mb-4">
+              <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">
+                Select Audio Source
+              </label>
+              <select
+                value={audioInputs.find(input => input.name === zone.currentSource)?.id || ''}
+                onChange={(e) => handleSourceChange(zone.id, e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500 transition-colors"
+              >
+                <option value="">Select source...</option>
+                {audioInputs.map(input => (
+                  <option key={input.id} value={input.id}>
+                    {input.name} {input.type === 'matrix' ? '(Video)' : '(Audio)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Volume Control */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-slate-400 uppercase tracking-wide">
+                  Volume
+                </label>
+                <span className="text-sm font-medium text-teal-400">{zone.volume}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={zone.volume}
+                onChange={(e) => handleVolumeChange(zone.id, parseInt(e.target.value))}
+                disabled={zone.isMuted}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
           </div>
+        ))}
+      </div>
+
+      {/* Available Inputs Summary */}
+      <div className="bg-slate-800 rounded-lg p-5 border border-slate-700">
+        <h3 className="text-lg font-semibold text-slate-100 mb-4">Available Audio Sources</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {audioInputs.map(input => (
+            <div
+              key={input.id}
+              className="bg-slate-900 rounded-lg p-3 border border-slate-700"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {input.type === 'matrix' && <Tv className="w-4 h-4 text-teal-400" />}
+                {input.type === 'atlas' && <Radio className="w-4 h-4 text-blue-400" />}
+                {input.type === 'streaming' && <Wifi className="w-4 h-4 text-purple-400" />}
+                <span className="text-sm font-medium text-slate-200">{input.name}</span>
+              </div>
+              <span className="text-xs text-slate-500">
+                {input.type === 'matrix' ? 'Video Source' : 'Audio Source'}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

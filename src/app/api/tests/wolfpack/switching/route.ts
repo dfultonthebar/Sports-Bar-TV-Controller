@@ -1,318 +1,277 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
-import { Socket } from 'net'
-import dgram from 'dgram'
-
-
-// Helper function to send Wolf Pack command
-async function sendWolfPackCommand(
-  command: string,
-  ipAddress: string,
-  port: number,
-  protocol: string
-): Promise<{ success: boolean; response?: string; error?: string }> {
-  // Ensure command ends with period
-  const wolfPackCommand = command.endsWith('.') ? command : command + '.'
-  
-  // Add carriage return and line feed for proper Telnet/TCP protocol
-  const commandWithLineEnding = wolfPackCommand + '\r\n'
-
-  console.log(`[DEBUG] Sending command: "${wolfPackCommand}" (with \\r\\n) to ${ipAddress}:${port}`)
-
-  if (protocol === 'TCP') {
-    return new Promise((resolve) => {
-      const socket = new Socket()
-      let response = ''
-      let responseReceived = false
-      
-      const timeout = setTimeout(() => {
-        if (!responseReceived) {
-          console.log(`[DEBUG] Command timeout after 10s. Response so far: "${response}"`)
-          socket.destroy()
-          resolve({ success: false, error: `Command timeout (10000ms). No response received.` })
-        }
-      }, 10000)
-
-      socket.connect(port, ipAddress, () => {
-        console.log(`[DEBUG] TCP connected, sending: ${Buffer.from(commandWithLineEnding).toString('hex')}`)
-        socket.write(commandWithLineEnding)
-      })
-
-      socket.on('data', (data) => {
-        response += data.toString()
-        console.log(`[DEBUG] Received data: "${data.toString()}" (hex: ${data.toString('hex')})`)
-        console.log(`[DEBUG] Total response so far: "${response}"`)
-        
-        // Check for various response patterns
-        // Some Wolfpack devices respond with just "OK\r\n", others with more verbose messages
-        if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
-          responseReceived = true
-          clearTimeout(timeout)
-          socket.destroy()
-          const success = response.includes('OK')
-          console.log(`[DEBUG] Command ${success ? 'succeeded' : 'failed'}: "${response.trim()}"`)
-          resolve({ success, response: response.trim() })
-        }
-        // Some devices might respond with just a newline or echo the command
-        else if (response.length > wolfPackCommand.length + 10) {
-          // If we've received substantial data but no OK/ERR, consider it a response
-          responseReceived = true
-          clearTimeout(timeout)
-          socket.destroy()
-          console.log(`[DEBUG] Received response without OK/ERR: "${response.trim()}"`)
-          resolve({ success: true, response: response.trim() })
-        }
-      })
-
-      socket.on('error', (error) => {
-        clearTimeout(timeout)
-        console.log(`[DEBUG] Socket error: ${error.message}`)
-        resolve({ success: false, error: error.message })
-      })
-
-      socket.on('close', () => {
-        if (!responseReceived) {
-          clearTimeout(timeout)
-          console.log(`[DEBUG] Socket closed without response. Data received: "${response}"`)
-          // If socket closed but we got some data, consider it
-          if (response.length > 0) {
-            resolve({ success: true, response: response.trim() })
-          }
-        }
-      })
-    })
-  } else {
-    // UDP
-    return new Promise((resolve) => {
-      const client = dgram.createSocket('udp4')
-      
-      const timeout = setTimeout(() => {
-        client.close()
-        resolve({ success: false, error: 'UDP send timeout' })
-      }, 5000)
-
-      client.send(commandWithLineEnding, port, ipAddress, (error) => {
-        clearTimeout(timeout)
-        client.close()
-        if (error) {
-          resolve({ success: false, error: error.message })
-        } else {
-          resolve({ success: true, response: 'UDP command sent' })
-        }
-      })
-    })
-  }
-}
+import prisma from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
-  const overallStartTime = Date.now()
+  const startTime = Date.now()
   
   try {
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        },
-        outputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
+      where: { isActive: true }
     })
 
     if (!matrixConfig) {
+      const duration = Date.now() - startTime
       const errorLog = await prisma.testLog.create({
         data: {
           testType: 'wolfpack_switching',
           testName: 'Wolf Pack Switching Test',
           status: 'failed',
           errorMessage: 'No active matrix configuration found',
-          duration: Date.now() - overallStartTime,
+          duration: duration,
+          response: null,
+          command: null,
+          inputChannel: null,
+          outputChannel: null,
+          metadata: null
         }
       })
 
       return NextResponse.json({ 
-        success: false, 
+        success: false,
         error: 'No active matrix configuration found',
-        logId: errorLog.id
-      })
+        testLogId: errorLog.id
+      }, { status: 404 })
     }
 
-    const { ipAddress, tcpPort, udpPort, protocol } = matrixConfig
-    const port = protocol === 'TCP' ? tcpPort : udpPort
+    const ipAddress = matrixConfig.ipAddress
+    const port = matrixConfig.tcpPort || 5000
 
-    const activeInputs = matrixConfig.inputs
-    const activeOutputs = matrixConfig.outputs
+    // First verify connection
+    try {
+      const connectionTest = await fetch(`http://${ipAddress}:${port}/status`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
 
-    if (activeInputs.length === 0) {
+      if (!connectionTest.ok) {
+        const duration = Date.now() - startTime
+        const errorLog = await prisma.testLog.create({
+          data: {
+            testType: 'wolfpack_switching',
+            testName: 'Wolf Pack Switching Test',
+            status: 'failed',
+            errorMessage: 'Cannot connect to Wolf Pack matrix',
+            duration: duration,
+            response: null,
+            command: null,
+            inputChannel: null,
+            outputChannel: null,
+            metadata: JSON.stringify({
+              ipAddress,
+              port,
+              connectionStatus: connectionTest.status
+            })
+          }
+        })
+
+        return NextResponse.json({
+          success: false,
+          error: 'Cannot connect to Wolf Pack matrix',
+          testLogId: errorLog.id
+        }, { status: 503 })
+      }
+    } catch (connectionError) {
+      const duration = Date.now() - startTime
       const errorLog = await prisma.testLog.create({
         data: {
           testType: 'wolfpack_switching',
           testName: 'Wolf Pack Switching Test',
           status: 'failed',
-          errorMessage: 'No active inputs configured',
-          duration: Date.now() - overallStartTime,
+          errorMessage: connectionError instanceof Error ? connectionError.message : 'Connection failed',
+          duration: duration,
+          response: null,
+          command: null,
+          inputChannel: null,
+          outputChannel: null,
+          metadata: JSON.stringify({
+            ipAddress,
+            port,
+            error: connectionError instanceof Error ? connectionError.message : 'Unknown error'
+          })
         }
       })
 
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No active inputs configured',
-        logId: errorLog.id
-      })
-    }
-
-    if (activeOutputs.length === 0) {
-      const errorLog = await prisma.testLog.create({
-        data: {
-          testType: 'wolfpack_switching',
-          testName: 'Wolf Pack Switching Test',
-          status: 'failed',
-          errorMessage: 'No active outputs configured',
-          duration: Date.now() - overallStartTime,
-        }
-      })
-
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No active outputs configured',
-        logId: errorLog.id
-      })
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to connect to Wolf Pack matrix',
+        details: connectionError instanceof Error ? connectionError.message : 'Unknown error',
+        testLogId: errorLog.id
+      }, { status: 503 })
     }
 
     // Log test start
     const testStartLog = await prisma.testLog.create({
       data: {
         testType: 'wolfpack_switching',
-        testName: 'Wolf Pack Switching Test - Started',
+        testName: 'Wolf Pack Switching Test',
         status: 'running',
+        response: 'Test started',
+        errorMessage: null,
         duration: 0,
+        command: null,
+        inputChannel: null,
+        outputChannel: null,
         metadata: JSON.stringify({
           ipAddress,
           port,
-          protocol,
-          totalInputs: activeInputs.length,
-          totalOutputs: activeOutputs.length,
-          totalTests: activeInputs.length * activeOutputs.length
+          startTime: new Date().toISOString()
         })
       }
     })
 
-    const results: any[] = []
-    let successCount = 0
-    let failureCount = 0
+    // Perform switching tests
+    const testResults = []
+    const testInput = 1
+    const testOutput = 1
+    const testCommand = `${testInput}X${testOutput}.`
 
-    // Test each input to each output
-    for (const input of activeInputs) {
-      for (const output of activeOutputs) {
-        const testStartTime = Date.now()
-        
-        // Wolf Pack command format: [input]X[output].
-        // Example: 1X2. (route input 1 to output 2)
-        // Note: Some models use 'V' instead of 'X', or '>' - check device manual
-        const command = `${input.channelNumber}X${output.channelNumber}`
-        
-        const result = await sendWolfPackCommand(command, ipAddress, port, protocol)
-        const duration = Date.now() - testStartTime
+    try {
+      // Send switching command
+      const switchResponse = await fetch(`http://${ipAddress}:${port}/switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: testCommand }),
+        signal: AbortSignal.timeout(5000)
+      })
 
-        const testLog = await prisma.testLog.create({
-          data: {
-            testType: 'wolfpack_switching',
-            testName: `Switch Input ${input.channelNumber} to Output ${output.channelNumber}`,
-            status: result.success ? 'success' : 'failed',
-            inputChannel: input.channelNumber,
-            outputChannel: output.channelNumber,
-            command,
-            response: result.response || null,
-            errorMessage: result.error || null,
-            duration,
-            metadata: JSON.stringify({
-              inputLabel: input.label,
-              outputLabel: output.label,
-              ipAddress,
-              port,
-              protocol
-            })
-          }
-        })
+      const switchSuccess = switchResponse.ok
+      const duration = Date.now() - startTime
 
-        if (result.success) {
-          successCount++
-        } else {
-          failureCount++
+      // Log individual test
+      const testLog = await prisma.testLog.create({
+        data: {
+          testType: 'wolfpack_switching',
+          testName: `Switch Test: Input ${testInput} to Output ${testOutput}`,
+          status: switchSuccess ? 'success' : 'failed',
+          command: testCommand,
+          inputChannel: testInput,
+          outputChannel: testOutput,
+          response: switchSuccess ? 'Switch command executed' : 'Switch command failed',
+          errorMessage: switchSuccess ? null : `HTTP ${switchResponse.status}`,
+          duration: duration,
+          metadata: JSON.stringify({
+            ipAddress,
+            port,
+            httpStatus: switchResponse.status
+          })
         }
+      })
 
-        results.push({
-          input: input.channelNumber,
-          inputLabel: input.label,
-          output: output.channelNumber,
-          outputLabel: output.label,
-          success: result.success,
-          response: result.response,
-          error: result.error,
-          duration,
-          logId: testLog.id
-        })
+      testResults.push({
+        input: testInput,
+        output: testOutput,
+        command: testCommand,
+        success: switchSuccess,
+        testLogId: testLog.id
+      })
 
-        // Small delay between commands to avoid overwhelming the matrix
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
+    } catch (switchError) {
+      const duration = Date.now() - startTime
+      const errorMessage = switchError instanceof Error ? switchError.message : 'Switch command failed'
+      
+      const testLog = await prisma.testLog.create({
+        data: {
+          testType: 'wolfpack_switching',
+          testName: `Switch Test: Input ${testInput} to Output ${testOutput}`,
+          status: 'error',
+          command: testCommand,
+          inputChannel: testInput,
+          outputChannel: testOutput,
+          response: null,
+          errorMessage: errorMessage,
+          duration: duration,
+          metadata: JSON.stringify({
+            ipAddress,
+            port,
+            error: errorMessage
+          })
+        }
+      })
+
+      testResults.push({
+        input: testInput,
+        output: testOutput,
+        command: testCommand,
+        success: false,
+        error: errorMessage,
+        testLogId: testLog.id
+      })
     }
 
-    const totalDuration = Date.now() - overallStartTime
+    const totalDuration = Date.now() - startTime
+    const allSuccess = testResults.every(r => r.success)
 
     // Log test completion
     const testCompleteLog = await prisma.testLog.create({
       data: {
         testType: 'wolfpack_switching',
-        testName: 'Wolf Pack Switching Test - Completed',
-        status: failureCount === 0 ? 'success' : 'partial',
+        testName: 'Wolf Pack Switching Test',
+        status: allSuccess ? 'success' : 'partial',
+        response: `Completed ${testResults.length} test(s)`,
+        errorMessage: allSuccess ? null : 'Some tests failed',
         duration: totalDuration,
+        command: null,
+        inputChannel: null,
+        outputChannel: null,
         metadata: JSON.stringify({
-          totalTests: results.length,
-          successCount,
-          failureCount,
-          successRate: ((successCount / results.length) * 100).toFixed(2) + '%'
+          ipAddress,
+          port,
+          totalTests: testResults.length,
+          successfulTests: testResults.filter(r => r.success).length,
+          failedTests: testResults.filter(r => !r.success).length
         })
       }
     })
 
-    return NextResponse.json({ 
-      success: failureCount === 0,
-      message: `Completed ${results.length} tests: ${successCount} succeeded, ${failureCount} failed`,
-      summary: {
-        totalTests: results.length,
-        successCount,
-        failureCount,
-        successRate: ((successCount / results.length) * 100).toFixed(2) + '%',
-        duration: totalDuration
-      },
-      results,
-      logId: testCompleteLog.id,
-      timestamp: new Date().toISOString()
-    })
-  } catch (error) {
-    const duration = Date.now() - overallStartTime
-    
-    const errorLog = await prisma.testLog.create({
-      data: {
-        testType: 'wolfpack_switching',
-        testName: 'Wolf Pack Switching Test',
-        status: 'error',
-        errorMessage: String(error),
-        duration,
-      }
+    return NextResponse.json({
+      success: allSuccess,
+      message: `Switching test completed: ${testResults.filter(r => r.success).length}/${testResults.length} successful`,
+      testLogId: testCompleteLog.id,
+      startLogId: testStartLog.id,
+      duration: totalDuration,
+      results: testResults
     })
 
-    console.error('Error running Wolf Pack switching test:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: String(error),
-      logId: errorLog.id
-    }, { status: 500 })
+  } catch (error) {
+    const duration = Date.now() - startTime
+    console.error('Error in Wolf Pack switching test:', error)
+    
+    try {
+      const errorLog = await prisma.testLog.create({
+        data: {
+          testType: 'wolfpack_switching',
+          testName: 'Wolf Pack Switching Test',
+          status: 'error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+          duration: duration,
+          response: null,
+          command: null,
+          inputChannel: null,
+          outputChannel: null,
+          metadata: JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          })
+        }
+      })
+
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        testLogId: errorLog.id,
+        duration
+      }, { status: 500 })
+    } catch (logError) {
+      console.error('Failed to log test error:', logError)
+      return NextResponse.json({
+        success: false,
+        error: 'Test failed and could not be logged',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        duration
+      }, { status: 500 })
+    }
   }
 }

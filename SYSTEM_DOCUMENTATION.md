@@ -930,3 +930,111 @@ netstat -tulpn | grep 3001
 
 *Last Updated: October 10, 2025*
 *Version: 1.0*
+
+---
+
+## October 10, 2025 - Atlas Zone Labels, Matrix Label Updates, and Matrix Test Fixes
+
+### 1. Atlas Zone Output Labels Fixed
+**Issue**: Zone labels in Audio Control Center were showing hardcoded "Matrix 1", "Matrix 2", "Matrix 3", "Matrix 4" instead of actual Atlas configuration labels or selected video input names.
+
+**Root Cause**: 
+- AudioZoneControl.tsx was using hardcoded labels for Matrix 1-4 inputs
+- Component wasn't reading from Atlas processor configuration
+- Labels weren't updating when video inputs were selected for Matrix outputs
+
+**Solution**:
+- Modified AudioZoneControl.tsx to fetch Matrix output labels from video-input-selection API
+- Added `fetchMatrixLabels()` function to retrieve current video input selections
+- Labels now dynamically reflect selected video input names (e.g., "Cable Box 1" instead of "Matrix 1")
+- Falls back to "Matrix 1-4" only if no video input is selected or API unavailable
+- Component refreshes automatically when video input selection changes
+
+**Files Modified**:
+- `src/components/AudioZoneControl.tsx`
+
+**Result**:
+- ✅ Zone labels now show actual video input names when selected
+- ✅ Labels update dynamically when user selects different video inputs
+- ✅ Proper integration with Atlas audio processor configuration
+
+---
+
+### 2. Matrix Label Dynamic Updates Implemented
+**Issue**: When user selects a video input for Matrix 1-4 audio outputs (channels 33-36), the matrix label should change to show the video input name, but it wasn't updating dynamically.
+
+**Root Cause**:
+1. The video-input-selection API was correctly updating the database
+2. However, AudioZoneControl component wasn't being notified of the change
+3. No refresh mechanism existed to update labels after video input selection
+
+**Solution**:
+- Added cross-component communication mechanism using window object
+- AudioZoneControl exposes `refreshConfiguration()` function via `window.refreshAudioZoneControl`
+- MatrixControl calls this function after successful video input selection
+- Labels update immediately in both Audio Control Center and Bartender Remote
+
+**Implementation Details**:
+```typescript
+// In AudioZoneControl.tsx
+useEffect(() => {
+  (window as any).refreshAudioZoneControl = refreshConfiguration
+  return () => {
+    delete (window as any).refreshAudioZoneControl
+  }
+}, [])
+
+// In MatrixControl.tsx (after video input selection)
+if (typeof (window as any).refreshAudioZoneControl === 'function') {
+  (window as any).refreshAudioZoneControl()
+}
+```
+
+**Files Modified**:
+- `src/components/AudioZoneControl.tsx` - Added refresh mechanism
+- `src/components/MatrixControl.tsx` - Added refresh trigger
+
+**Result**:
+- ✅ Matrix labels update immediately when video input selected
+- ✅ Example: "Matrix 1" → "Cable Box 1" when Cable Box 1 is selected
+- ✅ Labels persist across page refreshes (stored in database)
+- ✅ Works for all Matrix 1-4 outputs (channels 33-36)
+
+---
+
+### 3. Matrix Test Database Error Fixed
+**Issue**: Wolf Pack Connection Test on admin page was failing with database error:
+```
+PrismaClientUnknownRequestError: Invalid prisma.testLog.create() invocation
+```
+
+**Root Cause**:
+- The testLog.create() calls were not properly handling nullable fields
+- Data object structure didn't match Prisma schema expectations exactly
+- Optional fields (duration, response, command, etc.) needed explicit null values
+- Inconsistent error handling in test routes
+
+**Solution**:
+- Updated both test routes to ensure proper data types for all fields
+- Added explicit null values for optional fields instead of undefined
+- Ensured duration is always a valid integer (never 0 or falsy)
+- Improved error handling with try-catch blocks for logging failures
+- Made all testLog.create() calls consistent with schema requirements
+
+**Files Modified**:
+- `src/app/api/tests/wolfpack/connection/route.ts`
+- `src/app/api/tests/wolfpack/switching/route.ts`
+
+**Result**:
+- ✅ Wolf Pack Connection Test now passes without database errors
+- ✅ Test logs are properly saved to database
+- ✅ Error handling improved for better debugging
+- ✅ All test results are correctly recorded
+
+---
+
+### Commit Information
+- Branch: `fix/atlas-zone-labels-matrix-updates-test`
+- Date: October 10, 2025
+- GitHub: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+

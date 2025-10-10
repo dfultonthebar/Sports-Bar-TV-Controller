@@ -224,6 +224,11 @@ export default function MatrixControl() {
           updateOutput(outputIndex, 'label', videoInput.label)
         }
         
+        // Trigger refresh of AudioZoneControl to update Matrix labels
+        if (typeof (window as any).refreshAudioZoneControl === 'function') {
+          (window as any).refreshAudioZoneControl()
+        }
+        
         setShowVideoInputModal(false)
         setSelectedMatrixOutput(null)
       } else {
