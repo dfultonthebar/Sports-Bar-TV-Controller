@@ -113,11 +113,11 @@ export async function POST(request: NextRequest) {
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
       where: { isActive: true },
       include: {
-        inputs: {
+        MatrixInput: {
           where: { isActive: true },
           orderBy: { channelNumber: 'asc' }
         },
-        outputs: {
+        MatrixOutput: {
           where: { isActive: true },
           orderBy: { channelNumber: 'asc' }
         }
