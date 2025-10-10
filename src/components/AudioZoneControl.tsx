@@ -73,7 +73,7 @@ export default function AudioZoneControl() {
         throw new Error(processorsData.error || 'Failed to fetch audio processors')
       }
 
-      const activeProcessor = processorsData.processors?.find((p: any) => p.isActive)
+      const activeProcessor = processorsData.processors?.find((p: any) => p.status === 'online')
       
       if (!activeProcessor) {
         throw new Error('No active audio processor found')
