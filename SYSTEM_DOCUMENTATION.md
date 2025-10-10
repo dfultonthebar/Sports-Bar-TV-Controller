@@ -1211,3 +1211,117 @@ The `src/app/api/atlas/download-config/route.ts` file was generating random data
 
 ---
 
+
+---
+
+## October 10, 2025 - SSH Access Configuration
+
+### SSH Server Access
+The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
+
+**SSH Connection Details:**
+- **Host**: 24.123.87.42
+- **Port**: 224
+- **Username**: ubuntu
+- **Password**: 6809233DjD$$$ (THREE dollar signs)
+- **Authentication Method**: Password only (no SSH key/token)
+
+**Connection Command:**
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+**Security Notes:**
+- SSH is configured on non-standard port 224 for additional security
+- Password authentication is enabled (no SSH key required)
+- Ensure password is kept secure and not shared publicly
+- Consider implementing SSH key authentication for enhanced security in future
+
+**Common SSH Operations:**
+```bash
+# Connect to server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Copy files to server (SCP)
+scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
+
+# Copy files from server
+scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
+
+# SSH with port forwarding (for local development)
+ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
+```
+
+**Project Location on Server:**
+- Project Path: `~/Sports-Bar-TV-Controller`
+- Application URL: http://24.123.87.42:3001
+- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+**Deployment Workflow:**
+1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
+2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
+3. Pull latest changes: `git pull origin main`
+4. Install dependencies: `npm install`
+5. Build application: `npm run build`
+6. Restart PM2: `pm2 restart sports-bar-tv-controller`
+7. Check logs: `pm2 logs sports-bar-tv-controller`
+
+---
+
+
+---
+
+## October 10, 2025 - SSH Access Configuration
+
+### SSH Server Access
+The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
+
+**SSH Connection Details:**
+- **Host**: 24.123.87.42
+- **Port**: 224
+- **Username**: ubuntu
+- **Password**: 6809233DjD$$$ (THREE dollar signs)
+- **Authentication Method**: Password only (no SSH key/token)
+
+**Connection Command:**
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+**Security Notes:**
+- SSH is configured on non-standard port 224 for additional security
+- Password authentication is enabled (no SSH key required)
+- Ensure password is kept secure and not shared publicly
+- Consider implementing SSH key authentication for enhanced security in future
+
+**Common SSH Operations:**
+```bash
+# Connect to server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Copy files to server (SCP)
+scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
+
+# Copy files from server
+scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
+
+# SSH with port forwarding (for local development)
+ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
+```
+
+**Project Location on Server:**
+- Project Path: `~/Sports-Bar-TV-Controller`
+- Application URL: http://24.123.87.42:3001
+- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+**Deployment Workflow:**
+1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
+2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
+3. Pull latest changes: `git pull origin main`
+4. Install dependencies: `npm install`
+5. Build application: `npm run build`
+6. Restart PM2: `pm2 restart sports-bar-tv-controller`
+7. Check logs: `pm2 logs sports-bar-tv-controller`
+
+---
+
