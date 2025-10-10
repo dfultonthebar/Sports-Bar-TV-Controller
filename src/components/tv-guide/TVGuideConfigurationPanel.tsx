@@ -9,8 +9,6 @@ interface ServiceStatus {
 }
 
 interface ServicesStatus {
-  gracenote: ServiceStatus
-  spectrum: ServiceStatus
   unified: ServiceStatus & { ready: boolean }
 }
 
@@ -65,52 +63,25 @@ const TVGuideConfigurationPanel: React.FC = () => {
     }
   }
 
+  // EPG services removed - Gracenote and Spectrum Business API
+  // User will configure alternative EPG service later
+  
   const testGracenoteService = async () => {
-    try {
-      setTestResults({ type: 'gracenote', loading: true })
-      
-      const response = await fetch('/api/tv-guide/gracenote?action=channels&zipCode=53703')
-      const data = await response.json()
-      
-      setTestResults({
-        type: 'gracenote',
-        loading: false,
-        success: data.success,
-        data: data.channels?.slice(0, 5) || [], // Show first 5 channels
-        message: data.success ? 'Gracenote service working correctly' : 'Gracenote service error'
-      })
-    } catch (error) {
-      setTestResults({
-        type: 'gracenote',
-        loading: false,
-        success: false,
-        message: `Gracenote test failed: ${error}`
-      })
-    }
+    setTestResults({
+      type: 'gracenote',
+      loading: false,
+      success: false,
+      message: 'Gracenote service has been removed. Configure alternative EPG service.'
+    })
   }
 
   const testSpectrumService = async () => {
-    try {
-      setTestResults({ type: 'spectrum', loading: true })
-      
-      const response = await fetch('/api/tv-guide/spectrum-business?action=channels')
-      const data = await response.json()
-      
-      setTestResults({
-        type: 'spectrum',
-        loading: false,
-        success: data.success,
-        data: data.channels?.slice(0, 5) || [], // Show first 5 channels
-        message: data.success ? 'Spectrum Business API working correctly' : 'Spectrum Business API error'
-      })
-    } catch (error) {
-      setTestResults({
-        type: 'spectrum',
-        loading: false,
-        success: false,
-        message: `Spectrum test failed: ${error}`
-      })
-    }
+    setTestResults({
+      type: 'spectrum',
+      loading: false,
+      success: false,
+      message: 'Spectrum Business API has been removed. Configure alternative EPG service.'
+    })
   }
 
   const testUnifiedService = async () => {
@@ -148,10 +119,8 @@ const TVGuideConfigurationPanel: React.FC = () => {
       const result = await response.json()
       
       if (result.success) {
-        // Filter to show TV Guide and AI service keys
+        // Filter to show AI service keys only (EPG services removed)
         const tvGuideKeys = result.data.filter((key: ApiKey) => 
-          key.provider === 'gracenote' || 
-          key.provider === 'spectrum-business' ||
           key.provider === 'openai' ||
           key.provider === 'ollama'
         )
@@ -296,33 +265,17 @@ const TVGuideConfigurationPanel: React.FC = () => {
       {activeTab === 'status' && (
         <>
           {/* Service Status Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className={`p-4 rounded-lg border ${status?.gracenote.configured ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mb-8">
+        {/* EPG Services Removed - Gracenote and Spectrum Business API */}
+        <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
           <div className="flex items-center mb-2">
-            <div className={`w-3 h-3 rounded-full mr-2 ${status?.gracenote.configured ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <h3 className="font-semibold">Gracenote API</h3>
+            <div className="w-3 h-3 rounded-full mr-2 bg-blue-500"></div>
+            <h3 className="font-semibold">EPG Services</h3>
           </div>
-          <p className="text-sm text-slate-300 mb-3">{status?.gracenote.message}</p>
-          <button
-            onClick={testGracenoteService}
-            className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-          >
-            Test Service
-          </button>
-        </div>
-
-        <div className={`p-4 rounded-lg border ${status?.spectrum.configured ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-          <div className="flex items-center mb-2">
-            <div className={`w-3 h-3 rounded-full mr-2 ${status?.spectrum.configured ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <h3 className="font-semibold">Spectrum Business</h3>
-          </div>
-          <p className="text-sm text-slate-300 mb-3">{status?.spectrum.message}</p>
-          <button
-            onClick={testSpectrumService}
-            className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-          >
-            Test Service
-          </button>
+          <p className="text-sm text-slate-600 mb-3">
+            Gracenote and Spectrum Business API services have been removed. 
+            Configure an alternative EPG service when ready.
+          </p>
         </div>
 
         <div className={`p-4 rounded-lg border ${status?.unified.ready ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
@@ -342,33 +295,15 @@ const TVGuideConfigurationPanel: React.FC = () => {
 
       {/* API Key Configuration Instructions */}
       <div className="bg-slate-800 or bg-slate-900 p-4 rounded-lg mb-6">
-        <h3 className="font-semibold mb-3">API Configuration Required</h3>
+        <h3 className="font-semibold mb-3">EPG Services Removed</h3>
         
         <div className="space-y-4">
           <div>
-            <h4 className="font-medium text-slate-200">Gracenote API Keys:</h4>
-            <div className="text-sm text-slate-300 space-y-1">
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_API_KEY</code> - Your Gracenote API key</p>
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_PARTNER_ID</code> - Your Gracenote Partner ID</p>
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">GRACENOTE_USER_ID</code> - Your Gracenote User ID (optional)</p>
-            </div>
+            <p className="text-sm text-slate-300">
+              Gracenote and Spectrum Business API services have been removed from the system.
+              You can configure an alternative EPG service when ready.
+            </p>
           </div>
-          
-          <div>
-            <h4 className="font-medium text-slate-200">Spectrum Business API Keys:</h4>
-            <div className="text-sm text-slate-300 space-y-1">
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_API_KEY</code> - Your Spectrum Business API key</p>
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_ACCOUNT_ID</code> - Your Spectrum Business Account ID</p>
-              <p><code className="bg-slate-800 or bg-slate-900 px-2 py-1 rounded">SPECTRUM_BUSINESS_REGION</code> - Your region (default: midwest)</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-          <p className="text-sm text-blue-800">
-            <strong>Note:</strong> Add these environment variables to your <code>.env</code> file and restart the application. 
-            The system will use fallback data when APIs are not configured.
-          </p>
         </div>
       </div>
 
@@ -468,8 +403,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                       required
                     >
                       <option value="">Select provider</option>
-                      <option value="gracenote">Gracenote API</option>
-                      <option value="spectrum-business">Spectrum Business</option>
+                      <option value="custom-epg">Custom EPG Service</option>
                     </select>
                   </div>
                 </div>
@@ -486,11 +420,6 @@ const TVGuideConfigurationPanel: React.FC = () => {
                     className="w-full border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required={!editingKey}
                   />
-                  {formData.provider === 'gracenote' && (
-                    <p className="text-sm text-slate-400 mt-1">
-                      For Gracenote, this should be your API Key. You may need separate entries for Partner ID if required.
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -562,7 +491,7 @@ const TVGuideConfigurationPanel: React.FC = () => {
                             {key.isActive ? 'Active' : 'Inactive'}
                           </span>
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {key.provider === 'gracenote' ? 'Gracenote' : 'Spectrum Business'}
+                            {key.provider === 'custom-epg' ? 'Custom EPG' : key.provider}
                           </span>
                         </div>
                         {key.description && (
@@ -609,26 +538,10 @@ const TVGuideConfigurationPanel: React.FC = () => {
             <h5 className="text-sm font-medium text-blue-800 mb-2">
               How to get TV Guide API keys:
             </h5>
-            <ul className="text-sm text-blue-700 space-y-2">
-              <li>
-                <strong>Gracenote API:</strong>
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li>• Visit <a href="https://developer.gracenote.com" target="_blank" rel="noopener noreferrer" className="underline">developer.gracenote.com</a></li>
-                  <li>• Create a developer account and register your application</li>
-                  <li>• Obtain your API Key, Partner ID, and User ID (if required)</li>
-                  <li>• You may need separate entries for API Key and Partner ID</li>
-                </ul>
-              </li>
-              <li>
-                <strong>Spectrum Business API:</strong>
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li>• Contact your Spectrum Business representative</li>
-                  <li>• Request API access for your business account</li>
-                  <li>• Obtain API Key, Account ID, and region settings</li>
-                  <li>• May require separate entries for different credentials</li>
-                </ul>
-              </li>
-            </ul>
+            <p className="text-sm text-blue-700">
+              Gracenote and Spectrum Business API services have been removed. 
+              Configure your custom EPG service when ready.
+            </p>
           </div>
         </>
       )}

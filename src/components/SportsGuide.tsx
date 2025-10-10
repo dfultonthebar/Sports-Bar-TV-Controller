@@ -107,13 +107,6 @@ const AVAILABLE_LEAGUES: League[] = [
 
 const DEFAULT_PROVIDERS: Provider[] = [
   {
-    id: 'spectrum-business',
-    name: 'Spectrum Business & Sports Package',
-    type: 'cable',
-    channels: ['ESPN', 'ESPN2', 'Fox Sports', 'NBC Sports', 'CBS Sports', 'FS1', 'FS2', 'NFL Network', 'NBA TV', 'MLB Network'],
-    packages: ['Business TV Select', 'Sports Package']
-  },
-  {
     id: 'directv-nfl',
     name: 'DirecTV with NFL Sunday Ticket',
     type: 'satellite', 
@@ -140,18 +133,18 @@ const DEFAULT_CHANNELS: ChannelInfo[] = [
   { 
     id: 'espn', 
     name: 'ESPN', 
-    platforms: ['DirecTV', 'Spectrum', 'Hulu Live', 'YouTube TV'], 
+    platforms: ['DirecTV', 'Hulu Live', 'YouTube TV'], 
     type: 'cable', 
     cost: 'subscription',
-    providerId: 'spectrum-business'
+    providerId: 'directv-nfl'
   },
   { 
     id: 'fox-sports', 
     name: 'Fox Sports', 
-    platforms: ['DirecTV', 'Spectrum', 'Sling TV', 'FuboTV'], 
+    platforms: ['DirecTV', 'Sling TV', 'FuboTV'], 
     type: 'cable', 
     cost: 'subscription',
-    providerId: 'spectrum-business'
+    providerId: 'directv-nfl'
   },
   { 
     id: 'nfl-network', 
@@ -362,14 +355,12 @@ export default function SportsGuide() {
 
   const getProviderForInput = (inputLabel: string): string | undefined => {
     const label = inputLabel.toLowerCase()
-    if (label.includes('cable') && !label.includes('streaming')) {
-      return 'spectrum-business'
-    } else if (label.includes('direct') || label.includes('satellite')) {
+    if (label.includes('direct') || label.includes('satellite')) {
       return 'directv-nfl'
     } else if (label.includes('streaming') || label.includes('roku') || label.includes('apple')) {
       return 'streaming-box'
     }
-    return undefined
+    return 'directv-nfl' // Default to DirecTV
   }
 
   const selectInput = (inputId: string) => {
