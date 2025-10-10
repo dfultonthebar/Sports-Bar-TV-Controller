@@ -1,6 +1,4 @@
 
-#!/usr/bin/env node
-
 /**
  * Startup Initialization Script
  * This script is called by PM2 after the application starts
