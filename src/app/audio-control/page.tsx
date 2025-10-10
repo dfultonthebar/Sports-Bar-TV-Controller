@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ArrowLeft, Music, Speaker, Volume2, Disc, Sliders, Settings, Brain } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,6 +14,30 @@ import SoundtrackControl from '@/components/SoundtrackControl'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 
 export default function AudioControlCenterPage() {
+  const [activeProcessor, setActiveProcessor] = useState<any>(null)
+  const [loadingProcessor, setLoadingProcessor] = useState(true)
+
+  useEffect(() => {
+    fetchActiveProcessor()
+  }, [])
+
+  const fetchActiveProcessor = async () => {
+    try {
+      const response = await fetch('/api/audio-processor')
+      const data = await response.json()
+      if (data.success && data.processors && data.processors.length > 0) {
+        // Get the first active processor or just the first one
+        const processor = data.processors.find((p: any) => p.isActive) || data.processors[0]
+        setActiveProcessor(processor)
+      }
+    } catch (error) {
+      console.error('Error fetching processor:', error)
+    } finally {
+      setLoadingProcessor(false)
+    }
+  }
+
+
   const headerActions = (
     <Link href="/" className="btn-secondary">
       <span>← Back to Home</span>
@@ -105,8 +129,8 @@ export default function AudioControlCenterPage() {
                   
                   <TabsContent value="ai-monitor" className="mt-6">
                     <AtlasAIMonitor 
-                      processorId="atlas-001"
-                      processorModel="AZM8"
+                      processorId={activeProcessor?.id || "atlas-001"}
+                      processorModel={activeProcessor?.model || "AZM8"}
                       autoRefresh={true}
                       refreshInterval={30000}
                     />

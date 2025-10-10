@@ -1211,3 +1211,410 @@ The `src/app/api/atlas/download-config/route.ts` file was generating random data
 
 ---
 
+
+---
+
+## October 10, 2025 - SSH Access Configuration
+
+### SSH Server Access
+The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
+
+**SSH Connection Details:**
+- **Host**: 24.123.87.42
+- **Port**: 224
+- **Username**: ubuntu
+- **Password**: 6809233DjD$$$ (THREE dollar signs)
+- **Authentication Method**: Password only (no SSH key/token)
+
+**Connection Command:**
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+**Security Notes:**
+- SSH is configured on non-standard port 224 for additional security
+- Password authentication is enabled (no SSH key required)
+- Ensure password is kept secure and not shared publicly
+- Consider implementing SSH key authentication for enhanced security in future
+
+**Common SSH Operations:**
+```bash
+# Connect to server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Copy files to server (SCP)
+scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
+
+# Copy files from server
+scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
+
+# SSH with port forwarding (for local development)
+ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
+```
+
+**Project Location on Server:**
+- Project Path: `~/Sports-Bar-TV-Controller`
+- Application URL: http://24.123.87.42:3001
+- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+**Deployment Workflow:**
+1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
+2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
+3. Pull latest changes: `git pull origin main`
+4. Install dependencies: `npm install`
+5. Build application: `npm run build`
+6. Restart PM2: `pm2 restart sports-bar-tv-controller`
+7. Check logs: `pm2 logs sports-bar-tv-controller`
+
+---
+
+
+---
+
+## October 10, 2025 - SSH Access Configuration
+
+### SSH Server Access
+The Sports Bar TV Controller server can be accessed via SSH for maintenance, deployment, and troubleshooting.
+
+**SSH Connection Details:**
+- **Host**: 24.123.87.42
+- **Port**: 224
+- **Username**: ubuntu
+- **Password**: 6809233DjD$$$ (THREE dollar signs)
+- **Authentication Method**: Password only (no SSH key/token)
+
+**Connection Command:**
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+**Security Notes:**
+- SSH is configured on non-standard port 224 for additional security
+- Password authentication is enabled (no SSH key required)
+- Ensure password is kept secure and not shared publicly
+- Consider implementing SSH key authentication for enhanced security in future
+
+**Common SSH Operations:**
+```bash
+# Connect to server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Copy files to server (SCP)
+scp -P 224 localfile.txt ubuntu@24.123.87.42:~/destination/
+
+# Copy files from server
+scp -P 224 ubuntu@24.123.87.42:~/remote/file.txt ./local/
+
+# SSH with port forwarding (for local development)
+ssh -p 224 -L 3001:localhost:3001 ubuntu@24.123.87.42
+```
+
+**Project Location on Server:**
+- Project Path: `~/Sports-Bar-TV-Controller`
+- Application URL: http://24.123.87.42:3001
+- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+**Deployment Workflow:**
+1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
+2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
+3. Pull latest changes: `git pull origin main`
+4. Install dependencies: `npm install`
+5. Build application: `npm run build`
+6. Restart PM2: `pm2 restart sports-bar-tv-controller`
+7. Check logs: `pm2 logs sports-bar-tv-controller`
+
+---
+
+
+---
+
+## October 10, 2025 - Sports Guide API Integration and Atlas AI Monitor Fix
+
+### Sports Guide API Integration
+
+#### Overview
+Integrated The Rail Media's Sports Guide API to provide real-time sports programming information for cable box channel guides. This integration enables the system to display accurate, up-to-date sports listings with channel numbers, times, and team information.
+
+**API Provider**: The Rail Media  
+**API Endpoint**: https://guide.thedailyrail.com/api/v1  
+**User ID**: 258351  
+**Current Support**: Cable box channel guide (Direct TV and streaming services planned for future)
+
+#### Implementation Details
+
+**API Service Client** (`src/lib/sportsGuideApi.ts`):
+- `SportsGuideApi` class for API communication
+- Methods for fetching guide data, verifying API keys, and searching content
+- Support for date range queries and lineup filtering
+- Error handling and type safety with TypeScript interfaces
+
+**API Routes**:
+- `/api/sports-guide/status` - Get current API configuration status
+- `/api/sports-guide/verify-key` - Verify API key validity
+- `/api/sports-guide/update-key` - Update API key (with validation)
+- `/api/sports-guide/channels` - Fetch channel guide data with filtering options
+
+**UI Component** (`src/components/SportsGuideConfig.tsx`):
+- API status display (configured/not configured)
+- API key verification with real-time feedback
+- API key update form with validation
+- User-friendly interface for API management
+- Integrated into Sports Guide Configuration page
+
+#### API Key Management
+
+**Viewing API Status**:
+1. Navigate to Sports Guide Configuration page
+2. Click on "API" tab
+3. View current configuration status, API URL, User ID, and masked API key
+
+**Verifying API Key**:
+1. Click "Verify API Key" button
+2. System makes test request to API
+3. Displays success or error message with details
+
+**Updating API Key**:
+1. Click "Change API Key" or "Configure API Key" button
+2. Enter User ID and API Key
+3. System validates key before saving
+4. Updates .env file and current session
+5. Server restart recommended for full effect
+
+#### Security Considerations
+- API key stored in `.env` file (not committed to repository)
+- `.env` file included in `.gitignore`
+- API key masked in UI (shows only first 8 and last 4 characters)
+- Key validation performed before saving
+- Secure server-side API calls only
+
+#### API Data Structure
+
+**Listing Groups**:
+```typescript
+interface SportsGuideListingGroup {
+  group_title: string;           // e.g., "NFL", "NCAA Basketball"
+  listings: SportsGuideListing[];
+  data_descriptions: string[];   // Field names for listing data
+}
+```
+
+**Listings**:
+```typescript
+interface SportsGuideListing {
+  time: string;                  // Game time
+  stations?: string[];           // TV stations
+  channel_numbers?: {            // Channel numbers by lineup
+    [lineup: string]: {          // e.g., "SAT", "DRTV"
+      [station: string]: number[];
+    };
+  };
+  data: {                        // Game information
+    [key: string]: string;       // e.g., "visiting team", "home team"
+  };
+}
+```
+
+#### Usage Examples
+
+**Fetch Today's Guide**:
+```typescript
+const api = getSportsGuideApi();
+const guide = await api.fetchTodayGuide();
+```
+
+**Fetch Date Range**:
+```typescript
+const guide = await api.fetchDateRangeGuide(7); // Next 7 days
+```
+
+**Search for Specific Team**:
+```typescript
+const results = api.searchGuide(guide, "Cowboys");
+```
+
+**Filter by Lineup**:
+```typescript
+const channels = api.getChannelsByLineup(guide, "DRTV");
+```
+
+#### Future Enhancements
+- Direct TV channel guide integration (via Amazon/Direct TV API)
+- Streaming service guide integration (via Amazon/Direct TV API)
+- Automatic guide refresh scheduling
+- Favorite team filtering
+- Game notifications and alerts
+
+#### Troubleshooting
+
+**API Key Not Working**:
+1. Verify API key is correct (check uploaded file)
+2. Use "Verify API Key" button to test connection
+3. Check server logs for detailed error messages
+4. Ensure User ID matches API key
+
+**No Channel Data**:
+1. Verify API key is configured and valid
+2. Check date range parameters
+3. Ensure lineup parameter is correct (SAT, DRTV, etc.)
+4. Check API rate limits
+
+**Configuration Not Saving**:
+1. Ensure .env file is writable
+2. Check file permissions
+3. Restart server after manual .env changes
+4. Verify no syntax errors in .env file
+
+---
+
+### Atlas AI Monitor Fix
+
+#### Issue Description
+The Atlas AI Monitor component was not properly receiving processor context, causing it to use hardcoded values instead of actual processor data from the database.
+
+**Symptoms**:
+- AI Monitor displayed data for hardcoded "atlas-001" processor
+- Could not display data for actual configured Atlas processor
+- No dynamic processor selection
+
+#### Root Cause
+The `AtlasAIMonitor` component in the Audio Control Center page was being passed hardcoded values:
+```typescript
+// Before (BROKEN):
+<AtlasAIMonitor 
+  processorId="atlas-001"
+  processorModel="AZM8"
+  autoRefresh={true}
+  refreshInterval={30000}
+/>
+```
+
+#### Solution
+Updated the Audio Control Center page to fetch active processor data dynamically:
+
+**Changes Made**:
+1. Added state management for active processor
+2. Added `useEffect` hook to fetch processor on component mount
+3. Updated component props to use dynamic processor data
+4. Added fallback to default values if no processor found
+
+**Implementation**:
+```typescript
+// After (FIXED):
+const [activeProcessor, setActiveProcessor] = useState<any>(null)
+const [loadingProcessor, setLoadingProcessor] = useState(true)
+
+useEffect(() => {
+  fetchActiveProcessor()
+}, [])
+
+const fetchActiveProcessor = async () => {
+  try {
+    const response = await fetch('/api/audio-processor')
+    const data = await response.json()
+    if (data.success && data.processors && data.processors.length > 0) {
+      const processor = data.processors.find((p: any) => p.isActive) || data.processors[0]
+      setActiveProcessor(processor)
+    }
+  } catch (error) {
+    console.error('Error fetching processor:', error)
+  } finally {
+    setLoadingProcessor(false)
+  }
+}
+
+<AtlasAIMonitor 
+  processorId={activeProcessor?.id || "atlas-001"}
+  processorModel={activeProcessor?.model || "AZM8"}
+  autoRefresh={true}
+  refreshInterval={30000}
+/>
+```
+
+**Files Modified**:
+- `src/app/audio-control/page.tsx`
+
+#### Verification
+1. Navigate to Audio Control Center
+2. Click on "Atlas System" tab
+3. Click on "AI Monitor" sub-tab
+4. Verify AI Monitor displays data for actual configured processor
+5. Check that processor ID and model match database configuration
+
+#### Benefits
+- AI Monitor now works with actual processor configuration
+- Supports multiple processors (uses first active processor)
+- Graceful fallback to default values if no processor configured
+- Better error handling and user experience
+
+---
+
+## Issue Tracking System
+
+### Overview
+Implemented comprehensive issue tracking system to log all development work, fixes, and planned features. The system uses a markdown file (`ISSUE_TRACKER.md`) in the repository for easy tracking and version control.
+
+### File Location
+`ISSUE_TRACKER.md` in project root directory
+
+### Structure
+
+**Active Issues**:
+- Issues currently being worked on
+- Includes status, priority, description, and requirements
+
+**Fixed Issues**:
+- Completed fixes with timestamps
+- Includes issue description, root cause, solution, and verification
+- Format: `[FIXED - Date, Time] Issue Title`
+
+**Planned Features**:
+- Future enhancements organized by priority (High, Medium, Low)
+- Includes description, requirements, and dependencies
+
+**Known Limitations**:
+- System constraints and limitations
+- Hardware dependencies
+- API limitations
+- Database constraints
+
+### Usage
+
+**Adding New Issue**:
+1. Open `ISSUE_TRACKER.md`
+2. Add entry to "Active Issues" section
+3. Include: Status, Priority, Started date/time, Description, Impact, Requirements
+4. Commit changes to repository
+
+**Marking Issue as Fixed**:
+1. Move entry from "Active Issues" to "Fixed Issues"
+2. Add `[FIXED - Date, Time]` prefix
+3. Document: Root Cause, Solution, Files Modified, Verification steps
+4. Commit changes to repository
+
+**Viewing Issue History**:
+- All issues tracked in git history
+- Use `git log ISSUE_TRACKER.md` to see changes
+- Use `git blame ISSUE_TRACKER.md` to see who made changes
+
+### Priority Levels
+- **Critical**: System down or major functionality broken
+- **High**: Important feature not working, significant user impact
+- **Medium**: Minor feature issue, workaround available
+- **Low**: Cosmetic issue, enhancement request
+
+### Maintenance Schedule
+- **Daily**: Review active issues during development
+- **Weekly**: Update issue tracker with new issues and fixes
+- **Monthly**: Archive old fixed issues, review planned features
+
+### Integration with GitHub
+- Issue tracker file committed to repository
+- Changes tracked in git history
+- Can reference issues in commit messages
+- Alternative to GitHub Issues for lightweight tracking
+
+---
+
+*Last Updated: October 10, 2025, 6:00 AM*
+*Version: 1.1*
+

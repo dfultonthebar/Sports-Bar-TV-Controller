@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import SportsBarHeader from '@/components/SportsBarHeader'
 import SportsBarLayout from '@/components/SportsBarLayout'
+import SportsGuideConfig from '@/components/SportsGuideConfig'
 import { 
   Settings, 
   ArrowLeft, 
@@ -19,7 +20,8 @@ import {
   Smartphone,
   Monitor,
   Check,
-  X
+  X,
+  Key
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -287,7 +289,11 @@ export default function SportsGuideConfigPage() {
         </div>
 
         <Tabs defaultValue="location" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
+            <TabsTrigger value="api" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Key className="w-4 h-4 mr-2" />
+              API
+            </TabsTrigger>
             <TabsTrigger value="location" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <MapPin className="w-4 h-4 mr-2" />
               Location
@@ -305,6 +311,10 @@ export default function SportsGuideConfigPage() {
               Leagues
             </TabsTrigger>
           </TabsList>
+n          {/* API Configuration Tab */}
+          <TabsContent value="api" className="space-y-6">
+            <SportsGuideConfig />
+          </TabsContent>
 
           {/* Location Tab */}
           <TabsContent value="location" className="space-y-6">
