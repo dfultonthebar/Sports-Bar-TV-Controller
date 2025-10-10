@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { syncTodosToGitHub } from '@/lib/gitSync'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +68,11 @@ export async function PUT(
       }
     })
 
+    // Sync to GitHub in background
+    syncTodosToGitHub(`chore: Update TODO - ${todo.title}`).catch(err => {
+      console.error('GitHub sync failed:', err)
+    })
+
     return NextResponse.json({
       success: true,
       data: todo
@@ -86,9 +92,22 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Get TODO title before deleting
+    const todo = await prisma.todo.findUnique({
+      where: { id: params.id },
+      select: { title: true }
+    })
+
     await prisma.todo.delete({
       where: { id: params.id }
     })
+
+    // Sync to GitHub in background
+    if (todo) {
+      syncTodosToGitHub(`chore: Delete TODO - ${todo.title}`).catch(err => {
+        console.error('GitHub sync failed:', err)
+      })
+    }
 
     return NextResponse.json({
       success: true,

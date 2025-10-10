@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { syncTodosToGitHub } from '@/lib/gitSync'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +68,11 @@ export async function POST(request: NextRequest) {
       include: {
         documents: true
       }
+    })
+
+    // Sync to GitHub in background (don't wait for it)
+    syncTodosToGitHub(`chore: Add TODO - ${title}`).catch(err => {
+      console.error('GitHub sync failed:', err)
     })
 
     return NextResponse.json({
