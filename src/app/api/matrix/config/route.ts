@@ -8,10 +8,38 @@ export async function GET() {
       where: { isActive: true },
       include: {
         inputs: {
-          orderBy: { channelNumber: 'asc' }
+          orderBy: { channelNumber: 'asc' },
+          select: {
+            id: true,
+            configId: true,
+            channelNumber: true,
+            label: true,
+            inputType: true,
+            deviceType: true,
+            isActive: true,
+            status: true,
+            powerOn: true,
+            isCecPort: true,
+            createdAt: true,
+            updatedAt: true
+          }
         },
         outputs: {
-          orderBy: { channelNumber: 'asc' }
+          orderBy: { channelNumber: 'asc' },
+          select: {
+            id: true,
+            configId: true,
+            channelNumber: true,
+            label: true,
+            resolution: true,
+            isActive: true,
+            status: true,
+            audioOutput: true,
+            powerOn: true,
+            createdAt: true,
+            updatedAt: true
+            // Exclude selectedVideoInput and videoInputLabel - they don't exist in database
+          }
         }
       }
     })
