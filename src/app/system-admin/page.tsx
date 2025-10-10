@@ -18,13 +18,17 @@ import {
   RefreshCw,
   Filter,
   XCircle,
-  Power
+  Power,
+  ListTodo
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LogAnalyticsDashboard from '@/components/LogAnalyticsDashboard'
 import GitHubConfigSync from '@/components/GitHubConfigSync'
 import SystemControlPanel from '@/components/SystemControlPanel'
+import TodoList from '@/components/TodoList'
+import TodoForm from '@/components/TodoForm'
+import TodoDetails from '@/components/TodoDetails'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
@@ -89,6 +93,11 @@ export default function SystemAdminPage() {
   const [filterTestType, setFilterTestType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+
+  // TODO state
+  const [todoView, setTodoView] = useState<'list' | 'form' | 'details'>('list')
+  const [selectedTodo, setSelectedTodo] = useState<any>(null)
+  const [todoRefreshTrigger, setTodoRefreshTrigger] = useState(0)
 
   useEffect(() => {
     loadBackups()
@@ -380,7 +389,7 @@ export default function SystemAdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="power" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-6 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
@@ -400,6 +409,10 @@ export default function SystemAdminPage() {
             <TabsTrigger value="tests" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Activity className="w-4 h-4 mr-2" />
               Tests
+            </TabsTrigger>
+            <TabsTrigger value="todos" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <ListTodo className="w-4 h-4 mr-2" />
+              TODOs
             </TabsTrigger>
           </TabsList>
 
@@ -959,6 +972,71 @@ export default function SystemAdminPage() {
                 <div className="mt-4 text-sm text-slate-400 text-center">
                   Showing {filteredLogs.length} of {logs.length} logs
                 </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* TODOs Tab */}
+          <TabsContent value="todos" className="space-y-6">
+            <div className="space-y-6">
+              {todoView === 'list' && (
+                <TodoList
+                  onSelectTodo={(todo) => {
+                    setSelectedTodo(todo)
+                    setTodoView('details')
+                  }}
+                  onNewTodo={() => {
+                    setSelectedTodo(null)
+                    setTodoView('form')
+                  }}
+                  refreshTrigger={todoRefreshTrigger}
+                />
+              )}
+
+              {todoView === 'form' && (
+                <div className="card p-6">
+                  <TodoForm
+                    todo={selectedTodo}
+                    onSave={() => {
+                      setTodoView('list')
+                      setSelectedTodo(null)
+                      setTodoRefreshTrigger(prev => prev + 1)
+                    }}
+                    onCancel={() => {
+                      setTodoView('list')
+                      setSelectedTodo(null)
+                    }}
+                  />
+                </div>
+              )}
+
+              {todoView === 'details' && selectedTodo && (
+                <TodoDetails
+                  todo={selectedTodo}
+                  onEdit={() => setTodoView('form')}
+                  onDelete={async () => {
+                    if (confirm('Are you sure you want to delete this TODO?')) {
+                      try {
+                        const response = await fetch(`/api/todos/${selectedTodo.id}`, {
+                          method: 'DELETE'
+                        })
+                        const result = await response.json()
+                        if (result.success) {
+                          setTodoView('list')
+                          setSelectedTodo(null)
+                          setTodoRefreshTrigger(prev => prev + 1)
+                        }
+                      } catch (error) {
+                        console.error('Error deleting todo:', error)
+                        alert('Failed to delete TODO')
+                      }
+                    }
+                  }}
+                  onClose={() => {
+                    setTodoView('list')
+                    setSelectedTodo(null)
+                  }}
+                />
               )}
             </div>
           </TabsContent>
