@@ -155,10 +155,22 @@ export default function BartenderRemotePage() {
     loadIRDevices()
     loadDirecTVDevices()
     loadFireTVDevices()
-    checkConnectionStatus()
     loadTVLayout()
     // Also fetch matrix data on initial load
     fetchMatrixData()
+    
+    // Establish persistent connection on component mount
+    establishPersistentConnection()
+    
+    // Poll connection status every 10 seconds
+    const statusInterval = setInterval(() => {
+      checkConnectionStatus()
+    }, 10000)
+    
+    // Cleanup on unmount
+    return () => {
+      clearInterval(statusInterval)
+    }
   }, [])
 
   useEffect(() => {
@@ -300,15 +312,38 @@ export default function BartenderRemotePage() {
 
   const checkConnectionStatus = async () => {
     try {
-      const response = await fetch('/api/matrix/test-connection')
+      // Use the connection manager to get real-time status
+      const response = await fetch('/api/matrix/connection-manager')
       const result = await response.json()
-      if (result.success) {
+      if (result.success && result.connected) {
         setConnectionStatus('connected')
       } else {
         setConnectionStatus('disconnected')
       }
     } catch (error) {
       setConnectionStatus('disconnected')
+    }
+  }
+
+  const establishPersistentConnection = async () => {
+    try {
+      console.log('Establishing persistent Wolf Pack connection...')
+      const response = await fetch('/api/matrix/connection-manager', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'connect' })
+      })
+      const result = await response.json()
+      if (result.success && result.connected) {
+        setConnectionStatus('connected')
+        console.log('✓ Wolf Pack connection established')
+      } else {
+        setConnectionStatus('disconnected')
+        console.log('✗ Failed to establish Wolf Pack connection:', result.error)
+      }
+    } catch (error) {
+      setConnectionStatus('disconnected')
+      console.error('Error establishing connection:', error)
     }
   }
 
