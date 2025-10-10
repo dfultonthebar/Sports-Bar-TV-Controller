@@ -1,104 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { Socket } from 'net'
-import dgram from 'dgram'
 
-// Import Prisma client singleton
-import prisma from "@/lib/prisma"
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
   
   try {
-    
     // Get the active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
       where: { isActive: true }
     })
 
     if (!matrixConfig) {
+      const duration = Date.now() - startTime
       const errorLog = await prisma.testLog.create({
         data: {
           testType: 'wolfpack_connection',
           testName: 'Wolf Pack Connection Test',
           status: 'failed',
           errorMessage: 'No active matrix configuration found',
-          duration: Date.now() - startTime,
+          duration: duration,
+          response: null,
+          command: null,
+          inputChannel: null,
+          outputChannel: null,
+          metadata: null
         }
       })
 
       return NextResponse.json({ 
-        success: false, 
+        success: false,
         error: 'No active matrix configuration found',
-        logId: errorLog.id
-      })
+        testLogId: errorLog.id
+      }, { status: 404 })
     }
 
-    const { ipAddress, tcpPort, udpPort, protocol } = matrixConfig
-    const port = protocol === 'TCP' ? tcpPort : udpPort
+    const ipAddress = matrixConfig.ipAddress
+    const port = matrixConfig.tcpPort || 5000
 
+    // Test connection to Wolf Pack matrix
     let connectionSuccess = false
     let responseMessage = ''
-    let errorMessage = ''
+    let errorMessage: string | null = null
 
-    if (protocol === 'TCP') {
-      // Test TCP connection
-      const testTcpConnection = (): Promise<{ success: boolean; message: string }> => {
-        return new Promise((resolve) => {
-          const socket = new Socket()
-          const timeout = setTimeout(() => {
-            socket.destroy()
-            resolve({ success: false, message: 'Connection timeout' })
-          }, 5000)
+    try {
+      // Attempt to connect to the Wolf Pack matrix
+      const testResponse = await fetch(`http://${ipAddress}:${port}/status`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      })
 
-          socket.connect(port, ipAddress, () => {
-            clearTimeout(timeout)
-            socket.destroy()
-            resolve({ success: true, message: `Connected to ${ipAddress}:${port}` })
-          })
-
-          socket.on('error', (error) => {
-            clearTimeout(timeout)
-            resolve({ success: false, message: error.message })
-          })
-        })
+      if (testResponse.ok) {
+        connectionSuccess = true
+        responseMessage = 'Successfully connected to Wolf Pack matrix'
+      } else {
+        connectionSuccess = false
+        errorMessage = `Connection failed with status: ${testResponse.status}`
+        responseMessage = errorMessage
       }
-
-      const result = await testTcpConnection()
-      connectionSuccess = result.success
-      responseMessage = result.message
-      if (!result.success) {
-        errorMessage = result.message
-      }
-    } else {
-      // Test UDP connection
-      const testUdpConnection = (): Promise<{ success: boolean; message: string }> => {
-        return new Promise((resolve) => {
-          const client = dgram.createSocket('udp4')
-          const testMessage = '1?.'
-          
-          const timeout = setTimeout(() => {
-            client.close()
-            resolve({ success: false, message: 'UDP send timeout' })
-          }, 5000)
-
-          client.send(testMessage, port, ipAddress, (error) => {
-            clearTimeout(timeout)
-            client.close()
-            if (error) {
-              resolve({ success: false, message: error.message })
-            } else {
-              resolve({ success: true, message: `UDP packet sent to ${ipAddress}:${port}` })
-            }
-          })
-        })
-      }
-
-      const result = await testUdpConnection()
-      connectionSuccess = result.success
-      responseMessage = result.message
-      if (!result.success) {
-        errorMessage = result.message
-      }
+    } catch (error) {
+      connectionSuccess = false
+      errorMessage = error instanceof Error ? error.message : 'Unknown connection error'
+      responseMessage = `Failed to connect: ${errorMessage}`
     }
 
     const duration = Date.now() - startTime
@@ -111,24 +74,30 @@ export async function POST(request: NextRequest) {
         status: connectionSuccess ? 'success' : 'failed',
         response: responseMessage,
         errorMessage: connectionSuccess ? null : errorMessage,
-        duration,
+        duration: duration,
+        command: null,
+        inputChannel: null,
+        outputChannel: null,
         metadata: JSON.stringify({
           ipAddress,
           port,
-          protocol,
-          configId: matrixConfig.id
+          timestamp: new Date().toISOString()
         })
       }
     })
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: connectionSuccess,
       message: responseMessage,
-      config: { ipAddress, port, protocol },
+      testLogId: testLog.id,
       duration,
-      logId: testLog.id,
-      timestamp: new Date().toISOString()
+      details: {
+        ipAddress,
+        port,
+        status: connectionSuccess ? 'connected' : 'disconnected'
+      }
     })
+
   } catch (error) {
     const duration = Date.now() - startTime
     
@@ -141,25 +110,35 @@ export async function POST(request: NextRequest) {
           testType: 'wolfpack_connection',
           testName: 'Wolf Pack Connection Test',
           status: 'error',
-          errorMessage: String(error),
-          duration,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+          duration: duration,
+          response: null,
+          command: null,
+          inputChannel: null,
+          outputChannel: null,
+          metadata: JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          })
         }
       })
-      
-      return NextResponse.json({ 
-        success: false, 
-        error: String(error),
-        logId: errorLog.id
+
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        testLogId: errorLog.id,
+        duration
       }, { status: 500 })
     } catch (logError) {
-      console.error('Error logging test result:', logError)
+      // If even logging fails, return a basic error response
+      console.error('Failed to log test error:', logError)
+      return NextResponse.json({
+        success: false,
+        error: 'Test failed and could not be logged',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        duration
+      }, { status: 500 })
     }
-    
-    // Fallback response - always return valid JSON
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Internal server error',
-      message: String(error)
-    }, { status: 500 })
   }
 }

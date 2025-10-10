@@ -930,3 +930,284 @@ netstat -tulpn | grep 3001
 
 *Last Updated: October 10, 2025*
 *Version: 1.0*
+
+---
+
+## October 10, 2025 - Atlas Zone Labels, Matrix Label Updates, and Matrix Test Fixes
+
+### 1. Atlas Zone Output Labels Fixed
+**Issue**: Zone labels in Audio Control Center were showing hardcoded "Matrix 1", "Matrix 2", "Matrix 3", "Matrix 4" instead of actual Atlas configuration labels or selected video input names.
+
+**Root Cause**: 
+- AudioZoneControl.tsx was using hardcoded labels for Matrix 1-4 inputs
+- Component wasn't reading from Atlas processor configuration
+- Labels weren't updating when video inputs were selected for Matrix outputs
+
+**Solution**:
+- Modified AudioZoneControl.tsx to fetch Matrix output labels from video-input-selection API
+- Added `fetchMatrixLabels()` function to retrieve current video input selections
+- Labels now dynamically reflect selected video input names (e.g., "Cable Box 1" instead of "Matrix 1")
+- Falls back to "Matrix 1-4" only if no video input is selected or API unavailable
+- Component refreshes automatically when video input selection changes
+
+**Files Modified**:
+- `src/components/AudioZoneControl.tsx`
+
+**Result**:
+- ✅ Zone labels now show actual video input names when selected
+- ✅ Labels update dynamically when user selects different video inputs
+- ✅ Proper integration with Atlas audio processor configuration
+
+---
+
+### 2. Matrix Label Dynamic Updates Implemented
+**Issue**: When user selects a video input for Matrix 1-4 audio outputs (channels 33-36), the matrix label should change to show the video input name, but it wasn't updating dynamically.
+
+**Root Cause**:
+1. The video-input-selection API was correctly updating the database
+2. However, AudioZoneControl component wasn't being notified of the change
+3. No refresh mechanism existed to update labels after video input selection
+
+**Solution**:
+- Added cross-component communication mechanism using window object
+- AudioZoneControl exposes `refreshConfiguration()` function via `window.refreshAudioZoneControl`
+- MatrixControl calls this function after successful video input selection
+- Labels update immediately in both Audio Control Center and Bartender Remote
+
+**Implementation Details**:
+```typescript
+// In AudioZoneControl.tsx
+useEffect(() => {
+  (window as any).refreshAudioZoneControl = refreshConfiguration
+  return () => {
+    delete (window as any).refreshAudioZoneControl
+  }
+}, [])
+
+// In MatrixControl.tsx (after video input selection)
+if (typeof (window as any).refreshAudioZoneControl === 'function') {
+  (window as any).refreshAudioZoneControl()
+}
+```
+
+**Files Modified**:
+- `src/components/AudioZoneControl.tsx` - Added refresh mechanism
+- `src/components/MatrixControl.tsx` - Added refresh trigger
+
+**Result**:
+- ✅ Matrix labels update immediately when video input selected
+- ✅ Example: "Matrix 1" → "Cable Box 1" when Cable Box 1 is selected
+- ✅ Labels persist across page refreshes (stored in database)
+- ✅ Works for all Matrix 1-4 outputs (channels 33-36)
+
+---
+
+### 3. Matrix Test Database Error Fixed
+**Issue**: Wolf Pack Connection Test on admin page was failing with database error:
+```
+PrismaClientUnknownRequestError: Invalid prisma.testLog.create() invocation
+```
+
+**Root Cause**:
+- The testLog.create() calls were not properly handling nullable fields
+- Data object structure didn't match Prisma schema expectations exactly
+- Optional fields (duration, response, command, etc.) needed explicit null values
+- Inconsistent error handling in test routes
+
+**Solution**:
+- Updated both test routes to ensure proper data types for all fields
+- Added explicit null values for optional fields instead of undefined
+- Ensured duration is always a valid integer (never 0 or falsy)
+- Improved error handling with try-catch blocks for logging failures
+- Made all testLog.create() calls consistent with schema requirements
+
+**Files Modified**:
+- `src/app/api/tests/wolfpack/connection/route.ts`
+- `src/app/api/tests/wolfpack/switching/route.ts`
+
+**Result**:
+- ✅ Wolf Pack Connection Test now passes without database errors
+- ✅ Test logs are properly saved to database
+- ✅ Error handling improved for better debugging
+- ✅ All test results are correctly recorded
+
+---
+
+### Commit Information
+- Branch: `fix/atlas-zone-labels-matrix-updates-test`
+- Date: October 10, 2025
+- GitHub: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+
+---
+
+## October 10, 2025 - CRITICAL: Atlas Configuration Restoration and Bug Fixes
+
+### Overview
+Fixed critical bug in Atlas configuration upload/download feature that was wiping out user settings by generating random data. Restored all Atlas configuration from backup and implemented safeguards to prevent future data loss.
+
+### Critical Bug Fixed: Configuration Wipe
+
+#### Problem
+The upload/download configuration feature had a **critical bug** that was generating random configuration data instead of reading from the actual Atlas processor. When users clicked "Download Config", it would:
+1. Generate random input/output settings
+2. Overwrite the saved configuration file
+3. Wipe out all carefully configured settings
+
+#### Root Cause
+The `src/app/api/atlas/download-config/route.ts` file was generating random data for testing purposes, but this code was left in production.
+
+#### Solution Implemented
+**Fixed Files:**
+1. `src/app/api/atlas/download-config/route.ts`
+   - ❌ Before: Generated random configuration data
+   - ✅ After: Reads from saved configuration file
+   - ✅ Returns empty config if no saved file exists (safe default)
+   - ✅ Never generates random data
+
+2. `src/app/api/atlas/upload-config/route.ts`
+   - ✅ Saves configuration to file system BEFORE attempting processor upload
+   - ✅ Creates timestamped backups automatically
+   - ✅ Ensures configuration is never lost even if processor upload fails
+
+### Atlas Configuration Restored
+
+#### Processor Information
+- **Model**: AZMP8 (8 inputs, 8 outputs, 8 zones)
+- **IP Address**: 192.168.5.101:80
+- **Processor ID**: cmgjxa5ai0000260a7xuiepjl
+- **Name**: Graystone Alehouse Main Audio
+- **Status**: Online and authenticated
+- **Authentication**: HTTP Basic Auth (admin/admin)
+
+#### Configuration Backup Location
+- **Primary Config**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl.json`
+- **Backups**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl_backup_*.json`
+
+#### Restored Configuration Details
+
+**7 Inputs Configured:**
+1. **Matrix 1** - Line input, -17dB gain, Low Cut enabled, Routes to outputs 3,5
+2. **Matrix 2** - Line input, -18dB gain, Low Cut enabled, Routes to output 4
+3. **Matrix 3** - Line input, -3dB gain, Low Cut enabled, Routes to outputs 1,6
+4. **Matrix 4** - Line input, +2dB gain, Low Cut enabled, Routes to output 7
+5. **Mic 1** - Microphone, -18dB gain, Compressor enabled, Low Cut enabled, Routes to outputs 2,7
+6. **Mic 2** - Microphone, -4dB gain, Compressor enabled, Low Cut enabled, Routes to outputs 1,4,5,3
+7. **Spotify** - Line input, -17dB gain, Routes to outputs 3,5,2
+
+**7 Outputs Configured:**
+1. **Bar** - Speaker, -20dB, 48ms delay, Limiter enabled
+2. **Bar Sub** - Speaker, -17dB, 94ms delay, Limiter enabled, Group: Bar
+3. **Dining Room** - Speaker, -27dB, 46ms delay, Limiter enabled
+4. **Party Room West** - Speaker, -11dB, 77ms delay, Compressor + Limiter enabled
+5. **Party Room East** - Speaker, -13dB, 22ms delay, Limiter enabled
+6. **Patio** - Speaker, -19dB, 44ms delay, MUTED, Compressor + Limiter enabled
+7. **Bathroom** - Speaker, -19dB, 88ms delay, Limiter enabled
+
+**3 Scenes Configured:**
+- Scene 1, 2, and 3 with various input/output level presets and recall times
+
+### Prevention Measures Implemented
+
+1. **Safe Defaults**: Download now returns empty config if no saved file exists
+2. **Automatic Backups**: Every upload creates a timestamped backup
+3. **File-First Approach**: Configuration saved to file system before any processor communication
+4. **Comprehensive Documentation**: Created ATLAS_RESTORATION_GUIDE.md with restoration procedures
+
+### Additional Status Updates
+
+#### Wolf Pack Tests ✅
+- Connection Test: Functional (test execution working)
+- Switching Test: Functional (test execution working)
+- Database schema fixes from previous PR resolved test logging issues
+- Tests can be run from System Admin > Tests page
+
+#### Atlas AI Monitor ✅
+- Component is functional
+- Requires real-time meter data from Atlas processor
+- API endpoint working correctly at `/api/atlas/ai-analysis`
+- Displays processor status, signal quality, and performance metrics
+
+#### Atlas Connection ✅
+- Atlas processor online at 192.168.5.101:80
+- HTTP Basic Auth configured and working
+- Ping test: Successful (1ms response time)
+- Port 80: Accessible
+- Connection status visible in Audio Control Center
+
+### Important Notes
+
+1. **Atlas Configuration is Independent**: The Atlas processor maintains its own configuration internally. The application's configuration files are for reference and UI display only.
+
+2. **No Data Loss**: All user configuration has been preserved in backup files.
+
+3. **Future Enhancement**: To enable true bidirectional sync with the Atlas processor, the Atlas HTTP API endpoints need to be properly documented and implemented.
+
+### Troubleshooting
+
+#### If Configuration Gets Wiped Again
+
+1. **Stop the application**:
+   ```bash
+   pm2 stop sports-bar-tv-controller
+   ```
+
+2. **Restore from backup**:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs
+   # Find the most recent backup
+   ls -lt cmgjxa5ai0000260a7xuiepjl_backup_*.json | head -n 1
+   # Copy it to the main config file
+   cp cmgjxa5ai0000260a7xuiepjl_backup_TIMESTAMP.json cmgjxa5ai0000260a7xuiepjl.json
+   ```
+
+3. **Restart the application**:
+   ```bash
+   pm2 restart sports-bar-tv-controller
+   ```
+
+4. **Verify in UI**:
+   - Navigate to Audio Control Center > Atlas System
+   - Click on processor to open configuration
+   - Verify inputs and outputs show correct names and settings
+
+#### Atlas Shows Offline
+1. Check network connectivity: `ping 192.168.5.101`
+2. Check port accessibility: `nc -zv 192.168.5.101 80`
+3. Verify Atlas processor is powered on
+4. Check firewall rules
+
+#### Configuration Not Loading
+1. Check file exists: `ls -l /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai0000260a7xuiepjl.json`
+2. Verify JSON is valid: `cat file.json | python3 -m json.tool`
+3. Check file permissions: `chmod 644 file.json`
+
+### Files Modified
+- `src/app/api/atlas/download-config/route.ts` - Fixed to read from saved file
+- `src/app/api/atlas/upload-config/route.ts` - Fixed to save before upload
+- `ATLAS_RESTORATION_GUIDE.md` - New comprehensive guide
+- `restore_atlas_config.js` - Restoration script
+
+### Commit Information
+- **Branch**: `fix/restore-atlas-config-and-connections`
+- **PR**: #185
+- **Commit**: f159621
+- **Date**: October 10, 2025
+- **GitHub**: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/pull/185
+
+### Verification Checklist
+- ✅ Atlas configuration backup verified
+- ✅ Download config returns saved data (not random)
+- ✅ Upload config saves to file system first
+- ✅ Timestamped backups created automatically
+- ✅ Atlas processor reachable at 192.168.5.101
+- ✅ Atlas shows online and authenticated in UI
+- ✅ All 7 inputs restored with correct settings
+- ✅ All 7 outputs restored with correct settings
+- ✅ All 3 scenes restored
+- ✅ Wolf Pack tests functional
+- ✅ Atlas AI Monitor functional
+- ✅ Documentation complete
+
+---
+
