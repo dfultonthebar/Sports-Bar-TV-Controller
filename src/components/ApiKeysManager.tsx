@@ -19,8 +19,6 @@ const PROVIDERS = [
   { value: 'openai', label: 'OpenAI', description: 'OpenAI GPT models' },
   { value: 'localai', label: 'LocalAI', description: 'Local AI server running on localhost:8080' },
   { value: 'custom-local', label: 'Custom Local AI', description: 'Local AI service running on localhost:8000' },
-  { value: 'gracenote', label: 'Gracenote API', description: 'Professional TV guide data with comprehensive sports metadata' },
-  { value: 'spectrum-business', label: 'Spectrum Business', description: 'Account-specific channel lineup and programming data' },
 ]
 
 export default function ApiKeysManager() {
@@ -345,8 +343,6 @@ export default function ApiKeysManager() {
           <li>• <strong>OpenAI:</strong> Visit <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com/api-keys</a></li>
           <li>• <strong>LocalAI:</strong> Run LocalAI server on port 8080 - No API key required for local usage</li>
           <li>• <strong>Custom Local AI:</strong> Configure your local AI service to run on port 8000 - No API key required</li>
-          <li>• <strong>Gracenote API:</strong> Visit <a href="https://developer.gracenote.com" target="_blank" rel="noopener noreferrer" className="underline">developer.gracenote.com</a> to get your API key and Partner ID</li>
-          <li>• <strong>Spectrum Business:</strong> Contact your Spectrum Business representative to request API access credentials</li>
         </ul>
         
         <div className="mt-3 pt-3 border-t border-blue-200">

@@ -441,32 +441,35 @@ export default function MatrixControl() {
                 {currentConfig.outputs.map((output, index) => {
                   const isMatrixOutput = output.channelNumber >= 33 && output.channelNumber <= 36
                   const matrixNumber = output.channelNumber - 32
+                  const isSimpleOutput = output.channelNumber >= 1 && output.channelNumber <= 4
                   
                   return (
                     <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
                       <div className="flex items-center justify-between mb-3">
                         <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
-                            className={`p-1.5 rounded transition-colors ${
-                              output.powerOn 
-                                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
-                            }`}
-                            title={output.powerOn ? 'Power On' : 'Power Off'}
-                          >
-                            {output.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-                          </button>
-                          <label className="flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={output.isActive}
-                              onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
-                              className="w-4 h-4 cursor-pointer"
-                            />
-                          </label>
-                        </div>
+                        {!isSimpleOutput && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
+                              className={`p-1.5 rounded transition-colors ${
+                                output.powerOn 
+                                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                  : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                              }`}
+                              title={output.powerOn ? 'Power On' : 'Power Off'}
+                            >
+                              {output.powerOn ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+                            </button>
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={output.isActive}
+                                onChange={(e) => updateOutput(index, 'isActive', e.target.checked)}
+                                className="w-4 h-4 cursor-pointer"
+                              />
+                            </label>
+                          </div>
+                        )}
                       </div>
                       <input
                         type="text"
@@ -480,11 +483,21 @@ export default function MatrixControl() {
                           value={output.resolution}
                           onChange={(e) => updateOutput(index, 'resolution', e.target.value)}
                           className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          disabled={isSimpleOutput}
                         >
                           <option value="1080p">1080p</option>
                           <option value="4K">4K</option>
                           <option value="720p">720p</option>
                         </select>
+                        
+                        {/* Simple outputs (1-4) show only label and resolution */}
+                        {isSimpleOutput && (
+                          <div className="mt-2 p-2 bg-blue-900/20 rounded border border-blue-500/30">
+                            <p className="text-xs text-blue-400">
+                              Matrix output - Label and resolution only
+                            </p>
+                          </div>
+                        )}
                         
                         {/* Video Input Selection for Matrix Outputs (33-36) */}
                         {isMatrixOutput && (
@@ -508,7 +521,8 @@ export default function MatrixControl() {
                           </div>
                         )}
                         
-                        {index < 4 && (
+                        {/* Audio output field for non-simple, non-matrix outputs */}
+                        {!isSimpleOutput && !isMatrixOutput && index < 4 && (
                           <input
                             type="text"
                             value={output.audioOutput || ''}

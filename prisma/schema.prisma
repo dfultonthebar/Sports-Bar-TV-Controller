@@ -136,6 +136,8 @@ model MatrixOutput {
   powerOn             Boolean             @default(false)
   selectedVideoInput  Int?                // Selected video input for this matrix output (for audio routing)
   videoInputLabel     String?             // Label of the selected video input
+  dailyTurnOn         Boolean             @default(false) // Turn on this TV in morning schedule
+  dailyTurnOff        Boolean             @default(false) // Turn off this TV with "all off" command
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   
