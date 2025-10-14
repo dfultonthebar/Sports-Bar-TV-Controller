@@ -2175,3 +2175,96 @@ For detailed testing results, see:
 *Testing Status: COMPLETE - CRITICAL ERRORS FOUND*
 *Next Action: Implement fixes and re-test*
 
+
+---
+
+## October 14, 2025 - API Error Fixes
+
+### Overview
+Fixed two critical 500 errors in API endpoints related to type mismatches in Prisma database queries.
+
+### Errors Fixed
+
+#### 1. `/api/atlas/route-matrix-to-zone` - Type Mismatch Error
+**Issue**: Prisma query was receiving string values for `matrixOutputNumber` field which expects `Int` type.
+
+**Location**: `src/app/api/atlas/route-matrix-to-zone/route.ts`
+
+**Changes**:
+- Line 45: Added `parseInt(matrixInputNumber)` in `findUnique()` where clause
+- Line 88: Added `parseInt(matrixInputNumber)` in `update()` where clause
+
+**Before**:
+```typescript
+const matrixRouting = await prisma.wolfpackMatrixRouting.findUnique({
+  where: { matrixOutputNumber: matrixInputNumber }
+})
+```
+
+**After**:
+```typescript
+const matrixRouting = await prisma.wolfpackMatrixRouting.findUnique({
+  where: { matrixOutputNumber: parseInt(matrixInputNumber) }
+})
+```
+
+#### 2. `/api/matrix/video-input-selection` - Field Type Errors
+**Issue**: Multiple Prisma operations were receiving string values for integer fields (`videoInputNumber`, `matrixOutputNumber`).
+
+**Location**: `src/app/api/matrix/video-input-selection/route.ts`
+
+**Changes**:
+- Line 91: Added `parseInt(videoInputNumber)` for `selectedVideoInput` field in `update()`
+- Line 99: Added `parseInt(matrixOutputNumber)` in `upsert()` where clause
+- Line 101: Added `parseInt(videoInputNumber)` for `wolfpackInputNumber` in update data
+- Line 108: Added `parseInt(matrixOutputNumber)` for `matrixOutputNumber` in create data
+- Line 109: Added `parseInt(videoInputNumber)` for `wolfpackInputNumber` in create data
+- Line 120: Added `parseInt(matrixOutputNumber)` for `matrixOutputNumber` in `create()`
+- Line 121: Added `parseInt(videoInputNumber)` for `wolfpackInputNumber` in `create()`
+
+**Before**:
+```typescript
+await prisma.matrixOutput.update({
+  where: { id: matrixOutput.id },
+  data: {
+    selectedVideoInput: videoInputNumber,
+    // ...
+  }
+})
+```
+
+**After**:
+```typescript
+await prisma.matrixOutput.update({
+  where: { id: matrixOutput.id },
+  data: {
+    selectedVideoInput: parseInt(videoInputNumber),
+    // ...
+  }
+})
+```
+
+### Root Cause
+The issue occurred because values from JSON request bodies can be either strings or numbers depending on how they're serialized. Prisma's strict type checking requires exact type matches with the schema definition where these fields are defined as `Int`.
+
+### Testing
+- Fixed files are in branch: `fix/500-errors`
+- Backups created in: `backups/` directory
+- Ready for deployment and testing
+
+### Deployment Steps
+1. Pull latest changes from GitHub
+2. Restart the application
+3. Test both endpoints:
+   - POST `/api/atlas/route-matrix-to-zone`
+   - POST `/api/matrix/video-input-selection`
+
+### Git Information
+- Branch: `fix/500-errors`
+- Commit: `6d281f7` - "Fix: Resolve type mismatch errors in two API endpoints"
+- GitHub: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+---
+
+*Last Updated: October 14, 2025, 3:55 AM*
+*Status: FIXES COMPLETE - READY FOR DEPLOYMENT*
