@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     await prisma.matrixOutput.update({
       where: { id: matrixOutput.id },
       data: {
-        selectedVideoInput: videoInputNumber,
+        selectedVideoInput: parseInt(videoInputNumber),
         videoInputLabel: videoInput.label,
         label: videoInput.label // Update label to match video input
       }
@@ -96,17 +96,17 @@ export async function POST(request: NextRequest) {
 
     // Step 3: Update the Wolfpack-Matrix routing state
     await prisma.wolfpackMatrixRouting.upsert({
-      where: { matrixOutputNumber },
+      where: { matrixOutputNumber: parseInt(matrixOutputNumber) },
       update: {
-        wolfpackInputNumber: videoInputNumber,
+        wolfpackInputNumber: parseInt(videoInputNumber),
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
         lastRouted: new Date(),
         updatedAt: new Date()
       },
       create: {
-        matrixOutputNumber,
-        wolfpackInputNumber: videoInputNumber,
+        matrixOutputNumber: parseInt(matrixOutputNumber),
+        wolfpackInputNumber: parseInt(videoInputNumber),
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
         isActive: true,
@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
     // Step 4: Log the routing state
     await prisma.wolfpackMatrixState.create({
       data: {
-        matrixOutputNumber,
-        wolfpackInputNumber: videoInputNumber,
+        matrixOutputNumber: parseInt(matrixOutputNumber),
+        wolfpackInputNumber: parseInt(videoInputNumber),
         wolfpackInputLabel: videoInput.label,
         channelInfo: JSON.stringify({
           deviceType: videoInput.deviceType,

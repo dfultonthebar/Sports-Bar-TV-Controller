@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     // Get the current video input selection for this matrix output
     const matrixRouting = await prisma.wolfpackMatrixRouting.findUnique({
-      where: { matrixOutputNumber: matrixInputNumber }
+      where: { matrixOutputNumber: parseInt(matrixInputNumber) }
     })
 
     const videoInputLabel = matrixRouting?.wolfpackInputLabel || `Matrix ${matrixInputNumber}`
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     // For now, log the routing action
     await prisma.wolfpackMatrixRouting.update({
-      where: { matrixOutputNumber: matrixInputNumber },
+      where: { matrixOutputNumber: parseInt(matrixInputNumber) },
       data: {
         atlasInputLabel: `Matrix ${matrixInputNumber}`,
         updatedAt: new Date()
