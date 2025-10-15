@@ -131,22 +131,31 @@ async function scanDirectory(dirPath: string, baseDir: string): Promise<FileInfo
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  console.log('='.repeat(80));
+  console.log('[AI INDEXING] Starting codebase indexing operation');
+  console.log('[AI INDEXING] Timestamp:', new Date().toISOString());
+  
   try {
     const projectRoot = process.cwd();
     
-    console.log('Starting codebase indexing...');
-    console.log('Project root:', projectRoot);
+    console.log('[AI INDEXING] Project root:', projectRoot);
+    console.log('[AI INDEXING] Included extensions:', INCLUDED_EXTENSIONS.join(', '));
+    console.log('[AI INDEXING] Excluded directories:', EXCLUDED_DIRS.join(', '));
     
     // Scan the project directory
+    console.log('[AI INDEXING] Beginning directory scan...');
     const files = await scanDirectory(projectRoot, projectRoot);
     
-    console.log(`Found ${files.length} files to index`);
+    console.log(`[AI INDEXING] ✓ Directory scan complete - Found ${files.length} files to index`);
     
     let indexed = 0;
     let updated = 0;
     let skipped = 0;
     
     // Process each file
+    console.log('[AI INDEXING] Processing files in database...');
+    let processedCount = 0;
     for (const file of files) {
       try {
         // Check if file already exists in database
@@ -169,6 +178,9 @@ export async function POST(request: NextRequest) {
               }
             });
             updated++;
+            if (updated % 10 === 0) {
+              console.log(`[AI INDEXING] Progress: Updated ${updated} files so far...`);
+            }
           } else {
             skipped++;
           }
@@ -195,13 +207,19 @@ export async function POST(request: NextRequest) {
             }
           });
           indexed++;
+          if (indexed % 10 === 0) {
+            console.log(`[AI INDEXING] Progress: Indexed ${indexed} new files so far...`);
+          }
         }
+        processedCount++;
       } catch (error) {
-        console.error(`Error indexing file ${file.path}:`, error);
+        console.error(`[AI INDEXING] ✗ Error indexing file ${file.path}:`, error);
       }
     }
+    console.log(`[AI INDEXING] ✓ File processing complete - ${processedCount}/${files.length} files processed`);
     
     // Mark files that no longer exist as inactive
+    console.log('[AI INDEXING] Checking for deleted files...');
     const allIndexedFiles = await prisma.indexedFile.findMany({
       where: { isActive: true }
     });
@@ -219,7 +237,11 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log('Indexing complete:', { indexed, updated, skipped, deactivated });
+    const duration = Date.now() - startTime;
+    console.log('[AI INDEXING] ✓ Indexing complete!');
+    console.log('[AI INDEXING] Stats:', { indexed, updated, skipped, deactivated });
+    console.log('[AI INDEXING] Duration:', `${(duration / 1000).toFixed(2)}s`);
+    console.log('='.repeat(80));
     
     return NextResponse.json({
       success: true,
@@ -228,12 +250,20 @@ export async function POST(request: NextRequest) {
         indexed,
         updated,
         skipped,
-        deactivated
+        deactivated,
+        duration
       }
     });
     
   } catch (error) {
-    console.error('Error indexing codebase:', error);
+    const duration = Date.now() - startTime;
+    console.error('[AI INDEXING] ✗ FATAL ERROR during indexing:', error);
+    console.error('[AI INDEXING] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('[AI INDEXING] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[AI INDEXING] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('[AI INDEXING] Duration before error:', `${(duration / 1000).toFixed(2)}s`);
+    console.log('='.repeat(80));
+    
     return NextResponse.json(
       { 
         success: false,
@@ -247,6 +277,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  console.log('[AI INDEXING] GET request - Fetching index stats');
   try {
     const stats = await prisma.indexedFile.aggregate({
       where: { isActive: true },
@@ -268,6 +299,13 @@ export async function GET() {
       select: { lastIndexed: true }
     });
     
+    console.log('[AI INDEXING] Stats retrieved:', {
+      totalFiles: stats._count,
+      totalSize: `${((stats._sum.fileSize || 0) / 1024).toFixed(2)} KB`,
+      typeCount: filesByType.length,
+      lastIndexed: lastIndexed?.lastIndexed
+    });
+    
     return NextResponse.json({
       success: true,
       stats: {
@@ -282,7 +320,8 @@ export async function GET() {
     });
     
   } catch (error) {
-    console.error('Error getting index stats:', error);
+    console.error('[AI INDEXING] ✗ Error getting index stats:', error);
+    console.error('[AI INDEXING] Error details:', error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { 
         success: false,
