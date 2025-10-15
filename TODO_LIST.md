@@ -10,6 +10,32 @@ Last Updated: 10/14/2025, 10:40:42 PM
 
 ## 📋 Planned
 
+### CRITICAL: Fix Codebase Indexing 404 Error
+
+- **ID**: `cmgrg16ba000426tqx9cpysv3`
+- **Priority**: CRITICAL
+- **Status**: PLANNED
+- **Category**: Bug Fix
+- **Description**: Sync Codebase feature in AI Assistant tab returns 404 (Not Found) error. API endpoint /api/ai-assistant/index-codebase does not exist or is not properly configured.
+
+Error: GET http://24.123.87.42:3000/api/ai-assistant/index-codebase 404 (Internal Server Error)
+
+Steps to Fix:
+1. Verify API route exists in Next.js API routes directory
+2. Check route file naming (should be route.ts or index.ts in app router)
+3. Ensure proper HTTP method handling (GET/POST)
+4. Add endpoint to API route mapping if missing
+5. Implement codebase indexing logic if missing
+6. Test with actual codebase directory
+7. Verify route is not blocked by middleware
+
+Affected: AI Assistant Tab → Sync Codebase button
+User Impact: HIGH - Core feature completely non-functional
+Tested: October 15, 2025
+- **Tags**: ai-hub, api, critical, codebase-indexing
+- **Created**: 10/14/2025, 10:40:42 PM
+- **Updated**: 10/14/2025, 10:40:42 PM
+
 ### CRITICAL: Fix Q&A Entry Creation Database Error
 
 - **ID**: `cmgrg164x000326tq395lp65b`
@@ -53,8 +79,8 @@ Tested: October 15, 2025
 
 ---
 
-**Total TODOs**: 1
-- Planned: 1
+**Total TODOs**: 2
+- Planned: 2
 - In Progress: 0
 - Testing: 0
 - Complete: 0
