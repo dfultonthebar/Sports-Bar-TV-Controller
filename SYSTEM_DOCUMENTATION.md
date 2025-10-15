@@ -735,13 +735,112 @@ Management interface for streaming service accounts and configurations.
 ## 7. DirecTV Integration
 
 ### Overview
-Integration with DirecTV receivers for sports bar TV control. The system allows adding, managing, and monitoring DirecTV receivers, retrieving subscription data, and routing them through the matrix switcher.
+Integration with DirecTV receivers for sports bar TV control using the SHEF (Set-top Box HTTP Exported Functionality) protocol. The system allows adding, managing, and monitoring DirecTV receivers, retrieving device status and channel information, and routing them through the matrix switcher.
+
+### SHEF Protocol Information
+
+**SHEF (Set-top Box HTTP Exported Functionality)**
+- **Protocol Version:** 1.12 (current H24/100 receiver)
+- **Documentation Version:** 1.3.C (October 2011)
+- **Port:** 8080 (default HTTP API port)
+- **Protocol:** HTTP REST API
+- **Response Format:** JSON
+
+**Protocol Capabilities:**
+- ✅ Device information (version, serial number, mode)
+- ✅ Current channel and program information
+- ✅ Remote control simulation (channel change, key presses)
+- ✅ Program guide data for specific channels
+- ✅ Device location information (multi-room setups)
+
+**Protocol Limitations:**
+- ❌ NO subscription/package information
+- ❌ NO account details or billing data
+- ❌ NO entitled channels list
+- ❌ NO premium package status
+
+**Why Subscription Data is Unavailable:**
+The SHEF API is designed for device control, not account management. Subscription data lives in DirecTV's cloud systems and would require integration with DirecTV's official business API, which is separate from the receiver's local HTTP API.
 
 ### Current Status
-**Last Tested:** October 15, 2025, 6:10 PM  
-**Overall Status:** ⚠️ **PARTIALLY FUNCTIONAL**  
-**Working Features:** Receiver management, configuration  
-**Known Issues:** Subscription polling requires physical DirecTV hardware
+**Last Updated:** October 15, 2025, 7:08 PM  
+**Overall Status:** ✅ **FULLY FUNCTIONAL**  
+**Working Features:** 
+- ✅ Receiver management and configuration
+- ✅ Device connectivity testing  
+- ✅ Real-time device status monitoring
+- ✅ Current channel and program information
+- ✅ Device information display (receiver ID, access card, software version)
+- ✅ Matrix switcher integration
+
+**Fix Applied (October 15, 2025):**
+- Fixed subscription polling to correctly handle SHEF API limitations
+- Removed incorrect logic that tried to parse API commands as subscription data
+- Now displays real device information instead of attempting to fetch unavailable subscription data
+- Shows receiver ID, access card ID, current channel, and program information
+
+### SHEF API Endpoints
+
+The DirecTV SHEF protocol provides the following HTTP endpoints on port 8080:
+
+#### Device Information Endpoints
+
+**GET `/info/getVersion`**
+- Returns device version, receiver ID, access card ID, software version, and SHEF API version
+- Example: `http://192.168.5.121:8080/info/getVersion`
+- Response includes: `receiverId`, `accessCardId`, `stbSoftwareVersion`, `version`, `systemTime`
+
+**GET `/info/getSerialNum`**
+- Returns device serial number
+- Example: `http://192.168.5.121:8080/info/getSerialNum`
+
+**GET `/info/mode`**
+- Returns device operational mode (0 = active, other values = standby/off)
+- Example: `http://192.168.5.121:8080/info/mode`
+
+**GET `/info/getLocations`**
+- Lists available client locations for multi-room setups
+- Example: `http://192.168.5.121:8080/info/getLocations`
+
+**GET `/info/getOptions`**
+- Returns list of available API commands (NOT subscription data)
+- This endpoint was previously misunderstood to provide subscription information
+- Actually returns a list of API endpoints with their descriptions and parameters
+- Example: `http://192.168.5.121:8080/info/getOptions`
+
+#### TV Control Endpoints
+
+**GET `/tv/getTuned`**
+- Returns currently tuned channel and program information
+- Example: `http://192.168.5.121:8080/tv/getTuned`
+- Response includes: `major`, `minor`, `callsign`, `title`, `programId`, `rating`, etc.
+
+**GET `/tv/getProgInfo?major=<channel>&time=<timestamp>`**
+- Returns program information for a specific channel at a given time
+- Parameters: `major` (required), `minor` (optional), `time` (optional)
+- Example: `http://192.168.5.121:8080/tv/getProgInfo?major=202`
+
+**GET `/tv/tune?major=<channel>&minor=<subchannel>`**
+- Tunes to a specific channel
+- Parameters: `major` (required), `minor` (optional)
+- Example: `http://192.168.5.121:8080/tv/tune?major=202`
+
+#### Remote Control Endpoints
+
+**GET `/remote/processKey?key=<keyname>`**
+- Simulates pressing a remote control button
+- Parameters: `key` (required) - button name (e.g., "power", "menu", "chanup", "chandown")
+- Example: `http://192.168.5.121:8080/remote/processKey?key=power`
+- Available keys: power, poweron, poweroff, format, pause, rew, replay, stop, advance, ffwd, record, play, guide, active, list, exit, back, menu, info, up, down, left, right, select, red, green, yellow, blue, chanup, chandown, prev, 0-9, dash, enter
+
+**GET `/serial/processCommand?cmd=<hex_command>`**
+- Sends a raw serial command to the receiver (advanced users only)
+- Parameters: `cmd` (required) - hexadecimal command string
+
+#### Deprecated Endpoints (Do Not Use)
+
+**GET `/dvr/getPlaylist`** - Deprecated in SHEF v1.3.C
+**GET `/dvr/play`** - Deprecated in SHEF v1.3.C
 
 ### Features
 
