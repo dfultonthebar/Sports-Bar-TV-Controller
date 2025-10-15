@@ -6,6 +6,7 @@ import {
   deleteQAEntry,
   getQAStatistics,
 } from '@/lib/services/qa-generator';
+import { prisma } from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -113,9 +114,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-
     try {
       const entry = await prisma.qAEntry.create({
         data: {
@@ -128,10 +126,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      await prisma.$disconnect();
       return NextResponse.json(entry);
     } catch (dbError) {
-      await prisma.$disconnect();
       console.error('Database error creating Q&A entry:', dbError);
       await logSystemError(dbError, `POST /api/ai/qa-entries - Database error`);
       return NextResponse.json(

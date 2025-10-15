@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
-const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -99,7 +98,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   } finally {
-    await prisma.$disconnect();
   }
 }
 
