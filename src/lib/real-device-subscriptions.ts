@@ -116,136 +116,104 @@ export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscri
       message: `Device version query successful (${versionDuration}ms)`
     })
 
-    // Step 2: Get subscribed packages via DirecTV API
+    // Step 2: Get device information and current channel
+    // NOTE: DirecTV SHEF API does NOT provide subscription/package information
+    // The API only provides device control and status information
     await direcTVLogger.log({
-      level: LogLevel.DEBUG,
-      operation: DirecTVOperation.PACKAGE_QUERY,
+      level: LogLevel.INFO,
+      operation: DirecTVOperation.DEVICE_INFO_QUERY,
       deviceId,
       deviceName,
       ipAddress,
       port,
-      message: 'Attempting to query subscription packages'
+      message: 'Querying device information and current channel'
     })
 
-    const packagesUrl = `http://${ipAddress}:${port}/info/getOptions`
-    const { result: packagesResponse, duration: packagesDuration } = await withTiming(async () => {
-      return await fetch(packagesUrl, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000)
+    const versionData = await versionResponse.json()
+    
+    // Get currently tuned channel
+    let currentChannel = 'Unknown'
+    let currentProgram = 'Unknown'
+    try {
+      const tunedUrl = `http://${ipAddress}:${port}/tv/getTuned`
+      const { result: tunedResponse, duration: tunedDuration } = await withTiming(async () => {
+        return await fetch(tunedUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(5000)
+        })
       })
-    })
 
-    await direcTVLogger.logApiRequest(
-      DirecTVOperation.PACKAGE_QUERY,
+      if (tunedResponse.ok) {
+        const tunedData = await tunedResponse.json()
+        currentChannel = `${tunedData.major}${tunedData.minor !== 65535 ? `-${tunedData.minor}` : ''}`
+        currentProgram = tunedData.title || 'Unknown'
+        
+        await direcTVLogger.log({
+          level: LogLevel.DEBUG,
+          operation: DirecTVOperation.DEVICE_INFO_QUERY,
+          deviceId,
+          deviceName,
+          ipAddress,
+          port,
+          message: `Currently tuned to channel ${currentChannel}: ${currentProgram}`,
+          details: {
+            channel: currentChannel,
+            program: currentProgram,
+            callsign: tunedData.callsign,
+            duration: tunedDuration
+          }
+        })
+      }
+    } catch (tunedError) {
+      await direcTVLogger.log({
+        level: LogLevel.WARNING,
+        operation: DirecTVOperation.DEVICE_INFO_QUERY,
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        message: 'Could not retrieve current channel information',
+        error: tunedError instanceof Error ? {
+          name: tunedError.name,
+          message: tunedError.message
+        } : undefined
+      })
+    }
+
+    // Create a single "Device Connected" status entry with device information
+    // NOTE: Actual subscription data is NOT available via the DirecTV receiver's HTTP API
+    // This would require integration with DirecTV's cloud services or business API
+    await direcTVLogger.log({
+      level: LogLevel.INFO,
+      operation: DirecTVOperation.DEVICE_INFO_QUERY,
+      deviceId,
       deviceName,
       ipAddress,
       port,
-      packagesUrl,
-      'GET',
-      packagesResponse.ok,
-      packagesResponse.status,
-      undefined, // Don't log full response body yet
-      packagesDuration
-    )
-
-    if (packagesResponse.ok) {
-      const packagesData = await packagesResponse.json()
-      
-      await direcTVLogger.log({
-        level: LogLevel.DEBUG,
-        operation: DirecTVOperation.PACKAGE_QUERY,
-        deviceId,
-        deviceName,
-        ipAddress,
-        port,
-        message: `Package data retrieved successfully (${packagesDuration}ms)`,
-        details: {
-          hasOptions: !!packagesData.options,
-          optionsCount: packagesData.options?.length || 0,
-          packageDataStructure: Object.keys(packagesData)
+      message: 'Device successfully connected. Note: Subscription data not available via local API',
+      details: {
+        limitation: 'DirecTV SHEF API does not expose subscription/package information',
+        availableInfo: {
+          receiverId: versionData.receiverId,
+          accessCardId: versionData.accessCardId,
+          softwareVersion: versionData.stbSoftwareVersion,
+          apiVersion: versionData.version,
+          currentChannel,
+          currentProgram
         }
-      })
-      
-      // Parse package information
-      if (packagesData.options && Array.isArray(packagesData.options)) {
-        await direcTVLogger.log({
-          level: LogLevel.INFO,
-          operation: DirecTVOperation.PACKAGE_QUERY,
-          deviceId,
-          deviceName,
-          ipAddress,
-          port,
-          message: `Found ${packagesData.options.length} package options`,
-          details: {
-            packages: packagesData.options.map((opt: any) => ({
-              id: opt.id,
-              title: opt.title,
-              subscribed: opt.subscribed
-            }))
-          }
-        })
-
-        for (const option of packagesData.options) {
-          subscriptions.push({
-            id: `directv-${option.id}`,
-            name: option.title || 'Unknown Package',
-            type: determinePackageType(option.title),
-            status: option.subscribed ? 'active' : 'inactive',
-            provider: 'DIRECTV',
-            packageName: option.title,
-            description: option.description || 'DIRECTV subscription package'
-          })
-        }
-      } else {
-        await direcTVLogger.log({
-          level: LogLevel.WARNING,
-          operation: DirecTVOperation.PACKAGE_QUERY,
-          deviceId,
-          deviceName,
-          ipAddress,
-          port,
-          message: 'Package data does not contain expected options array',
-          details: { packagesData }
-        })
       }
-    } else {
-      await direcTVLogger.log({
-        level: LogLevel.WARNING,
-        operation: DirecTVOperation.PACKAGE_QUERY,
-        deviceId,
-        deviceName,
-        ipAddress,
-        port,
-        message: `Package query returned HTTP ${packagesResponse.status}`,
-        response: {
-          status: packagesResponse.status,
-          statusText: packagesResponse.statusText
-        }
-      })
-    }
+    })
 
-    // If no subscriptions found, device is connected but may not support package query
-    if (subscriptions.length === 0) {
-      await direcTVLogger.log({
-        level: LogLevel.INFO,
-        operation: DirecTVOperation.PACKAGE_QUERY,
-        deviceId,
-        deviceName,
-        ipAddress,
-        port,
-        message: 'No subscriptions found via API, adding default connected status'
-      })
-
-      subscriptions.push({
-        id: 'directv-connected',
-        name: 'DIRECTV Service',
-        type: 'premium',
-        status: 'active',
-        provider: 'DIRECTV',
-        description: 'DirecTV receiver connected and operational'
-      })
-    }
+    subscriptions.push({
+      id: 'directv-connected',
+      name: 'DirecTV Receiver Connected',
+      type: 'premium',
+      status: 'active',
+      provider: 'DIRECTV',
+      description: `Receiver ID: ${versionData.receiverId || 'Unknown'} | Card: ${versionData.accessCardId || 'Unknown'} | Channel: ${currentChannel} | ${currentProgram}`,
+      packageName: `Software v${versionData.stbSoftwareVersion || 'Unknown'} | API v${versionData.version || 'Unknown'}`
+    })
 
     // Log successful completion
     await direcTVLogger.logSubscriptionPoll(
