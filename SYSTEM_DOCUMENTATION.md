@@ -1,78 +1,147 @@
 # Sports Bar TV Controller - System Documentation
 
-## Table of Contents
-1. [System Overview](#system-overview)
-2. [Architecture](#architecture)
-3. [Recent Changes and Fixes](#recent-changes-and-fixes)
-4. [Database Schema](#database-schema)
-5. [API Endpoints](#api-endpoints)
-6. [Configuration Management](#configuration-management)
-7. [Troubleshooting](#troubleshooting)
-8. [Deployment Guide](#deployment-guide)
-9. [Maintenance and Backup](#maintenance-and-backup)
-10. [Security Considerations](#security-considerations)
-11. [Support and Resources](#support-and-resources)
+**Version:** 2.1  
+**Last Updated:** October 15, 2025  
+**Status:** Production Ready
+
+---
+
+## Quick Access Information
+
+### Server Access
+- **Host:** 24.123.87.42
+- **Port:** 224 (SSH)
+- **Application Port:** **3000** (HTTP)
+- **Username:** ubuntu
+- **Password:** 6809233DjD$$$ (THREE dollar signs)
+- **Application URL:** http://24.123.87.42:3000
+
+**SSH Connection:**
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+### GitHub Repository
+- **Repository:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+- **Project Path:** `/home/ubuntu/github_repos/Sports-Bar-TV-Controller`
+- **GitHub Token:** Stored securely in server environment (not documented for security)
+
+### Quick Deployment
+```bash
+# SSH into server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Navigate to project
+cd ~/github_repos/Sports-Bar-TV-Controller
+
+# Pull latest changes
+git pull origin main
+
+# Install dependencies and build
+npm install
+npm run build
+
+# Restart application
+pm2 restart sports-bar-tv-controller
+
+# Check logs
+pm2 logs sports-bar-tv-controller
+```
+
+---
+
+## Database & Prisma Setup
+
+### Database Configuration
+- **Type:** PostgreSQL
+- **Connection:** Configured in `.env` file
+- **ORM:** Prisma
+
+### Prisma Commands
+```bash
+# Generate Prisma Client
+npx prisma generate
+
+# Run migrations
+npx prisma migrate dev
+
+# Deploy migrations (production)
+npx prisma migrate deploy
+
+# Open Prisma Studio (database browser)
+npx prisma studio
+
+# Check migration status
+npx prisma migrate status
+```
+
+### Database Schema Location
+- **Schema File:** `prisma/schema.prisma`
+- **Migrations:** `prisma/migrations/`
+
+### Key Database Models
+- `MatrixOutput` - TV display outputs
+- `MatrixInput` - Video sources
+- `WolfpackConfig` - Matrix switcher configuration
+- `AudioProcessor` - Atlas audio configuration
+- `IndexedFile` - AI Hub codebase files
+- `QAPair` - AI Hub Q&A training data
+- `TrainingDocument` - AI Hub training documents
+- `ApiKey` - AI provider API keys
+- `TODO` - Task management
 
 ---
 
 ## System Overview
 
-The Sports Bar TV Controller is a comprehensive web application designed to manage TV displays, matrix video routing, and sports content scheduling for sports bar environments. The system integrates with Wolfpack matrix switchers and provides automated scheduling capabilities.
-
-### Key Features
-- **Matrix Video Routing**: Control Wolfpack HDMI matrix switchers
-- **TV Schedule Management**: Automated daily on/off scheduling with selective TV control
-- **Sports Content Guide**: Display and manage sports programming
-- **Multi-Zone Audio**: Control audio routing for different zones (Atlas AZMP8 processor)
-- **AI-Powered Features**: Codebase analysis, device insights, and intelligent troubleshooting
-- **Web-Based Interface**: Responsive UI accessible from any device
+The Sports Bar TV Controller is a comprehensive web application designed to manage TV displays, matrix video routing, and sports content scheduling for sports bar environments.
 
 ### Technology Stack
-- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: PostgreSQL
-- **Hardware Integration**: 
+- **Frontend:** Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend:** Next.js API Routes, Prisma ORM
+- **Database:** PostgreSQL
+- **Hardware Integration:** 
   - Wolfpack HDMI Matrix Switchers (via HTTP API)
   - Atlas AZMP8 Audio Processor (via HTTP API)
-- **Process Management**: PM2
-- **AI Integration**: Multiple AI providers (Ollama, Abacus AI, OpenAI, LocalAI)
+- **Process Management:** PM2
+- **AI Integration:** Multiple AI providers (Ollama, Abacus AI, OpenAI, Anthropic, X.AI)
 
 ---
 
-## Architecture
+# Application Features by Tab
 
-### Application Structure
-```
-Sports-Bar-TV-Controller/
-├── src/
-│   ├── app/                    # Next.js app router pages
-│   │   ├── ai-hub/            # AI Hub features
-│   │   ├── audio-control/     # Audio control center
-│   │   ├── admin/             # Admin pages (TODOs, system)
-│   │   └── api/               # API routes
-│   ├── components/             # React components
-│   │   ├── MatrixControl.tsx   # Matrix output controls
-│   │   ├── SportsGuide.tsx     # Sports programming guide
-│   │   ├── AudioZoneControl.tsx # Atlas audio zones
-│   │   └── tv-guide/           # TV guide components
-│   ├── lib/                    # Utility libraries
-│   │   ├── prisma.ts           # Prisma client singleton
-│   │   ├── wolfpack.ts         # Wolfpack API client
-│   │   └── sportsGuideApi.ts   # Sports Guide API client
-│   └── pages/api/              # Legacy API routes (being migrated)
-├── prisma/
-│   └── schema.prisma           # Database schema
-├── data/
-│   └── atlas-configs/          # Atlas processor configurations
-└── public/                     # Static assets
-```
+## 1. Dashboard (Home)
 
-### Component Architecture
+### Overview
+Main landing page providing quick access to all system features and current system status.
 
-#### Matrix Control System
-The matrix control system manages video routing between sources and displays:
+### Features
+- **System Status** - "Server Online" indicator with operational status
+- **Quick Access Cards:**
+  - AI Hub - Unified AI management & assistance
+  - Sports Guide - Find where to watch sports
+  - Remote Control - Control TVs and audio systems
+  - System Admin - Logs, backups, sync & tests
 
-- **Outputs 1-4 (TV 01-04)**: Full matrix outputs with all controls
+### Navigation
+- Direct access to all major subsystems
+- System health indicators
+- Recent activity display
+
+### API Endpoints
+- N/A (frontend only)
+
+---
+
+## 2. Video Matrix / Matrix Control
+
+### Overview
+Comprehensive video routing system for managing HDMI matrix switchers and TV displays.
+
+### Features
+
+#### Output Configuration
+- **Outputs 1-4 (TV 01-04)**: Full matrix outputs with complete controls
   - Power on/off toggle button (green when on, gray when off)
   - Active/inactive checkbox
   - Label field (TV 01, TV 02, TV 03, TV 04)
@@ -80,39 +149,355 @@ The matrix control system manages video routing between sources and displays:
   - Audio output field
   - Full Wolfpack integration
 
-- **Outputs 5-32**: Regular matrix outputs (Full controls)
+- **Outputs 5-32**: Regular matrix outputs with full controls
 
 - **Outputs 33-36 (Matrix 1-4)**: Audio routing outputs with special controls
   - Used for Atlas audio processor integration
   - Video input selection affects audio routing
 
+#### Input Configuration
+- Configure 32 video sources
+- Custom labeling (e.g., "Cable Box 1", "Apple TV")
+- Enable/disable individual inputs
+
 #### TV Selection System
-Allows granular control over which TVs participate in automated schedules:
-
-- **dailyTurnOn**: Boolean flag indicating if TV should turn on during morning schedule
-- **dailyTurnOff**: Boolean flag indicating if TV responds to "all off" command
+Granular control over which TVs participate in automated schedules:
+- `dailyTurnOn` - Boolean flag for morning schedule participation
+- `dailyTurnOff` - Boolean flag for "all off" command participation
 - Configured per output in the database
-- Accessible via `/api/matrix/outputs-schedule` endpoint
 
-#### Atlas Audio System
-Multi-zone audio control with Atlas AZMP8 processor:
+### API Endpoints
 
-- **7 Inputs Configured**: Matrix 1-4, Mic 1-2, Spotify
-- **7 Outputs Configured**: Bar, Bar Sub, Dining Room, Party Room West, Party Room East, Patio, Bathroom
-- **3 Scenes**: Preset configurations for different scenarios
-- **Dynamic Labels**: Zone labels update based on selected video input
-- **Real-time Monitoring**: AI-powered signal analysis and performance metrics
+#### GET/POST `/api/matrix/outputs`
+- **GET**: Retrieve all matrix outputs
+- **POST**: Update output configuration
+- **Body**: `{ outputNumber, label, enabled, dailyTurnOn, dailyTurnOff }`
+
+#### GET `/api/matrix/outputs-schedule`
+Retrieve outputs with schedule participation flags
+
+#### POST `/api/matrix/route`
+Route a source to an output:
+```json
+{
+  "input": 5,
+  "output": 33
+}
+```
+
+#### POST `/api/matrix/power`
+Control output power:
+```json
+{
+  "output": 33,
+  "state": "on"  // or "off"
+}
+```
+
+#### POST `/api/matrix/video-input-selection`
+Route video input to Matrix 1-4 audio outputs (33-36)
+
+### Database Schema
+
+#### MatrixOutput
+```prisma
+model MatrixOutput {
+  id              Int      @id @default(autoincrement())
+  outputNumber    Int      @unique
+  label           String
+  enabled         Boolean  @default(true)
+  isActive        Boolean  @default(false)
+  currentInput    Int?
+  audioOutput     Int?
+  resolution      String?
+  dailyTurnOn     Boolean  @default(true)
+  dailyTurnOff    Boolean  @default(true)
+  isMatrixOutput  Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+#### MatrixInput
+```prisma
+model MatrixInput {
+  id          Int      @id @default(autoincrement())
+  inputNumber Int      @unique
+  label       String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+### Troubleshooting
+
+**Matrix Switching Not Working:**
+1. Test connection in System Admin
+2. Verify output/input configuration
+3. Check Wolfpack matrix is powered on
+4. Verify network connectivity
+5. Test individual commands
+
+**TV Selection Not Working:**
+1. Verify database migration status
+2. Check output configuration flags
+3. Restart application
 
 ---
 
-## Recent Changes and Fixes
+## 3. Atlas / Audio Control
 
-### October 14, 2025 - AI Hub Critical Fixes
+### Overview
+Multi-zone audio control system with Atlas AZMP8 processor integration.
 
-#### 1. Missing Database Models Added ✅
-**Issue**: AI Hub features were failing due to missing database models.
+### Features
 
-**Models Added**:
+#### Atlas AZMP8 Configuration
+- **IP Address:** 192.168.5.101:80
+- **Model:** AZMP8 (8 inputs, 8 outputs, 8 zones)
+- **Status:** Online and authenticated
+
+#### Configured Audio System
+**7 Inputs:**
+- Matrix 1-4 (video input audio)
+- Mic 1-2
+- Spotify
+
+**7 Outputs/Zones:**
+- Bar
+- Bar Sub
+- Dining Room
+- Party Room West
+- Party Room East
+- Patio
+- Bathroom
+
+**3 Scenes:** Preset configurations for different scenarios
+
+#### Dynamic Zone Labels
+- Zone labels update automatically based on selected video input
+- When video input is selected for Matrix 1-4, zone labels reflect the input name
+- Example: Selecting "Cable Box 1" updates zone label from "Matrix 1" to "Cable Box 1"
+- Falls back to "Matrix 1-4" when no video input selected
+
+#### Features
+- Real-time zone control
+- Volume adjustment per zone
+- Input selection per zone
+- Scene management
+- Configuration upload/download
+- Automatic timestamped backups
+
+### API Endpoints
+
+#### GET `/api/audio-processor`
+Get all configured audio processors
+
+#### POST `/api/atlas/upload-config`
+Upload configuration to Atlas processor
+
+#### GET `/api/atlas/download-config`
+Download current configuration from Atlas processor
+
+#### POST `/api/atlas/route-matrix-to-zone`
+Route audio from matrix output to zone
+
+#### GET `/api/atlas/ai-analysis`
+Get AI-powered analysis of audio system performance
+
+### Configuration Management
+
+**Configuration File Location:**
+- Primary: `/home/ubuntu/github_repos/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai000260a7xuiepjl.json`
+- Backups: `/home/ubuntu/github_repos/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai000260a7xuiepjl_backup_*.json`
+
+**Backup Strategy:**
+- Automatic backup created on every upload
+- Timestamped filename format
+- Manual restore by copying backup to primary config file
+
+### Database Schema
+
+```prisma
+model AudioProcessor {
+  id          String   @id @default(cuid())
+  name        String
+  model       String
+  ipAddress   String
+  port        Int      @default(80)
+  username    String?
+  password    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+### Troubleshooting
+
+**Atlas Shows Offline:**
+1. Check network connectivity: `ping 192.168.5.101`
+2. Verify configuration file exists
+3. Check processor is powered on
+4. Restore from backup if needed
+
+**Configuration Not Loading:**
+1. Validate JSON configuration file
+2. Check file permissions
+3. Restore from most recent backup
+
+---
+
+## 4. AI Hub
+
+### Overview
+Unified AI management system providing intelligent assistance, codebase analysis, device insights, and AI configuration.
+
+### Current Status
+**Testing Date:** October 15, 2025  
+**Overall Status:** ⚠️ **PARTIALLY FUNCTIONAL**  
+**Critical Issues:** 2  
+**Features Tested:** 7  
+**Working Features:** 5  
+**Broken Features:** 2
+
+### Features & Status
+
+#### ✅ AI Assistant Tab (Partially Working)
+
+**Status:** Chat interface works, Codebase sync fails
+
+**Chat Interface:**
+- ✅ **Status:** WORKING
+- ⚠️ **Performance Issue:** Response time is slow (15+ seconds)
+- **Functionality:** Successfully answers questions about the codebase
+- **Features:**
+  - Natural language queries
+  - Codebase context awareness
+  - Troubleshooting assistance
+  - Code explanations
+
+**Sync Codebase:**
+- ❌ **Status:** FAILING
+- 🔴 **Error:** `GET http://24.123.87.42:3000/api/ai-assistant/index-codebase 404 (Internal Server Error)`
+- **Impact:** Cannot index codebase for AI analysis
+- **Priority:** CRITICAL - Fix immediately
+
+#### ✅ Teach AI Tab (UI Works, Backend Fails)
+
+**Upload Documents:**
+- ✅ **UI Status:** WORKING
+- **Supported Formats:** PDF, Markdown (.md), Text (.txt)
+- **Features:**
+  - Drag and drop file upload
+  - Multiple file support
+  - File type validation
+- ⚠️ **Note:** Upload errors observed, needs further testing
+
+**Q&A Training:**
+- ❌ **Status:** FAILING
+- 🔴 **Error:** `Database error: Failed to create Q&A entry`
+- **Console Error:** `500 (Internal Server Error)` for `api/qa-entries.ts`
+- **Impact:** Users cannot add Q&A training pairs
+- **Priority:** CRITICAL - Fix immediately
+- **Features (Non-functional):**
+  - Category selection (General, Technical, Troubleshooting, etc.)
+  - Question/Answer input fields
+  - Entry management
+  - Generate from Repository
+  - Generate from Docs
+  - Upload Q&A File
+
+**Test AI:**
+- ✅ **UI Status:** WORKING
+- **Features:**
+  - Test question input
+  - AI response testing
+  - Testing tips and guidance
+- ⚠️ **Note:** Cannot fully test without training data
+
+**Statistics Display:**
+- Documents: 0
+- Q&A Pairs: 0
+- Total Content: 0 Bytes
+- Last Updated: 10/15/2025, 1:00:06 AM
+
+#### ✅ Enhanced Devices Tab (Working)
+
+**Status:** ✅ FULLY FUNCTIONAL
+
+**Features:**
+- Device AI Assistant for intelligent insights
+- Filter options:
+  - All Devices dropdown
+  - Time range filter (Last 24 Hours)
+  - Refresh button
+- **Tabs:**
+  - Smart Insights
+  - Performance
+  - Recommendations
+  - Predictions
+- **Current State:** "No AI insights available for the selected criteria"
+
+#### ✅ Configuration Tab (Working)
+
+**Status:** ✅ FULLY FUNCTIONAL
+
+**Provider Statistics:**
+- 1 Active Local Service
+- 3 Cloud APIs Ready
+- 5 Inactive Local Services
+
+**Local AI Services:**
+- ✅ **Ollama** (http://localhost:11434/api/tags, Model: phi3:mini) - **Active** (4ms)
+- ❌ Custom Local AI (http://localhost:8000/v1/models) - Error
+- ❌ LocalAI (http://localhost:8080/v1/models) - Error
+- ❌ LM Studio (http://localhost:1234/v1/models) - Error
+- ❌ Text Generation WebUI (http://localhost:5000/v1/models) - Error
+- ❌ Tabby (http://localhost:8080/v1/models) - Error
+
+**Cloud AI Services:**
+- ✅ **OpenAI** - Ready (API key configured)
+- ✅ **Anthropic Claude** - Ready (API key configured)
+- ✅ **X.AI Grok** - Ready (API key configured)
+- ⚠️ **Abacus AI** - Not Configured (No API key)
+
+**Features:**
+- AI System Diagnostics (expandable)
+- Provider status monitoring
+- Refresh status button
+- Local AI setup guide
+
+#### ✅ API Keys Tab (Working)
+
+**Status:** ✅ FULLY FUNCTIONAL
+
+**Features:**
+- API key management interface
+- Configured API Keys display (currently 0)
+- Add API Key button
+- Provider documentation links:
+  - Ollama (Local) - RECOMMENDED
+  - Abacus AI
+  - OpenAI
+  - LocalAI
+  - Custom Local AI
+- Local AI Services Status:
+  - Port 8000: Active (Custom service detected)
+  - Port 11434: Check if Ollama is running
+  - Port 8080: Check if LocalAI is running
+
+**AI Assistant Features Listed:**
+- Equipment Troubleshooting
+- System Analysis
+- Configuration Assistance
+- Sports Guide Intelligence
+- Operational Insights
+- Proactive Monitoring
+
+### Database Schema
+
 ```prisma
 model IndexedFile {
   id            String   @id @default(cuid())
@@ -166,411 +551,138 @@ model ApiKey {
 }
 ```
 
-**Migration Steps**:
-```bash
-npx prisma migrate dev --name add-ai-hub-models
-npx prisma generate
-```
+### API Endpoints
 
-#### 2. API Routes Fixed ✅
-**Issue**: Multiple API routes had incorrect implementations or missing error handling.
+#### POST `/api/ai-assistant/index-codebase`
+❌ **Status:** BROKEN (404 error)  
+Index codebase files for AI analysis
 
-**Fixed Routes**:
-- `/api/ai-assistant/index-codebase` - Now properly indexes files
-- `/api/ai-assistant/chat` - Chat interface working with indexed data
-- `/api/ai/qa-generate` - Q&A generation from repository
-- `/api/devices/ai-analysis` - Device insights and recommendations
-- `/api/api-keys` - API key management (GET, POST, PUT, DELETE)
+#### POST `/api/ai-assistant/chat`
+✅ **Status:** WORKING (slow)  
+Chat with AI about codebase
 
-#### 3. AI Hub Features Status
+#### POST `/api/ai/qa-generate`
+Generate Q&A pairs from repository
 
-**Fully Functional** ✅:
-- AI Assistant - Codebase Sync
-- AI Assistant - Chat Interface
-- Teach AI - Q&A Training
-- Teach AI - Document Upload
-- Enhanced Devices - AI Insights
-- Configuration - Provider Status
-- API Keys - Key Management
+#### POST `/api/ai/qa-entries`
+❌ **Status:** BROKEN (500 error)  
+Create Q&A training entries
 
-**Testing Results**:
-- Total Features Tested: 7
-- Critical Errors Found: 0 (after fixes)
-- Success Rate: 100%
-- Production Ready: ✅ YES
+#### GET/POST `/api/api-keys`
+✅ **Status:** WORKING  
+Manage AI provider API keys
 
-### October 10, 2025 - Atlas Configuration Restoration
+#### POST `/api/devices/ai-analysis`
+Get AI insights for devices
 
-#### Critical Bug Fixed: Configuration Wipe
-**Problem**: The upload/download configuration feature had a critical bug that was generating random configuration data instead of reading from the actual Atlas processor.
+### Critical Issues & Fix Plan
 
-**Root Cause**: The `src/app/api/atlas/download-config/route.ts` file was generating random data for testing purposes, but this code was left in production.
+#### 🔴 CRITICAL #1: Q&A Training Database Error
 
-**Solution Implemented**:
-1. **Fixed Files**:
-   - `src/app/api/atlas/download-config/route.ts` - Fixed to read from saved file
-   - `src/app/api/atlas/upload-config/route.ts` - Fixed to save before upload
+**Error:** `Database error: Failed to create Q&A entry`  
+**API:** `POST /api/ai/qa-entries` returns 500 error  
+**Impact:** Users cannot add Q&A training pairs
 
-2. **Prevention Measures**:
-   - Safe Defaults: Download now returns empty config if no saved file exists
-   - Automatic Backups: Every upload creates a timestamped backup
-   - File-First Approach: Configuration saved to file system before any processor communication
-   - Comprehensive Documentation: Created ATLAS_RESTORATION_GUIDE.md
+**Fix Steps:**
+1. Check database schema for `QAPair` table
+2. Verify Prisma migrations are up to date
+3. Review API route handler (`src/app/api/ai/qa-entries/route.ts`)
+4. Check database connection and write permissions
+5. Add proper error logging
+6. Test with various Q&A entry formats
 
-#### Atlas Configuration Restored
-- **Processor**: AZMP8 (8 inputs, 8 outputs, 8 zones)
-- **IP Address**: 192.168.5.101:80
-- **Status**: Online and authenticated
-- **7 Inputs Configured**: Matrix 1-4, Mic 1-2, Spotify
-- **7 Outputs Configured**: Bar, Bar Sub, Dining Room, Party Room West, Party Room East, Patio, Bathroom
-- **3 Scenes Configured**: Various input/output level presets
+**Priority:** Fix immediately before production use
 
-### October 10, 2025 - Atlas Zone Labels and Matrix Updates
+#### 🔴 CRITICAL #2: Codebase Indexing 404 Error
 
-#### 1. Atlas Zone Output Labels Fixed ✅
-**Issue**: Zone labels in Audio Control Center were showing hardcoded "Matrix 1", "Matrix 2", "Matrix 3", "Matrix 4" instead of actual Atlas configuration labels or selected video input names.
+**Error:** `GET http://24.123.87.42:3000/api/ai-assistant/index-codebase 404`  
+**Impact:** Cannot index codebase for AI assistance
 
-**Solution**:
-- Modified AudioZoneControl.tsx to fetch Matrix output labels from video-input-selection API
-- Added `fetchMatrixLabels()` function to retrieve current video input selections
-- Labels now dynamically reflect selected video input names (e.g., "Cable Box 1" instead of "Matrix 1")
-- Falls back to "Matrix 1-4" only if no video input is selected or API unavailable
-- Component refreshes automatically when video input selection changes
+**Fix Steps:**
+1. Verify API route exists in correct location
+2. Check route file naming (should be `route.ts` in app router)
+3. Ensure proper HTTP method handling (GET/POST)
+4. Implement codebase indexing logic if missing
+5. Test with actual project directory
+6. Add proper error responses
 
-#### 2. Matrix Label Dynamic Updates Implemented ✅
-**Issue**: When user selects a video input for Matrix 1-4 audio outputs (channels 33-36), the matrix label should change to show the video input name, but it wasn't updating dynamically.
+**Priority:** Fix immediately for full AI Hub functionality
 
-**Solution**:
-- Added cross-component communication mechanism using window object
-- AudioZoneControl exposes `refreshConfiguration()` function via `window.refreshAudioZoneControl`
-- MatrixControl calls this function after successful video input selection
-- Labels update immediately in both Audio Control Center and Bartender Remote
+#### 🟡 HIGH PRIORITY: Chat Performance
 
-**Result**:
-- ✅ Zone labels now show actual video input names when selected
-- ✅ Labels update dynamically when user selects different video inputs
-- ✅ Proper integration with Atlas audio processor configuration
+**Issue:** 15+ second response time  
+**Impact:** Poor user experience
 
-#### 3. Matrix Test Database Error Fixed ✅
-**Issue**: Wolf Pack Connection Test on admin page was failing with database error.
+**Optimization Steps:**
+1. Profile AI model response time
+2. Implement streaming responses
+3. Add response caching for common questions
+4. Consider faster AI model for simple queries
+5. Optimize context window size
+6. Add better loading indicators
 
-**Root Cause**: The testLog.create() calls were not properly handling nullable fields.
+#### 🟠 MEDIUM PRIORITY: Local AI Services
 
-**Solution**:
-- Updated both test routes to ensure proper data types for all fields
-- Added explicit null values for optional fields instead of undefined
-- Ensured duration is always a valid integer (never 0 or falsy)
-- Improved error handling with try-catch blocks for logging failures
+**Issue:** 5 local AI services showing error status
 
-**Result**:
-- ✅ Wolf Pack Connection Test now passes without database errors
-- ✅ Test logs are properly saved to database
-- ✅ Error handling improved for better debugging
+**Services to Fix:**
+- Custom Local AI (port 8000)
+- LocalAI (port 8080)
+- LM Studio (port 1234)
+- Text Generation WebUI (port 5000)
+- Tabby (port 8080 - port conflict?)
 
-### October 9, 2025 - Automated Backup System
+**Fix Steps:**
+1. Verify each service is installed
+2. Check if services are running
+3. Update service URLs in configuration
+4. Add health check with retry logic
+5. Document installation instructions
+6. Consider making local services optional
 
-#### Overview
-Implemented automated daily backup system for matrix configuration and database files.
+### Recommendations
 
-#### Backup Configuration
-**Schedule**: Daily execution at 3:00 AM (server time)
-**Backup Script Location**: `/home/ubuntu/Sports-Bar-TV-Controller/backup_script.js`
-**Backup Directory**: `/home/ubuntu/Sports-Bar-TV-Controller/backups/`
-**Retention Policy**: 14 days (backups older than 14 days are automatically deleted)
+**Immediate Actions:**
+1. Fix Q&A Training database error (CRITICAL)
+2. Fix Codebase Indexing 404 error (CRITICAL)
+3. Test document upload feature thoroughly
+4. Add proper error messages and user feedback
 
-#### What Gets Backed Up
-1. **Matrix Configuration** (JSON format)
-   - All input configurations
-   - All output configurations
-   - Matrix settings
-   - Timestamp and metadata
+**Short-term Improvements:**
+1. Optimize chat response performance
+2. Implement streaming responses
+3. Add progress indicators
+4. Configure local AI services
 
-2. **Database Files**
-   - `prisma/data/sports_bar.db` (main database)
-   - `prisma/prisma/dev.db` (development database)
+**Long-term Enhancements:**
+1. Add training data export/import
+2. Implement batch Q&A generation
+3. Add training quality metrics
+4. Enhanced device insights with more data
 
-#### Backup File Naming
-Format: `backup_YYYY-MM-DD_HH-MM-SS.json`
-Example: `backup_2025-10-09_03-00-00.json`
-
-#### Cron Job Configuration
-```bash
-# Daily backup at 3:00 AM
-0 3 * * * cd /home/ubuntu/Sports-Bar-TV-Controller && /usr/bin/node backup_script.js >> /home/ubuntu/Sports-Bar-TV-Controller/backup.log 2>&1
-```
-
-#### Manual Backup
-To create a manual backup:
-```bash
-cd ~/Sports-Bar-TV-Controller
-node backup_script.js
-```
-
-#### Restore from Backup
-To restore from a backup file:
-1. Locate the backup file in `/home/ubuntu/Sports-Bar-TV-Controller/backups/`
-2. Use the Matrix Control interface to import the configuration
-3. Or manually restore database files from backup
-
-#### Verification
-Check backup status:
-```bash
-# View recent backups
-ls -lh ~/Sports-Bar-TV-Controller/backups/
-
-# View backup log
-tail -50 ~/Sports-Bar-TV-Controller/backup.log
-
-# Verify cron job
-crontab -l | grep backup
-```
-
-#### Initial Backup
-First backup created: October 9, 2025
-Status: ✅ Verified and operational
-
-### October 9, 2025 - Outputs 1-4 Configuration Update
-
-#### Issue
-Outputs 1-4 were previously configured as "simple outputs" with limited controls:
-- Only showed label and resolution fields
-- No power on/off buttons
-- No active/inactive checkbox
-- No audio output configuration
-- Blue message displayed: "Matrix output - Label and resolution only"
-
-This configuration was inconsistent with the actual hardware setup where outputs 1-4 are full matrix outputs connected to TVs 01-04.
-
-#### Solution
-**Code Changes**:
-- Modified `src/components/MatrixControl.tsx`
-- Changed `isSimpleOutput` flag from `true` to `false` for outputs 1-4
-- Removed conditional rendering that hid power controls and checkboxes
-- Added audio output field for outputs 1-4
-
-**Result**:
-Outputs 1-4 now display full controls:
-- ✅ Power on/off toggle button (green when on, gray when off)
-- ✅ Active/inactive checkbox
-- ✅ Label field (TV 01, TV 02, TV 03, TV 04)
-- ✅ Resolution dropdown (1080p, 4K, 720p)
-- ✅ Audio output field
-
-**Output Configuration Summary**:
-- **Outputs 1-4**: TV 01-04 (Full matrix outputs with all controls)
-- **Outputs 5-32**: Regular matrix outputs (Full controls)
-- **Outputs 33-36**: Matrix 1-4 (Audio routing outputs with special controls)
-
-#### Database State
-All outputs are correctly configured in the database:
-```sql
--- Outputs 1-4 (TV 01-04)
-channelNumber: 1-4
-label: "TV 01", "TV 02", "TV 03", "TV 04"
-isActive: true
-powerOn: true
-status: "active"
-
--- Outputs 33-36 (Matrix 1-4 Audio)
-channelNumber: 33-36
-label: "Matrix 1", "Matrix 2", "Matrix 3", "Matrix 4"
-isActive: true
-powerOn: false (audio outputs don't need power control)
-status: "active"
-```
-
-#### Testing Results
-**Wolf Pack Connection Test**:
-- Status: Failed (Expected - hardware not connected)
-- Error: Database error (PrismaClientUnknownRequestError)
-- Note: This is expected behavior when hardware is not physically connected
-
-**Wolf Pack Switching Test**:
-- Status: Test initiated but logs not saved due to database schema mismatch
-- Note: Test functionality works but log storage has known issues
-
-**Bartender Remote**:
-- Status: Functional
-- Matrix Status: Disconnected (Expected - hardware not connected)
-- Input Sources: Listed correctly (Cable Box 1-4)
-- Bar Layout: 12 TVs configured
-
-#### Commit Information
-- Branch: `fix-save-config-api`
-- Commit: `8430d14` - "Fix: Configure outputs 1-4 as matrix outputs with full controls"
-- Merged to: `main` branch on October 9, 2025
-- GitHub: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+### Testing Report
+📄 **Detailed Testing Report:** `/home/ubuntu/ai_hub_testing_report.md`
 
 ---
 
-## Database Schema
+## 5. Sports Guide
 
-### Key Models
+### Overview
+Integration with The Rail Media API for sports programming information.
 
-#### MatrixOutput
-Represents a video output (TV display):
-```prisma
-model MatrixOutput {
-  id              Int      @id @default(autoincrement())
-  outputNumber    Int      @unique
-  label           String
-  enabled         Boolean  @default(true)
-  isActive        Boolean  @default(false)
-  currentInput    Int?
-  audioOutput     Int?
-  resolution      String?
-  dailyTurnOn     Boolean  @default(true)   // Morning schedule participation
-  dailyTurnOff    Boolean  @default(true)   // "All off" command participation
-  isMatrixOutput  Boolean  @default(true)   // Differentiates simple vs matrix outputs
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-```
+### Features
+- Sports channel guide
+- Programming schedules
+- Event information
+- API key management with validation
 
-#### MatrixInput
-Represents a video source:
-```prisma
-model MatrixInput {
-  id          Int      @id @default(autoincrement())
-  inputNumber Int      @unique
-  label       String
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-```
+### API Configuration
 
-#### WolfpackConfig
-Stores Wolfpack matrix switcher configuration:
-```prisma
-model WolfpackConfig {
-  id         Int      @id @default(autoincrement())
-  ipAddress  String   @unique
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-```
+**Provider:** The Rail Media  
+**API Endpoint:** https://guide.thedailyrail.com/api/v1  
+**Current User ID:** 258351
 
-#### AudioProcessor
-Stores Atlas audio processor configuration:
-```prisma
-model AudioProcessor {
-  id          String   @id @default(cuid())
-  name        String
-  model       String
-  ipAddress   String
-  port        Int      @default(80)
-  username    String?
-  password    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-```
-
-#### TODO
-Task management system:
-```prisma
-model TODO {
-  id          String   @id @default(cuid())
-  title       String
-  description String?  @db.Text
-  status      String   @default("PLANNED")
-  priority    String   @default("MEDIUM")
-  category    String?
-  dueDate     DateTime?
-  completedAt DateTime?
-  documents   String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-```
-
----
-
-## API Endpoints
-
-### Matrix Control
-
-#### GET/POST `/api/matrix/outputs`
-- **GET**: Retrieve all matrix outputs
-- **POST**: Update output configuration
-- **Body**: `{ outputNumber, label, enabled, dailyTurnOn, dailyTurnOff }`
-
-#### GET `/api/matrix/outputs-schedule`
-Retrieve outputs with schedule participation flags:
-```json
-{
-  "outputs": [
-    {
-      "outputNumber": 33,
-      "label": "Main Bar TV",
-      "dailyTurnOn": true,
-      "dailyTurnOff": true
-    }
-  ]
-}
-```
-
-#### POST `/api/matrix/route`
-Route a source to an output:
-```json
-{
-  "input": 5,
-  "output": 33
-}
-```
-
-#### POST `/api/matrix/power`
-Control output power:
-```json
-{
-  "output": 33,
-  "state": "on"  // or "off"
-}
-```
-
-### Wolfpack Integration
-
-#### POST `/api/wolfpack/test-connection`
-Test connectivity to Wolfpack matrix:
-```json
-{
-  "ipAddress": "192.168.1.100"
-}
-```
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Successfully connected to Wolfpack matrix"
-}
-```
-
-#### POST `/api/wolfpack/test-switching`
-Test matrix switching functionality:
-```json
-{
-  "ipAddress": "192.168.1.100"
-}
-```
-
-### Atlas Audio Integration
-
-#### GET `/api/audio-processor`
-Get all configured audio processors
-
-#### POST `/api/atlas/upload-config`
-Upload configuration to Atlas processor
-
-#### GET `/api/atlas/download-config`
-Download current configuration from Atlas processor
-
-#### GET `/api/atlas/ai-analysis`
-Get AI-powered analysis of audio system performance
-
-### Sports Guide API
+### API Endpoints
 
 #### GET `/api/sports-guide/status`
 Get current API configuration status
@@ -584,647 +696,592 @@ Update API key (with validation)
 #### GET `/api/sports-guide/channels`
 Fetch channel guide data with filtering options
 
-### AI Hub APIs
+### Configuration
 
-#### POST `/api/ai-assistant/index-codebase`
-Index codebase files for AI analysis
+1. Navigate to Sports Guide Configuration
+2. Click "API" tab
+3. Enter User ID and API Key
+4. Click "Verify API Key" to test
+5. System validates before saving
+6. Restart server for full effect
 
-#### POST `/api/ai-assistant/chat`
-Chat with AI about codebase
-
-#### POST `/api/ai/qa-generate`
-Generate Q&A pairs from repository
-
-#### GET/POST `/api/api-keys`
-Manage AI provider API keys
-
-#### POST `/api/devices/ai-analysis`
-Get AI insights for devices
-
-### TODO Management
-
-#### GET `/api/todos`
-List all TODOs with filtering
-
-#### POST `/api/todos`
-Create new TODO
-
-#### PUT `/api/todos/[id]`
-Update TODO
-
-#### DELETE `/api/todos/[id]`
-Delete TODO
-
-#### POST `/api/todos/[id]/complete`
-Mark TODO as complete
+### Security
+- API keys stored in `.env` file (not in repository)
+- Keys masked in UI (shows first 8 and last 4 characters only)
+- Validation before saving
+- Server-side API calls only
 
 ---
 
-## Configuration Management
+## 6. Streaming Platforms
 
-### Wolfpack Matrix Configuration
+### Overview
+Management interface for streaming service accounts and configurations.
 
-#### Initial Setup
-1. Navigate to **System Admin → Wolfpack Configuration**
-2. Enter matrix IP address (e.g., `192.168.1.100`)
-3. Click **Test Connection** to verify connectivity
-4. Click **Test Switching** to verify control functionality
-5. Save configuration
+### Features
+- Platform account management
+- Service configuration
+- Integration settings
 
-#### Input Configuration
-1. Navigate to **System Admin → Matrix Inputs**
-2. For each input (1-32):
-   - Set descriptive label (e.g., "Cable Box 1", "Apple TV")
-   - Enable/disable as needed
-3. Save changes
+---
 
-#### Output Configuration
-1. Navigate to **System Admin → Matrix Outputs**
-2. For each output:
-   - Set descriptive label (e.g., "Main Bar TV 1")
-   - Enable/disable as needed
-   - Set `dailyTurnOn` (participate in morning schedule)
-   - Set `dailyTurnOff` (respond to "all off" command)
-3. Save changes
+## 7. Remote Control
 
-### Atlas Audio Configuration
+### Overview
+Bartender Remote interface for quick TV and audio control.
 
-#### Initial Setup
-1. Navigate to **Audio Control Center → Atlas System**
-2. Click on processor to open configuration
-3. Verify processor information:
-   - IP Address: 192.168.5.101
-   - Model: AZMP8
-   - Status: Online
+### Features
+- Quick TV source selection
+- Matrix status display
+- Bar layout visualization
+- Input source shortcuts
 
-#### Configuration Management
-1. **Download Config**: Downloads current configuration to file
-2. **Upload Config**: Uploads configuration to processor
-3. **Backup**: Automatic timestamped backups created on upload
+---
 
-**Configuration File Location**:
-- Primary: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai000260a7xuiepjl.json`
-- Backups: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai000260a7xuiepjl_backup_*.json`
+## 8. System Admin
 
-### Sports Guide API Configuration
+### Overview
+Administrative tools for system management, testing, and maintenance.
 
-#### Setup
-1. Navigate to Sports Guide Configuration page
-2. Click on "API" tab
-3. Enter User ID and API Key
-4. Click "Verify API Key" to test
-5. System validates key before saving
-6. Server restart recommended for full effect
+### Features
 
-**API Provider**: The Rail Media
-**API Endpoint**: https://guide.thedailyrail.com/api/v1
-**Current User ID**: 258351
+#### Wolfpack Configuration
+- Matrix IP address setup
+- Connection testing
+- Switching tests
 
-### AI Hub Configuration
+#### Matrix Inputs/Outputs
+- Input/output labeling
+- Enable/disable configuration
+- Schedule participation settings
 
-#### API Keys Setup
-1. Navigate to `/ai-hub` (API Keys tab)
-2. Add API keys for desired providers:
-   - Ollama (local - no key required)
-   - Abacus AI
-   - OpenAI
-   - LocalAI
-3. Keys are stored securely in database
-4. Verify provider status in Configuration tab
+#### System Logs
+- Application logs
+- Error tracking
+- Activity monitoring
 
-#### Recommended Setup
-- **Local Development**: Install Ollama (no API key required)
-- **Production**: Configure cloud providers as needed
+#### Backup Management
+- Manual backup creation
+- Backup restoration
+- Automated backup status
 
-### TV Selection Configuration
+#### TODO Management
+- Task tracking
+- Priority management
+- Status updates
 
-**Morning Schedule (dailyTurnOn)**:
-- Enable for TVs that should automatically turn on in the morning
-- Disable for TVs that remain off or are manually controlled
+### Wolfpack Integration
 
-**All Off Command (dailyTurnOff)**:
-- Enable for TVs that should turn off with "all off" button
-- Disable for TVs that should remain on (e.g., 24/7 displays)
+#### POST `/api/wolfpack/test-connection`
+Test connectivity to Wolfpack matrix:
+```json
+{
+  "ipAddress": "192.168.1.100"
+}
+```
+
+#### POST `/api/wolfpack/test-switching`
+Test matrix switching functionality
+
+#### Database Schema
+
+```prisma
+model WolfpackConfig {
+  id         Int      @id @default(autoincrement())
+  ipAddress  String   @unique
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+```
+
+### TODO Management
+
+The TODO management system provides task tracking and project management capabilities. The system automatically maintains a `TODO_LIST.md` file that reflects the current state of all tasks in the database.
+
+#### ⚠️ Important: TODO_LIST.md is Auto-Generated
+
+**DO NOT EDIT TODO_LIST.md MANUALLY**
+
+The `TODO_LIST.md` file is automatically generated and updated by the TODO management system. Any manual changes will be overwritten when the system syncs. Always use the TODO API to add, update, or delete tasks.
+
+The auto-generation happens:
+- When a TODO is created via the API
+- When a TODO is updated via the API
+- When a TODO is deleted via the API
+- During periodic system syncs
+
+#### Database Schema
+
+```prisma
+model Todo {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  priority        String        @default("MEDIUM") // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  status          String        @default("PLANNED") // "PLANNED", "IN_PROGRESS", "TESTING", "COMPLETE"
+  category        String?
+  tags            String?       // JSON array of tags
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  
+  documents       TodoDocument[]
+}
+
+model TodoDocument {
+  id              String   @id @default(cuid())
+  todoId          String
+  filename        String
+  filepath        String
+  filesize        Int?
+  mimetype        String?
+  uploadedAt      DateTime @default(now())
+  
+  todo            Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  
+  @@index([todoId])
+}
+```
+
+#### API Endpoints
+
+##### GET `/api/todos` - List all TODOs
+
+Retrieve all TODOs with optional filtering.
+
+**Query Parameters:**
+- `status` (optional) - Filter by status: `PLANNED`, `IN_PROGRESS`, `TESTING`, `COMPLETE`
+- `priority` (optional) - Filter by priority: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`
+- `category` (optional) - Filter by category string
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "cmgki7fkg0001vsfg6ghz142f",
+      "title": "Fix critical bug",
+      "description": "Detailed description...",
+      "priority": "CRITICAL",
+      "status": "PLANNED",
+      "category": "Bug Fix",
+      "tags": "[\"ai-hub\", \"database\"]",
+      "createdAt": "2025-10-10T07:07:10.000Z",
+      "updatedAt": "2025-10-10T07:07:10.000Z",
+      "completedAt": null,
+      "documents": []
+    }
+  ]
+}
+```
+
+**Example cURL:**
+```bash
+# Get all TODOs
+curl http://localhost:3000/api/todos
+
+# Get only high priority TODOs
+curl http://localhost:3000/api/todos?priority=HIGH
+
+# Get in-progress tasks
+curl http://localhost:3000/api/todos?status=IN_PROGRESS
+```
+
+##### POST `/api/todos` - Create new TODO
+
+Add a new TODO item to the system. The TODO_LIST.md file will be automatically updated.
+
+**Request Body:**
+```json
+{
+  "title": "Task title (required)",
+  "description": "Detailed task description (optional)",
+  "priority": "MEDIUM",
+  "status": "PLANNED",
+  "category": "Category name (optional)",
+  "tags": ["tag1", "tag2"]
+}
+```
+
+**Priority Levels:**
+- `LOW` - Minor tasks, nice-to-have features
+- `MEDIUM` - Standard priority (default)
+- `HIGH` - Important tasks requiring attention
+- `CRITICAL` - Urgent tasks blocking functionality
+
+**Status Values:**
+- `PLANNED` - Task is planned but not started (default)
+- `IN_PROGRESS` - Currently being worked on
+- `TESTING` - Implementation complete, being tested
+- `COMPLETE` - Task finished and verified
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cmgki7fkg0001vsfg6ghz142f",
+    "title": "Task title",
+    "description": "Detailed task description",
+    "priority": "MEDIUM",
+    "status": "PLANNED",
+    "category": "Category name",
+    "tags": "[\"tag1\", \"tag2\"]",
+    "createdAt": "2025-10-15T03:00:00.000Z",
+    "updatedAt": "2025-10-15T03:00:00.000Z",
+    "completedAt": null,
+    "documents": []
+  }
+}
+```
+
+**Example API Calls with Different Priority Levels:**
+
+**1. Create a LOW priority task:**
+```bash
+curl -X POST http://localhost:3000/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Update documentation styling",
+    "description": "Improve markdown formatting in README files",
+    "priority": "LOW",
+    "status": "PLANNED",
+    "category": "Enhancement",
+    "tags": ["documentation", "style"]
+  }'
+```
+
+**2. Create a MEDIUM priority task (default):**
+```bash
+curl -X POST http://localhost:3000/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Add unit tests for TODO API",
+    "description": "Create comprehensive test suite for TODO endpoints",
+    "priority": "MEDIUM",
+    "category": "Testing & QA",
+    "tags": ["testing", "api"]
+  }'
+```
+
+**3. Create a HIGH priority task:**
+```bash
+curl -X POST http://localhost:3000/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Optimize database queries",
+    "description": "Profile and optimize slow database queries affecting performance",
+    "priority": "HIGH",
+    "status": "PLANNED",
+    "category": "Performance",
+    "tags": ["database", "optimization", "high-priority"]
+  }'
+```
+
+**4. Create a CRITICAL priority task:**
+```bash
+curl -X POST http://localhost:3000/api/todos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "CRITICAL: Fix authentication bypass vulnerability",
+    "description": "Security vulnerability discovered in authentication flow allowing unauthorized access",
+    "priority": "CRITICAL",
+    "status": "IN_PROGRESS",
+    "category": "Security",
+    "tags": ["security", "critical", "urgent", "blocking"]
+  }'
+```
+
+**JavaScript/TypeScript Example:**
+```typescript
+// Using fetch API
+async function createTodo(todoData: {
+  title: string;
+  description?: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  status?: 'PLANNED' | 'IN_PROGRESS' | 'TESTING' | 'COMPLETE';
+  category?: string;
+  tags?: string[];
+}) {
+  const response = await fetch('/api/todos', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(todoData),
+  });
+
+  const result = await response.json();
+  return result;
+}
+
+// Example usage
+const newTodo = await createTodo({
+  title: 'Implement feature X',
+  description: 'Add new feature to the system',
+  priority: 'HIGH',
+  category: 'Feature',
+  tags: ['frontend', 'ui']
+});
+```
+
+##### PUT `/api/todos/[id]` - Update TODO
+
+Update an existing TODO item.
+
+**Request Body:** Same as POST (all fields optional except those you want to update)
+
+**Example cURL:**
+```bash
+curl -X PUT http://localhost:3000/api/todos/cmgki7fkg0001vsfg6ghz142f \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "IN_PROGRESS",
+    "priority": "HIGH"
+  }'
+```
+
+##### DELETE `/api/todos/[id]` - Delete TODO
+
+Remove a TODO item from the system.
+
+**Example cURL:**
+```bash
+curl -X DELETE http://localhost:3000/api/todos/cmgki7fkg0001vsfg6ghz142f
+```
+
+##### POST `/api/todos/[id]/complete` - Mark TODO as complete
+
+Mark a TODO as complete and set the completion timestamp.
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:3000/api/todos/cmgki7fkg0001vsfg6ghz142f/complete
+```
+
+#### Authentication & Authorization
+
+**Current Status:** No authentication required
+
+The TODO API currently does not require authentication or authorization. All endpoints are publicly accessible on the local network. This is suitable for internal use within a trusted network environment.
+
+**Security Considerations:**
+- API is accessible to anyone on the same network
+- Suitable for internal sports bar management systems
+- For production internet-facing deployments, consider adding:
+  - JWT-based authentication
+  - Role-based access control (RBAC)
+  - API rate limiting
+  - IP whitelisting
+
+#### GitHub Synchronization
+
+The TODO system automatically synchronizes with GitHub:
+- When a TODO is created, updated, or deleted, the `TODO_LIST.md` file is automatically regenerated
+- Changes are committed to the repository with descriptive commit messages
+- Synchronization happens in the background without blocking API responses
+- If GitHub sync fails, the operation still succeeds locally (sync errors are logged)
+
+**Sync Commit Messages:**
+- Create: `chore: Add TODO - [Task Title]`
+- Update: `chore: Update TODO - [Task Title]`
+- Delete: `chore: Remove TODO - [Task Title]`
+
+#### Best Practices
+
+1. **Always use the API** - Never edit TODO_LIST.md directly
+2. **Use descriptive titles** - Make tasks easy to understand at a glance
+3. **Add detailed descriptions** - Include steps, affected components, and expected outcomes
+4. **Tag appropriately** - Use consistent tags for filtering and organization
+5. **Set correct priority** - Use CRITICAL sparingly for true blocking issues
+6. **Update status regularly** - Keep task status current as work progresses
+7. **Complete tasks** - Use the complete endpoint to properly timestamp completion
+
+---
+
+## Backup & Maintenance
+
+### Automated Daily Backup
+
+**Schedule:** Daily at 3:00 AM (server time)  
+**Script:** `/home/ubuntu/github_repos/Sports-Bar-TV-Controller/backup_script.js`  
+**Backup Directory:** `/home/ubuntu/github_repos/Sports-Bar-TV-Controller/backups/`  
+**Retention:** 14 days
+
+**Cron Job:**
+```bash
+0 3 * * * cd /home/ubuntu/github_repos/Sports-Bar-TV-Controller && /usr/bin/node backup_script.js >> backup.log 2>&1
+```
+
+**What Gets Backed Up:**
+1. Matrix configuration (JSON format)
+2. Database files (`prisma/data/sports_bar.db`)
+3. Atlas configurations
+
+**Backup File Format:** `backup_YYYY-MM-DD_HH-MM-SS.json`
+
+### Manual Backup
+
+**Database:**
+```bash
+pg_dump sports_bar_tv > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+**Application:**
+```bash
+tar -czf sports-bar-backup-$(date +%Y%m%d).tar.gz ~/github_repos/Sports-Bar-TV-Controller
+```
+
+### Restore from Backup
+
+**Database:**
+```bash
+psql sports_bar_tv < backup_20251015_020000.sql
+```
+
+**Atlas Configuration:**
+```bash
+cd ~/github_repos/Sports-Bar-TV-Controller/data/atlas-configs
+cp cmgjxa5ai000260a7xuiepjl_backup_TIMESTAMP.json cmgjxa5ai000260a7xuiepjl.json
+```
 
 ---
 
 ## Troubleshooting
 
-### Wolfpack Connection Test Fails
+### Application Issues
 
-**Symptoms**:
-- Connection test returns error
-- "Failed to connect" message
-- Database-related errors in logs
-
-**Solutions**:
-
-1. **Verify Network Connectivity**:
-   ```bash
-   ping <wolfpack-ip-address>
-   curl http://<wolfpack-ip-address>
-   ```
-
-2. **Check Wolfpack Matrix**:
-   - Ensure matrix is powered on
-   - Verify IP address is correct
-   - Check network cable connections
-   - Confirm matrix is on same network/VLAN
-
-3. **Verify Database Connection**:
-   ```bash
-   npx prisma db pull  # Test database connectivity
-   ```
-
-4. **Check Application Logs**:
-   ```bash
-   pm2 logs sports-bar-tv-controller
-   ```
-
-5. **Restart Application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
-### Matrix Switching Not Working
-
-**Symptoms**:
-- Routing commands fail
-- TVs don't change sources
-- Power commands don't work
-
-**Solutions**:
-
-1. **Test Connection First**:
-   - Use connection test in System Admin
-   - Verify successful connection before switching
-
-2. **Check Output Configuration**:
-   - Ensure outputs are enabled
-   - Verify output numbers match physical connections
-
-3. **Verify Input Configuration**:
-   - Ensure inputs are enabled
-   - Check input numbers match physical connections
-
-4. **Test Individual Commands**:
-   - Try routing a single input to single output
-   - Test power on/off for single output
-   - Check Wolfpack web interface directly
-
-### TV Selection Not Working
-
-**Symptoms**:
-- All TVs turn on despite dailyTurnOn settings
-- "All off" affects wrong TVs
-
-**Solutions**:
-
-1. **Verify Database Migration**:
-   ```bash
-   npx prisma migrate status
-   npx prisma migrate deploy  # If migrations pending
-   ```
-
-2. **Check Output Configuration**:
-   - Navigate to System Admin → Matrix Outputs
-   - Verify dailyTurnOn and dailyTurnOff flags are set correctly
-
-3. **Restart Application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
-### Configuration Lost After Update
-
-**Symptoms**:
-- Wolfpack IP address missing
-- Input/output labels reset
-- Settings not persisted
-
-**Solutions**:
-
-1. **Check Database**:
-   ```bash
-   npx prisma studio  # Open database browser
-   # Verify WolfpackConfig, MatrixInput, MatrixOutput tables
-   ```
-
-2. **Restore from Backup** (if available):
-   ```bash
-   # Restore database backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
-   ```
-
-3. **Reconfigure Manually**:
-   - Re-enter Wolfpack IP address
-   - Re-label inputs and outputs
-   - Reconfigure TV selection settings
-
-### Atlas Audio Issues
-
-**Symptoms**:
-- Atlas shows offline
-- Configuration not loading
-- Audio routing not working
-
-**Solutions**:
-
-1. **Check Network Connectivity**:
-   ```bash
-   ping 192.168.5.101
-   nc -zv 192.168.5.101 80
-   ```
-
-2. **Verify Configuration File**:
-   ```bash
-   ls -l /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/cmgjxa5ai000260a7xuiepjl.json
-   cat file.json | python3 -m json.tool  # Validate JSON
-   ```
-
-3. **Restore from Backup**:
-   ```bash
-   cd /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs
-   # Find most recent backup
-   ls -lt cmgjxa5ai000260a7xuiepjl_backup_*.json | head -n 1
-   # Copy to main config file
-   cp cmgjxa5ai000260a7xuiepjl_backup_TIMESTAMP.json cmgjxa5ai000260a7xuiepjl.json
-   ```
-
-4. **Check Processor**:
-   - Verify Atlas processor is powered on
-   - Check network cable connections
-   - Confirm processor is on same network
-
-### AI Hub Not Working
-
-**Symptoms**:
-- AI features showing errors
-- Cannot index codebase
-- Chat interface not responding
-
-**Solutions**:
-
-1. **Verify Database Models**:
-   ```bash
-   npx prisma migrate status
-   # If migrations needed:
-   npx prisma migrate dev --name add-ai-hub-models
-   npx prisma generate
-   ```
-
-2. **Configure API Keys**:
-   - Navigate to `/ai-hub` (API Keys tab)
-   - Add keys for desired providers
-   - Verify provider status
-
-3. **Check AI System Status**:
-   ```bash
-   curl http://localhost:3000/api/ai-system/status
-   ```
-
-4. **Restart Application**:
-   ```bash
-   pm2 restart sports-bar-tv-controller
-   ```
-
----
-
-## Deployment Guide
-
-### Prerequisites
-- Node.js 18+ installed
-- PostgreSQL database running
-- PM2 process manager installed
-- Git repository access
-
-### Initial Deployment
-
-1. **Clone Repository**:
-   ```bash
-   cd ~
-   git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
-   cd Sports-Bar-TV-Controller
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment**:
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-   Set:
-   - `DATABASE_URL`: PostgreSQL connection string
-   - `NEXTAUTH_SECRET`: Random secret for authentication
-   - `NEXTAUTH_URL`: Application URL
-
-4. **Initialize Database**:
-   ```bash
-   npx prisma migrate deploy
-   npx prisma generate
-   ```
-
-5. **Build Application**:
-   ```bash
-   npm run build
-   ```
-
-6. **Start with PM2**:
-   ```bash
-   pm2 start npm --name "sports-bar-tv-controller" -- start
-   pm2 save
-   pm2 startup  # Follow instructions to enable auto-start
-   ```
-
-### Update Deployment
-
-1. **Pull Latest Changes**:
-   ```bash
-   cd ~/Sports-Bar-TV-Controller
-   git pull origin main
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Run Migrations**:
-   ```bash
-   npx prisma migrate deploy
-   npx prisma generate
-   ```
-
-4. **Rebuild Application**:
-   ```bash
-   npm run build
-   ```
-
-5. **Restart PM2**:
-   ```bash
-   pm2 restart sports-bar-tv-controller --update-env
-   ```
-
-### Rollback Procedure
-
-If deployment fails:
-
-1. **Revert Git Changes**:
-   ```bash
-   git log  # Find previous commit hash
-   git checkout <previous-commit-hash>
-   ```
-
-2. **Rebuild and Restart**:
-   ```bash
-   npm install
-   npm run build
-   pm2 restart sports-bar-tv-controller
-   ```
-
-3. **Rollback Database** (if needed):
-   ```bash
-   # Restore from backup
-   pg_restore -d sports_bar_tv /path/to/backup.dump
-   ```
-
-### Server Access
-
-**SSH Connection Details**:
-- **Host**: 24.123.87.42
-- **Port**: 224
-- **Username**: ubuntu
-- **Password**: 6809233DjD$$$ (THREE dollar signs)
-- **Authentication Method**: Password only (no SSH key/token)
-
-**Connection Command**:
-```bash
-ssh -p 224 ubuntu@24.123.87.42
-```
-
-**Project Location on Server**:
-- Project Path: `~/Sports-Bar-TV-Controller`
-- Application URL: http://24.123.87.42:3001
-- GitHub Repository: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
-
-**Deployment Workflow**:
-1. SSH into server: `ssh -p 224 ubuntu@24.123.87.42`
-2. Navigate to project: `cd ~/Sports-Bar-TV-Controller`
-3. Pull latest changes: `git pull origin main`
-4. Install dependencies: `npm install`
-5. Build application: `npm run build`
-6. Restart PM2: `pm2 restart sports-bar-tv-controller`
-7. Check logs: `pm2 logs sports-bar-tv-controller`
-
----
-
-## Maintenance and Backup
-
-### Regular Maintenance Tasks
-
-#### Daily
-- Monitor PM2 logs for errors:
-  ```bash
-  pm2 logs sports-bar-tv-controller --lines 100
-  ```
-
-#### Weekly
-- Check disk space:
-  ```bash
-  df -h
-  ```
-- Review application logs for warnings
-- Verify scheduled tasks are running
-
-#### Monthly
-- Update dependencies:
-  ```bash
-  npm update
-  npm audit fix
-  ```
-- Review and optimize database
-- Test backup restoration
-
-### Backup Strategy
-
-#### Automated Daily Backup
-- **Schedule**: Daily at 3:00 AM (server time)
-- **Script**: `/home/ubuntu/Sports-Bar-TV-Controller/backup_script.js`
-- **Location**: `/home/ubuntu/Sports-Bar-TV-Controller/backups/`
-- **Retention**: 14 days
-
-**Cron Job**:
-```bash
-# Daily backup at 3:00 AM
-0 3 * * * cd /home/ubuntu/Sports-Bar-TV-Controller && /usr/bin/node backup_script.js >> /home/ubuntu/Sports-Bar-TV-Controller/backup.log 2>&1
-```
-
-#### Manual Backup
-
-**Database Backup**:
-```bash
-pg_dump sports_bar_tv > backup_$(date +%Y%m%d_%H%M%S).sql
-```
-
-**Configuration Backup**:
-```bash
-# Backup entire application directory
-tar -czf sports-bar-backup-$(date +%Y%m%d).tar.gz ~/Sports-Bar-TV-Controller
-```
-
-**Atlas Configuration Backup**:
-```bash
-# Backups are automatically created on upload
-# Location: /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/
-```
-
-#### Restore from Backup
-
-**Database Restore**:
-```bash
-psql sports_bar_tv < backup_20251010_020000.sql
-```
-
-**Atlas Configuration Restore**:
-```bash
-cd /home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs
-# Find most recent backup
-ls -lt cmgjxa5ai000260a7xuiepjl_backup_*.json | head -n 1
-# Copy to main config file
-cp cmgjxa5ai000260a7xuiepjl_backup_TIMESTAMP.json cmgjxa5ai000260a7xuiepjl.json
-```
-
-#### Backup Retention
-- Daily backups: Keep 14 days
-- Weekly backups: Keep 4 weeks
-- Monthly backups: Keep 12 months
-
-### Monitoring
-
-#### Application Health
+**Application Won't Start:**
 ```bash
 # Check PM2 status
 pm2 status
 
-# View resource usage
-pm2 monit
-
-# Check application logs
+# View logs
 pm2 logs sports-bar-tv-controller
+
+# Restart application
+pm2 restart sports-bar-tv-controller
 ```
 
-#### Database Health
+**Database Connection Errors:**
 ```bash
-# Check database size
-psql -d sports_bar_tv -c "SELECT pg_size_pretty(pg_database_size('sports_bar_tv'));"
+# Check database status
+npx prisma db pull
 
-# Check table sizes
-psql -d sports_bar_tv -c "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) FROM pg_tables WHERE schemaname = 'public' ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
+# Run pending migrations
+npx prisma migrate deploy
+
+# Regenerate Prisma client
+npx prisma generate
 ```
 
-#### Network Connectivity
-```bash
-# Test Wolfpack matrix
-curl http://<wolfpack-ip-address>
+### Network Issues
 
-# Test Atlas processor
-nc -zv 192.168.5.101 80
-```
+**Wolfpack Matrix Not Responding:**
+1. Check network connectivity: `ping <wolfpack-ip>`
+2. Verify matrix is powered on
+3. Check network cable connections
+4. Confirm same network/VLAN
+5. Test connection in System Admin
+
+**Atlas Processor Offline:**
+1. Check connectivity: `ping 192.168.5.101`
+2. Verify processor is powered on
+3. Check configuration file exists
+4. Restore from backup if needed
+
+### Performance Issues
+
+**Slow Response Times:**
+1. Check PM2 resource usage: `pm2 monit`
+2. Review application logs
+3. Check database size and optimize
+4. Restart application if needed
+
+**High Memory Usage:**
+1. Check PM2 status: `pm2 status`
+2. Restart application: `pm2 restart sports-bar-tv-controller`
+3. Monitor logs for memory leaks
 
 ---
 
-## Security Considerations
+## Security Best Practices
 
 ### Network Security
-- Wolfpack matrix should be on isolated VLAN
-- Application should be behind firewall
+- Wolfpack matrix on isolated VLAN
+- Application behind firewall
 - Use HTTPS in production (configure reverse proxy)
 
 ### Authentication
-- Change default admin credentials immediately
-- Use strong passwords
-- Enable two-factor authentication if available
-
-### Database Security
-- Use strong database passwords
-- Restrict database access to localhost
-- Regular security updates
-
-### Application Security
-- Keep dependencies updated
-- Regular security audits
-- Monitor logs for suspicious activity
+- Strong passwords for all accounts
+- Regular password rotation
+- Secure storage of credentials
 
 ### API Security
-- API keys stored in `.env` file (not committed to repository)
-- `.env` file included in `.gitignore`
-- API keys masked in UI (shows only first 8 and last 4 characters)
-- Key validation performed before saving
-- Secure server-side API calls only
+- API keys in `.env` file only
+- Never commit `.env` to repository
+- Masked display in UI
+- Server-side validation
+
+### Database Security
+- Strong database passwords
+- Restrict access to localhost
+- Regular security updates
+- Encrypted backups
 
 ---
 
-## Support and Resources
+## Recent Changes
 
-### Documentation
+### October 15, 2025 - AI Hub Testing & Documentation Update
+- ✅ Comprehensive AI Hub testing completed
+- ✅ Identified 2 critical errors requiring immediate fixes
+- ✅ Created detailed testing report
+- ✅ Reorganized documentation by site tabs
+- ✅ Updated port from 3001 to 3000
+- ✅ Added detailed AI Hub section with status and fix plans
+
+### October 14, 2025 - AI Hub Database Models
+- ✅ Added missing database models (IndexedFile, QAPair, TrainingDocument, ApiKey)
+- ✅ Fixed AI Hub API routes
+- ✅ Verified basic AI Hub functionality
+
+### October 10, 2025 - Atlas Configuration Restoration
+- ✅ Fixed critical Atlas configuration wipe bug
+- ✅ Restored Atlas configuration from backup
+- ✅ Fixed dynamic zone labels
+- ✅ Implemented matrix label updates
+- ✅ Fixed matrix test database errors
+
+### October 9, 2025 - Outputs Configuration & Backup System
+- ✅ Configured outputs 1-4 as full matrix outputs
+- ✅ Implemented automated daily backup system
+- ✅ Added 14-day retention policy
+
+---
+
+## Support Resources
+
+### Documentation Links
 - Next.js: https://nextjs.org/docs
 - Prisma: https://www.prisma.io/docs
-- Wolfpack API: Refer to Wolfpack matrix documentation
+- Tailwind CSS: https://tailwindcss.com/docs
 
-### Common Issues
-- See [Troubleshooting](#troubleshooting) section
-- Check GitHub Issues: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues
+### Project Resources
+- **GitHub Repository:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+- **GitHub Issues:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues
+- **AI Hub Testing Report:** `/home/ubuntu/ai_hub_testing_report.md`
 
 ### Getting Help
 1. Check this documentation
-2. Review application logs
-3. Search GitHub issues
-4. Create new issue with:
-   - Detailed description
-   - Steps to reproduce
-   - Error messages
-   - System information
+2. Review application logs: `pm2 logs sports-bar-tv-controller`
+3. Check GitHub issues
+4. Create new issue with detailed information
 
 ---
 
-## Changelog
-
-### October 14, 2025
-- ✅ Fixed AI Hub critical errors (missing database models)
-- ✅ Added IndexedFile, QAPair, TrainingDocument, ApiKey models
-- ✅ Fixed all AI Hub API routes
-- ✅ Verified all AI Hub features working (7/7)
-- ✅ Updated documentation
-
-### October 10, 2025
-- ✅ Fixed Atlas configuration wipe bug
-- ✅ Restored Atlas configuration from backup
-- ✅ Fixed Atlas zone labels to show video input names
-- ✅ Implemented dynamic matrix label updates
-- ✅ Fixed matrix test database errors
-- ✅ Added Sports Guide API integration
-- ✅ Fixed Atlas AI Monitor processor context
-- ✅ Updated documentation
-
-### October 9, 2025
-- ✅ Configured outputs 1-4 as matrix outputs with full controls
-- ✅ Implemented automated daily backup system
-- ✅ Added backup retention policy (14 days)
-- ✅ Updated documentation
-
-### Future Enhancements
-- Custom EPG service integration
-- Configuration export/import functionality
-- Enhanced backup automation
-- Mobile app development
-- Advanced scheduling features
-
----
-
-*Last Updated: October 14, 2025*
-*Version: 2.0*
-*Status: Production Ready*
+*Last Updated: October 15, 2025 by DeepAgent*  
+*Version: 2.1*  
+*Status: Production Ready (AI Hub has 2 critical issues requiring fixes)*
