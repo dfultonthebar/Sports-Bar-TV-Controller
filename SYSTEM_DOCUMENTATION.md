@@ -1319,6 +1319,494 @@ DirecTV receivers integrate seamlessly with the Wolfpack HDMI matrix:
 - Multi-receiver coordination
 - Advanced diagnostic tools
 
+
+## 7.5. Amazon Fire TV Integration
+
+### Overview
+Amazon Fire TV integration provides remote control and management capabilities for Fire TV devices (Fire TV Cube, Fire TV Stick, Fire TV Stick 4K Max) connected to the sports bar's matrix switcher system. This allows bartenders and staff to control Fire TV streaming devices, launch apps, and route content to any display through a unified web interface.
+
+**Key Capabilities:**
+- Remote control of Fire TV devices over network
+- Launch sports streaming apps (ESPN, FOX Sports, NFL+, etc.)
+- Device status monitoring and subscription polling
+- Matrix switcher integration for content routing
+- Comprehensive command library (navigation, media controls, power)
+
+### Device Configuration
+
+#### Supported Devices
+- **Fire TV Cube** - Full-featured streaming device with Alexa
+- **Fire TV Stick 4K Max** - High-performance streaming stick
+- **Fire TV Stick** - Standard streaming stick
+- **Fire TV** - Basic Fire TV devices
+
+#### Tested Device Configuration
+**Living Room Fire TV Cube**
+- **IP Address:** 192.168.5.131
+- **Port:** 5555 (ADB default)
+- **Device Type:** Fire TV Cube
+- **Matrix Input Channel:** 5 (Input 5: Apple TV 1 - HDMI)
+- **Status:** Configured and operational
+- **ADB Status:** Enabled
+- **Device ID:** firetv_1760565852636_adf1ltp7g
+- **Added:** October 15, 2025
+
+#### Required Information for Adding Devices
+1. **Device Name** - Custom label (e.g., "Bar Main TV", "Living Room Fire TV")
+2. **IP Address** - Network IPv4 address (e.g., 192.168.5.131)
+3. **Port** - ADB port (default: 5555)
+4. **Device Type** - Select from dropdown menu
+5. **Matrix Input Channel** (Optional) - Associate with matrix input (1-32)
+
+#### Device Data Storage
+- **Location:** `/data/firetv-devices.json`
+- **Format:** JSON array of device objects
+- **Persistence:** Survives application restarts
+- **Backup:** Included in automated daily backups (3:00 AM)
+
+### Form Submission Bug Fix (October 15, 2025)
+
+#### Issue Identified
+The Fire TV device creation form suffered from a critical bug where the "Add Device" button would get stuck in an infinite loading state, preventing successful device addition through the UI.
+
+#### Root Cause
+**API Endpoint Mismatch:**
+- Frontend components called incorrect endpoints: `/api/firecube/*`
+- Backend expected correct endpoints: `/api/firetv-devices/*`
+- 404 errors from incorrect endpoints weren't properly handled
+- Error handling didn't reset the loading state (`isDiscovering`)
+- Button remained in "Adding..." state indefinitely
+
+#### Files Modified
+1. **`src/components/firecube/DiscoveryPanel.tsx`**
+   - Fixed: `handleDiscover()` → `/api/firetv-devices/discover`
+   - Fixed: `handleManualAdd()` → `/api/firetv-devices`
+   - Improved error handling with fallback messages
+
+2. **`src/components/firecube/DeviceList.tsx`**
+   - Fixed: `handleDelete()` → `/api/firetv-devices?id={id}`
+   - Fixed: `handleTest()` → `/api/firetv-devices/test-connection?id={id}`
+
+3. **`src/components/firecube/DeviceCard.tsx`**
+   - Fixed: `handleSave()` → `/api/firetv-devices` (PUT method)
+   - Updated to include device ID in request body
+
+4. **`pages/firetv/index.tsx`**
+   - Fixed: `fetchDevices()` → `/api/firetv-devices`
+
+#### Resolution Status
+✅ **FIXED** - Form submission now works correctly
+- Device creation successful via UI form
+- Button loading state properly managed
+- Error messages display correctly
+- Form closes after successful submission
+- Deployed to production on October 15, 2025
+
+### Remote Control Commands
+
+#### Command Categories
+
+**Navigation Commands:**
+- `UP` → `input keyevent 19`
+- `DOWN` → `input keyevent 20`
+- `LEFT` → `input keyevent 21`
+- `RIGHT` → `input keyevent 22`
+- `SELECT` / `OK` → `input keyevent 23`
+- `BACK` → `input keyevent 4`
+- `HOME` → `input keyevent 3`
+- `MENU` → `input keyevent 82`
+- `RECENT` → `input keyevent 187`
+
+**Media Controls:**
+- `PLAY_PAUSE` → `input keyevent 85`
+- `PLAY` → `input keyevent 126`
+- `PAUSE` → `input keyevent 127`
+- `STOP` → `input keyevent 86`
+- `REWIND` → `input keyevent 89`
+- `FAST_FORWARD` → `input keyevent 90`
+- `SKIP_PREVIOUS` → `input keyevent 88`
+- `SKIP_NEXT` → `input keyevent 87`
+
+**Power & System Controls:**
+- `POWER` → `input keyevent 26`
+- `SLEEP` → `input keyevent 223`
+- `WAKE` → `input keyevent 224`
+- `SEARCH` → `input keyevent 84`
+- `VOICE` → `input keyevent 231`
+- `SETTINGS` → `am start -n com.amazon.tv.settings/.tv.TvSettingsActivity`
+
+**Volume Controls** (if supported by device):
+- `VOL_UP` → `input keyevent 24`
+- `VOL_DOWN` → `input keyevent 25`
+- `MUTE` → `input keyevent 164`
+
+#### Command Testing Results
+**Device Tested:** Living Room Fire TV Cube (192.168.5.131:5555)
+
+| Command | ADB Translation | Status |
+|---------|----------------|--------|
+| HOME | `input keyevent 3` | ✅ Correctly translated |
+| UP | `input keyevent 19` | ✅ Correctly translated |
+| DOWN | `input keyevent 20` | ✅ Correctly translated |
+| LEFT | `input keyevent 21` | ✅ Correctly translated |
+| RIGHT | `input keyevent 22` | ✅ Correctly translated |
+| SELECT | `input keyevent 23` | ✅ Correctly translated |
+| BACK | `input keyevent 4` | ✅ Correctly translated |
+| PLAY_PAUSE | `input keyevent 85` | ✅ Correctly translated |
+
+**Note:** Command translation verified as working. Actual execution requires ADB bridge service setup (see ADB Requirements section).
+
+### Subscription Polling Functionality
+
+#### Overview
+Subscription polling allows the system to query Fire TV devices for installed streaming apps and active subscriptions, providing visibility into available content sources.
+
+#### Polling Results (October 15, 2025)
+**Living Room Fire TV Cube - Discovered Apps:**
+1. **Hulu** (`com.hulu.plus`)
+   - Status: Active/Installed
+   - Category: Live TV Streaming
+   
+2. **Netflix** (`com.netflix.ninja`)
+   - Status: Active/Installed
+   - Category: On-Demand Streaming
+
+#### How Polling Works
+1. **Trigger:** User clicks "Poll Subscriptions" in Device Subscriptions dialog
+2. **Method:** Query installed packages via ADB or package listing API
+3. **Detection:** Matches package names against known streaming service database
+4. **Display:** Shows discovered apps with provider information and status
+5. **Caching:** Results cached per device for performance
+
+#### Backend Log Example
+```
+[2025-10-15T22:04:53.402Z] [INFO] [SUBSCRIPTION_POLL] [192.168.5.131:5555] Beginning firetv subscription poll
+"id": "firetv-com.hulu.plus"
+"id": "firetv-com.netflix.ninja"
+"cacheKey": "device:subs:firetv_1760565852636_adf1ltp7g"
+```
+
+### ADB Requirements and Setup
+
+#### What is ADB?
+**ADB (Android Debug Bridge)** is a command-line tool that enables communication with Android devices, including Fire TV. It's required for remote control functionality.
+
+**Required For:**
+- Sending remote control commands
+- Launching apps programmatically
+- Retrieving device information
+- Querying installed packages
+- Advanced device management
+
+#### Enabling ADB on Fire TV Devices
+
+**Step 1: Enable Developer Options**
+1. Go to **Settings** on Fire TV
+2. Navigate to **My Fire TV** → **About**
+3. Click on the device name **7 times** rapidly
+4. "Developer Options" will appear in Settings menu
+
+**Step 2: Enable ADB Debugging**
+1. Go to **Settings** → **My Fire TV** → **Developer Options**
+2. Turn on **ADB Debugging**
+3. Confirm the warning dialog
+4. Ensure network debugging is enabled
+
+**Step 3: Verify ADB Status**
+- Check that "ADB Debugging" shows as ON
+- Fire TV may display "ADB Debugging Connected" notification
+- Use "Test Connection" button in UI to verify
+
+#### ADB Bridge Service
+
+**Purpose:** Intermediary service for executing ADB commands over HTTP
+
+**Configuration:**
+- **Service Endpoint:** `http://localhost:8081`
+- **Status:** Optional (system falls back to simulation mode)
+- **Recommended:** Required for production environments
+
+**Available Endpoints:**
+- `POST /adb/execute` - Execute ADB command
+- `POST /adb/test-connection` - Test device connectivity
+
+**Without ADB Bridge:**
+- Commands fail with "fetch failed" error
+- System operates in simulation mode
+- Connection tests report device unreachable
+- Subscription polling uses alternative methods
+
+### Matrix Integration
+
+#### Overview
+Fire TV devices can be assigned to specific HDMI matrix switcher input channels, enabling seamless content routing to any TV display in the sports bar.
+
+#### Configuration
+- **Matrix Input Channels:** 1-32 available
+- **Assignment:** Configure during device creation or edit later
+- **Format:** "Input [N]: [Label] ([Type])"
+- **Example:** Input 5: Apple TV 1 (HDMI) → Fire TV Cube
+
+#### Routing Fire TV Content
+1. Navigate to Matrix Control interface
+2. Select target TV output
+3. Choose Fire TV's input channel from dropdown
+4. Click "Route" to switch display
+5. Control Fire TV remotely via unified interface
+
+#### Use Cases
+- Display same game on multiple TVs
+- Switch between streaming content and cable
+- Route Fire TV to different displays for various events
+- Automated content routing based on schedules
+
+### API Endpoints
+
+#### GET `/api/firetv-devices`
+**Purpose:** Retrieve all configured Fire TV devices
+
+**Response:**
+```json
+{
+  "devices": [
+    {
+      "id": "firetv_1760565852636_adf1ltp7g",
+      "name": "Living Room Fire TV Cube",
+      "ipAddress": "192.168.5.131",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "matrixInputChannel": 5,
+      "isOnline": false,
+      "adbEnabled": true,
+      "addedAt": "2025-10-15T22:04:12.636Z"
+    }
+  ]
+}
+```
+
+#### POST `/api/firetv-devices`
+**Purpose:** Add new Fire TV device
+
+**Request:**
+```json
+{
+  "name": "Living Room Fire TV Cube",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "deviceType": "Fire TV Cube",
+  "matrixInputChannel": 5
+}
+```
+
+**Validation:**
+- Name and IP address required
+- IP must match IPv4 format: `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`
+- Port must be 1-65535
+- Prevents duplicate IP+port combinations
+
+#### PUT `/api/firetv-devices`
+**Purpose:** Update existing Fire TV device
+
+**Request:**
+```json
+{
+  "id": "firetv_1760565852636_adf1ltp7g",
+  "name": "Living Room Fire TV Cube - Updated",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "matrixInputChannel": 6
+}
+```
+
+#### DELETE `/api/firetv-devices?id=<deviceId>`
+**Purpose:** Remove Fire TV device
+
+**Query Parameter:** `id` (device identifier)
+
+#### POST `/api/firetv-devices/send-command`
+**Purpose:** Send remote control command or launch app
+
+**Command Request:**
+```json
+{
+  "deviceId": "firetv_1760565852636_adf1ltp7g",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "command": "HOME"
+}
+```
+
+**App Launch Request:**
+```json
+{
+  "deviceId": "firetv_1760565852636_adf1ltp7g",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "appPackage": "com.netflix.ninja"
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Fire TV command executed successfully",
+  "command": "input keyevent 3",
+  "originalCommand": "HOME",
+  "sentAt": "2025-10-15T12:00:00.000Z"
+}
+```
+
+#### POST `/api/firetv-devices/test-connection`
+**Purpose:** Test connectivity to Fire TV device
+
+**Request:**
+```json
+{
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "deviceId": "firetv_1760565852636_adf1ltp7g"
+}
+```
+
+### Streaming Apps Library
+
+#### Sports Streaming Apps (Pre-configured)
+- **ESPN** - `com.espn.score_center`
+- **FOX Sports** - `com.fox.now`
+- **NBC Sports** - `com.nbc.nbcsports.liveextra`
+- **Paramount+** - `com.cbs.ott`
+- **Hulu Live TV** - `com.hulu.plus`
+- **YouTube TV** - `com.google.android.youtube.tv`
+- **Sling TV** - `com.sling`
+- **FuboTV** - `com.fubo.android`
+
+#### League-Specific Apps
+- **MLB.TV** - `com.bamnetworks.mobile.android.gameday.mlb`
+- **NBA League Pass** - `com.nba.game`
+- **NHL.TV** - `com.nhl.gc1112.free`
+- **NFL+** - `com.nflmobile.nflnow`
+
+#### Premium Entertainment
+- **Netflix** - `com.netflix.ninja` ✅ Installed
+- **Prime Video** - `com.amazon.avod.thirdpartyclient`
+- **Max (HBO)** - `com.hbo.hbonow`
+- **Disney+** - `com.disney.disneyplus`
+
+### Troubleshooting
+
+#### Device Shows Offline
+**Checklist:**
+1. Verify Fire TV is powered on
+2. Check network connectivity: `ping 192.168.5.131`
+3. Verify Fire TV is on same network as controller
+4. Check ADB debugging is enabled on Fire TV
+5. Use "Test Connection" button in UI
+6. Verify port 5555 is not blocked by firewall
+7. Restart Fire TV device and test again
+
+#### Commands Not Executing
+**Possible Causes:**
+1. **ADB Bridge Not Running**
+   - Check service status: `curl http://localhost:8081/health`
+   - Install/start ADB bridge service
+   - Review bridge service logs
+
+2. **ADB Not Enabled on Device**
+   - Re-enable in Developer Options
+   - May disable after system updates
+
+3. **Network Issues**
+   - High latency (>100ms)
+   - Network congestion
+   - Firewall blocking communication
+
+4. **Device Resources**
+   - Fire TV overloaded with apps
+   - Close background apps
+   - Restart Fire TV
+
+#### "ADB Bridge Service Unavailable" Error
+**Solution:**
+- Controller cannot reach ADB bridge at localhost:8081
+- Bridge service not installed or running
+- Commands fall back to simulation mode
+- Install and configure ADB bridge for production use
+
+#### Dynamic IP Changed
+**Issue:** Device was working but suddenly stopped
+**Cause:** DHCP lease expired, new IP assigned
+**Solution:**
+- Find new IP in Fire TV Settings → Network
+- Update device configuration with new IP
+- **Prevention:** Use static IP or DHCP reservation
+
+#### Form Submission Issues
+**Status:** ✅ **FIXED** as of October 15, 2025
+- If encountering form issues, verify application is updated
+- Clear browser cache
+- Check PM2 logs for errors: `pm2 logs sports-bar-tv`
+
+### Network Requirements
+
+**Essential:**
+- Fire TV on same network as controller server
+- Port 5555 accessible (not blocked by firewall)
+- Low latency (<50ms recommended, <100ms acceptable)
+- No VLAN isolation between devices
+
+**Recommended:**
+- Static IP addresses for Fire TV devices (or DHCP reservation)
+- Quality of Service (QoS) configuration for streaming devices
+- Documented IP assignments for all devices
+- Regular connectivity testing
+
+### Best Practices
+
+**Device Management:**
+1. Use consistent naming convention (e.g., "Bar-TV-01", "Bar-TV-02")
+2. Document matrix input channel assignments
+3. Export device configuration weekly for backup
+4. Label physical devices matching system names
+5. Keep ADB debugging enabled (verify after updates)
+
+**Operational:**
+1. Test all Fire TVs before major sporting events
+2. Verify streaming app subscriptions are active
+3. Plan Fire TV updates during off-hours
+4. Keep spare configured Fire TV for emergencies
+5. Train staff on troubleshooting basics
+
+**Security:**
+1. Fire TV devices on isolated network or behind firewall
+2. Limit physical access to devices
+3. Apply security updates regularly
+4. Use PIN protection for purchases
+
+### Future Enhancements
+
+**Planned Features:**
+- [ ] Automated device discovery on network
+- [ ] Bulk import of Fire TV devices via CSV
+- [ ] Real-time device status monitoring with health checks
+- [ ] Scheduled app launching and content switching
+- [ ] Integration with Sports Guide for auto-tuning
+- [ ] Device grouping for simultaneous control
+- [ ] Custom app quick access list configuration via UI
+- [ ] ADB bridge auto-installation and configuration
+- [ ] Enhanced error recovery and retry logic
+
+**Under Consideration:**
+- Voice control integration
+- Screenshot capture from Fire TV
+- Remote installation of apps
+- DVR-like recording for streaming content
+- Multi-Fire TV synchronized playback
+- Advanced analytics and usage tracking
+
+---
+
+
 ---
 
 ## 8. Remote Control
