@@ -10,6 +10,43 @@ Last Updated: 10/14/2025, 10:40:43 PM
 
 ## 📋 Planned
 
+### Configure Local AI Services - Multiple Connection Errors
+
+- **ID**: `cmgrg16lb000626tqpqcgkrfy`
+- **Priority**: MEDIUM
+- **Status**: PLANNED
+- **Category**: Configuration
+- **Description**: Configuration tab shows 5 local AI services with connection errors. While Ollama is working correctly and cloud services (OpenAI, Anthropic, X.AI) are ready, several local AI options are not accessible.
+
+Services with Errors:
+1. Custom Local AI (http://localhost:8000/v1/models) - Error
+2. LocalAI (http://localhost:8080/v1/models) - Error
+3. LM Studio (http://localhost:1234/v1/models) - Error
+4. Text Generation WebUI (http://localhost:5000/v1/models) - Error
+5. Tabby (http://localhost:8080/v1/models) - Error
+
+Working Services:
+- Ollama (http://localhost:11434/api/tags, Model: phi3:mini) - Active (4ms)
+- OpenAI - Ready (API key configured)
+- Anthropic Claude - Ready (API key configured)
+- X.AI Grok - Ready (API key configured)
+
+Steps to Fix:
+1. Verify each service is installed and running
+2. Update service URLs in configuration
+3. Add service health check with retry logic
+4. Document installation instructions for each service
+5. Consider making local services optional
+6. Add configuration UI to enable/disable services
+
+Affected: Configuration Tab → AI Provider Status
+User Impact: LOW - Limited local AI options, but reliance on cloud services is acceptable
+Priority: MEDIUM - Fix when possible
+Tested: October 15, 2025
+- **Tags**: ai-hub, configuration, local-ai
+- **Created**: 10/14/2025, 10:40:43 PM
+- **Updated**: 10/14/2025, 10:40:43 PM
+
 ### Optimize AI Assistant Chat Response Performance
 
 - **ID**: `cmgrg16gb000526tq6vkvvwel`
@@ -109,8 +146,8 @@ Tested: October 15, 2025
 
 ---
 
-**Total TODOs**: 3
-- Planned: 3
+**Total TODOs**: 4
+- Planned: 4
 - In Progress: 0
 - Testing: 0
 - Complete: 0
