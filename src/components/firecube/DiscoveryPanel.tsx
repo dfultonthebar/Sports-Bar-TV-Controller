@@ -21,7 +21,7 @@ export function DiscoveryPanel({ onDiscoveryComplete }: DiscoveryPanelProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/firecube/discover', {
+      const response = await fetch('/api/firetv-devices/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ method: discoveryMethod })
@@ -35,7 +35,7 @@ export function DiscoveryPanel({ onDiscoveryComplete }: DiscoveryPanelProps) {
 
       onDiscoveryComplete();
     } catch (error: any) {
-      setError(error.message);
+      setError(error.message || 'An error occurred during discovery');
     } finally {
       setIsDiscovering(false);
     }
@@ -51,12 +51,12 @@ export function DiscoveryPanel({ onDiscoveryComplete }: DiscoveryPanelProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/firecube/devices', {
+      const response = await fetch('/api/firetv-devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ipAddress: manualIp,
-          name: manualName,
+          name: manualName || `Fire TV ${manualIp}`,
           location: manualLocation
         })
       });
@@ -73,7 +73,7 @@ export function DiscoveryPanel({ onDiscoveryComplete }: DiscoveryPanelProps) {
       setManualLocation('');
       onDiscoveryComplete();
     } catch (error: any) {
-      setError(error.message);
+      setError(error.message || 'An error occurred while adding the device');
     } finally {
       setIsDiscovering(false);
     }

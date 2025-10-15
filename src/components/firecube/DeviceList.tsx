@@ -13,7 +13,7 @@ interface DeviceListProps {
 export function DeviceList({ devices, loading, onUpdate }: DeviceListProps) {
   const handleDelete = async (id: string) => {
     try {
-      const response = await fetch(`/api/firecube/devices/${id}`, {
+      const response = await fetch(`/api/firetv-devices?id=${id}`, {
         method: 'DELETE'
       });
 
@@ -27,7 +27,7 @@ export function DeviceList({ devices, loading, onUpdate }: DeviceListProps) {
 
   const handleTest = async (id: string) => {
     try {
-      const response = await fetch(`/api/firecube/devices/${id}/test`, {
+      const response = await fetch(`/api/firetv-devices/test-connection?id=${id}`, {
         method: 'POST'
       });
 

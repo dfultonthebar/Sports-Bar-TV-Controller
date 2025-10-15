@@ -23,7 +23,7 @@ export default function FireTVPage() {
   const fetchDevices = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/firecube/devices');
+      const response = await fetch('/api/firetv-devices');
       const data = await response.json();
       setDevices(data.devices || []);
       

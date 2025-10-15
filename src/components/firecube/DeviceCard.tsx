@@ -19,10 +19,10 @@ export function DeviceCard({ device, onUpdate, onDelete, onTest }: DeviceCardPro
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`/api/firecube/devices/${device.id}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/firetv-devices`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, location })
+        body: JSON.stringify({ id: device.id, name, location })
       });
 
       if (response.ok) {
