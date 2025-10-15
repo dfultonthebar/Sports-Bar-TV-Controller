@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
-const prisma = new PrismaClient();
 
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {

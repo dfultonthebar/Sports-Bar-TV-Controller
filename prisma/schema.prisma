@@ -374,3 +374,80 @@ model TodoDocument {
   
   @@index([todoId])
 }
+
+// AI Hub Models
+
+// Indexed codebase files for AI assistance
+model IndexedFile {
+  id            String   @id @default(cuid())
+  filePath      String   @unique
+  fileName      String
+  fileType      String   // typescript, javascript, json, markdown, etc.
+  content       String   // Full file content
+  fileSize      Int      // File size in bytes
+  lastModified  DateTime // Last modification timestamp
+  lastIndexed   DateTime @default(now()) // Last time this file was indexed
+  hash          String   // MD5 hash of content for change detection
+  isActive      Boolean  @default(true) // Whether file still exists in codebase
+  metadata      String?  // JSON string for additional metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([fileType])
+  @@index([lastIndexed])
+}
+
+// Q&A training pairs for AI
+model QAEntry {
+  id          String   @id @default(cuid())
+  question    String   // Training question
+  answer      String   // Training answer
+  category    String   @default("general") // Category: general, technical, troubleshooting, etc.
+  tags        String?  // JSON array of tags
+  sourceType  String   @default("manual") // manual, generated, imported
+  confidence  Float    @default(1.0) // Confidence score 0-1
+  useCount    Int      @default(0) // Number of times this Q&A was used
+  lastUsed    DateTime? // Last time this Q&A was used
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([category])
+  @@index([isActive])
+  @@index([sourceType])
+}
+
+// Training documents uploaded by users
+model TrainingDocument {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   // Full document content
+  fileType    String   // pdf, markdown, txt, etc.
+  fileName    String
+  fileSize    Int      // File size in bytes
+  category    String?  // Optional category
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([fileType])
+  @@index([isActive])
+}
+
+// AI Provider API Keys
+model ApiKey {
+  id          String   @id @default(cuid())
+  provider    String   // ollama, openai, anthropic, abacus, etc.
+  keyName     String   // Friendly name for the key
+  apiKey      String   // The actual API key (should be encrypted in production)
+  endpoint    String?  // Custom endpoint URL if applicable
+  model       String?  // Default model to use with this key
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([provider, keyName])
+  @@index([provider])
+  @@index([isActive])
+}
