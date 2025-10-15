@@ -85,12 +85,20 @@ export async function GET(request: NextRequest) {
     if (sourceType && sourceType !== 'all') filters.sourceType = sourceType;
 
     try {
-      const entries = await getAllQAEntries(filters);
-      // Ensure entries is always an array
-      const safeEntries = Array.isArray(entries) ? entries : [];
+      console.log('[AI QA] Fetching all Q&A entries with filters:', filters);
+      const result = await getAllQAEntries(filters);
+      console.log('[AI QA] Query result:', { 
+        hasEntries: !!result?.entries, 
+        count: result?.entries?.length || 0,
+        total: result?.total 
+      });
+      
+      // getAllQAEntries returns {entries, total, limit, offset}
+      const safeEntries = Array.isArray(result?.entries) ? result.entries : [];
+      console.log('[AI QA] Returning', safeEntries.length, 'entries');
       return NextResponse.json(safeEntries);
     } catch (dbError) {
-      console.error('Error fetching Q&A entries from database:', dbError);
+      console.error('[AI QA] ✗ Error fetching Q&A entries from database:', dbError);
       await logSystemError(dbError, `GET /api/ai/qa-entries with filters: ${JSON.stringify(filters)}`);
       
       // Return empty array instead of error to prevent frontend crashes
