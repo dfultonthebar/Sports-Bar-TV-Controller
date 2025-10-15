@@ -1,6 +1,65 @@
-
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import * as net from 'net'
+
+// TCP command with timeout
+async function sendTCPCommand(
+  ipAddress: string,
+  port: number,
+  command: string,
+  timeoutMs: number = 10000
+): Promise<{ success: boolean; response?: string; error?: string }> {
+  return new Promise((resolve) => {
+    let responseReceived = false
+    let response = ''
+    
+    const client = net.createConnection({ port, host: ipAddress }, () => {
+      console.log(`TCP Connected to Wolfpack at ${ipAddress}:${port}`)
+      const commandWithLineEnding = command + '\r\n'
+      client.write(commandWithLineEnding)
+    })
+    
+    client.setTimeout(timeoutMs)
+    
+    client.on('data', (data) => {
+      response += data.toString()
+      console.log(`Wolfpack TCP response: ${response}`)
+      
+      if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
+        responseReceived = true
+        client.end()
+        
+        if (response.includes('OK')) {
+          resolve({ success: true, response: response.trim() })
+        } else {
+          resolve({ success: false, error: `Command failed: ${response.trim()}`, response: response.trim() })
+        }
+      }
+    })
+    
+    client.on('timeout', () => {
+      console.error(`TCP connection timeout after ${timeoutMs}ms`)
+      client.destroy()
+      resolve({ success: false, error: `Connection timeout after ${timeoutMs}ms` })
+    })
+    
+    client.on('error', (err) => {
+      console.error('TCP connection error:', err.message)
+      client.destroy()
+      resolve({ success: false, error: `TCP error: ${err.message}` })
+    })
+    
+    client.on('close', () => {
+      if (!responseReceived) {
+        if (response.length > 0) {
+          resolve({ success: true, response: response.trim() })
+        } else {
+          resolve({ success: false, error: 'Connection closed without response' })
+        }
+      }
+    })
+  })
+}
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -38,69 +97,6 @@ export async function POST(request: NextRequest) {
     const ipAddress = matrixConfig.ipAddress
     const port = matrixConfig.tcpPort || 5000
 
-    // First verify connection
-    try {
-      const connectionTest = await fetch(`http://${ipAddress}:${port}/status`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000)
-      })
-
-      if (!connectionTest.ok) {
-        const duration = Date.now() - startTime
-        const errorLog = await prisma.testLog.create({
-          data: {
-            testType: 'wolfpack_switching',
-            testName: 'Wolf Pack Switching Test',
-            status: 'failed',
-            errorMessage: 'Cannot connect to Wolf Pack matrix',
-            duration: duration,
-            response: null,
-            command: null,
-            inputChannel: null,
-            outputChannel: null,
-            metadata: JSON.stringify({
-              ipAddress,
-              port,
-              connectionStatus: connectionTest.status
-            })
-          }
-        })
-
-        return NextResponse.json({
-          success: false,
-          error: 'Cannot connect to Wolf Pack matrix',
-          testLogId: errorLog.id
-        }, { status: 503 })
-      }
-    } catch (connectionError) {
-      const duration = Date.now() - startTime
-      const errorLog = await prisma.testLog.create({
-        data: {
-          testType: 'wolfpack_switching',
-          testName: 'Wolf Pack Switching Test',
-          status: 'failed',
-          errorMessage: connectionError instanceof Error ? connectionError.message : 'Connection failed',
-          duration: duration,
-          response: null,
-          command: null,
-          inputChannel: null,
-          outputChannel: null,
-          metadata: JSON.stringify({
-            ipAddress,
-            port,
-            error: connectionError instanceof Error ? connectionError.message : 'Unknown error'
-          })
-        }
-      })
-
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to connect to Wolf Pack matrix',
-        details: connectionError instanceof Error ? connectionError.message : 'Unknown error',
-        testLogId: errorLog.id
-      }, { status: 503 })
-    }
-
     // Log test start
     const testStartLog = await prisma.testLog.create({
       data: {
@@ -116,27 +112,22 @@ export async function POST(request: NextRequest) {
         metadata: JSON.stringify({
           ipAddress,
           port,
+          protocol: matrixConfig.protocol,
           startTime: new Date().toISOString()
         })
       }
     })
 
-    // Perform switching tests
+    // Perform switching test using TCP
     const testResults = []
     const testInput = 1
-    const testOutput = 1
+    const testOutput = 33 // Wolfpack matrix output (typically 33-36 for Matrix 1-4)
     const testCommand = `${testInput}X${testOutput}.`
 
     try {
-      // Send switching command
-      const switchResponse = await fetch(`http://${ipAddress}:${port}/switch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: testCommand }),
-        signal: AbortSignal.timeout(5000)
-      })
+      // Send switching command via TCP with 30 second timeout
+      const switchResult = await sendTCPCommand(ipAddress, port, testCommand, 30000)
 
-      const switchSuccess = switchResponse.ok
       const duration = Date.now() - startTime
 
       // Log individual test
@@ -144,17 +135,17 @@ export async function POST(request: NextRequest) {
         data: {
           testType: 'wolfpack_switching',
           testName: `Switch Test: Input ${testInput} to Output ${testOutput}`,
-          status: switchSuccess ? 'success' : 'failed',
+          status: switchResult.success ? 'success' : 'failed',
           command: testCommand,
           inputChannel: testInput,
           outputChannel: testOutput,
-          response: switchSuccess ? 'Switch command executed' : 'Switch command failed',
-          errorMessage: switchSuccess ? null : `HTTP ${switchResponse.status}`,
+          response: switchResult.response || null,
+          errorMessage: switchResult.success ? null : (switchResult.error || 'Unknown error'),
           duration: duration,
           metadata: JSON.stringify({
             ipAddress,
             port,
-            httpStatus: switchResponse.status
+            protocol: matrixConfig.protocol
           })
         }
       })
@@ -163,7 +154,9 @@ export async function POST(request: NextRequest) {
         input: testInput,
         output: testOutput,
         command: testCommand,
-        success: switchSuccess,
+        success: switchResult.success,
+        response: switchResult.response,
+        error: switchResult.error,
         testLogId: testLog.id
       })
 
@@ -208,7 +201,7 @@ export async function POST(request: NextRequest) {
       data: {
         testType: 'wolfpack_switching',
         testName: 'Wolf Pack Switching Test',
-        status: allSuccess ? 'success' : 'partial',
+        status: allSuccess ? 'success' : 'failed',
         response: `Completed ${testResults.length} test(s)`,
         errorMessage: allSuccess ? null : 'Some tests failed',
         duration: totalDuration,
@@ -218,6 +211,7 @@ export async function POST(request: NextRequest) {
         metadata: JSON.stringify({
           ipAddress,
           port,
+          protocol: matrixConfig.protocol,
           totalTests: testResults.length,
           successfulTests: testResults.filter(r => r.success).length,
           failedTests: testResults.filter(r => !r.success).length
