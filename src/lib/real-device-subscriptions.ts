@@ -6,6 +6,7 @@
 
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { direcTVLogger, DirecTVOperation, LogLevel, withTiming } from './directv-logger'
 
 const execAsync = promisify(exec)
 
@@ -28,31 +29,163 @@ export interface Subscription {
  */
 export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscription[]> {
   const subscriptions: Subscription[] = []
+  const deviceId = device.id || 'unknown'
+  const deviceName = device.name || 'Unknown Device'
+  const ipAddress = device.ipAddress
+  const port = device.port || 8080
+
+  // Log start of subscription polling
+  await direcTVLogger.log({
+    level: LogLevel.INFO,
+    operation: DirecTVOperation.SUBSCRIPTION_POLL,
+    deviceId,
+    deviceName,
+    ipAddress,
+    port,
+    message: `Starting subscription poll for ${deviceName}`,
+    details: {
+      deviceType: device.receiverType || 'Unknown',
+      deviceInfo: {
+        id: deviceId,
+        name: deviceName,
+        ip: ipAddress,
+        port
+      }
+    }
+  })
 
   try {
-    // Connect to DirecTV receiver HTTP API
-    const response = await fetch(`http://${device.ipAddress}:8080/info/getVersion`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000)
+    // Step 1: Test basic connectivity with getVersion endpoint
+    await direcTVLogger.log({
+      level: LogLevel.DEBUG,
+      operation: DirecTVOperation.DEVICE_INFO_QUERY,
+      deviceId,
+      deviceName,
+      ipAddress,
+      port,
+      message: 'Attempting to query device version information'
     })
 
-    if (!response.ok) {
-      throw new Error('DirecTV receiver not responding')
+    const versionUrl = `http://${ipAddress}:${port}/info/getVersion`
+    const { result: versionResponse, duration: versionDuration } = await withTiming(async () => {
+      return await fetch(versionUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      })
+    })
+
+    await direcTVLogger.logApiRequest(
+      DirecTVOperation.DEVICE_INFO_QUERY,
+      deviceName,
+      ipAddress,
+      port,
+      versionUrl,
+      'GET',
+      versionResponse.ok,
+      versionResponse.status,
+      versionResponse.ok ? await versionResponse.clone().text() : undefined,
+      versionDuration
+    )
+
+    if (!versionResponse.ok) {
+      const errorMessage = `DirecTV receiver returned HTTP ${versionResponse.status}: ${versionResponse.statusText}`
+      await direcTVLogger.log({
+        level: LogLevel.ERROR,
+        operation: DirecTVOperation.DEVICE_INFO_QUERY,
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        message: errorMessage,
+        response: {
+          status: versionResponse.status,
+          statusText: versionResponse.statusText
+        }
+      })
+      throw new Error(errorMessage)
     }
 
-    // Get subscribed packages via DirecTV API
-    const packagesResponse = await fetch(`http://${device.ipAddress}:8080/info/getOptions`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000)
+    await direcTVLogger.log({
+      level: LogLevel.INFO,
+      operation: DirecTVOperation.DEVICE_INFO_QUERY,
+      deviceId,
+      deviceName,
+      ipAddress,
+      port,
+      message: `Device version query successful (${versionDuration}ms)`
     })
+
+    // Step 2: Get subscribed packages via DirecTV API
+    await direcTVLogger.log({
+      level: LogLevel.DEBUG,
+      operation: DirecTVOperation.PACKAGE_QUERY,
+      deviceId,
+      deviceName,
+      ipAddress,
+      port,
+      message: 'Attempting to query subscription packages'
+    })
+
+    const packagesUrl = `http://${ipAddress}:${port}/info/getOptions`
+    const { result: packagesResponse, duration: packagesDuration } = await withTiming(async () => {
+      return await fetch(packagesUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      })
+    })
+
+    await direcTVLogger.logApiRequest(
+      DirecTVOperation.PACKAGE_QUERY,
+      deviceName,
+      ipAddress,
+      port,
+      packagesUrl,
+      'GET',
+      packagesResponse.ok,
+      packagesResponse.status,
+      undefined, // Don't log full response body yet
+      packagesDuration
+    )
 
     if (packagesResponse.ok) {
       const packagesData = await packagesResponse.json()
       
+      await direcTVLogger.log({
+        level: LogLevel.DEBUG,
+        operation: DirecTVOperation.PACKAGE_QUERY,
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        message: `Package data retrieved successfully (${packagesDuration}ms)`,
+        details: {
+          hasOptions: !!packagesData.options,
+          optionsCount: packagesData.options?.length || 0,
+          packageDataStructure: Object.keys(packagesData)
+        }
+      })
+      
       // Parse package information
       if (packagesData.options && Array.isArray(packagesData.options)) {
+        await direcTVLogger.log({
+          level: LogLevel.INFO,
+          operation: DirecTVOperation.PACKAGE_QUERY,
+          deviceId,
+          deviceName,
+          ipAddress,
+          port,
+          message: `Found ${packagesData.options.length} package options`,
+          details: {
+            packages: packagesData.options.map((opt: any) => ({
+              id: opt.id,
+              title: opt.title,
+              subscribed: opt.subscribed
+            }))
+          }
+        })
+
         for (const option of packagesData.options) {
           subscriptions.push({
             id: `directv-${option.id}`,
@@ -64,11 +197,46 @@ export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscri
             description: option.description || 'DIRECTV subscription package'
           })
         }
+      } else {
+        await direcTVLogger.log({
+          level: LogLevel.WARNING,
+          operation: DirecTVOperation.PACKAGE_QUERY,
+          deviceId,
+          deviceName,
+          ipAddress,
+          port,
+          message: 'Package data does not contain expected options array',
+          details: { packagesData }
+        })
       }
+    } else {
+      await direcTVLogger.log({
+        level: LogLevel.WARNING,
+        operation: DirecTVOperation.PACKAGE_QUERY,
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        message: `Package query returned HTTP ${packagesResponse.status}`,
+        response: {
+          status: packagesResponse.status,
+          statusText: packagesResponse.statusText
+        }
+      })
     }
 
     // If no subscriptions found, device is connected but may not support package query
     if (subscriptions.length === 0) {
+      await direcTVLogger.log({
+        level: LogLevel.INFO,
+        operation: DirecTVOperation.PACKAGE_QUERY,
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        message: 'No subscriptions found via API, adding default connected status'
+      })
+
       subscriptions.push({
         id: 'directv-connected',
         name: 'DIRECTV Service',
@@ -79,7 +247,44 @@ export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscri
       })
     }
 
+    // Log successful completion
+    await direcTVLogger.logSubscriptionPoll(
+      deviceId,
+      deviceName,
+      ipAddress,
+      port,
+      true,
+      subscriptions.length,
+      {
+        subscriptions: subscriptions.map(s => ({
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          status: s.status
+        }))
+      }
+    )
+
   } catch (error) {
+    // Comprehensive error logging
+    await direcTVLogger.logSubscriptionPoll(
+      deviceId,
+      deviceName,
+      ipAddress,
+      port,
+      false,
+      0,
+      {
+        attemptedEndpoints: [
+          `http://${ipAddress}:${port}/info/getVersion`,
+          `http://${ipAddress}:${port}/info/getOptions`
+        ],
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorCode: (error as any)?.code
+      },
+      error instanceof Error ? error : new Error(String(error))
+    )
+
     console.error('DirecTV subscription poll error:', error)
     throw new Error('Unable to connect to DirecTV receiver')
   }
