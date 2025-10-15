@@ -44,7 +44,7 @@ interface DirecTVDevice {
   ipAddress: string
   port: number
   isOnline: boolean
-  receiverType: 'Genie HD DVR' | 'Genie Mini' | 'HR Series DVR' | 'C61K Mini' | 'HS17 Server'
+  receiverType: 'Genie HD DVR' | 'Genie Mini' | 'HR Series DVR' | 'C61K Mini' | 'HS17 Server' | 'H24/H25 HD' | 'h24/100'
   inputChannel?: number  // Associated matrix input channel
   lastResponse?: string
   softwareVersion?: string
@@ -1012,6 +1012,8 @@ export default function DirecTVController() {
                   <option value="HR Series DVR">HR Series DVR</option>
                   <option value="C61K Mini">C61K Mini</option>
                   <option value="HS17 Server">HS17 Server</option>
+                  <option value="H24/H25 HD">H24/H25 HD Receiver</option>
+                  <option value="h24/100">H24/100 HD Receiver</option>
                 </select>
               </div>
 
@@ -1020,31 +1022,18 @@ export default function DirecTVController() {
                   Matrix Input Channel
                   <span className="text-red-500 ml-1">*</span>
                 </label>
-                {loadingInputs ? (
-                  <div className="flex items-center space-x-2 px-3 py-2 input-dark bg-slate-800/50">
-                    <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-                    <span className="text-slate-400 text-sm">Loading inputs...</span>
-                  </div>
-                ) : (
-                  <select
-                    value={newDevice.inputChannel || ''}
-                    onChange={(e) => setNewDevice({ ...newDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 input-dark"
-                    required
-                  >
-                    <option value="">Select Input Channel...</option>
-                    {matrixInputs
-                      .filter(input => input.isActive && input.status === 'active')
-                      .sort((a, b) => a.channelNumber - b.channelNumber)
-                      .map((input) => (
-                        <option key={input.id} value={input.channelNumber}>
-                          Input {input.channelNumber}: {input.label} ({input.deviceType})
-                        </option>
-                      ))}
-                  </select>
-                )}
+                <input
+                  type="number"
+                  min="1"
+                  max="32"
+                  placeholder="Enter channel number (e.g., 1, 2, 3...)"
+                  value={newDevice.inputChannel || ''}
+                  onChange={(e) => setNewDevice({ ...newDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-full px-3 py-2 input-dark"
+                  required
+                />
                 <p className="text-xs text-slate-400 mt-1">
-                  Select which matrix input this DirecTV box is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                  Enter which matrix input channel this DirecTV box is connected to (typically 1-32).
                 </p>
               </div>
             </div>
@@ -1131,6 +1120,8 @@ export default function DirecTVController() {
                   <option value="HR Series DVR">HR Series DVR</option>
                   <option value="C61K Mini">C61K Mini</option>
                   <option value="HS17 Server">HS17 Server</option>
+                  <option value="H24/H25 HD">H24/H25 HD Receiver</option>
+                  <option value="h24/100">H24/100 HD Receiver</option>
                 </select>
               </div>
 
@@ -1139,31 +1130,18 @@ export default function DirecTVController() {
                   Matrix Input Channel
                   <span className="text-red-500 ml-1">*</span>
                 </label>
-                {loadingInputs ? (
-                  <div className="flex items-center space-x-2 px-3 py-2 input-dark bg-slate-800/50">
-                    <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-                    <span className="text-slate-400 text-sm">Loading inputs...</span>
-                  </div>
-                ) : (
-                  <select
-                    value={editDevice.inputChannel || ''}
-                    onChange={(e) => setEditDevice({ ...editDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 input-dark"
-                    required
-                  >
-                    <option value="">Select Input Channel...</option>
-                    {matrixInputs
-                      .filter(input => input.isActive && input.status === 'active')
-                      .sort((a, b) => a.channelNumber - b.channelNumber)
-                      .map((input) => (
-                        <option key={input.id} value={input.channelNumber}>
-                          Input {input.channelNumber}: {input.label} ({input.deviceType})
-                        </option>
-                      ))}
-                  </select>
-                )}
+                <input
+                  type="number"
+                  min="1"
+                  max="32"
+                  placeholder="Enter channel number (e.g., 1, 2, 3...)"
+                  value={editDevice.inputChannel || ''}
+                  onChange={(e) => setEditDevice({ ...editDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-full px-3 py-2 input-dark"
+                  required
+                />
                 <p className="text-xs text-slate-400 mt-1">
-                  Select which matrix input this DirecTV box is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                  Enter which matrix input channel this DirecTV box is connected to (typically 1-32).
                 </p>
               </div>
             </div>
