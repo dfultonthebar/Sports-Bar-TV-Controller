@@ -1028,7 +1028,10 @@ export default function DirecTVController() {
                   max="32"
                   placeholder="Enter channel number (e.g., 1, 2, 3...)"
                   value={newDevice.inputChannel || ''}
-                  onChange={(e) => setNewDevice({ ...newDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    setNewDevice({ ...newDevice, inputChannel: !isNaN(value) && value > 0 ? value : undefined });
+                  }}
                   className="w-full px-3 py-2 input-dark"
                   required
                 />
@@ -1136,7 +1139,10 @@ export default function DirecTVController() {
                   max="32"
                   placeholder="Enter channel number (e.g., 1, 2, 3...)"
                   value={editDevice.inputChannel || ''}
-                  onChange={(e) => setEditDevice({ ...editDevice, inputChannel: e.target.value ? parseInt(e.target.value) : undefined })}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    setEditDevice({ ...editDevice, inputChannel: !isNaN(value) && value > 0 ? value : undefined });
+                  }}
                   className="w-full px-3 py-2 input-dark"
                   required
                 />
