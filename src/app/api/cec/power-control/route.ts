@@ -1,9 +1,13 @@
 
+
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from "@/lib/prisma"
 import { Socket } from 'net'
 import dgram from 'dgram'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
+const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
   try {
@@ -132,8 +136,8 @@ async function controlIndividualTV(
   // Step 2: Wait for switching delay
   await sleep(cecConfig.powerOnDelay || 2000)
   
-  // Step 3: Send CEC command to this TV
-  const cecSuccess = await sendCECCommand(action, [outputNumber], cecConfig)
+  // Step 3: Send CEC command to this TV via USB
+  const cecSuccess = await sendCECCommandUSB(action, [outputNumber], cecConfig)
   
   if (!cecSuccess) {
     throw new Error(`Failed to send CEC ${action} to output ${outputNumber}`)
@@ -181,8 +185,8 @@ async function controlAllTVs(
   // Wait for all routes to settle
   await sleep(cecConfig.powerOnDelay || 2000)
   
-  // Send CEC command to all TVs
-  const cecSuccess = await sendCECCommand(action, outputNumbers, cecConfig)
+  // Send CEC command to all TVs via USB
+  const cecSuccess = await sendCECCommandUSB(action, outputNumbers, cecConfig)
   
   return {
     action,
@@ -223,83 +227,59 @@ async function routeInputToOutput(
   }
 }
 
-// Send CEC command via HTTP to CEC USB device
-async function sendCECCommand(
+// Send CEC command via USB device using cec-client
+async function sendCECCommandUSB(
   action: string, 
   outputNumbers: number[], 
   cecConfig: any
 ): Promise<boolean> {
   
   const cecCommand = action === 'power_on' ? 'on' : 'standby'
-  console.log(`Sending CEC ${cecCommand} command to outputs: ${outputNumbers.join(', ')}`)
+  const devicePath = cecConfig.usbDevicePath || '/dev/ttyACM0'
+  
+  console.log(`Sending CEC ${cecCommand} command via USB device ${devicePath} to outputs: ${outputNumbers.join(', ')}`)
   
   try {
-    // This assumes a CEC HTTP server/bridge (like cec-web-api or similar)
-    const response = await fetch(`http://${cecConfig.cecServerIP}:${cecConfig.cecPort}/api/command`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        command: cecCommand,
-        targets: outputNumbers.map(num => `${num}`), // CEC addresses as strings
-        broadcast: outputNumbers.length > 1
-      })
-    })
-    
-    if (response.ok) {
-      const result = await response.json()
-      console.log('CEC command response:', result)
-      return true
-    } else {
-      console.error('CEC command failed:', response.status, response.statusText)
+    // Check if cec-client is available
+    try {
+      await execAsync('which cec-client')
+    } catch (error) {
+      console.error('cec-client not found. Please install libcec-utils package.')
       return false
     }
+
+    // Send CEC command for each output
+    // CEC addresses: 0 = TV, F = broadcast
+    // We'll use broadcast (F) for simplicity
+    const cecAddress = outputNumbers.length > 1 ? 'F' : '0'
+    
+    // Build the cec-client command
+    // Format: echo "on 0" | cec-client -s -d 1 /dev/ttyACM0
+    const command = `echo "${cecCommand} ${cecAddress}" | cec-client -s -d 1 ${devicePath}`
+    
+    console.log(`Executing CEC command: ${command}`)
+    
+    const { stdout, stderr } = await execAsync(command, { timeout: 10000 })
+    
+    console.log('CEC command stdout:', stdout)
+    if (stderr) {
+      console.error('CEC command stderr:', stderr)
+    }
+    
+    // Check if command was successful
+    // cec-client typically outputs "TRAFFIC" lines when successful
+    const success = stdout.includes('TRAFFIC') || stdout.includes('power status changed')
+    
+    if (!success) {
+      console.warn('CEC command may have failed - no success indicators in output')
+    }
+    
+    return success
+    
   } catch (error) {
-    console.error('CEC HTTP request failed:', error)
-    
-    // Fallback: try sending CEC commands via a simple TCP socket if HTTP fails
-    return await sendCECCommandTCP(action, outputNumbers, cecConfig)
+    console.error('CEC USB command failed:', error)
+    return false
   }
-}
-
-// Fallback CEC command via TCP
-async function sendCECCommandTCP(
-  action: string, 
-  outputNumbers: number[], 
-  cecConfig: any
-): Promise<boolean> {
-  
-  return new Promise((resolve) => {
-    const socket = new Socket()
-    const cecCommand = action === 'power_on' ? 'on' : 'standby'
-    
-    const timeout = setTimeout(() => {
-      socket.destroy()
-      resolve(false)
-    }, 5000)
-
-    socket.connect(cecConfig.cecPort, cecConfig.cecServerIP, () => {
-      // Send CEC command for each output
-      outputNumbers.forEach(outputNum => {
-        socket.write(`echo '${cecCommand} ${outputNum}' | cec-client -s -d 1\n`)
-      })
-    })
-
-    socket.on('data', (data) => {
-      const response = data.toString()
-      console.log('CEC TCP response:', response)
-      clearTimeout(timeout)
-      socket.destroy()
-      resolve(response.includes('success') || response.includes('OK'))
-    })
-
-    socket.on('error', (error) => {
-      console.error('CEC TCP error:', error)
-      clearTimeout(timeout)
-      resolve(false)
-    })
-  })
 }
 
 // TCP command function for Wolf Pack
@@ -374,3 +354,4 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
+

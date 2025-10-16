@@ -1,13 +1,15 @@
 
+
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from "@/lib/prisma"
-import { CECCommand, getCECCommandMapping } from '@/lib/enhanced-cec-commands'
-import { getBrandConfig } from '@/lib/tv-brands-config'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
+const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
   try {
-    const { command, outputNumber, parameters } = await request.json()
+    const { command, target = '0' } = await request.json()
     
     if (!command) {
       return NextResponse.json({ 
@@ -21,133 +23,64 @@ export async function POST(request: NextRequest) {
     if (!cecConfig || !cecConfig.isEnabled) {
       return NextResponse.json({ 
         success: false, 
-        error: 'CEC is not enabled' 
+        error: 'CEC is not properly configured or enabled' 
       }, { status: 400 })
     }
 
-    // Get output info to determine brand if available
-    let brandConfig = getBrandConfig('Generic')
-    if (outputNumber) {
-      const output = await prisma.matrixOutput.findFirst({
-        where: { channelNumber: outputNumber }
-      })
-      // Use detected brand from CEC discovery if available
-      if (output?.tvBrand) {
-        brandConfig = getBrandConfig(output.tvBrand)
-        console.log(`[CEC Enhanced Control] Using brand-specific config for ${output.tvBrand}`)
-      }
-    }
-
-    // Get command mapping
-    const commandMapping = getCECCommandMapping(command as CECCommand)
-    if (!commandMapping) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Unknown CEC command: ${command}` 
-      }, { status: 400 })
-    }
-
-    // Determine delay based on command type
-    let delay = 2000
-    if (command === 'power_on') {
-      delay = brandConfig.cecPowerOnDelay
-    } else if (command === 'power_off' || command === 'standby') {
-      delay = brandConfig.cecPowerOffDelay
-    } else if (['volume_up', 'volume_down', 'mute'].includes(command)) {
-      delay = brandConfig.cecVolumeDelay
-    } else if (command.includes('source') || command === 'set_stream_path') {
-      delay = brandConfig.cecInputSwitchDelay
-    }
-
-    // If specific output is targeted, route to it first
-    if (outputNumber && cecConfig.cecInputChannel) {
-      const routeResponse = await fetch(`${request.nextUrl.origin}/api/matrix/route`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: cecConfig.cecInputChannel,
-          output: outputNumber
-        })
-      })
-
-      if (!routeResponse.ok) {
+    const devicePath = cecConfig.usbDevicePath || '/dev/ttyACM0'
+    
+    console.log(`Sending enhanced CEC command: ${command} to target ${target} via ${devicePath}`)
+    
+    try {
+      // Check if cec-client is available
+      try {
+        await execAsync('which cec-client')
+      } catch (error) {
+        console.error('cec-client not found. Please install libcec-utils package.')
         return NextResponse.json({ 
           success: false, 
-          error: 'Failed to route matrix to target output' 
+          error: 'cec-client not installed. Please install libcec-utils package.' 
         }, { status: 500 })
       }
 
-      // Wait for brand-specific delay
-      await new Promise(resolve => setTimeout(resolve, delay))
-    }
-
-    // Send CEC command
-    const cecResponse = await fetch(
-      `http://${cecConfig.cecServerIP}:${cecConfig.cecPort}/api/command`, 
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: commandMapping.opcode,
-          targets: outputNumber ? [`${outputNumber}`] : undefined,
-          broadcast: !outputNumber,
-          parameters
-        })
+      // Build the cec-client command
+      const cecCommand = `echo "${command} ${target}" | cec-client -s -d 1 ${devicePath}`
+      
+      console.log(`Executing CEC command: ${cecCommand}`)
+      
+      const { stdout, stderr } = await execAsync(cecCommand, { timeout: 10000 })
+      
+      console.log('CEC command stdout:', stdout)
+      if (stderr) {
+        console.error('CEC command stderr:', stderr)
       }
-    )
-
-    if (cecResponse.ok) {
-      const result = await cecResponse.json()
+      
+      // Check if command was successful
+      const success = stdout.includes('TRAFFIC') || stdout.includes('power status changed')
+      
       return NextResponse.json({
-        success: true,
-        command: commandMapping.command,
-        opcode: commandMapping.opcode,
-        hexCode: commandMapping.hexCode,
-        outputNumber,
-        delay,
-        brandConfig: {
-          brand: brandConfig.brand,
-          timing: {
-            powerOn: brandConfig.cecPowerOnDelay,
-            powerOff: brandConfig.cecPowerOffDelay,
-            volume: brandConfig.cecVolumeDelay,
-            inputSwitch: brandConfig.cecInputSwitchDelay
-          }
-        },
-        result,
+        success,
+        command,
+        target,
+        output: stdout,
+        error: stderr || undefined,
         timestamp: new Date().toISOString()
       })
-    } else {
+      
+    } catch (error) {
+      console.error('CEC USB command failed:', error)
       return NextResponse.json({ 
         success: false, 
-        error: `CEC USB device returned error: ${cecResponse.statusText}` 
+        error: 'CEC command execution failed: ' + error 
       }, { status: 500 })
     }
 
   } catch (error) {
-    console.error('Enhanced CEC control error:', error)
+    console.error('Error in enhanced CEC control:', error)
     return NextResponse.json({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Enhanced CEC control failed: ' + error 
     }, { status: 500 })
   }
 }
 
-// GET endpoint to list all available CEC commands
-export async function GET() {
-  try {
-    const { getCECCommandsByCategory } = await import('@/lib/enhanced-cec-commands')
-    const commands = getCECCommandsByCategory()
-    
-    return NextResponse.json({
-      success: true,
-      commands,
-      categories: Object.keys(commands)
-    })
-  } catch (error) {
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to load CEC commands' 
-    }, { status: 500 })
-  }
-}
