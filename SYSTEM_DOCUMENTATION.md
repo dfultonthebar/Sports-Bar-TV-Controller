@@ -1897,30 +1897,554 @@ Administrative tools for system management, testing, and maintenance.
 - Priority management
 - Status updates
 
-### Wolfpack Integration
+### Wolfpack Matrix Testing System
 
-#### POST `/api/wolfpack/test-connection`
-Test connectivity to Wolfpack matrix:
-```json
-{
-  "ipAddress": "192.168.1.100"
-}
+**Last Updated:** October 16, 2025  
+**Status:** ✅ FULLY FUNCTIONAL with TCP Socket Communication
+
+The Wolfpack Matrix Testing System provides comprehensive testing capabilities for the Wolfpack HDMI matrix switcher, including connection testing and switching functionality tests. All tests include verbose logging for debugging and monitoring.
+
+#### Overview
+
+The testing system is accessible from the **System Admin Hub** under the **Tests** tab. It provides two main test types:
+
+1. **Connection Test** - Verifies TCP connectivity to the Wolfpack matrix
+2. **Switching Test** - Tests actual input/output switching commands
+
+#### Key Features
+
+- ✅ **TCP Socket Communication** - Uses native TCP sockets (not HTTP)
+- ✅ **Comprehensive Verbose Logging** - Detailed logs for every operation
+- ✅ **Database Persistence** - All test results saved to database
+- ✅ **Real-time Feedback** - Live test status in UI
+- ✅ **Error Handling** - Graceful error handling with detailed messages
+- ✅ **AI-Accessible Logs** - Logs available via PM2 for local AI analysis
+
+#### Test Types
+
+##### 1. Connection Test
+
+**Purpose:** Verify TCP connectivity to the Wolfpack matrix switcher
+
+**How it Works:**
+1. Loads active matrix configuration from database
+2. Establishes TCP socket connection to configured IP:Port
+3. Tests connection with 5-second timeout
+4. Logs result to database and PM2 logs
+5. Returns success/failure status to UI
+
+**API Endpoint:** `POST /api/tests/wolfpack/connection`
+
+**Test Flow:**
+```
+1. Load matrix configuration (IP: 192.168.5.100, Port: 5000)
+2. Create TCP socket connection
+3. Wait for connection or timeout (5 seconds)
+4. Log result to database
+5. Return status to frontend
 ```
 
-#### POST `/api/wolfpack/test-switching`
-Test matrix switching functionality
+**Success Criteria:**
+- TCP connection established within timeout period
+- No connection errors
+
+**Failure Scenarios:**
+- Connection timeout (5 seconds)
+- Connection refused (matrix offline)
+- Network unreachable
+- Invalid IP/Port configuration
+
+##### 2. Switching Test
+
+**Purpose:** Test actual matrix switching functionality
+
+**How it Works:**
+1. Loads active matrix configuration from database
+2. Sends switching command via TCP (e.g., "1X33." = Input 1 to Output 33)
+3. Waits for response with 30-second timeout
+4. Validates response (looks for "OK" or error messages)
+5. Logs detailed results to database and PM2 logs
+
+**API Endpoint:** `POST /api/tests/wolfpack/switching`
+
+**Test Command Format:**
+```
+{input}X{output}.
+Example: 1X33. (Route Input 1 to Output 33)
+```
+
+**Test Flow:**
+```
+1. Load matrix configuration
+2. Create test start log
+3. Send TCP command: "1X33.\r\n"
+4. Wait for response (up to 30 seconds)
+5. Parse response for "OK" or error
+6. Log individual test result
+7. Create test completion log
+8. Return results to frontend
+```
+
+**Success Criteria:**
+- TCP connection established
+- Command sent successfully
+- Response received containing "OK"
+- No errors in response
+
+**Failure Scenarios:**
+- Connection timeout
+- Command timeout (30 seconds)
+- Error response from matrix
+- Connection closed without response
+
+#### Verbose Logging System
+
+All Wolfpack tests include comprehensive verbose logging that appears in PM2 logs. This makes it easy for local AI assistants to analyze test results and diagnose issues.
+
+##### Log Format
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎛️ [WOLFPACK CONNECTION TEST] API endpoint called
+Timestamp: 2025-10-16T18:45:11.304Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+##### Log Levels
+
+- **INFO** - General operation information (console.log)
+- **ERROR** - Error conditions (console.error)
+- **SUCCESS** - Successful operations (✅ prefix)
+- **FAILURE** - Failed operations (❌ prefix)
+
+##### Logged Operations
+
+**Connection Test Logs:**
+```
+🎛️ [WOLFPACK CONNECTION TEST] API endpoint called
+📂 [WOLFPACK CONNECTION TEST] Loading matrix configuration from database...
+✅ [WOLFPACK CONNECTION TEST] Configuration loaded
+   Configuration ID: cmgq3koyx000026chpo3jsede
+   Name: Graystone Alehouse Wolf Pack Matrix
+   IP Address: 192.168.5.100
+   TCP Port: 5000
+   Protocol: TCP
+🔌 [WOLFPACK CONNECTION TEST] Testing TCP connection...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎛️ [WOLFPACK CONNECTION TEST] Starting TCP connection test
+   Target: 192.168.5.100:5000
+   Timeout: 5000ms
+   Timestamp: 2025-10-16T18:45:11.310Z
+✅ [WOLFPACK CONNECTION TEST] TCP connection established
+   Duration: 45ms
+📊 [WOLFPACK CONNECTION TEST] Test completed
+   Success: true
+   Total Duration: 52ms
+💾 [WOLFPACK CONNECTION TEST] Saving test result to database...
+✅ [WOLFPACK CONNECTION TEST] Test result saved
+   Test Log ID: cmgtrs6q0000l26b3751u36i9
+```
+
+**Switching Test Logs:**
+```
+🎛️ [WOLFPACK SWITCHING TEST] API endpoint called
+📂 [WOLFPACK SWITCHING TEST] Loading matrix configuration from database...
+✅ [WOLFPACK SWITCHING TEST] Configuration loaded
+💾 [WOLFPACK SWITCHING TEST] Creating test start log...
+✅ [WOLFPACK SWITCHING TEST] Test start log created
+🔄 [WOLFPACK SWITCHING TEST] Starting switching test...
+   Test Parameters:
+     Input: 1
+     Output: 33
+     Command: 1X33.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📡 [WOLFPACK SWITCHING] Sending TCP command
+   Target: 192.168.5.100:5000
+   Command: 1X33.
+   Timeout: 30000ms
+   Timestamp: 2025-10-16T18:45:15.123Z
+✅ [WOLFPACK SWITCHING] TCP connection established
+   Sending command with line ending...
+📤 [WOLFPACK SWITCHING] Command sent, waiting for response...
+📥 [WOLFPACK SWITCHING] Received data: OK
+✅ [WOLFPACK SWITCHING] Command successful
+   Response: OK
+📊 [WOLFPACK SWITCHING TEST] Switch command completed
+   Success: true
+   Duration: 234ms
+💾 [WOLFPACK SWITCHING TEST] Saving individual test result...
+✅ [WOLFPACK SWITCHING TEST] Individual test result saved
+📊 [WOLFPACK SWITCHING TEST] All tests completed
+   Total Tests: 1
+   Successful: 1
+   Failed: 0
+   Total Duration: 245ms
+💾 [WOLFPACK SWITCHING TEST] Saving test completion log...
+✅ [WOLFPACK SWITCHING TEST] Test completion log saved
+```
+
+##### Accessing Logs
+
+**View Real-time Logs:**
+```bash
+pm2 logs sports-bar-tv
+```
+
+**Filter for Wolfpack Test Logs:**
+```bash
+pm2 logs sports-bar-tv | grep "WOLFPACK"
+```
+
+**View Specific Log File:**
+```bash
+tail -f ~/.pm2/logs/sports-bar-tv-out.log | grep "WOLFPACK"
+```
+
+**Search for Errors:**
+```bash
+pm2 logs sports-bar-tv | grep "WOLFPACK" | grep "❌"
+```
+
+**Export Logs for Analysis:**
+```bash
+pm2 logs sports-bar-tv --lines 1000 --nostream | grep "WOLFPACK" > wolfpack_test_logs.txt
+```
 
 #### Database Schema
 
+##### TestLog Table
+
+All test results are stored in the `TestLog` table:
+
 ```prisma
-model WolfpackConfig {
-  id         Int      @id @default(autoincrement())
-  ipAddress  String   @unique
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model TestLog {
+  id              String    @id @default(cuid())
+  testType        String    // 'wolfpack_connection' or 'wolfpack_switching'
+  testName        String    // Human-readable test name
+  status          String    // 'success', 'failed', 'error', 'running'
+  inputChannel    Int?      // Input channel number (for switching tests)
+  outputChannel   Int?      // Output channel number (for switching tests)
+  command         String?   // TCP command sent (e.g., "1X33.")
+  response        String?   // Response received from matrix
+  errorMessage    String?   // Error message if test failed
+  duration        Int       // Test duration in milliseconds
+  timestamp       DateTime  @default(now())
+  metadata        String?   // JSON metadata (config details, etc.)
 }
 ```
+
+##### MatrixConfiguration Table
+
+Matrix configuration used by tests:
+
+```prisma
+model MatrixConfiguration {
+  id              String   @id @default(cuid())
+  name            String
+  ipAddress       String
+  tcpPort         Int      @default(5000)
+  udpPort         Int      @default(4000)
+  protocol        String   @default("TCP")
+  isActive        Boolean  @default(true)
+  cecInputChannel Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+#### API Endpoints
+
+##### POST `/api/tests/wolfpack/connection`
+
+Test TCP connectivity to Wolfpack matrix.
+
+**Request:** No body required
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Successfully connected to Wolfpack matrix at 192.168.5.100:5000",
+  "testLogId": "cmgtrs6q0000l26b3751u36i9",
+  "duration": 52,
+  "config": {
+    "ipAddress": "192.168.5.100",
+    "port": 5000,
+    "protocol": "TCP"
+  }
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "message": "TCP connection error: Connection refused",
+  "testLogId": "cmgtrs6q0000l26b3751u36i9",
+  "duration": 5008,
+  "config": {
+    "ipAddress": "192.168.5.100",
+    "port": 5000,
+    "protocol": "TCP"
+  }
+}
+```
+
+##### POST `/api/tests/wolfpack/switching`
+
+Test matrix switching functionality.
+
+**Request:** No body required
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Switching test completed: 1/1 successful",
+  "testLogId": "cmgtrs6q0000m26b3751u36ia",
+  "startLogId": "cmgtrs6q0000n26b3751u36ib",
+  "duration": 245,
+  "results": [
+    {
+      "input": 1,
+      "output": 33,
+      "command": "1X33.",
+      "success": true,
+      "response": "OK",
+      "testLogId": "cmgtrs6q0000o26b3751u36ic"
+    }
+  ]
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "message": "Switching test completed: 0/1 successful",
+  "testLogId": "cmgtrs6q0000m26b3751u36ia",
+  "startLogId": "cmgtrs6q0000n26b3751u36ib",
+  "duration": 30245,
+  "results": [
+    {
+      "input": 1,
+      "output": 33,
+      "command": "1X33.",
+      "success": false,
+      "error": "Connection timeout after 30000ms",
+      "testLogId": "cmgtrs6q0000o26b3751u36ic"
+    }
+  ]
+}
+```
+
+##### GET `/api/tests/logs`
+
+Retrieve test logs from database.
+
+**Query Parameters:**
+- `limit` (optional) - Number of logs to return (default: 200)
+- `testType` (optional) - Filter by test type
+- `status` (optional) - Filter by status
+
+**Response:**
+```json
+{
+  "success": true,
+  "logs": [
+    {
+      "id": "cmgtrs6q0000l26b3751u36i9",
+      "testType": "wolfpack_connection",
+      "testName": "Wolf Pack Connection Test",
+      "status": "success",
+      "duration": 52,
+      "timestamp": "2025-10-16T18:45:11.305Z",
+      "response": "Successfully connected to Wolfpack matrix at 192.168.5.100:5000",
+      "errorMessage": null,
+      "metadata": "{\"ipAddress\":\"192.168.5.100\",\"port\":5000,...}"
+    }
+  ]
+}
+```
+
+##### DELETE `/api/tests/logs`
+
+Clear all test logs from database.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "All test logs cleared successfully"
+}
+```
+
+#### Troubleshooting
+
+##### Connection Test Fails
+
+**Symptom:** Connection test shows "Connection timeout" or "Connection refused"
+
+**Diagnostic Steps:**
+
+1. **Verify Matrix Configuration:**
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT * FROM MatrixConfiguration WHERE isActive = 1;"
+   ```
+
+2. **Test Network Connectivity:**
+   ```bash
+   ping 192.168.5.100
+   telnet 192.168.5.100 5000
+   ```
+
+3. **Check PM2 Logs:**
+   ```bash
+   pm2 logs sports-bar-tv | grep "WOLFPACK CONNECTION TEST"
+   ```
+
+4. **Verify Matrix is Powered On:**
+   - Check physical matrix switcher
+   - Verify network cable connected
+   - Check matrix status LEDs
+
+**Common Causes:**
+- Matrix switcher is powered off
+- Incorrect IP address in configuration
+- Network connectivity issues
+- Firewall blocking port 5000
+- Matrix on different subnet/VLAN
+
+##### Switching Test Fails
+
+**Symptom:** Switching test shows "Command timeout" or error response
+
+**Diagnostic Steps:**
+
+1. **Run Connection Test First:**
+   - Verify basic connectivity works
+   - Connection test must pass before switching test
+
+2. **Check Command Format:**
+   ```bash
+   pm2 logs sports-bar-tv | grep "Command:"
+   ```
+   - Should see: "Command: 1X33."
+   - Format: {input}X{output}.
+
+3. **Verify Matrix Response:**
+   ```bash
+   pm2 logs sports-bar-tv | grep "Received data"
+   ```
+   - Should see: "Received data: OK"
+   - Or error message from matrix
+
+4. **Test Manually via Telnet:**
+   ```bash
+   telnet 192.168.5.100 5000
+   # Type: 1X33.
+   # Press Enter
+   # Should see: OK
+   ```
+
+**Common Causes:**
+- Matrix not responding to commands
+- Incorrect command format
+- Matrix firmware issue
+- Input/output numbers out of range
+- Matrix in locked/protected mode
+
+##### No Logs Appearing
+
+**Symptom:** Tests run but no logs visible in PM2
+
+**Diagnostic Steps:**
+
+1. **Check PM2 Status:**
+   ```bash
+   pm2 status sports-bar-tv
+   ```
+
+2. **Restart PM2:**
+   ```bash
+   pm2 restart sports-bar-tv
+   ```
+
+3. **Check Log Files Directly:**
+   ```bash
+   tail -f ~/.pm2/logs/sports-bar-tv-out.log
+   tail -f ~/.pm2/logs/sports-bar-tv-error.log
+   ```
+
+4. **Verify Logging Not Disabled:**
+   - Check for console.log statements in code
+   - Verify PM2 log rotation not blocking output
+
+#### Best Practices
+
+1. **Run Connection Test First**
+   - Always verify connectivity before running switching tests
+   - Connection test is faster and identifies basic issues
+
+2. **Monitor PM2 Logs During Tests**
+   - Open PM2 logs in separate terminal
+   - Watch for detailed error messages
+   - Helps diagnose issues in real-time
+
+3. **Check Database Logs**
+   - All tests saved to database
+   - Use Test Logs tab in UI to review history
+   - Export logs for analysis if needed
+
+4. **Regular Testing**
+   - Run tests after configuration changes
+   - Test after matrix power cycles
+   - Verify connectivity after network changes
+
+5. **Use Verbose Logs for Debugging**
+   - PM2 logs contain detailed information
+   - Share logs with support if issues persist
+   - Local AI can analyze logs for patterns
+
+#### Integration with Local AI
+
+The verbose logging system is designed to be easily readable by local AI assistants (like Ollama). AI can:
+
+1. **Analyze Test Results:**
+   ```bash
+   pm2 logs sports-bar-tv --lines 500 | grep "WOLFPACK"
+   ```
+
+2. **Identify Patterns:**
+   - Detect recurring failures
+   - Identify timing issues
+   - Spot configuration problems
+
+3. **Suggest Solutions:**
+   - Based on error messages
+   - Historical test data
+   - Known issue patterns
+
+4. **Generate Reports:**
+   - Test success rates
+   - Performance metrics
+   - Failure analysis
+
+#### Future Enhancements
+
+**Planned Features:**
+- [ ] Multi-input/output switching tests
+- [ ] Automated test scheduling
+- [ ] Test result notifications
+- [ ] Performance benchmarking
+- [ ] Matrix health monitoring
+- [ ] Advanced diagnostics
+- [ ] Test result visualization
+- [ ] AI-powered failure prediction
+
+---
+
+### Wolfpack Integration (Legacy)
 
 ### TODO Management
 
@@ -2614,7 +3138,7 @@ adb connect 192.168.5.131:5555
 adb devices
 # Expected output:
 # List of devices attached
-# 192.168.5.131:5555	device
+# 192.168.5.131:5555    device
 
 # Test device communication
 adb -s 192.168.5.131:5555 shell getprop ro.product.model
