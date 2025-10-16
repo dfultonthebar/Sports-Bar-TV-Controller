@@ -297,10 +297,10 @@ export default function CECPowerControl() {
               </button>
             </div>
 
-            {/* CEC Server Input Selection */}
+            {/* CEC USB Input Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                CEC Server Input
+                CEC USB Input
               </label>
               <select
                 value={cecConfig.cecInputChannel || ''}
@@ -319,14 +319,14 @@ export default function CECPowerControl() {
                 ))}
               </select>
               <p className="text-xs text-slate-500 mt-1">
-                Select the input where your CEC server/controller is connected
+                Select the input where your CEC USB device is connected
               </p>
             </div>
 
-            {/* CEC Server IP */}
+            {/* CEC USB IP */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC Server IP
+                CEC USB IP
               </label>
               <input
                 type="text"
@@ -338,10 +338,10 @@ export default function CECPowerControl() {
               />
             </div>
 
-            {/* CEC Server Port */}
+            {/* CEC USB Port */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC Server Port
+                CEC USB Port
               </label>
               <input
                 type="number"
@@ -442,7 +442,7 @@ export default function CECPowerControl() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">CEC Server:</span>
+                  <span className="text-slate-500">CEC USB:</span>
                   <span className="text-white">{cecConfig.cecServerIP}:{cecConfig.cecPort}</span>
                 </div>
                 <div className="flex justify-between">
@@ -520,7 +520,7 @@ export default function CECPowerControl() {
           How CEC Power Control Works
         </h4>
         <div className="text-xs text-blue-200 space-y-1">
-          <p>• <strong>Step 1:</strong> Matrix routes the CEC server input to target TV output(s)</p>
+          <p>• <strong>Step 1:</strong> Matrix routes the CEC USB input to target TV output(s)</p>
           <p>• <strong>Step 2:</strong> System waits for the configured delay (default: 2 seconds)</p>
           <p>• <strong>Step 3:</strong> CEC power command is sent to the connected TV(s)</p>
           <p>• <strong>Individual Mode:</strong> Each TV is controlled separately for precise power management</p>
