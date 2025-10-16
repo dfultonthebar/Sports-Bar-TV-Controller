@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
 
       // Save outputs - only fields that exist in actual database
       // Database has: id, configId, channelNumber, label, resolution, isActive, status, 
-      //               audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff, isMatrixOutput
+              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff
       // Database does NOT have: selectedVideoInput, videoInputLabel
       if (outputs?.length > 0) {
         const outputData = outputs.map((output: any) => ({
@@ -169,12 +169,12 @@ export async function POST(request: NextRequest) {
           await tx.$executeRaw`
             INSERT INTO MatrixOutput (
               id, configId, channelNumber, label, resolution, isActive, status, 
-              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff, isMatrixOutput
+              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff
             ) VALUES (
               ${output.id}, ${output.configId}, ${output.channelNumber}, ${output.label}, 
               ${output.resolution}, ${output.isActive}, ${output.status}, ${output.audioOutput}, 
               ${output.powerOn}, ${output.createdAt.toISOString()}, ${output.updatedAt.toISOString()},
-              1, 1, 1
+              1, 1
             )
           `
         }
