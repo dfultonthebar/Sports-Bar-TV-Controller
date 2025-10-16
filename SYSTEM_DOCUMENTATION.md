@@ -57,6 +57,73 @@ pm2 logs sports-bar-tv
 
 ---
 
+## AI System Access
+
+**IMPORTANT:** This section contains credentials for AI assistants to access and manage the system autonomously. These credentials are intentionally documented here for future AI access.
+
+### System Access Credentials
+
+- **Web Interface:** http://24.123.87.42:3000/
+- **SSH Host:** 24.123.87.42
+- **SSH Port:** 224
+- **SSH Username:** ubuntu
+- **SSH Password:** 6809233DjD$$$ (THREE dollar signs)
+- **Project Directory:** /home/ubuntu/Sports-Bar-TV-Controller
+- **GitHub Repository:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+
+### Device Information
+
+- **Fire TV Cube IP Address:** 192.168.5.131
+  - Used for ADS bridge configuration
+  - Connected to network for remote control
+  - Integration with matrix switcher system
+
+### SSH Connection Command
+
+```bash
+ssh -p 224 ubuntu@24.123.87.42
+```
+
+### Quick Access for AI Assistants
+
+1. **Access System:**
+   ```bash
+   ssh -p 224 ubuntu@24.123.87.42
+   # Password: 6809233DjD$$$
+   ```
+
+2. **Navigate to Project:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   ```
+
+3. **View Application:**
+   - Open browser to: http://24.123.87.42:3000/
+
+4. **Manage Services:**
+   ```bash
+   # View logs
+   pm2 logs sports-bar-tv
+   
+   # Restart application
+   pm2 restart sports-bar-tv
+   
+   # Check status
+   pm2 status
+   ```
+
+### Notes for AI Assistants
+
+- **Password has THREE dollar signs** at the end: 6809233DjD$$$
+- System runs on Intel NUC13ANHi5 hardware
+- Application managed via PM2 process manager
+- Database: PostgreSQL with Prisma ORM
+- Web framework: Next.js 14 with TypeScript
+- Always pull latest changes before making modifications
+- Use PM2 to restart after code updates
+
+---
+
 ## Database & Prisma Setup
 
 ### Database Configuration
