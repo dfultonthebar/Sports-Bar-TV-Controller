@@ -5,13 +5,13 @@
  * Main service for fetching, storing, and managing TV documentation
  */
 
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { searchTVManual, validateManualUrl } from './searchManual'
 import { downloadTVManual, getManualPath } from './downloadManual'
 import { generateQAFromManual } from './generateQA'
 import { TVManualFetchOptions, TVManualFetchResult, TVDocumentationRecord } from './types'
 
-const prisma = new PrismaClient()
+// Using singleton prisma from @/lib/prisma
 
 /**
  * Fetch TV manual and generate Q&A pairs

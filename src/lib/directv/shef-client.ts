@@ -140,6 +140,10 @@ export class SHEFClient {
       return response.status.code === 200;
     } catch (error: any) {
       if (error.response?.status === 403) {
+        console.error(
+          'DirecTV SHEF API returned 403 Forbidden. External Device Access is disabled. ' +
+          'To enable: MENU → Settings & Help → Settings → Whole-Home → External Device → Enable "External Access"'
+        );
         return false; // SHEF not enabled
       }
       throw error;

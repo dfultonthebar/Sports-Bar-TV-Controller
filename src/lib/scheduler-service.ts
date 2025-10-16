@@ -6,9 +6,9 @@
  * It checks every minute for schedules that need to be executed.
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
