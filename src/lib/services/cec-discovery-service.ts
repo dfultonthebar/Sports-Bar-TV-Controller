@@ -3,10 +3,11 @@
  * CEC Discovery Service
  * 
  * Automatically discovers TV brands connected to WolfPack matrix outputs
- * using CEC protocol queries (OSD name and vendor ID)
+ * using CEC protocol queries via USB CEC adapter
  */
 
 import { PrismaClient } from '@prisma/client'
+import { cecService } from '@/lib/cec-service'
 import { autoFetchDocumentation } from '@/lib/tvDocs'
 
 const prisma = new PrismaClient()
@@ -53,67 +54,34 @@ function parseBrandFromOSD(osdName: string): { brand: string; model: string } {
 }
 
 /**
- * Query a single CEC device for its OSD name
+ * Query a single CEC device for its OSD name using USB CEC adapter
  */
 async function queryCECDevice(
-  cecServerIP: string,
-  cecPort: number,
-  outputNumber: number,
-  cecInputChannel: number
+  outputNumber: number
 ): Promise<{ osdName?: string; physicalAddress?: string; error?: string }> {
   try {
-    // Route to the output first
-    console.log(`[CEC Discovery] Routing to output ${outputNumber}...`)
+    console.log(`[CEC Discovery] Scanning CEC devices for output ${outputNumber}...`)
     
-    // Note: In production, this would call your matrix routing API
-    // For now, we'll simulate the routing delay
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // Scan for CEC devices using the USB adapter
+    const devices = await cecService.scanDevices(true)
     
-    // Query OSD name via CEC
-    console.log(`[CEC Discovery] Querying CEC device on output ${outputNumber}...`)
-    
-    const response = await fetch(
-      `http://${cecServerIP}:${cecPort}/api/command`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: 'osd', // Give OSD Name command
-          target: outputNumber.toString(),
-          timeout: 5000
-        })
-      }
-    )
-    
-    if (!response.ok) {
-      throw new Error(`CEC server returned ${response.status}`)
+    if (devices.length === 0) {
+      return { error: 'No CEC devices detected' }
     }
     
-    const data = await response.json()
+    // For now, we'll use the first TV device found (address 0)
+    // In the future, this could be enhanced to map specific outputs to specific CEC addresses
+    const tvDevice = devices.find(d => d.address === '0') || devices[0]
     
-    // Query physical address as well
-    const addressResponse = await fetch(
-      `http://${cecServerIP}:${cecPort}/api/command`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: 'pa', // Give Physical Address command
-          target: outputNumber.toString(),
-          timeout: 5000
-        })
-      }
-    )
-    
-    let physicalAddress: string | undefined
-    if (addressResponse.ok) {
-      const addressData = await addressResponse.json()
-      physicalAddress = addressData.physicalAddress || addressData.address
+    if (!tvDevice) {
+      return { error: 'No TV device found on CEC bus' }
     }
+    
+    console.log(`[CEC Discovery] Found device: ${tvDevice.osdName} (${tvDevice.vendor})`)
     
     return {
-      osdName: data.osdName || data.name,
-      physicalAddress
+      osdName: tvDevice.osdName,
+      physicalAddress: tvDevice.address
     }
   } catch (error: any) {
     console.error(`[CEC Discovery] Error querying output ${outputNumber}:`, error)
@@ -132,8 +100,10 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
       throw new Error('CEC is not enabled')
     }
     
-    if (!cecConfig.cecInputChannel) {
-      throw new Error('CEC input channel not configured')
+    // Initialize CEC adapter
+    const initResult = await cecService.initialize()
+    if (!initResult.success) {
+      throw new Error(initResult.message)
     }
     
     // Get all active matrix outputs
@@ -148,6 +118,7 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
     })
     
     console.log(`[CEC Discovery] Starting discovery for ${outputs.length} outputs...`)
+    console.log(`[CEC Discovery] Using USB CEC adapter: ${initResult.adapters.join(', ')}`)
     
     const results: CECDiscoveryResult[] = []
     
@@ -155,12 +126,7 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
     for (const output of outputs) {
       console.log(`[CEC Discovery] Processing output ${output.channelNumber}: ${output.label}`)
       
-      const deviceInfo = await queryCECDevice(
-        cecConfig.cecServerIP,
-        cecConfig.cecPort,
-        output.channelNumber,
-        cecConfig.cecInputChannel
-      )
+      const deviceInfo = await queryCECDevice(output.channelNumber)
       
       if (deviceInfo.error) {
         results.push({
@@ -237,8 +203,10 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
       throw new Error('CEC is not enabled')
     }
     
-    if (!cecConfig.cecInputChannel) {
-      throw new Error('CEC input channel not configured')
+    // Initialize CEC adapter
+    const initResult = await cecService.initialize()
+    if (!initResult.success) {
+      throw new Error(initResult.message)
     }
     
     // Get the specific output
@@ -254,13 +222,9 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
     }
     
     console.log(`[CEC Discovery] Discovering TV on output ${outputNumber}: ${output.label}`)
+    console.log(`[CEC Discovery] Using USB CEC adapter: ${initResult.adapters.join(', ')}`)
     
-    const deviceInfo = await queryCECDevice(
-      cecConfig.cecServerIP,
-      cecConfig.cecPort,
-      outputNumber,
-      cecConfig.cecInputChannel
-    )
+    const deviceInfo = await queryCECDevice(outputNumber)
     
     if (deviceInfo.error) {
       return {

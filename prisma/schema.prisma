@@ -144,6 +144,10 @@ model MatrixOutput {
   videoInputLabel     String?             // Label of the selected video input
   dailyTurnOn         Boolean             @default(false) // Turn on this TV in morning schedule
   dailyTurnOff        Boolean             @default(false) // Turn off this TV with "all off" command
+  tvBrand             String?             // TV brand detected via CEC
+  tvModel             String?             // TV model detected via CEC
+  cecAddress          String?             // CEC physical address
+  lastDiscovery       DateTime?           // Last time TV brand was discovered
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   
@@ -450,4 +454,16 @@ model ApiKey {
   @@unique([provider, keyName])
   @@index([provider])
   @@index([isActive])
+}
+
+// CEC USB Device Configuration
+model CECConfiguration {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(false)
+  cecInputChannel Int?     // Matrix input channel where CEC device is connected
+  usbDevicePath   String   @default("/dev/ttyACM0") // USB CEC adapter device path
+  powerOnDelay    Int      @default(2000) // Delay in ms after power on command
+  powerOffDelay   Int      @default(1000) // Delay in ms after power off command
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

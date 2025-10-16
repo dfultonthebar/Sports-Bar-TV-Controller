@@ -12,8 +12,7 @@ export async function GET() {
       success: true,
       config: cecConfig || {
         cecInputChannel: null,
-        cecServerIP: '192.168.1.100',
-        cecPort: 8080,
+        usbDevicePath: '/dev/ttyACM0',
         isEnabled: false,
         powerOnDelay: 2000,
         powerOffDelay: 1000
@@ -37,8 +36,7 @@ export async function POST(request: NextRequest) {
       where: { id: config.id || 'default' },
       update: {
         cecInputChannel: config.cecInputChannel,
-        cecServerIP: config.cecServerIP,
-        cecPort: config.cecPort,
+        usbDevicePath: config.usbDevicePath || '/dev/ttyACM0',
         isEnabled: config.isEnabled,
         powerOnDelay: config.powerOnDelay || 2000,
         powerOffDelay: config.powerOffDelay || 1000
@@ -46,8 +44,7 @@ export async function POST(request: NextRequest) {
       create: {
         id: 'default',
         cecInputChannel: config.cecInputChannel,
-        cecServerIP: config.cecServerIP,
-        cecPort: config.cecPort,
+        usbDevicePath: config.usbDevicePath || '/dev/ttyACM0',
         isEnabled: config.isEnabled,
         powerOnDelay: config.powerOnDelay || 2000,
         powerOffDelay: config.powerOffDelay || 1000
