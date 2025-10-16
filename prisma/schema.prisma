@@ -409,6 +409,7 @@ model QAEntry {
   answer      String   // Training answer
   category    String   @default("general") // Category: general, technical, troubleshooting, etc.
   tags        String?  // JSON array of tags
+  sourceFile  String?  // Source file path or identifier
   sourceType  String   @default("manual") // manual, generated, imported
   confidence  Float    @default(1.0) // Confidence score 0-1
   useCount    Int      @default(0) // Number of times this Q&A was used
@@ -420,6 +421,7 @@ model QAEntry {
   @@index([category])
   @@index([isActive])
   @@index([sourceType])
+  @@index([sourceFile])
 }
 
 // Training documents uploaded by users
