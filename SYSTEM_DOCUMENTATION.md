@@ -3182,3 +3182,33 @@ See `SPORTS_GUIDE_FIX_REPORT.md` for complete technical details, testing results
 
 ---
 
+
+## Database Logging and Monitoring
+
+### Log Files
+The system maintains comprehensive logs for all database operations:
+
+- **Audit Log**: `/home/ubuntu/sports-bar-data/audit.log` - All database operations
+- **Backup Log**: `/home/ubuntu/sports-bar-data/backup.log` - Backup operations
+- **Restore Log**: `/home/ubuntu/sports-bar-data/restore.log` - Restore operations
+- **Monitor Log**: `/home/ubuntu/sports-bar-data/file-monitor.log` - File system events
+- **PM2 Logs**: `pm2 logs sports-bar-tv` - Application and Prisma query logs
+
+### Viewing Logs
+```bash
+# View all logs summary
+/home/ubuntu/sports-bar-data/view-logs.sh
+
+# View specific log
+tail -f /home/ubuntu/sports-bar-data/audit.log
+```
+
+### Log Components
+1. **Prisma Query Logging** - All SQL queries with parameters and duration
+2. **Database Audit Logger** - Structured operation logging with user attribution
+3. **Backup Logging** - Complete backup operation tracking
+4. **Restore Logging** - Restore operation tracking with safety backups
+5. **File Monitor** - Real-time database file change monitoring
+
+See `docs/DATABASE_PROTECTION.md` for complete logging documentation.
+
