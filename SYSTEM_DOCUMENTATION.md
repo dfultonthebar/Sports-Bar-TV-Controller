@@ -2095,3 +2095,524 @@ All features successfully tested on production server:
 - Added `npx prisma generate` step to deployment procedure
 - Clarified distinction between development and production paths
 
+
+---
+
+## 10. Amazon Fire TV Integration
+
+### Overview
+
+The Sports Bar TV Controller includes comprehensive integration with Amazon Fire TV devices for remote control, automation, and matrix routing. The system uses Android Debug Bridge (ADB) for network-based control of Fire TV devices, enabling automated content selection, app launching, and coordination with the Wolfpack HDMI matrix switcher.
+
+**Current Production Configuration:**
+- **Fire TV Model:** Fire TV Cube (3rd Gen - AFTGAZL)
+- **IP Address:** 192.168.5.131
+- **Port:** 5555 (ADB default)
+- **Matrix Input:** Channel 13
+- **Connection Status:** Fully operational
+- **ADB Status:** Enabled and connected
+
+### Fire TV Cube Specifications
+
+**Hardware:**
+- **Model:** AFTGAZL (Amazon Fire TV Cube, 3rd Generation - 2022)
+- **Processor:** Octa-core ARM-based processor
+- **RAM:** 2GB
+- **Storage:** 16GB
+- **Operating System:** Fire OS 7+ (Based on Android 9)
+- **Network:** Wi-Fi 6, Gigabit Ethernet port
+- **Ports:** HDMI 2.1 output, Micro USB, Ethernet, IR extender
+
+**Capabilities:**
+- 4K Ultra HD, HDR, HDR10+, Dolby Vision
+- Dolby Atmos audio
+- Hands-free Alexa voice control
+- Built-in speaker for Alexa
+- IR blaster for TV control
+- HDMI-CEC support
+
+### ADB Bridge Configuration
+
+**Server Configuration:**
+- **ADB Path:** `/usr/bin/adb`
+- **ADB Version:** 1.0.41 (Version 28.0.2-debian)
+- **Installation Location:** `/usr/lib/android-sdk/platform-tools/adb`
+- **Connection Status:** Active and connected to 192.168.5.131:5555
+- **Device State:** "device" (fully operational)
+- **Setup Date:** October 16, 2025
+
+**Connection Management:**
+```bash
+# Connect to Fire TV Cube
+adb connect 192.168.5.131:5555
+
+# Check connection status
+adb devices
+# Expected output:
+# List of devices attached
+# 192.168.5.131:5555	device
+
+# Test device communication
+adb -s 192.168.5.131:5555 shell getprop ro.product.model
+# Expected output: AFTGAZL
+
+# Disconnect (if needed)
+adb disconnect 192.168.5.131:5555
+```
+
+### Enabling ADB on Fire TV
+
+**Step-by-Step Process:**
+
+1. **Enable Developer Options:**
+   - Go to Settings → My Fire TV → About
+   - Click on device name 7 times rapidly
+   - "Developer Options" will appear in Settings
+
+2. **Enable ADB Debugging:**
+   - Go to Settings → My Fire TV → Developer Options
+   - Turn on "ADB Debugging"
+   - Confirm warning dialog
+
+3. **First Connection Authorization:**
+   - First ADB connection shows authorization prompt on TV
+   - Select "Always allow from this computer"
+   - Tap OK to authorize
+
+### Matrix Integration
+
+**Physical Connection:**
+- Fire TV Cube HDMI output → Wolfpack Matrix Input 13
+- Matrix can route Input 13 to any of 32 TV outputs
+
+**Routing Control:**
+```bash
+# Route Fire TV to specific TV output
+POST /api/matrix/route
+{
+  "input": 13,      # Fire TV's matrix input
+  "output": 33      # Target TV output
+}
+
+# Route to multiple TVs simultaneously
+POST /api/matrix/route-multiple
+{
+  "input": 13,
+  "outputs": [33, 34, 35]
+}
+```
+
+**Benefits:**
+- Unified control of Fire TV content routing
+- Show same Fire TV content on multiple displays
+- Quick switching between Fire TV and other sources
+- Coordinate Fire TV control with matrix routing
+
+### API Endpoints
+
+#### Device Management
+
+**GET /api/firetv-devices**
+- Retrieve all configured Fire TV devices
+- Returns array of device objects with status
+
+**POST /api/firetv-devices**
+- Add new Fire TV device
+- Requires: name, ipAddress, port, deviceType
+- Optional: inputChannel (matrix input)
+- Validates IP format and prevents duplicates
+
+**PUT /api/firetv-devices**
+- Update existing Fire TV device configuration
+- Can modify all fields except device ID
+
+**DELETE /api/firetv-devices?id={deviceId}**
+- Remove Fire TV device from system
+- Device can be re-added anytime
+
+#### Remote Control
+
+**POST /api/firetv-devices/send-command**
+Send remote control command to Fire TV:
+```json
+{
+  "deviceId": "device_id",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "command": "HOME"
+}
+```
+
+**Supported Commands:**
+- Navigation: UP, DOWN, LEFT, RIGHT, OK, BACK, HOME, MENU
+- Media: PLAY_PAUSE, PLAY, PAUSE, REWIND, FAST_FORWARD
+- Volume: VOL_UP, VOL_DOWN, MUTE
+- Power: SLEEP, WAKEUP
+
+**App Launch:**
+```json
+{
+  "deviceId": "device_id",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "appPackage": "com.espn.score_center"
+}
+```
+
+#### Connection Testing
+
+**POST /api/firetv-devices/test-connection**
+Test connectivity to Fire TV device:
+```json
+{
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "deviceId": "device_id"
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Fire TV device connected via ADB",
+  "deviceInfo": {
+    "model": "AFTGAZL",
+    "version": "Fire OS 7.6.6.8"
+  }
+}
+```
+
+#### Subscription Polling
+
+**POST /api/firetv-devices/subscriptions/poll**
+Retrieve device status and installed apps:
+```json
+{
+  "deviceId": "device_id",
+  "ipAddress": "192.168.5.131",
+  "port": 5555
+}
+```
+
+### Remote Control Commands
+
+**Navigation Commands:**
+```bash
+# D-Pad Navigation
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_DPAD_UP        # 19
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_DPAD_DOWN      # 20
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_DPAD_LEFT      # 21
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_DPAD_RIGHT     # 22
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_DPAD_CENTER    # 23 (OK/Select)
+
+# System Navigation
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_HOME           # 3
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_BACK           # 4
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MENU           # 82
+```
+
+**Media Controls:**
+```bash
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MEDIA_PLAY_PAUSE    # 85
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MEDIA_PLAY          # 126
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MEDIA_PAUSE         # 127
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MEDIA_REWIND        # 89
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_MEDIA_FAST_FORWARD  # 90
+```
+
+**Volume Controls:**
+```bash
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_VOLUME_UP      # 24
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_VOLUME_DOWN    # 25
+adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_VOLUME_MUTE    # 164
+```
+
+### Streaming Apps Configuration
+
+**Sports Streaming Apps:**
+- **ESPN** - `com.espn.score_center`
+- **FOX Sports** - `com.fox.now`
+- **NBC Sports** - `com.nbc.nbcsports.liveextra`
+- **Paramount+** (CBS Sports) - `com.cbs.ott`
+- **YouTube TV** - `com.google.android.youtube.tv`
+
+**League-Specific Apps:**
+- **NFL+** - `com.nflmobile.nflnow`
+- **NFL Game Pass** - `com.nfl.gamepass`
+- **NBA League Pass** - `com.nba.game`
+- **MLB.TV** - `com.bamnetworks.mobile.android.gameday.mlb`
+- **NHL.TV** - `com.nhl.gc1112.free`
+
+**App Launch Commands:**
+```bash
+# Launch ESPN
+adb -s 192.168.5.131:5555 shell monkey -p com.espn.score_center 1
+
+# Launch Netflix
+adb -s 192.168.5.131:5555 shell monkey -p com.netflix.ninja 1
+
+# Alternative method
+adb -s 192.168.5.131:5555 shell am start -n com.espn.score_center/.MainActivity
+```
+
+### Automation Capabilities
+
+**Scheduled App Launching:**
+```bash
+# Crontab example: Launch ESPN at 7 PM daily
+0 19 * * * curl -X POST http://localhost:3000/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"device_id","appPackage":"com.espn.score_center"}'
+```
+
+**Coordinated Control:**
+```bash
+# Script for game day setup
+#!/bin/bash
+# 1. Route Fire TV to main bar TVs
+curl -X POST http://localhost:3000/api/matrix/route \
+  -d '{"input":13,"outputs":[33,34,35]}'
+
+# 2. Launch sports app
+curl -X POST http://localhost:3000/api/firetv-devices/send-command \
+  -d '{"deviceId":"device_id","appPackage":"com.espn.score_center"}'
+```
+
+### Diagnostic Commands
+
+**Device Information:**
+```bash
+# Get device model
+adb -s 192.168.5.131:5555 shell getprop ro.product.model
+# Output: AFTGAZL
+
+# Get Fire OS version
+adb -s 192.168.5.131:5555 shell getprop ro.build.version.release
+# Output: 9
+
+# Get all properties
+adb -s 192.168.5.131:5555 shell getprop
+
+# Get device uptime
+adb -s 192.168.5.131:5555 shell uptime
+```
+
+**Network Information:**
+```bash
+# IP address details
+adb -s 192.168.5.131:5555 shell ifconfig wlan0
+
+# Network interfaces
+adb -s 192.168.5.131:5555 shell ip addr show
+```
+
+**Installed Apps:**
+```bash
+# List all packages
+adb -s 192.168.5.131:5555 shell pm list packages
+
+# User-installed apps only
+adb -s 192.168.5.131:5555 shell pm list packages -3
+
+# Search for specific app
+adb -s 192.168.5.131:5555 shell pm list packages | grep -i espn
+```
+
+**Current App Status:**
+```bash
+# Get currently focused app
+adb -s 192.168.5.131:5555 shell dumpsys window | grep mCurrentFocus
+# Output: mCurrentFocus=Window{hash u0 package/activity}
+```
+
+### Troubleshooting
+
+**Device Shows Offline:**
+
+1. **Verify Network Connectivity:**
+   ```bash
+   ping 192.168.5.131
+   # Should respond with low latency (< 50ms)
+   ```
+
+2. **Check ADB Status on Fire TV:**
+   - Settings → My Fire TV → Developer Options
+   - Ensure "ADB Debugging" is ON
+   - May auto-disable after system updates
+
+3. **Test Port Accessibility:**
+   ```bash
+   telnet 192.168.5.131 5555
+   # Or
+   nc -zv 192.168.5.131 5555
+   ```
+
+4. **Restart ADB Server:**
+   ```bash
+   adb kill-server
+   adb start-server
+   adb connect 192.168.5.131:5555
+   ```
+
+5. **Restart Fire TV:**
+   - Unplug Fire TV Cube for 30 seconds
+   - Plug back in, wait for full boot (2 minutes)
+   - Reconnect ADB
+
+**Commands Timeout:**
+
+1. Check network latency (should be < 100ms)
+2. Verify Fire TV not overloaded (close background apps)
+3. Test with simple command (HOME) first
+4. Review PM2 logs for specific errors
+
+**Connection Drops:**
+
+1. **Use Static IP:**
+   - Assign static IP to Fire TV: 192.168.5.131
+   - Or use DHCP reservation based on MAC address
+
+2. **Improve Network:**
+   - Use Ethernet instead of Wi-Fi (recommended)
+   - Check for network congestion
+   - Verify no VLAN isolation
+
+3. **Keep-Alive Script:**
+   ```bash
+   # Run every 5 minutes via cron
+   */5 * * * * adb -s 192.168.5.131:5555 shell echo "keepalive" > /dev/null
+   ```
+
+### Health Monitoring
+
+**Automated Health Check Script:**
+```bash
+#!/bin/bash
+# /home/ubuntu/scripts/firetv-health-check.sh
+
+DEVICE_IP="192.168.5.131"
+DEVICE_PORT="5555"
+LOG="/var/log/firetv-health.log"
+
+# Test connectivity
+if ! adb devices | grep "$DEVICE_IP:$DEVICE_PORT" | grep "device" > /dev/null; then
+  echo "[$(date)] Fire TV offline - reconnecting" >> $LOG
+  adb connect $DEVICE_IP:$DEVICE_PORT >> $LOG
+else
+  echo "[$(date)] Fire TV online" >> $LOG
+fi
+```
+
+**Schedule with cron:**
+```bash
+# Run every 5 minutes
+*/5 * * * * /home/ubuntu/scripts/firetv-health-check.sh
+```
+
+**Monitoring Metrics:**
+- Connection status (online/offline)
+- Response time (should be < 500ms)
+- Command success rate (target > 95%)
+- ADB connection stability
+
+### Data Storage
+
+**Configuration File:**
+- **Location:** `/data/firetv-devices.json`
+- **Format:** JSON array of device objects
+- **Backup:** Included in automated daily backups (3:00 AM)
+- **Backup Location:** `/backups/` with timestamps
+
+**Device Object Structure:**
+```json
+{
+  "id": "firetv_timestamp_hash",
+  "name": "Fire TV Cube Bar",
+  "ipAddress": "192.168.5.131",
+  "port": 5555,
+  "deviceType": "Fire TV Cube",
+  "inputChannel": "13",
+  "isOnline": true,
+  "adbEnabled": true,
+  "addedAt": "2025-10-16T10:30:00.000Z",
+  "updatedAt": "2025-10-16T12:00:00.000Z"
+}
+```
+
+### Best Practices
+
+**Network Configuration:**
+- Use static IP address for Fire TV devices
+- Ethernet connection preferred over Wi-Fi
+- Ensure low latency (< 50ms) to Fire TV
+- No firewall blocking port 5555
+
+**Device Management:**
+- Keep ADB debugging enabled at all times
+- Regular connectivity tests before events
+- Monitor for system updates (may disable ADB)
+- Restart Fire TV weekly during maintenance
+
+**Security:**
+- Limit access to ADB port (5555) from external networks
+- Use network segmentation for streaming devices
+- Secure SSH access to controller server
+- Monitor unauthorized ADB connection attempts
+
+**Performance:**
+- Close unused apps regularly
+- Clear cache monthly
+- Monitor storage space (keep > 2GB free)
+- Restart Fire TV during off-hours
+
+### Integration with Sports Guide
+
+**Automated Content Selection:**
+- Sports Guide can trigger Fire TV app launches
+- Route Fire TV to appropriate displays based on schedule
+- Coordinate multiple Fire TVs for multi-game viewing
+- Automatic switching between streaming services
+
+**Game Day Workflow:**
+1. Sports Guide identifies upcoming games
+2. System determines which streaming service has content
+3. Fire TV launches appropriate app
+4. Matrix routes Fire TV to designated displays
+5. Content ready for viewing at game time
+
+### Documentation References
+
+**Comprehensive Documentation:**
+- **Q&A Sheet:** `/home/ubuntu/amazon_firetv_qa_sheet.md`
+- **ADB Bridge Setup:** `/home/ubuntu/firetv_ads_bridge_setup.md`
+- **Testing Report:** `/home/ubuntu/firetv_testing_findings.md`
+- **Total Q&A Pairs:** 95+ covering all aspects
+
+**Topics Covered:**
+- Device setup and configuration
+- ADB bridge installation and setup
+- Matrix integration
+- API endpoints reference
+- Remote control commands
+- Troubleshooting procedures
+- Best practices for deployment
+
+### Current Status
+
+**Production Environment:**
+- ✅ Fire TV Cube connected and operational (192.168.5.131:5555)
+- ✅ ADB bridge fully configured and tested
+- ✅ Matrix integration active (Input 13)
+- ✅ API endpoints operational
+- ✅ Remote control commands working
+- ✅ Form submission bugs fixed (October 15, 2025)
+- ✅ CSS styling issues resolved
+- ✅ Comprehensive documentation complete
+
+**Last Updated:** October 16, 2025
+**Last Tested:** October 16, 2025
+**Status:** Production Ready ✓
+
+---
+
