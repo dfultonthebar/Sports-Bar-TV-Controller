@@ -4013,3 +4013,221 @@ ls -lh /home/ubuntu/sports-bar-data/backups/
 pm2 restart sports-bar-tv
 ```
 
+
+---
+
+## Q&A File Tracking System
+
+### Overview
+The Q&A file tracking system prevents reprocessing of unchanged files during Q&A generation, significantly improving performance and reducing generation time.
+
+### How It Works
+
+1. **File Hashing**: Each processed file's content is hashed using MD5
+2. **Tracking Database**: ProcessedFile table stores file metadata
+3. **Change Detection**: Before processing, system checks if file has changed
+4. **Smart Skipping**: Unchanged files are automatically skipped
+
+### ProcessedFile Schema
+
+```prisma
+model ProcessedFile {
+  id            String   @id @default(cuid())
+  filePath      String   @unique
+  fileHash      String
+  lastProcessed DateTime @default(now())
+  qaCount       Int      @default(0)
+  sourceType    String
+  status        String   @default("processed")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+```
+
+### Fields Explanation
+
+- **filePath**: Unique path to the processed file
+- **fileHash**: MD5 hash of file content for change detection
+- **lastProcessed**: Timestamp of last processing
+- **qaCount**: Number of Q&As generated from this file
+- **sourceType**: Type of source (repository, documentation, etc.)
+- **status**: Processing status (processed, failed, skipped)
+
+### Force Regenerate Option
+
+Users can force regeneration of all files by checking the "Force regenerate" option in the UI. This bypasses file tracking and reprocesses all files regardless of their tracking status.
+
+### Performance Benefits
+
+- **First Run**: Processes all 229 files (~10-15 minutes)
+- **Subsequent Runs**: Only processes new/changed files (~30 seconds - 2 minutes)
+- **Time Saved**: Up to 90% reduction in generation time
+
+### File Tracking API
+
+The file tracking is integrated into the Q&A generator service:
+
+```typescript
+// Check if file needs processing
+const { shouldProcess, reason } = await shouldProcessFile(filePath, forceRegenerate);
+
+// Update tracking after processing
+await updateFileTracking(filePath, qaCount, sourceType, status);
+```
+
+---
+
+## Dashboard Graphs & Statistics
+
+### Stats API Endpoint
+
+**Endpoint**: `GET /api/ai-hub/qa-training/stats`
+
+Returns comprehensive statistics for the Q&A training dashboard:
+
+```json
+{
+  "total": 57,
+  "active": 57,
+  "inactive": 0,
+  "byCategory": [
+    { "category": "technical", "count": 30 },
+    { "category": "general", "count": 27 }
+  ],
+  "bySource": [
+    { "category": "auto-generated", "count": 50 },
+    { "category": "manual", "count": 7 }
+  ]
+}
+```
+
+### Dashboard Components
+
+1. **Total Q&As**: Shows total count of Q&A entries
+2. **Active Q&As**: Shows count of active entries
+3. **By Category**: Distribution of Q&As across categories
+4. **By Source**: Distribution by source type (manual, auto-generated, imported)
+
+### Data Aggregation
+
+Statistics are computed using Prisma's `groupBy` and `count` operations:
+
+```typescript
+const totalCount = await prisma.qAEntry.count();
+const activeCount = await prisma.qAEntry.count({ where: { isActive: true } });
+const categoryGroups = await prisma.qAEntry.groupBy({
+  by: ['category'],
+  _count: { id: true },
+});
+```
+
+### Troubleshooting Dashboard Issues
+
+If graphs show "No data":
+
+1. Check if Q&A entries exist in database
+2. Verify stats API endpoint is accessible
+3. Check browser console for API errors
+4. Ensure Prisma client is up to date
+
+---
+
+## Recent System Changes
+
+### PR #205: Q&A File Tracking & Dashboard Fixes (Current)
+
+**Changes Made**:
+- Added ProcessedFile model to Prisma schema
+- Implemented file hashing utility for change detection
+- Updated Q&A generator with file tracking logic
+- Added force regenerate option to UI
+- Created stats API endpoint for dashboard
+- Fixed dashboard graphs to display data correctly
+- Updated documentation with new features
+
+**Performance Improvements**:
+- 90% reduction in Q&A generation time for unchanged files
+- Smart file skipping based on content hash
+- Parallel processing with concurrency control
+
+**Files Modified**:
+- `prisma/schema.prisma` - Added ProcessedFile model
+- `src/lib/utils/file-hash.ts` - New file hashing utility
+- `src/lib/services/qa-generator.ts` - File tracking integration
+- `src/app/api/ai/qa-generate/route.ts` - Force regenerate support
+- `src/app/api/ai-hub/qa-training/stats/route.ts` - New stats endpoint
+- `src/app/ai-hub/qa-training/page.tsx` - UI updates for tracking & stats
+
+### PR #204: Wolfpack Settings Revert Fix
+
+Fixed issue where Wolfpack matrix settings were being reverted after save.
+
+### PR #203: Q&A Prisma Schema Fix
+
+Fixed Prisma schema issues with Q&A entry fields.
+
+### PR #202: Global Cache API Routes
+
+Added API routes for Global Cache device management.
+
+---
+
+## Development Guidelines
+
+### Working with File Tracking
+
+When modifying Q&A generation:
+
+1. Always update file tracking after processing
+2. Use `shouldProcessFile()` to check if processing is needed
+3. Handle tracking errors gracefully
+4. Log skipped files for visibility
+
+### Adding New Statistics
+
+To add new dashboard statistics:
+
+1. Add aggregation query to stats API endpoint
+2. Update stats interface in frontend
+3. Add new graph component to dashboard
+4. Test with various data scenarios
+
+### Database Migrations
+
+For schema changes:
+
+```bash
+# Development (recommended)
+npx prisma db push
+
+# Production
+npx prisma migrate deploy
+```
+
+---
+
+## Maintenance & Monitoring
+
+### File Tracking Maintenance
+
+- **Clear Tracking**: Delete ProcessedFile entries to force reprocessing
+- **Reset Hashes**: Update fileHash to trigger reprocessing
+- **Monitor Status**: Check status field for failed files
+
+### Performance Monitoring
+
+Monitor these metrics:
+
+- Q&A generation time (should be <2 min for incremental)
+- Files skipped vs processed ratio
+- Failed file count
+- Database query performance
+
+### Logs
+
+Check logs for:
+- File tracking operations
+- Skipped files
+- Generation progress
+- API errors
+

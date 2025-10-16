@@ -489,3 +489,20 @@ model QAGenerationJob {
   @@index([status])
   @@index([createdAt])
 }
+
+// File tracking for Q&A generation to avoid reprocessing
+model ProcessedFile {
+  id            String   @id @default(cuid())
+  filePath      String   @unique
+  fileHash      String
+  lastProcessed DateTime @default(now())
+  qaCount       Int      @default(0)
+  sourceType    String
+  status        String   @default("processed") // "processed", "failed", "skipped"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([status])
+  @@index([sourceType])
+  @@index([lastProcessed])
+}
