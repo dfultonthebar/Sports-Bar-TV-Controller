@@ -761,35 +761,44 @@ export default function SystemAdminPage() {
                         <p className={`font-medium ${
                           switchingResult.success ? 'text-green-400' : 'text-yellow-400'
                         }`}>
-                          {switchingResult.message}
+                          {switchingResult.summary || switchingResult.message}
                         </p>
-                        {switchingResult.summary && (
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
-                            <div>
-                              <p className="text-xs text-slate-400">Total Tests</p>
-                              <p className="text-lg font-bold text-slate-100">
-                                {switchingResult.summary.totalTests}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-400">Successful</p>
-                              <p className="text-lg font-bold text-green-400">
-                                {switchingResult.summary.successCount}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-400">Failed</p>
-                              <p className="text-lg font-bold text-red-400">
-                                {switchingResult.summary.failureCount}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-400">Success Rate</p>
-                              <p className="text-lg font-bold text-slate-100">
-                                {switchingResult.summary.successRate}
-                              </p>
-                            </div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-3">
+                          <div>
+                            <p className="text-xs text-slate-400">Total Tests</p>
+                            <p className="text-lg font-bold text-slate-100">
+                              {switchingResult.totalTests}
+                            </p>
                           </div>
+                          <div>
+                            <p className="text-xs text-slate-400">Passed</p>
+                            <p className="text-lg font-bold text-green-400">
+                              {switchingResult.passedTests}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-400">Failed</p>
+                            <p className="text-lg font-bold text-red-400">
+                              {switchingResult.failedTests}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-400">Success Rate</p>
+                            <p className="text-lg font-bold text-slate-100">
+                              {switchingResult.successRate}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-400">Avg Duration</p>
+                            <p className="text-lg font-bold text-slate-100">
+                              {switchingResult.averageDuration}ms
+                            </p>
+                          </div>
+                        </div>
+                        {switchingResult.duration && (
+                          <p className="text-xs text-slate-400 mt-2">
+                            Total Duration: {switchingResult.duration}ms
+                          </p>
                         )}
                       </div>
                     </div>
@@ -799,7 +808,7 @@ export default function SystemAdminPage() {
                   {switchingResult.results && switchingResult.results.length > 0 && (
                     <div className="bg-slate-800/50 rounded-lg p-4">
                       <h3 className="text-sm font-semibold text-slate-300 mb-3">
-                        Detailed Results
+                        Detailed Results ({switchingResult.results.length} tests)
                       </h3>
                       <div className="space-y-2 max-h-96 overflow-y-auto">
                         {switchingResult.results.map((result: TestResult, index: number) => (
@@ -810,22 +819,25 @@ export default function SystemAdminPage() {
                                 ? 'bg-green-400/5 border border-green-400/10' 
                                 : 'bg-red-400/5 border border-red-400/10'
                             }`}>
-                            <div className="flex items-center space-x-3">
+                            <div className="flex items-center space-x-3 flex-1">
                               {result.success ? (
-                                <CheckCircle className="w-4 h-4 text-green-400" />
+                                <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
                               ) : (
-                                <XCircle className="w-4 h-4 text-red-400" />
+                                <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                               )}
-                              <div>
+                              <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-slate-200">
                                   Input {result.input} ({result.inputLabel}) → Output {result.output} ({result.outputLabel})
                                 </p>
                                 {result.error && (
-                                  <p className="text-xs text-red-400 mt-1">{result.error}</p>
+                                  <p className="text-xs text-red-400 mt-1 truncate">{result.error}</p>
+                                )}
+                                {result.response && !result.error && (
+                                  <p className="text-xs text-green-400 mt-1 truncate">{result.response}</p>
                                 )}
                               </div>
                             </div>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-slate-400 ml-3 flex-shrink-0">
                               {result.duration}ms
                             </span>
                           </div>

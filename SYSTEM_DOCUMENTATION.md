@@ -1954,16 +1954,18 @@ The testing system is accessible from the **System Admin Hub** under the **Tests
 - Network unreachable
 - Invalid IP/Port configuration
 
-##### 2. Switching Test
+##### 2. Comprehensive Switching Test
 
-**Purpose:** Test actual matrix switching functionality
+**Purpose:** Test all active input/output combinations on the matrix switcher
 
 **How it Works:**
-1. Loads active matrix configuration from database
-2. Sends switching command via TCP (e.g., "1X33." = Input 1 to Output 33)
-3. Waits for response with 30-second timeout
-4. Validates response (looks for "OK" or error messages)
-5. Logs detailed results to database and PM2 logs
+1. Loads active matrix configuration with all active inputs and outputs from database
+2. Tests every combination of active inputs to active outputs
+3. Sends switching command via TCP for each combination (e.g., "1X33." = Input 1 to Output 33)
+4. Waits for response with 10-second timeout per test
+5. Validates each response (looks for "OK" or error messages)
+6. Logs detailed results for each test to database and PM2 logs
+7. Provides comprehensive summary with success rate
 
 **API Endpoint:** `POST /api/tests/wolfpack/switching`
 
@@ -1973,29 +1975,83 @@ The testing system is accessible from the **System Admin Hub** under the **Tests
 Example: 1X33. (Route Input 1 to Output 33)
 ```
 
+**Test Scope:**
+- Tests ALL active inputs (typically 1-8)
+- Tests ALL active outputs (typically 1-8)
+- Total tests = Active Inputs × Active Outputs
+- Example: 8 inputs × 8 outputs = 64 total tests
+- Small delay (100ms) between tests to avoid overwhelming the device
+
 **Test Flow:**
 ```
-1. Load matrix configuration
+1. Load matrix configuration with active inputs/outputs
 2. Create test start log
-3. Send TCP command: "1X33.\r\n"
-4. Wait for response (up to 30 seconds)
-5. Parse response for "OK" or error
-6. Log individual test result
-7. Create test completion log
-8. Return results to frontend
+3. For each active input:
+   a. For each active output:
+      i.   Build command: "{input}X{output}."
+      ii.  Send TCP command with line ending "\r\n"
+      iii. Wait for response (up to 10 seconds)
+      iv.  Parse response for "OK" or error
+      v.   Log individual test result to database
+      vi.  Add 100ms delay before next test
+4. Calculate summary statistics
+5. Create test completion log
+6. Return comprehensive results to frontend
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "totalTests": 64,
+  "passedTests": 64,
+  "failedTests": 0,
+  "successRate": "100.0%",
+  "duration": 45230,
+  "averageDuration": 707,
+  "results": [
+    {
+      "input": 1,
+      "inputLabel": "DirecTV 1",
+      "output": 1,
+      "outputLabel": "TV 1",
+      "command": "1X1.",
+      "success": true,
+      "duration": 650,
+      "response": "OK",
+      "error": null,
+      "testLogId": "clx..."
+    },
+    // ... more results
+  ],
+  "summary": "Passed 64/64 tests",
+  "testLogId": "clx...",
+  "startLogId": "clx..."
+}
 ```
 
 **Success Criteria:**
-- TCP connection established
+- TCP connection established for each test
 - Command sent successfully
 - Response received containing "OK"
 - No errors in response
+- All tests complete successfully
 
 **Failure Scenarios:**
-- Connection timeout
-- Command timeout (30 seconds)
+- Connection timeout (10 seconds per test)
+- Command timeout
 - Error response from matrix
 - Connection closed without response
+- Partial failures (some tests pass, some fail)
+
+**UI Display:**
+The frontend displays:
+- Summary statistics (Total, Passed, Failed, Success Rate, Average Duration)
+- Detailed results table showing each input/output combination
+- Color-coded status (green for success, red for failure)
+- Individual test durations
+- Error messages for failed tests
+- Scrollable results for large test sets
 
 #### Verbose Logging System
 
