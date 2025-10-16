@@ -467,3 +467,23 @@ model CECConfiguration {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// Q&A Generation Job tracking
+model QAGenerationJob {
+  id              String    @id @default(cuid())
+  status          String    @default("pending") // "pending", "running", "completed", "failed"
+  sourceType      String    // "repository", "documentation", "codebase"
+  sourcePath      String?   // Comma-separated paths
+  totalFiles      Int       @default(0)
+  processedFiles  Int       @default(0)
+  generatedQAs    Int       @default(0)
+  entriesGenerated Int      @default(0)
+  errorMessage    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([createdAt])
+}

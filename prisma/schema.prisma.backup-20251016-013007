@@ -1,0 +1,469 @@
+
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model FireTVDevice {
+  id          String   @id @default(cuid())
+  name        String
+  ipAddress   String   @unique
+  macAddress  String?
+  location    String?
+  status      String   @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  schedules   Schedule[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  name        String
+  deviceId    String
+  channelName String
+  channelNumber String?
+  startTime   DateTime
+  endTime     DateTime?
+  recurring   Boolean  @default(false)
+  daysOfWeek  String?  // JSON array of days: ["monday", "tuesday", ...]
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  device      FireTVDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  logs        ScheduleLog[]
+}
+
+model ScheduleLog {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  executedAt  DateTime @default(now())
+  success     Boolean
+  error       String?
+  channelName String
+  deviceName  String
+  
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+}
+
+model HomeTeam {
+  id          String   @id @default(cuid())
+  teamName    String   // Changed from 'name' to 'teamName'
+  sport       String   // "Football", "Basketball", "Baseball", etc.
+  league      String   // "NFL", "NBA", "MLB", "NHL", "MLS", etc.
+  category    String   // "professional", "college", "international"
+  location    String?  // City/region
+  conference  String?  // Conference/division
+  isPrimary   Boolean  @default(false)
+  logoUrl     String?
+  primaryColor String?
+  secondaryColor String?
+  isActive    Boolean  @default(true) // Changed from 'enabled'
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([teamName, league])
+}
+
+model TVLayout {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  layoutData  String   // JSON string of the layout configuration
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MatrixConfig {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  config      String   // JSON string of matrix routing configuration
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MatrixConfiguration {
+  id              String   @id @default(cuid())
+  name            String
+  ipAddress       String
+  tcpPort         Int      @default(23)
+  udpPort         Int      @default(4000)
+  protocol        String   @default("TCP")
+  isActive        Boolean  @default(true)
+  cecInputChannel Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  inputs          MatrixInput[]
+  outputs         MatrixOutput[]
+}
+
+model MatrixInput {
+  id            String              @id @default(cuid())
+  configId      String
+  channelNumber Int
+  label         String
+  inputType     String              @default("HDMI")
+  deviceType    String              @default("Other")
+  isActive      Boolean             @default(true)
+  status        String              @default("active")
+  powerOn       Boolean             @default(false)
+  isCecPort     Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  config        MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
+}
+
+model MatrixOutput {
+  id                  String              @id @default(cuid())
+  configId            String
+  channelNumber       Int
+  label               String
+  resolution          String              @default("1080p")
+  isActive            Boolean             @default(true)
+  status              String              @default("active")
+  audioOutput         String?
+  powerOn             Boolean             @default(false)
+  selectedVideoInput  Int?                // Selected video input for this matrix output (for audio routing)
+  videoInputLabel     String?             // Label of the selected video input
+  dailyTurnOn         Boolean             @default(false) // Turn on this TV in morning schedule
+  dailyTurnOff        Boolean             @default(false) // Turn off this TV with "all off" command
+  tvBrand             String?             // TV brand detected via CEC
+  tvModel             String?             // TV model detected via CEC
+  cecAddress          String?             // CEC physical address
+  lastDiscovery       DateTime?           // Last time TV brand was discovered
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  config              MatrixConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@unique([configId, channelNumber])
+}
+
+model BartenderRemote {
+  id          String   @id @default(cuid())
+  name        String
+  ipAddress   String   @unique
+  port        Int      @default(80)
+  description String?
+  status      String   @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DeviceMapping {
+  id              String   @id @default(cuid())
+  tvNumber        Int      @unique
+  fireTvDeviceId  String?
+  fireTvName      String?
+  audioZoneId     String?
+  audioZoneName   String?
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SystemSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AudioProcessor {
+  id          String      @id @default(cuid())
+  name        String
+  model       String      // "AZM4", "AZM8", "AZMP4", "AZMP8", etc.
+  ipAddress   String
+  port        Int         @default(80)
+  username    String?     // HTTP Basic Auth username
+  password    String?     // HTTP Basic Auth password (stored encrypted)
+  zones       Int         @default(4)
+  description String?
+  status      String      @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  audioZones      AudioZone[]
+  audioScenes     AudioScene[]
+  audioMessages   AudioMessage[]
+  inputMeters     AudioInputMeter[]
+
+  @@unique([ipAddress, port])
+}
+
+model AudioZone {
+  id            String         @id @default(cuid())
+  processorId   String
+  zoneNumber    Int
+  name          String
+  description   String?
+  currentSource String?
+  volume        Int            @default(50)
+  muted         Boolean        @default(false)
+  enabled       Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  
+  @@unique([processorId, zoneNumber])
+}
+
+model AudioScene {
+  id            String         @id @default(cuid())
+  processorId   String
+  name          String
+  description   String?
+  sceneData     String         // JSON string of zone configurations
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+}
+
+model AudioMessage {
+  id            String         @id @default(cuid())
+  processorId   String
+  name          String
+  audioFile     String         // Path or URL to audio file
+  duration      Int?           // Duration in seconds
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+}
+
+model AudioInputMeter {
+  id            String         @id @default(cuid())
+  processorId   String
+  inputNumber   Int
+  inputName     String
+  level         Float          @default(0) // dB level
+  peak          Float          @default(0) // Peak dB level
+  clipping      Boolean        @default(false)
+  timestamp     DateTime       @default(now())
+  
+  processor     AudioProcessor @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  
+  @@unique([processorId, inputNumber])
+  @@index([processorId, timestamp])
+}
+
+model TestLog {
+  id            String   @id @default(cuid())
+  testType      String   // "wolfpack_connection", "wolfpack_switching", etc.
+  testName      String
+  status        String   // "success", "failed", "error", "running", "partial"
+  inputChannel  Int?
+  outputChannel Int?
+  command       String?
+  response      String?
+  errorMessage  String?
+  duration      Int?     // Duration in milliseconds
+  timestamp     DateTime @default(now())
+  metadata      String?  // JSON string for additional data
+  
+  @@index([testType])
+  @@index([status])
+  @@index([timestamp])
+}
+
+model WolfpackMatrixRouting {
+  id                    String   @id @default(cuid())
+  matrixOutputNumber    Int      @unique
+  wolfpackInputNumber   Int
+  wolfpackInputLabel    String
+  atlasInputLabel       String?
+  isActive              Boolean  @default(true)
+  lastRouted            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model WolfpackMatrixState {
+  id                    String   @id @default(cuid())
+  matrixOutputNumber    Int
+  wolfpackInputNumber   Int
+  wolfpackInputLabel    String
+  channelInfo           String?  // JSON string with channel details
+  routedAt              DateTime @default(now())
+  
+  @@index([matrixOutputNumber])
+  @@index([routedAt])
+}
+
+
+// Sports Guide Configuration Models
+model SportsGuideConfiguration {
+  id              String   @id @default(cuid())
+  zipCode         String?
+  city            String?
+  state           String?
+  timezone        String   @default("America/New_York")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TVProvider {
+  id              String          @id @default(cuid())
+  name            String
+  type            String          // "cable", "satellite", "streaming", "iptv"
+  channels        String          // JSON array of channel numbers
+  packages        String          // JSON array of package names
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  providerInputs  ProviderInput[]
+}
+
+model ProviderInput {
+  id              String      @id @default(cuid())
+  providerId      String
+  inputId         String
+  createdAt       DateTime    @default(now())
+  
+  provider        TVProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  
+  @@unique([providerId, inputId])
+}
+
+// TODO Management System Models
+model Todo {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  priority        String        @default("MEDIUM") // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  status          String        @default("PLANNED") // "PLANNED", "IN_PROGRESS", "TESTING", "COMPLETE"
+  category        String?
+  tags            String?       // JSON array of tags
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+  
+  documents       TodoDocument[]
+}
+
+model TodoDocument {
+  id              String   @id @default(cuid())
+  todoId          String
+  filename        String
+  filepath        String
+  filesize        Int?
+  mimetype        String?
+  uploadedAt      DateTime @default(now())
+  
+  todo            Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  
+  @@index([todoId])
+}
+
+// AI Hub Models
+
+// Indexed codebase files for AI assistance
+model IndexedFile {
+  id            String   @id @default(cuid())
+  filePath      String   @unique
+  fileName      String
+  fileType      String   // typescript, javascript, json, markdown, etc.
+  content       String   // Full file content
+  fileSize      Int      // File size in bytes
+  lastModified  DateTime // Last modification timestamp
+  lastIndexed   DateTime @default(now()) // Last time this file was indexed
+  hash          String   // MD5 hash of content for change detection
+  isActive      Boolean  @default(true) // Whether file still exists in codebase
+  metadata      String?  // JSON string for additional metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([fileType])
+  @@index([lastIndexed])
+}
+
+// Q&A training pairs for AI
+model QAEntry {
+  id          String   @id @default(cuid())
+  question    String   // Training question
+  answer      String   // Training answer
+  category    String   @default("general") // Category: general, technical, troubleshooting, etc.
+  tags        String?  // JSON array of tags
+  sourceType  String   @default("manual") // manual, generated, imported
+  confidence  Float    @default(1.0) // Confidence score 0-1
+  useCount    Int      @default(0) // Number of times this Q&A was used
+  lastUsed    DateTime? // Last time this Q&A was used
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([category])
+  @@index([isActive])
+  @@index([sourceType])
+}
+
+// Training documents uploaded by users
+model TrainingDocument {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   // Full document content
+  fileType    String   // pdf, markdown, txt, etc.
+  fileName    String
+  fileSize    Int      // File size in bytes
+  category    String?  // Optional category
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([fileType])
+  @@index([isActive])
+}
+
+// AI Provider API Keys
+model ApiKey {
+  id          String   @id @default(cuid())
+  provider    String   // ollama, openai, anthropic, abacus, etc.
+  keyName     String   // Friendly name for the key
+  apiKey      String   // The actual API key (should be encrypted in production)
+  endpoint    String?  // Custom endpoint URL if applicable
+  model       String?  // Default model to use with this key
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([provider, keyName])
+  @@index([provider])
+  @@index([isActive])
+}
+
+// CEC USB Device Configuration
+model CECConfiguration {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(false)
+  cecInputChannel Int?     // Matrix input channel where CEC device is connected
+  usbDevicePath   String   @default("/dev/ttyACM0") // USB CEC adapter device path
+  powerOnDelay    Int      @default(2000) // Delay in ms after power on command
+  powerOffDelay   Int      @default(1000) // Delay in ms after power off command
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
