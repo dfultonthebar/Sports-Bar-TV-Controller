@@ -1,14 +1,18 @@
 /**
- * Simplified Sports Guide API - The Rail Media API Only
+ * SIMPLIFIED Sports Guide API - The Rail Media API Only
  * 
- * This endpoint uses ONLY The Rail Media API as the single source of truth
- * for sports programming data. All other data sources have been removed.
+ * AUTO-LOADS ALL SPORTS DATA - NO LEAGUE SELECTION REQUIRED
  * 
- * Version: 4.0.0 - Simplified Implementation
+ * Version: 5.0.0 - Drastically Simplified Auto-Loading Implementation
  * Last Updated: October 16, 2025
  * 
  * API Provider: The Rail Media (https://guide.thedailyrail.com)
- * Documentation: https://guide.thedailyrail.com/api/v1
+ * 
+ * CHANGES FROM v4.0.0:
+ * - Removed league selection logic
+ * - Auto-fetches ALL game data when called with no parameters
+ * - Maximum verbosity logging for AI analysis
+ * - Simplified request handling
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -17,116 +21,140 @@ import { getSportsGuideApi, SportsGuideApiError } from '@/lib/sportsGuideApi'
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
-// Comprehensive logging utility
+// MAXIMUM VERBOSITY LOGGING
 function logInfo(message: string, data?: any) {
   const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] [Sports-Guide] INFO: ${message}`, data || '')
+  console.log(`[${timestamp}] [Sports-Guide-API] INFO: ${message}`)
+  if (data) {
+    console.log(`[${timestamp}] [Sports-Guide-API] DATA:`, JSON.stringify(data, null, 2))
+  }
 }
 
 function logError(message: string, error?: any) {
   const timestamp = new Date().toISOString()
-  console.error(`[${timestamp}] [Sports-Guide] ERROR: ${message}`, error || '')
+  console.error(`[${timestamp}] [Sports-Guide-API] ERROR: ${message}`)
+  if (error) {
+    console.error(`[${timestamp}] [Sports-Guide-API] ERROR-DETAILS:`, error)
+  }
 }
 
 function logDebug(message: string, data?: any) {
   const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] [Sports-Guide] DEBUG: ${message}`, data || '')
+  console.log(`[${timestamp}] [Sports-Guide-API] DEBUG: ${message}`)
+  if (data) {
+    console.log(`[${timestamp}] [Sports-Guide-API] DEBUG-DATA:`, JSON.stringify(data, null, 2))
+  }
 }
 
 /**
  * POST /api/sports-guide
  * 
- * Fetch sports programming guide from The Rail Media API
+ * SIMPLIFIED: Fetches ALL sports programming from The Rail Media API
+ * No parameters required - automatically fetches 7 days of all sports
  * 
- * Request Body:
+ * Optional Request Body:
  * {
- *   "startDate": "2025-10-16",  // Optional: YYYY-MM-DD format
- *   "endDate": "2025-10-23",     // Optional: YYYY-MM-DD format
- *   "days": 7,                   // Optional: Number of days from today
- *   "lineup": "SAT",             // Optional: Filter by lineup (SAT, DRTV, etc.)
- *   "search": "NBA"              // Optional: Search term (team, league, sport)
+ *   "days": 7,  // Optional: Number of days (default: 7)
  * }
  */
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7)
-  logInfo(`[${requestId}] New sports guide request received`)
+  const requestStart = Date.now()
+  
+  logInfo(`========== NEW SPORTS GUIDE REQUEST [${requestId}] ==========`)
+  logInfo(`Request received at ${new Date().toISOString()}`)
   
   try {
-    // Parse request body
-    const body = await request.json()
-    logDebug(`[${requestId}] Request body:`, body)
+    // Parse request body (optional)
+    let body: any = {}
+    try {
+      body = await request.json()
+      logDebug(`Request body received:`, body)
+    } catch (e) {
+      logInfo(`No request body provided - using defaults`)
+    }
     
-    const { startDate, endDate, days, lineup, search } = body
+    // Default to 7 days if not specified
+    const days = body.days || 7
+    logInfo(`Fetching ${days} days of sports programming`)
 
     // Validate The Rail API configuration
-    logInfo(`[${requestId}] Validating The Rail Media API configuration...`)
+    logInfo(`---------- VALIDATING API CONFIGURATION ----------`)
     const apiKey = process.env.SPORTS_GUIDE_API_KEY
     const userId = process.env.SPORTS_GUIDE_USER_ID
     const apiUrl = process.env.SPORTS_GUIDE_API_URL || 'https://guide.thedailyrail.com/api/v1'
     
+    logDebug(`API URL: ${apiUrl}`)
+    logDebug(`User ID: ${userId}`)
+    logDebug(`API Key: ${apiKey ? `${apiKey.substring(0, 12)}...${apiKey.substring(apiKey.length - 4)}` : 'NOT SET'}`)
+    
     if (!apiKey || !userId) {
-      logError(`[${requestId}] The Rail API credentials missing in environment variables`)
+      logError(`API credentials missing in environment variables`)
       return NextResponse.json(
         { 
           success: false, 
-          error: 'The Rail Media API not configured. Please add SPORTS_GUIDE_API_KEY and SPORTS_GUIDE_USER_ID to .env file',
-          requestId
+          error: 'The Rail Media API not configured. Check SPORTS_GUIDE_API_KEY and SPORTS_GUIDE_USER_ID in .env',
+          requestId,
+          timestamp: new Date().toISOString()
         },
         { status: 500 }
       )
     }
 
-    logInfo(`[${requestId}] The Rail API configured - User ID: ${userId}`)
-    logDebug(`[${requestId}] API URL: ${apiUrl}`)
-    logDebug(`[${requestId}] API Key: ${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`)
+    logInfo(`✓ The Rail API configuration validated successfully`)
 
     // Initialize The Rail API client
-    logInfo(`[${requestId}] Initializing The Rail Media API client...`)
+    logInfo(`---------- INITIALIZING API CLIENT ----------`)
     const api = getSportsGuideApi()
-    logInfo(`[${requestId}] The Rail API client initialized successfully`)
+    logInfo(`✓ The Rail Media API client initialized`)
 
-    // Fetch guide data based on parameters
+    // Fetch ALL guide data
+    logInfo(`---------- FETCHING SPORTS GUIDE DATA ----------`)
+    logInfo(`Requesting ${days} days of ALL sports from The Rail Media API`)
+    
+    const fetchStart = Date.now()
     let guide
-    let fetchMethod = 'unknown'
-
+    
     try {
-      if (days && typeof days === 'number') {
-        fetchMethod = `fetchDateRangeGuide (${days} days)`
-        logInfo(`[${requestId}] Fetching guide for next ${days} days...`)
-        guide = await api.fetchDateRangeGuide(days)
-      } else if (startDate && endDate) {
-        fetchMethod = `fetchGuide (${startDate} to ${endDate})`
-        logInfo(`[${requestId}] Fetching guide from ${startDate} to ${endDate}...`)
-        guide = await api.fetchGuide(startDate, endDate)
-      } else if (startDate) {
-        fetchMethod = `fetchGuide (single day: ${startDate})`
-        logInfo(`[${requestId}] Fetching guide for single day: ${startDate}...`)
-        guide = await api.fetchGuide(startDate, startDate)
-      } else {
-        fetchMethod = 'fetchTodayGuide'
-        logInfo(`[${requestId}] Fetching guide for today...`)
-        guide = await api.fetchTodayGuide()
-      }
-
-      logInfo(`[${requestId}] Successfully fetched guide data from The Rail API using ${fetchMethod}`)
-      logDebug(`[${requestId}] Guide data structure:`, {
+      guide = await api.fetchDateRangeGuide(days)
+      const fetchDuration = Date.now() - fetchStart
+      
+      logInfo(`✓ Successfully fetched guide data in ${fetchDuration}ms`)
+      logInfo(`---------- API RESPONSE SUMMARY ----------`)
+      logDebug(`Full API response structure:`, {
+        hasListingGroups: !!guide.listing_groups,
         listingGroupsCount: guide.listing_groups?.length || 0,
-        firstGroupTitle: guide.listing_groups?.[0]?.group_title || 'N/A',
+        listingGroupTitles: guide.listing_groups?.map((g: any) => g.group_title) || [],
+        totalListings: guide.listing_groups?.reduce((sum: number, g: any) => sum + (g.listings?.length || 0), 0) || 0
       })
 
+      // Log first listing group as sample
+      if (guide.listing_groups && guide.listing_groups.length > 0) {
+        logDebug(`Sample listing group (first):`, {
+          title: guide.listing_groups[0].group_title,
+          listingsCount: guide.listing_groups[0].listings?.length || 0,
+          firstListing: guide.listing_groups[0].listings?.[0] || null
+        })
+      }
+
     } catch (apiError) {
+      const fetchDuration = Date.now() - fetchStart
+      logError(`✗ API request failed after ${fetchDuration}ms`, apiError)
+      
       if (apiError instanceof SportsGuideApiError) {
-        logError(`[${requestId}] The Rail API error:`, {
+        logError(`The Rail API Error Details:`, {
           message: apiError.message,
           statusCode: apiError.statusCode,
           response: apiError.response
         })
+        
         return NextResponse.json(
           { 
             success: false, 
             error: `The Rail Media API error: ${apiError.message}`,
             statusCode: apiError.statusCode,
-            requestId
+            requestId,
+            timestamp: new Date().toISOString()
           },
           { status: apiError.statusCode || 500 }
         )
@@ -134,85 +162,52 @@ export async function POST(request: NextRequest) {
       throw apiError
     }
 
-    // Apply filters if requested
-    let filteredGuide = guide
-    let appliedFilters: string[] = []
+    // Return raw data - no filtering, no transformation
+    const requestDuration = Date.now() - requestStart
+    logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)
+    logInfo(`Total request duration: ${requestDuration}ms`)
+    logInfo(`Returning ${guide.listing_groups?.length || 0} listing groups to client`)
 
-    // Filter by lineup (e.g., SAT for satellite, DRTV for DirecTV)
-    if (lineup) {
-      logInfo(`[${requestId}] Filtering by lineup: ${lineup}`)
-      const channels = api.getChannelsByLineup(guide, lineup)
-      logInfo(`[${requestId}] Found ${channels.length} channels for lineup ${lineup}`)
-      appliedFilters.push(`lineup:${lineup}`)
-      
-      // Store channels info for response
-      filteredGuide = {
-        ...guide,
-        _lineupChannels: channels
-      }
-    }
-
-    // Filter by search term (team, league, sport name)
-    if (search) {
-      logInfo(`[${requestId}] Searching guide for: "${search}"`)
-      const searchResults = api.searchGuide(filteredGuide, search)
-      logInfo(`[${requestId}] Found ${searchResults.length} listing groups matching search term`)
-      appliedFilters.push(`search:${search}`)
-      
-      filteredGuide = {
-        listing_groups: searchResults,
-      }
-    }
-
-    // Calculate statistics
-    const totalListingGroups = filteredGuide.listing_groups?.length || 0
-    const totalListings = filteredGuide.listing_groups?.reduce(
-      (sum, group) => sum + (group.listings?.length || 0), 
-      0
-    ) || 0
-    
-    logInfo(`[${requestId}] Guide data processed successfully:`)
-    logInfo(`[${requestId}]   - Total listing groups: ${totalListingGroups}`)
-    logInfo(`[${requestId}]   - Total listings: ${totalListings}`)
-    logInfo(`[${requestId}]   - Applied filters: ${appliedFilters.join(', ') || 'none'}`)
-
-    // Build response
     const response = {
       success: true,
       requestId,
+      timestamp: new Date().toISOString(),
+      durationMs: requestDuration,
       dataSource: 'The Rail Media API',
       apiProvider: {
         name: 'The Rail Media',
         url: apiUrl,
         userId: userId
       },
-      fetchMethod,
-      data: filteredGuide,
-      statistics: {
-        totalListingGroups,
-        totalListings,
-        appliedFilters,
-        generatedAt: new Date().toISOString()
+      fetchMethod: `fetchDateRangeGuide (${days} days)`,
+      summary: {
+        listingGroupsCount: guide.listing_groups?.length || 0,
+        totalListings: guide.listing_groups?.reduce((sum: number, g: any) => sum + (g.listings?.length || 0), 0) || 0,
       },
-      filters: {
-        startDate: startDate || null,
-        endDate: endDate || null,
-        days: days || null,
-        lineup: lineup || null,
-        search: search || null
-      }
+      data: guide,
+      rawApiResponse: guide // Include raw response for debugging
     }
 
-    logInfo(`[${requestId}] Returning successful response with ${totalListings} listings`)
+    logDebug(`Response being sent to client:`, {
+      success: response.success,
+      listingGroupsCount: response.summary.listingGroupsCount,
+      totalListings: response.summary.totalListings
+    })
+
     return NextResponse.json(response)
 
   } catch (error) {
-    logError(`[${requestId}] Unexpected error in sports guide API:`, error)
+    const requestDuration = Date.now() - requestStart
+    logError(`========== REQUEST FAILED [${requestId}] ==========`, error)
+    logError(`Failed after ${requestDuration}ms`)
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error',
-        requestId
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        requestId,
+        timestamp: new Date().toISOString(),
+        durationMs: requestDuration
       },
       { status: 500 }
     )
@@ -222,116 +217,12 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/sports-guide
  * 
- * Get API information, status, and available endpoints
+ * Simple GET endpoint that fetches 7 days of sports data
  */
 export async function GET(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7)
-  logInfo(`[${requestId}] API status/info request received`)
+  logInfo(`========== GET REQUEST [${requestId}] - Redirecting to POST ==========`)
   
-  try {
-    const { searchParams } = new URL(request.url)
-    const action = searchParams.get('action')
-    
-    // Handle special actions
-    if (action === 'test-connection') {
-      logInfo(`[${requestId}] Testing The Rail API connection...`)
-      
-      try {
-        const api = getSportsGuideApi()
-        const result = await api.verifyApiKey()
-        
-        logInfo(`[${requestId}] Connection test result:`, result)
-        
-        return NextResponse.json({
-          success: true,
-          requestId,
-          connectionTest: result,
-          timestamp: new Date().toISOString()
-        })
-      } catch (error) {
-        logError(`[${requestId}] Connection test failed:`, error)
-        return NextResponse.json({
-          success: false,
-          requestId,
-          error: error instanceof Error ? error.message : 'Connection test failed',
-          timestamp: new Date().toISOString()
-        }, { status: 500 })
-      }
-    }
-
-    // Default: Return API information
-    const apiKey = process.env.SPORTS_GUIDE_API_KEY
-    const userId = process.env.SPORTS_GUIDE_USER_ID
-    const apiUrl = process.env.SPORTS_GUIDE_API_URL || 'https://guide.thedailyrail.com/api/v1'
-    
-    const configured = !!(apiKey && userId)
-    
-    logInfo(`[${requestId}] Returning API status - Configured: ${configured}`)
-    
-    return NextResponse.json({
-      success: true,
-      requestId,
-      version: '4.0.0',
-      name: 'Simplified Sports Guide API',
-      description: 'Sports programming guide using ONLY The Rail Media API',
-      dataSource: {
-        provider: 'The Rail Media',
-        url: apiUrl,
-        userId: userId || 'Not configured',
-        apiKeySet: !!apiKey,
-        configured
-      },
-      endpoints: {
-        'POST /api/sports-guide': {
-          description: 'Fetch sports programming guide',
-          parameters: {
-            startDate: 'Optional: Start date (YYYY-MM-DD)',
-            endDate: 'Optional: End date (YYYY-MM-DD)',
-            days: 'Optional: Number of days from today (default: 7)',
-            lineup: 'Optional: Filter by lineup (SAT, DRTV, etc.)',
-            search: 'Optional: Search term (team, league, sport)'
-          }
-        },
-        'GET /api/sports-guide': 'Get API information and status',
-        'GET /api/sports-guide?action=test-connection': 'Test The Rail API connection',
-        'GET /api/sports-guide/status': 'Get detailed configuration status',
-        'POST /api/sports-guide/verify-key': 'Verify API key validity',
-        'POST /api/sports-guide/update-key': 'Update API credentials'
-      },
-      features: [
-        'Single data source: The Rail Media API only',
-        'Comprehensive verbose logging',
-        'Date range filtering',
-        'Lineup filtering (SAT, DRTV, etc.)',
-        'Search functionality (teams, leagues, sports)',
-        'Real-time sports programming data',
-        'Simplified and maintainable codebase'
-      ],
-      logging: {
-        enabled: true,
-        location: 'PM2 logs (pm2 logs sports-bar-tv)',
-        format: '[timestamp] [Sports-Guide] LEVEL: message',
-        levels: ['INFO', 'ERROR', 'DEBUG']
-      },
-      supportedLineups: [
-        'SAT - Satellite',
-        'DRTV - DirecTV',
-        'DISH - Dish Network',
-        'CABLE - Cable providers',
-        'STREAM - Streaming services'
-      ],
-      timestamp: new Date().toISOString()
-    })
-
-  } catch (error) {
-    logError(`[${requestId}] Error in GET endpoint:`, error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error',
-        requestId
-      },
-      { status: 500 }
-    )
-  }
+  // Convert GET to POST with default parameters
+  return POST(request)
 }
