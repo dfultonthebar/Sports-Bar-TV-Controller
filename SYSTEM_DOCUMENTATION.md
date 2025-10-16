@@ -3792,3 +3792,69 @@ tail -f /home/ubuntu/sports-bar-data/audit.log
 
 See `docs/DATABASE_PROTECTION.md` for complete logging documentation.
 
+
+## Critical Fix: Wolfpack Settings Revert Issue (October 16, 2025)
+
+### Problem
+User reported that Wolfpack matrix settings were reverting to generic labels (e.g., "Input 1", "Output 1") after clicking save. All custom labels were being lost.
+
+### Root Cause Analysis
+The issue was NOT caused by the backup/restore system as initially suspected. Investigation revealed:
+
+1. **Database File Monitor**: The `db-file-monitor` PM2 process was only logging changes, not auto-restoring
+2. **Backup Scripts**: All restore operations were manual-only, no automatic triggers
+3. **Actual Culprit**: The API endpoint `/api/matrix/config` had a bug in the MatrixOutput insertion code
+
+**Specific Bug**: The raw SQL INSERT statement was trying to insert into a non-existent column `isMatrixOutput`:
+```sql
+INSERT INTO MatrixOutput (..., isMatrixOutput) VALUES (..., 1)
+```
+
+This caused the database transaction to fail and rollback, reverting all changes including the custom labels.
+
+### Solution Implemented
+1. **First Fix**: Removed the non-existent `isMatrixOutput` column from the INSERT statement
+2. **Second Fix**: Replaced raw SQL approach with Prisma's `createMany()` method for better maintainability and type safety
+
+**Code Changes** (in `src/app/api/matrix/config/route.ts`):
+- Removed raw SQL `$executeRaw` approach
+- Implemented Prisma `createMany()` for MatrixOutput insertion
+- Properly handles all database fields: id, configId, channelNumber, label, resolution, isActive, status, audioOutput, powerOn, dailyTurnOn, dailyTurnOff, createdAt, updatedAt
+
+### Testing Results
+✅ Successfully saved custom labels: "DirecTV Box 1", "TV Zone 1", etc.
+✅ Settings persist after save (no revert)
+✅ Multiple consecutive saves work correctly
+✅ Database transactions complete successfully
+✅ No errors in PM2 logs
+
+### Files Modified
+- `src/app/api/matrix/config/route.ts` - Fixed MatrixOutput insertion logic
+
+### Git Branch
+- Branch: `fix-wolfpack-save-revert`
+- Commits:
+  - d08fb1c: Initial fix removing isMatrixOutput column
+  - 132c1ab: Final fix using Prisma createMany
+
+### Backup System Status
+The backup/restore system remains intact and functional:
+- **Backup Script**: `/home/ubuntu/sports-bar-data/backup.sh` - Runs hourly via cron
+- **Restore Script**: `/home/ubuntu/sports-bar-data/restore.sh` - Manual only
+- **File Monitor**: `db-file-monitor` PM2 process - Logging only, no auto-restore
+- **Backups Location**: `/home/ubuntu/sports-bar-data/backups/`
+- **Retention**: Last 30 backups kept
+
+### Manual Restore Instructions
+If database restore is ever needed:
+```bash
+# List available backups
+ls -lh /home/ubuntu/sports-bar-data/backups/
+
+# Restore from specific backup
+/home/ubuntu/sports-bar-data/restore.sh backup_YYYYMMDD_HHMMSS.db
+
+# Restart application
+pm2 restart sports-bar-tv
+```
+
