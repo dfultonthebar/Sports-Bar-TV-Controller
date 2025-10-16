@@ -3792,3 +3792,362 @@ tail -f /home/ubuntu/sports-bar-data/audit.log
 
 See `docs/DATABASE_PROTECTION.md` for complete logging documentation.
 
+
+---
+
+## Global Cache IR Control System
+
+### Overview
+The Sports Bar TV Controller uses Global Cache iTach devices for infrared (IR) control of cable boxes, DirecTV receivers, and other IR-controlled equipment. This system provides network-based IR control, allowing centralized management of all IR devices from the web interface.
+
+### Architecture
+
+#### Global Cache Devices
+- **Network-connected IR blasters**: iTach devices communicate via TCP/IP on port 4998
+- **Multiple IR output ports**: Typically 3 IR ports per device (some models have more)
+- **Each port controls one device**: One IR emitter per port for targeted control
+- **Status monitoring**: Real-time online/offline status tracking
+- **Automatic discovery**: UDP beacon protocol on port 9131 for device discovery
+
+#### Device Management
+- **Multiple Global Cache devices supported**: Add as many devices as needed
+- **Each device identified by IP address**: Static IP recommended for reliability
+- **Automatic connection testing**: Verify device connectivity before adding
+- **Status monitoring**: Track online/offline status and last seen timestamp
+- **Model detection**: Automatically detect device model and capabilities
+
+#### Port Assignment
+- **Each Global Cache port assigned to a specific device**: Map ports to cable boxes, receivers, etc.
+- **Supports various device types**: Cable boxes, DirecTV receivers, audio processors, etc.
+- **IR code set configuration per port**: Assign appropriate IR codes for each device
+- **Enable/disable individual ports**: Control which ports are active
+- **Visual port management**: Easy-to-use interface for port configuration
+
+### Database Schema
+
+#### GlobalCacheDevice Model
+```prisma
+model GlobalCacheDevice {
+  id          String   @id @default(cuid())
+  name        String   // Device name (e.g., "Global Cache 1")
+  ipAddress   String   @unique // Device IP (e.g., "192.168.5.110")
+  port        Int      @default(4998) // TCP port (default 4998)
+  model       String?  // Device model (e.g., "iTach IP2IR")
+  status      String   @default("offline") // online/offline
+  lastSeen    DateTime? // Last successful connection
+  ports       GlobalCachePort[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+**Fields:**
+- `id`: Unique identifier
+- `name`: Friendly name for the device
+- `ipAddress`: IP address (must be unique)
+- `port`: TCP port for communication (default 4998)
+- `model`: Device model string
+- `status`: Current connection status
+- `lastSeen`: Timestamp of last successful connection
+- `ports`: Related port configurations
+
+#### GlobalCachePort Model
+```prisma
+model GlobalCachePort {
+  id                String   @id @default(cuid())
+  deviceId          String
+  device            GlobalCacheDevice @relation(...)
+  portNumber        Int      // Physical port number (1-3)
+  portType          String   // "IR" or "SERIAL"
+  assignedTo        String?  // Device name
+  assignedDeviceId  String?  // Reference to device
+  irCodeSet         String?  // IR code set name
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([deviceId, portNumber])
+}
+```
+
+**Fields:**
+- `id`: Unique identifier
+- `deviceId`: Parent Global Cache device
+- `portNumber`: Physical port number (1, 2, 3, etc.)
+- `portType`: Type of port ("IR" or "SERIAL")
+- `assignedTo`: Name of assigned device (e.g., "Cable Box 1")
+- `assignedDeviceId`: Optional reference to actual device record
+- `irCodeSet`: Name of IR code set being used
+- `enabled`: Whether port is active
+
+### API Endpoints
+
+#### Device Management
+
+**GET /api/globalcache/devices**
+- List all Global Cache devices
+- Returns: Array of devices with their ports
+- Response includes status and last seen information
+
+**POST /api/globalcache/devices**
+- Add a new Global Cache device
+- Body: `{ name, ipAddress, port?, model? }`
+- Automatically tests connection before adding
+- Creates default ports (3 IR ports)
+- Returns: Created device with ports
+
+**GET /api/globalcache/devices/:id**
+- Get specific device details
+- Returns: Device with all port configurations
+
+**PUT /api/globalcache/devices/:id**
+- Update device configuration
+- Body: `{ name?, ipAddress?, port?, model? }`
+- Returns: Updated device
+
+**DELETE /api/globalcache/devices/:id**
+- Delete a device and all its ports
+- Cascade delete removes all port assignments
+
+**POST /api/globalcache/devices/:id/test**
+- Test connection to device
+- Updates device status
+- Returns: `{ success, online, deviceInfo }`
+- Device info includes model and capabilities
+
+#### Port Management
+
+**PUT /api/globalcache/ports/:id**
+- Update port assignment
+- Body: `{ assignedTo?, assignedDeviceId?, irCodeSet?, enabled? }`
+- Returns: Updated port configuration
+
+#### Command Execution
+
+**POST /api/globalcache/send**
+- Send IR command through Global Cache device
+- Body: `{ deviceId, portNumber, irCode?, command? }`
+- Either `irCode` (sendir format) or raw `command` required
+- Returns: `{ success, response, error?, duration }`
+- Updates device status on successful command
+
+### Global Cache Protocol
+
+#### Communication Protocol
+- **Protocol**: TCP/IP
+- **Default Port**: 4998
+- **Command Format**: ASCII text terminated with carriage return (`\r`)
+- **Response Format**: ASCII text with status codes
+
+#### Common Commands
+
+**getdevices**
+- Query device modules and capabilities
+- Response format: `device,module,connector Type`
+- Example: `device,1,3 IR` (Module 1 has 3 IR connectors)
+
+**sendir**
+- Send IR command
+- Format: `sendir,module:connector,ID,frequency,repeat,offset,on1,off1,on2,off2,...`
+- Example: `sendir,1:1,1,38000,1,1,343,171,22,22,...`
+- Parameters:
+  - `module:connector`: Target port (e.g., 1:1, 1:2, 1:3)
+  - `ID`: Command identifier (0-65535)
+  - `frequency`: Carrier frequency in Hz (e.g., 38000)
+  - `repeat`: Number of times to repeat (1-50)
+  - `offset`: Preamble length (odd number)
+  - `on/off pairs`: Pulse timings in carrier cycles
+
+**getversion**
+- Get firmware version
+- Response: Version string
+
+#### Port Addressing
+- **Module numbering**: Starts at 0 (network module), IR modules typically at 1
+- **Connector numbering**: Starts at 1 (e.g., 1:1, 1:2, 1:3)
+- **iTach IP2IR**: Module 1, Connectors 1-3
+- **Serial ports**: Use separate TCP ports (4999, 5000, etc.)
+
+#### UDP Discovery
+- **Port**: 9131
+- **Protocol**: UDP multicast
+- **Multicast IP**: 239.255.250.250
+- **Beacon interval**: 10-60 seconds
+- **Beacon format**: `AMXB<-UUID=...><-Model=...><-Config-URL=...>`
+
+### Verbose Logging
+
+All Global Cache operations are logged with comprehensive details for debugging and AI analysis.
+
+#### Connection Test Logging
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔌 [GLOBAL CACHE] Testing connection
+   IP: 192.168.5.110
+   Port: 4998
+   Timestamp: 2025-10-16T20:00:00.000Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ [GLOBAL CACHE] Connected successfully
+📥 [GLOBAL CACHE] Response received:
+    device,1,3 IR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### Command Execution Logging
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📤 [GLOBAL CACHE] Sending command
+   IP: 192.168.5.110
+   Port: 4998
+   Command: sendir,1:1,1,38000,1,1,343,171,...
+   Timestamp: 2025-10-16T20:00:00.000Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ [GLOBAL CACHE] Connected, sending command...
+📥 [GLOBAL CACHE] Response received:
+    completeir,1:1,1
+   Duration: 45 ms
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### Error Logging
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📤 [GLOBAL CACHE] Sending command
+   IP: 192.168.5.110
+   Port: 4998
+   Command: sendir,1:1,1,38000,1,1,343,171,...
+   Timestamp: 2025-10-16T20:00:00.000Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ [GLOBAL CACHE] Connection error: ETIMEDOUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### Log Emoji Reference
+- 🔌 Connection test
+- 📤 Sending command
+- 📥 Response received
+- ✅ Success
+- ❌ Error
+- ℹ️ Information
+- 🔍 Discovery
+- 📡 Beacon received
+- ⏱️ Timeout
+
+### Configuration
+
+#### Current Setup Example
+```
+Global Cache Device 1: 192.168.5.110
+  - Port 1: Cable Box 1 (Spectrum Samsung SMT-C5320)
+  - Port 2: Cable Box 2 (Spectrum Arris DCX3200)
+  - Port 3: Audio Processor (Yamaha RX-V685)
+```
+
+#### Network Requirements
+- **Static IP recommended**: Prevents connection issues after DHCP renewal
+- **Port 4998 accessible**: Firewall must allow TCP traffic
+- **Port 9131 for discovery**: UDP multicast for automatic discovery
+- **Low latency network**: IR commands are time-sensitive
+
+#### IR Emitter Placement
+- **Direct line of sight**: IR emitters should face device IR receiver
+- **Close proximity**: Within 6 inches for best results
+- **Avoid obstructions**: Clear path between emitter and receiver
+- **Test positioning**: Use test command to verify signal strength
+
+### Troubleshooting
+
+#### Device Offline
+1. **Verify device is powered on**: Check power LED
+2. **Check network connectivity**: `ping 192.168.5.110`
+3. **Verify port accessibility**: `nc -zv 192.168.5.110 4998`
+4. **Check PM2 logs**: `pm2 logs sports-bar-tv --lines 100`
+5. **Test connection**: Use "Test" button in web interface
+
+#### Commands Not Working
+1. **Verify port assignment**: Ensure correct port is assigned to device
+2. **Check IR code set**: Verify correct IR codes are configured
+3. **Verify IR emitter positioning**: Ensure emitter faces device
+4. **Check PM2 logs**: Look for command errors
+5. **Test with getdevices**: Verify basic communication works
+
+#### Slow Response
+1. **Check network latency**: High latency affects IR timing
+2. **Verify device load**: Too many simultaneous commands
+3. **Check IR code complexity**: Long codes take more time
+4. **Review logs**: Look for timeout warnings
+
+#### Discovery Not Working
+1. **Check UDP port 9131**: Ensure firewall allows UDP
+2. **Verify multicast**: Network must support multicast
+3. **Check network segment**: Device must be on same subnet
+4. **Wait for beacon**: Beacons sent every 10-60 seconds
+
+### How Local AI Can Use Logs
+
+The verbose logging system is designed for AI analysis:
+
+1. **Search for "GLOBAL CACHE"**: All operations tagged
+2. **Filter by emoji**: Quick visual identification
+   - 🔌 for connection issues
+   - 📤📥 for command flow
+   - ❌ for errors
+3. **Analyze timing**: Duration metrics for performance
+4. **Track patterns**: Identify recurring issues
+5. **Correlate events**: Match commands with responses
+
+**Example AI Query:**
+"Show me all failed Global Cache commands in the last hour"
+- Search for: `[GLOBAL CACHE]` AND `❌`
+- Time filter: Last 60 minutes
+- Extract: IP, command, error message
+
+### Integration with Other Systems
+
+#### Matrix Switching
+- Global Cache ports can control devices connected to matrix inputs
+- Coordinate IR commands with matrix routing
+- Example: Switch to input 3, then send channel change command
+
+#### Scheduling
+- Schedule IR commands for automated control
+- Example: Turn on cable boxes at opening time
+- Example: Change channels for scheduled events
+
+#### AI Assistant
+- AI can send IR commands based on natural language
+- Example: "Turn on cable box 1 and tune to ESPN"
+- AI analyzes logs to troubleshoot issues
+
+### Best Practices
+
+1. **Use static IPs**: Prevents connection loss after DHCP changes
+2. **Label ports clearly**: Use descriptive names for assignments
+3. **Test before deployment**: Verify all commands work correctly
+4. **Monitor logs regularly**: Check for connection issues
+5. **Document IR codes**: Keep record of working code sets
+6. **Position emitters carefully**: Proper placement ensures reliability
+7. **Use appropriate repeat counts**: Balance reliability and speed
+8. **Keep firmware updated**: Check Global Cache for updates
+
+### Security Considerations
+
+1. **Network isolation**: Consider VLAN for control devices
+2. **Access control**: Limit who can modify device configuration
+3. **Audit logging**: All commands are logged for review
+4. **Backup configuration**: Export device and port settings
+5. **Monitor for anomalies**: Watch for unexpected commands
+
+### Future Enhancements
+
+Potential improvements to the Global Cache system:
+
+1. **IR code learning**: Capture IR codes from remotes
+2. **Macro support**: Chain multiple commands together
+3. **Conditional execution**: Send commands based on device state
+4. **Performance analytics**: Track command success rates
+5. **Automatic recovery**: Retry failed commands
+6. **Device templates**: Pre-configured settings for common devices
+7. **Bulk operations**: Configure multiple ports at once
+8. **Advanced scheduling**: Time-based port assignments
+

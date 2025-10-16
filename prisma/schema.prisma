@@ -487,3 +487,33 @@ model QAGenerationJob {
   @@index([status])
   @@index([createdAt])
 }
+
+// Global Cache Device Management Models
+model GlobalCacheDevice {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Global Cache 1"
+  ipAddress   String   @unique // e.g., "192.168.5.110"
+  port        Int      @default(4998) // iTach default port
+  model       String?  // e.g., "iTach IP2IR"
+  status      String   @default("offline") // online/offline
+  lastSeen    DateTime?
+  ports       GlobalCachePort[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GlobalCachePort {
+  id                String   @id @default(cuid())
+  deviceId          String
+  device            GlobalCacheDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  portNumber        Int      // 1, 2, 3 for IR ports
+  portType          String   // "IR" or "SERIAL"
+  assignedTo        String?  // Device name (e.g., "Cable Box 1")
+  assignedDeviceId  String?  // Reference to actual device
+  irCodeSet         String?  // IR code set name
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([deviceId, portNumber])
+}
