@@ -2,66 +2,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Enhanced DirecTV command mappings
+// Note: DirecTV SHEF API expects plain key names without "KEY_" prefix
 const DIRECTV_COMMANDS = {
   // Power Commands
-  'POWER': 'KEY_POWER',
-  'POWER_ON': 'KEY_POWERON',
-  'POWER_OFF': 'KEY_POWEROFF',
+  'POWER': 'power',
+  'POWER_ON': 'poweron',
+  'POWER_OFF': 'poweroff',
   
   // Navigation
-  'UP': 'KEY_UP',
-  'DOWN': 'KEY_DOWN',
-  'LEFT': 'KEY_LEFT',
-  'RIGHT': 'KEY_RIGHT',
-  'OK': 'KEY_SELECT',
-  'BACK': 'KEY_BACK',
-  'EXIT': 'KEY_EXIT',
+  'UP': 'up',
+  'DOWN': 'down',
+  'LEFT': 'left',
+  'RIGHT': 'right',
+  'OK': 'select',
+  'BACK': 'back',
+  'EXIT': 'exit',
   
   // Channel Control
-  'CH_UP': 'KEY_CHANUP',
-  'CH_DOWN': 'KEY_CHANDOWN',
-  'LAST': 'KEY_PREV',
-  'ENTER': 'KEY_ENTER',
+  'CH_UP': 'chanup',
+  'CH_DOWN': 'chandown',
+  'LAST': 'prev',
+  'ENTER': 'enter',
   
   // Volume Control
-  'VOL_UP': 'KEY_VOLUMEUP',
-  'VOL_DOWN': 'KEY_VOLUMEDOWN',
-  'MUTE': 'KEY_MUTE',
+  'VOL_UP': 'volumeup',
+  'VOL_DOWN': 'volumedown',
+  'MUTE': 'mute',
   
   // Guide & Menu
-  'GUIDE': 'KEY_GUIDE',
-  'MENU': 'KEY_MENU',
-  'INFO': 'KEY_INFO',
-  'LIST': 'KEY_LIST',
+  'GUIDE': 'guide',
+  'MENU': 'menu',
+  'INFO': 'info',
+  'LIST': 'list',
   
   // Numbers
-  '0': 'KEY_0', '1': 'KEY_1', '2': 'KEY_2', '3': 'KEY_3', '4': 'KEY_4',
-  '5': 'KEY_5', '6': 'KEY_6', '7': 'KEY_7', '8': 'KEY_8', '9': 'KEY_9',
+  '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+  '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
   
   // DVR Controls
-  'PLAY': 'KEY_PLAY',
-  'PAUSE': 'KEY_PAUSE',
-  'STOP': 'KEY_STOP',
-  'REWIND': 'KEY_REWIND',
-  'FAST_FORWARD': 'KEY_FASTFORWARD',
-  'RECORD': 'KEY_RECORD',
-  'SKIP_BACK': 'KEY_REPLAY',
-  'SKIP_FORWARD': 'KEY_ADVANCE',
+  'PLAY': 'play',
+  'PAUSE': 'pause',
+  'STOP': 'stop',
+  'REWIND': 'rew',
+  'FAST_FORWARD': 'ffwd',
+  'RECORD': 'record',
+  'SKIP_BACK': 'replay',
+  'SKIP_FORWARD': 'advance',
   
   // DirecTV Specific
-  'ACTIVE': 'KEY_ACTIVE',
-  'FORMAT': 'KEY_FORMAT',
-  'YELLOW': 'KEY_YELLOW',
-  'BLUE': 'KEY_BLUE',
-  'RED': 'KEY_RED',
-  'GREEN': 'KEY_GREEN',
-  'DASH': 'KEY_DASH'
+  'ACTIVE': 'active',
+  'FORMAT': 'format',
+  'YELLOW': 'yellow',
+  'BLUE': 'blue',
+  'RED': 'red',
+  'GREEN': 'green',
+  'DASH': 'dash'
 }
 
 async function sendDirecTVCommand(ip: string, port: number, command: string): Promise<{ success: boolean; message: string; data?: any }> {
   try {
     // DirecTV uses HTTP GET requests to /remote/processKey
-    const url = `http://${ip}:${port}/remote/processKey?key=${command}&hold=keyPress`
+    const url = `http://${ip}:${port}/remote/processKey?key=${command}`
     
     console.log(`Sending DirecTV command to: ${url}`)
     
