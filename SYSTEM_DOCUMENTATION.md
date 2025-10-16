@@ -675,51 +675,515 @@ Get AI insights for devices
 ## 5. Sports Guide
 
 ### Overview
-Integration with The Rail Media API for sports programming information.
+Simplified sports programming guide using The Rail Media API as the ONLY data source. All previous data sources (ESPN, TheSportsDB, Spectrum, etc.) have been removed for simplicity and maintainability.
+
+**Version:** 4.0.0 - Simplified Implementation  
+**Last Updated:** October 16, 2025  
+**Data Source:** The Rail Media API ONLY
+
+### Key Changes (Version 4.0.0)
+
+#### Simplified Architecture
+- **REMOVED:** ESPN API integration
+- **REMOVED:** TheSportsDB API integration  
+- **REMOVED:** Spectrum Channel Service
+- **REMOVED:** Sunday Ticket Service
+- **REMOVED:** Enhanced streaming sports service
+- **REMOVED:** Mock data generation
+- **REMOVED:** Multiple hardcoded channel lists
+- **KEPT:** The Rail Media API as the ONLY data source
+
+#### Benefits of Simplification
+- Single source of truth for all sports programming data
+- Reduced code complexity (600+ lines → 300 lines)
+- Easier maintenance and debugging
+- Consistent data format
+- No API conflicts or data merging issues
+- Comprehensive verbose logging for debugging
 
 ### Features
-- Sports channel guide
-- Programming schedules
-- Event information
-- API key management with validation
+
+#### Core Functionality
+- **Sports Programming Guide:** Real-time sports TV guide data from The Rail Media
+- **Date Range Filtering:** Query specific date ranges or number of days ahead
+- **Lineup Filtering:** Filter by satellite, cable, or streaming lineup
+- **Search Functionality:** Search for specific teams, leagues, or sports
+- **Comprehensive Logging:** Verbose logging for all operations
+- **Ollama Integration:** AI-powered query and analysis capabilities
+
+#### Supported Lineups
+- **SAT** - Satellite providers
+- **DRTV** - DirecTV
+- **DISH** - Dish Network
+- **CABLE** - Cable providers
+- **STREAM** - Streaming services
 
 ### API Configuration
 
 **Provider:** The Rail Media  
 **API Endpoint:** https://guide.thedailyrail.com/api/v1  
-**Current User ID:** 258351
+**User ID:** 258351  
+**API Key:** Configured in `.env` file
+
+#### Environment Variables
+```bash
+SPORTS_GUIDE_API_KEY=12548RK0000000d2bb701f55b82bfa192e680985919
+SPORTS_GUIDE_USER_ID=258351
+SPORTS_GUIDE_API_URL=https://guide.thedailyrail.com/api/v1
+```
 
 ### API Endpoints
+
+#### POST `/api/sports-guide`
+Fetch sports programming guide from The Rail Media API
+
+**Request Body:**
+```json
+{
+  "startDate": "2025-10-16",  // Optional: YYYY-MM-DD format
+  "endDate": "2025-10-23",     // Optional: YYYY-MM-DD format
+  "days": 7,                   // Optional: Number of days from today
+  "lineup": "SAT",             // Optional: Filter by lineup (SAT, DRTV, etc.)
+  "search": "NBA"              // Optional: Search term (team, league, sport)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "requestId": "abc123",
+  "dataSource": "The Rail Media API",
+  "apiProvider": {
+    "name": "The Rail Media",
+    "url": "https://guide.thedailyrail.com/api/v1",
+    "userId": "258351"
+  },
+  "fetchMethod": "fetchDateRangeGuide (7 days)",
+  "data": {
+    "listing_groups": [...]
+  },
+  "statistics": {
+    "totalListingGroups": 42,
+    "totalListings": 156,
+    "appliedFilters": [],
+    "generatedAt": "2025-10-16T..."
+  },
+  "filters": {
+    "startDate": null,
+    "endDate": null,
+    "days": 7,
+    "lineup": null,
+    "search": null
+  }
+}
+```
+
+#### GET `/api/sports-guide`
+Get API information, status, and available endpoints
+
+**Response:**
+```json
+{
+  "success": true,
+  "requestId": "xyz789",
+  "version": "4.0.0",
+  "name": "Simplified Sports Guide API",
+  "description": "Sports programming guide using ONLY The Rail Media API",
+  "dataSource": {
+    "provider": "The Rail Media",
+    "url": "https://guide.thedailyrail.com/api/v1",
+    "userId": "258351",
+    "apiKeySet": true,
+    "configured": true
+  },
+  "endpoints": {...},
+  "features": [...],
+  "logging": {
+    "enabled": true,
+    "location": "PM2 logs (pm2 logs sports-bar-tv)",
+    "format": "[timestamp] [Sports-Guide] LEVEL: message",
+    "levels": ["INFO", "ERROR", "DEBUG"]
+  },
+  "supportedLineups": [...]
+}
+```
+
+#### GET `/api/sports-guide?action=test-connection`
+Test The Rail Media API connection
+
+**Response:**
+```json
+{
+  "success": true,
+  "requestId": "test123",
+  "connectionTest": {
+    "valid": true,
+    "message": "API key is valid and working"
+  },
+  "timestamp": "2025-10-16T..."
+}
+```
 
 #### GET `/api/sports-guide/status`
 Get current API configuration status
 
+**Response:**
+```json
+{
+  "success": true,
+  "configured": true,
+  "apiUrl": "https://guide.thedailyrail.com/api/v1",
+  "userId": "258351",
+  "apiKeySet": true,
+  "apiKeyPreview": "12548RK0...5919"
+}
+```
+
 #### POST `/api/sports-guide/verify-key`
 Verify API key validity
+
+**Request Body:**
+```json
+{
+  "apiKey": "your-api-key",
+  "userId": "your-user-id"
+}
+```
 
 #### POST `/api/sports-guide/update-key`
 Update API key (with validation)
 
-#### GET `/api/sports-guide/channels`
-Fetch channel guide data with filtering options
+**Request Body:**
+```json
+{
+  "apiKey": "new-api-key",
+  "userId": "new-user-id"
+}
+```
 
-### Configuration
+### Ollama AI Integration
 
+The Sports Guide now includes comprehensive AI integration using Ollama for intelligent querying and analysis.
+
+#### Ollama Configuration
+- **Host:** http://localhost:11434 (configurable via `OLLAMA_HOST`)
+- **Model:** phi3:mini (configurable via `OLLAMA_MODEL`)
+- **Status:** Active and operational
+
+#### Ollama API Endpoints
+
+##### POST `/api/sports-guide/ollama/query`
+Query Ollama about sports guide functionality
+
+**Default Query:**
+```json
+{
+  "query": "What sports games are on TV tonight?",
+  "includeRecentLogs": true
+}
+```
+
+**Analyze Logs:**
+```json
+{
+  "action": "analyze-logs"
+}
+```
+
+**Get Recommendations:**
+```json
+{
+  "action": "get-recommendations",
+  "userPreferences": {
+    "favoriteTeams": ["Green Bay Packers", "Milwaukee Bucks"],
+    "favoriteLeagues": ["NFL", "NBA"],
+    "location": "Green Bay, Wisconsin"
+  }
+}
+```
+
+**Test Connection:**
+```json
+{
+  "action": "test-connection"
+}
+```
+
+##### GET `/api/sports-guide/ollama/query`
+Test Ollama connectivity
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Ollama is online and accessible",
+  "model": "phi3:mini",
+  "responseTime": 45
+}
+```
+
+#### Ollama Features
+
+1. **Intelligent Query Answering**
+   - Natural language questions about sports programming
+   - Context-aware responses using recent logs
+   - Comprehensive system knowledge
+
+2. **Log Analysis**
+   - Automatic analysis of sports guide logs
+   - System health assessment
+   - Error detection and reporting
+   - Usage pattern identification
+
+3. **Personalized Recommendations**
+   - Sports programming recommendations based on user preferences
+   - Location-based suggestions
+   - Team and league-specific recommendations
+
+4. **Debug Assistance**
+   - Help troubleshooting issues
+   - Explain error messages
+   - Suggest solutions based on logs
+
+### Comprehensive Logging
+
+All sports guide operations are logged with comprehensive detail for debugging and monitoring.
+
+#### Log Format
+```
+[2025-10-16T12:34:56.789Z] [Sports-Guide] LEVEL: message
+```
+
+#### Log Levels
+- **INFO:** General information about operations
+- **ERROR:** Error conditions and failures
+- **DEBUG:** Detailed debugging information
+
+#### Log Locations
+- **PM2 Output Log:** `~/.pm2/logs/sports-bar-tv-out.log`
+- **PM2 Error Log:** `~/.pm2/logs/sports-bar-tv-error.log`
+
+#### Viewing Logs
+
+**Real-time logs:**
+```bash
+pm2 logs sports-bar-tv
+```
+
+**Filter for Sports Guide logs:**
+```bash
+pm2 logs sports-bar-tv | grep "Sports-Guide"
+```
+
+**View specific log file:**
+```bash
+tail -f ~/.pm2/logs/sports-bar-tv-out.log | grep "Sports-Guide"
+```
+
+**Search logs:**
+```bash
+cat ~/.pm2/logs/sports-bar-tv-out.log | grep "Sports-Guide" | grep "ERROR"
+```
+
+#### Logged Operations
+
+- **Request Processing:** Every API request with unique request ID
+- **API Calls:** The Rail API requests with parameters
+- **Data Fetching:** Method used and response statistics
+- **Filtering:** Applied filters and results
+- **Errors:** Detailed error information with stack traces
+- **Statistics:** Request counts, processing times, data volumes
+
+### Configuration Management
+
+#### Viewing Current Configuration
+
+1. Navigate to Sports Guide Configuration page
+2. Click "API" tab
+3. View current User ID and masked API Key
+4. Check configuration status indicator
+
+#### Updating Configuration
+
+**Via UI:**
 1. Navigate to Sports Guide Configuration
 2. Click "API" tab
-3. Enter User ID and API Key
+3. Enter new User ID and API Key
 4. Click "Verify API Key" to test
-5. System validates before saving
-6. Restart server for full effect
+5. Click "Save Configuration"
+6. Restart server for changes to take effect
+
+**Via Command Line:**
+```bash
+# SSH into server
+ssh -p 224 ubuntu@24.123.87.42
+
+# Edit .env file
+nano /home/ubuntu/Sports-Bar-TV-Controller/.env
+
+# Update values:
+# SPORTS_GUIDE_API_KEY=your-new-key
+# SPORTS_GUIDE_USER_ID=your-new-user-id
+
+# Restart application
+pm2 restart sports-bar-tv
+```
 
 ### Security
-- API keys stored in `.env` file (not in repository)
-- Keys masked in UI (shows first 8 and last 4 characters only)
-- Validation before saving
-- Server-side API calls only
+
+- **API Keys:** Stored only in `.env` file (never in repository)
+- **Key Masking:** UI shows only first 8 and last 4 characters
+- **Validation:** API keys validated before saving
+- **Server-side Only:** All API calls made from server, never client
+- **Environment Variables:** Secure storage of sensitive credentials
+
+### Testing
+
+#### Test API Connection
+```bash
+curl http://24.123.87.42:3000/api/sports-guide?action=test-connection
+```
+
+#### Fetch Today's Guide
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### Fetch 7-Day Guide
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide \
+  -H "Content-Type: application/json" \
+  -d '{"days": 7}'
+```
+
+#### Search for NBA Games
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide \
+  -H "Content-Type: application/json" \
+  -d '{"search": "NBA", "days": 3}'
+```
+
+#### Filter by DirecTV Lineup
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide \
+  -H "Content-Type: application/json" \
+  -d '{"lineup": "DRTV", "days": 1}'
+```
+
+#### Test Ollama Connection
+```bash
+curl http://24.123.87.42:3000/api/sports-guide/ollama/query
+```
+
+#### Query Ollama
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide/ollama/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What NFL games are on TV this week?"}'
+```
+
+#### Get AI Recommendations
+```bash
+curl -X POST http://24.123.87.42:3000/api/sports-guide/ollama/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "get-recommendations",
+    "userPreferences": {
+      "favoriteTeams": ["Green Bay Packers"],
+      "favoriteLeagues": ["NFL"]
+    }
+  }'
+```
+
+### Troubleshooting
+
+#### Issue: "The Rail Media API not configured"
+**Solution:**
+1. Check `.env` file has `SPORTS_GUIDE_API_KEY` and `SPORTS_GUIDE_USER_ID`
+2. Verify values are correct
+3. Restart application: `pm2 restart sports-bar-tv`
+
+#### Issue: "API key is invalid or unauthorized"
+**Solution:**
+1. Verify API key is correct in `.env` file
+2. Test API key using `/api/sports-guide?action=test-connection`
+3. Contact The Rail Media support if key is correct but still failing
+
+#### Issue: No data returned
+**Solution:**
+1. Check PM2 logs: `pm2 logs sports-bar-tv | grep "Sports-Guide"`
+2. Verify date range is valid
+3. Try fetching without filters first
+4. Check The Rail Media API status
+
+#### Issue: Ollama queries failing
+**Solution:**
+1. Verify Ollama is running: `curl http://localhost:11434/api/tags`
+2. Check Ollama model is downloaded: `ollama list`
+3. Restart Ollama if needed: `systemctl restart ollama` (if using systemd)
+4. Check logs for detailed error messages
+
+#### Issue: Slow response times
+**Solution:**
+1. Check network connectivity to The Rail Media API
+2. Review logs for performance issues
+3. Consider reducing date range for queries
+4. Use Ollama to analyze logs for performance patterns
+
+### Migration Notes
+
+#### Upgrading from Version 3.x
+
+**What Changed:**
+- Removed all data sources except The Rail Media API
+- Simplified API interface
+- Added comprehensive logging
+- Added Ollama AI integration
+- Removed hardcoded channel lists
+
+**Migration Steps:**
+1. Ensure The Rail Media API credentials are configured in `.env`
+2. Update any frontend code that relied on old API response format
+3. Test all sports guide functionality
+4. Review logs to ensure proper operation
+5. Update any custom integrations
+
+**Breaking Changes:**
+- Response format changed to focus on The Rail API data structure
+- Removed mock data fallbacks
+- Removed multi-source data merging
+- Changed API response schema
+
+### Future Enhancements
+
+**Planned Features:**
+- Enhanced caching for frequently accessed data
+- Webhook support for real-time updates
+- User preference storage
+- Advanced filtering options
+- Integration with other system features (matrix routing, etc.)
+- Mobile app support
+- Push notifications for favorite teams
+
+### Support
+
+For issues with The Rail Media API:
+- **Website:** https://guide.thedailyrail.com
+- **Support:** Contact The Rail Media support team
+
+For Sports Bar TV Controller issues:
+- **Logs:** `pm2 logs sports-bar-tv | grep "Sports-Guide"`
+- **GitHub Issues:** https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues
+- **Ollama Assistant:** Use `/api/sports-guide/ollama/query` to ask questions
 
 ---
 
+*Last Updated: October 16, 2025*  
+*Version: 4.0.0 - Simplified Implementation*  
+*Data Source: The Rail Media API Only*
 ## 6. Streaming Platforms
 
 ### Overview
