@@ -1,7 +1,7 @@
 # Sports Bar TV Controller - System Documentation
 
-**Version:** 2.2  
-**Last Updated:** October 15, 2025  
+**Version:** 2.3  
+**Last Updated:** October 16, 2025  
 **Status:** Production Ready
 
 ---
@@ -163,6 +163,161 @@ npx prisma migrate status
 - `TrainingDocument` - AI Hub training documents
 - `ApiKey` - AI provider API keys
 - `TODO` - Task management
+
+---
+
+## Recent Fixes and Changes
+
+### October 16, 2025 - Critical Prisma and DirecTV Fixes
+
+#### 1. Prisma Singleton Pattern Fix (CRITICAL)
+
+**Issue:** Multiple files were creating their own PrismaClient instances, causing "Cannot read properties of undefined (reading 'findMany')" errors.
+
+**Root Cause:** When multiple PrismaClient instances are created in a Next.js application, it can lead to:
+- Database connection pool exhaustion
+- Ghost database connections
+- Undefined prisma client references
+- Memory leaks
+
+**Solution:** Implemented singleton pattern across all files using Prisma.
+
+**Files Fixed (15 total):**
+- `src/services/presetReorderService.ts`
+- `src/lib/services/qa-uploader.ts`
+- `src/lib/services/cec-discovery-service.ts`
+- `src/lib/services/qa-generator.ts`
+- `src/lib/atlas-meter-service.ts`
+- `src/lib/scheduler-service.ts`
+- `src/lib/firecube/sideload-service.ts`
+- `src/lib/firecube/keep-awake-scheduler.ts`
+- `src/lib/firecube/subscription-detector.ts`
+- `src/lib/firecube/app-discovery.ts`
+- `src/lib/firecube/sports-content-detector.ts`
+- `src/lib/tvDocs/generateQA.ts`
+- `src/lib/tvDocs/index.ts`
+- `src/lib/ai-knowledge-qa.ts`
+- `src/lib/ai-knowledge-enhanced.ts`
+
+**Before:**
+```typescript
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
+```
+
+**After:**
+```typescript
+import prisma from "@/lib/prisma"
+// Using singleton prisma from @/lib/prisma
+```
+
+**Singleton Implementation (`src/lib/prisma.ts`):**
+```typescript
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+}
+
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+})
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+
+export default prisma
+```
+
+**Impact:**
+- ✅ Eliminates "Cannot read properties of undefined" errors
+- ✅ Prevents database connection pool exhaustion
+- ✅ Improves application stability
+- ✅ Reduces memory usage
+
+#### 2. DirecTV 403 Forbidden Error Handling (CRITICAL)
+
+**Issue:** DirecTV receivers were returning HTTP 403 Forbidden errors when trying to send remote control commands.
+
+**Root Cause:** DirecTV receivers have a security feature called "External Device Access" that must be enabled for the SHEF (Set-top Box HTTP Exported Functionality) API to work. When disabled, all API requests return 403 Forbidden.
+
+**Solution:** Enhanced error handling to provide clear, actionable instructions when 403 errors occur.
+
+**Changes Made:**
+
+1. **Enhanced `src/app/api/directv-devices/send-command/route.ts`:**
+   - Added specific 403 error detection
+   - Provides step-by-step instructions to enable External Device Access
+   - Added 404 error handling for unsupported receivers
+
+2. **Updated `src/lib/directv/shef-client.ts`:**
+   - Enhanced `isShefEnabled()` method with better error logging
+   - Provides console error messages with troubleshooting steps
+
+**Error Messages:**
+
+**403 Forbidden:**
+```
+HTTP 403: External Device Access is disabled on the DirecTV receiver.
+To enable: Press MENU on DirecTV remote → Settings & Help → Settings → 
+Whole-Home → External Device → Enable "External Access". 
+Then restart the receiver.
+```
+
+**404 Not Found:**
+```
+HTTP 404: SHEF API endpoint not found. Verify the receiver supports 
+network control and is using the correct firmware version.
+```
+
+**How to Enable External Device Access on DirecTV:**
+
+1. Press **MENU** on the DirecTV remote
+2. Navigate to **Settings & Help**
+3. Select **Settings**
+4. Go to **Whole-Home**
+5. Select **External Device**
+6. Enable **"External Access"**
+7. Restart the DirecTV receiver (power cycle)
+8. Test connection from Sports Bar TV Controller
+
+**Supported DirecTV Receivers:**
+- Genie HD DVR (HR44, HR54)
+- HR24 HD DVR
+- H24 HD Receiver
+- Other SHEF-compatible receivers
+
+**Verification:**
+After enabling External Device Access, test the connection:
+```bash
+# From server
+curl http://192.168.5.121:8080/info/getVersion
+```
+
+Should return JSON with receiver information instead of 403 error.
+
+**Impact:**
+- ✅ Clear error messages guide users to fix the issue
+- ✅ Reduces troubleshooting time
+- ✅ Documents the solution for future reference
+- ✅ Prevents confusion about network connectivity vs. security settings
+
+### Previous Fixes (October 2025)
+
+#### CEC USB Adapter Integration
+- Migrated from CEC-over-IP to Pulse-Eight USB CEC adapter
+- Updated to use `/dev/ttyACM0` device path
+- Removed IP/Port fields from CEC configuration
+- Added USB device path field
+- Implemented graceful error handling for CEC discovery
+
+#### Matrix Configuration Persistence
+- Fixed matrix output configuration not saving
+- Resolved dailyTurnOn/dailyTurnOff flag persistence
+- Enhanced database schema for TV selection
+
+#### QA Generator Prisma Fix
+- Fixed Prisma singleton in qa-generator.ts (first instance of this issue)
+- This fix was later applied to 14 additional files
 
 ---
 
@@ -1294,7 +1449,7 @@ Integration with DirecTV receivers for sports bar TV control using the SHEF (Set
 The SHEF API is designed for device control, not account management. Subscription data lives in DirecTV's cloud systems and would require integration with DirecTV's official business API, which is separate from the receiver's local HTTP API.
 
 ### Current Status
-**Last Updated:** October 15, 2025, 7:08 PM  
+**Last Updated:** October 16, 2025, 7:08 PM  
 **Overall Status:** ✅ **FULLY FUNCTIONAL**  
 **Working Features:** 
 - ✅ Receiver management and configuration
@@ -2614,7 +2769,7 @@ adb connect 192.168.5.131:5555
 adb devices
 # Expected output:
 # List of devices attached
-# 192.168.5.131:5555	device
+# 192.168.5.131:5555    device
 
 # Test device communication
 adb -s 192.168.5.131:5555 shell getprop ro.product.model
