@@ -223,7 +223,7 @@ async function routeInputToOutput(
   }
 }
 
-// Send CEC command via HTTP to CEC server
+// Send CEC command via HTTP to CEC USB device
 async function sendCECCommand(
   action: string, 
   outputNumbers: number[], 

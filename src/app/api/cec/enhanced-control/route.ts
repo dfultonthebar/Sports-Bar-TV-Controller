@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({ 
         success: false, 
-        error: `CEC server returned error: ${cecResponse.statusText}` 
+        error: `CEC USB device returned error: ${cecResponse.statusText}` 
       }, { status: 500 })
     }
 
