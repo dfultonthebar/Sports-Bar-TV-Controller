@@ -3337,3 +3337,146 @@ See `SPORTS_GUIDE_FIX_REPORT.md` for complete technical details, testing results
 
 ---
 
+
+---
+
+## Database & Configuration Data Protection
+
+### 🔒 CRITICAL: Configuration Data is Now Protected
+
+**Implementation Date:** October 16, 2025  
+**Status:** ✅ ACTIVE AND PROTECTING DATA  
+**Documentation:** See `DATABASE_PROTECTION.md` for complete details
+
+### The Problem (RESOLVED)
+Configuration data (Wolfpack matrix, DirecTV boxes, Cable boxes, Audio processor settings) was being lost every time the system was rebuilt, redeployed, or updated. This has been **permanently fixed**.
+
+### The Solution
+Implemented a bulletproof, multi-layered protection system:
+
+1. **Persistent Database Location**
+   - Database moved OUTSIDE project directory
+   - Location: `/home/ubuntu/sports-bar-data/production.db`
+   - Survives all git operations, builds, and deployments
+
+2. **Automatic Backup System**
+   - Hourly automated backups via cron
+   - Keeps last 30 backups automatically
+   - Location: `/home/ubuntu/sports-bar-data/backups/`
+
+3. **Safe Deployment Script**
+   - Always backs up before any changes
+   - Location: `/home/ubuntu/sports-bar-data/safe-deploy.sh`
+   - Use this instead of manual deployment
+
+4. **Easy Restore Mechanism**
+   - One-command restore from any backup
+   - Script: `/home/ubuntu/sports-bar-data/restore.sh`
+
+### Quick Reference
+
+#### Safe Deployment (ALWAYS USE THIS)
+```bash
+/home/ubuntu/sports-bar-data/safe-deploy.sh
+```
+
+#### Manual Backup
+```bash
+/home/ubuntu/sports-bar-data/backup.sh
+```
+
+#### Restore from Backup
+```bash
+# List available backups
+/home/ubuntu/sports-bar-data/restore.sh
+
+# Restore specific backup
+/home/ubuntu/sports-bar-data/restore.sh backup_YYYYMMDD_HHMMSS.db
+pm2 restart sports-bar-tv
+```
+
+#### Check Database Status
+```bash
+ls -lh /home/ubuntu/sports-bar-data/production.db
+ls -lht /home/ubuntu/sports-bar-data/backups/
+```
+
+### Database Configuration
+
+**Current Setup:**
+- **Type:** SQLite
+- **Location:** `/home/ubuntu/sports-bar-data/production.db` (PROTECTED)
+- **Old Location:** `prisma/dev.db` (DEPRECATED - DO NOT USE)
+- **Backup Frequency:** Hourly (via cron)
+- **Backup Retention:** Last 30 backups
+
+**Environment Variable:**
+```bash
+DATABASE_URL="file:/home/ubuntu/sports-bar-data/production.db"
+```
+
+### CRITICAL: What NOT to Do
+
+❌ **NEVER** run `prisma migrate dev` in production (resets data!)  
+❌ **NEVER** run `prisma migrate reset` (destroys all data!)  
+❌ **NEVER** delete `/home/ubuntu/sports-bar-data/` directory  
+❌ **NEVER** move database back to project directory  
+❌ **NEVER** use manual deployment without backup  
+
+### Prisma Commands (Safe for Production)
+
+```bash
+# Generate Prisma Client (SAFE)
+npx prisma generate
+
+# View database in Prisma Studio (SAFE)
+npx prisma studio
+
+# Check migration status (SAFE)
+npx prisma migrate status
+
+# Deploy migrations (USE WITH CAUTION - backs up first)
+# Only use if you know what you're doing
+npx prisma migrate deploy
+```
+
+### Monitoring
+
+**Check Backup Logs:**
+```bash
+tail -f /home/ubuntu/sports-bar-data/backup.log
+```
+
+**Verify Cron Job:**
+```bash
+crontab -l | grep backup.sh
+```
+
+**Check Application Logs:**
+```bash
+pm2 logs sports-bar-tv | grep -i "database\|prisma"
+```
+
+### Emergency Recovery
+
+If data is lost (shouldn't happen with new system):
+
+1. Stop application: `pm2 stop sports-bar-tv`
+2. List backups: `/home/ubuntu/sports-bar-data/restore.sh`
+3. Restore: `/home/ubuntu/sports-bar-data/restore.sh backup_YYYYMMDD_HHMMSS.db`
+4. Restart: `pm2 restart sports-bar-tv`
+5. Verify data in web interface
+
+### Success Indicators
+
+✅ Database exists at `/home/ubuntu/sports-bar-data/production.db`  
+✅ Hourly backups are being created  
+✅ Safe deployment script runs without errors  
+✅ Configuration data persists after git pull  
+✅ Configuration data persists after npm build  
+✅ Configuration data persists after PM2 restart  
+
+**Your configuration data is now BULLETPROOF!** 🛡️
+
+For complete documentation, see: `DATABASE_PROTECTION.md`
+
