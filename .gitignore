@@ -99,3 +99,4 @@ next/
 *.tgz
 *.tar.gz
 !**/backups/*.tar.gz
+.env.backup_*
