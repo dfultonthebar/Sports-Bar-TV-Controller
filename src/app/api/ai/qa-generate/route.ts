@@ -1,11 +1,10 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { generateQAsFromRepository, getQAGenerationStatus } from '@/lib/services/qa-generator';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { sourceType, sourcePaths, categories, maxQAsPerFile, model } = body;
+    const { sourceType, sourcePaths, categories, maxQAsPerFile, model, forceRegenerate } = body;
 
     if (!sourceType) {
       return NextResponse.json(
@@ -14,12 +13,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`Starting Q&A generation - Force regenerate: ${forceRegenerate ? 'YES' : 'NO'}`);
+
     const result = await generateQAsFromRepository({
       sourceType,
       sourcePaths,
       categories,
       maxQAsPerFile,
       model,
+      forceRegenerate: forceRegenerate || false,
     });
 
     return NextResponse.json(result);

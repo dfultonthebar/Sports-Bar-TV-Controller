@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -22,9 +21,9 @@ interface QAEntry {
 interface QAStatistics {
   total: number;
   active: number;
-  byCategory?: Array<{ category: string; _count: number }> | null;
-  bySourceType?: Array<{ sourceType: string; _count: number }> | null;
-  topUsed?: Array<{ id: string; question: string; usageCount: number; category: string }> | null;
+  inactive?: number;
+  byCategory?: Array<{ category: string; count: number }>;
+  bySource?: Array<{ source: string; count: number }>;
 }
 
 interface GenerationJob {
@@ -49,6 +48,7 @@ export default function QATrainingPage() {
   const [filterSourceType, setFilterSourceType] = useState<string>('all');
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [jobPolling, setJobPolling] = useState<NodeJS.Timeout | null>(null);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
 
   useEffect(() => {
     loadEntries();
@@ -80,28 +80,26 @@ export default function QATrainingPage() {
 
   const loadStatistics = async () => {
     try {
-      const response = await fetch('/api/ai/qa-entries?stats=true');
+      const response = await fetch('/api/ai-hub/qa-training/stats');
       const data = await response.json();
       
-      // Ensure data structure is valid before setting state
       const validatedData: QAStatistics = {
         total: data?.total || 0,
         active: data?.active || 0,
-        byCategory: Array.isArray(data?.byCategory) ? data.byCategory.filter((cat: any) => cat && cat.category && typeof cat._count !== 'undefined') : null,
-        bySourceType: Array.isArray(data?.bySourceType) ? data.bySourceType.filter((src: any) => src && src.sourceType && typeof src._count !== 'undefined') : null,
-        topUsed: Array.isArray(data?.topUsed) ? data.topUsed : null,
+        inactive: data?.inactive || 0,
+        byCategory: Array.isArray(data?.byCategory) ? data.byCategory : [],
+        bySource: Array.isArray(data?.bySource) ? data.bySource : [],
       };
       
       setStatistics(validatedData);
     } catch (error) {
       console.error('Error loading statistics:', error);
-      // Set safe default values on error
       setStatistics({
         total: 0,
         active: 0,
-        byCategory: null,
-        bySourceType: null,
-        topUsed: null,
+        inactive: 0,
+        byCategory: [],
+        bySource: [],
       });
     }
   };
@@ -112,7 +110,10 @@ export default function QATrainingPage() {
       const response = await fetch('/api/ai/qa-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceType }),
+        body: JSON.stringify({ 
+          sourceType,
+          forceRegenerate,
+        }),
       });
 
       const data = await response.json();
@@ -198,7 +199,10 @@ export default function QATrainingPage() {
       const response = await fetch('/api/ai/qa-entries', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, ...editForm }),
+        body: JSON.stringify({
+          id: editingId,
+          ...editForm,
+        }),
       });
 
       if (response.ok) {
@@ -206,8 +210,7 @@ export default function QATrainingPage() {
         setEditingId(null);
       }
     } catch (error) {
-      console.error('Error saving edit:', error);
-      alert('Failed to save changes');
+      console.error('Error updating entry:', error);
     }
   };
 
@@ -225,309 +228,268 @@ export default function QATrainingPage() {
       }
     } catch (error) {
       console.error('Error deleting entry:', error);
-      alert('Failed to delete entry');
     }
   };
 
-  const categories = ['all', 'system', 'api', 'features', 'configuration', 'troubleshooting', 'general'];
-  const sourceTypes = ['all', 'manual', 'auto-generated', 'uploaded'];
-
   return (
-    <div className="min-h-screen bg-sports-gradient">
-      <header className="sports-header">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <a href="/" className="text-slate-300 hover:text-white">← Back</a>
-              <div>
-                <h1 className="text-xl font-bold text-slate-100">Q&A Training System</h1>
-                <p className="text-sm text-slate-300">Train the AI Assistant</p>
-              </div>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Q&A Training</h1>
+        <button
+          onClick={() => {
+            loadEntries();
+            loadStatistics();
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Refresh
+        </button>
+      </div>
+
+      {/* Statistics Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Q&As</p>
+              <p className="text-3xl font-bold">{statistics?.total || 0}</p>
             </div>
+            <BarChart3 className="w-8 h-8 text-blue-600" />
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Statistics Cards */}
-        {statistics && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Total Q&As</p>
-                  <p className="text-3xl font-bold text-slate-100">{statistics.total || 0}</p>
-                </div>
-                <BarChart3 className="w-8 h-8 text-blue-400" />
-              </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active</p>
+              <p className="text-3xl font-bold text-green-600">{statistics?.active || 0}</p>
             </div>
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Active</p>
-                  <p className="text-3xl font-bold text-green-400">{statistics.active || 0}</p>
-                </div>
-                <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+            <BarChart3 className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div>
+            <p className="text-sm text-gray-600 mb-2">By Category</p>
+            {statistics?.byCategory && statistics.byCategory.length > 0 ? (
+              <div className="space-y-1">
+                {statistics.byCategory.slice(0, 3).map((cat) => (
+                  <div key={cat.category} className="flex justify-between text-sm">
+                    <span className="text-gray-700">{cat.category}</span>
+                    <span className="font-semibold">{cat.count}</span>
+                  </div>
+                ))}
               </div>
+            ) : (
+              <p className="text-sm text-gray-400">No data</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div>
+            <p className="text-sm text-gray-600 mb-2">By Source</p>
+            {statistics?.bySource && statistics.bySource.length > 0 ? (
+              <div className="space-y-1">
+                {statistics.bySource.slice(0, 3).map((src) => (
+                  <div key={src.source} className="flex justify-between text-sm">
+                    <span className="text-gray-700">{src.source}</span>
+                    <span className="font-semibold">{src.count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">No data</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Generation Controls */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h2 className="text-xl font-semibold mb-4">Generate Q&As</h2>
+        
+        <div className="mb-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={forceRegenerate}
+              onChange={(e) => setForceRegenerate(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm text-gray-700">
+              Force regenerate all files (ignore file tracking)
+            </span>
+          </label>
+          <p className="text-xs text-gray-500 mt-1 ml-6">
+            When unchecked, only new or modified files will be processed
+          </p>
+        </div>
+
+        <div className="flex gap-4">
+          <button
+            onClick={() => handleGenerateQAs('repository')}
+            disabled={generateLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+          >
+            <Sparkles className="w-4 h-4" />
+            {generateLoading ? 'Generating...' : 'Generate from Repository'}
+          </button>
+
+          <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 cursor-pointer">
+            <Upload className="w-4 h-4" />
+            {uploadLoading ? 'Uploading...' : 'Upload Q&A File'}
+            <input
+              type="file"
+              accept=".json,.txt"
+              onChange={handleFileUpload}
+              disabled={uploadLoading}
+              className="hidden"
+            />
+          </label>
+        </div>
+
+        {currentJob && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-semibold">Generation Progress</span>
+              <span className={`px-2 py-1 rounded text-sm ${
+                currentJob.status === 'completed' ? 'bg-green-100 text-green-800' :
+                currentJob.status === 'failed' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+              }`}>
+                {currentJob.status}
+              </span>
             </div>
-            <div className="card p-6">
-              <div>
-                <p className="text-slate-400 text-sm mb-2">By Category</p>
-                {statistics.byCategory && Array.isArray(statistics.byCategory) && statistics.byCategory.length > 0 ? (
-                  statistics.byCategory.slice(0, 3).map((cat) => (
-                    cat && cat.category && typeof cat._count !== 'undefined' ? (
-                      <div key={cat.category} className="flex justify-between text-sm mb-1">
-                        <span className="text-slate-300">{cat.category}</span>
-                        <span className="text-slate-100 font-semibold">{cat._count}</span>
-                      </div>
-                    ) : null
-                  ))
-                ) : (
-                  <p className="text-slate-500 text-sm">No data</p>
-                )}
-              </div>
-            </div>
-            <div className="card p-6">
-              <div>
-                <p className="text-slate-400 text-sm mb-2">By Source</p>
-                {statistics.bySourceType && Array.isArray(statistics.bySourceType) && statistics.bySourceType.length > 0 ? (
-                  statistics.bySourceType.map((src) => (
-                    src && src.sourceType && typeof src._count !== 'undefined' ? (
-                      <div key={src.sourceType} className="flex justify-between text-sm mb-1">
-                        <span className="text-slate-300">{src.sourceType}</span>
-                        <span className="text-slate-100 font-semibold">{src._count}</span>
-                      </div>
-                    ) : null
-                  ))
-                ) : (
-                  <p className="text-slate-500 text-sm">No data</p>
-                )}
-              </div>
+            <div className="space-y-1 text-sm">
+              <p>Files: {currentJob.processedFiles} / {currentJob.totalFiles}</p>
+              <p>Generated Q&As: {currentJob.generatedQAs}</p>
+              {currentJob.errorMessage && (
+                <p className="text-red-600">{currentJob.errorMessage}</p>
+              )}
             </div>
           </div>
         )}
+      </div>
 
-        {/* Action Buttons */}
-        <div className="card p-6 mb-8">
-          <h2 className="text-xl font-bold text-slate-100 mb-4">Training Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button
-              onClick={() => handleGenerateQAs('repository')}
-              disabled={generateLoading}
-              className="btn-primary flex items-center justify-center space-x-2 py-4"
-            >
-              <Sparkles className="w-5 h-5" />
-              <span>Generate from Repository</span>
-            </button>
-            <button
-              onClick={() => handleGenerateQAs('documentation')}
-              disabled={generateLoading}
-              className="btn-primary flex items-center justify-center space-x-2 py-4"
-            >
-              <Sparkles className="w-5 h-5" />
-              <span>Generate from Docs</span>
-            </button>
-            <label className="btn-primary flex items-center justify-center space-x-2 py-4 cursor-pointer">
-              <Upload className="w-5 h-5" />
-              <span>{uploadLoading ? 'Uploading...' : 'Upload Q&A File'}</span>
-              <input
-                type="file"
-                accept=".txt,.json,.md"
-                onChange={handleFileUpload}
-                disabled={uploadLoading}
-                className="hidden"
-              />
-            </label>
-          </div>
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg shadow flex gap-4">
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="px-4 py-2 border rounded-lg"
+        >
+          <option value="all">All Categories</option>
+          <option value="general">General</option>
+          <option value="technical">Technical</option>
+          <option value="troubleshooting">Troubleshooting</option>
+        </select>
 
-          {/* Generation Progress */}
-          {currentJob && (
-            <div className="mt-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-slate-300">Generation Status: {currentJob.status}</span>
-                {currentJob.status === 'running' && (
-                  <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
-                )}
-              </div>
-              {currentJob.totalFiles > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-slate-400">
-                    <span>Files: {currentJob.processedFiles} / {currentJob.totalFiles}</span>
-                    <span>Generated: {currentJob.generatedQAs} Q&As</span>
-                  </div>
-                  <div className="w-full bg-slate-700 rounded-full h-2">
-                    <div
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(currentJob.processedFiles / currentJob.totalFiles) * 100}%` }}
+        <select
+          value={filterSourceType}
+          onChange={(e) => setFilterSourceType(e.target.value)}
+          className="px-4 py-2 border rounded-lg"
+        >
+          <option value="all">All Sources</option>
+          <option value="manual">Manual</option>
+          <option value="auto-generated">Auto-generated</option>
+          <option value="imported">Imported</option>
+        </select>
+      </div>
+
+      {/* Q&A Entries List */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b">
+          <h2 className="text-xl font-semibold">Q&A Entries ({entries.length})</h2>
+        </div>
+        
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">Loading...</div>
+        ) : entries.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">No Q&A entries found</div>
+        ) : (
+          <div className="divide-y">
+            {entries.map((entry) => (
+              <div key={entry.id} className="p-4 hover:bg-gray-50">
+                {editingId === entry.id ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={editForm.question}
+                      onChange={(e) => setEditForm({ ...editForm, question: e.target.value })}
+                      className="w-full px-3 py-2 border rounded"
+                      placeholder="Question"
                     />
+                    <textarea
+                      value={editForm.answer}
+                      onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })}
+                      className="w-full px-3 py-2 border rounded"
+                      rows={3}
+                      placeholder="Answer"
+                    />
+                    <input
+                      type="text"
+                      value={editForm.category}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                      className="w-full px-3 py-2 border rounded"
+                      placeholder="Category"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        <Save className="w-4 h-4" />
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="flex items-center gap-1 px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
+                      >
+                        <X className="w-4 h-4" />
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-              {currentJob.errorMessage && (
-                <p className="text-red-400 text-sm mt-2">{currentJob.errorMessage}</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Filters */}
-        <div className="card p-6 mb-8">
-          <div className="flex flex-wrap gap-4">
-            <div>
-              <label className="text-slate-400 text-sm mb-2 block">Category</label>
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-4 py-2"
-              >
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-slate-400 text-sm mb-2 block">Source Type</label>
-              <select
-                value={filterSourceType}
-                onChange={(e) => setFilterSourceType(e.target.value)}
-                className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-4 py-2"
-              >
-                {sourceTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={loadEntries}
-              className="btn-secondary flex items-center space-x-2 mt-auto"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Q&A Entries List */}
-        <div className="card p-6">
-          <h2 className="text-xl font-bold text-slate-100 mb-4">Q&A Entries ({entries.length})</h2>
-          
-          {loading ? (
-            <div className="text-center py-8">
-              <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-2" />
-              <p className="text-slate-400">Loading entries...</p>
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-slate-400">No Q&A entries found. Generate or upload some to get started!</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 hover:border-slate-600 transition-colors"
-                >
-                  {editingId === entry.id ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-slate-400 text-sm mb-1 block">Question</label>
-                        <input
-                          type="text"
-                          value={editForm.question}
-                          onChange={(e) => setEditForm({ ...editForm, question: e.target.value })}
-                          className="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded px-3 py-2"
-                        />
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{entry.question}</p>
+                        <p className="text-gray-700 mt-1">{entry.answer}</p>
                       </div>
-                      <div>
-                        <label className="text-slate-400 text-sm mb-1 block">Answer</label>
-                        <textarea
-                          value={editForm.answer}
-                          onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })}
-                          rows={4}
-                          className="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded px-3 py-2"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-slate-400 text-sm mb-1 block">Category</label>
-                        <select
-                          value={editForm.category}
-                          onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                          className="bg-slate-900 text-slate-100 border border-slate-700 rounded px-3 py-2"
-                        >
-                          {categories.filter(c => c !== 'all').map((cat) => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex space-x-2">
+                      <div className="flex gap-2 ml-4">
                         <button
-                          onClick={handleSaveEdit}
-                          className="btn-primary flex items-center space-x-2"
+                          onClick={() => handleEdit(entry)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded"
                         >
-                          <Save className="w-4 h-4" />
-                          <span>Save</span>
+                          <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => setEditingId(null)}
-                          className="btn-secondary flex items-center space-x-2"
+                          onClick={() => handleDelete(entry.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded"
                         >
-                          <X className="w-4 h-4" />
-                          <span>Cancel</span>
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded">
-                              {entry.category}
-                            </span>
-                            <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded">
-                              {entry.sourceType}
-                            </span>
-                            {entry.usageCount > 0 && (
-                              <span className="text-slate-400 text-xs">
-                                Used {entry.usageCount} times
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="text-slate-100 font-semibold mb-2">{entry.question}</h3>
-                          <p className="text-slate-300 text-sm">{entry.answer}</p>
-                          {entry.sourceFile && (
-                            <p className="text-slate-500 text-xs mt-2">Source: {entry.sourceFile}</p>
-                          )}
-                        </div>
-                        <div className="flex space-x-2 ml-4">
-                          <button
-                            onClick={() => handleEdit(entry)}
-                            className="p-2 hover:bg-slate-700 rounded transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-4 h-4 text-slate-400" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(entry.id)}
-                            className="p-2 hover:bg-slate-700 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
+                    <div className="flex gap-2 text-sm text-gray-500">
+                      <span className="px-2 py-1 bg-gray-100 rounded">{entry.category}</span>
+                      <span className="px-2 py-1 bg-gray-100 rounded">{entry.sourceType}</span>
+                      {entry.sourceFile && (
+                        <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                          {entry.sourceFile.split('/').pop()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
