@@ -3,9 +3,9 @@
 
 import cron from 'node-cron';
 import { ADBClient } from './adb-client';
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 export class KeepAwakeScheduler {
   private scheduledTasks: Map<string, cron.ScheduledTask> = new Map();

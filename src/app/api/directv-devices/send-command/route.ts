@@ -88,7 +88,22 @@ async function sendDirecTVCommand(ip: string, port: number, command: string): Pr
         data: { status: response.status, response: responseText }
       }
     } else {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      // Handle 403 Forbidden specifically - SHEF not enabled
+      if (response.status === 403) {
+        throw new Error(
+          `HTTP 403: External Device Access is disabled on the DirecTV receiver. ` +
+          `To enable: Press MENU on DirecTV remote → Settings & Help → Settings → ` +
+          `Whole-Home → External Device → Enable "External Access". ` +
+          `Then restart the receiver.`
+        )
+      } else if (response.status === 404) {
+        throw new Error(
+          `HTTP 404: SHEF API endpoint not found. Verify the receiver supports network control ` +
+          `and is using the correct firmware version.`
+        )
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
     }
   } catch (error) {
     console.error('DirecTV command error:', error)

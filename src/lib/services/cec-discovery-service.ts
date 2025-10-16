@@ -6,11 +6,11 @@
  * using CEC protocol queries via USB CEC adapter
  */
 
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { cecService } from '@/lib/cec-service'
 import { autoFetchDocumentation } from '@/lib/tvDocs'
 
-const prisma = new PrismaClient()
+// Using singleton prisma from @/lib/prisma
 
 export interface CECDiscoveryResult {
   outputNumber: number

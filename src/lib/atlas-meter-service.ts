@@ -3,9 +3,9 @@
  * Collects and stores real-time audio level data from Atlas processors
  */
 
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 
-const prisma = new PrismaClient()
+// Using singleton prisma from @/lib/prisma
 
 interface MeterReading {
   inputNumber: number

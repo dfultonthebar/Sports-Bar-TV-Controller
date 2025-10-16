@@ -3,9 +3,9 @@
 
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, SubscriptionCheckResult } from './types';
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 export class SubscriptionDetector {
   /**

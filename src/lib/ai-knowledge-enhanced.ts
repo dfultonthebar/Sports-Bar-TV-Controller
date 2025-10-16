@@ -1,8 +1,8 @@
 
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 import { loadKnowledgeBase, DocumentChunk } from './ai-knowledge';
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 export interface CodebaseContext {
   files: Array<{

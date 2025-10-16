@@ -2,12 +2,12 @@
 // App Sideloading Service for Fire Cubes
 
 import { ADBClient } from './adb-client';
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 const mkdir = promisify(fs.mkdir);
 const exists = promisify(fs.exists);
 

@@ -4,9 +4,9 @@
  * Handles uploading and parsing Q&A documents in various formats
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 export interface UploadedQA {
   question: string;

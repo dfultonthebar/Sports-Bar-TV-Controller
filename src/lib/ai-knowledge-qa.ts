@@ -4,10 +4,10 @@
  * Integrates Q&A training data with the existing knowledge base
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from "@/lib/prisma";
 import { loadKnowledgeBase, DocumentChunk, searchKnowledgeBase } from './ai-knowledge';
 
-const prisma = new PrismaClient();
+// Using singleton prisma from @/lib/prisma;
 
 export interface EnhancedContext {
   documentation: DocumentChunk[];

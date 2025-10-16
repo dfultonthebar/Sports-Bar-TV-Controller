@@ -5,10 +5,10 @@
  * Generates Q&A pairs from TV manual content for AI training
  */
 
-import { PrismaClient } from '@prisma/client'
+import prisma from "@/lib/prisma"
 import { extractManualContent, splitContentIntoChunks, extractKeySections } from './extractContent'
 
-const prisma = new PrismaClient()
+// Using singleton prisma from @/lib/prisma
 
 interface QAPair {
   question: string
