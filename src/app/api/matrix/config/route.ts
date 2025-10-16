@@ -145,39 +145,25 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Save outputs - only fields that exist in actual database
-      // Database has: id, configId, channelNumber, label, resolution, isActive, status, 
-              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff
-      // Database does NOT have: selectedVideoInput, videoInputLabel
+      // Save outputs - only fields that exist in actual database and Prisma schema
       if (outputs?.length > 0) {
-        const outputData = outputs.map((output: any) => ({
-          id: randomUUID(),
-          configId: savedConfig.id,
-          channelNumber: output.channelNumber,
-          label: output.label || `Output ${output.channelNumber}`,
-          resolution: output.resolution || '1080p',
-          isActive: output.isActive !== false, // Default to true
-          status: output.status || 'active',
-          audioOutput: output.audioOutput || null,
-          powerOn: output.powerOn || false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }))
-
-        // Use raw SQL to insert with the extra columns that aren't in Prisma schema
-        for (const output of outputData) {
-          await tx.$executeRaw`
-            INSERT INTO MatrixOutput (
-              id, configId, channelNumber, label, resolution, isActive, status, 
-              audioOutput, powerOn, createdAt, updatedAt, dailyTurnOn, dailyTurnOff
-            ) VALUES (
-              ${output.id}, ${output.configId}, ${output.channelNumber}, ${output.label}, 
-              ${output.resolution}, ${output.isActive}, ${output.status}, ${output.audioOutput}, 
-              ${output.powerOn}, ${output.createdAt.toISOString()}, ${output.updatedAt.toISOString()},
-              1, 1
-            )
-          `
-        }
+        await tx.matrixOutput.createMany({
+          data: outputs.map((output: any) => ({
+            id: randomUUID(),
+            configId: savedConfig.id,
+            channelNumber: output.channelNumber,
+            label: output.label || `Output ${output.channelNumber}`,
+            resolution: output.resolution || '1080p',
+            isActive: output.isActive !== false,
+            status: output.status || 'active',
+            audioOutput: output.audioOutput || null,
+            powerOn: output.powerOn || false,
+            dailyTurnOn: true,
+            dailyTurnOff: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }))
+        })
       }
 
       return savedConfig
