@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -15,14 +16,14 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Monitor
+  Monitor,
+  Usb
 } from 'lucide-react'
 
 interface CECConfig {
   id?: string
   cecInputChannel: number | null
-  cecServerIP: string
-  cecPort: number
+  usbDevicePath: string
   isEnabled: boolean
   powerOnDelay: number
   powerOffDelay: number
@@ -55,8 +56,7 @@ interface TVPowerStatus {
 export default function CECPowerControl() {
   const [cecConfig, setCecConfig] = useState<CECConfig>({
     cecInputChannel: null,
-    cecServerIP: '192.168.1.100',
-    cecPort: 8080,
+    usbDevicePath: '/dev/ttyACM0',
     isEnabled: false,
     powerOnDelay: 2000,
     powerOffDelay: 1000
@@ -323,34 +323,23 @@ export default function CECPowerControl() {
               </p>
             </div>
 
-            {/* CEC USB IP */}
+            {/* USB Device Path */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC USB IP
+              <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center">
+                <Usb className="w-4 h-4 mr-1" />
+                USB Device Path
               </label>
               <input
                 type="text"
-                value={cecConfig.cecServerIP}
-                onChange={(e) => setCecConfig(prev => ({ ...prev, cecServerIP: e.target.value }))}
-                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
-                placeholder="192.168.1.100"
+                value={cecConfig.usbDevicePath}
+                onChange={(e) => setCecConfig(prev => ({ ...prev, usbDevicePath: e.target.value }))}
+                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm font-mono"
+                placeholder="/dev/ttyACM0"
                 disabled={!cecConfig.isEnabled}
               />
-            </div>
-
-            {/* CEC USB Port */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC USB Port
-              </label>
-              <input
-                type="number"
-                value={cecConfig.cecPort}
-                onChange={(e) => setCecConfig(prev => ({ ...prev, cecPort: parseInt(e.target.value) || 8080 }))}
-                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
-                placeholder="8080"
-                disabled={!cecConfig.isEnabled}
-              />
+              <p className="text-xs text-slate-500 mt-1">
+                USB device path for Pulse-Eight CEC adapter
+              </p>
             </div>
 
             {/* Power Delays */}
@@ -442,8 +431,8 @@ export default function CECPowerControl() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">CEC USB:</span>
-                  <span className="text-white">{cecConfig.cecServerIP}:{cecConfig.cecPort}</span>
+                  <span className="text-slate-500">USB Device:</span>
+                  <span className="text-white font-mono text-xs">{cecConfig.usbDevicePath}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Status:</span>
@@ -522,11 +511,13 @@ export default function CECPowerControl() {
         <div className="text-xs text-blue-200 space-y-1">
           <p>• <strong>Step 1:</strong> Matrix routes the CEC USB input to target TV output(s)</p>
           <p>• <strong>Step 2:</strong> System waits for the configured delay (default: 2 seconds)</p>
-          <p>• <strong>Step 3:</strong> CEC power command is sent to the connected TV(s)</p>
+          <p>• <strong>Step 3:</strong> CEC power command is sent via USB adapter ({cecConfig.usbDevicePath}) to the connected TV(s)</p>
           <p>• <strong>Individual Mode:</strong> Each TV is controlled separately for precise power management</p>
           <p>• <strong>Batch Mode:</strong> All TVs are routed and then powered simultaneously</p>
+          <p>• <strong>USB Connection:</strong> Pulse-Eight CEC adapter connected directly to server via USB</p>
         </div>
       </div>
     </div>
   )
 }
+
