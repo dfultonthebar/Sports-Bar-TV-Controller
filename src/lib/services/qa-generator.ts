@@ -8,9 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = 'phi3:mini'; // OPTIMIZED: Changed to faster model

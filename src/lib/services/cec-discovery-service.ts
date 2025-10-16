@@ -140,7 +140,8 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
     
     if (!cecConfig.isEnabled) {
       console.warn('[CEC Discovery] CEC is not enabled in configuration')
-      throw new Error('CEC is not enabled. Please enable CEC in the configuration settings.')
+      console.log('[CEC Discovery] Returning empty results - CEC must be enabled first')
+      return []
     }
     
     console.log(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
@@ -267,7 +268,13 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
     
     if (!cecConfig.isEnabled) {
       console.warn('[CEC Discovery] CEC is not enabled in configuration')
-      throw new Error('CEC is not enabled. Please enable CEC in the configuration settings.')
+      console.log('[CEC Discovery] Returning error result - CEC must be enabled first')
+      return {
+        outputNumber,
+        label: 'Unknown',
+        success: false,
+        error: 'CEC is not enabled. Please enable CEC in the configuration settings.'
+      }
     }
     
     console.log(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
