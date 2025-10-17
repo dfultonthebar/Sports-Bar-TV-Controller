@@ -97,9 +97,9 @@ export default function MatrixControl() {
         setConfigs(data.configs || [])
         if (data.config) {
           // Merge loaded config with defaults to ensure all fields exist
-          // Use length check to ensure we always have 36 inputs and 36 outputs
-          const hasInputs = data.inputs && Array.isArray(data.inputs) && data.inputs.length > 0
-          const hasOutputs = data.outputs && Array.isArray(data.outputs) && data.outputs.length > 0
+          // CRITICAL FIX: Check if arrays have content, not just if they exist
+          const hasInputs = data.inputs && data.inputs.length > 0
+          const hasOutputs = data.outputs && data.outputs.length > 0
           
           const loadedConfig = {
             ...data.config,
