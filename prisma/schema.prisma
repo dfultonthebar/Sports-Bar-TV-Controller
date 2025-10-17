@@ -535,10 +535,70 @@ model GlobalCachePort {
   assignedDeviceId  String?           // Reference to IRDevice.id if applicable
   irCodeSet         String?           // Which IR code set is assigned to this port
   enabled           Boolean           @default(true)
+  irDevice          IRDevice?         @relation(fields: [assignedDeviceId], references: [id], onDelete: SetNull)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   
   @@unique([deviceId, portNumber])
   @@index([deviceId])
   @@index([assignedDeviceId])
+}
+
+// IR Controlled Devices (Cable boxes, Receivers, etc.)
+model IRDevice {
+  id                String              @id @default(cuid())
+  name              String              // e.g., "Cable Box 1", "AV Receiver"
+  deviceType        String              // "Cable Box", "Satellite", "AV Receiver", "Blu-ray", etc.
+  brand             String              // e.g., "DirectTV", "Dish", "Denon"
+  model             String?             // e.g., "HR54", "Hopper 3"
+  matrixInput       Int?                // Which matrix input this device is connected to
+  matrixInputLabel  String?             // Label of the matrix input
+  irCodeSetId       String?             // Global Cache IR Database codeset ID
+  description       String?
+  status            String              @default("active") // "active", "inactive"
+  ports             GlobalCachePort[]   // Which Global Cache ports control this device
+  commands          IRCommand[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  @@index([deviceType])
+  @@index([brand])
+  @@index([matrixInput])
+}
+
+// IR Commands downloaded from Global Cache database
+model IRCommand {
+  id                String    @id @default(cuid())
+  deviceId          String
+  device            IRDevice  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  functionName      String    // e.g., "POWER", "CHANNEL UP", "DIGIT 1"
+  irCode            String    // The actual IR code in Global Cache format
+  hexCode           String?   // Optional hex format code
+  codeSetId         String?   // Global Cache codeset ID
+  category          String?   // "Power", "Channel", "Volume", "Navigation", etc.
+  description       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([deviceId, functionName])
+  @@index([deviceId])
+  @@index([functionName])
+  @@index([category])
+}
+
+// Global Cache IR Database API Credentials
+model IRDatabaseCredentials {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  password          String    // Encrypted password
+  apiKey            String?   // Current API key (expires on logout)
+  isActive          Boolean   @default(true)
+  lastLogin         DateTime?
+  dailyLimit        Int       @default(50) // Daily download limit
+  usedToday         Int       @default(0)
+  lastReset         DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([isActive])
 }
