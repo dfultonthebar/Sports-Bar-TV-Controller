@@ -97,17 +97,21 @@ export default function MatrixControl() {
         setConfigs(data.configs || [])
         if (data.config) {
           // Merge loaded config with defaults to ensure all fields exist
+          // CRITICAL FIX: Check if arrays have content, not just if they exist
+          const hasInputs = data.inputs && data.inputs.length > 0
+          const hasOutputs = data.outputs && data.outputs.length > 0
+          
           const loadedConfig = {
             ...data.config,
-            inputs: data.inputs?.map((input: any) => ({
+            inputs: hasInputs ? data.inputs.map((input: any) => ({
               ...input,
               powerOn: input.powerOn ?? false,
               isCecPort: input.isCecPort ?? false
-            })) || currentConfig.inputs,
-            outputs: data.outputs?.map((output: any) => ({
+            })) : currentConfig.inputs,
+            outputs: hasOutputs ? data.outputs.map((output: any) => ({
               ...output,
               powerOn: output.powerOn ?? false
-            })) || currentConfig.outputs
+            })) : currentConfig.outputs
           }
           setCurrentConfig(loadedConfig)
         }

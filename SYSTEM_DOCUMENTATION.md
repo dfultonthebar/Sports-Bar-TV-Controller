@@ -1,8 +1,40 @@
 # Sports Bar TV Controller - System Documentation
 
 **Version:** 2.2  
-**Last Updated:** October 15, 2025  
+**Last Updated:** October 17, 2025  
 **Status:** Production Ready
+
+---
+
+# ⚠️ MUST READ DOCUMENTATION - ESSENTIAL REFERENCE MATERIALS
+
+**CRITICAL:** Before making ANY changes to the system, especially UI/styling changes, you MUST review these essential documentation files located in the `docs/` directory:
+
+## Color Scheme & Styling Standards
+- **COLOR_SCHEME_STANDARD.md** - Official color palette and usage guidelines
+- **COLOR_SCHEME_STANDARD.pdf** - PDF version of color standards
+- **COLOR_STANDARDIZATION_SUMMARY.md** - Summary of color standardization implementation
+- **COLOR_STANDARDIZATION_SUMMARY.pdf** - PDF version of standardization summary
+
+## System Architecture & Performance
+- **SUBSCRIPTION_POLLING_IMPLEMENTATION.md** - Subscription polling system details
+- **SUBSCRIPTION_POLLING_IMPLEMENTATION.pdf** - PDF version of polling implementation
+- **SYSTEM_OPTIMIZATION_SUMMARY.md** - System-wide optimization documentation
+
+## Why These Documents Matter
+These documents contain:
+- **Approved color palettes** that ensure readability and consistency
+- **Component styling standards** that prevent UI regressions
+- **Performance optimization guidelines** that maintain system efficiency
+- **Implementation patterns** that have been tested and validated
+
+**⚠️ WARNING:** Ignoring these standards can result in:
+- Unreadable text and poor contrast (Q&A page issues)
+- Broken UI components (Matrix page display issues)
+- Reverted changes (Global Cache device page problems)
+- Inconsistent user experience across the application
+
+**📍 Documentation Location:** `/home/ubuntu/Sports-Bar-TV-Controller-local/docs/` (local) or `/root/sports-bar-tv-controller/docs/` (production server)
 
 ---
 
@@ -2614,7 +2646,7 @@ adb connect 192.168.5.131:5555
 adb devices
 # Expected output:
 # List of devices attached
-# 192.168.5.131:5555	device
+# 192.168.5.131:5555    device
 
 # Test device communication
 adb -s 192.168.5.131:5555 shell getprop ro.product.model
