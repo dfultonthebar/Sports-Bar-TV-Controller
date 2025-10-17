@@ -2,35 +2,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // IP Control command mappings for different brands
+// Note: DirecTV SHEF API expects plain key names without "KEY_" prefix
 const IP_COMMAND_MAPPINGS = {
   'DirecTV': {
-    'POWER': 'KEY_POWER',
-    'POWER_ON': 'KEY_POWERON',
-    'POWER_OFF': 'KEY_POWEROFF',
-    'CH_UP': 'KEY_CHANUP',
-    'CH_DOWN': 'KEY_CHANDOWN',
-    'VOL_UP': 'KEY_VOLUMEUP',
-    'VOL_DOWN': 'KEY_VOLUMEDOWN',
-    'MUTE': 'KEY_MUTE',
-    'GUIDE': 'KEY_GUIDE',
-    'MENU': 'KEY_MENU',
-    'EXIT': 'KEY_EXIT',
-    'INFO': 'KEY_INFO',
-    'UP': 'KEY_UP',
-    'DOWN': 'KEY_DOWN',
-    'LEFT': 'KEY_LEFT',
-    'RIGHT': 'KEY_RIGHT',
-    'OK': 'KEY_SELECT',
-    'PLAY': 'KEY_PLAY',
-    'PAUSE': 'KEY_PAUSE',
-    'STOP': 'KEY_STOP',
-    'REWIND': 'KEY_REWIND',
-    'FAST_FORWARD': 'KEY_FASTFORWARD',
-    'RECORD': 'KEY_RECORD',
-    '0': 'KEY_0', '1': 'KEY_1', '2': 'KEY_2', '3': 'KEY_3', '4': 'KEY_4',
-    '5': 'KEY_5', '6': 'KEY_6', '7': 'KEY_7', '8': 'KEY_8', '9': 'KEY_9',
-    'ENTER': 'KEY_ENTER',
-    'LAST': 'KEY_PREV'
+    'POWER': 'power',
+    'POWER_ON': 'poweron',
+    'POWER_OFF': 'poweroff',
+    'CH_UP': 'chanup',
+    'CH_DOWN': 'chandown',
+    'VOL_UP': 'volumeup',
+    'VOL_DOWN': 'volumedown',
+    'MUTE': 'mute',
+    'GUIDE': 'guide',
+    'MENU': 'menu',
+    'EXIT': 'exit',
+    'INFO': 'info',
+    'UP': 'up',
+    'DOWN': 'down',
+    'LEFT': 'left',
+    'RIGHT': 'right',
+    'OK': 'select',
+    'PLAY': 'play',
+    'PAUSE': 'pause',
+    'STOP': 'stop',
+    'REWIND': 'rew',
+    'FAST_FORWARD': 'ffwd',
+    'RECORD': 'record',
+    '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+    '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+    'ENTER': 'enter',
+    'LAST': 'prev'
   },
   'Apple TV': {
     'POWER': 'suspend',
@@ -71,7 +72,7 @@ const DEFAULT_PORTS = {
 
 async function sendDirecTVCommand(ip: string, port: number, command: string): Promise<string> {
   try {
-    const url = `http://${ip}:${port}/remote/processKey?key=${command}&hold=keyPress`
+    const url = `http://${ip}:${port}/remote/processKey?key=${command}`
     const response = await fetch(url, {
       method: 'GET',
       timeout: 5000

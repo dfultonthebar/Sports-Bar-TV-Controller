@@ -142,7 +142,7 @@ async function testDirecTVConnection(ip: string, port: number, deviceId?: string
     }
     
     // If info request fails, try a simple key command to test connectivity
-    const testUrl = `http://${ip}:${port}/remote/processKey?key=KEY_INFO&hold=keyPress`
+    const testUrl = `http://${ip}:${port}/remote/processKey?key=info`
     
     await direcTVLogger.log({
       level: LogLevel.DEBUG,
