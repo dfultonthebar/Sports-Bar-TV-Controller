@@ -1,116 +1,100 @@
 
-
 import { NextRequest, NextResponse } from 'next/server'
+import { ADBClient } from '@/lib/firecube/adb-client'
 
 async function testFireTVConnection(ip: string, port: number): Promise<{ success: boolean; message: string; data?: any }> {
+  const timestamp = new Date().toISOString()
+  
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+  console.log(`🔍 [FIRE CUBE] Testing connection`)
+  console.log(`   IP: ${ip}`)
+  console.log(`   Port: ${port}`)
+  console.log(`   Timestamp: ${timestamp}`)
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+
   try {
-    console.log(`Testing Fire TV connection to ${ip}:${port}`)
+    // Create ADB client instance
+    const adbClient = new ADBClient(ip, port)
     
-    // Method 1: Try ADB bridge service
-    try {
-      const adbBridgeUrl = `http://localhost:8081/adb/test-connection`
+    console.log(`[FIRE CUBE] Attempting ADB connection to ${ip}:${port}...`)
+    
+    // Test connection using ADB client
+    const connected = await adbClient.testConnection()
+    
+    if (connected) {
+      console.log(`[FIRE CUBE] ✅ Connection successful!`)
       
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
-      
-      const response = await fetch(adbBridgeUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          target: `${ip}:${port}`,
-          timeout: 5000
-        }),
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-      
-      if (response.ok) {
-        const result = await response.json()
-        return {
-          success: result.connected,
-          message: result.connected ? 'Fire TV device connected via ADB' : 'Fire TV device not responding',
-          data: {
-            method: 'ADB Bridge',
-            ip,
-            port,
-            response: result,
-            adbEnabled: result.adbEnabled,
-            deviceInfo: result.deviceInfo
-          }
+      // Get device information
+      let deviceInfo: any = {}
+      try {
+        const model = await adbClient.getModel()
+        const serialNumber = await adbClient.getSerialNumber()
+        const softwareVersion = await adbClient.getSoftwareVersion()
+        
+        deviceInfo = {
+          model: model || 'Unknown',
+          serialNumber: serialNumber || 'Unknown',
+          softwareVersion: softwareVersion || 'Unknown'
         }
+        
+        console.log(`[FIRE CUBE] Device Info:`, deviceInfo)
+      } catch (infoError) {
+        console.log(`[FIRE CUBE] ⚠️ Could not retrieve device info:`, infoError)
       }
-    } catch (bridgeError) {
-      console.log('ADB bridge unavailable, trying direct connection test')
-    }
-    
-    // Method 2: Basic network connectivity test
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
-    
-    try {
-      // Test if port is open using a simple HTTP request
-      // Fire TV devices respond to HTTP requests on port 5555 with connection info
-      const testUrl = `http://${ip}:${port}/`
       
-      const response = await fetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Sports-Bar-Controller/1.0'
-        },
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-      
-      // Even if we get an error response, it means the port is open
       return {
         success: true,
-        message: 'Fire TV device is reachable',
+        message: 'Fire TV device connected successfully via ADB',
         data: {
-          method: 'Network Test',
+          method: 'Direct ADB',
           ip,
           port,
-          status: response.status,
-          reachable: true,
-          note: 'Device detected but ADB status unknown. Enable ADB debugging for full control.'
+          connected: true,
+          adbEnabled: true,
+          deviceInfo,
+          testedAt: timestamp
         }
       }
-    } catch (error) {
-      clearTimeout(timeoutId)
+    } else {
+      console.log(`[FIRE CUBE] ❌ Connection failed - device not responding`)
       
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          success: false,
-          message: 'Connection test timed out',
-          data: {
-            method: 'Network Test',
-            ip,
-            port,
-            error: 'timeout',
-            suggestions: [
-              'Check if the Fire TV device is powered on',
-              'Verify the IP address is correct',
-              'Ensure the device is connected to the same network',
-              'Check if ADB debugging is enabled in Developer Options'
-            ]
-          }
+      return {
+        success: false,
+        message: 'Fire TV device not responding to ADB commands',
+        data: {
+          method: 'Direct ADB',
+          ip,
+          port,
+          connected: false,
+          error: 'Device not responding',
+          suggestions: [
+            'Ensure ADB debugging is enabled on the Fire TV device',
+            'Go to Settings → My Fire TV → Developer Options → ADB Debugging → ON',
+            'Make sure the Fire TV is powered on and connected to the network',
+            'Verify the IP address is correct',
+            'Try restarting the Fire TV device'
+          ],
+          testedAt: timestamp
         }
       }
-      
-      throw error
     }
-    
   } catch (error) {
-    console.error('Fire TV connection test error:', error)
+    console.error(`[FIRE CUBE] ❌ Connection test error:`, error)
     
     let errorMessage = 'Connection failed'
-    let suggestions: any[] = []
+    let suggestions: string[] = []
     
     if (error instanceof Error) {
-      if (error.message.includes('ECONNREFUSED')) {
+      errorMessage = error.message
+      
+      if (error.message.includes('adb') && error.message.includes('not found')) {
+        errorMessage = 'ADB command-line tool not installed on server'
+        suggestions = [
+          'Install ADB on the server: sudo apt-get install adb',
+          'Verify ADB installation: adb version',
+          'Restart the application after installing ADB'
+        ]
+      } else if (error.message.includes('ECONNREFUSED')) {
         errorMessage = 'Connection refused - ADB may be disabled'
         suggestions = [
           'Enable Developer Options on Fire TV: Settings → My Fire TV → About',
@@ -124,19 +108,20 @@ async function testFireTVConnection(ip: string, port: number): Promise<{ success
           'Check network firewall settings',
           'Verify the IP address is correct'
         ]
-      } else if (error.message.includes('ETIMEDOUT')) {
+      } else if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
         errorMessage = 'Connection timed out'
         suggestions = [
           'Device may be offline or sleeping',
           'Try waking the device with the remote',
-          'Check network connectivity'
+          'Check network connectivity',
+          'Verify ADB debugging is enabled'
         ]
       } else {
-        errorMessage = error.message
         suggestions = [
           'Check device power and network status',
           'Verify ADB debugging is enabled',
-          'Ensure correct IP address and port'
+          'Ensure correct IP address and port',
+          'Check server logs for detailed error information'
         ]
       }
     }
@@ -145,11 +130,12 @@ async function testFireTVConnection(ip: string, port: number): Promise<{ success
       success: false,
       message: errorMessage,
       data: {
-        method: 'Error',
+        method: 'Direct ADB',
         ip,
         port,
         error: errorMessage,
-        suggestions
+        suggestions,
+        testedAt: timestamp
       }
     }
   }

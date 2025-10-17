@@ -21,14 +21,28 @@ export class ADBClient {
    */
   async connect(): Promise<boolean> {
     try {
+      console.log(`[ADB CLIENT] Connecting to ${this.ipAddress}:${this.port}...`);
+      
       const { stdout, stderr } = await execAsync(
         `adb connect ${this.ipAddress}:${this.port}`,
         { timeout: FIRECUBE_CONFIG.CONNECTION_TIMEOUT }
       );
       
-      return stdout.includes('connected') || stdout.includes('already connected');
-    } catch (error) {
-      console.error(`Failed to connect to ${this.ipAddress}:`, error);
+      console.log(`[ADB CLIENT] Connect stdout:`, stdout);
+      if (stderr) console.log(`[ADB CLIENT] Connect stderr:`, stderr);
+      
+      const success = stdout.includes('connected') || stdout.includes('already connected');
+      console.log(`[ADB CLIENT] Connection result:`, success ? 'SUCCESS' : 'FAILED');
+      
+      return success;
+    } catch (error: any) {
+      // Check if ADB command is not found
+      if (error.message && (error.message.includes('adb') && (error.message.includes('not found') || error.message.includes('command not found')))) {
+        console.error(`[ADB CLIENT] ❌ ADB command-line tool not found on system`);
+        throw new Error('ADB command-line tool not installed. Please install with: sudo apt-get install adb');
+      }
+      
+      console.error(`[ADB CLIENT] ❌ Failed to connect to ${this.ipAddress}:`, error);
       return false;
     }
   }
@@ -49,16 +63,33 @@ export class ADBClient {
    */
   async testConnection(): Promise<boolean> {
     try {
+      console.log(`[ADB CLIENT] Testing connection to ${this.ipAddress}:${this.port}...`);
+      
       const connected = await this.connect();
-      if (!connected) return false;
+      if (!connected) {
+        console.log(`[ADB CLIENT] Initial connection failed`);
+        return false;
+      }
 
+      console.log(`[ADB CLIENT] Sending test command...`);
       const { stdout } = await execAsync(
         `adb -s ${this.ipAddress}:${this.port} shell echo "test"`,
         { timeout: FIRECUBE_CONFIG.CONNECTION_TIMEOUT }
       );
       
-      return stdout.trim() === 'test';
-    } catch (error) {
+      const result = stdout.trim() === 'test';
+      console.log(`[ADB CLIENT] Test command result:`, result ? 'PASS' : 'FAIL');
+      console.log(`[ADB CLIENT] Test output:`, stdout.trim());
+      
+      return result;
+    } catch (error: any) {
+      console.error(`[ADB CLIENT] ❌ Test connection error:`, error);
+      
+      // Rethrow if ADB is not installed
+      if (error.message && error.message.includes('ADB command-line tool not installed')) {
+        throw error;
+      }
+      
       return false;
     }
   }

@@ -1,107 +1,116 @@
 
-
 import { NextRequest, NextResponse } from 'next/server'
 import { FIRETV_COMMANDS, getAppLaunchCommand, isValidFireTVCommand } from '@/lib/firetv-utils'
+import { ADBClient } from '@/lib/firecube/adb-client'
 
-// ADB command execution via network
+// Execute ADB command using direct ADB client
 async function executeADBCommand(ip: string, port: number, command: string): Promise<{ success: boolean; message: string; data?: any }> {
+  const timestamp = new Date().toISOString()
+  
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+  console.log(`🎮 [FIRE CUBE] Executing command`)
+  console.log(`   IP: ${ip}`)
+  console.log(`   Port: ${port}`)
+  console.log(`   Command: ${command}`)
+  console.log(`   Timestamp: ${timestamp}`)
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+
   try {
-    console.log(`Executing ADB command on ${ip}:${port} - ${command}`)
+    // Create ADB client instance
+    const adbClient = new ADBClient(ip, port)
     
-    // For Fire TV, we use HTTP requests to a local ADB bridge or direct TCP connection
-    // This is a simplified version - in production, you'd need an ADB bridge service
-    const adbUrl = `http://localhost:8081/adb/execute` // Local ADB bridge service
+    console.log(`[FIRE CUBE] Connecting to device...`)
     
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    // Connect to device
+    const connected = await adbClient.connect()
     
-    const response = await fetch(adbUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Sports-Bar-Controller/1.0'
-      },
-      body: JSON.stringify({
-        target: `${ip}:${port}`,
-        command: command,
-        timeout: 8000
-      }),
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-    
-    if (response.ok) {
-      const responseData = await response.json()
-      console.log(`Fire TV ADB response:`, responseData)
-      
+    if (!connected) {
+      console.log(`[FIRE CUBE] ❌ Failed to connect to device`)
       return {
-        success: true,
-        message: `Fire TV command executed successfully`,
-        data: responseData
+        success: false,
+        message: 'Failed to connect to Fire TV device'
+      }
+    }
+    
+    console.log(`[FIRE CUBE] ✅ Connected, executing command...`)
+    
+    // Parse and execute command
+    let result: string | boolean = ''
+    let commandType = 'unknown'
+    
+    // Handle different command types
+    if (command.startsWith('input keyevent')) {
+      // Key event command
+      const keyCode = command.replace('input keyevent', '').trim()
+      result = await adbClient.sendKey(keyCode)
+      commandType = 'keyevent'
+    } else if (command.startsWith('monkey -p')) {
+      // App launch command
+      const packageMatch = command.match(/monkey -p ([\w.]+)/)
+      if (packageMatch) {
+        const packageName = packageMatch[1]
+        result = await adbClient.launchApp(packageName)
+        commandType = 'launch_app'
+      }
+    } else if (command.startsWith('am force-stop')) {
+      // Stop app command
+      const packageMatch = command.match(/am force-stop ([\w.]+)/)
+      if (packageMatch) {
+        const packageName = packageMatch[1]
+        result = await adbClient.stopApp(packageName)
+        commandType = 'stop_app'
       }
     } else {
-      const errorText = await response.text()
-      throw new Error(`ADB Bridge Error ${response.status}: ${errorText}`)
+      // Generic shell command
+      result = await adbClient.shell(command)
+      commandType = 'shell'
+    }
+    
+    console.log(`[FIRE CUBE] ✅ Command executed successfully`)
+    console.log(`[FIRE CUBE] Result:`, result)
+    
+    return {
+      success: true,
+      message: 'Fire TV command executed successfully',
+      data: {
+        command,
+        commandType,
+        result,
+        device: `${ip}:${port}`,
+        executedAt: timestamp,
+        method: 'Direct ADB'
+      }
     }
   } catch (error) {
-    console.error('Fire TV ADB command error:', error)
+    console.error(`[FIRE CUBE] ❌ Command execution error:`, error)
     
     let errorMessage = 'Unknown error'
     
     if (error instanceof Error) {
-      if (error.name === 'AbortError') {
+      errorMessage = error.message
+      
+      if (error.message.includes('adb') && error.message.includes('not found')) {
+        errorMessage = 'ADB command-line tool not installed on server'
+      } else if (error.name === 'AbortError') {
         errorMessage = 'Command timed out - device may be offline or ADB disabled'
       } else if (error.message.includes('ECONNREFUSED')) {
-        errorMessage = 'ADB bridge service unavailable - check if ADB bridge is running'
+        errorMessage = 'Connection refused - ADB may be disabled on device'
       } else if (error.message.includes('device offline')) {
         errorMessage = 'Fire TV device is offline or ADB is disabled'
       } else if (error.message.includes('unauthorized')) {
         errorMessage = 'ADB connection unauthorized - check device pairing'
-      } else {
-        errorMessage = error.message
       }
     }
     
     return {
       success: false,
-      message: `Fire TV command failed: ${errorMessage}`
-    }
-  }
-}
-
-// Fallback: Direct TCP ADB connection simulation
-async function simulateFireTVCommand(ip: string, port: number, command: string): Promise<{ success: boolean; message: string; data?: any }> {
-  try {
-    // This is a simulation for demo purposes
-    // In a real implementation, you'd establish a TCP connection to port 5555
-    console.log(`Simulating Fire TV command: ${command} on ${ip}:${port}`)
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000))
-    
-    // Simulate some commands having different success rates
-    const commandSuccess = Math.random() > 0.1 // 90% success rate
-    
-    if (commandSuccess) {
-      return {
-        success: true,
-        message: `Fire TV command '${command}' executed successfully`,
-        data: { 
-          command,
-          device: `${ip}:${port}`,
-          executedAt: new Date().toISOString(),
-          response: `Command executed: ${command}`,
-          simulation: true
-        }
+      message: `Fire TV command failed: ${errorMessage}`,
+      data: {
+        command,
+        error: errorMessage,
+        device: `${ip}:${port}`,
+        executedAt: timestamp
       }
-    } else {
-      throw new Error('Device temporarily unavailable')
-    }
-  } catch (error) {
-    return {
-      success: false,
-      message: `Fire TV command failed: ${error instanceof Error ? error.message : 'Unknown error'}`
     }
   }
 }
@@ -143,16 +152,10 @@ export async function POST(request: NextRequest) {
     // Use provided port or default to 5555 (ADB)
     const targetPort = port || 5555
 
-    console.log(`Sending Fire TV command: ${originalCommand} -> ${finalCommand} to ${ipAddress}:${targetPort}`)
+    console.log(`[FIRE CUBE] Sending Fire TV command: ${originalCommand} -> ${finalCommand} to ${ipAddress}:${targetPort}`)
 
-    // Try ADB bridge first, fall back to simulation
-    let result = await executeADBCommand(ipAddress, targetPort, finalCommand)
-    
-    // If ADB bridge is unavailable, use simulation
-    if (!result.success && result.message.includes('ADB bridge service unavailable')) {
-      console.log('ADB bridge unavailable, using simulation mode')
-      result = await simulateFireTVCommand(ipAddress, targetPort, finalCommand)
-    }
+    // Execute command using direct ADB client
+    const result = await executeADBCommand(ipAddress, targetPort, finalCommand)
 
     if (result.success) {
       return NextResponse.json({
@@ -174,8 +177,10 @@ export async function POST(request: NextRequest) {
           originalCommand,
           suggestions: [
             'Ensure ADB debugging is enabled on the Fire TV device',
+            'Go to Settings → My Fire TV → Developer Options → ADB Debugging → ON',
             'Check if the device is connected to the same network',
             'Verify the IP address and port are correct',
+            'Install ADB on server if not already installed: sudo apt-get install adb',
             'Try restarting the Fire TV device'
           ]
         },
@@ -184,7 +189,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Fire TV Command API Error:', error)
+    console.error('[FIRE CUBE] Fire TV Command API Error:', error)
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : 'Failed to send Fire TV command',
