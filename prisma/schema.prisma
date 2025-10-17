@@ -546,24 +546,27 @@ model GlobalCachePort {
 
 // IR Controlled Devices (Cable boxes, Receivers, etc.)
 model IRDevice {
-  id                String              @id @default(cuid())
-  name              String              // e.g., "Cable Box 1", "AV Receiver"
-  deviceType        String              // "Cable Box", "Satellite", "AV Receiver", "Blu-ray", etc.
-  brand             String              // e.g., "DirectTV", "Dish", "Denon"
-  model             String?             // e.g., "HR54", "Hopper 3"
-  matrixInput       Int?                // Which matrix input this device is connected to
-  matrixInputLabel  String?             // Label of the matrix input
-  irCodeSetId       String?             // Global Cache IR Database codeset ID
-  description       String?
-  status            String              @default("active") // "active", "inactive"
-  ports             GlobalCachePort[]   // Which Global Cache ports control this device
-  commands          IRCommand[]
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  id                    String              @id @default(cuid())
+  name                  String              // e.g., "Cable Box 1", "AV Receiver"
+  deviceType            String              // "Cable Box", "Satellite", "AV Receiver", "Blu-ray", etc.
+  brand                 String              // e.g., "DirectTV", "Dish", "Denon"
+  model                 String?             // e.g., "HR54", "Hopper 3"
+  matrixInput           Int?                // Which matrix input this device is connected to
+  matrixInputLabel      String?             // Label of the matrix input
+  irCodeSetId           String?             // Global Cache IR Database codeset ID
+  globalCacheDeviceId   String?             // Which Global Cache device to use
+  globalCachePortNumber Int?                // Which port on the Global Cache device
+  description           String?
+  status                String              @default("active") // "active", "inactive"
+  ports                 GlobalCachePort[]   // Which Global Cache ports control this device
+  commands              IRCommand[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
   
   @@index([deviceType])
   @@index([brand])
   @@index([matrixInput])
+  @@index([globalCacheDeviceId])
 }
 
 // IR Commands downloaded from Global Cache database

@@ -1891,7 +1891,461 @@ DirecTV receivers integrate seamlessly with the Wolfpack HDMI matrix:
 
 ---
 
-## 8. Remote Control
+## 8. IR Device Setup & Global Cache Integration
+
+### Overview
+**Version:** 1.0  
+**Last Updated:** October 17, 2025  
+**Status:** Production Ready
+
+The IR Device Setup system provides comprehensive management of infrared-controlled devices (cable boxes, satellite receivers, AV receivers, etc.) through Global Cache iTach IR control devices. This unified system allows users to configure IR devices, assign them to Global Cache devices and ports, and control them remotely.
+
+### System Architecture
+
+#### Components
+
+1. **Global Cache iTach Devices**
+   - Network-connected IR blasters
+   - Support 3 IR ports per device
+   - TCP communication on port 4998
+   - Status monitoring and health checks
+
+2. **IR Devices**
+   - Physical devices to be controlled (cable boxes, receivers, etc.)
+   - Each device linked to a specific Global Cache device and port
+   - Matrix switcher integration for video routing
+   - IR command database integration
+
+3. **IR Command Database**
+   - Global Cache online IR code database
+   - Thousands of device codesets
+   - Search by brand/model
+   - Automatic command download
+
+### Features
+
+#### Global Cache Device Management
+- **Add/Remove Devices**: Configure Global Cache iTach devices with IP address and port
+- **Connection Testing**: Test connectivity to devices
+- **Port Configuration**: Manage 3 IR ports per device
+- **Status Monitoring**: Real-time online/offline status
+- **Port Assignment**: Track which IR device is assigned to each port
+
+#### IR Device Configuration
+- **Device Creation**: Add IR devices with:
+  - Name (e.g., "Cable Box 1")
+  - Type (Cable Box, Satellite, AV Receiver, etc.)
+  - Brand (e.g., "DirecTV", "Dish", "Denon")
+  - Model (optional)
+  - Global Cache device selection (dropdown)
+  - Port number selection (dropdown, filtered by device)
+  - Matrix input channel (optional)
+  - Description (optional)
+
+- **Edit Functionality**: Modify existing IR device configurations
+- **Delete Functionality**: Remove IR devices with confirmation
+- **IR Database Integration**: Search and download IR codes from Global Cache database
+- **Command Management**: View and organize IR commands per device
+
+#### Verbose Logging
+All operations include comprehensive console logging:
+- Component mounting and initialization
+- Device loading and counts
+- Global Cache device selection
+- Port selection changes
+- Add/Update/Delete operations
+- API calls and responses
+- Error handling with detailed messages
+
+### API Endpoints
+
+#### Global Cache Devices
+
+**GET `/api/globalcache/devices`**
+- List all Global Cache devices with ports
+- Returns device status, IP address, port info
+
+**POST `/api/globalcache/devices`**
+- Add new Global Cache device
+- Tests connection during creation
+- Creates 3 IR ports automatically
+
+**DELETE `/api/globalcache/devices/[id]`**
+- Remove Global Cache device
+- Cascades to delete port assignments
+
+#### IR Devices
+
+**GET `/api/ir/devices`**
+- List all IR devices
+- Includes ports, commands, and Global Cache assignments
+- Comprehensive logging
+
+**POST `/api/ir/devices`**
+- Create new IR device
+- Accepts globalCacheDeviceId and globalCachePortNumber
+- Validates required fields (name, deviceType, brand)
+- Logs all operations
+
+**PUT `/api/ir/devices/[id]`**
+- Update existing IR device
+- Supports partial updates
+- Logs changes with before/after values
+
+**DELETE `/api/ir/devices/[id]`**
+- Remove IR device
+- Deletes associated commands
+- Requires confirmation
+
+#### IR Commands
+
+**GET `/api/ir/database/brands`**
+- Search IR database for device brands
+
+**GET `/api/ir/database/models`**
+- Get models for specific brand
+
+**POST `/api/ir/database/download`**
+- Download IR commands for device
+- Saves to database linked to IR device
+
+### Database Schema
+
+#### GlobalCacheDevice
+```prisma
+model GlobalCacheDevice {
+  id          String              @id @default(cuid())
+  name        String
+  ipAddress   String              @unique
+  port        Int                 @default(4998)
+  model       String?
+  status      String              @default("offline")
+  lastSeen    DateTime?
+  ports       GlobalCachePort[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+```
+
+#### GlobalCachePort
+```prisma
+model GlobalCachePort {
+  id                String            @id @default(cuid())
+  deviceId          String
+  device            GlobalCacheDevice @relation(...)
+  portNumber        Int
+  portType          String            @default("IR")
+  assignedTo        String?
+  assignedDeviceId  String?
+  enabled           Boolean           @default(true)
+  irDevice          IRDevice?         @relation(...)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+```
+
+#### IRDevice
+```prisma
+model IRDevice {
+  id                    String              @id @default(cuid())
+  name                  String
+  deviceType            String
+  brand                 String
+  model                 String?
+  matrixInput           Int?
+  matrixInputLabel      String?
+  irCodeSetId           String?
+  globalCacheDeviceId   String?             // NEW FIELD
+  globalCachePortNumber Int?                // NEW FIELD
+  description           String?
+  status                String              @default("active")
+  ports                 GlobalCachePort[]
+  commands              IRCommand[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+}
+```
+
+#### IRCommand
+```prisma
+model IRCommand {
+  id                String    @id @default(cuid())
+  deviceId          String
+  device            IRDevice  @relation(...)
+  functionName      String
+  irCode            String
+  category          String?
+  description       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+```
+
+### User Interface
+
+#### Device Configuration Page (`/device-config`)
+- **Two Tabs**:
+  1. **Global Cache**: Manage Global Cache iTach devices
+  2. **IR Devices**: Configure IR-controlled devices
+
+#### IR Device Setup Interface
+
+**Add/Edit Form Fields:**
+- Device Name* (required)
+- Device Type* (dropdown: Cable Box, Satellite, AV Receiver, etc.)
+- Brand* (required)
+- Model (optional)
+- **Global Cache Device** (dropdown with device name, IP, status)
+- **Port Number** (dropdown, shows Port 1-3, filtered by selected device)
+- Matrix Input Channel (optional)
+- Matrix Input Label (optional)
+- Description (optional)
+
+**Device Cards Display:**
+- Device name, brand, model, type
+- Command count badge
+- Global Cache device name
+- Global Cache port number
+- Matrix input information
+- Codeset ID
+- Description
+- Available commands (first 10 shown)
+- Action buttons:
+  - IR Database (search and download codes)
+  - Edit (modify configuration)
+  - Delete (remove device)
+
+### Workflow
+
+#### Adding a New IR Device
+
+1. **Navigate to Device Configuration** (`/device-config`)
+2. **Switch to IR Devices Tab**
+3. **Click "Add IR Device"**
+4. **Fill in device information**:
+   - Name: "Cable Box 1"
+   - Type: "Cable Box"
+   - Brand: "Spectrum"
+   - Model: "DCX3600" (optional)
+5. **Select Global Cache Device**:
+   - Choose from dropdown: "GC iTach 1 (192.168.5.110) - online"
+   - Port dropdown activates
+6. **Select Port Number**:
+   - Choose "Port 1 (IR)" or "Port 2 (IR)" or "Port 3 (IR)"
+   - Shows if port is already assigned
+7. **Optionally set Matrix Input**:
+   - Channel: 5
+   - Label: "Cable"
+8. **Add Description** (optional)
+9. **Click "Add Device"**
+10. **Device appears in list** with all configured details
+
+#### Downloading IR Codes
+
+1. **Click "IR Database" button** on device card
+2. **Search for device** by brand and model
+3. **Select codeset** from results
+4. **Download commands** to device
+5. **Commands appear** in device card
+
+#### Editing an IR Device
+
+1. **Click "Edit" button** on device card
+2. **Form pre-fills** with current values
+3. **Modify any fields**:
+   - Change Global Cache device
+   - Switch port number
+   - Update matrix channel
+4. **Click "Update Device"**
+5. **Device updates** immediately
+
+### Console Logging Examples
+
+#### Component Mount
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔌 [IR DEVICE SETUP] Component mounted
+   Timestamp: 2025-10-17T10:30:00.000Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### Loading Devices
+```
+📋 [IR DEVICE SETUP] Loading IR devices...
+✅ [IR DEVICE SETUP] IR devices loaded: 3
+📡 [IR DEVICE SETUP] Loading Global Cache devices...
+✅ [IR DEVICE SETUP] Global Cache devices loaded: 2
+```
+
+#### Adding Device
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+➕ [IR DEVICE SETUP] Adding new device
+   Name: Cable Box 1
+   Type: Cable Box
+   Brand: Spectrum
+   Global Cache Device: cm1234567890
+   Global Cache Port: 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### API Response
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+➕ [IR DEVICES] Creating new IR device
+   Timestamp: 2025-10-17T10:30:00.000Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Name: Cable Box 1
+   Type: Cable Box
+   Brand: Spectrum
+   Model: DCX3600
+   Global Cache Device: cm1234567890
+   Global Cache Port: 1
+✅ [IR DEVICES] Device created successfully
+   ID: clm9876543210
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Troubleshooting
+
+#### Issue: No Global Cache devices in dropdown
+
+**Solution:**
+1. Navigate to Global Cache tab
+2. Add Global Cache iTach device with IP address
+3. Test connection
+4. Return to IR Devices tab
+5. Refresh page if needed
+
+#### Issue: Port dropdown is disabled
+
+**Solution:**
+1. Select a Global Cache device first
+2. Port dropdown will activate automatically
+3. Ports are filtered to show only enabled ports on selected device
+
+#### Issue: Device not controlling IR equipment
+
+**Diagnostic Steps:**
+1. Verify Global Cache device is online (check status in Global Cache tab)
+2. Confirm correct port number is selected
+3. Test Global Cache connection manually
+4. Ensure IR emitter is connected to correct port
+5. Download IR codes from database if not done
+6. Test IR commands through API
+
+#### Issue: IR codes not working
+
+**Solution:**
+1. Try downloading different codeset from IR database
+2. Verify IR emitter is positioned correctly near device IR sensor
+3. Check for IR interference from other sources
+4. Test Global Cache device with other commands
+
+### Best Practices
+
+#### Global Cache Device Naming
+- Use descriptive names: "GC iTach 1 - Bar Area"
+- Include location for easy identification
+- Document which area/rack device is located in
+
+#### Port Assignment
+- Document port assignments in device descriptions
+- Use consistent naming conventions
+- Track cable connections physically
+
+#### IR Device Organization
+- Use clear, consistent naming
+- Include location in name: "Cable Box 1 - TV 3"
+- Set matrix input for automatic video routing
+- Add detailed descriptions for complex setups
+
+#### Testing
+- Test connection after adding Global Cache device
+- Verify IR codes work before production use
+- Test edit functionality periodically
+- Monitor logs for errors
+
+### Integration with Other Systems
+
+#### Matrix Switcher
+- IR devices can specify matrix input channel
+- Enables automatic video routing
+- Coordinates IR control with video switching
+
+#### Bartender Remote
+- IR commands can be triggered from remote interface
+- Simplifies bartender operations
+- Reduces complexity for staff
+
+#### Schedule System
+- IR devices can be controlled via scheduled events
+- Automatic channel changes
+- Power on/off automation
+
+### Future Enhancements
+
+**Planned Features:**
+- [ ] Macro commands (multiple IR commands in sequence)
+- [ ] IR learning mode (learn from physical remote)
+- [ ] Bulk IR code downloads
+- [ ] Command testing interface
+- [ ] Activity monitoring and logging
+- [ ] Port conflict detection
+- [ ] Automatic port assignment suggestions
+- [ ] IR code validation and testing
+
+### Migration Notes
+
+**October 17, 2025 Update:**
+- Added `globalCacheDeviceId` field to IRDevice model
+- Added `globalCachePortNumber` field to IRDevice model
+- Updated API routes to handle new fields
+- Added dropdown selectors in UI
+- Implemented edit functionality
+- Added comprehensive verbose logging throughout
+
+**Database Migration:**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx prisma db push
+npx prisma generate
+```
+
+**Component Updates:**
+- IRDeviceSetup.tsx: Added Global Cache device/port selection
+- API routes: Added logging and new field handling
+- Database schema: Added new fields with indexes
+
+### Support
+
+**Viewing Logs:**
+```bash
+# Real-time logs
+pm2 logs sports-bar-tv
+
+# Search for IR device operations
+pm2 logs sports-bar-tv | grep "IR DEVICE SETUP"
+
+# Search for API operations
+pm2 logs sports-bar-tv | grep "IR DEVICES"
+```
+
+**Testing API:**
+```bash
+# List IR devices
+curl http://24.123.87.42:3000/api/ir/devices
+
+# List Global Cache devices
+curl http://24.123.87.42:3000/api/globalcache/devices
+
+# Test Global Cache connection
+curl -X POST http://24.123.87.42:3000/api/globalcache/devices/[id]/test
+```
+
+---
+
+## 9. Remote Control
 
 ### Overview
 Bartender Remote interface for quick TV and audio control.
@@ -1904,7 +2358,7 @@ Bartender Remote interface for quick TV and audio control.
 
 ---
 
-## 9. System Admin
+## 10. System Admin
 
 ### Overview
 Administrative tools for system management, testing, and maintenance.
@@ -2601,7 +3055,7 @@ All features successfully tested on production server:
 
 ---
 
-## 10. Amazon Fire TV Integration
+## 11. Amazon Fire TV Integration
 
 ### Overview
 

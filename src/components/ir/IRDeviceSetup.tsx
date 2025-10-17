@@ -18,6 +18,24 @@ import {
 } from 'lucide-react'
 import { IRDatabaseSearch } from './IRDatabaseSearch'
 
+interface GlobalCacheDevice {
+  id: string
+  name: string
+  ipAddress: string
+  port: number
+  model?: string
+  status: string
+  ports: GlobalCachePort[]
+}
+
+interface GlobalCachePort {
+  id: string
+  portNumber: number
+  portType: string
+  assignedTo?: string
+  enabled: boolean
+}
+
 interface IRDevice {
   id: string
   name: string
@@ -27,6 +45,8 @@ interface IRDevice {
   matrixInput?: number
   matrixInputLabel?: string
   irCodeSetId?: string
+  globalCacheDeviceId?: string
+  globalCachePortNumber?: number
   description?: string
   status: string
   ports: any[]
@@ -35,10 +55,12 @@ interface IRDevice {
 
 export function IRDeviceSetup() {
   const [devices, setDevices] = useState<IRDevice[]>([])
+  const [globalCacheDevices, setGlobalCacheDevices] = useState<GlobalCacheDevice[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddDevice, setShowAddDevice] = useState(false)
   const [showIRDatabase, setShowIRDatabase] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
+  const [editingDevice, setEditingDevice] = useState<IRDevice | null>(null)
   const [newDevice, setNewDevice] = useState({
     name: '',
     deviceType: '',
@@ -46,6 +68,8 @@ export function IRDeviceSetup() {
     model: '',
     matrixInput: '',
     matrixInputLabel: '',
+    globalCacheDeviceId: '',
+    globalCachePortNumber: '',
     description: ''
   })
 
@@ -61,38 +85,78 @@ export function IRDeviceSetup() {
   ]
 
   useEffect(() => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔌 [IR DEVICE SETUP] Component mounted')
+    console.log('   Timestamp:', new Date().toISOString())
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     loadDevices()
+    loadGlobalCacheDevices()
   }, [])
 
   const loadDevices = async () => {
+    console.log('📋 [IR DEVICE SETUP] Loading IR devices...')
     try {
       const response = await fetch('/api/ir/devices')
       const data = await response.json()
       
+      console.log('✅ [IR DEVICE SETUP] IR devices loaded:', data.devices?.length || 0)
+      
       if (data.success) {
         setDevices(data.devices)
+      } else {
+        console.error('❌ [IR DEVICE SETUP] Failed to load devices:', data.error)
       }
     } catch (error) {
-      console.error('Error loading IR devices:', error)
+      console.error('❌ [IR DEVICE SETUP] Error loading IR devices:', error)
     } finally {
       setLoading(false)
     }
   }
 
+  const loadGlobalCacheDevices = async () => {
+    console.log('📡 [IR DEVICE SETUP] Loading Global Cache devices...')
+    try {
+      const response = await fetch('/api/globalcache/devices')
+      const data = await response.json()
+      
+      console.log('✅ [IR DEVICE SETUP] Global Cache devices loaded:', data.devices?.length || 0)
+      
+      if (data.success) {
+        setGlobalCacheDevices(data.devices)
+      } else {
+        console.error('❌ [IR DEVICE SETUP] Failed to load Global Cache devices:', data.error)
+      }
+    } catch (error) {
+      console.error('❌ [IR DEVICE SETUP] Error loading Global Cache devices:', error)
+    }
+  }
+
   const addDevice = async () => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('➕ [IR DEVICE SETUP] Adding new device')
+    console.log('   Name:', newDevice.name)
+    console.log('   Type:', newDevice.deviceType)
+    console.log('   Brand:', newDevice.brand)
+    console.log('   Global Cache Device:', newDevice.globalCacheDeviceId || 'Not selected')
+    console.log('   Global Cache Port:', newDevice.globalCachePortNumber || 'Not selected')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     try {
       const response = await fetch('/api/ir/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newDevice,
-          matrixInput: newDevice.matrixInput ? parseInt(newDevice.matrixInput) : null
+          matrixInput: newDevice.matrixInput ? parseInt(newDevice.matrixInput) : null,
+          globalCacheDeviceId: newDevice.globalCacheDeviceId || null,
+          globalCachePortNumber: newDevice.globalCachePortNumber ? parseInt(newDevice.globalCachePortNumber) : null
         })
       })
       
       const data = await response.json()
       
       if (data.success) {
+        console.log('✅ [IR DEVICE SETUP] Device added successfully')
         await loadDevices()
         setShowAddDevice(false)
         setNewDevice({
@@ -102,15 +166,108 @@ export function IRDeviceSetup() {
           model: '',
           matrixInput: '',
           matrixInputLabel: '',
+          globalCacheDeviceId: '',
+          globalCachePortNumber: '',
           description: ''
         })
       } else {
+        console.error('❌ [IR DEVICE SETUP] Error adding device:', data.error)
         alert('Error adding device: ' + data.error)
       }
     } catch (error) {
-      console.error('Error adding device:', error)
+      console.error('❌ [IR DEVICE SETUP] Error adding device:', error)
       alert('Error adding device')
     }
+  }
+
+  const startEdit = (device: IRDevice) => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✏️  [IR DEVICE SETUP] Starting edit mode')
+    console.log('   Device:', device.name)
+    console.log('   ID:', device.id)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    setEditingDevice(device)
+    setNewDevice({
+      name: device.name,
+      deviceType: device.deviceType,
+      brand: device.brand,
+      model: device.model || '',
+      matrixInput: device.matrixInput?.toString() || '',
+      matrixInputLabel: device.matrixInputLabel || '',
+      globalCacheDeviceId: device.globalCacheDeviceId || '',
+      globalCachePortNumber: device.globalCachePortNumber?.toString() || '',
+      description: device.description || ''
+    })
+    setShowAddDevice(true)
+  }
+
+  const updateDevice = async () => {
+    if (!editingDevice) return
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('💾 [IR DEVICE SETUP] Updating device')
+    console.log('   Device ID:', editingDevice.id)
+    console.log('   Name:', newDevice.name)
+    console.log('   Global Cache Device:', newDevice.globalCacheDeviceId || 'Not selected')
+    console.log('   Global Cache Port:', newDevice.globalCachePortNumber || 'Not selected')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    try {
+      const response = await fetch(`/api/ir/devices/${editingDevice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newDevice,
+          matrixInput: newDevice.matrixInput ? parseInt(newDevice.matrixInput) : null,
+          globalCacheDeviceId: newDevice.globalCacheDeviceId || null,
+          globalCachePortNumber: newDevice.globalCachePortNumber ? parseInt(newDevice.globalCachePortNumber) : null
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        console.log('✅ [IR DEVICE SETUP] Device updated successfully')
+        await loadDevices()
+        setShowAddDevice(false)
+        setEditingDevice(null)
+        setNewDevice({
+          name: '',
+          deviceType: '',
+          brand: '',
+          model: '',
+          matrixInput: '',
+          matrixInputLabel: '',
+          globalCacheDeviceId: '',
+          globalCachePortNumber: '',
+          description: ''
+        })
+      } else {
+        console.error('❌ [IR DEVICE SETUP] Error updating device:', data.error)
+        alert('Error updating device: ' + data.error)
+      }
+    } catch (error) {
+      console.error('❌ [IR DEVICE SETUP] Error updating device:', error)
+      alert('Error updating device')
+    }
+  }
+
+  const cancelEdit = () => {
+    console.log('↩️  [IR DEVICE SETUP] Cancelled edit/add')
+    setEditingDevice(null)
+    setShowAddDevice(false)
+    setNewDevice({
+      name: '',
+      deviceType: '',
+      brand: '',
+      model: '',
+      matrixInput: '',
+      matrixInputLabel: '',
+      globalCacheDeviceId: '',
+      globalCachePortNumber: '',
+      description: ''
+    })
   }
 
   const deleteDevice = async (deviceId: string) => {
@@ -118,6 +275,11 @@ export function IRDeviceSetup() {
       return
     }
     
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🗑️  [IR DEVICE SETUP] Deleting device')
+    console.log('   Device ID:', deviceId)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     try {
       const response = await fetch(`/api/ir/devices/${deviceId}`, {
         method: 'DELETE'
@@ -126,10 +288,14 @@ export function IRDeviceSetup() {
       const data = await response.json()
       
       if (data.success) {
+        console.log('✅ [IR DEVICE SETUP] Device deleted successfully')
         await loadDevices()
+      } else {
+        console.error('❌ [IR DEVICE SETUP] Error deleting device:', data.error)
+        alert('Error deleting device: ' + data.error)
       }
     } catch (error) {
-      console.error('Error deleting device:', error)
+      console.error('❌ [IR DEVICE SETUP] Error deleting device:', error)
       alert('Error deleting device')
     }
   }
@@ -181,13 +347,15 @@ export function IRDeviceSetup() {
         </Button>
       </div>
 
-      {/* Add Device Form */}
+      {/* Add/Edit Device Form */}
       {showAddDevice && (
         <Card className="border-blue-500/20 bg-slate-800/50">
           <CardHeader>
-            <CardTitle className="text-slate-100">Add IR Device</CardTitle>
+            <CardTitle className="text-slate-100">
+              {editingDevice ? 'Edit IR Device' : 'Add IR Device'}
+            </CardTitle>
             <CardDescription>
-              Configure a new device to be controlled via IR
+              {editingDevice ? 'Update device configuration' : 'Configure a new device to be controlled via IR'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -243,6 +411,64 @@ export function IRDeviceSetup() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <Label htmlFor="globalCacheDevice" className="text-slate-300">Global Cache Device</Label>
+                <select
+                  id="globalCacheDevice"
+                  value={newDevice.globalCacheDeviceId}
+                  onChange={(e) => {
+                    console.log('🔄 [IR DEVICE SETUP] Global Cache device changed:', e.target.value)
+                    setNewDevice({ ...newDevice, globalCacheDeviceId: e.target.value, globalCachePortNumber: '' })
+                  }}
+                  className="w-full h-10 px-3 rounded-md bg-slate-700 border border-slate-600 text-slate-100"
+                >
+                  <option value="">Select device...</option>
+                  {globalCacheDevices.map(device => (
+                    <option key={device.id} value={device.id}>
+                      {device.name} ({device.ipAddress}) - {device.status}
+                    </option>
+                  ))}
+                </select>
+                {globalCacheDevices.length === 0 && (
+                  <p className="text-xs text-amber-400 mt-1">
+                    No Global Cache devices configured. Add one in the Global Cache tab.
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="globalCachePort" className="text-slate-300">Port Number</Label>
+                <select
+                  id="globalCachePort"
+                  value={newDevice.globalCachePortNumber}
+                  onChange={(e) => {
+                    console.log('🔄 [IR DEVICE SETUP] Global Cache port changed:', e.target.value)
+                    setNewDevice({ ...newDevice, globalCachePortNumber: e.target.value })
+                  }}
+                  disabled={!newDevice.globalCacheDeviceId}
+                  className="w-full h-10 px-3 rounded-md bg-slate-700 border border-slate-600 text-slate-100 disabled:opacity-50"
+                >
+                  <option value="">Select port...</option>
+                  {newDevice.globalCacheDeviceId && 
+                    globalCacheDevices
+                      .find(d => d.id === newDevice.globalCacheDeviceId)
+                      ?.ports.filter(p => p.enabled)
+                      .map(port => (
+                        <option key={port.id} value={port.portNumber}>
+                          Port {port.portNumber} ({port.portType})
+                          {port.assignedTo ? ` - ${port.assignedTo}` : ''}
+                        </option>
+                      ))
+                  }
+                </select>
+                {!newDevice.globalCacheDeviceId && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    Select a Global Cache device first
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <Label htmlFor="matrixInput" className="text-slate-300">Matrix Input Channel</Label>
                 <Input
                   id="matrixInput"
@@ -277,12 +503,15 @@ export function IRDeviceSetup() {
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={addDevice} className="flex-1">
-                Add Device
+              <Button 
+                onClick={editingDevice ? updateDevice : addDevice} 
+                className="flex-1"
+              >
+                {editingDevice ? 'Update Device' : 'Add Device'}
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setShowAddDevice(false)}
+                onClick={cancelEdit}
                 className="flex-1"
               >
                 Cancel
@@ -340,6 +569,15 @@ export function IRDeviceSetup() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => startEdit(device)}
+                      className="flex items-center gap-1"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => deleteDevice(device.id)}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -349,6 +587,20 @@ export function IRDeviceSetup() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  {device.globalCacheDeviceId && (
+                    <div>
+                      <span className="text-slate-400">Global Cache Device:</span>
+                      <span className="text-slate-200 ml-2">
+                        {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.name || device.globalCacheDeviceId}
+                      </span>
+                    </div>
+                  )}
+                  {device.globalCachePortNumber && (
+                    <div>
+                      <span className="text-slate-400">Global Cache Port:</span>
+                      <span className="text-slate-200 ml-2">Port {device.globalCachePortNumber}</span>
+                    </div>
+                  )}
                   {device.matrixInput && (
                     <div>
                       <span className="text-slate-400">Matrix Input:</span>

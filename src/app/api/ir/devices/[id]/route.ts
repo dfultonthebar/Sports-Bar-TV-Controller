@@ -98,9 +98,16 @@ export async function PUT(
       matrixInput,
       matrixInputLabel,
       irCodeSetId,
+      globalCacheDeviceId,
+      globalCachePortNumber,
       description,
       status
     } = body
+
+    console.log('   Update fields:')
+    console.log('     Name:', name)
+    console.log('     Global Cache Device:', globalCacheDeviceId)
+    console.log('     Global Cache Port:', globalCachePortNumber)
 
     const device = await prisma.iRDevice.update({
       where: { id: params.id },
@@ -112,6 +119,8 @@ export async function PUT(
         ...(matrixInput !== undefined && { matrixInput }),
         ...(matrixInputLabel !== undefined && { matrixInputLabel }),
         ...(irCodeSetId !== undefined && { irCodeSetId }),
+        ...(globalCacheDeviceId !== undefined && { globalCacheDeviceId }),
+        ...(globalCachePortNumber !== undefined && { globalCachePortNumber }),
         ...(description !== undefined && { description }),
         ...(status !== undefined && { status })
       },
@@ -123,6 +132,8 @@ export async function PUT(
 
     console.log('✅ [IR DEVICES] Device updated successfully')
     console.log('   Name:', device.name)
+    console.log('   Global Cache Device:', device.globalCacheDeviceId || 'Not assigned')
+    console.log('   Global Cache Port:', device.globalCachePortNumber || 'Not assigned')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'update', {

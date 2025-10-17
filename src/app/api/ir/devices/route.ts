@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
       matrixInput,
       matrixInputLabel,
       irCodeSetId,
+      globalCacheDeviceId,
+      globalCachePortNumber,
       description
     } = body
 
@@ -92,6 +94,8 @@ export async function POST(request: NextRequest) {
     console.log('   Type:', deviceType)
     console.log('   Brand:', brand)
     console.log('   Model:', model || 'N/A')
+    console.log('   Global Cache Device:', globalCacheDeviceId || 'Not assigned')
+    console.log('   Global Cache Port:', globalCachePortNumber || 'Not assigned')
 
     const device = await prisma.iRDevice.create({
       data: {
@@ -102,6 +106,8 @@ export async function POST(request: NextRequest) {
         matrixInput,
         matrixInputLabel,
         irCodeSetId,
+        globalCacheDeviceId,
+        globalCachePortNumber,
         description,
         status: 'active'
       },
