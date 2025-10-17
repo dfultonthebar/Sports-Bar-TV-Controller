@@ -6,52 +6,16 @@
       "deviceName": "Direct TV 1",
       "subscriptions": [
         {
-          "id": "directv-choice",
-          "name": "DIRECTV CHOICE™",
+          "id": "directv-connected",
+          "name": "DirecTV Receiver Connected",
           "type": "premium",
           "status": "active",
           "provider": "DIRECTV",
-          "packageName": "CHOICE",
-          "cost": 84.99,
-          "description": "105+ channels including ESPN, Fox Sports 1, and regional sports networks",
-          "logoUrl": "/images/directv-logo.png"
-        },
-        {
-          "id": "sports-pack",
-          "name": "Sports Pack",
-          "type": "sports",
-          "status": "active",
-          "provider": "DIRECTV",
-          "packageName": "SPORTS",
-          "cost": 14.99,
-          "description": "NFL RedZone, NBA TV, NHL Network, and more sports channels",
-          "logoUrl": "/images/sports-pack-logo.png"
-        },
-        {
-          "id": "nfl-sunday-ticket",
-          "name": "NFL Sunday Ticket",
-          "type": "sports",
-          "status": "active",
-          "provider": "DIRECTV",
-          "packageName": "NFL_ST",
-          "subscriptionDate": "2024-09-01",
-          "expirationDate": "2025-02-28",
-          "cost": 293.94,
-          "description": "Every out-of-market NFL game, every Sunday",
-          "logoUrl": "/images/nfl-sunday-ticket-logo.png"
-        },
-        {
-          "id": "regional-sports",
-          "name": "Regional Sports Networks",
-          "type": "sports",
-          "status": "active",
-          "provider": "DIRECTV",
-          "packageName": "RSN",
-          "description": "Local team coverage and regional sports programming",
-          "logoUrl": "/images/rsn-logo.png"
+          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 9550 | To Be Announced",
+          "packageName": "Software v0xf3e | API v1.12"
         }
       ],
-      "lastPolled": "2025-09-30T01:39:35.860Z",
+      "lastPolled": "2025-10-17T17:13:25.724Z",
       "pollStatus": "success"
     },
     {
@@ -62,6 +26,33 @@
       "lastPolled": "2025-10-16T03:52:29.655Z",
       "pollStatus": "error",
       "error": "Unable to connect to Fire TV device via ADB"
+    },
+    {
+      "deviceId": "firetv_1759187649372_qpmk1jw6o",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 1",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 1"
+        }
+      ],
+      "lastPolled": "2025-10-17T18:25:27.519Z",
+      "pollStatus": "success"
     }
   ]
 }
