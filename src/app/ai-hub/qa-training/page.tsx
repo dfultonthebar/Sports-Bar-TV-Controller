@@ -234,81 +234,83 @@ export default function QATrainingPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Q&A Training</h1>
+        <h1 className="text-3xl font-bold text-slate-100">Q&A Training System</h1>
         <button
           onClick={() => {
             loadEntries();
             loadStatistics();
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
           Refresh
         </button>
       </div>
+      
+      <p className="text-slate-300 text-sm">Train the AI Assistant</p>
 
       {/* Statistics Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="card-dark p-6 rounded-lg shadow-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Q&As</p>
-              <p className="text-3xl font-bold">{statistics?.total || 0}</p>
+              <p className="text-sm text-slate-400">Total Q&As</p>
+              <p className="text-3xl font-bold text-slate-100">{statistics?.total || 0}</p>
             </div>
-            <BarChart3 className="w-8 h-8 text-blue-600" />
+            <BarChart3 className="w-8 h-8 text-blue-400" />
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="card-dark p-6 rounded-lg shadow-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Active</p>
-              <p className="text-3xl font-bold text-green-600">{statistics?.active || 0}</p>
+              <p className="text-sm text-slate-400">Active</p>
+              <p className="text-3xl font-bold text-green-400">{statistics?.active || 0}</p>
             </div>
-            <BarChart3 className="w-8 h-8 text-green-600" />
+            <BarChart3 className="w-8 h-8 text-green-400" />
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="card-dark p-6 rounded-lg shadow-lg">
           <div>
-            <p className="text-sm text-gray-600 mb-2">By Category</p>
+            <p className="text-sm text-slate-400 mb-2">By Category</p>
             {statistics?.byCategory && statistics.byCategory.length > 0 ? (
               <div className="space-y-1">
                 {statistics.byCategory.slice(0, 3).map((cat) => (
                   <div key={cat.category} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{cat.category}</span>
-                    <span className="font-semibold">{cat.count}</span>
+                    <span className="text-slate-300">{cat.category}</span>
+                    <span className="font-semibold text-slate-100">{cat.count}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">No data</p>
+              <p className="text-sm text-slate-500">No data</p>
             )}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="card-dark p-6 rounded-lg shadow-lg">
           <div>
-            <p className="text-sm text-gray-600 mb-2">By Source</p>
+            <p className="text-sm text-slate-400 mb-2">By Source</p>
             {statistics?.bySource && statistics.bySource.length > 0 ? (
               <div className="space-y-1">
                 {statistics.bySource.slice(0, 3).map((src) => (
                   <div key={src.source} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{src.source}</span>
-                    <span className="font-semibold">{src.count}</span>
+                    <span className="text-slate-300">{src.source}</span>
+                    <span className="font-semibold text-slate-100">{src.count}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">No data</p>
+              <p className="text-sm text-slate-500">No data</p>
             )}
           </div>
         </div>
       </div>
 
       {/* Generation Controls */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Generate Q&As</h2>
+      <div className="card-dark p-6 rounded-lg shadow-lg">
+        <h2 className="text-xl font-semibold mb-4 text-slate-100">Training Actions</h2>
         
         <div className="mb-4">
           <label className="flex items-center gap-2">
@@ -316,28 +318,37 @@ export default function QATrainingPage() {
               type="checkbox"
               checked={forceRegenerate}
               onChange={(e) => setForceRegenerate(e.target.checked)}
-              className="w-4 h-4"
+              className="w-4 h-4 form-checkbox-dark"
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-slate-300">
               Force regenerate all files (ignore file tracking)
             </span>
           </label>
-          <p className="text-xs text-gray-500 mt-1 ml-6">
+          <p className="text-xs text-slate-400 mt-1 ml-6">
             When unchecked, only new or modified files will be processed
           </p>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 flex-wrap">
           <button
             onClick={() => handleGenerateQAs('repository')}
             disabled={generateLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Sparkles className="w-4 h-4" />
             {generateLoading ? 'Generating...' : 'Generate from Repository'}
           </button>
 
-          <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 cursor-pointer">
+          <button
+            onClick={() => handleGenerateQAs('docs')}
+            disabled={generateLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            {generateLoading ? 'Generating...' : 'Generate from Docs'}
+          </button>
+
+          <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 cursor-pointer disabled:opacity-50 transition-colors">
             <Upload className="w-4 h-4" />
             {uploadLoading ? 'Uploading...' : 'Upload Q&A File'}
             <input
@@ -351,22 +362,24 @@ export default function QATrainingPage() {
         </div>
 
         {currentJob && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
             <div className="flex justify-between items-center mb-2">
-              <span className="font-semibold">Generation Progress</span>
-              <span className={`px-2 py-1 rounded text-sm ${
-                currentJob.status === 'completed' ? 'bg-green-100 text-green-800' :
-                currentJob.status === 'failed' ? 'bg-red-100 text-red-800' :
-                'bg-blue-100 text-blue-800'
+              <span className="font-semibold text-slate-100">Generation Progress</span>
+              <span className={`px-2 py-1 rounded text-sm font-medium ${
+                currentJob.status === 'completed' ? 'badge-dark-success' :
+                currentJob.status === 'failed' ? 'badge-dark-error' :
+                'badge-dark-info'
               }`}>
                 {currentJob.status}
               </span>
             </div>
-            <div className="space-y-1 text-sm">
+            <div className="space-y-1 text-sm text-slate-300">
               <p>Files: {currentJob.processedFiles} / {currentJob.totalFiles}</p>
               <p>Generated Q&As: {currentJob.generatedQAs}</p>
               {currentJob.errorMessage && (
-                <p className="text-red-600">{currentJob.errorMessage}</p>
+                <div className="mt-2 p-3 bg-red-900/30 border-l-4 border-red-600 rounded">
+                  <p className="text-red-200 text-sm break-words">{currentJob.errorMessage}</p>
+                </div>
               )}
             </div>
           </div>
@@ -374,11 +387,11 @@ export default function QATrainingPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow flex gap-4">
+      <div className="card-dark p-4 rounded-lg shadow-lg flex gap-4 flex-wrap">
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-4 py-2 border rounded-lg"
+          className="form-select-dark px-4 py-2 rounded-lg"
         >
           <option value="all">All Categories</option>
           <option value="general">General</option>
@@ -389,7 +402,7 @@ export default function QATrainingPage() {
         <select
           value={filterSourceType}
           onChange={(e) => setFilterSourceType(e.target.value)}
-          className="px-4 py-2 border rounded-lg"
+          className="form-select-dark px-4 py-2 rounded-lg"
         >
           <option value="all">All Sources</option>
           <option value="manual">Manual</option>
@@ -399,32 +412,36 @@ export default function QATrainingPage() {
       </div>
 
       {/* Q&A Entries List */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b">
-          <h2 className="text-xl font-semibold">Q&A Entries ({entries.length})</h2>
+      <div className="card-dark rounded-lg shadow-lg overflow-hidden">
+        <div className="p-4 border-b border-slate-700">
+          <h2 className="text-xl font-semibold text-slate-100">Q&A Entries ({entries.length})</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            {entries.length === 0 ? 'No Q&A entries found. Generate or upload some to get started!' : 
+            'Manage your Q&A training data'}
+          </p>
         </div>
         
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading...</div>
+          <div className="p-8 text-center text-slate-400">Loading...</div>
         ) : entries.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">No Q&A entries found</div>
+          <div className="p-8 text-center text-slate-400">No Q&A entries found</div>
         ) : (
-          <div className="divide-y">
+          <div className="divide-y divide-slate-700">
             {entries.map((entry) => (
-              <div key={entry.id} className="p-4 hover:bg-gray-50">
+              <div key={entry.id} className="p-4 hover:bg-slate-700/50 transition-colors">
                 {editingId === entry.id ? (
                   <div className="space-y-3">
                     <input
                       type="text"
                       value={editForm.question}
                       onChange={(e) => setEditForm({ ...editForm, question: e.target.value })}
-                      className="w-full px-3 py-2 border rounded"
+                      className="form-input-dark w-full px-3 py-2 rounded"
                       placeholder="Question"
                     />
                     <textarea
                       value={editForm.answer}
                       onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })}
-                      className="w-full px-3 py-2 border rounded"
+                      className="form-input-dark w-full px-3 py-2 rounded"
                       rows={3}
                       placeholder="Answer"
                     />
@@ -432,20 +449,20 @@ export default function QATrainingPage() {
                       type="text"
                       value={editForm.category}
                       onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                      className="w-full px-3 py-2 border rounded"
+                      className="form-input-dark w-full px-3 py-2 rounded"
                       placeholder="Category"
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={handleSaveEdit}
-                        className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                        className="btn-dark-success flex items-center gap-1"
                       >
                         <Save className="w-4 h-4" />
                         Save
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
-                        className="flex items-center gap-1 px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
+                        className="btn-dark-secondary flex items-center gap-1"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -456,29 +473,31 @@ export default function QATrainingPage() {
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
-                        <p className="font-semibold text-lg">{entry.question}</p>
-                        <p className="text-gray-700 mt-1">{entry.answer}</p>
+                        <p className="font-semibold text-lg text-slate-100">{entry.question}</p>
+                        <p className="text-slate-300 mt-1 leading-relaxed">{entry.answer}</p>
                       </div>
                       <div className="flex gap-2 ml-4">
                         <button
                           onClick={() => handleEdit(entry)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                          className="p-2 text-blue-400 hover:bg-slate-700 rounded transition-colors"
+                          title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(entry.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          className="p-2 text-red-400 hover:bg-slate-700 rounded transition-colors"
+                          title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                    <div className="flex gap-2 text-sm text-gray-500">
-                      <span className="px-2 py-1 bg-gray-100 rounded">{entry.category}</span>
-                      <span className="px-2 py-1 bg-gray-100 rounded">{entry.sourceType}</span>
+                    <div className="flex gap-2 text-sm flex-wrap">
+                      <span className="badge-dark-info">{entry.category}</span>
+                      <span className="badge-dark-neutral">{entry.sourceType}</span>
                       {entry.sourceFile && (
-                        <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                        <span className="badge-dark-neutral text-xs" title={entry.sourceFile}>
                           {entry.sourceFile.split('/').pop()}
                         </span>
                       )}

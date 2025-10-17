@@ -4134,7 +4134,69 @@ If graphs show "No data":
 
 ## Recent System Changes
 
-### PR #205: Q&A File Tracking & Dashboard Fixes (Current)
+### PR #206: Critical UI Fixes - Q&A Color Scheme, Matrix Display, Global Cache (October 17, 2025)
+
+**Branch**: `fix/ui-color-matrix-display`
+
+**Critical Issues Fixed**:
+
+1. **Q&A Training Page Color Scheme**
+   - **Problem**: White backgrounds with light text created unreadable interface on dark theme
+   - **Solution**: Converted all components to use dark theme classes (card-dark, slate colors)
+   - **Impact**: Proper contrast and readability throughout Q&A training interface
+   - **Files Modified**: `src/app/ai-hub/qa-training/page.tsx`
+
+2. **Matrix/Wolfpack Settings Page Display**
+   - **Problem**: Only showing 1 input and 1 output instead of 36x36 grid
+   - **Solution**: Fixed `loadConfigurations()` to properly check for empty arrays vs undefined
+   - **Impact**: All 36 inputs and 36 outputs now display correctly
+   - **Files Modified**: `src/components/MatrixControl.tsx`
+
+3. **Global Cache Device Page**
+   - **Problem**: "Error adding device" - Missing Prisma schema models
+   - **Solution**: Added `GlobalCacheDevice` and `GlobalCachePort` models to schema
+   - **Impact**: Global Cache device management now fully functional
+   - **Files Modified**: `prisma/schema.prisma`
+
+**Technical Details**:
+
+```typescript
+// Q&A Color Scheme Fix
+// Before: className="bg-white text-gray-600"
+// After:  className="card-dark text-slate-300"
+
+// Matrix Display Fix
+const hasInputs = data.inputs && Array.isArray(data.inputs) && data.inputs.length > 0
+const hasOutputs = data.outputs && Array.isArray(data.outputs) && data.outputs.length > 0
+
+// Global Cache Schema Addition
+model GlobalCacheDevice {
+  id          String              @id @default(cuid())
+  name        String
+  ipAddress   String              @unique
+  port        Int                 @default(4998)
+  model       String?
+  status      String              @default("offline")
+  lastSeen    DateTime?
+  ports       GlobalCachePort[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+```
+
+**Deployment Steps**:
+```bash
+# Generate Prisma client with new models
+npx prisma generate
+
+# Push schema changes to database
+npx prisma db push
+
+# Restart application
+pm2 restart sports-bar-tv
+```
+
+### PR #205: Q&A File Tracking & Dashboard Fixes
 
 **Changes Made**:
 - Added ProcessedFile model to Prisma schema
