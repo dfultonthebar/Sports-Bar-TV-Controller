@@ -13,6 +13,8 @@ import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import CECDiscoveryPanel from '@/components/CECDiscoveryPanel'
+import GlobalCacheControl from '@/components/globalcache/GlobalCacheControl'
+import { IRDeviceSetup } from '@/components/ir/IRDeviceSetup'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
@@ -228,7 +230,7 @@ export default function DeviceConfigPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Radio className="w-5 h-5 text-purple-600" />
-                Global Cache Configuration
+                Global Cache IR Control
                 {aiEnhancementsEnabled && (
                   <Badge className="bg-purple-100 text-purple-800">
                     <Brain className="w-3 h-3 mr-1" />
@@ -239,12 +241,12 @@ export default function DeviceConfigPage() {
               <CardDescription>
                 {aiEnhancementsEnabled 
                   ? "Configure iTach devices with intelligent IR learning, signal optimization, and predictive maintenance"
-                  : "Configure Global Cache iTach IR devices"
+                  : "Manage Global Cache iTach devices for infrared control of cable boxes and other IR devices"
                 }
               </CardDescription>
             </CardHeader>
           </Card>
-          <IRDeviceControl />
+          <GlobalCacheControl />
         </TabsContent>
 
         <TabsContent value="ir" className="space-y-4">
@@ -252,7 +254,7 @@ export default function DeviceConfigPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Radio className="w-5 h-5 text-green-600" />
-                IR Device Configuration
+                IR Device Setup
                 {aiEnhancementsEnabled && (
                   <Badge className="bg-purple-100 text-purple-800">
                     <Brain className="w-3 h-3 mr-1" />
@@ -263,12 +265,12 @@ export default function DeviceConfigPage() {
               <CardDescription>
                 {aiEnhancementsEnabled 
                   ? "Manage IR devices with intelligent command learning, failure prediction, and automatic positioning optimization"
-                  : "Configure and control infrared devices"
+                  : "Configure IR-controlled devices (Cable boxes, AV receivers) and download IR commands from the Global Cache database"
                 }
               </CardDescription>
             </CardHeader>
           </Card>
-          <IRDeviceControl />
+          <IRDeviceSetup />
         </TabsContent>
 
         <TabsContent value="soundtrack" className="space-y-4">
