@@ -4118,3 +4118,118 @@ See `SPORTS_GUIDE_FIX_REPORT.md` for complete technical details, testing results
 
 ---
 
+
+---
+
+## Atlas TCP Communication Protocol
+
+### Overview
+**IMPORTANT**: As of October 17, 2025, the Atlas configuration management has been completely rewritten to use actual TCP communication with the Atlas device instead of only reading/writing local files.
+
+### Key Features
+- **Real-time Communication**: Direct TCP connection to Atlas AZMP8 device on port 5321
+- **JSON-RPC 2.0 Protocol**: Standards-compliant message format
+- **Robust Error Handling**: Automatic fallback to saved configuration if device unavailable
+- **Comprehensive Logging**: Verbose logging for all TCP operations
+- **Configuration Backup**: Automatic timestamped backups on every save
+
+### Protocol Details
+- **IP Address**: 192.168.5.101
+- **TCP Port**: 5321
+- **HTTP Port**: 80 (web interface)
+- **Message Format**: JSON-RPC 2.0 with `\r\n` delimiter
+- **Methods**: get, set, bmp (bump), sub (subscribe), unsub (unsubscribe)
+
+### Implementation Files
+- **TCP Client Library**: `src/lib/atlas-tcp-client.ts`
+- **Download API**: `src/app/api/atlas/download-config/route.ts`
+- **Upload API**: `src/app/api/atlas/upload-config/route.ts`
+
+### Configuration Storage
+- **Location**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/`
+- **Primary File**: `{processorId}.json`
+- **Backups**: `{processorId}_backup_{timestamp}.json`
+
+### API Endpoints (Updated)
+- **POST `/api/atlas/download-config`** - Downloads configuration FROM Atlas device via TCP
+  - Connects to device, fetches all parameters
+  - Saves to local filesystem as backup
+  - Falls back to saved file if device unavailable
+- **POST `/api/atlas/upload-config`** - Uploads configuration TO Atlas device via TCP
+  - Saves to local filesystem first (safety)
+  - Uploads to device via TCP
+  - Returns success even if device upload fails (configuration saved locally)
+
+### Testing & Debugging
+```bash
+# Test TCP connection
+nc -zv 192.168.5.101 5321
+
+# View Atlas logs
+pm2 logs sports-bar-tv | grep -i atlas
+
+# Test configuration download
+curl -X POST http://localhost:3000/api/atlas/download-config \
+  -H "Content-Type: application/json" \
+  -d '{"processorId":"atlas-001","ipAddress":"192.168.5.101","inputCount":7,"outputCount":7,"sceneCount":3}'
+```
+
+### Troubleshooting
+- **Connection timeout**: Check device power, network connectivity, firewall
+- **No saved configuration**: Normal on fresh install - will download on first connection
+- **Device unavailable**: Application will use last saved configuration automatically
+
+### Complete Documentation
+For comprehensive details including protocol specifications, message formats, parameter tables, and troubleshooting guides, see:
+**`docs/ATLAS_TCP_IMPLEMENTATION.md`**
+
+
+---
+
+## Atlas TCP Communication Protocol (October 2025 Update)
+
+### Overview
+**IMPORTANT**: As of October 17, 2025, the Atlas configuration management has been completely rewritten to use actual TCP communication with the Atlas device instead of only reading/writing local files.
+
+### Key Changes
+- ✅ Real-time TCP communication with Atlas AZMP8 device on port 5321
+- ✅ JSON-RPC 2.0 protocol implementation
+- ✅ Automatic configuration download from device
+- ✅ Automatic configuration upload to device
+- ✅ Fallback to saved configuration if device unavailable
+- ✅ Comprehensive verbose logging for all operations
+
+### Protocol Details
+- **IP Address**: 192.168.5.101
+- **TCP Port**: 5321 (JSON-RPC 2.0 control)
+- **HTTP Port**: 80 (web interface)
+- **Message Delimiter**: `\r\n` (carriage return + line feed)
+
+### Implementation Files
+- **TCP Client**: `src/lib/atlas-tcp-client.ts`
+- **Download API**: `src/app/api/atlas/download-config/route.ts` (NOW CONNECTS TO DEVICE!)
+- **Upload API**: `src/app/api/atlas/upload-config/route.ts` (NOW CONNECTS TO DEVICE!)
+
+### Configuration Storage
+- **Location**: `/home/ubuntu/Sports-Bar-TV-Controller/data/atlas-configs/`
+- **Naming**: `{processorId}.json` with timestamped backups
+
+### Quick Test
+```bash
+# Test TCP connection
+nc -zv 192.168.5.101 5321
+
+# View Atlas logs
+pm2 logs sports-bar-tv | grep -i atlas
+```
+
+### Complete Documentation
+**See `docs/ATLAS_TCP_IMPLEMENTATION.md` for:**
+- Complete protocol specification
+- Parameter reference tables
+- API usage examples
+- Troubleshooting guide
+- Security considerations
+- Future enhancements
+
+---
