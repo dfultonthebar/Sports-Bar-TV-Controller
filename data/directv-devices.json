@@ -3,13 +3,13 @@
     {
       "id": "directv_1759187217790",
       "name": "Direct TV 1",
-      "ipAddress": "192.168.1.121",
+      "ipAddress": "192.168.5.121",
       "port": 8080,
       "receiverType": "Genie HD DVR",
       "inputChannel": 5,
-      "isOnline": false,
+      "isOnline": true,
       "addedAt": "2025-09-29T23:06:18.386Z",
-      "updatedAt": "2025-09-29T23:07:27.055Z"
+      "updatedAt": "2025-10-16T23:35:16.691Z"
     },
     {
       "id": "directv_1759187265011",
