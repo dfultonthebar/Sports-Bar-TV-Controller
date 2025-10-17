@@ -21,6 +21,13 @@
 - **SUBSCRIPTION_POLLING_IMPLEMENTATION.pdf** - PDF version of polling implementation
 - **SYSTEM_OPTIMIZATION_SUMMARY.md** - System-wide optimization documentation
 
+## SSH Connection & Remote Access
+- **SSH_OPTIMIZATION_GUIDE.md** - Comprehensive guide for efficient SSH connections to remote server
+  - Solves SSH connection hanging issues
+  - Provides optimized connection methods (heredoc, SSH config, control sockets)
+  - Essential for automation and reliable remote server operations
+  - Includes connection multiplexing and performance optimization techniques
+
 ## Why These Documents Matter
 These documents contain:
 - **Approved color palettes** that ensure readability and consistency
