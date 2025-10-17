@@ -1302,6 +1302,343 @@ Management interface for streaming service accounts and configurations.
 
 ---
 
+## 6.5. Global Cache IR Control
+
+### Overview
+Global Cache iTach IR Control system provides comprehensive infrared device management for cable boxes, AV receivers, and other IR-controlled equipment. The system supports both downloading IR codes from the Global Cache IR Database and **learning IR codes directly from physical remote controls**.
+
+**Version:** 2.0 - With IR Learning Support  
+**Last Updated:** October 17, 2025  
+**Status:** Production Ready
+
+### Key Features
+- **Device Management**: Add and manage Global Cache iTach devices (IP2IR, WF2IR, etc.)
+- **IR Code Database**: Download pre-programmed IR codes from Global Cache cloud database
+- **IR Learning**: Learn IR codes directly from physical remote controls
+- **Multi-Port Support**: Configure multiple IR output ports per device
+- **Real-time Testing**: Test device connectivity and IR transmission
+- **Comprehensive Logging**: Verbose logging for debugging and monitoring
+
+### Global Cache Device Management
+
+#### Supported Models
+- **iTach IP2IR**: Ethernet to 3x IR outputs (Port 4998)
+- **iTach WF2IR**: WiFi to 3x IR outputs (Port 4998)
+- **GC-100**: Network adapter with IR/Serial/Relay support
+
+#### Adding Devices
+1. Navigate to Device Configuration → Global Cache tab
+2. Click "Add Device"
+3. Enter device information:
+   - **Device Name**: Friendly name (e.g., "Cable 1 iTach")
+   - **IP Address**: Device network address (e.g., 192.168.5.110)
+   - **Port**: TCP port (default 4998)
+   - **Model** (optional): Device model identifier
+4. Click "Add Device"
+5. System will automatically test connectivity
+
+#### Device Testing
+- Click the "Test" button on any device card
+- System sends `getdevices` command to verify connectivity
+- Results show device information and response time
+- Status indicator shows online/offline state
+
+### IR Learning Feature
+
+**NEW:** The IR learning feature allows you to capture IR codes directly from physical remote controls without needing access to the Global Cache IR Database.
+
+#### How IR Learning Works
+
+The Global Cache iTach devices have a built-in IR receiver (small hole near the power connector) that can capture IR signals from remote controls. The learning process:
+
+1. **Enable Learning Mode**: Device enters learning mode via `get_IRL` command
+2. **Capture Signal**: Point remote at device and press button
+3. **Receive Code**: Device sends captured IR code in Global Cache `sendir` format
+4. **Disable Learning**: Automatic or manual via `stop_IRL` command
+
+#### Using IR Learning
+
+**Step-by-Step Process:**
+
+1. **Navigate to IR Learning Tab**
+   - Go to Device Configuration → Global Cache
+   - Click the "IR Learning" tab
+
+2. **Select Device**
+   - Choose a Global Cache device from the dropdown
+   - Device must be online and reachable
+
+3. **Start Learning**
+   - Click "Start Learning" button
+   - System sends `get_IRL` command to device
+   - Wait for confirmation: "IR Learner Enabled"
+
+4. **Capture IR Signal**
+   - Point your remote control at the Global Cache device
+   - Aim at the small IR receiver hole (near power connector)
+   - Press the button you want to learn
+   - Hold button for 1-2 seconds for best results
+
+5. **View Learned Code**
+   - IR code appears automatically in text area
+   - Code is in Global Cache `sendir` format
+   - Example: `sendir,1:1,1,38000,1,1,342,171,21,64,21,64,...`
+
+6. **Save or Copy Code**
+   - **Option 1**: Click "Copy" to copy code to clipboard
+   - **Option 2**: Enter a function name (e.g., "POWER") and click "Save to IR Device"
+   - Follow instructions to add code to an IR device
+
+**Important Notes:**
+- Learning mode has a 60-second timeout
+- Only one learning session at a time per device
+- Device must not be configured for LED lighting
+- Code is automatically stopped after learning completes
+- Can manually stop learning with "Stop Learning" button
+
+#### IR Learning API Endpoints
+
+**POST `/api/globalcache/learn`**
+Start IR learning session
+
+```json
+{
+  "deviceId": "clx123abc..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "status": "IR code learned successfully",
+  "learnedCode": "sendir,1:1,1,38000,1,1,342,171,21,64,..."
+}
+```
+
+**DELETE `/api/globalcache/learn`**
+Stop IR learning session
+
+```json
+{
+  "deviceId": "clx123abc..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "status": "IR Learner disabled"
+}
+```
+
+#### IR Learning Commands (Global Cache API)
+
+**Enable Learning:**
+```
+get_IRL\r
+```
+
+**Response:**
+```
+IR Learner Enabled
+```
+
+**Learned Code (automatic):**
+```
+sendir,1:1,1,38000,1,1,342,171,21,64,21,64,...\r
+```
+
+**Disable Learning:**
+```
+stop_IRL\r
+```
+
+**Response:**
+```
+IR Learner Disabled
+```
+
+#### Troubleshooting IR Learning
+
+**Problem: "IR Learner Unavailable"**
+- **Cause**: Device is configured for LED lighting control
+- **Solution**: Reconfigure device to disable LED lighting mode
+- **Note**: LED lighting and IR learning cannot be enabled simultaneously
+
+**Problem: "Learning session timeout"**
+- **Cause**: No IR signal received within 60 seconds
+- **Solution**: 
+  - Ensure remote has fresh batteries
+  - Point remote directly at IR receiver hole
+  - Hold button for 1-2 seconds
+  - Try again with stronger IR signal
+
+**Problem: "Connection error"**
+- **Cause**: Cannot connect to Global Cache device
+- **Solution**:
+  - Verify device is powered on
+  - Check network connectivity
+  - Test device in Device Management tab
+  - Verify IP address and port are correct
+
+**Problem: "IR code not working after learning"**
+- **Cause**: Weak or incomplete IR signal captured
+- **Solution**:
+  - Learn code again with remote closer to device
+  - Ensure remote batteries are fresh
+  - Try holding button longer (1-2 seconds)
+  - Verify learned code is not truncated
+
+### Comprehensive Logging
+
+All Global Cache operations include verbose logging for debugging and monitoring.
+
+#### Log Format
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎓 [GLOBAL CACHE] Starting IR learning
+   Device ID: clx123abc...
+   Timestamp: 2025-10-17T12:34:56.789Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### Logged Operations
+
+**Device Management:**
+- Device creation and deletion
+- Connection testing
+- Status updates
+
+**IR Learning:**
+- Learning session start/stop
+- Device connection attempts
+- IR code capture events
+- Learning timeouts and errors
+- Code validation
+
+**Viewing Logs:**
+
+```bash
+# Real-time logs
+pm2 logs sports-bar-tv | grep "GLOBAL CACHE"
+
+# Search logs
+cat ~/.pm2/logs/sports-bar-tv-out.log | grep "GLOBAL CACHE"
+
+# Error logs only
+cat ~/.pm2/logs/sports-bar-tv-error.log | grep "GLOBAL CACHE"
+```
+
+### Database Schema
+
+```prisma
+model GlobalCacheDevice {
+  id          String              @id @default(cuid())
+  name        String
+  ipAddress   String              @unique
+  port        Int                 @default(4998)
+  model       String?
+  status      String              @default("offline")
+  lastSeen    DateTime?
+  ports       GlobalCachePort[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model GlobalCachePort {
+  id                String            @id @default(cuid())
+  deviceId          String
+  portNumber        Int
+  portType          String            @default("IR")
+  assignedTo        String?
+  assignedDeviceId  String?
+  irCodeSet         String?
+  enabled           Boolean           @default(true)
+}
+```
+
+### Integration with IR Devices
+
+Learned IR codes can be saved to IR devices for use in automated control:
+
+1. **Create IR Device** (Device Configuration → IR Devices tab)
+2. **Add New Command** to IR device
+3. **Paste Learned Code** into IR Code field
+4. **Assign Function Name** (e.g., "POWER", "CHANNEL UP")
+5. **Link to Global Cache Port** for transmission
+6. **Test Command** to verify functionality
+
+### Best Practices
+
+#### IR Learning
+1. **Fresh Batteries**: Use remote controls with fresh batteries
+2. **Close Proximity**: Hold remote 2-6 inches from IR receiver
+3. **Direct Aim**: Point directly at IR receiver hole
+4. **Button Hold**: Hold button for 1-2 seconds for best capture
+5. **Verify Code**: Test learned code immediately after capture
+6. **Document Codes**: Add descriptive function names
+7. **Backup Codes**: Keep copies of working codes
+
+#### Device Management
+1. **Static IPs**: Assign static IP addresses to Global Cache devices
+2. **Network Isolation**: Place devices on same subnet as server
+3. **Regular Testing**: Test device connectivity regularly
+4. **Firmware Updates**: Keep device firmware up to date
+5. **Port Organization**: Document which ports control which devices
+
+### Limitations
+
+1. **IR Learning:**
+   - Cannot learn if device configured for LED lighting
+   - 60-second timeout per learning session
+   - One learning session at a time per device
+   - IR receiver location may vary by model
+
+2. **Device Support:**
+   - Requires iTach firmware with IR learning support
+   - Not all Global Cache models support IR learning
+   - WiFi models may have network latency
+
+3. **IR Code Quality:**
+   - Learned codes depend on original remote signal strength
+   - Some remotes use proprietary or non-standard IR protocols
+   - Complex codes may require multiple learning attempts
+
+### Future Enhancements
+
+**Planned Features:**
+- [ ] Bulk IR code learning with batch mode
+- [ ] IR code library management and sharing
+- [ ] Automatic IR device creation from learned codes
+- [ ] IR code testing and verification tools
+- [ ] Advanced code editing and manipulation
+- [ ] Integration with IR device templates
+
+### Support
+
+For issues with Global Cache devices or IR learning:
+
+**Device Issues:**
+- Test connectivity in Device Management tab
+- Check PM2 logs for errors
+- Verify network configuration
+- Review Global Cache API documentation
+
+**IR Learning Issues:**
+- Check logs for detailed error messages
+- Verify device is not in LED lighting mode
+- Test with different remote controls
+- Contact Global Cache support for hardware issues
+
+**Documentation:**
+- Global Cache iTach API: See `global-cache-API-iTach.pdf`
+- IR Database API: See `API-GlobalIRDB_ver1.pdf`
+- System logs: `pm2 logs sports-bar-tv`
+
+---
+
 ## 7. DirecTV Integration
 
 ### Overview

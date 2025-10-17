@@ -15,8 +15,14 @@ import {
   CheckCircle,
   XCircle,
   Info,
-  Loader2
+  Loader2,
+  Zap,
+  Play,
+  StopCircle,
+  Copy,
+  Save
 } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface GlobalCachePort {
   id: string
@@ -54,6 +60,13 @@ export default function GlobalCacheControl() {
     port: '4998',
     model: ''
   })
+  
+  // IR Learning state
+  const [selectedDeviceForLearning, setSelectedDeviceForLearning] = useState<string>('')
+  const [isLearning, setIsLearning] = useState(false)
+  const [learnedCode, setLearnedCode] = useState<string>('')
+  const [learningStatus, setLearningStatus] = useState<string>('')
+  const [functionName, setFunctionName] = useState<string>('')
 
   useEffect(() => {
     fetchDevices()
@@ -159,6 +172,95 @@ export default function GlobalCacheControl() {
     }
   }
 
+  const handleStartLearning = async () => {
+    if (!selectedDeviceForLearning) {
+      alert('Please select a Global Cache device first')
+      return
+    }
+
+    try {
+      setIsLearning(true)
+      setLearningStatus('Starting IR learning mode...')
+      setLearnedCode('')
+
+      const response = await fetch('/api/globalcache/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: selectedDeviceForLearning
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.learnedCode) {
+        setLearnedCode(data.learnedCode)
+        setLearningStatus('IR code learned successfully! You can now copy or save it.')
+      } else {
+        setLearningStatus(`Failed: ${data.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error learning IR code:', error)
+      setLearningStatus('Error: Failed to learn IR code')
+    } finally {
+      setIsLearning(false)
+    }
+  }
+
+  const handleStopLearning = async () => {
+    if (!selectedDeviceForLearning) {
+      return
+    }
+
+    try {
+      setLearningStatus('Stopping IR learning mode...')
+
+      const response = await fetch('/api/globalcache/learn', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: selectedDeviceForLearning
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setLearningStatus('IR learning stopped')
+        setIsLearning(false)
+      } else {
+        setLearningStatus(`Failed to stop: ${data.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error stopping learning:', error)
+      setLearningStatus('Error: Failed to stop learning')
+    }
+  }
+
+  const handleCopyCode = () => {
+    if (learnedCode) {
+      navigator.clipboard.writeText(learnedCode)
+      alert('IR code copied to clipboard!')
+    }
+  }
+
+  const handleSaveCode = () => {
+    if (!learnedCode) {
+      alert('No IR code to save')
+      return
+    }
+
+    if (!functionName.trim()) {
+      alert('Please enter a function name (e.g., "POWER", "CHANNEL UP")')
+      return
+    }
+
+    // Here you would typically save to an IR device
+    // For now, we'll just show the info and allow manual saving
+    alert(`To save this IR code:\n\n1. Go to the IR Devices tab\n2. Create or select an IR device\n3. Add a new command with function name: "${functionName}"\n4. Paste this code into the IR Code field\n\nCode copied to clipboard!`)
+    navigator.clipboard.writeText(learnedCode)
+  }
+
   if (loading && devices.length === 0) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -179,7 +281,7 @@ export default function GlobalCacheControl() {
                 Global Cache IR Control
               </CardTitle>
               <CardDescription>
-                Manage Global Cache iTach devices for infrared control of cable boxes and other IR devices
+                Manage Global Cache iTach devices and learn IR codes from remote controls
               </CardDescription>
             </div>
             <Button
@@ -192,6 +294,21 @@ export default function GlobalCacheControl() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* Tabs for Device Management and IR Learning */}
+      <Tabs defaultValue="devices" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="devices" className="flex items-center gap-2">
+            <Radio className="w-4 h-4" />
+            Device Management
+          </TabsTrigger>
+          <TabsTrigger value="learning" className="flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            IR Learning
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="devices" className="space-y-6">
 
       {/* Add Device Form */}
       {showAddForm && (
@@ -393,6 +510,161 @@ export default function GlobalCacheControl() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* IR Learning Tab */}
+        <TabsContent value="learning" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-400" />
+                Learn IR Codes from Remote Controls
+              </CardTitle>
+              <CardDescription>
+                Use your Global Cache device's built-in IR receiver to learn commands directly from your remote controls
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Device Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="learning-device">Select Global Cache Device</Label>
+                <select
+                  id="learning-device"
+                  value={selectedDeviceForLearning}
+                  onChange={(e) => setSelectedDeviceForLearning(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLearning}
+                >
+                  <option value="">-- Select a device --</option>
+                  {devices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.name} ({device.ipAddress})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Learning Controls */}
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleStartLearning}
+                  disabled={!selectedDeviceForLearning || isLearning}
+                  className="flex items-center gap-2"
+                >
+                  {isLearning ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Learning...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      Start Learning
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  onClick={handleStopLearning}
+                  disabled={!isLearning}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <StopCircle className="w-4 h-4" />
+                  Stop Learning
+                </Button>
+              </div>
+
+              {/* Learning Status */}
+              {learningStatus && (
+                <div className={`p-4 rounded-lg ${
+                  learningStatus.includes('success') 
+                    ? 'bg-green-900/30 border border-green-700' 
+                    : learningStatus.includes('Failed') || learningStatus.includes('Error')
+                    ? 'bg-red-900/30 border border-red-700'
+                    : 'bg-blue-900/30 border border-blue-700'
+                }`}>
+                  <p className="text-sm text-slate-200">{learningStatus}</p>
+                </div>
+              )}
+
+              {/* Learned Code Display */}
+              {learnedCode && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Learned IR Code</Label>
+                    <div className="relative">
+                      <textarea
+                        value={learnedCode}
+                        readOnly
+                        rows={6}
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="absolute top-2 right-2"
+                        onClick={handleCopyCode}
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="function-name">Function Name (Optional)</Label>
+                    <Input
+                      id="function-name"
+                      value={functionName}
+                      onChange={(e) => setFunctionName(e.target.value)}
+                      placeholder="e.g., POWER, CHANNEL UP, VOLUME DOWN"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Give this command a name to help identify it later
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleSaveCode}
+                      className="flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      Save to IR Device
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Instructions Card */}
+          <Card className="border-yellow-500/20 bg-yellow-500/5">
+            <CardContent className="py-4">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-slate-300">
+                  <p className="font-semibold text-yellow-400 mb-2">How to Learn IR Codes:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Select a Global Cache device from the dropdown above</li>
+                    <li>Click "Start Learning" to enable IR learning mode</li>
+                    <li>Point your remote control at the Global Cache device (small hole near power connector)</li>
+                    <li>Press the button you want to learn on your remote control</li>
+                    <li>The IR code will be displayed automatically when learned</li>
+                    <li>Optionally give the command a function name (e.g., "POWER", "VOL UP")</li>
+                    <li>Copy the code or follow the instructions to save it to an IR device</li>
+                  </ol>
+                  <p className="mt-3 text-yellow-400">
+                    <strong>Note:</strong> Learning mode will timeout after 60 seconds if no button is pressed. 
+                    You can stop learning at any time by clicking "Stop Learning".
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
