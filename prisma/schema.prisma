@@ -506,3 +506,39 @@ model ProcessedFile {
   @@index([sourceType])
   @@index([lastProcessed])
 }
+
+// Global Cache iTach IR Control Devices
+model GlobalCacheDevice {
+  id          String              @id @default(cuid())
+  name        String
+  ipAddress   String              @unique
+  port        Int                 @default(4998)
+  model       String?
+  status      String              @default("offline") // "online", "offline", "error"
+  lastSeen    DateTime?
+  ports       GlobalCachePort[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  
+  @@index([status])
+  @@index([ipAddress])
+}
+
+// Global Cache Device Port Configuration
+model GlobalCachePort {
+  id                String            @id @default(cuid())
+  deviceId          String
+  device            GlobalCacheDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  portNumber        Int
+  portType          String            @default("IR") // "IR", "Serial", "Relay"
+  assignedTo        String?           // Friendly name of assigned device
+  assignedDeviceId  String?           // Reference to IRDevice.id if applicable
+  irCodeSet         String?           // Which IR code set is assigned to this port
+  enabled           Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  @@unique([deviceId, portNumber])
+  @@index([deviceId])
+  @@index([assignedDeviceId])
+}
