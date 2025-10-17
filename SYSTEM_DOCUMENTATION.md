@@ -49,7 +49,8 @@ These documents contain:
 
 ### Server Access
 - **Host:** 24.123.87.42
-- **Port:** 224 (SSH)
+- **SSH Port:** 224
+- **RDP Port:** 3389
 - **Application Port:** **3000** (HTTP)
 - **Username:** ubuntu
 - **Password:** 6809233DjD$$$ (THREE dollar signs)
@@ -58,6 +59,44 @@ These documents contain:
 **SSH Connection:**
 ```bash
 ssh -p 224 ubuntu@24.123.87.42
+```
+
+**RDP Connection:**
+- **Purpose:** GUI access to Atlas device local network (192.168.5.101)
+- **Host:** 24.123.87.42
+- **Port:** 3389
+- **Username:** ubuntu
+- **Password:** 6809233DjD$$$ (THREE dollar signs)
+- **Use Case:** Access Atlas device web interface at http://192.168.5.101 through remote desktop
+- **Setup:** RDP server configured on remote server for GUI-based Atlas device management
+
+**RDP Connection Instructions:**
+
+*Windows:*
+```
+1. Open Remote Desktop Connection (mstsc.exe)
+2. Computer: 24.123.87.42:3389
+3. Username: ubuntu
+4. Password: 6809233DjD$$$
+5. Connect and access Atlas device at 192.168.5.101 in browser
+```
+
+*macOS:*
+```
+1. Install Microsoft Remote Desktop from App Store
+2. Add PC with hostname: 24.123.87.42:3389
+3. User account: ubuntu
+4. Password: 6809233DjD$$$
+5. Connect and access Atlas device at 192.168.5.101 in browser
+```
+
+*Linux:*
+```bash
+# Using Remmina
+remmina -c rdp://ubuntu@24.123.87.42:3389
+
+# Using xfreerdp
+xfreerdp /v:24.123.87.42:3389 /u:ubuntu /p:'6809233DjD$$$' /size:1920x1080
 ```
 
 ### GitHub Repository
