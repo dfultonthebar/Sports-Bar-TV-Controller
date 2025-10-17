@@ -175,10 +175,26 @@ export default function AtlasProgrammingInterface() {
       const response = await fetch(`/api/atlas/configuration?processorId=${processorId}`)
       if (response.ok) {
         const config = await response.json()
-        setInputs(config.inputs || generateDefaultInputs())
-        setOutputs(config.outputs || generateDefaultOutputs())
+        console.log('[Atlas Config] Fetching configuration for processor:', processorId)
+        console.log('[Atlas Config] Received configuration:', config)
+        
+        // Normalize inputs to ensure routing array exists
+        const normalizedInputs = (config.inputs || generateDefaultInputs()).map((input: InputConfig) => ({
+          ...input,
+          routing: Array.isArray(input.routing) ? input.routing : []
+        }))
+        
+        // Normalize outputs to ensure all properties exist
+        const normalizedOutputs = (config.outputs || generateDefaultOutputs()).map((output: OutputConfig) => ({
+          ...output,
+          eq: output.eq || { band1: 0, band2: 0, band3: 0 }
+        }))
+        
+        setInputs(normalizedInputs)
+        setOutputs(normalizedOutputs)
         setScenes(config.scenes || [])
         setMessages(config.messages || [])
+        console.log('[Atlas Config] Configuration loaded successfully')
       } else {
         // Generate default configuration if none exists
         setInputs(generateDefaultInputs())
@@ -301,7 +317,7 @@ export default function AtlasProgrammingInterface() {
     // Also remove this output from all input routings
     setInputs(prev => prev.map(input => ({
       ...input,
-      routing: input.routing.filter(r => r !== outputId)
+      routing: (input.routing || []).filter(r => r !== outputId)
     })))
   }
 
@@ -1286,11 +1302,12 @@ export default function AtlasProgrammingInterface() {
                                   <label key={output.id} className="flex items-center gap-1 text-xs cursor-pointer">
                                     <input
                                       type="checkbox"
-                                      checked={input.routing.includes(output.id)}
+                                      checked={input.routing?.includes(output.id) || false}
                                       onChange={(e) => {
+                                        const currentRouting = input.routing || []
                                         const newRouting = e.target.checked
-                                          ? [...input.routing, output.id]
-                                          : input.routing.filter(r => r !== output.id)
+                                          ? [...currentRouting, output.id]
+                                          : currentRouting.filter(r => r !== output.id)
                                         updateInput(input.id, { routing: newRouting })
                                       }}
                                       className="rounded"
