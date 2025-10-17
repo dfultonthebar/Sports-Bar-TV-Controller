@@ -379,24 +379,88 @@ export class IRDatabaseService {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
-      const response = await fetch(
-        `${IR_DATABASE_BASE_URL}/api/codesets/${codesetId}/functions/${encodedFunction}/codes?apikey=${apiKey}&output=direct&format=${format}`
-      )
-      const data: IRDBCode = await response.json()
+      const url = `${IR_DATABASE_BASE_URL}/api/codesets/${codesetId}/functions/${encodedFunction}/codes?apikey=${apiKey}&output=direct&format=${format}`
+      console.log('   API URL:', url)
+      
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data: any = await response.json()
+      
+      // Log raw API response for debugging
+      console.log('📥 [IR DATABASE] Raw API Response:')
+      console.log('   Response type:', typeof data)
+      console.log('   Response keys:', Object.keys(data || {}))
+      console.log('   Has Code1:', 'Code1' in (data || {}))
+      console.log('   Code1 value:', data?.Code1)
+      
+      // Check if this is a CodeResponse (error) instead of a Code (success)
+      if (data.Status) {
+        console.log('⚠️  [IR DATABASE] Received CodeResponse (not Code)')
+        console.log('   Status:', data.Status)
+        console.log('   Message:', data.Message)
+        console.log('   Error Code:', data.Code)
+        
+        // Map error codes to messages
+        const errorMessages: { [key: number]: string } = {
+          2: 'API Key not found',
+          3: 'User found, but is not currently logged in',
+          4: 'Too many IR codes already requested today (rate limit)',
+          5: 'Unknown output type requested',
+          6: 'Direct output type is not allowed for this account',
+          7: 'API key is required but was not provided',
+          8: 'Failed to send email (invalid email address)',
+          9: 'Unknown format requested'
+        }
+        
+        const errorMsg = errorMessages[data.Code] || data.Message || 'Unknown error from Global Cache API'
+        console.log('❌ [IR DATABASE] API Error:', errorMsg)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        
+        logDatabaseOperation('IR_DATABASE', 'download_code_api_error', {
+          codesetId,
+          functionName,
+          errorCode: data.Code,
+          errorMessage: errorMsg
+        })
+        
+        throw new Error(errorMsg)
+      }
+      
+      // Validate that we have the required Code1 field
+      if (!data.Code1) {
+        console.log('❌ [IR DATABASE] Missing Code1 field in response')
+        console.log('   Response data:', JSON.stringify(data, null, 2))
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        
+        logDatabaseOperation('IR_DATABASE', 'download_code_missing_field', {
+          codesetId,
+          functionName,
+          responseKeys: Object.keys(data || {})
+        })
+        
+        throw new Error('IR code data missing from API response. Code1 field is required but was not returned.')
+      }
       
       console.log('✅ [IR DATABASE] Code downloaded successfully')
       console.log('   Function:', functionName)
-      console.log('   Code length:', data.Code1?.length || 0)
+      console.log('   Code1 length:', data.Code1.length)
+      console.log('   HexCode1 length:', data.HexCode1?.length || 0)
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'download_code', {
         codesetId,
         functionName,
         format,
-        success: true
+        success: true,
+        code1Length: data.Code1.length,
+        hasHexCode: !!data.HexCode1
       })
 
-      return data
+      return data as IRDBCode
     } catch (error: any) {
       console.log('❌ [IR DATABASE] Error downloading code:', error.message)
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

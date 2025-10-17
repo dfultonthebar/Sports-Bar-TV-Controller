@@ -57,12 +57,22 @@ export async function POST(request: NextRequest) {
     // Download each function
     for (const func of functions) {
       try {
+        console.log(`\n📥 Downloading: ${func.functionName}`)
+        
         const code = await irDatabaseService.downloadCode(
           codesetId,
           func.functionName,
           credentials.apiKey,
           'gc'
         )
+
+        // Validate that we received a valid code
+        if (!code || !code.Code1) {
+          throw new Error('Invalid IR code received: Code1 field is missing or undefined')
+        }
+
+        console.log(`   ✓ Code1 received: ${code.Code1.substring(0, 50)}...`)
+        console.log(`   ✓ HexCode1: ${code.HexCode1 ? 'Yes' : 'No'}`)
 
         // Check if command already exists
         const existingCommand = await prisma.iRCommand.findUnique({
@@ -80,13 +90,13 @@ export async function POST(request: NextRequest) {
             where: { id: existingCommand.id },
             data: {
               irCode: code.Code1,
-              hexCode: code.HexCode1,
+              hexCode: code.HexCode1 || null,
               codeSetId: codesetId,
               category: func.category
             }
           })
           downloadedCommands.push(updated)
-          console.log('✅ Updated command:', func.functionName)
+          console.log(`✅ Updated command: ${func.functionName}`)
         } else {
           // Create new command
           const created = await prisma.iRCommand.create({
@@ -94,16 +104,22 @@ export async function POST(request: NextRequest) {
               deviceId,
               functionName: func.functionName,
               irCode: code.Code1,
-              hexCode: code.HexCode1,
+              hexCode: code.HexCode1 || null,
               codeSetId: codesetId,
               category: func.category
             }
           })
           downloadedCommands.push(created)
-          console.log('✅ Created command:', func.functionName)
+          console.log(`✅ Created command: ${func.functionName}`)
         }
       } catch (error: any) {
-        console.error(`❌ Error downloading ${func.functionName}:`, error.message)
+        console.error(`❌ Error downloading ${func.functionName}:`)
+        console.error(`   Error type: ${error.constructor.name}`)
+        console.error(`   Error message: ${error.message}`)
+        if (error.stack) {
+          console.error(`   Stack trace: ${error.stack.split('\n').slice(0, 3).join('\n')}`)
+        }
+        
         errors.push({
           functionName: func.functionName,
           error: error.message

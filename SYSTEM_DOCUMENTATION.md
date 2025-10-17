@@ -2242,6 +2242,112 @@ model IRCommand {
 3. Check for IR interference from other sources
 4. Test Global Cache device with other commands
 
+#### Issue: "Argument `irCode` is missing" error when downloading IR codes
+
+**Error Message:**
+```
+❌ Error downloading VOLUME UP: 
+Invalid `prisma.iRCommand.create()` invocation:
+{
+  data: {
+    deviceId: "...",
+    functionName: "VOLUME UP",
+    hexCode: undefined,
+    codeSetId: "6935",
+    category: "Volume",
++   irCode: String
+  }
+}
+Argument `irCode` is missing.
+```
+
+**Root Causes:**
+1. **API Rate Limit**: Global Cache API has daily download limits
+2. **Invalid API Key**: API key expired or not logged in
+3. **Missing Code Data**: API returned error response instead of code data
+4. **Network Issues**: Connection problems with Global Cache servers
+
+**Fix Applied (October 17, 2025):**
+
+The system now includes comprehensive validation and error handling:
+
+1. **API Response Validation**: Checks if response is a `CodeResponse` (error) vs `Code` (success)
+2. **Error Code Mapping**: Maps Global Cache API error codes to human-readable messages:
+   - Code 2: API Key not found
+   - Code 3: User not logged in
+   - Code 4: Too many requests (rate limit exceeded)
+   - Code 5: Unknown output type
+   - Code 6: Direct output not allowed for account
+   - Code 7: API key required but not provided
+   - Code 8: Email send failed
+   - Code 9: Unknown format requested
+3. **Missing Field Detection**: Validates that `Code1` field exists before creating database entry
+4. **Enhanced Logging**: Detailed console logs show raw API responses and validation steps
+
+**Diagnostic Steps:**
+1. **Check PM2 logs** for detailed error messages:
+   ```bash
+   pm2 logs sports-bar-tv | grep "IR DATABASE"
+   ```
+
+2. **Look for API error codes** in logs:
+   ```
+   ⚠️  [IR DATABASE] Received CodeResponse (not Code)
+      Status: failure
+      Message: Too many IR codes already requested today
+      Error Code: 4
+   ```
+
+3. **Verify API credentials**:
+   - Check if logged in to Global Cache IR Database
+   - Verify API key is valid and active
+   - Re-login if necessary
+
+4. **Check rate limits**:
+   - Global Cache limits downloads per day
+   - Wait 24 hours if rate limit exceeded
+   - Consider using sandbox mode for testing
+
+**Solutions:**
+
+1. **Rate Limit Exceeded (Error Code 4)**:
+   - Wait until next day (resets at midnight UTC)
+   - Use sandbox mode for testing: Add `sandbox=true` to API URL
+   - Prioritize essential commands only
+
+2. **API Key Issues (Error Code 2, 3, 7)**:
+   - Navigate to IR Device Setup
+   - Click "IR Database Login"
+   - Enter credentials and re-login
+   - Verify API key is stored in database
+
+3. **Network/Connection Issues**:
+   - Check internet connectivity
+   - Verify firewall allows outbound HTTPS to irdb.globalcache.com:8081
+   - Test connection to Global Cache API
+
+4. **Invalid Code Data**:
+   - Try different codeset for same device
+   - Report issue to Global Cache support
+   - Use learning mode if available
+
+**Verification:**
+
+After fix, successful downloads show:
+```
+✅ [IR DATABASE] Code downloaded successfully
+   Function: VOLUME UP
+   Code1 length: 68
+   HexCode1 length: 32
+✅ Created command: VOLUME UP
+```
+
+**Prevention:**
+- Monitor daily download count
+- Download codes in batches to avoid rate limits
+- Keep API credentials current and valid
+- Use comprehensive error handling in custom integrations
+
 ### Best Practices
 
 #### Global Cache Device Naming
