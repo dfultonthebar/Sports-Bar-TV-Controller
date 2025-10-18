@@ -1136,19 +1136,19 @@ export default function AtlasProgrammingInterface() {
                   <TabsList className="grid w-full grid-cols-4 mb-6">
                     <TabsTrigger value="inputs" className="flex items-center gap-2">
                       <Mic className="h-4 w-4" />
-                      Inputs ({inputs.length})
+                      Inputs ({(inputs || []).length})
                     </TabsTrigger>
                     <TabsTrigger value="outputs" className="flex items-center gap-2">
                       <Volume2 className="h-4 w-4" />
-                      Outputs ({outputs.length})
+                      Outputs ({(outputs || []).length})
                     </TabsTrigger>
                     <TabsTrigger value="scenes" className="flex items-center gap-2">
                       <Zap className="h-4 w-4" />
-                      Scenes ({scenes.length})
+                      Scenes ({(scenes || []).length})
                     </TabsTrigger>
                     <TabsTrigger value="messages" className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4" />
-                      Messages ({messages.length})
+                      Messages ({(messages || []).length})
                     </TabsTrigger>
                   </TabsList>
 

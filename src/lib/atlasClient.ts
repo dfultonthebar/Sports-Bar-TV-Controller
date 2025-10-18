@@ -52,7 +52,7 @@ export class AtlasTCPClient {
   constructor(config: AtlasConnectionConfig) {
     this.config = {
       ipAddress: config.ipAddress,
-      port: config.port || 3804,
+      port: config.port || 23,  // Atlas uses port 23 (telnet) for TCP control
       timeout: config.timeout || 5000,
       maxRetries: config.maxRetries || 3
     }
