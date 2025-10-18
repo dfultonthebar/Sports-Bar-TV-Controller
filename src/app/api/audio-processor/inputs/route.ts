@@ -48,18 +48,42 @@ export async function GET(request: NextRequest) {
 
       if (configData.success && configData.inputs && configData.inputs.length > 0) {
         // Merge custom configurations with model defaults
-        const customInputs = configData.inputs.map((customInput: any) => {
-          const modelInput = inputs.find(i => i.id === customInput.id || i.number === customInput.physicalInput)
-          return {
-            ...modelInput,
-            ...customInput,
-            isCustom: true
+        // Build a map of custom inputs for quick lookup
+        const customInputsMap = new Map(
+          configData.inputs.map((input: any) => [input.id, input])
+        )
+
+        // Merge all model inputs with custom configurations where available
+        const mergedInputs = inputs.map(modelInput => {
+          const customInput = customInputsMap.get(modelInput.id)
+          
+          if (customInput) {
+            // Merge custom configuration with model defaults
+            return {
+              ...modelInput,
+              ...customInput,
+              isCustom: true
+            }
+          } else {
+            // Use model defaults
+            return {
+              id: modelInput.id,
+              number: modelInput.number,
+              name: modelInput.name,
+              type: modelInput.type,
+              connector: modelInput.connector,
+              description: modelInput.description,
+              priority: modelInput.priority,
+              isCustom: false
+            }
           }
         })
 
+        console.log(`Merged ${mergedInputs.length} inputs (${configData.inputs.length} custom, ${inputs.length} total)`)
+
         return NextResponse.json({
           success: true,
-          inputs: customInputs,
+          inputs: mergedInputs,
           processorId,
           model: processor.model
         })

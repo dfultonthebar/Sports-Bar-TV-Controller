@@ -64,22 +64,47 @@ export async function GET(request: NextRequest) {
 
       if (configData.success && configData.outputs && configData.outputs.length > 0) {
         // Merge custom configurations with model defaults
-        outputs = configData.outputs.map((customOutput: any) => {
-          const modelOutput = modelOutputs.find(
-            o => o.id === customOutput.id || o.number === customOutput.physicalOutput
-          )
-          return {
-            ...modelOutput,
-            id: customOutput.id || modelOutput?.id,
-            number: customOutput.physicalOutput || modelOutput?.number,
-            name: customOutput.name || modelOutput?.name,
-            type: customOutput.type || modelOutput?.type,
-            levelDb: customOutput.levelDb ?? -20,
-            muted: customOutput.muted ?? false,
-            groupId: customOutput.groupId || null,
-            isCustom: true
+        // Build a map of custom outputs for quick lookup
+        const customOutputsMap = new Map(
+          configData.outputs.map((output: any) => [output.id, output])
+        )
+
+        // Merge all model outputs with custom configurations where available
+        outputs = modelOutputs.map(modelOutput => {
+          const customOutput = customOutputsMap.get(modelOutput.id)
+          
+          if (customOutput) {
+            // Merge custom configuration with model defaults
+            return {
+              ...modelOutput,
+              id: customOutput.id || modelOutput.id,
+              number: customOutput.physicalOutput || modelOutput.number,
+              name: customOutput.name || modelOutput.name,
+              type: customOutput.type || modelOutput.type,
+              levelDb: customOutput.levelDb ?? -20,
+              muted: customOutput.muted ?? false,
+              groupId: customOutput.groupId || null,
+              isCustom: true
+            }
+          } else {
+            // Use model defaults
+            return {
+              id: modelOutput.id,
+              number: modelOutput.number,
+              name: modelOutput.name,
+              type: modelOutput.type,
+              connector: modelOutput.connector,
+              powerRating: modelOutput.powerRating,
+              description: modelOutput.description,
+              isCustom: false,
+              levelDb: -20,
+              muted: false,
+              groupId: null
+            }
           }
         })
+
+        console.log(`Merged ${outputs.length} outputs (${configData.outputs.length} custom, ${modelOutputs.length} total)`)
       }
     } catch (configError) {
       console.log('No custom output configuration found, using model defaults')
