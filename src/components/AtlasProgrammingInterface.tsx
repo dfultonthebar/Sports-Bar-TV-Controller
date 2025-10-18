@@ -190,10 +190,23 @@ export default function AtlasProgrammingInterface() {
           eq: output.eq || { band1: 0, band2: 0, band3: 0 }
         }))
         
+        // Normalize scenes to ensure inputs and outputs arrays exist
+        const normalizedScenes = (config.scenes || []).map((scene: SceneConfig) => ({
+          ...scene,
+          inputs: Array.isArray(scene.inputs) ? scene.inputs : [],
+          outputs: Array.isArray(scene.outputs) ? scene.outputs : []
+        }))
+        
+        // Normalize messages to ensure all properties exist
+        const normalizedMessages = (config.messages || []).map((message: MessageConfig) => ({
+          ...message,
+          zones: Array.isArray(message.zones) ? message.zones : []
+        }))
+        
         setInputs(normalizedInputs)
         setOutputs(normalizedOutputs)
-        setScenes(config.scenes || [])
-        setMessages(config.messages || [])
+        setScenes(normalizedScenes)
+        setMessages(normalizedMessages)
         console.log('[Atlas Config] Configuration loaded successfully')
       } else {
         // Generate default configuration if none exists
@@ -1505,11 +1518,11 @@ export default function AtlasProgrammingInterface() {
                             <div className="text-xs text-slate-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Mic className="h-3 w-3" />
-                                <span>{scene.inputs.length} inputs configured</span>
+                                <span>{(scene.inputs || []).length} inputs configured</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Volume2 className="h-3 w-3" />
-                                <span>{scene.outputs.length} outputs configured</span>
+                                <span>{(scene.outputs || []).length} outputs configured</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Clock className="h-3 w-3" />
