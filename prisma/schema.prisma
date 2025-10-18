@@ -193,8 +193,8 @@ model AudioProcessor {
   name        String
   model       String      // "AZM4", "AZM8", "AZMP4", "AZMP8", etc.
   ipAddress   String
-  port        Int         @default(80)       // HTTP API port
-  tcpPort     Int         @default(3804)     // TCP JSON-RPC port for 3rd party control
+  port        Int         @default(80)       // HTTP API port (web interface)
+  tcpPort     Int         @default(23)       // TCP JSON-RPC port for 3rd party control (telnet port)
   username    String?     // HTTP Basic Auth username
   password    String?     // HTTP Basic Auth password (stored encrypted)
   zones       Int         @default(4)

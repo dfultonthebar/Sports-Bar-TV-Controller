@@ -263,6 +263,44 @@ export default function AudioProcessorManager() {
     }
   }
 
+  const queryHardware = async (processor: AudioProcessor) => {
+    showMessage(`Querying hardware configuration from ${processor.name}...`)
+
+    try {
+      const response = await fetch('/api/atlas/query-hardware', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: processor.id,
+          testOnly: false
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        showMessage(`Hardware configuration retrieved: ${result.configuration.sources} sources, ${result.configuration.zones} zones`)
+        
+        // Update processor status
+        setProcessors(processors.map(p => 
+          p.id === processor.id 
+            ? { ...p, status: 'online', lastSeen: new Date().toISOString() }
+            : p
+        ))
+        
+        // Refresh zones to show the new configuration
+        if (selectedProcessor && selectedProcessor.id === processor.id) {
+          fetchZones(processor.id)
+        }
+      } else {
+        showMessage(`Failed to query hardware: ${result.error || result.details}`, 'error')
+      }
+    } catch (error) {
+      console.error('Error querying hardware:', error)
+      showMessage('Failed to query hardware configuration', 'error')
+    }
+  }
+
   const controlZone = async (action: string, zone: AudioZone, value?: any) => {
     if (!selectedProcessor) return
 
@@ -892,6 +930,15 @@ export default function AudioProcessorManager() {
                     >
                       <Wifi className="h-4 w-4 mr-2" />
                       Test Connection
+                    </Button>
+                    <Button
+                      onClick={() => queryHardware(selectedProcessor)}
+                      variant="outline"
+                      size="sm"
+                      className="border-green-200 text-green-700 hover:bg-green-50"
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      Query Hardware
                     </Button>
                     <Button
                       onClick={() => window.open(`http://${selectedProcessor.ipAddress}:${selectedProcessor.port}`, '_blank')}
