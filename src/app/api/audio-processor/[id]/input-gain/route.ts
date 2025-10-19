@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import * as net from 'net'
+import { atlasLogger } from '@/lib/atlas-logger'
 
 interface RouteContext {
   params: {
@@ -150,8 +151,10 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
     const gainSettings: any[] = []
     let responseBuffer = ''
 
+    atlasLogger.connectionAttempt(processor.ipAddress, 5321)
+
     client.connect(5321, processor.ipAddress, () => {
-      console.log(`Connected to processor ${processor.ipAddress} for gain query`)
+      atlasLogger.connectionSuccess(processor.ipAddress, 5321)
 
       // Query gain for inputs 1-10 (AZMP8 has 10 inputs)
       const inputCount = processor.model.includes('AZMP8') ? 10 : 
@@ -167,21 +170,24 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
             fmt: "val"
           }
         }
-        client.write(JSON.stringify(command) + '\n')
+        atlasLogger.commandSent(command, processor.ipAddress)
+        client.write(JSON.stringify(command) + '\r\n')  // Fixed: Use \r\n instead of \n
       }
     })
 
     client.on('data', (data) => {
       responseBuffer += data.toString()
       
-      // Process complete JSON responses
-      const lines = responseBuffer.split('\n')
+      // Process complete JSON responses (split by \r\n)
+      const lines = responseBuffer.split('\r\n')
       responseBuffer = lines.pop() || '' // Keep incomplete line in buffer
 
       for (const line of lines) {
         if (line.trim()) {
           try {
             const response = JSON.parse(line)
+            atlasLogger.responseReceived(response, processor.ipAddress)
+            
             if (response.result && response.id) {
               gainSettings.push({
                 inputNumber: response.id,
@@ -190,7 +196,7 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
               })
             }
           } catch (error) {
-            console.error('Error parsing gain response:', error)
+            atlasLogger.error('PARSING', 'Error parsing gain response', { line, error })
           }
         }
       }
@@ -204,12 +210,12 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
     })
 
     client.on('close', () => {
-      console.log('Connection closed')
+      atlasLogger.connectionClosed(processor.ipAddress, 5321)
       resolve(gainSettings)
     })
 
     client.on('error', (error) => {
-      console.error('TCP connection error:', error)
+      atlasLogger.connectionFailure(processor.ipAddress, 5321, error)
       reject(error)
     })
 
@@ -226,8 +232,11 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
   return new Promise((resolve, reject) => {
     const client = new net.Socket()
 
+    atlasLogger.connectionAttempt(processor.ipAddress, 5321)
+
     client.connect(5321, processor.ipAddress, () => {
-      console.log(`Connected to processor ${processor.ipAddress} to set gain`)
+      atlasLogger.connectionSuccess(processor.ipAddress, 5321)
+      atlasLogger.inputGainAdjustment(inputNumber, gain, processor.ipAddress)
 
       const command = {
         jsonrpc: "2.0",
@@ -239,28 +248,35 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
         }
       }
 
-      client.write(JSON.stringify(command) + '\n')
+      atlasLogger.commandSent(command, processor.ipAddress)
+      client.write(JSON.stringify(command) + '\r\n')  // Fixed: Use \r\n instead of \n
     })
 
     client.on('data', (data) => {
       try {
-        const response = JSON.parse(data.toString())
+        const response = JSON.parse(data.toString().trim())
+        atlasLogger.responseReceived(response, processor.ipAddress)
         client.end()
         resolve(response)
       } catch (error) {
-        console.error('Error parsing set gain response:', error)
+        atlasLogger.error('PARSING', 'Error parsing set gain response', error)
         client.end()
         reject(error)
       }
     })
 
     client.on('error', (error) => {
-      console.error('TCP connection error:', error)
+      atlasLogger.connectionFailure(processor.ipAddress, 5321, error)
       reject(error)
     })
 
     // Timeout after 3 seconds
     setTimeout(() => {
+      atlasLogger.warn('TIMEOUT', 'Set gain operation timed out', { 
+        inputNumber, 
+        gain, 
+        processor: processor.ipAddress 
+      })
       client.end()
       reject(new Error('Set gain timeout'))
     }, 3000)

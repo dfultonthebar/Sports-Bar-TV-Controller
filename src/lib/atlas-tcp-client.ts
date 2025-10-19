@@ -4,6 +4,7 @@
  */
 
 import net from 'net'
+import { atlasLogger } from './atlas-logger'
 
 interface AtlasCommand {
   jsonrpc: '2.0'
@@ -26,7 +27,7 @@ export class AtlasTCPClient {
   private connected: boolean = false
   private commandId: number = 1
 
-  constructor(host: string, port: number = 23) {  // Atlas uses port 23 (telnet) for TCP control
+  constructor(host: string, port: number = 5321) {  // Atlas AZMP8 uses port 5321 for TCP control
     this.host = host
     this.port = port
   }
