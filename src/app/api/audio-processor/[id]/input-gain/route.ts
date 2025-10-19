@@ -1,3 +1,19 @@
+/**
+ * Atlas Input Gain Control API
+ * 
+ * Implements proper Atlas third-party control protocol for input gain adjustment.
+ * 
+ * IMPORTANT: Atlas uses 0-based indexing for all parameters:
+ * - UI displays Input 1, 2, 3... (1-based)
+ * - Atlas protocol uses SourceGain_0, SourceGain_1, SourceGain_2... (0-based)
+ * 
+ * Protocol Reference: ATS006993-B-AZM4-AZM8-3rd-Party-Control.pdf
+ * - Parameter: SourceGain_X (X = 0 to N-1)
+ * - Range: -80 to 0 dB
+ * - Format: val (value in dB)
+ * - TCP Port: 5321
+ * - Message terminator: \r\n
+ */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
@@ -156,22 +172,24 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
     client.connect(5321, processor.ipAddress, () => {
       atlasLogger.connectionSuccess(processor.ipAddress, 5321)
 
-      // Query gain for inputs 1-10 (AZMP8 has 10 inputs)
+      // Query gain for inputs (0-based indexing as per Atlas protocol)
+      // AZMP8 has 10 inputs, AZMP4 has 4 inputs, AZM8 has 8 inputs
       const inputCount = processor.model.includes('AZMP8') ? 10 : 
                         processor.model.includes('AZMP4') ? 4 : 8
 
-      for (let i = 1; i <= inputCount; i++) {
+      // Atlas protocol uses 0-based indexing: SourceGain_0, SourceGain_1, etc.
+      for (let i = 0; i < inputCount; i++) {
         const command = {
           jsonrpc: "2.0",
-          id: i,
+          id: i + 1,  // Response ID for tracking (1-based for easier mapping)
           method: "get",
           params: {
-            param: `Input${i}Gain`,
+            param: `SourceGain_${i}`,  // Fixed: Use SourceGain_X with 0-based indexing
             fmt: "val"
           }
         }
         atlasLogger.commandSent(command, processor.ipAddress)
-        client.write(JSON.stringify(command) + '\r\n')  // Fixed: Use \r\n instead of \n
+        client.write(JSON.stringify(command) + '\r\n')
       }
     })
 
@@ -189,10 +207,13 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
             atlasLogger.responseReceived(response, processor.ipAddress)
             
             if (response.result && response.id) {
+              // Response ID is 1-based (for tracking), but Atlas index is 0-based
+              const atlasIndex = response.id - 1
               gainSettings.push({
-                inputNumber: response.id,
-                gain: parseFloat(response.result.val),
-                parameterName: `Input${response.id}Gain`
+                inputNumber: response.id,  // Keep 1-based for UI display
+                gain: parseFloat(response.result.val || response.result),
+                parameterName: `SourceGain_${atlasIndex}`,  // Fixed: Use SourceGain_X
+                atlasIndex: atlasIndex  // 0-based index for Atlas protocol
               })
             }
           } catch (error) {
@@ -238,18 +259,21 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
       atlasLogger.connectionSuccess(processor.ipAddress, 5321)
       atlasLogger.inputGainAdjustment(inputNumber, gain, processor.ipAddress)
 
+      // Convert 1-based UI input number to 0-based Atlas index
+      const atlasIndex = inputNumber - 1
+
       const command = {
         jsonrpc: "2.0",
         id: 1,
         method: "set",
         params: {
-          param: `Input${inputNumber}Gain`,
+          param: `SourceGain_${atlasIndex}`,  // Fixed: Use SourceGain_X with 0-based index
           val: gain
         }
       }
 
       atlasLogger.commandSent(command, processor.ipAddress)
-      client.write(JSON.stringify(command) + '\r\n')  // Fixed: Use \r\n instead of \n
+      client.write(JSON.stringify(command) + '\r\n')
     })
 
     client.on('data', (data) => {

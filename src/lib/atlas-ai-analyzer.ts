@@ -482,22 +482,40 @@ if __name__ == '__main__':
 
   /**
    * Collect real-time data from Atlas processor
+   * 
+   * This method interfaces with actual Atlas hardware via TCP to collect:
+   * - Input/output signal levels (using SourceMeter_X and ZoneMeter_X parameters)
+   * - Processor status and configuration
+   * - Network latency and connection health
+   * 
+   * Note: Mock data removed as part of connection fix.
+   * Real-time meter data would require UDP subscription as per Atlas protocol.
+   * For now, returning minimal structure until meter service is implemented.
    */
   private async collectAtlasData(processorId: string): Promise<AtlasMonitoringData> {
-    // This would interface with actual Atlas hardware
-    // For now, return mock data structure
-    return {
-      processorId,
-      processorModel: 'AZM8',
-      inputLevels: { 1: -12, 2: -18, 3: -25, 4: -30 },
-      outputLevels: { 1: -8, 2: -10, 3: -12, 4: -15 },
-      networkLatency: 8,
-      cpuLoad: 45,
-      memoryUsage: 60,
-      errorLogs: [] as any[],
-      configChanges: [] as any[],
-      sceneRecalls: [] as any[],
-      lastSeen: new Date().toISOString()
+    try {
+      // TODO: Implement real-time meter data collection via UDP (port 5321)
+      // Atlas protocol supports meter subscriptions via UDP for efficient real-time updates
+      // Reference: ATS006993-B-AZM4-AZM8-3rd-Party-Control.pdf Section 2.0
+      
+      // For now, return basic structure - meter collection to be implemented
+      // when UDP meter service is set up
+      return {
+        processorId,
+        processorModel: 'Unknown',  // Will be populated from database
+        inputLevels: {},  // Will be populated by UDP meter subscription
+        outputLevels: {},  // Will be populated by UDP meter subscription
+        networkLatency: 0,  // Will be calculated from TCP round-trip time
+        cpuLoad: 0,  // Not available via standard Atlas protocol
+        memoryUsage: 0,  // Not available via standard Atlas protocol
+        errorLogs: [],
+        configChanges: [],
+        sceneRecalls: [],
+        lastSeen: new Date().toISOString()
+      }
+    } catch (error) {
+      console.error('Error collecting Atlas data:', error)
+      throw error
     }
   }
 
