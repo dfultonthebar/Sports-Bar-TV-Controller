@@ -31,29 +31,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Audio processor not found' }, { status: 404 })
     }
 
-    // Use tcpPort for Atlas communication (default 23 for JSON-RPC)
+    // Use correct ports for Atlas communication
+    // - HTTP port (default 80): For web interface and configuration discovery
+    // - TCP port (default 5321): For JSON-RPC control commands
     const ipAddress = processor.ipAddress
-    const port = processor.tcpPort || 23
+    const httpPort = processor.port || 80
+    const tcpPort = processor.tcpPort || 5321  // Changed default from 23 to 5321
+    const username = processor.username || undefined
+    const password = processor.password || undefined
 
-    console.log(`[Query Hardware] Querying Atlas processor at ${ipAddress}:${port}`)
+    console.log(`[Query Hardware] Querying Atlas processor at ${ipAddress}`)
+    console.log(`[Query Hardware] HTTP Port: ${httpPort}, TCP Port: ${tcpPort}`)
 
     // If testOnly, just test connection
     if (testOnly) {
-      const connectionSuccess = await testAtlasConnection(ipAddress, port)
+      const connectionSuccess = await testAtlasConnection(ipAddress, tcpPort)
       return NextResponse.json({
         success: connectionSuccess,
         message: connectionSuccess 
-          ? `Successfully connected to Atlas processor at ${ipAddress}:${port}` 
-          : `Failed to connect to Atlas processor at ${ipAddress}:${port}`,
+          ? `Successfully connected to Atlas processor at ${ipAddress}:${tcpPort}` 
+          : `Failed to connect to Atlas processor at ${ipAddress}:${tcpPort}`,
         ipAddress,
-        port
+        httpPort,
+        tcpPort
       })
     }
 
     // Query the hardware configuration
     let hardwareConfig
     try {
-      hardwareConfig = await queryAtlasHardwareConfiguration(ipAddress, port, processor.model)
+      hardwareConfig = await queryAtlasHardwareConfiguration(
+        ipAddress, 
+        tcpPort,     // TCP control port
+        processor.model,
+        httpPort,    // HTTP web interface port
+        username,    // HTTP basic auth
+        password     // HTTP basic auth
+      )
     } catch (error) {
       console.error('[Query Hardware] Failed to query hardware:', error)
       return NextResponse.json({
@@ -61,7 +75,8 @@ export async function POST(request: NextRequest) {
         error: 'Failed to query Atlas hardware',
         details: error instanceof Error ? error.message : 'Unknown error',
         ipAddress,
-        port
+        httpPort,
+        tcpPort
       }, { status: 500 })
     }
 
@@ -97,7 +112,8 @@ export async function POST(request: NextRequest) {
     const config = {
       processorId,
       ipAddress,
-      port,
+      httpPort,
+      tcpPort,
       model: processor.model,
       inputs,
       outputs,
@@ -170,7 +186,8 @@ export async function POST(request: NextRequest) {
       inputs,
       outputs,
       ipAddress,
-      port
+      httpPort,
+      tcpPort
     })
 
   } catch (error) {

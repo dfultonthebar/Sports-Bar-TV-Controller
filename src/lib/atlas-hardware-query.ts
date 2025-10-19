@@ -1,15 +1,20 @@
 /**
  * Atlas Hardware Query Service
  * 
- * Queries the Atlas AZMP8 hardware directly via TCP to retrieve:
+ * Queries the Atlas AZMP8 hardware to retrieve:
  * - Actual source/input names (as configured in the Atlas web interface)
  * - Actual zone/output names (as configured in the Atlas web interface)
  * - Current zone status (source selection, volume, mute state)
+ * 
+ * Strategy:
+ * 1. Try HTTP configuration discovery first (port 80 web interface)
+ * 2. Fall back to TCP probing (port 5321) if HTTP fails
  * 
  * This replaces mock/model data with REAL hardware configuration.
  */
 
 import { AtlasTCPClient } from './atlasClient'
+import { AtlasHttpClient, discoverAtlasConfiguration } from './atlas-http-client'
 
 export interface AtlasHardwareSource {
   index: number
@@ -39,16 +44,152 @@ export interface AtlasHardwareConfig {
 
 /**
  * Query the Atlas hardware for actual source and zone names
+ * 
+ * @param ipAddress - IP address of the Atlas processor
+ * @param tcpPort - TCP control port (default: 5321)
+ * @param model - Processor model (e.g., 'AZMP8', 'AZM4')
+ * @param httpPort - HTTP web interface port (default: 80)
+ * @param username - HTTP basic auth username (optional)
+ * @param password - HTTP basic auth password (optional)
  */
 export async function queryAtlasHardwareConfiguration(
   ipAddress: string,
-  port: number = 23,
-  model: string = 'AZMP8'
+  tcpPort: number = 5321,  // Changed from 23 to 5321 (correct Atlas TCP port)
+  model: string = 'AZMP8',
+  httpPort: number = 80,
+  username?: string,
+  password?: string
 ): Promise<AtlasHardwareConfig> {
-  const client = new AtlasTCPClient({ ipAddress, port })
+  
+  console.log(`[Atlas Query] Starting configuration discovery for ${ipAddress}`)
+  console.log(`[Atlas Query] HTTP Port: ${httpPort}, TCP Port: ${tcpPort}`)
+  
+  // STRATEGY 1: Try HTTP configuration discovery first
+  try {
+    console.log(`[Atlas Query] Attempting HTTP configuration discovery...`)
+    const httpClient = new AtlasHttpClient({
+      ipAddress,
+      port: httpPort,
+      username,
+      password,
+      timeout: 10000
+    })
+
+    const discoveredConfig = await httpClient.discoverConfiguration()
+    
+    if (discoveredConfig.sources.length > 0 || discoveredConfig.zones.length > 0) {
+      console.log(`[Atlas Query] HTTP discovery successful!`)
+      console.log(`[Atlas Query] Found ${discoveredConfig.sources.length} sources and ${discoveredConfig.zones.length} zones`)
+
+      // Now get real-time status via TCP for each zone
+      const client = new AtlasTCPClient({ ipAddress, port: tcpPort, timeout: 5000 })
+      try {
+        await client.connect()
+        
+        const zones: AtlasHardwareZone[] = []
+        for (const zone of discoveredConfig.zones) {
+          try {
+            // Get current source
+            const sourceResponse = await client.getParameter(`ZoneSource_${zone.index}`, 'val')
+            const currentSource = sourceResponse.success && sourceResponse.data?.result?.val !== undefined
+              ? sourceResponse.data.result.val
+              : -1
+
+            // Get volume (as percentage)
+            const volumeResponse = await client.getParameter(`ZoneGain_${zone.index}`, 'pct')
+            const volume = volumeResponse.success && volumeResponse.data?.result?.pct !== undefined
+              ? volumeResponse.data.result.pct
+              : 50
+
+            // Get mute state
+            const muteResponse = await client.getParameter(`ZoneMute_${zone.index}`, 'val')
+            const muted = muteResponse.success && muteResponse.data?.result?.val !== undefined
+              ? muteResponse.data.result.val === 1
+              : false
+
+            zones.push({
+              index: zone.index,
+              name: zone.name,
+              parameterName: zone.nameParam || `ZoneName_${zone.index}`,
+              currentSource,
+              volume,
+              muted
+            })
+            
+            await delay(50)
+          } catch (error) {
+            console.error(`[Atlas Query] Error getting zone ${zone.index} status:`, error)
+            zones.push({
+              index: zone.index,
+              name: zone.name,
+              parameterName: zone.nameParam || `ZoneName_${zone.index}`,
+              currentSource: -1,
+              volume: 50,
+              muted: false
+            })
+          }
+        }
+
+        client.disconnect()
+
+        const sources: AtlasHardwareSource[] = discoveredConfig.sources.map(source => ({
+          index: source.index,
+          name: source.name,
+          parameterName: source.nameParam || `SourceName_${source.index}`
+        }))
+
+        return {
+          ipAddress,
+          port: tcpPort,
+          model,
+          sources,
+          zones,
+          totalSources: sources.length,
+          totalZones: zones.length,
+          queriedAt: discoveredConfig.queriedAt
+        }
+      } catch (tcpError) {
+        client.disconnect()
+        console.warn('[Atlas Query] TCP status query failed, using discovered config without real-time status')
+        
+        // Return configuration without real-time status
+        const sources: AtlasHardwareSource[] = discoveredConfig.sources.map(source => ({
+          index: source.index,
+          name: source.name,
+          parameterName: source.nameParam || `SourceName_${source.index}`
+        }))
+
+        const zones: AtlasHardwareZone[] = discoveredConfig.zones.map(zone => ({
+          index: zone.index,
+          name: zone.name,
+          parameterName: zone.nameParam || `ZoneName_${zone.index}`,
+          currentSource: -1,
+          volume: 50,
+          muted: false
+        }))
+
+        return {
+          ipAddress,
+          port: tcpPort,
+          model,
+          sources,
+          zones,
+          totalSources: sources.length,
+          totalZones: zones.length,
+          queriedAt: discoveredConfig.queriedAt
+        }
+      }
+    }
+  } catch (httpError) {
+    console.warn('[Atlas Query] HTTP configuration discovery failed, falling back to TCP probing')
+    console.warn('[Atlas Query] HTTP Error:', httpError instanceof Error ? httpError.message : httpError)
+  }
+
+  // STRATEGY 2: Fall back to TCP probing
+  const client = new AtlasTCPClient({ ipAddress, port: tcpPort })
   
   try {
-    console.log(`[Atlas Query] Connecting to ${ipAddress}:${port}...`)
+    console.log(`[Atlas Query] Connecting via TCP to ${ipAddress}:${tcpPort}...`)
     await client.connect()
     console.log(`[Atlas Query] Connected successfully`)
 
@@ -217,7 +358,7 @@ function delay(ms: number): Promise<void> {
 /**
  * Validate that we can connect to the Atlas hardware
  */
-export async function testAtlasConnection(ipAddress: string, port: number = 23): Promise<boolean> {
+export async function testAtlasConnection(ipAddress: string, port: number = 5321): Promise<boolean> {
   const client = new AtlasTCPClient({ ipAddress, port, timeout: 5000 })
   
   try {
