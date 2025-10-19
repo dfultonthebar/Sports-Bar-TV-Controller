@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { aiGainService } from '@/lib/ai-gain-service'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET: Get adjustment history for an input
@@ -14,7 +14,8 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
     const { searchParams } = new URL(request.url)
     const inputNumber = parseInt(searchParams.get('inputNumber') || '')
     const limit = parseInt(searchParams.get('limit') || '100')
