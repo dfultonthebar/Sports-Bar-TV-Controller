@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 import { encryptPassword, decryptPassword } from '@/lib/atlas-auth'
+import { queryAtlasHardwareConfiguration, testAtlasConnection } from '@/lib/atlas-hardware-query'
+import fs from 'fs/promises'
+import path from 'path'
+
+const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Helper function to get input/output counts from model config
 function getModelCounts(model: string) {
@@ -52,7 +57,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
-    const { name, model, ipAddress, port, zones, description, username, password } = data
+    const { name, model, ipAddress, port, zones, description, username, password, tcpPort, skipHardwareQuery } = data
 
     if (!name || !model || !ipAddress) {
       return NextResponse.json(
@@ -71,6 +76,7 @@ export async function POST(request: NextRequest) {
       model,
       ipAddress,
       port: port || 80,
+      tcpPort: tcpPort || 23, // Add TCP port for Atlas communication
       zones: calculatedZones,
       description,
       status: 'offline'
@@ -86,18 +92,151 @@ export async function POST(request: NextRequest) {
       data: processorData
     })
 
-    // Return processor with calculated values from model config
-    // Don't expose encrypted password
+    console.log(`[Audio Processor] Created processor ${processor.id}: ${processor.name}`)
+
+    // Automatically query hardware configuration unless explicitly skipped
+    let hardwareConfig = null
+    let hardwareQuerySuccess = false
+    
+    if (!skipHardwareQuery) {
+      try {
+        console.log(`[Audio Processor] Automatically querying hardware at ${ipAddress}:${processor.tcpPort}...`)
+        
+        // Query the hardware configuration
+        hardwareConfig = await queryAtlasHardwareConfiguration(
+          ipAddress, 
+          processor.tcpPort || 23, 
+          model
+        )
+        
+        hardwareQuerySuccess = true
+        
+        // Convert hardware config to API format
+        const inputs = hardwareConfig.sources.map(source => ({
+          id: `source_${source.index}`,
+          number: source.index + 1,
+          name: source.name,
+          type: 'atlas_configured',
+          connector: 'Hardware',
+          description: `Atlas configured source: ${source.name}`,
+          parameterName: source.parameterName,
+          isCustom: true,
+          queriedFromHardware: true
+        }))
+
+        const outputs = hardwareConfig.zones.map(zone => ({
+          id: `zone_${zone.index}`,
+          number: zone.index + 1,
+          name: zone.name,
+          type: 'zone',
+          connector: 'Hardware',
+          description: `Atlas configured zone: ${zone.name}`,
+          parameterName: zone.parameterName,
+          currentSource: zone.currentSource,
+          volume: zone.volume,
+          muted: zone.muted,
+          isCustom: true,
+          queriedFromHardware: true
+        }))
+
+        // Save configuration to file
+        const config = {
+          processorId: processor.id,
+          ipAddress,
+          port: processor.tcpPort,
+          model,
+          inputs,
+          outputs,
+          scenes: [],
+          messages: [],
+          queriedAt: hardwareConfig.queriedAt,
+          source: 'hardware_query_auto'
+        }
+
+        // Ensure config directory exists
+        try {
+          await fs.access(CONFIG_DIR)
+        } catch {
+          await fs.mkdir(CONFIG_DIR, { recursive: true })
+        }
+
+        const configPath = path.join(CONFIG_DIR, `${processor.id}.json`)
+        await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+
+        // Update processor status to online
+        await prisma.audioProcessor.update({
+          where: { id: processor.id },
+          data: {
+            status: 'online',
+            lastSeen: new Date()
+          }
+        })
+
+        // Create zones in database
+        for (const zone of hardwareConfig.zones) {
+          await prisma.audioZone.create({
+            data: {
+              processorId: processor.id,
+              zoneNumber: zone.index,
+              name: zone.name,
+              volume: zone.volume || 50,
+              muted: zone.muted || false,
+              currentSource: zone.currentSource !== -1 ? String(zone.currentSource) : null,
+              enabled: true
+            }
+          })
+        }
+
+        console.log(`[Audio Processor] Successfully queried and saved hardware configuration`)
+        
+        // Return processor with real hardware data
+        const { password: encryptedPassword, ...processorWithoutPassword } = processor
+        return NextResponse.json({ 
+          processor: {
+            ...processorWithoutPassword,
+            status: 'online',
+            inputs: hardwareConfig.totalSources,
+            outputs: hardwareConfig.totalZones,
+            hasCredentials: !!(processor.username && processor.password),
+            hardwareQuerySuccess: true
+          },
+          hardwareConfig: {
+            sources: hardwareConfig.totalSources,
+            zones: hardwareConfig.totalZones,
+            queriedAt: hardwareConfig.queriedAt,
+            inputs,
+            outputs
+          },
+          message: 'Processor created and hardware configuration queried successfully'
+        })
+        
+      } catch (error) {
+        console.error('[Audio Processor] Failed to query hardware during creation:', error)
+        // Don't fail the creation, just log the error and return processor with model data
+        hardwareQuerySuccess = false
+      }
+    }
+
+    // If hardware query was skipped or failed, return processor with model config data
     const counts = getModelCounts(processor.model)
     const { password: encryptedPassword, ...processorWithoutPassword } = processor
     const processorWithCounts = {
       ...processorWithoutPassword,
       inputs: counts.inputs,
       outputs: counts.outputs,
-      hasCredentials: !!(processor.username && processor.password)
+      hasCredentials: !!(processor.username && processor.password),
+      hardwareQuerySuccess
     }
 
-    return NextResponse.json({ processor: processorWithCounts })
+    const message = skipHardwareQuery 
+      ? 'Processor created (hardware query skipped)' 
+      : 'Processor created but hardware query failed - using model defaults'
+
+    return NextResponse.json({ 
+      processor: processorWithCounts,
+      message,
+      warning: !hardwareQuerySuccess ? 'Could not query hardware. You can manually query later from the processor settings.' : undefined
+    })
   } catch (error) {
     console.error('Error creating audio processor:', error)
     return NextResponse.json(
