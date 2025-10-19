@@ -2,9 +2,11 @@
  * Atlas TCP Client Library
  * 
  * Implements JSON-RPC 2.0 protocol for controlling AtlasIED Atmosphere audio processors
- * via TCP connection on port 3804.
+ * via TCP connection on port 5321.
  * 
  * Protocol Details:
+ * - TCP Port 5321: Used for control commands and subscription updates (non-metering)
+ * - UDP Port 3131: Used for metering information subscription updates
  * - Messages must be terminated with \r\n
  * - Parameters use 0-based indexing (Zone 1 = ZoneSource_0, etc.)
  * - JSON-RPC 2.0 format: {"jsonrpc":"2.0","method":"...","params":{...},"id":N}
@@ -52,7 +54,7 @@ export class AtlasTCPClient {
   constructor(config: AtlasConnectionConfig) {
     this.config = {
       ipAddress: config.ipAddress,
-      port: config.port || 23,  // Atlas uses port 23 (telnet) for TCP control
+      port: config.port || 5321,  // Atlas Atmosphere uses port 5321 for JSON-RPC 2.0 control (TCP)
       timeout: config.timeout || 5000,
       maxRetries: config.maxRetries || 3
     }

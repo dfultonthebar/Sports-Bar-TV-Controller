@@ -99,9 +99,9 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
   
-  // Send command to Atlas processor via TCP (port 23 for telnet)
+  // Send command to Atlas processor via TCP (port 5321 for JSON-RPC 2.0)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
     async (client) => await client.setZoneVolume(zoneIndex, volume, true)
   )
 
@@ -134,9 +134,9 @@ async function setZoneMute(processor: any, zone: number, muted: boolean): Promis
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
   
-  // Send command to Atlas processor via TCP (port 23 for telnet)
+  // Send command to Atlas processor via TCP (port 5321 for JSON-RPC 2.0)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
     async (client) => await client.setZoneMute(zoneIndex, muted)
   )
 
@@ -194,9 +194,9 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
 
   console.log(`[Control API] Mapped source "${source}" to index ${sourceIndex}`)
   
-  // Send command to Atlas processor via TCP (port 23 for telnet)
+  // Send command to Atlas processor via TCP (port 5321 for JSON-RPC 2.0)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
     async (client) => await client.setZoneSource(zoneIndex, sourceIndex)
   )
 
@@ -225,9 +225,9 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
 async function recallScene(processor: any, sceneId: number): Promise<any> {
   console.log(`[Control API] Recalling scene ${sceneId} on ${processor.ipAddress}`)
   
-  // Send command to Atlas processor via TCP (port 23 for telnet)
+  // Send command to Atlas processor via TCP (port 5321 for JSON-RPC 2.0)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
     async (client) => await client.recallScene(sceneId)
   )
 
@@ -249,9 +249,9 @@ async function playMessage(processor: any, messageId: number, zones?: number[]):
   const targetZones = zones || 'all'
   console.log(`[Control API] Playing message ${messageId} to zones ${targetZones} on ${processor.ipAddress}`)
   
-  // Send command to Atlas processor via TCP (port 23 for telnet)
+  // Send command to Atlas processor via TCP (port 5321 for JSON-RPC 2.0)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
     async (client) => await client.playMessage(messageId)
   )
 
@@ -279,7 +279,7 @@ async function combineRooms(processor: any, zones: number[]): Promise<any> {
   
   // If you have a specific group index, you can use:
   // const result = await executeAtlasCommand(
-  //   { ipAddress: processor.ipAddress, port: processor.tcpPort || 23 },
+  //   { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
   //   async (client) => await client.setGroupActive(groupIndex, true)
   // )
   

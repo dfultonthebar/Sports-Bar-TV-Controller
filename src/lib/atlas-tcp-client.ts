@@ -26,7 +26,7 @@ export class AtlasTCPClient {
   private connected: boolean = false
   private commandId: number = 1
 
-  constructor(host: string, port: number = 23) {  // Atlas uses port 23 (telnet) for TCP control
+  constructor(host: string, port: number = 5321) {  // Atlas Atmosphere uses port 5321 for JSON-RPC 2.0 control
     this.host = host
     this.port = port
   }
