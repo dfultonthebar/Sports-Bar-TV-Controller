@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET: Get AI gain control settings for all inputs
@@ -14,7 +14,8 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
 
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId },
@@ -62,7 +63,8 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
     const data = await request.json()
     const { 
       inputNumber, 

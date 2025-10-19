@@ -21,9 +21,9 @@ import * as net from 'net'
 import { atlasLogger } from '@/lib/atlas-logger'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET: Read current gain settings for all inputs
@@ -32,7 +32,9 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    // Await params for Next.js 15+ compatibility
+    const params = await context.params
+    const processorId = params.id
 
     // Verify database connection is available
     if (!prisma) {
@@ -85,7 +87,9 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    // Await params for Next.js 15+ compatibility
+    const params = await context.params
+    const processorId = params.id
     const { inputNumber, gain, reason = 'manual_override' } = await request.json()
 
     if (inputNumber === undefined || gain === undefined) {

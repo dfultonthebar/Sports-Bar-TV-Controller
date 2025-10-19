@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { aiGainService } from '@/lib/ai-gain-service'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET: Get monitoring status
@@ -14,7 +14,8 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
 
     const status = await aiGainService.getAIGainStatus(processorId)
 
