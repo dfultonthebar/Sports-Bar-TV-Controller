@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Audio processor not found' }, { status: 404 })
     }
 
-    // Use tcpPort for Atlas communication (default 23 for JSON-RPC)
+    // Use tcpPort for Atlas communication (default 5321 for JSON-RPC 2.0)
     const ipAddress = processor.ipAddress
-    const port = processor.tcpPort || 23
+    const port = processor.tcpPort || 5321
 
     console.log(`[Query Hardware] Querying Atlas processor at ${ipAddress}:${port}`)
 

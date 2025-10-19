@@ -31,21 +31,34 @@ export async function GET(request: NextRequest) {
       const configData = await fs.readFile(configPath, 'utf-8')
       const config = JSON.parse(configData)
       
-      return NextResponse.json({
+      // Ensure all arrays exist and are properly formatted
+      const response = {
         success: true,
-        inputs: config.inputs || [],
-        outputs: config.outputs || [],
-        scenes: config.scenes || [],
-        messages: config.messages || []
+        processor: config.processorId ? { id: config.processorId } : undefined,
+        inputs: Array.isArray(config.inputs) ? config.inputs : [],
+        outputs: Array.isArray(config.outputs) ? config.outputs : [],
+        scenes: Array.isArray(config.scenes) ? config.scenes : [],
+        messages: Array.isArray(config.messages) ? config.messages : [],
+        queriedAt: config.queriedAt,
+        source: config.source
+      }
+      
+      console.log(`[Configuration API] Loaded config for ${processorId}:`, {
+        inputs: response.inputs.length,
+        outputs: response.outputs.length,
+        source: response.source
       })
+      
+      return NextResponse.json(response)
     } catch (error) {
       // Config doesn't exist, return empty configuration
+      console.log(`[Configuration API] No config found for ${processorId}, returning empty arrays`)
       return NextResponse.json({
         success: true,
-        inputs: [] as any[],
-        outputs: [] as any[],
-        scenes: [] as any[],
-        messages: [] as any[]
+        inputs: [],
+        outputs: [],
+        scenes: [],
+        messages: []
       })
     }
   } catch (error) {

@@ -86,6 +86,28 @@ export async function POST(request: NextRequest) {
       data: processorData
     })
 
+    // Auto-query hardware configuration if possible
+    // This will populate the real sources and zones from the Atlas hardware
+    try {
+      console.log(`[Audio Processor API] Auto-querying hardware for processor ${processor.id}`)
+      
+      const queryResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/atlas/query-hardware`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ processorId: processor.id })
+      })
+      
+      if (queryResponse.ok) {
+        const queryResult = await queryResponse.json()
+        console.log(`[Audio Processor API] Hardware query successful:`, queryResult)
+      } else {
+        console.warn(`[Audio Processor API] Hardware query failed, will use model defaults`)
+      }
+    } catch (error) {
+      console.warn('[Audio Processor API] Failed to auto-query hardware:', error)
+      // Non-fatal - processor is still created, just using model defaults
+    }
+
     // Return processor with calculated values from model config
     // Don't expose encrypted password
     const counts = getModelCounts(processor.model)

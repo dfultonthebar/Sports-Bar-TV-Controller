@@ -196,15 +196,17 @@ function getMaxSourcesForModel(model: string): number {
  * Get maximum number of zones for a given Atlas model
  */
 function getMaxZonesForModel(model: string): number {
-  // Based on investigation report, AZMP8 has 5 zones (Main Bar, Dining Room, Party Room West, Patio, Bathroom)
+  // Based on actual hardware investigation:
+  // AZMP8 has 6 zones (Main Bar, Dining Room, Party Room West, Party Room East, Patio, Bathroom)
+  // Note: We query up to the max possible for the model, the hardware will return actual configured zones
   
   if (model.includes('8')) {
-    return 8 // AZM8/AZMP8 can have up to 8 zones
+    return 8 // AZM8/AZMP8 can have up to 8 zones - query all 8 to find which are configured
   } else if (model.includes('4')) {
     return 4 // AZM4/AZMP4 have 4 zones
   }
   
-  return 5 // Default based on actual hardware
+  return 8 // Default to 8 to ensure we capture all configured zones
 }
 
 /**

@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     const inputs = getAvailableInputs(processor.model)
 
     // Fetch any custom input configurations from Atlas config
+    let needsHardwareQuery = false
     try {
       const configResponse = await fetch(
         `${request.nextUrl.origin}/api/atlas/configuration?processorId=${processorId}`
