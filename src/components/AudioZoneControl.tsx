@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Volume2, VolumeX, Music, Radio, Tv, Wifi } from 'lucide-react'
+import { Volume2, VolumeX, Music, Radio, Tv, Wifi, Speaker } from 'lucide-react'
 
 interface AudioInput {
   id: string
@@ -10,6 +10,7 @@ interface AudioInput {
   isActive: boolean
   type?: 'matrix' | 'atlas' | 'streaming'
   matrixNumber?: number
+  atlasIndex?: number // 0-based index for Atlas protocol API calls
 }
 
 interface Zone {
@@ -19,6 +20,7 @@ interface Zone {
   volume: number
   isMuted: boolean
   isActive: boolean
+  atlasIndex?: number // 0-based index for Atlas protocol API calls
 }
 
 interface AtlasInputConfig {
@@ -81,90 +83,55 @@ export default function AudioZoneControl() {
 
       setActiveProcessorId(activeProcessor.id)
 
-      // Fetch inputs and outputs for the active processor
-      const [inputsResponse, outputsResponse] = await Promise.all([
-        fetch(`/api/audio-processor/inputs?processorId=${activeProcessor.id}`),
-        fetch(`/api/audio-processor/outputs?processorId=${activeProcessor.id}&includeGroups=true`)
-      ])
+      // Fetch real-time zones status from Atlas processor
+      // This queries the actual hardware for current source assignments, volume, and mute state
+      const zonesStatusResponse = await fetch(`/api/audio-processor/${activeProcessor.id}/zones-status`)
+      const zonesStatusData = await zonesStatusResponse.json()
 
-      const inputsData = await inputsResponse.json()
-      const outputsData = await outputsResponse.json()
-
-      if (!inputsResponse.ok) {
-        throw new Error(inputsData.error || 'Failed to fetch inputs')
+      if (!zonesStatusResponse.ok) {
+        throw new Error(zonesStatusData.error || 'Failed to fetch zones status from Atlas processor')
       }
 
-      if (!outputsResponse.ok) {
-        throw new Error(outputsData.error || 'Failed to fetch outputs')
-      }
+      // Build audio inputs list from Atlas sources
+      const atlasInputs: AudioInput[] = (zonesStatusData.sources || []).map((source: any) => ({
+        id: source.id,
+        name: source.name,
+        isActive: true,
+        type: 'atlas' as const,
+        atlasIndex: source.atlasIndex
+      }))
 
-      // Build inputs list: Matrix 1-4 first (special inputs for video routing), then Atlas inputs
-      // Check if Matrix outputs have custom labels from video input selection
+      // Add Matrix inputs (for video routing) first
       const matrixLabels = await fetchMatrixLabels()
-      
       const matrixInputs: AudioInput[] = [
-        { id: 'matrix1', name: matrixLabels[1] || 'Matrix 1', isActive: true, type: 'matrix', matrixNumber: 1 },
-        { id: 'matrix2', name: matrixLabels[2] || 'Matrix 2', isActive: true, type: 'matrix', matrixNumber: 2 },
-        { id: 'matrix3', name: matrixLabels[3] || 'Matrix 3', isActive: true, type: 'matrix', matrixNumber: 3 },
-        { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
+        { id: 'matrix1', name: matrixLabels[1] || 'Matrix 1 (Video)', isActive: true, type: 'matrix', matrixNumber: 1 },
+        { id: 'matrix2', name: matrixLabels[2] || 'Matrix 2 (Video)', isActive: true, type: 'matrix', matrixNumber: 2 },
+        { id: 'matrix3', name: matrixLabels[3] || 'Matrix 3 (Video)', isActive: true, type: 'matrix', matrixNumber: 3 },
+        { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4 (Video)', isActive: true, type: 'matrix', matrixNumber: 4 },
       ]
-
-      // Add Atlas inputs from API (safely handle undefined or null)
-      const inputsList = inputsData?.inputs || []
-      const atlasInputs: AudioInput[] = (Array.isArray(inputsList) ? inputsList : [])
-        .filter((input: AtlasInputConfig) => input.type !== 'matrix_audio') // Exclude internal matrix audio buses from UI
-        .map((input: AtlasInputConfig) => ({
-          id: input.id,
-          name: input.name,
-          isActive: true,
-          type: 'atlas' as const
-        }))
 
       setAudioInputs([...matrixInputs, ...atlasInputs])
 
-      // Build zones from Atlas outputs and groups
-      const allZones: Zone[] = []
+      // Build zones from real Atlas hardware data
+      const realZones: Zone[] = (zonesStatusData.zones || []).map((zone: any) => ({
+        id: zone.id,
+        name: zone.name,
+        currentSource: zone.currentSourceName, // Real source name from Atlas
+        volume: zone.volume,
+        isMuted: zone.isMuted,
+        isActive: zone.isActive,
+        atlasIndex: zone.atlasIndex // Store for API calls
+      }))
 
-      // Add zone groups first (safely handle undefined or null)
-      const groups = outputsData?.groups || []
-      if (Array.isArray(groups) && groups.length > 0) {
-        groups.forEach((group: AtlasZoneGroup) => {
-          allZones.push({
-            id: group.id,
-            name: group.name,
-            currentSource: 'Not Set',
-            volume: 50,
-            isMuted: false,
-            isActive: true
-          })
-        })
-      }
+      setZones(realZones)
 
-      // Add individual outputs/zones (safely handle undefined or null)
-      const outputs = outputsData?.outputs || []
-      if (Array.isArray(outputs) && outputs.length > 0) {
-        outputs.forEach((output: AtlasOutputConfig) => {
-          allZones.push({
-            id: output.id,
-            name: output.name,
-            currentSource: 'Not Set',
-            volume: 50,
-            isMuted: false,
-            isActive: true
-          })
-        })
-      }
-
-      // Always set zones, even if empty
-      setZones(allZones)
-
-      console.log('Dynamic Atlas configuration loaded:', {
+      console.log('Real Atlas configuration loaded from hardware:', {
         processor: activeProcessor.name,
         model: activeProcessor.model,
+        sources: atlasInputs.length,
         matrixInputs: matrixInputs.length,
-        atlasInputs: atlasInputs.length,
-        zones: allZones.length,
-        groups: outputsData.groups?.length || 0
+        zones: realZones.length,
+        queriedAt: zonesStatusData.queriedAt
       })
 
       setLoading(false)

@@ -122,10 +122,12 @@ export async function POST(
       )
     }
 
-    // Validate gain range (-20 to +20 dB)
-    if (gain < -20 || gain > 20) {
+    // Validate gain range (-80 to 0 dB per Atlas protocol specification)
+    // Reference: ATS006993-B-AZM4-AZM8-3rd-Party-Control.pdf, Section 6.0 Parameter List
+    // SourceGain: Min Val = -80, Max Val = 0
+    if (gain < -80 || gain > 0) {
       return NextResponse.json(
-        { error: 'Gain must be between -20 and +20 dB' },
+        { error: 'Gain must be between -80 and 0 dB' },
         { status: 400 }
       )
     }
