@@ -511,6 +511,7 @@ export default function AtlasProgrammingInterface() {
 
     try {
       const updateData: any = {
+        id: editingProcessor.id,  // CRITICAL: Include processor ID in request body
         name: newProcessor.name,
         model: newProcessor.model,
         ipAddress: newProcessor.ipAddress,
@@ -528,7 +529,7 @@ export default function AtlasProgrammingInterface() {
         }
       }
 
-      const response = await fetch(`/api/audio-processor?id=${editingProcessor.id}`, {
+      const response = await fetch('/api/audio-processor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)

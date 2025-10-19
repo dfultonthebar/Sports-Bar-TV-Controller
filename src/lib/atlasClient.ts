@@ -1,10 +1,13 @@
+
 /**
  * Atlas TCP Client Library
  * 
  * Implements JSON-RPC 2.0 protocol for controlling AtlasIED Atmosphere audio processors
- * via TCP connection on port 3804.
+ * via TCP connection on port 5321.
  * 
  * Protocol Details:
+ * - TCP Port: 5321 for commands and subscription updates
+ * - UDP Port: 3131 for metering information
  * - Messages must be terminated with \r\n
  * - Parameters use 0-based indexing (Zone 1 = ZoneSource_0, etc.)
  * - JSON-RPC 2.0 format: {"jsonrpc":"2.0","method":"...","params":{...},"id":N}
@@ -13,6 +16,7 @@
  */
 
 import { Socket } from 'net'
+import { atlasLogger } from './atlas-logger'
 
 export interface AtlasConnectionConfig {
   ipAddress: string
@@ -52,10 +56,12 @@ export class AtlasTCPClient {
   constructor(config: AtlasConnectionConfig) {
     this.config = {
       ipAddress: config.ipAddress,
-      port: config.port || 23,  // Atlas uses port 23 (telnet) for TCP control
+      port: config.port || 5321,  // Atlas uses port 5321 for TCP control (NOT port 23)
       timeout: config.timeout || 5000,
       maxRetries: config.maxRetries || 3
     }
+    
+    atlasLogger.info('CLIENT', `Atlas TCP Client initialized for ${this.config.ipAddress}:${this.config.port}`)
   }
 
   /**
@@ -63,8 +69,11 @@ export class AtlasTCPClient {
    */
   async connect(): Promise<void> {
     if (this.connected && this.socket) {
+      atlasLogger.debug('CLIENT', `Already connected to ${this.config.ipAddress}:${this.config.port}`)
       return
     }
+
+    atlasLogger.connectionAttempt(this.config.ipAddress, this.config.port)
 
     return new Promise((resolve, reject) => {
       try {
@@ -76,7 +85,7 @@ export class AtlasTCPClient {
         // Handle connection success
         this.socket.on('connect', () => {
           this.connected = true
-          console.log(`[Atlas] Connected to ${this.config.ipAddress}:${this.config.port}`)
+          atlasLogger.connectionSuccess(this.config.ipAddress, this.config.port)
           resolve()
         })
 
@@ -87,14 +96,14 @@ export class AtlasTCPClient {
 
         // Handle connection errors
         this.socket.on('error', (error) => {
-          console.error('[Atlas] Socket error:', error)
+          atlasLogger.connectionFailed(this.config.ipAddress, this.config.port, error)
           this.connected = false
           reject(error)
         })
 
         // Handle connection timeout
         this.socket.on('timeout', () => {
-          console.error('[Atlas] Socket timeout')
+          atlasLogger.connectionTimeout(this.config.ipAddress, this.config.port)
           this.socket?.destroy()
           this.connected = false
           reject(new Error('Connection timeout'))
@@ -102,7 +111,7 @@ export class AtlasTCPClient {
 
         // Handle connection close
         this.socket.on('close', () => {
-          console.log('[Atlas] Connection closed')
+          atlasLogger.connectionClosed(this.config.ipAddress, this.config.port)
           this.connected = false
           // Reject all pending responses
           this.pendingResponses.forEach(({ reject, timeout }) => {
@@ -115,7 +124,7 @@ export class AtlasTCPClient {
         // Initiate connection
         this.socket.connect(this.config.port, this.config.ipAddress)
       } catch (error) {
-        console.error('[Atlas] Connection error:', error)
+        atlasLogger.connectionFailed(this.config.ipAddress, this.config.port, error)
         reject(error)
       }
     })
@@ -129,7 +138,7 @@ export class AtlasTCPClient {
       this.socket.destroy()
       this.socket = null
       this.connected = false
-      console.log('[Atlas] Disconnected')
+      atlasLogger.connectionClosed(this.config.ipAddress, this.config.port)
     }
   }
 
@@ -159,6 +168,8 @@ export class AtlasTCPClient {
     try {
       const response = JSON.parse(message)
       
+      atlasLogger.commandResponse(response, this.config.ipAddress)
+      
       // Handle responses with ID (responses to our commands)
       if (response.id !== undefined) {
         const pending = this.pendingResponses.get(response.id)
@@ -167,6 +178,7 @@ export class AtlasTCPClient {
           this.pendingResponses.delete(response.id)
           
           if (response.error) {
+            atlasLogger.error('RESPONSE', `Command ${response.id} returned error`, response.error)
             pending.reject(new Error(response.error.message || 'Atlas command error'))
           } else {
             pending.resolve(response)
@@ -176,10 +188,14 @@ export class AtlasTCPClient {
       
       // Handle update messages (subscribed parameter updates)
       if (response.method === 'update') {
-        console.log('[Atlas] Parameter update:', response.params)
+        atlasLogger.parameterUpdate(
+          response.params?.param || 'unknown',
+          response.params,
+          this.config.ipAddress
+        )
       }
     } catch (error) {
-      console.error('[Atlas] Error parsing message:', message, error)
+      atlasLogger.error('RESPONSE', `Error parsing message: ${message}`, error)
     }
   }
 
@@ -188,7 +204,9 @@ export class AtlasTCPClient {
    */
   private async sendCommand(command: AtlasCommand, withResponse: boolean = true): Promise<any> {
     if (!this.connected || !this.socket) {
-      throw new Error('Not connected to Atlas processor')
+      const error = new Error('Not connected to Atlas processor')
+      atlasLogger.error('COMMAND', 'Attempted to send command while not connected', { command })
+      throw error
     }
 
     const id = this.commandId++
@@ -227,7 +245,7 @@ export class AtlasTCPClient {
     // Convert to JSON and add terminator
     const jsonMessage = JSON.stringify(message) + '\r\n'
     
-    console.log(`[Atlas] Sending command: ${jsonMessage.trim()}`)
+    atlasLogger.commandSent(message, this.config.ipAddress)
 
     // Send the message
     this.socket.write(jsonMessage)
@@ -241,6 +259,7 @@ export class AtlasTCPClient {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingResponses.delete(id)
+        atlasLogger.commandTimeout(message, this.config.ipAddress)
         reject(new Error('Command timeout'))
       }, this.config.timeout)
 
@@ -263,10 +282,10 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Set ${param} to ${sourceIndex}`)
+      atlasLogger.info('COMMAND', `Set ${param} to ${sourceIndex}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error setting zone source:', error)
+      atlasLogger.commandError({ method: 'set', param: `ZoneSource_${zoneIndex}` }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -290,10 +309,10 @@ export class AtlasTCPClient {
         format: usePct ? 'pct' : 'val'
       })
 
-      console.log(`[Atlas] Set ${param} to ${gainDb}${usePct ? '%' : 'dB'}`)
+      atlasLogger.info('COMMAND', `Set ${param} to ${gainDb}${usePct ? '%' : 'dB'}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error setting zone volume:', error)
+      atlasLogger.commandError({ method: 'set', param: `ZoneGain_${zoneIndex}` }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -316,10 +335,10 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Set ${param} to ${muted ? 'muted' : 'unmuted'}`)
+      atlasLogger.info('COMMAND', `Set ${param} to ${muted ? 'muted' : 'unmuted'}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error setting zone mute:', error)
+      atlasLogger.commandError({ method: 'set', param: `ZoneMute_${zoneIndex}` }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -341,10 +360,10 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Recalled scene ${sceneIndex}`)
+      atlasLogger.info('COMMAND', `Recalled scene ${sceneIndex}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error recalling scene:', error)
+      atlasLogger.commandError({ method: 'set', param: 'RecallScene' }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -366,10 +385,10 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Playing message ${messageIndex}`)
+      atlasLogger.info('COMMAND', `Playing message ${messageIndex}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error playing message:', error)
+      atlasLogger.commandError({ method: 'set', param: 'PlayMessage' }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -392,10 +411,10 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Set group ${groupIndex} to ${active ? 'active' : 'inactive'}`)
+      atlasLogger.info('COMMAND', `Set group ${groupIndex} to ${active ? 'active' : 'inactive'}`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error setting group active:', error)
+      atlasLogger.commandError({ method: 'set', param: `GroupActive_${groupIndex}` }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -416,10 +435,10 @@ export class AtlasTCPClient {
         format
       })
 
-      console.log(`[Atlas] Subscribed to ${param} (${format})`)
+      atlasLogger.info('COMMAND', `Subscribed to ${param} (${format})`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error subscribing:', error)
+      atlasLogger.commandError({ method: 'sub', param }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -440,10 +459,10 @@ export class AtlasTCPClient {
         format
       })
 
-      console.log(`[Atlas] Unsubscribed from ${param} (${format})`)
+      atlasLogger.info('COMMAND', `Unsubscribed from ${param} (${format})`)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error unsubscribing:', error)
+      atlasLogger.commandError({ method: 'unsub', param }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -464,10 +483,10 @@ export class AtlasTCPClient {
         format
       })
 
-      console.log(`[Atlas] Got ${param}: ${JSON.stringify(response)}`)
+      atlasLogger.debug('COMMAND', `Got ${param}`, response)
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error getting parameter:', error)
+      atlasLogger.commandError({ method: 'get', param }, error, this.config.ipAddress)
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -506,7 +525,7 @@ export async function executeAtlasCommand(
     const result = await commandFn(client)
     return result
   } catch (error) {
-    console.error('[Atlas] Command execution error:', error)
+    atlasLogger.error('CLIENT', 'Command execution error', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
