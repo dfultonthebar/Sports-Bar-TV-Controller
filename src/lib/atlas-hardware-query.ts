@@ -1,3 +1,4 @@
+
 /**
  * Atlas Hardware Query Service
  * 
@@ -10,6 +11,7 @@
  */
 
 import { AtlasTCPClient } from './atlasClient'
+import { atlasLogger } from './atlas-logger'
 
 export interface AtlasHardwareSource {
   index: number
@@ -42,21 +44,20 @@ export interface AtlasHardwareConfig {
  */
 export async function queryAtlasHardwareConfiguration(
   ipAddress: string,
-  port: number = 23,
+  port: number = 5321,
   model: string = 'AZMP8'
 ): Promise<AtlasHardwareConfig> {
   const client = new AtlasTCPClient({ ipAddress, port })
   
   try {
-    console.log(`[Atlas Query] Connecting to ${ipAddress}:${port}...`)
+    atlasLogger.info('HARDWARE_QUERY', `Starting hardware query for ${model} at ${ipAddress}:${port}`)
     await client.connect()
-    console.log(`[Atlas Query] Connected successfully`)
 
     // Determine number of sources and zones based on model
     const maxSources = getMaxSourcesForModel(model)
     const maxZones = getMaxZonesForModel(model)
 
-    console.log(`[Atlas Query] Querying ${maxSources} sources and ${maxZones} zones for model ${model}`)
+    atlasLogger.info('HARDWARE_QUERY', `Querying ${maxSources} sources and ${maxZones} zones`)
 
     // Query all source names
     const sources: AtlasHardwareSource[] = []
@@ -74,12 +75,12 @@ export async function queryAtlasHardwareConfiguration(
             name: sourceName,
             parameterName: paramName
           })
-          console.log(`[Atlas Query] Source ${i}: ${sourceName}`)
+          atlasLogger.debug('HARDWARE_QUERY', `Source ${i}: ${sourceName}`)
         } else {
-          console.warn(`[Atlas Query] Failed to get ${paramName}`)
+          atlasLogger.warn('HARDWARE_QUERY', `Failed to get ${paramName}`)
         }
       } catch (error) {
-        console.error(`[Atlas Query] Error querying source ${i}:`, error)
+        atlasLogger.error('HARDWARE_QUERY', `Error querying source ${i}`, error)
         // Add a placeholder source
         sources.push({
           index: i,
@@ -131,9 +132,9 @@ export async function queryAtlasHardwareConfiguration(
           muted
         })
 
-        console.log(`[Atlas Query] Zone ${i}: ${zoneName} (Source: ${currentSource}, Volume: ${volume}%, Muted: ${muted})`)
+        atlasLogger.debug('HARDWARE_QUERY', `Zone ${i}: ${zoneName} (Source: ${currentSource}, Volume: ${volume}%, Muted: ${muted})`)
       } catch (error) {
-        console.error(`[Atlas Query] Error querying zone ${i}:`, error)
+        atlasLogger.error('HARDWARE_QUERY', `Error querying zone ${i}`, error)
         // Add a placeholder zone
         zones.push({
           index: i,
@@ -160,7 +161,7 @@ export async function queryAtlasHardwareConfiguration(
       queriedAt: new Date().toISOString()
     }
 
-    console.log(`[Atlas Query] Successfully queried hardware configuration:`, {
+    atlasLogger.info('HARDWARE_QUERY', `Successfully queried hardware configuration`, {
       sources: config.totalSources,
       zones: config.totalZones
     })
@@ -168,7 +169,7 @@ export async function queryAtlasHardwareConfiguration(
     return config
 
   } catch (error) {
-    console.error('[Atlas Query] Fatal error during hardware query:', error)
+    atlasLogger.error('HARDWARE_QUERY', 'Fatal error during hardware query', error)
     throw new Error(`Failed to query Atlas hardware: ${error instanceof Error ? error.message : 'Unknown error'}`)
   } finally {
     client.disconnect()
@@ -217,21 +218,21 @@ function delay(ms: number): Promise<void> {
 /**
  * Validate that we can connect to the Atlas hardware
  */
-export async function testAtlasConnection(ipAddress: string, port: number = 23): Promise<boolean> {
+export async function testAtlasConnection(ipAddress: string, port: number = 5321): Promise<boolean> {
   const client = new AtlasTCPClient({ ipAddress, port, timeout: 5000 })
   
   try {
+    atlasLogger.info('CONNECTION_TEST', `Testing connection to ${ipAddress}:${port}`)
     await client.connect()
-    console.log(`[Atlas Test] Connection successful to ${ipAddress}:${port}`)
     
     // Try to get a simple parameter to verify communication
     const response = await client.getParameter('SourceName_0', 'str')
     const success = response.success
     
-    console.log(`[Atlas Test] Communication test: ${success ? 'PASSED' : 'FAILED'}`)
+    atlasLogger.info('CONNECTION_TEST', `Communication test: ${success ? 'PASSED' : 'FAILED'}`)
     return success
   } catch (error) {
-    console.error('[Atlas Test] Connection failed:', error)
+    atlasLogger.error('CONNECTION_TEST', 'Connection test failed', error)
     return false
   } finally {
     client.disconnect()
