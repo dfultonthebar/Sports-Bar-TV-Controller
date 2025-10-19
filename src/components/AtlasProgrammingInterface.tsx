@@ -178,21 +178,61 @@ export default function AtlasProgrammingInterface() {
         console.log('[Atlas Config] Fetching configuration for processor:', processorId)
         console.log('[Atlas Config] Received configuration:', config)
         
-        // Normalize inputs to ensure routing array exists
-        const normalizedInputs = (config.inputs || generateDefaultInputs()).map((input: InputConfig) => ({
-          ...input,
+        // Helper function to extract string from Atlas name format
+        const extractName = (nameField: any, defaultName: string) => {
+          if (typeof nameField === 'string') return nameField
+          if (Array.isArray(nameField) && nameField.length > 0 && nameField[0].str) {
+            return nameField[0].str || defaultName
+          }
+          return defaultName
+        }
+        
+        // Normalize inputs to ensure routing array exists and convert Atlas format
+        const normalizedInputs = (config.inputs || generateDefaultInputs()).map((input: any, index: number) => ({
+          id: index + 1,
+          name: extractName(input.name, `Input ${index + 1}`),
+          type: input.type || 'line',
+          physicalInput: index + 1,
+          stereoMode: input.stereoMode || 'mono',
+          gainDb: input.gain !== undefined ? input.gain : 0,
+          phantom: input.phantom || false,
+          lowcut: input.lowcut || false,
+          compressor: input.compressor || false,
+          gate: input.gate || false,
+          eq: input.eq || { band1: 0, band2: 0, band3: 0 },
           routing: Array.isArray(input.routing) ? input.routing : []
         }))
         
-        // Normalize outputs to ensure all properties exist
-        const normalizedOutputs = (config.outputs || generateDefaultOutputs()).map((output: OutputConfig) => ({
-          ...output,
-          eq: output.eq || { band1: 0, band2: 0, band3: 0 }
+        // Normalize outputs to ensure all properties exist and convert Atlas format
+        const normalizedOutputs = (config.outputs || generateDefaultOutputs()).map((output: any, index: number) => ({
+          id: index + 1,
+          name: extractName(output.name, `Zone ${index + 1}`),
+          type: output.type || 'speaker',
+          physicalOutput: index + 1,
+          levelDb: output.gain !== undefined ? output.gain : -10,
+          muted: output.mute || false,
+          delay: output.delay || 0,
+          eq: output.eq || { band1: 0, band2: 0, band3: 0 },
+          compressor: output.compressor || false,
+          limiter: output.limiter !== undefined ? output.limiter : true,
+          groupId: output.groupId,
+          groupName: output.groupName
+        }))
+        
+        // Normalize scenes
+        const normalizedScenes = (config.scenes || []).map((scene: any, index: number) => ({
+          id: index + 1,
+          name: extractName(scene.name, `Scene ${index + 1}`),
+          description: scene.description || '',
+          inputs: scene.inputs || [],
+          outputs: scene.outputs || [],
+          recall_time: scene.recall_time || 2,
+          created_at: scene.created_at || new Date().toISOString()
         }))
         
         setInputs(normalizedInputs)
         setOutputs(normalizedOutputs)
-        setScenes(config.scenes || [])
+        setScenes(normalizedScenes)
         setMessages(config.messages || [])
         console.log('[Atlas Config] Configuration loaded successfully')
       } else {
