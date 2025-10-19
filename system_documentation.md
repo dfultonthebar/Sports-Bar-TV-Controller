@@ -217,6 +217,185 @@ Parameters use 0-based indexing:
 - **Atlas Logs**: Available in Atlas web interface
 - **Database Logs**: PostgreSQL logs (if enabled)
 
+## Automatic Hardware Query Feature
+
+### Overview
+The application now automatically queries the Atlas hardware during processor creation to fetch real configuration instead of using mock/model data. This ensures that the application always displays accurate source and zone names as configured in the Atlas web interface.
+
+### How It Works
+
+#### 1. Processor Creation Flow
+When a new Atlas processor is created:
+1. The processor record is created in the database with status 'offline'
+2. The application automatically connects to the Atlas hardware via TCP (port 23)
+3. It queries all source names using `SourceName_X` parameters
+4. It queries all zone names using `ZoneName_X` parameters
+5. It queries current zone status (source selection, volume, mute state)
+6. The real hardware configuration is saved to the database
+7. The processor status is updated to 'online' if successful
+
+#### 2. Hardware Query Parameters
+
+**Source Queries:**
+```json
+{"jsonrpc":"2.0","method":"get","params":{"param":"SourceName_0","fmt":"str"},"id":1}
+{"jsonrpc":"2.0","method":"get","params":{"param":"SourceName_1","fmt":"str"},"id":2}
+// ... continues for all sources
+```
+
+**Zone Queries:**
+```json
+{"jsonrpc":"2.0","method":"get","params":{"param":"ZoneName_0","fmt":"str"},"id":10}
+{"jsonrpc":"2.0","method":"get","params":{"param":"ZoneSource_0","fmt":"val"},"id":11}
+{"jsonrpc":"2.0","method":"get","params":{"param":"ZoneGain_0","fmt":"pct"},"id":12}
+{"jsonrpc":"2.0","method":"get","params":{"param":"ZoneMute_0","fmt":"val"},"id":13}
+// ... continues for all zones
+```
+
+#### 3. Configuration Storage
+The queried hardware configuration is stored in two places:
+1. **Database**: Zone records with real names and current status
+2. **File System**: JSON configuration files in `data/atlas-configs/`
+
+Configuration file format:
+```json
+{
+  "processorId": "clxxx...",
+  "ipAddress": "192.168.5.101",
+  "port": 23,
+  "model": "AZMP8",
+  "inputs": [
+    {
+      "id": "source_0",
+      "number": 1,
+      "name": "Matrix 1 (M1)",
+      "type": "atlas_configured",
+      "parameterName": "SourceName_0",
+      "queriedFromHardware": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "zone_0",
+      "number": 1,
+      "name": "Main Bar",
+      "type": "zone",
+      "parameterName": "ZoneName_0",
+      "currentSource": 0,
+      "volume": 75,
+      "muted": false,
+      "queriedFromHardware": true
+    }
+  ],
+  "queriedAt": "2024-10-19T12:34:56.789Z",
+  "source": "hardware_query_auto"
+}
+```
+
+#### 4. API Endpoints
+
+**Create Processor with Auto-Query:**
+```
+POST /api/audio-processor
+{
+  "name": "Main Processor",
+  "model": "AZMP8",
+  "ipAddress": "192.168.5.101",
+  "port": 80,
+  "tcpPort": 23,
+  "zones": 8,
+  "description": "Main audio processor"
+}
+```
+
+Response includes hardware configuration:
+```json
+{
+  "processor": {
+    "id": "clxxx...",
+    "name": "Main Processor",
+    "status": "online",
+    "inputs": 9,
+    "outputs": 5,
+    "hardwareQuerySuccess": true
+  },
+  "hardwareConfig": {
+    "sources": 9,
+    "zones": 5,
+    "queriedAt": "2024-10-19T12:34:56.789Z",
+    "inputs": [...],
+    "outputs": [...]
+  },
+  "message": "Processor created and hardware configuration queried successfully"
+}
+```
+
+**Manual Hardware Query:**
+```
+POST /api/atlas/query-hardware
+{
+  "processorId": "clxxx..."
+}
+```
+
+**Skip Auto-Query (Optional):**
+To skip automatic hardware query during creation:
+```
+POST /api/audio-processor
+{
+  ...,
+  "skipHardwareQuery": true
+}
+```
+
+#### 5. Error Handling
+If hardware query fails during processor creation:
+- The processor is still created in the database
+- Status remains 'offline'
+- Model-based default values are used temporarily
+- User receives a warning message
+- User can manually trigger hardware query later
+
+### Benefits
+1. **No Mock Data**: Always displays actual hardware configuration
+2. **Real-Time Accuracy**: Zone and source names match Atlas web interface
+3. **Automatic Setup**: No manual configuration needed
+4. **Current Status**: Displays actual zone states (source, volume, mute)
+5. **Easy Updates**: Re-query hardware anytime to sync changes
+
+### Implementation Files
+
+**Key Components:**
+- `src/app/api/audio-processor/route.ts` - Auto-query on processor creation
+- `src/app/api/atlas/query-hardware/route.ts` - Manual hardware query endpoint
+- `src/lib/atlas-hardware-query.ts` - Hardware query logic
+- `src/lib/atlasClient.ts` - TCP client with JSON-RPC 2.0 support
+- `src/lib/atlas-tcp-client.ts` - Legacy TCP client (deprecated)
+
+### Testing the Integration
+
+1. **Create New Processor:**
+   - Navigate to Audio Control Center
+   - Click "Add Processor"
+   - Fill in processor details
+   - Click "Create"
+   - Verify hardware configuration is automatically fetched
+
+2. **Verify Real Data:**
+   - Check that source names match Atlas web interface
+   - Check that zone names match Atlas configuration
+   - Verify current zone states are accurate
+
+3. **Manual Query:**
+   - Open processor settings
+   - Click "Query Hardware"
+   - Verify configuration updates
+
+4. **Monitor Logs:**
+   - Check console for `[Atlas Query]` messages
+   - Verify successful connection and parameter queries
+   - Review any error messages
+
 ## Reference Documentation
 
 ### Atlas Documents
@@ -231,6 +410,15 @@ Parameters use 0-based indexing:
 
 ## Version History
 
+### v1.1.0 (2024-10-19)
+- **Major Enhancement**: Automatic hardware query on processor creation
+- Removed mock/model data dependencies
+- Implemented real-time hardware configuration fetching
+- Added automatic zone creation with real names from Atlas
+- Enhanced error handling for hardware query failures
+- Updated system documentation with new feature details
+- Added configuration file storage for hardware queries
+
 ### v1.0.0 (2024-10-18)
 - Initial system documentation
 - Atlas AZMP8 integration completed
@@ -241,6 +429,6 @@ Parameters use 0-based indexing:
 
 ---
 
-*Document Last Updated*: October 18, 2024
+*Document Last Updated*: October 19, 2024
 *Maintained By*: System Administrator
-*Next Review Date*: November 18, 2024
+*Next Review Date*: November 19, 2024
