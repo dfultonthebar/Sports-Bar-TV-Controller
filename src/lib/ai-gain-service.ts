@@ -276,23 +276,31 @@ export class AIGainService {
 
   /**
    * Set input gain on the processor
+   * Uses Atlas protocol: SourceGain_X with 0-based indexing
+   * @param processor Processor configuration
+   * @param inputNumber Input number (1-based from UI)
+   * @param gain Gain in dB
    */
   private async setInputGain(processor: any, inputNumber: number, gain: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const client = new net.Socket()
 
       client.connect(5321, processor.ipAddress, () => {
+        // Convert 1-based UI input number to 0-based Atlas index
+        const atlasIndex = inputNumber - 1
+        
         const command = {
           jsonrpc: "2.0",
           id: 1,
           method: "set",
           params: {
-            param: `Input${inputNumber}Gain`,
+            param: `SourceGain_${atlasIndex}`,  // Fixed: Use SourceGain_X with 0-based indexing
             val: gain
           }
         }
 
-        client.write(JSON.stringify(command) + '\n')
+        console.log(`[AI Gain Service] Setting input ${inputNumber} (atlas index ${atlasIndex}) gain to ${gain}dB`)
+        client.write(JSON.stringify(command) + '\r\n')  // Fixed: Use \r\n as per Atlas protocol
       })
 
       client.on('data', (data) => {

@@ -23,9 +23,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify database connection is available
+    if (!prisma) {
+      console.error('[Control API] Database client is not initialized')
+      return NextResponse.json(
+        { error: 'Database connection error. Please check server configuration.' },
+        { status: 500 }
+      )
+    }
+
     // Get processor details
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId }
+    }).catch((dbError) => {
+      console.error('[Control API] Database query error:', dbError)
+      throw new Error(`Database error: ${dbError.message}`)
     })
 
     if (!processor) {

@@ -34,8 +34,20 @@ export async function GET(
   try {
     const processorId = context.params.id
 
+    // Verify database connection is available
+    if (!prisma) {
+      console.error('[Input Gain API] Database client is not initialized')
+      return NextResponse.json(
+        { error: 'Database connection error. Please check server configuration.' },
+        { status: 500 }
+      )
+    }
+
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId }
+    }).catch((dbError) => {
+      console.error('[Input Gain API] Database query error:', dbError)
+      throw new Error(`Database error: ${dbError.message}`)
     })
 
     if (!processor) {
@@ -83,8 +95,20 @@ export async function POST(
       )
     }
 
+    // Verify database connection is available
+    if (!prisma) {
+      console.error('[Input Gain API] Database client is not initialized')
+      return NextResponse.json(
+        { error: 'Database connection error. Please check server configuration.' },
+        { status: 500 }
+      )
+    }
+
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId }
+    }).catch((dbError) => {
+      console.error('[Input Gain API] Database query error:', dbError)
+      throw new Error(`Database error: ${dbError.message}`)
     })
 
     if (!processor) {
@@ -111,6 +135,9 @@ export async function POST(
         processorId: processorId,
         inputNumber: inputNumber
       }
+    }).catch((dbError) => {
+      console.warn('[Input Gain API] Error fetching AI config (non-critical):', dbError)
+      return null  // Continue even if AI config fetch fails
     })
 
     if (aiConfig) {
