@@ -279,8 +279,21 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
 async function setInputGain(processor: any, inputNumber: number, gain: number): Promise<any> {
   return new Promise((resolve, reject) => {
     const client = new net.Socket()
+    let responseBuffer = ''
+    let timeoutHandle: NodeJS.Timeout
 
     atlasLogger.connectionAttempt(processor.ipAddress, 5321)
+
+    // Timeout after 5 seconds (increased from 3)
+    timeoutHandle = setTimeout(() => {
+      atlasLogger.warn('TIMEOUT', 'Set gain operation timed out', { 
+        inputNumber, 
+        gain, 
+        processor: processor.ipAddress 
+      })
+      client.destroy()
+      reject(new Error('Set gain operation timed out after 5 seconds'))
+    }, 5000)
 
     client.connect(5321, processor.ipAddress, () => {
       atlasLogger.connectionSuccess(processor.ipAddress, 5321)
@@ -304,32 +317,53 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
     })
 
     client.on('data', (data) => {
-      try {
-        const response = JSON.parse(data.toString().trim())
-        atlasLogger.responseReceived(response, processor.ipAddress)
-        client.end()
-        resolve(response)
-      } catch (error) {
-        atlasLogger.error('PARSING', 'Error parsing set gain response', error)
-        client.end()
-        reject(error)
+      responseBuffer += data.toString()
+      
+      // Process complete JSON responses (split by \r\n)
+      const lines = responseBuffer.split('\r\n')
+      responseBuffer = lines.pop() || '' // Keep incomplete line in buffer
+      
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const response = JSON.parse(line)
+            atlasLogger.responseReceived(response, processor.ipAddress)
+            
+            // Check if response indicates success
+            if (response.result === 'OK' || response.result || response.id === 1) {
+              clearTimeout(timeoutHandle)
+              client.end()
+              resolve(response)
+              return
+            }
+            
+            // Check for error response
+            if (response.error) {
+              clearTimeout(timeoutHandle)
+              client.end()
+              reject(new Error(`Atlas error: ${JSON.stringify(response.error)}`))
+              return
+            }
+          } catch (error) {
+            atlasLogger.error('PARSING', 'Error parsing set gain response', { line, error })
+          }
+        }
       }
     })
 
     client.on('error', (error) => {
+      clearTimeout(timeoutHandle)
       atlasLogger.connectionFailure(processor.ipAddress, 5321, error)
-      reject(error)
+      reject(new Error(`Connection error: ${error.message}`))
     })
 
-    // Timeout after 3 seconds
-    setTimeout(() => {
-      atlasLogger.warn('TIMEOUT', 'Set gain operation timed out', { 
-        inputNumber, 
-        gain, 
-        processor: processor.ipAddress 
-      })
-      client.end()
-      reject(new Error('Set gain timeout'))
-    }, 3000)
+    client.on('close', () => {
+      clearTimeout(timeoutHandle)
+      atlasLogger.connectionClosed(processor.ipAddress, 5321)
+      // If we got here without resolving, something went wrong
+      if (responseBuffer && responseBuffer.trim()) {
+        atlasLogger.warn('INCOMPLETE', 'Connection closed with incomplete response', { responseBuffer })
+      }
+    })
   })
 }

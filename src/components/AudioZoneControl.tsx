@@ -109,8 +109,9 @@ export default function AudioZoneControl() {
         { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
       ]
 
-      // Add Atlas inputs from API
-      const atlasInputs: AudioInput[] = (inputsData.inputs || [])
+      // Add Atlas inputs from API (safely handle undefined or null)
+      const inputsList = inputsData?.inputs || []
+      const atlasInputs: AudioInput[] = (Array.isArray(inputsList) ? inputsList : [])
         .filter((input: AtlasInputConfig) => input.type !== 'matrix_audio') // Exclude internal matrix audio buses from UI
         .map((input: AtlasInputConfig) => ({
           id: input.id,
@@ -124,9 +125,10 @@ export default function AudioZoneControl() {
       // Build zones from Atlas outputs and groups
       const allZones: Zone[] = []
 
-      // Add zone groups first
-      if (outputsData.groups && outputsData.groups.length > 0) {
-        outputsData.groups.forEach((group: AtlasZoneGroup) => {
+      // Add zone groups first (safely handle undefined or null)
+      const groups = outputsData?.groups || []
+      if (Array.isArray(groups) && groups.length > 0) {
+        groups.forEach((group: AtlasZoneGroup) => {
           allZones.push({
             id: group.id,
             name: group.name,
@@ -138,9 +140,10 @@ export default function AudioZoneControl() {
         })
       }
 
-      // Add individual outputs/zones
-      if (outputsData.outputs && outputsData.outputs.length > 0) {
-        outputsData.outputs.forEach((output: AtlasOutputConfig) => {
+      // Add individual outputs/zones (safely handle undefined or null)
+      const outputs = outputsData?.outputs || []
+      if (Array.isArray(outputs) && outputs.length > 0) {
+        outputs.forEach((output: AtlasOutputConfig) => {
           allZones.push({
             id: output.id,
             name: output.name,
@@ -152,6 +155,7 @@ export default function AudioZoneControl() {
         })
       }
 
+      // Always set zones, even if empty
       setZones(allZones)
 
       console.log('Dynamic Atlas configuration loaded:', {
@@ -177,12 +181,9 @@ export default function AudioZoneControl() {
         { id: 'matrix4', name: matrixLabels[4] || 'Matrix 4', isActive: true, type: 'matrix', matrixNumber: 4 },
       ])
       
-      // Fallback to default zones
-      setZones([
-        { id: 'mainbar', name: 'Main Bar', currentSource: 'Spotify', volume: 59, isMuted: false, isActive: true },
-        { id: 'patio', name: 'Patio', currentSource: 'Spotify', volume: 45, isMuted: false, isActive: true },
-        { id: 'diningroom', name: 'Dining Room', currentSource: 'Spotify', volume: 52, isMuted: false, isActive: true },
-      ])
+      // Set empty zones array - no mock data
+      // This ensures the UI shows a proper error state rather than misleading mock data
+      setZones([])
       
       setLoading(false)
     }
@@ -333,7 +334,15 @@ export default function AudioZoneControl() {
 
       {/* Zone Controls */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {zones.map(zone => (
+        {zones.length === 0 ? (
+          <div className="col-span-full bg-slate-800 rounded-lg p-8 border border-slate-700 text-center">
+            <Speaker className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-300 mb-2">No Zones Available</h3>
+            <p className="text-slate-400 text-sm">
+              Please configure your Atlas audio processor to set up zones.
+            </p>
+          </div>
+        ) : zones.map(zone => (
           <div 
             key={zone.id}
             className="bg-slate-800 rounded-lg p-5 border border-slate-700 hover:border-teal-500/50 transition-all"

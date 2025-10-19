@@ -110,11 +110,15 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const data = await request.json()
-    const { id, name, model, ipAddress, port, zones, description, username, password } = data
+    const { searchParams } = new URL(request.url)
+    
+    // Accept ID from either request body or query parameter
+    const id = data.id || searchParams.get('id')
+    const { name, model, ipAddress, port, zones, description, username, password } = data
 
     if (!id) {
       return NextResponse.json(
-        { error: 'Processor ID is required' },
+        { error: 'Processor ID is required (provide in body or query parameter)' },
         { status: 400 }
       )
     }
