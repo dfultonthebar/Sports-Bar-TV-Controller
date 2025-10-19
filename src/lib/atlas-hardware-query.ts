@@ -42,7 +42,7 @@ export interface AtlasHardwareConfig {
  */
 export async function queryAtlasHardwareConfiguration(
   ipAddress: string,
-  port: number = 23,
+  port: number = 5321,
   model: string = 'AZMP8'
 ): Promise<AtlasHardwareConfig> {
   const client = new AtlasTCPClient({ ipAddress, port })
@@ -217,7 +217,7 @@ function delay(ms: number): Promise<void> {
 /**
  * Validate that we can connect to the Atlas hardware
  */
-export async function testAtlasConnection(ipAddress: string, port: number = 23): Promise<boolean> {
+export async function testAtlasConnection(ipAddress: string, port: number = 5321): Promise<boolean> {
   const client = new AtlasTCPClient({ ipAddress, port, timeout: 5000 })
   
   try {

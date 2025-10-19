@@ -36,7 +36,8 @@
 
 ### 3rd Party Control Protocol
 - **Protocol**: JSON-RPC 2.0 over TCP
-- **Connection**: Telnet on port 23
+- **TCP Port**: 5321 (for control commands and subscription updates)
+- **UDP Port**: 3131 (for metering information subscription updates)
 - **Message Format**: `{"jsonrpc":"2.0","method":"...","params":{...}}\r\n`
 - **Authentication**: 3rd Party Control must be enabled in Atlas web interface
 
@@ -117,7 +118,8 @@ Parameters use 0-based indexing:
    - Model: AZMP8
    - IP Address: 192.168.5.101
    - Port: 80 (for web interface)
-   - TCP Port: 23 (for control commands)
+   - TCP Port: 5321 (for control commands - JSON-RPC 2.0)
+   - UDP Port: 3131 (for metering data - optional)
 3. Test connection using "Test Connection" button
 
 ### 3. Zone Configuration
@@ -134,8 +136,8 @@ Parameters use 0-based indexing:
 **Solutions:**
 1. Verify network connectivity: `ping 192.168.5.101`
 2. Check if 3rd Party Control is enabled in Atlas web interface
-3. Verify firewall settings allow port 23 (telnet)
-4. Check TCP port is not already in use
+3. Verify firewall settings allow port 5321 (TCP for control) and port 3131 (UDP for metering)
+4. Check TCP port 5321 is not already in use
 5. Review Atlas logs for connection attempts
 
 #### Problem: Commands not executing
@@ -150,8 +152,9 @@ Parameters use 0-based indexing:
 **Solutions:**
 1. Verify subscription was successful (check response)
 2. Ensure connection remains open
-3. Check for UDP port 3804 if using meter subscriptions
+3. Check for UDP port 3131 if using meter subscriptions (metering data)
 4. Review buffer handling in TCP client
+5. Note: Non-metering subscription updates are received via TCP port 5321
 
 ### Application Issues
 
@@ -231,16 +234,24 @@ Parameters use 0-based indexing:
 
 ## Version History
 
+### v1.1.0 (2024-10-19)
+- **CRITICAL FIX**: Updated TCP port from 23 (telnet) to 5321 (correct Atmosphere DSP control port)
+- Updated UDP port reference to 3131 for metering data
+- This fixes the issue where the Atlas processor was not showing real inputs/outputs
+- All Atlas TCP client libraries updated to use correct port 5321
+- Updated API routes and hardware query services
+- Documentation updated with correct port information
+
 ### v1.0.0 (2024-10-18)
 - Initial system documentation
 - Atlas AZMP8 integration completed
 - TCP control protocol implemented
 - Fixed rendering errors in AtlasProgrammingInterface
-- Updated TCP port from 3804 to 23 (correct telnet port)
+- Updated TCP port from 3804 to 23 (incorrect - see v1.1.0)
 - Added defensive null checks for array rendering
 
 ---
 
-*Document Last Updated*: October 18, 2024
+*Document Last Updated*: October 19, 2024
 *Maintained By*: System Administrator
 *Next Review Date*: November 18, 2024
