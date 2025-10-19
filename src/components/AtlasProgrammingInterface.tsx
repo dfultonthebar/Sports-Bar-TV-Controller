@@ -243,10 +243,40 @@ export default function AtlasProgrammingInterface() {
     }))
   }
 
-  const updateInput = (inputId: number, updates: Partial<InputConfig>) => {
+  const updateInput = async (inputId: number, updates: Partial<InputConfig>) => {
+    // Update local state immediately for responsive UI
     setInputs(prev => prev.map(input => 
       input.id === inputId ? { ...input, ...updates } : input
     ))
+
+    // If gain is being updated, send it to the Atlas hardware
+    if (updates.gainDb !== undefined && selectedProcessor) {
+      try {
+        const input = inputs.find(i => i.id === inputId)
+        if (!input) return
+
+        const response = await fetch(`/api/audio-processor/${selectedProcessor.id}/input-gain`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inputNumber: input.physicalInput,
+            gain: updates.gainDb,
+            reason: 'manual_adjustment'
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          console.error('Failed to set input gain:', error)
+          showMessage(`Failed to set gain for ${input.name}: ${error.error || 'Unknown error'}`, 'error')
+        } else {
+          console.log(`Successfully set gain for Input ${input.physicalInput} to ${updates.gainDb}dB`)
+        }
+      } catch (error) {
+        console.error('Error setting input gain:', error)
+        showMessage('Failed to communicate with Atlas processor', 'error')
+      }
+    }
   }
 
   const updateOutput = (outputId: number, updates: Partial<OutputConfig>) => {
