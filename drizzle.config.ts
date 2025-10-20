@@ -4,7 +4,7 @@ import type { Config } from 'drizzle-kit'
 export default {
   schema: './src/db/schema.ts',
   out: './drizzle',
-  driver: 'better-sqlite',
+  dialect: 'sqlite',
   dbCredentials: {
     url: process.env.DATABASE_URL || 'file:./prisma/data/sports_bar.db'
   }

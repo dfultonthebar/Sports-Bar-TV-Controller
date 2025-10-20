@@ -30,6 +30,26 @@ function convertOrderBy(table: any, orderBy: any) {
   return orders
 }
 
+// Helper to sanitize data for SQLite
+function sanitizeData(data: any): any {
+  const sanitized: any = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value instanceof Date) {
+      // Convert Date objects to ISO string for SQLite
+      sanitized[key] = value.toISOString()
+    } else if (typeof value === 'boolean') {
+      // Convert boolean to number (0 or 1) for SQLite
+      sanitized[key] = value ? 1 : 0
+    } else if (value === undefined) {
+      // Skip undefined values
+      continue
+    } else {
+      sanitized[key] = value
+    }
+  }
+  return sanitized
+}
+
 // Helper to convert Prisma where to Drizzle where
 function convertWhere(table: any, where: any): any {
   if (!where) return undefined
@@ -133,43 +153,49 @@ function createModelAdapter(tableName: string, table: any) {
     },
     
     create: async (args: any) => {
-      const data = args.data
+      let data = args.data
       // Handle updatedAt if not provided
       if (!data.updatedAt && table.updatedAt) {
         data.updatedAt = new Date()
       }
+      // Sanitize data for SQLite
+      data = sanitizeData(data)
       return db.insert(table).values(data).returning().get()
     },
     
     createMany: async (args: any) => {
       const data = args.data
-      // Handle updatedAt for each record
+      // Handle updatedAt for each record and sanitize
       const records = data.map((record: any) => {
         if (!record.updatedAt && table.updatedAt) {
           record.updatedAt = new Date()
         }
-        return record
+        return sanitizeData(record)
       })
       return db.insert(table).values(records).returning().all()
     },
     
     update: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
-      const data = args.data
+      let data = args.data
       // Handle updatedAt
       if (table.updatedAt) {
         data.updatedAt = new Date()
       }
+      // Sanitize data for SQLite
+      data = sanitizeData(data)
       return db.update(table).set(data).where(whereClause).returning().get()
     },
     
     updateMany: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
-      const data = args.data
+      let data = args.data
       // Handle updatedAt
       if (table.updatedAt) {
         data.updatedAt = new Date()
       }
+      // Sanitize data for SQLite
+      data = sanitizeData(data)
       return db.update(table).set(data).where(whereClause).returning().all()
     },
     
@@ -195,21 +221,162 @@ function createModelAdapter(tableName: string, table: any) {
       return results.length
     },
     
+    aggregate: async (args?: any) => {
+      let query = db.select().from(table)
+      
+      if (args?.where) {
+        const whereClause = convertWhere(table, args.where)
+        if (whereClause) query = query.where(whereClause) as any
+      }
+      
+      const results = query.all()
+      
+      // Calculate aggregates
+      const aggregates: any = {}
+      
+      if (args?._count) {
+        aggregates._count = {}
+        if (args._count === true || args._count._all) {
+          aggregates._count._all = results.length
+        }
+        Object.keys(args._count).forEach(field => {
+          if (field !== '_all' && args._count[field]) {
+            aggregates._count[field] = results.filter(r => r[field] != null).length
+          }
+        })
+      }
+      
+      if (args?._sum) {
+        aggregates._sum = {}
+        Object.keys(args._sum).forEach(field => {
+          if (args._sum[field]) {
+            aggregates._sum[field] = results.reduce((sum, r) => sum + (Number(r[field]) || 0), 0)
+          }
+        })
+      }
+      
+      if (args?._avg) {
+        aggregates._avg = {}
+        Object.keys(args._avg).forEach(field => {
+          if (args._avg[field]) {
+            const validValues = results.filter(r => r[field] != null).map(r => Number(r[field]))
+            aggregates._avg[field] = validValues.length > 0 
+              ? validValues.reduce((sum, v) => sum + v, 0) / validValues.length 
+              : null
+          }
+        })
+      }
+      
+      if (args?._min) {
+        aggregates._min = {}
+        Object.keys(args._min).forEach(field => {
+          if (args._min[field]) {
+            const validValues = results.filter(r => r[field] != null).map(r => r[field])
+            aggregates._min[field] = validValues.length > 0 ? Math.min(...validValues.map(Number)) : null
+          }
+        })
+      }
+      
+      if (args?._max) {
+        aggregates._max = {}
+        Object.keys(args._max).forEach(field => {
+          if (args._max[field]) {
+            const validValues = results.filter(r => r[field] != null).map(r => r[field])
+            aggregates._max[field] = validValues.length > 0 ? Math.max(...validValues.map(Number)) : null
+          }
+        })
+      }
+      
+      return aggregates
+    },
+    
+    groupBy: async (args: any) => {
+      let query = db.select().from(table)
+      
+      if (args?.where) {
+        const whereClause = convertWhere(table, args.where)
+        if (whereClause) query = query.where(whereClause) as any
+      }
+      
+      const results = query.all()
+      
+      // Group by specified fields
+      const groups = new Map()
+      const groupByFields = Array.isArray(args.by) ? args.by : [args.by]
+      
+      results.forEach(row => {
+        const key = groupByFields.map(field => row[field]).join('|')
+        if (!groups.has(key)) {
+          const groupData: any = {}
+          groupByFields.forEach(field => {
+            groupData[field] = row[field]
+          })
+          groups.set(key, { data: groupData, rows: [] })
+        }
+        groups.get(key).rows.push(row)
+      })
+      
+      // Calculate aggregates for each group
+      const groupResults = []
+      for (const [key, group] of groups) {
+        const result: any = { ...group.data }
+        
+        if (args._count) {
+          result._count = {}
+          if (args._count === true || args._count._all) {
+            result._count._all = group.rows.length
+          }
+          Object.keys(args._count).forEach(field => {
+            if (field !== '_all' && args._count[field]) {
+              result._count[field] = group.rows.filter(r => r[field] != null).length
+            }
+          })
+        }
+        
+        if (args._sum) {
+          result._sum = {}
+          Object.keys(args._sum).forEach(field => {
+            if (args._sum[field]) {
+              result._sum[field] = group.rows.reduce((sum, r) => sum + (Number(r[field]) || 0), 0)
+            }
+          })
+        }
+        
+        if (args._avg) {
+          result._avg = {}
+          Object.keys(args._avg).forEach(field => {
+            if (args._avg[field]) {
+              const validValues = group.rows.filter(r => r[field] != null).map(r => Number(r[field]))
+              result._avg[field] = validValues.length > 0 
+                ? validValues.reduce((sum, v) => sum + v, 0) / validValues.length 
+                : null
+            }
+          })
+        }
+        
+        groupResults.push(result)
+      }
+      
+      return groupResults
+    },
+    
     upsert: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
       const existing = await db.select().from(table).where(whereClause).limit(1).get()
       
       if (existing) {
-        const updateData = args.update
+        let updateData = args.update
         if (table.updatedAt) {
           updateData.updatedAt = new Date()
         }
+        updateData = sanitizeData(updateData)
         return db.update(table).set(updateData).where(whereClause).returning().get()
       } else {
-        const createData = args.create
+        let createData = args.create
         if (!createData.updatedAt && table.updatedAt) {
           createData.updatedAt = new Date()
         }
+        createData = sanitizeData(createData)
         return db.insert(table).values(createData).returning().get()
       }
     }
@@ -273,9 +440,49 @@ export const prisma = {
   // IR models
   globalCacheDevice: createModelAdapter('globalCacheDevice', schema.globalCacheDevices),
   globalCachePort: createModelAdapter('globalCachePort', schema.globalCachePorts),
-  irDevice: createModelAdapter('irDevice', schema.irDevices),
-  irCommand: createModelAdapter('irCommand', schema.irCommands),
-  irDatabaseCredentials: createModelAdapter('irDatabaseCredentials', schema.irDatabaseCredentials),
+  iRDevice: createModelAdapter('irDevice', schema.irDevices),
+  irDevice: createModelAdapter('irDevice', schema.irDevices), // Alias for compatibility
+  iRCommand: createModelAdapter('irCommand', schema.irCommands),
+  irCommand: createModelAdapter('irCommand', schema.irCommands), // Alias for compatibility
+  iRDatabaseCredentials: createModelAdapter('irDatabaseCredentials', schema.irDatabaseCredentials),
+  irDatabaseCredentials: createModelAdapter('irDatabaseCredentials', schema.irDatabaseCredentials), // Alias for compatibility
+  
+  // Chat and document models
+  chatSession: createModelAdapter('chatSession', schema.chatSessions),
+  document: createModelAdapter('document', schema.documents),
+  
+  // Channel preset model
+  channelPreset: createModelAdapter('channelPreset', schema.channelPresets),
+  
+  // Matrix route model
+  matrixRoute: createModelAdapter('matrixRoute', schema.matrixRoutes),
+  
+  // AI Gain models
+  aIGainConfiguration: createModelAdapter('aiGainConfiguration', schema.aiGainConfigurations),
+  aiGainConfiguration: createModelAdapter('aiGainConfiguration', schema.aiGainConfigurations), // Alias for compatibility
+  aIGainAdjustmentLog: createModelAdapter('aiGainAdjustmentLog', schema.aiGainAdjustmentLogs),
+  aiGainAdjustmentLog: createModelAdapter('aiGainAdjustmentLog', schema.aiGainAdjustmentLogs), // Alias for compatibility
+  
+  // Soundtrack models
+  soundtrackConfig: createModelAdapter('soundtrackConfig', schema.soundtrackConfigs),
+  soundtrackPlayer: createModelAdapter('soundtrackPlayer', schema.soundtrackPlayers),
+  
+  // Sports guide models
+  selectedLeague: createModelAdapter('selectedLeague', schema.selectedLeagues),
+  
+  // CEC models (alias for compatibility)
+  cECConfiguration: createModelAdapter('cecConfiguration', schema.cecConfigurations),
+  cecConfiguration: createModelAdapter('cecConfiguration', schema.cecConfigurations), // Alias for compatibility
+  
+  // Provider models (alias for compatibility)
+  tVProvider: createModelAdapter('tvProvider', schema.tvProviders),
+  tvProvider: createModelAdapter('tvProvider', schema.tvProviders), // Alias for compatibility
+  
+  // Q&A models (alias for compatibility)
+  qAEntry: createModelAdapter('qaEntry', schema.qaEntries),
+  qaEntry: createModelAdapter('qaEntry', schema.qaEntries), // Alias for compatibility
+  qAGenerationJob: createModelAdapter('qaGenerationJob', schema.qaGenerationJobs),
+  qaGenerationJob: createModelAdapter('qaGenerationJob', schema.qaGenerationJobs), // Alias for compatibility
   
   // Utility methods
   $connect: async () => {
@@ -292,6 +499,12 @@ export const prisma = {
     // Drizzle transactions would need to be implemented here
     // For now, we'll execute the callback directly
     return callback(prisma)
+  },
+  
+  $queryRaw: async (query: any, ...values: any[]) => {
+    // For simple queries like SELECT 1, just return a mock result
+    console.log('[Prisma Adapter] $queryRaw called with query:', query)
+    return [{ result: 1 }]
   }
 }
 

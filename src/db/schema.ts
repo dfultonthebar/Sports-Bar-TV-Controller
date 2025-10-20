@@ -579,3 +579,130 @@ export const irDatabaseCredentials = sqliteTable('IRDatabaseCredentials', {
 }, (table) => ({
   isActiveIdx: index('IRDatabaseCredentials_isActive_idx').on(table.isActive),
 }))
+
+// Chat Session Model (for AI chat functionality)
+export const chatSessions = sqliteTable('ChatSession', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  title: text('title'),
+  messages: text('messages').notNull(), // JSON string of messages
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// Document Model (for uploaded documents)
+export const documents = sqliteTable('Document', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  filename: text('filename').notNull(),
+  originalName: text('originalName').notNull(),
+  filePath: text('filePath').notNull(),
+  fileSize: integer('fileSize').notNull(),
+  mimeType: text('mimeType').notNull(),
+  content: text('content'), // Extracted text content for AI processing
+  embeddings: text('embeddings'), // JSON string of embeddings for vector search
+  uploadedAt: timestamp('uploadedAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// Channel Preset Model
+export const channelPresets = sqliteTable('ChannelPreset', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(), // User-friendly name like "ESPN", "Fox Sports", "NFL RedZone"
+  channelNumber: text('channelNumber').notNull(), // Channel number to tune to (e.g., "206", "212")
+  deviceType: text('deviceType').notNull(), // "cable" or "directv"
+  order: integer('order').notNull().default(0), // Display order in the list
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  usageCount: integer('usageCount').notNull().default(0), // Track how many times this preset has been used
+  lastUsed: timestamp('lastUsed'), // Track when this preset was last used
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  deviceTypeOrderIdx: index('ChannelPreset_deviceType_order_idx').on(table.deviceType, table.order),
+  isActiveIdx: index('ChannelPreset_isActive_idx').on(table.isActive),
+  usageCountIdx: index('ChannelPreset_usageCount_idx').on(table.usageCount),
+}))
+
+// Matrix Route Model (for tracking matrix routing)
+export const matrixRoutes = sqliteTable('MatrixRoute', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inputNum: integer('inputNum').notNull(),
+  outputNum: integer('outputNum').notNull().unique(),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  outputNumIdx: index('MatrixRoute_outputNum_idx').on(table.outputNum),
+}))
+
+// AI Gain Configuration Model
+export const aiGainConfigurations = sqliteTable('AIGainConfiguration', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  inputNumber: integer('inputNumber').notNull(),
+  inputName: text('inputName').notNull(),
+  targetLevel: real('targetLevel').notNull().default(-20),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  lastAdjustment: timestamp('lastAdjustment'),
+  adjustmentCount: integer('adjustmentCount').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  processorInputIdx: uniqueIndex('AIGainConfiguration_processorId_inputNumber_key').on(table.processorId, table.inputNumber),
+}))
+
+// AI Gain Adjustment Log Model
+export const aiGainAdjustmentLogs = sqliteTable('AIGainAdjustmentLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  configId: text('configId').notNull().references(() => aiGainConfigurations.id, { onDelete: 'cascade' }),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  inputNumber: integer('inputNumber').notNull(),
+  previousLevel: real('previousLevel').notNull(),
+  newLevel: real('newLevel').notNull(),
+  adjustment: real('adjustment').notNull(),
+  reason: text('reason'),
+  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
+}, (table) => ({
+  configIdIdx: index('AIGainAdjustmentLog_configId_idx').on(table.configId),
+  timestampIdx: index('AIGainAdjustmentLog_timestamp_idx').on(table.timestamp),
+}))
+
+// Soundtrack Configuration Model
+export const soundtrackConfigs = sqliteTable('SoundtrackConfig', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  apiKey: text('apiKey').notNull(),
+  accountId: text('accountId'),
+  accountName: text('accountName'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  lastSync: timestamp('lastSync'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// Soundtrack Player Model
+export const soundtrackPlayers = sqliteTable('SoundtrackPlayer', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  configId: text('configId').notNull().references(() => soundtrackConfigs.id, { onDelete: 'cascade' }),
+  playerId: text('playerId').notNull(),
+  playerName: text('playerName').notNull(),
+  locationName: text('locationName'),
+  audioZoneId: text('audioZoneId').references(() => audioZones.id),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  configIdIdx: index('SoundtrackPlayer_configId_idx').on(table.configId),
+  playerIdIdx: uniqueIndex('SoundtrackPlayer_playerId_key').on(table.playerId),
+}))
+
+// Selected League Model (for sports guide)
+export const selectedLeagues = sqliteTable('SelectedLeague', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  league: text('league').notNull().unique(), // e.g., "NFL", "NBA", "MLB", "NHL"
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  priority: integer('priority').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  leagueIdx: index('SelectedLeague_league_idx').on(table.league),
+  priorityIdx: index('SelectedLeague_priority_idx').on(table.priority),
+}))

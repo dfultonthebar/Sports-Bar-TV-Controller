@@ -57,7 +57,7 @@ export async function GET(
     // Query the actual hardware configuration
     const hardwareConfig = await queryAtlasHardwareConfiguration(
       processor.ipAddress,
-      parseInt(processor.port),
+      processor.tcpPort || 5321, // Use tcpPort instead of port
       processor.model
     )
 
