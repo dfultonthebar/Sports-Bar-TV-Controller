@@ -1,10 +1,8 @@
 
 // Seed DirecTV Commands Database
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../src/lib/db';
 import { CommandMapper } from '../src/lib/directv/command-mapper';
-
-const prisma = new PrismaClient();
 
 async function seedCommands() {
   console.log('Seeding DirecTV commands...');

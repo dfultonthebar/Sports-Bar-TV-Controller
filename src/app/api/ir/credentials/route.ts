@@ -1,12 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import crypto from 'crypto'
-
-const prisma = new PrismaClient()
 
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {

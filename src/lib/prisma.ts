@@ -1,31 +1,10 @@
-import { PrismaClient } from '@prisma/client'
+/**
+ * Prisma compatibility layer using Drizzle ORM
+ * Provides a Prisma-like API for backward compatibility
+ */
+import { prisma } from '@/db/prisma-adapter'
 
-declare global {
-  var prisma: PrismaClient | undefined
-}
-
-const prisma = global.prisma || new PrismaClient({
-  log: [
-    { level: 'query', emit: 'event' },
-    { level: 'error', emit: 'stdout' },
-    { level: 'info', emit: 'stdout' },
-    { level: 'warn', emit: 'stdout' },
-  ],
-})
-
-// Log all queries with parameters and duration
-prisma.$on('query', (e: any) => {
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🔍 [PRISMA QUERY]')
-  console.log('Query:', e.query)
-  console.log('Params:', e.params)
-  console.log('Duration:', e.duration + 'ms')
-  console.log('Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-})
-
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma
-}
+// Note: Query logging is handled at the Drizzle level in src/db/index.ts
+// The prisma adapter provides full Prisma API compatibility
 
 export default prisma

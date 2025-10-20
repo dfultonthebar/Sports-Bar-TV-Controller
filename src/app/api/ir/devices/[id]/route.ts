@@ -1,10 +1,8 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { logDatabaseOperation } from '@/lib/database-logger'
-
-const prisma = new PrismaClient()
 
 /**
  * GET /api/ir/devices/:id
