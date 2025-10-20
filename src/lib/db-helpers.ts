@@ -23,18 +23,33 @@ function getTableDisplayName(tableName: string): string {
 
 /**
  * Helper to sanitize data for SQLite
+ * SQLite3 can only bind: numbers, strings, bigints, buffers, and null
  */
 function sanitizeData(data: any): any {
   const sanitized: any = {}
   for (const [key, value] of Object.entries(data)) {
-    if (value instanceof Date) {
+    if (value === undefined) {
+      continue // Skip undefined values
+    } else if (value === null) {
+      sanitized[key] = null
+    } else if (value instanceof Date) {
       sanitized[key] = value.toISOString()
     } else if (typeof value === 'boolean') {
       sanitized[key] = value ? 1 : 0
-    } else if (value === undefined) {
-      continue
-    } else {
+    } else if (typeof value === 'number') {
       sanitized[key] = value
+    } else if (typeof value === 'bigint') {
+      sanitized[key] = value
+    } else if (typeof value === 'string') {
+      sanitized[key] = value
+    } else if (Buffer.isBuffer(value)) {
+      sanitized[key] = value
+    } else if (typeof value === 'object') {
+      // Convert objects to JSON strings for SQLite storage
+      sanitized[key] = JSON.stringify(value)
+    } else {
+      // Convert any other type to string
+      sanitized[key] = String(value)
     }
   }
   return sanitized

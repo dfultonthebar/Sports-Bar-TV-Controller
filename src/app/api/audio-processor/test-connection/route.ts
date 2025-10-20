@@ -164,17 +164,22 @@ export async function POST(request: NextRequest) {
         const workingCreds = credentialTest.credentials
         
         // Update processor with working credentials if processorId provided
-        if (processorId && typeof processorId === 'string') {
-          await update('audioProcessors',
-            eq(schema.audioProcessors.id, processorId),
-            { 
-              status: 'online',
-              lastSeen: new Date().toISOString(),
-              ipAddress: cleanedIp,
-              username: workingCreds.username,
-              password: encryptPassword(workingCreds.password)
-            }
-          )
+        if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+          try {
+            await update('audioProcessors',
+              eq(schema.audioProcessors.id, processorId),
+              { 
+                status: 'online',
+                lastSeen: new Date().toISOString(),
+                ipAddress: cleanedIp,
+                username: workingCreds.username,
+                password: encryptPassword(workingCreds.password)
+              }
+            )
+          } catch (dbError) {
+            console.error('Failed to update processor in database:', dbError)
+            // Continue with response even if DB update fails
+          }
         }
 
         return NextResponse.json({
@@ -196,23 +201,28 @@ export async function POST(request: NextRequest) {
     
     if (testResult.success && testResult.result) {
       // Update processor status in database if processorId provided
-      if (processorId && typeof processorId === 'string') {
-        const updateData: any = { 
-          status: 'online',
-          lastSeen: new Date().toISOString(),
-          ipAddress: cleanedIp
+      if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+        try {
+          const updateData: any = { 
+            status: 'online',
+            lastSeen: new Date().toISOString(),
+            ipAddress: cleanedIp
+          }
+          
+          // Store credentials if provided
+          if (username && password) {
+            updateData.username = username
+            updateData.password = encryptPassword(password)
+          }
+          
+          await update('audioProcessors',
+            eq(schema.audioProcessors.id, processorId),
+            updateData
+          )
+        } catch (dbError) {
+          console.error('Failed to update processor in database:', dbError)
+          // Continue with response even if DB update fails
         }
-        
-        // Store credentials if provided
-        if (username && password) {
-          updateData.username = username
-          updateData.password = encryptPassword(password)
-        }
-        
-        await update('audioProcessors',
-          eq(schema.audioProcessors.id, processorId),
-          updateData
-        )
       }
 
       return NextResponse.json({
@@ -248,14 +258,19 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Update processor status to offline if processorId provided
-      if (processorId && typeof processorId === 'string') {
-        await update('audioProcessors',
-          eq(schema.audioProcessors.id, processorId),
-          { 
-            status: 'offline',
-            ipAddress: cleanedIp
-          }
-        )
+      if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+        try {
+          await update('audioProcessors',
+            eq(schema.audioProcessors.id, processorId),
+            { 
+              status: 'offline',
+              ipAddress: cleanedIp
+            }
+          )
+        } catch (dbError) {
+          console.error('Failed to update processor status in database:', dbError)
+          // Continue with response even if DB update fails
+        }
       }
       
       return NextResponse.json({

@@ -706,3 +706,58 @@ export const selectedLeagues = sqliteTable('SelectedLeague', {
   leagueIdx: index('SelectedLeague_league_idx').on(table.league),
   priorityIdx: index('SelectedLeague_priority_idx').on(table.priority),
 }))
+
+// Atlas Parameters Model (for dynamic parameter mappings and state persistence)
+export const atlasParameters = sqliteTable('AtlasParameter', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  paramName: text('paramName').notNull(), // e.g., 'ZoneGain_0', 'SourceMute_1'
+  paramType: text('paramType').notNull(), // e.g., 'ZoneGain', 'ZoneMute', 'ZoneSource', 'SourceMute', etc.
+  paramIndex: integer('paramIndex').notNull(), // Index number (0-based)
+  displayName: text('displayName'), // User-friendly name for the parameter
+  minValue: real('minValue'), // Minimum value (for gain/volume parameters)
+  maxValue: real('maxValue'), // Maximum value (for gain/volume parameters)
+  currentValue: text('currentValue'), // Current value (stored as string, can be number or text)
+  format: text('format').notNull().default('val'), // 'val', 'pct', or 'str'
+  readOnly: integer('readOnly', { mode: 'boolean' }).notNull().default(false), // Whether parameter is read-only
+  isSubscribed: integer('isSubscribed', { mode: 'boolean' }).notNull().default(false), // Whether we're subscribed to updates
+  lastUpdated: timestamp('lastUpdated'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  processorParamIdx: uniqueIndex('AtlasParameter_processorId_paramName_key').on(table.processorId, table.paramName),
+  processorTypeIdx: index('AtlasParameter_processorId_paramType_idx').on(table.processorId, table.paramType),
+}))
+
+// Atlas Meter Readings Model (for real-time audio metering via UDP)
+export const atlasMeterReadings = sqliteTable('AtlasMeterReading', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  meterType: text('meterType').notNull(), // 'ZoneMeter', 'SourceMeter', 'InputMeter', 'OutputMeter'
+  meterIndex: integer('meterIndex').notNull(), // Index number (0-based)
+  meterName: text('meterName'), // Display name
+  level: real('level').notNull(), // Current level in dB
+  peak: real('peak'), // Peak level
+  clipping: integer('clipping', { mode: 'boolean' }).notNull().default(false), // Clipping indicator
+  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
+}, (table) => ({
+  processorMeterIdx: index('AtlasMeterReading_processorId_meterType_meterIndex_idx').on(table.processorId, table.meterType, table.meterIndex),
+  timestampIdx: index('AtlasMeterReading_timestamp_idx').on(table.timestamp),
+}))
+
+// Atlas Connection State Model (for tracking connection status and keep-alive)
+export const atlasConnectionStates = sqliteTable('AtlasConnectionState', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().unique().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  isConnected: integer('isConnected', { mode: 'boolean' }).notNull().default(false),
+  lastConnected: timestamp('lastConnected'),
+  lastDisconnected: timestamp('lastDisconnected'),
+  lastKeepAlive: timestamp('lastKeepAlive'),
+  connectionErrors: integer('connectionErrors').notNull().default(0),
+  lastError: text('lastError'),
+  reconnectAttempts: integer('reconnectAttempts').notNull().default(0),
+  tcpPort: integer('tcpPort').notNull().default(5321), // TCP control port
+  udpPort: integer('udpPort').notNull().default(3131), // UDP metering port
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
