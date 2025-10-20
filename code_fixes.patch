@@ -1,0 +1,236 @@
+This patch file contains the critical fixes needed for the Sports Bar TV Controller deployment.
+Apply these changes to fix the database type binding and port scoping errors.
+
+================================================================================
+FIX 1: Database Type Binding in test-connection route
+================================================================================
+
+File: src/app/api/audio-processor/test-connection/route.ts
+
+ISSUE: SQLite3 can only bind numbers, strings, bigints, buffers, and null
+The Date object and undefined values are causing type binding errors.
+
+FIND THIS CODE:
+```typescript
+await db.update(audioProcessors)
+  .set({
+    lastSeen: new Date(),
+    isOnline: true,
+    model: detectedModel,
+    firmwareVersion: firmwareVersion,
+  })
+  .where(eq(audioProcessors.id, processorId));
+```
+
+REPLACE WITH:
+```typescript
+await db.update(audioProcessors)
+  .set({
+    lastSeen: new Date().toISOString(),  // Convert Date to ISO string
+    isOnline: true,
+    model: detectedModel || null,  // Ensure null instead of undefined
+    firmwareVersion: firmwareVersion || null,  // Ensure null instead of undefined
+  })
+  .where(eq(audioProcessors.id, processorId));
+```
+
+================================================================================
+FIX 2: Port Variable Scoping in Atlas Connection
+================================================================================
+
+File: src/lib/atlas/connection.ts (or wherever Atlas connection is handled)
+
+ISSUE: ReferenceError: port is not defined
+The port variable is being used without being defined in the function scope.
+
+FIND THIS CODE:
+```typescript
+export async function queryAtlasHardware(ipAddress: string, model: string) {
+  // ... connection code ...
+  const connection = await connect(ipAddress, port);  // port not defined!
+}
+```
+
+REPLACE WITH:
+```typescript
+export async function queryAtlasHardware(
+  ipAddress: string, 
+  model: string,
+  port: number = 80  // Add port parameter with default value
+) {
+  // ... connection code ...
+  const connection = await connect(ipAddress, port);
+}
+```
+
+OR if port should come from the processor config:
+
+```typescript
+export async function queryAtlasHardware(
+  processor: AudioProcessor,
+  model: string
+) {
+  const port = processor.port ?? 80;  // Get port from processor or default to 80
+  const connection = await connect(processor.ipAddress, port);
+}
+```
+
+================================================================================
+FIX 3: Drizzle Schema Date Fields
+================================================================================
+
+File: src/db/schema.ts
+
+ISSUE: Date objects cannot be stored directly in SQLite
+All date fields must be stored as text (ISO strings).
+
+FIND THIS CODE:
+```typescript
+export const audioProcessors = sqliteTable('audio_processors', {
+  // ... other fields ...
+  lastSeen: timestamp('last_seen'),  // WRONG - timestamp type
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
+});
+```
+
+REPLACE WITH:
+```typescript
+export const audioProcessors = sqliteTable('audio_processors', {
+  // ... other fields ...
+  lastSeen: text('last_seen'),  // Store as ISO string
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+```
+
+================================================================================
+FIX 4: Update All Database Operations
+================================================================================
+
+Search for all database update/insert operations and ensure:
+1. Date values are converted to ISO strings: `new Date().toISOString()`
+2. No undefined values are passed (use `|| null` or `?? null`)
+3. All values match the schema types
+
+Example patterns to find and fix:
+
+WRONG:
+```typescript
+createdAt: new Date()
+updatedAt: new Date()
+someField: maybeUndefined
+```
+
+CORRECT:
+```typescript
+createdAt: new Date().toISOString()
+updatedAt: new Date().toISOString()
+someField: maybeUndefined ?? null
+```
+
+================================================================================
+FIX 5: Atlas Connection Error Handling
+================================================================================
+
+File: src/app/api/audio-processor/[id]/zones-status/route.ts
+
+Add proper error handling for when Atlas processor is not reachable:
+
+```typescript
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const processor = await db.query.audioProcessors.findFirst({
+      where: eq(audioProcessors.id, params.id),
+    });
+
+    if (!processor) {
+      return NextResponse.json(
+        { error: 'Audio processor not found' },
+        { status: 404 }
+      );
+    }
+
+    // Add port parameter
+    const port = processor.port ?? 80;
+    
+    try {
+      const status = await queryAtlasHardware(
+        processor.ipAddress,
+        processor.model || 'AZMP8',
+        port  // Pass port explicitly
+      );
+      
+      return NextResponse.json(status);
+    } catch (atlasError) {
+      // Handle Atlas connection errors gracefully
+      console.error('Atlas connection error:', atlasError);
+      return NextResponse.json(
+        { 
+          error: 'Unable to connect to Atlas processor',
+          message: 'The audio processor may be offline or unreachable',
+          details: atlasError instanceof Error ? atlasError.message : 'Unknown error'
+        },
+        { status: 503 }  // Service Unavailable
+      );
+    }
+  } catch (error) {
+    console.error('Error fetching zones status:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+================================================================================
+MIGRATION SCRIPT
+================================================================================
+
+After applying the above fixes, run this migration to update the database:
+
+```bash
+# 1. Stop the application
+pm2 stop sports-bar-tv
+
+# 2. Backup existing database
+cp data/sports-bar-tv.db data/sports-bar-tv.db.backup
+
+# 3. Generate new migration
+npx drizzle-kit generate:sqlite
+
+# 4. Apply migration
+npx drizzle-kit push:sqlite
+
+# 5. Rebuild application
+npm run build
+
+# 6. Restart application
+pm2 start sports-bar-tv
+pm2 save
+```
+
+================================================================================
+VERIFICATION COMMANDS
+================================================================================
+
+After applying fixes and redeploying:
+
+# Check database schema
+sqlite3 data/sports-bar-tv.db ".schema audio_processors"
+
+# Test API endpoints
+curl http://localhost:3000/api/audio-processor
+curl http://localhost:3000/api/health
+
+# Check logs for errors
+pm2 logs sports-bar-tv --lines 50 | grep -i error
+
+# Verify no type binding errors
+pm2 logs sports-bar-tv --lines 100 | grep -i "can only bind"
+
+================================================================================

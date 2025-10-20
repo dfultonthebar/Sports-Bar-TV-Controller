@@ -1,6 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { update } from '@/lib/db-helpers'
 import { createAuthHeaders, testCredentials, ATLAS_DEFAULT_CREDENTIALS, encryptPassword } from '@/lib/atlas-auth'
 
 /**
@@ -113,6 +115,8 @@ async function testProcessorConnection(
 }
 
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/audio-processor/test-connection')
+  
   try {
     const { processorId, ipAddress, port, username, password, autoDetectCredentials } = await request.json()
 
@@ -160,17 +164,17 @@ export async function POST(request: NextRequest) {
         const workingCreds = credentialTest.credentials
         
         // Update processor with working credentials if processorId provided
-        if (processorId) {
-          await prisma.audioProcessor.update({
-            where: { id: processorId },
-            data: { 
+        if (processorId && typeof processorId === 'string') {
+          await update('audioProcessors',
+            eq(schema.audioProcessors.id, processorId),
+            { 
               status: 'online',
-              lastSeen: new Date(),
+              lastSeen: new Date().toISOString(),
               ipAddress: cleanedIp,
               username: workingCreds.username,
               password: encryptPassword(workingCreds.password)
             }
-          })
+          )
         }
 
         return NextResponse.json({
@@ -192,10 +196,10 @@ export async function POST(request: NextRequest) {
     
     if (testResult.success && testResult.result) {
       // Update processor status in database if processorId provided
-      if (processorId) {
+      if (processorId && typeof processorId === 'string') {
         const updateData: any = { 
           status: 'online',
-          lastSeen: new Date(),
+          lastSeen: new Date().toISOString(),
           ipAddress: cleanedIp
         }
         
@@ -205,10 +209,10 @@ export async function POST(request: NextRequest) {
           updateData.password = encryptPassword(password)
         }
         
-        await prisma.audioProcessor.update({
-          where: { id: processorId },
-          data: updateData
-        })
+        await update('audioProcessors',
+          eq(schema.audioProcessors.id, processorId),
+          updateData
+        )
       }
 
       return NextResponse.json({
@@ -244,14 +248,14 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Update processor status to offline if processorId provided
-      if (processorId) {
-        await prisma.audioProcessor.update({
-          where: { id: processorId },
-          data: { 
+      if (processorId && typeof processorId === 'string') {
+        await update('audioProcessors',
+          eq(schema.audioProcessors.id, processorId),
+          { 
             status: 'offline',
             ipAddress: cleanedIp
           }
-        })
+        )
       }
       
       return NextResponse.json({
@@ -276,8 +280,8 @@ export async function POST(request: NextRequest) {
       })
     }
     
-  } catch (error) {
-    console.error('Error testing audio processor connection:', error)
+  } catch (error: any) {
+    logger.api.error('POST', '/api/audio-processor/test-connection', error)
     return NextResponse.json(
       { 
         error: 'Failed to test connection',

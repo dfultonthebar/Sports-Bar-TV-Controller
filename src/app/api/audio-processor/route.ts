@@ -1,6 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { schema } from '@/db'
+import { asc, eq } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findMany, create, update, deleteRecord } from '@/lib/db-helpers'
 import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 import { encryptPassword, decryptPassword } from '@/lib/atlas-auth'
 
@@ -21,9 +23,11 @@ function getModelCounts(model: string) {
 }
 
 export async function GET() {
+  logger.api.request('GET', '/api/audio-processor')
+  
   try {
-    const processors = await prisma.audioProcessor.findMany({
-      orderBy: { name: 'asc' }
+    const processors = await findMany('audioProcessors', {
+      orderBy: asc(schema.audioProcessors.name)
     })
     
     // Add calculated inputs and outputs for each processor based on model config
@@ -39,22 +43,26 @@ export async function GET() {
       }
     })
     
+    logger.api.response('GET', '/api/audio-processor', 200, { count: processorsWithCounts.length })
     return NextResponse.json({ processors: processorsWithCounts })
-  } catch (error) {
-    console.error('Error fetching audio processors:', error)
+  } catch (error: any) {
+    logger.api.error('GET', '/api/audio-processor', error)
     return NextResponse.json(
-      { error: 'Failed to fetch audio processors' },
+      { error: 'Failed to fetch audio processors', details: error.message },
       { status: 500 }
     )
   }
 }
 
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/audio-processor')
+  
   try {
     const data = await request.json()
     const { name, model, ipAddress, port, zones, description, username, password } = data
 
     if (!name || !model || !ipAddress) {
+      logger.api.response('POST', '/api/audio-processor', 400, { error: 'Missing required fields' })
       return NextResponse.json(
         { error: 'Name, model, and IP address are required' },
         { status: 400 }
@@ -82,9 +90,7 @@ export async function POST(request: NextRequest) {
       processorData.password = encryptPassword(password)
     }
 
-    const processor = await prisma.audioProcessor.create({
-      data: processorData
-    })
+    const processor = await create('audioProcessors', processorData)
 
     // Return processor with calculated values from model config
     // Don't expose encrypted password
@@ -97,17 +103,20 @@ export async function POST(request: NextRequest) {
       hasCredentials: !!(processor.username && processor.password)
     }
 
+    logger.api.response('POST', '/api/audio-processor', 200, { processorId: processor.id })
     return NextResponse.json({ processor: processorWithCounts })
-  } catch (error) {
-    console.error('Error creating audio processor:', error)
+  } catch (error: any) {
+    logger.api.error('POST', '/api/audio-processor', error)
     return NextResponse.json(
-      { error: 'Failed to create audio processor' },
+      { error: 'Failed to create audio processor', details: error.message },
       { status: 500 }
     )
   }
 }
 
 export async function PUT(request: NextRequest) {
+  logger.api.request('PUT', '/api/audio-processor')
+  
   try {
     const data = await request.json()
     const { searchParams } = new URL(request.url)
@@ -117,6 +126,7 @@ export async function PUT(request: NextRequest) {
     const { name, model, ipAddress, port, zones, description, username, password } = data
 
     if (!id) {
+      logger.api.response('PUT', '/api/audio-processor', 400, { error: 'Missing ID' })
       return NextResponse.json(
         { error: 'Processor ID is required (provide in body or query parameter)' },
         { status: 400 }
@@ -141,10 +151,10 @@ export async function PUT(request: NextRequest) {
       updateData.password = encryptPassword(password)
     }
 
-    const processor = await prisma.audioProcessor.update({
-      where: { id },
-      data: updateData
-    })
+    const processor = await update('audioProcessors',
+      eq(schema.audioProcessors.id, id),
+      updateData
+    )
 
     // Return processor without exposing encrypted password
     const counts = getModelCounts(processor.model)
@@ -156,37 +166,42 @@ export async function PUT(request: NextRequest) {
       hasCredentials: !!(processor.username && processor.password)
     }
 
+    logger.api.response('PUT', '/api/audio-processor', 200, { processorId: processor.id })
     return NextResponse.json({ processor: processorWithCounts })
-  } catch (error) {
-    console.error('Error updating audio processor:', error)
+  } catch (error: any) {
+    logger.api.error('PUT', '/api/audio-processor', error)
     return NextResponse.json(
-      { error: 'Failed to update audio processor' },
+      { error: 'Failed to update audio processor', details: error.message },
       { status: 500 }
     )
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  logger.api.request('DELETE', '/api/audio-processor')
+  
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
     if (!id) {
+      logger.api.response('DELETE', '/api/audio-processor', 400, { error: 'Missing ID' })
       return NextResponse.json(
         { error: 'Processor ID is required' },
         { status: 400 }
       )
     }
 
-    await prisma.audioProcessor.delete({
-      where: { id }
-    })
+    await deleteRecord('audioProcessors',
+      eq(schema.audioProcessors.id, id)
+    )
 
+    logger.api.response('DELETE', '/api/audio-processor', 200, { processorId: id })
     return NextResponse.json({ message: 'Processor deleted successfully' })
-  } catch (error) {
-    console.error('Error deleting audio processor:', error)
+  } catch (error: any) {
+    logger.api.error('DELETE', '/api/audio-processor', error)
     return NextResponse.json(
-      { error: 'Failed to delete audio processor' },
+      { error: 'Failed to delete audio processor', details: error.message },
       { status: 500 }
     )
   }
