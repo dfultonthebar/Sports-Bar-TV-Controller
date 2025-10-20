@@ -1,103 +1,184 @@
 #!/bin/bash
-# Deployment script to fix migration order and deploy channel presets
-# Run this on your server at /home/ubuntu/Sports-Bar-TV-Controller
+
+# Deployment script for Drizzle migration fix
+# Run this script on the remote server to deploy the fix
 
 set -e  # Exit on error
 
 echo "=========================================="
-echo "Channel Preset Deployment Fix Script"
+echo "Deploying Drizzle Migration Fix"
 echo "=========================================="
 echo ""
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_info() {
+    echo -e "${YELLOW}ℹ $1${NC}"
+}
 
 # Check if we're in the right directory
 if [ ! -f "package.json" ]; then
-    echo "❌ Error: Not in Sports-Bar-TV-Controller directory"
-    echo "Please run: cd /home/ubuntu/Sports-Bar-TV-Controller"
+    print_error "package.json not found. Please run this script from the project root directory."
     exit 1
 fi
 
-echo "✅ In correct directory"
+print_info "Current directory: $(pwd)"
 echo ""
 
-# Backup current database
-echo "📦 Creating database backup..."
-BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-cp prisma/data/sports_bar.db "$BACKUP_DIR/sports_bar.db.backup" 2>/dev/null || echo "No database to backup (fresh install)"
-echo "✅ Backup created at $BACKUP_DIR"
-echo ""
-
-# Pull latest fixes
-echo "📥 Pulling latest fixes from GitHub..."
+# Step 1: Fetch latest changes
+print_info "Step 1: Fetching latest changes from GitHub..."
 git fetch origin
-git checkout fix/migration-order-and-import
-git pull origin fix/migration-order-and-import
-echo "✅ Code updated"
+print_success "Fetched latest changes"
 echo ""
 
-# Check if migrations have been applied
-echo "🔍 Checking migration state..."
-if npx prisma migrate status 2>&1 | grep -q "20250103_add_usage_tracking"; then
-    echo "⚠️  Old migration detected, marking as applied..."
-    npx prisma migrate resolve --applied 20250103_add_usage_tracking
-    echo "✅ Old migration marked as applied"
+# Step 2: Show current branch
+CURRENT_BRANCH=$(git branch --show-current)
+print_info "Current branch: $CURRENT_BRANCH"
+echo ""
+
+# Step 3: Ask user which branch to deploy
+echo "Which branch would you like to deploy?"
+echo "1) main (recommended after PR is merged)"
+echo "2) fix-drizzle-migration-500-errors (for testing the fix)"
+read -p "Enter choice (1 or 2): " BRANCH_CHOICE
+
+if [ "$BRANCH_CHOICE" = "1" ]; then
+    TARGET_BRANCH="main"
+elif [ "$BRANCH_CHOICE" = "2" ]; then
+    TARGET_BRANCH="fix-drizzle-migration-500-errors"
 else
-    echo "✅ No conflicting migrations found"
+    print_error "Invalid choice. Exiting."
+    exit 1
 fi
+
+print_info "Deploying branch: $TARGET_BRANCH"
 echo ""
 
-# Apply migrations
-echo "🔄 Applying database migrations..."
-npx prisma migrate deploy
-echo "✅ Migrations applied successfully"
+# Step 4: Stash any local changes
+print_info "Step 2: Stashing local changes (if any)..."
+git stash
+print_success "Local changes stashed"
 echo ""
 
-# Install dependencies (in case any changed)
-echo "📦 Installing dependencies..."
+# Step 5: Checkout target branch
+print_info "Step 3: Checking out $TARGET_BRANCH..."
+git checkout $TARGET_BRANCH
+print_success "Checked out $TARGET_BRANCH"
+echo ""
+
+# Step 6: Pull latest changes
+print_info "Step 4: Pulling latest changes..."
+git pull origin $TARGET_BRANCH
+print_success "Pulled latest changes"
+echo ""
+
+# Step 7: Install dependencies
+print_info "Step 5: Installing dependencies..."
 npm install
-echo "✅ Dependencies installed"
+print_success "Dependencies installed"
 echo ""
 
-# Build the application
-echo "🔨 Building application..."
+# Step 8: Build application
+print_info "Step 6: Building application..."
 npm run build
-echo "✅ Build completed"
+print_success "Application built successfully"
 echo ""
 
-# Restart the application
-echo "🔄 Restarting application..."
+# Step 9: Restart application
+print_info "Step 7: Restarting application..."
+
+# Try PM2 first
 if command -v pm2 &> /dev/null; then
-    pm2 restart all
-    echo "✅ Application restarted with PM2"
-elif command -v systemctl &> /dev/null && systemctl is-active --quiet sports-bar-tv; then
-    sudo systemctl restart sports-bar-tv
-    echo "✅ Application restarted with systemd"
+    print_info "Detected PM2, restarting with PM2..."
+    pm2 restart all || pm2 restart sports-bar-tv-controller || print_error "PM2 restart failed"
+    print_success "Application restarted with PM2"
+    echo ""
+    print_info "Checking PM2 status..."
+    pm2 list
+elif systemctl is-active --quiet sports-bar-tv-controller; then
+    print_info "Detected systemd service, restarting..."
+    sudo systemctl restart sports-bar-tv-controller
+    print_success "Application restarted with systemd"
+    echo ""
+    print_info "Checking service status..."
+    sudo systemctl status sports-bar-tv-controller --no-pager
 else
-    echo "⚠️  Please manually restart your application"
+    print_error "Could not detect PM2 or systemd service."
+    print_info "Please restart the application manually:"
+    echo "  - If using PM2: pm2 restart sports-bar-tv-controller"
+    echo "  - If using systemd: sudo systemctl restart sports-bar-tv-controller"
+    echo "  - If running directly: Stop current process and run 'npm start'"
 fi
-echo ""
 
-# Verify deployment
-echo "🔍 Verifying deployment..."
-sleep 3
-if command -v pm2 &> /dev/null; then
-    pm2 status
-elif command -v systemctl &> /dev/null && systemctl is-active --quiet sports-bar-tv; then
-    systemctl status sports-bar-tv --no-pager
-fi
 echo ""
-
 echo "=========================================="
-echo "✅ Deployment Complete!"
+echo "Deployment Complete!"
 echo "=========================================="
 echo ""
-echo "Next steps:"
-echo "1. Check the application logs for any errors"
-echo "2. Open the web interface and verify channel presets are visible"
-echo "3. Test the preset quick access buttons"
+
+# Step 10: Verification
+print_info "Running verification tests..."
 echo ""
-echo "If you encounter issues:"
-echo "- Check logs: pm2 logs (or journalctl -u sports-bar-tv -f)"
-echo "- Database backup is at: $BACKUP_DIR"
-echo "- Report issues at: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues"
+
+# Wait for application to start
+sleep 5
+
+# Test endpoints
+print_info "Testing /api/audio-processor endpoint..."
+RESPONSE=$(curl -s http://localhost:3001/api/audio-processor)
+if echo "$RESPONSE" | grep -q "processors"; then
+    print_success "Audio processor endpoint working"
+else
+    print_error "Audio processor endpoint failed"
+    echo "Response: $RESPONSE"
+fi
+
 echo ""
+print_info "Testing /api/matrix/video-input-selection endpoint..."
+RESPONSE=$(curl -s http://localhost:3001/api/matrix/video-input-selection)
+if echo "$RESPONSE" | grep -q -E "error.*No active matrix configuration|success"; then
+    print_success "Matrix endpoint working (no config is expected)"
+else
+    print_error "Matrix endpoint may have issues"
+    echo "Response: $RESPONSE"
+fi
+
+echo ""
+echo "=========================================="
+echo "Next Steps:"
+echo "=========================================="
+echo ""
+echo "1. Check application logs:"
+echo "   pm2 logs sports-bar-tv-controller"
+echo ""
+echo "2. Configure Atlas processor:"
+echo "   curl -X POST http://localhost:3001/api/audio-processor \\"
+echo "     -H 'Content-Type: application/json' \\"
+echo "     -d '{"
+echo "       \"name\": \"Atlas Main Processor\","
+echo "       \"model\": \"AZM4\","
+echo "       \"ipAddress\": \"192.168.5.101\","
+echo "       \"port\": 80,"
+echo "       \"tcpPort\": 5321,"
+echo "       \"zones\": 4"
+echo "     }'"
+echo ""
+echo "3. Test Atlas connection:"
+echo "   curl http://localhost:3001/api/audio-processor/test-connection"
+echo ""
+echo "4. Monitor for any errors in the logs"
+echo ""
+print_success "Deployment script completed!"
