@@ -11,7 +11,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { findOne, eq } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { queryAtlasHardwareConfiguration } from '@/lib/atlas-hardware-query'
 
 interface RouteContext {
@@ -29,30 +31,26 @@ export async function GET(
     const params = await context.params
     const processorId = params.id
 
-    // Verify database connection is available
-    if (!prisma) {
-      console.error('[Zones Status API] Database client is not initialized')
-      return NextResponse.json(
-        { error: 'Database connection error. Please check server configuration.' },
-        { status: 500 }
-      )
-    }
+    logger.api.request('GET', `/api/audio-processor/${processorId}/zones-status`)
 
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    }).catch((dbError) => {
-      console.error('[Zones Status API] Database query error:', dbError)
-      throw new Error(`Database error: ${dbError.message}`)
-    })
+    // Use Drizzle ORM with db-helpers for proper field mapping
+    const processor = await findOne('audioProcessors',
+      eq(schema.audioProcessors.id, processorId)
+    )
 
     if (!processor) {
+      logger.api.response('GET', `/api/audio-processor/${processorId}/zones-status`, 404)
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
       )
     }
 
-    console.log(`[Zones Status API] Querying hardware configuration for ${processor.name} at ${processor.ipAddress}`)
+    logger.atlas.info('Querying hardware configuration', {
+      processorName: processor.name,
+      ipAddress: processor.ipAddress,
+      tcpPort: processor.tcpPort
+    })
 
     // Query the actual hardware configuration
     const hardwareConfig = await queryAtlasHardwareConfiguration(
@@ -85,6 +83,11 @@ export async function GET(
       parameterName: source.parameterName
     }))
 
+    logger.api.response('GET', `/api/audio-processor/${processor.id}/zones-status`, 200, {
+      zonesCount: zonesWithStatus.length,
+      sourcesCount: sources.length
+    })
+
     return NextResponse.json({
       success: true,
       processor: {
@@ -99,7 +102,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('[Zones Status API] Error fetching zones status:', error)
+    logger.api.error('GET', `/api/audio-processor/${context.params}/zones-status`, error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch zones status from Atlas processor',
