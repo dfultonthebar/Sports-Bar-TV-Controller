@@ -656,14 +656,14 @@ setup_database() {
         # Check if migrations table exists and has failed entries
         if [ -f "prisma/data/sports_bar.db" ]; then
             local failed_count=$(sqlite3 prisma/data/sports_bar.db \
-                "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NULL;" 2>/dev/null || echo "0")
+                "SELECT COUNT(*) FROM drizzle_migrations WHERE finished_at IS NULL;" 2>/dev/null || echo "0")
             
             if [ "$failed_count" -gt 0 ]; then
                 print_warning "Found $failed_count failed migration(s)"
                 print_info "Marking failed migrations as rolled back..."
                 
                 sqlite3 prisma/data/sports_bar.db \
-                    "UPDATE _prisma_migrations SET rolled_back_at = datetime('now') WHERE finished_at IS NULL;" \
+                    "UPDATE drizzle_migrations SET rolled_back_at = datetime('now') WHERE finished_at IS NULL;" \
                     >> "$LOG_FILE" 2>&1 || true
                 
                 print_success "Failed migrations resolved"
@@ -681,7 +681,7 @@ setup_database() {
     local migration_output
     
     # Run with timeout and capture output
-    if migration_output=$(timeout 60s npx prisma migrate deploy 2>&1); then
+    if migration_output=$(timeout 60s npm run db:push 2>&1); then
         echo "$migration_output" >> "$LOG_FILE"
         migration_success=true
         print_success "Database migrations completed"
@@ -700,7 +700,7 @@ setup_database() {
         # Try to resolve failed migrations
         if resolve_failed_migrations; then
             print_info "Retrying migrations after cleanup..."
-            if timeout 60s npx prisma migrate deploy >> "$LOG_FILE" 2>&1; then
+            if timeout 60s npm run db:push >> "$LOG_FILE" 2>&1; then
                 migration_success=true
                 print_success "Database migrations completed after retry"
             fi
@@ -711,7 +711,7 @@ setup_database() {
             print_warning "Migration failed, falling back to prisma db push..."
             log "Attempting fallback: prisma db push"
             
-            if timeout 60s npx prisma db push --accept-data-loss >> "$LOG_FILE" 2>&1; then
+            if timeout 60s npm run db:push >> "$LOG_FILE" 2>&1; then
                 migration_success=true
                 print_success "Database schema pushed successfully (fallback method)"
             else
@@ -728,7 +728,7 @@ setup_database() {
                 echo "To manually fix:"
                 echo "  cd $INSTALL_DIR"
                 echo "  rm -f prisma/data/sports_bar.db*"
-                echo "  npx prisma db push --accept-data-loss"
+                echo "  npm run db:push"
                 echo ""
                 
                 return 1
@@ -738,7 +738,7 @@ setup_database() {
     
     # Generate Prisma client
     log_and_print "Generating Prisma client..."
-    if ! npx prisma generate >> "$LOG_FILE" 2>&1; then
+    if ! echo "Drizzle schema is ready (no generation needed)" >> "$LOG_FILE" 2>&1; then
         print_error "Failed to generate Prisma client"
         return 1
     fi

@@ -232,8 +232,8 @@ If you prefer manual control:
 cd ~/Sports-Bar-TV-Controller
 git pull origin main
 npm install
-npx prisma generate
-npx prisma db push
+npm run db:generate
+npm run db:push
 npm run build
 npm start
 ```
@@ -315,7 +315,7 @@ npm run build:kb
 **Solution:** Reset and migrate database:
 ```bash
 cd ~/Sports-Bar-TV-Controller
-npx prisma db push --force-reset
+npm run db:push
 npm run build:kb
 ```
 
@@ -544,7 +544,7 @@ Sports-Bar-TV-Controller/
 │   ├── components/       # React components
 │   └── lib/              # Utility functions and configurations
 ├── prisma/
-│   ├── schema.prisma     # Database schema
+│   ├── schema.ts     # Database schema
 │   └── data/             # SQLite database files
 ├── scripts/              # Utility scripts
 │   ├── system-benchmark.sh
@@ -580,14 +580,14 @@ npm start
 ### Database Operations
 
 ```bash
-# Generate Prisma client
-npx prisma generate
+# Generate Drizzle migrations
+npm run db:generate
 
 # Push schema changes
-npx prisma db push
+npm run db:push
 
-# Open Prisma Studio
-npx prisma studio
+# Open Drizzle Studio
+npm run db:studio
 ```
 
 ### Rebuild Knowledge Base
@@ -631,7 +631,7 @@ sudo journalctl -u ollama -f
 - **Port conflicts:** Change port in `.env` file
 - **Permission errors:** Run `sudo chown -R $USER:$USER ~/Sports-Bar-TV-Controller`
 - **AI not working:** Verify Ollama with `ollama list`
-- **Database errors:** Run `npx prisma db push --force-reset`
+- **Database errors:** Run `npm run db:push`
 
 ### Create an Issue
 If you encounter a bug or have a feature request:
@@ -674,7 +674,7 @@ Your Sports Bar TV Controller is now installed and ready to use!
 Built with:
 - Next.js 14
 - React 18
-- Prisma ORM
+- Drizzle ORM
 - Ollama AI
 - TypeScript
 - Tailwind CSS

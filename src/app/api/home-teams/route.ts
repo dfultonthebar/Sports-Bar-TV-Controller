@@ -1,22 +1,28 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { schema } from '@/db';
+import { desc, asc, eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+import { findMany, create } from '@/lib/db-helpers';
 
 
 // GET - List all home teams
 export async function GET(request: NextRequest) {
+  logger.api.request('GET', '/api/home-teams');
+  
   try {
-    const teams = await prisma.homeTeam.findMany({
-      where: { isActive: true },
+    const teams = await findMany('homeTeams', {
+      where: eq(schema.homeTeams.isActive, true),
       orderBy: [
-        { isPrimary: 'desc' },
-        { teamName: 'asc' }
+        desc(schema.homeTeams.isPrimary),
+        asc(schema.homeTeams.teamName)
       ]
     });
 
+    logger.api.response('GET', '/api/home-teams', 200, { count: teams.length });
     return NextResponse.json({ teams });
   } catch (error: any) {
-    console.error('Error fetching home teams:', error);
+    logger.api.error('GET', '/api/home-teams', error);
     return NextResponse.json(
       { error: 'Failed to fetch home teams', details: error.message },
       { status: 500 }
@@ -26,25 +32,27 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new home team
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/home-teams');
+  
   try {
     const body = await request.json();
+    logger.debug('Creating home team', { data: body });
     
-    const team = await prisma.homeTeam.create({
-      data: {
-        teamName: body.teamName,
-        league: body.league || '',
-        category: body.category || 'professional',
-        sport: body.sport || 'football',
-        location: body.location || null,
-        conference: body.conference || null,
-        isPrimary: body.isPrimary || false,
-        isActive: body.isActive !== undefined ? body.isActive : true
-      }
+    const team = await create('homeTeams', {
+      teamName: body.teamName,
+      league: body.league || '',
+      category: body.category || 'professional',
+      sport: body.sport || 'football',
+      location: body.location || null,
+      conference: body.conference || null,
+      isPrimary: body.isPrimary || false,
+      isActive: body.isActive !== undefined ? body.isActive : true
     });
 
+    logger.api.response('POST', '/api/home-teams', 201, { teamId: team.id });
     return NextResponse.json({ team }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating home team:', error);
+    logger.api.error('POST', '/api/home-teams', error);
     return NextResponse.json(
       { error: 'Failed to create home team', details: error.message },
       { status: 500 }

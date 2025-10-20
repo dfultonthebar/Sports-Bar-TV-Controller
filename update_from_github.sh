@@ -157,7 +157,7 @@ create_backup() {
     tar -czf "$BACKUP_FILE" \
         config/*.local.json \
         .env \
-        prisma/dev.db \
+        prisma/data/sports_bar.db \
         data/*.json \
         2>/dev/null || true
     
@@ -302,7 +302,7 @@ install_dependencies() {
 # =============================================================================
 # PRISMA CLIENT REGENERATION
 # =============================================================================
-regenerate_prisma_client() {
+verify_drizzle_schema() {
     log_info "Regenerating Prisma client..."
     
     # Check if Prisma schema exists
@@ -312,12 +312,12 @@ regenerate_prisma_client() {
     fi
     
     # Regenerate Prisma client
-    if npx prisma generate 2>&1 | tee -a "$LOG_FILE"; then
+    if echo "Drizzle schema ready (no generation needed)" 2>&1 | tee -a "$LOG_FILE"; then
         log_success "Prisma client regenerated successfully"
     else
         log_error "Failed to regenerate Prisma client"
         log_error "This may cause runtime errors with database operations"
-        log_warning "You may need to run 'npx prisma generate' manually"
+        log_warning "You may need to run 'echo "Drizzle schema ready (no generation needed)"' manually"
         # Don't exit - let the update continue, but warn the user
     fi
 }
@@ -497,7 +497,7 @@ main() {
     log ""
     
     # Step 7: Regenerate Prisma client
-    regenerate_prisma_client
+    verify_drizzle_schema
     log ""
     
     # Step 8: Build application

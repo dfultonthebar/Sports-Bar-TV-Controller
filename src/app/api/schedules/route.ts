@@ -1,13 +1,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { db, schema } from '@/db';
+import { desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+import { findMany, create } from '@/lib/db-helpers';
 
 
 // GET - List all schedules
 export async function GET(request: NextRequest) {
+  logger.api.request('GET', '/api/schedules');
+  
   try {
-    const schedules = await prisma.schedule.findMany({
-      orderBy: { createdAt: 'desc' }
+    const schedules = await findMany('schedules', {
+      orderBy: desc(schema.schedules.createdAt)
     });
 
     // Calculate next execution for each schedule
@@ -16,9 +21,10 @@ export async function GET(request: NextRequest) {
       nextExecution: calculateNextExecution(schedule)
     }));
 
+    logger.api.response('GET', '/api/schedules', 200, { count: schedulesWithNext.length });
     return NextResponse.json({ schedules: schedulesWithNext });
   } catch (error: any) {
-    console.error('Error fetching schedules:', error);
+    logger.api.error('GET', '/api/schedules', error);
     return NextResponse.json(
       { error: 'Failed to fetch schedules', details: error.message },
       { status: 500 }
@@ -28,35 +34,37 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new schedule
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/schedules');
+  
   try {
     const body = await request.json();
+    logger.debug('Creating schedule with data', { data: body });
     
-    const schedule = await prisma.schedule.create({
-      data: {
-        name: body.name,
-        description: body.description || null,
-        enabled: body.enabled !== undefined ? body.enabled : true,
-        scheduleType: body.scheduleType || 'daily',
-        executionTime: body.executionTime || null,
-        daysOfWeek: body.daysOfWeek ? JSON.stringify(body.daysOfWeek) : null,
-        powerOnTVs: body.powerOnTVs !== undefined ? body.powerOnTVs : true,
-        powerOffTVs: body.powerOffTVs || false,
-        selectedOutputs: JSON.stringify(body.selectedOutputs || []),
-        setDefaultChannels: body.setDefaultChannels || false,
-        defaultChannelMap: body.defaultChannelMap ? JSON.stringify(body.defaultChannelMap) : null,
-        autoFindGames: body.autoFindGames || false,
-        monitorHomeTeams: body.monitorHomeTeams || false,
-        homeTeamIds: body.homeTeamIds ? JSON.stringify(body.homeTeamIds) : null,
-        preferredProviders: body.preferredProviders ? JSON.stringify(body.preferredProviders) : JSON.stringify(['cable', 'streaming', 'satellite']),
-        executionOrder: body.executionOrder || 'outputs_first',
-        delayBetweenCommands: body.delayBetweenCommands || 2000,
-        nextExecution: calculateNextExecution(body)
-      }
+    const schedule = await create('schedules', {
+      name: body.name,
+      description: body.description || null,
+      enabled: body.enabled !== undefined ? body.enabled : true,
+      scheduleType: body.scheduleType || 'daily',
+      executionTime: body.executionTime || null,
+      daysOfWeek: body.daysOfWeek ? JSON.stringify(body.daysOfWeek) : null,
+      powerOnTVs: body.powerOnTVs !== undefined ? body.powerOnTVs : true,
+      powerOffTVs: body.powerOffTVs || false,
+      selectedOutputs: JSON.stringify(body.selectedOutputs || []),
+      setDefaultChannels: body.setDefaultChannels || false,
+      defaultChannelMap: body.defaultChannelMap ? JSON.stringify(body.defaultChannelMap) : null,
+      autoFindGames: body.autoFindGames || false,
+      monitorHomeTeams: body.monitorHomeTeams || false,
+      homeTeamIds: body.homeTeamIds ? JSON.stringify(body.homeTeamIds) : null,
+      preferredProviders: body.preferredProviders ? JSON.stringify(body.preferredProviders) : JSON.stringify(['cable', 'streaming', 'satellite']),
+      executionOrder: body.executionOrder || 'outputs_first',
+      delayBetweenCommands: body.delayBetweenCommands || 2000,
+      nextExecution: calculateNextExecution(body)
     });
 
+    logger.api.response('POST', '/api/schedules', 201, { scheduleId: schedule.id });
     return NextResponse.json({ schedule }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating schedule:', error);
+    logger.api.error('POST', '/api/schedules', error);
     return NextResponse.json(
       { error: 'Failed to create schedule', details: error.message },
       { status: 500 }
