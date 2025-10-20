@@ -530,7 +530,7 @@ export default function AudioProcessorManager() {
                     <select
                       value={formData.model}
                       onChange={(e) => setFormData({...formData, model: e.target.value})}
-                      className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="AZM4">AZM4 (4-Zone Controller)</option>
                       <option value="AZM8">AZM8 (8-Zone Controller)</option>
@@ -696,7 +696,7 @@ export default function AudioProcessorManager() {
                     <select
                       value={formData.model}
                       onChange={(e) => setFormData({...formData, model: e.target.value})}
-                      className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-slate-700 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="AZM4">AZM4 (4-Zone Controller)</option>
                       <option value="AZM8">AZM8 (8-Zone Controller)</option>

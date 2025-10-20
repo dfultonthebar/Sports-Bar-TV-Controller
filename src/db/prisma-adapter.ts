@@ -133,43 +133,68 @@ function createModelAdapter(tableName: string, table: any) {
     },
     
     create: async (args: any) => {
-      const data = args.data
-      // Handle updatedAt if not provided
+      const data = { ...args.data }
+      // Handle updatedAt if not provided - convert Date to ISO string for SQLite
       if (!data.updatedAt && table.updatedAt) {
-        data.updatedAt = new Date()
+        data.updatedAt = new Date().toISOString()
       }
+      // Convert any Date objects to ISO strings for SQLite compatibility
+      Object.keys(data).forEach(key => {
+        if (data[key] instanceof Date) {
+          data[key] = data[key].toISOString()
+        }
+      })
       return db.insert(table).values(data).returning().get()
     },
     
     createMany: async (args: any) => {
       const data = args.data
-      // Handle updatedAt for each record
+      // Handle updatedAt for each record - convert Date to ISO string for SQLite
       const records = data.map((record: any) => {
-        if (!record.updatedAt && table.updatedAt) {
-          record.updatedAt = new Date()
+        const rec = { ...record }
+        if (!rec.updatedAt && table.updatedAt) {
+          rec.updatedAt = new Date().toISOString()
         }
-        return record
+        // Convert any Date objects to ISO strings for SQLite compatibility
+        Object.keys(rec).forEach(key => {
+          if (rec[key] instanceof Date) {
+            rec[key] = rec[key].toISOString()
+          }
+        })
+        return rec
       })
       return db.insert(table).values(records).returning().all()
     },
     
     update: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
-      const data = args.data
-      // Handle updatedAt
+      const data = { ...args.data }
+      // Handle updatedAt - convert Date to ISO string for SQLite
       if (table.updatedAt) {
-        data.updatedAt = new Date()
+        data.updatedAt = new Date().toISOString()
       }
+      // Convert any Date objects to ISO strings for SQLite compatibility
+      Object.keys(data).forEach(key => {
+        if (data[key] instanceof Date) {
+          data[key] = data[key].toISOString()
+        }
+      })
       return db.update(table).set(data).where(whereClause).returning().get()
     },
     
     updateMany: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
-      const data = args.data
-      // Handle updatedAt
+      const data = { ...args.data }
+      // Handle updatedAt - convert Date to ISO string for SQLite
       if (table.updatedAt) {
-        data.updatedAt = new Date()
+        data.updatedAt = new Date().toISOString()
       }
+      // Convert any Date objects to ISO strings for SQLite compatibility
+      Object.keys(data).forEach(key => {
+        if (data[key] instanceof Date) {
+          data[key] = data[key].toISOString()
+        }
+      })
       return db.update(table).set(data).where(whereClause).returning().all()
     },
     
@@ -200,16 +225,28 @@ function createModelAdapter(tableName: string, table: any) {
       const existing = await db.select().from(table).where(whereClause).limit(1).get()
       
       if (existing) {
-        const updateData = args.update
+        const updateData = { ...args.update }
         if (table.updatedAt) {
-          updateData.updatedAt = new Date()
+          updateData.updatedAt = new Date().toISOString()
         }
+        // Convert any Date objects to ISO strings for SQLite compatibility
+        Object.keys(updateData).forEach(key => {
+          if (updateData[key] instanceof Date) {
+            updateData[key] = updateData[key].toISOString()
+          }
+        })
         return db.update(table).set(updateData).where(whereClause).returning().get()
       } else {
-        const createData = args.create
+        const createData = { ...args.create }
         if (!createData.updatedAt && table.updatedAt) {
-          createData.updatedAt = new Date()
+          createData.updatedAt = new Date().toISOString()
         }
+        // Convert any Date objects to ISO strings for SQLite compatibility
+        Object.keys(createData).forEach(key => {
+          if (createData[key] instanceof Date) {
+            createData[key] = createData[key].toISOString()
+          }
+        })
         return db.insert(table).values(createData).returning().get()
       }
     }
