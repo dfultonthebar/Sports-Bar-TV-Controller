@@ -52,7 +52,7 @@ export default function AudioProcessorManager() {
   // Form states
   const [formData, setFormData] = useState({
     name: '',
-    model: 'AZM4',
+    model: 'AZM8',
     ipAddress: '',
     port: 80,
     description: '',
@@ -142,7 +142,7 @@ export default function AudioProcessorManager() {
         const data = await response.json()
         setProcessors([...processors, data.processor])
         setShowAddForm(false)
-        setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+        setFormData({ name: '', model: 'AZM8', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
         showMessage('Audio processor added successfully')
       } else {
         const error = await response.json()
@@ -207,7 +207,7 @@ export default function AudioProcessorManager() {
         }
         setShowEditForm(false)
         setEditingProcessor(null)
-        setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+        setFormData({ name: '', model: 'AZM8', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
         showMessage('Audio processor updated successfully')
       } else {
         const error = await response.json()
@@ -664,7 +664,7 @@ export default function AudioProcessorManager() {
                 onClick={() => {
                   setShowEditForm(false)
                   setEditingProcessor(null)
-                  setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+                  setFormData({ name: '', model: 'AZM8', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
                 }}
                 variant="ghost"
                 size="sm"
@@ -803,7 +803,7 @@ export default function AudioProcessorManager() {
                   onClick={() => {
                     setShowEditForm(false)
                     setEditingProcessor(null)
-                    setFormData({ name: '', model: 'AZM4', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
+                    setFormData({ name: '', model: 'AZM8', ipAddress: '', port: 80, description: '', username: 'admin', password: 'admin' })
                   }}
                   variant="outline"
                   className="flex-1 sm:flex-initial"
