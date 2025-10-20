@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { findOne, eq } from '@/lib/db-helpers'
+import { findFirst, eq } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { queryAtlasHardwareConfiguration } from '@/lib/atlas-hardware-query'
@@ -34,7 +34,7 @@ export async function GET(
     logger.api.request('GET', `/api/audio-processor/${processorId}/zones-status`)
 
     // Use Drizzle ORM with db-helpers for proper field mapping
-    const processor = await findOne('audioProcessors',
+    const processor = await findFirst('audioProcessors',
       eq(schema.audioProcessors.id, processorId)
     )
 
