@@ -84,8 +84,135 @@ function convertWhere(table: any, where: any): any {
   return conditions.length === 1 ? conditions[0] : and(...conditions)
 }
 
+// Helper to handle includes (relations)
+async function handleIncludes(result: any, includes: any, tableName: string) {
+  if (!result || !includes) return result
+  
+  const isArray = Array.isArray(result)
+  const records = isArray ? result : [result]
+  
+  // Process each include
+  for (const [relationName, includeValue] of Object.entries(includes)) {
+    if (!includeValue) continue
+    
+    // Handle different relation types based on table and relation name
+    for (const record of records) {
+      if (!record) continue
+      
+      // Handle matrixConfiguration relations
+      if (tableName === 'matrixConfiguration') {
+        if (relationName === 'inputs') {
+          let inputsQuery = db.select().from(schema.matrixInputs)
+            .where(eq(schema.matrixInputs.configId, record.id))
+          
+          // Handle where clause for inputs
+          if (typeof includeValue === 'object' && includeValue.where) {
+            const inputWhere = convertWhere(schema.matrixInputs, includeValue.where)
+            if (inputWhere) {
+              inputsQuery = inputsQuery.where(and(eq(schema.matrixInputs.configId, record.id), inputWhere)) as any
+            }
+          }
+          
+          record.inputs = inputsQuery.all()
+        } else if (relationName === 'outputs') {
+          let outputsQuery = db.select().from(schema.matrixOutputs)
+            .where(eq(schema.matrixOutputs.configId, record.id))
+          
+          // Handle where clause for outputs
+          if (typeof includeValue === 'object' && includeValue.where) {
+            const outputWhere = convertWhere(schema.matrixOutputs, includeValue.where)
+            if (outputWhere) {
+              outputsQuery = outputsQuery.where(and(eq(schema.matrixOutputs.configId, record.id), outputWhere)) as any
+            }
+          }
+          
+          // Handle orderBy for outputs
+          if (typeof includeValue === 'object' && includeValue.orderBy) {
+            const orders = convertOrderBy(schema.matrixOutputs, includeValue.orderBy)
+            if (orders.length > 0) {
+              outputsQuery = outputsQuery.orderBy(...orders) as any
+            }
+          }
+          
+          record.outputs = outputsQuery.all()
+        }
+      }
+      
+      // Handle globalCacheDevice relations
+      if (tableName === 'globalCacheDevice') {
+        if (relationName === 'ports') {
+          const ports = await db.select().from(schema.globalCachePorts)
+            .where(eq(schema.globalCachePorts.deviceId, record.id))
+            .all()
+          record.ports = ports
+        }
+      }
+      
+      // Handle todo relations
+      if (tableName === 'todo') {
+        if (relationName === 'documents') {
+          const documents = await db.select().from(schema.todoDocuments)
+            .where(eq(schema.todoDocuments.todoId, record.id))
+            .all()
+          record.documents = documents
+        }
+      }
+      
+      // Handle audioProcessor relations
+      if (tableName === 'audioProcessor') {
+        if (relationName === 'audioZones') {
+          const zones = await db.select().from(schema.audioZones)
+            .where(eq(schema.audioZones.processorId, record.id))
+            .all()
+          record.audioZones = zones
+        }
+      }
+      
+      // Handle sportsGuideConfiguration relations
+      if (tableName === 'sportsGuideConfiguration') {
+        if (relationName === 'providers') {
+          const providers = await db.select().from(schema.tvProviders)
+            .where(eq(schema.tvProviders.configId, record.id))
+            .all()
+          
+          // Handle nested includes for providers
+          if (typeof includeValue === 'object' && includeValue.include?.inputs) {
+            for (const provider of providers) {
+              const inputs = await db.select().from(schema.providerInputs)
+                .where(eq(schema.providerInputs.providerId, provider.id))
+                .all()
+              provider.inputs = inputs
+            }
+          }
+          
+          record.providers = providers
+        }
+      }
+    }
+  }
+  
+  return isArray ? records : records[0]
+}
+
 // Create model adapters for each table
 function createModelAdapter(tableName: string, table: any) {
+  // Handle null tables (missing models)
+  if (!table) {
+    return {
+      findMany: async () => [],
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      createMany: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      update: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      updateMany: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      delete: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      deleteMany: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) },
+      count: async () => 0,
+      upsert: async () => { throw new Error(`Model ${tableName} not implemented in Drizzle schema`) }
+    }
+  }
+  
   return {
     findMany: async (args?: any) => {
       let query = db.select().from(table)
@@ -108,12 +235,26 @@ function createModelAdapter(tableName: string, table: any) {
         query = query.offset(args.skip) as any
       }
       
-      return query.all()
+      let results = query.all()
+      
+      // Handle includes
+      if (args?.include) {
+        results = await handleIncludes(results, args.include, tableName)
+      }
+      
+      return results
     },
     
     findUnique: async (args: any) => {
       const whereClause = convertWhere(table, args.where)
-      return db.select().from(table).where(whereClause).limit(1).get()
+      let result = db.select().from(table).where(whereClause).limit(1).get()
+      
+      // Handle includes
+      if (args?.include) {
+        result = await handleIncludes(result, args.include, tableName)
+      }
+      
+      return result
     },
     
     findFirst: async (args?: any) => {
@@ -129,7 +270,14 @@ function createModelAdapter(tableName: string, table: any) {
         if (orders.length > 0) query = query.orderBy(...orders) as any
       }
       
-      return query.limit(1).get()
+      let result = query.limit(1).get()
+      
+      // Handle includes
+      if (args?.include) {
+        result = await handleIncludes(result, args.include, tableName)
+      }
+      
+      return result
     },
     
     create: async (args: any) => {
@@ -224,6 +372,18 @@ export const prisma = {
   audioScene: createModelAdapter('audioScene', schema.audioScenes),
   audioMessage: createModelAdapter('audioMessage', schema.audioMessages),
   audioInputMeter: createModelAdapter('audioInputMeter', schema.audioInputMeters),
+  
+  // Missing models - return empty adapters to prevent crashes
+  channelPreset: createModelAdapter('channelPreset', null as any),
+  selectedLeague: createModelAdapter('selectedLeague', null as any),
+  soundtrackConfig: createModelAdapter('soundtrackConfig', null as any),
+  soundtrackPlayer: createModelAdapter('soundtrackPlayer', null as any),
+  chatSession: createModelAdapter('chatSession', null as any),
+  matrixRoute: createModelAdapter('matrixRoute', null as any),
+  aIGainAdjustmentLog: createModelAdapter('aIGainAdjustmentLog', null as any),
+  aIGainConfiguration: createModelAdapter('aIGainConfiguration', null as any),
+  directTVDevice: createModelAdapter('directTVDevice', null as any),
+  document: createModelAdapter('document', null as any),
   
   // FireTV and scheduling models
   fireTVDevice: createModelAdapter('fireTVDevice', schema.fireTVDevices),
