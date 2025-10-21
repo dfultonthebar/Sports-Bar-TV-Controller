@@ -32,6 +32,32 @@ function cleanIpAddress(ipAddress: string): string {
 }
 
 /**
+ * Validates and sanitizes processorId
+ * Ensures it's a valid UUID string
+ */
+function sanitizeProcessorId(processorId: any): string | null {
+  // Check if processorId is provided and is a string
+  if (!processorId || typeof processorId !== 'string') {
+    return null
+  }
+  
+  // Trim and check if it's not empty
+  const trimmed = processorId.trim()
+  if (trimmed.length === 0) {
+    return null
+  }
+  
+  // Basic UUID format validation (loose check)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRegex.test(trimmed)) {
+    console.warn(`Invalid processorId format: ${trimmed}`)
+    return null
+  }
+  
+  return trimmed
+}
+
+/**
  * Tests connection to Atlas processor using multiple protocols and authentication
  * Atlas processors typically use:
  * - Port 80 for HTTP web interface
@@ -143,6 +169,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Sanitize processorId
+    const sanitizedProcessorId = sanitizeProcessorId(processorId)
+
     console.log(`Testing connection to AtlasIED Atmosphere at ${cleanedIp}:${port || 80}`)
 
     // If auto-detect credentials is enabled, try common credential combinations
@@ -164,12 +193,12 @@ export async function POST(request: NextRequest) {
         const workingCreds = credentialTest.credentials
         
         // Update processor with working credentials if processorId provided
-        if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+        if (sanitizedProcessorId) {
           try {
             await update('audioProcessors',
-              eq(schema.audioProcessors.id, processorId),
+              eq(schema.audioProcessors.id, sanitizedProcessorId),
               { 
-                status: 'online',
+                status: 'online' as const,
                 lastSeen: new Date().toISOString(),
                 ipAddress: cleanedIp,
                 username: workingCreds.username,
@@ -201,22 +230,28 @@ export async function POST(request: NextRequest) {
     
     if (testResult.success && testResult.result) {
       // Update processor status in database if processorId provided
-      if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+      if (sanitizedProcessorId) {
         try {
-          const updateData: any = { 
+          const updateData: {
+            status: 'online'
+            lastSeen: string
+            ipAddress: string
+            username?: string
+            password?: string
+          } = { 
             status: 'online',
             lastSeen: new Date().toISOString(),
             ipAddress: cleanedIp
           }
           
           // Store credentials if provided
-          if (username && password) {
+          if (username && typeof username === 'string' && password && typeof password === 'string') {
             updateData.username = username
             updateData.password = encryptPassword(password)
           }
           
           await update('audioProcessors',
-            eq(schema.audioProcessors.id, processorId),
+            eq(schema.audioProcessors.id, sanitizedProcessorId),
             updateData
           )
         } catch (dbError) {
@@ -258,12 +293,12 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Update processor status to offline if processorId provided
-      if (processorId && typeof processorId === 'string' && processorId.length > 0) {
+      if (sanitizedProcessorId) {
         try {
           await update('audioProcessors',
-            eq(schema.audioProcessors.id, processorId),
+            eq(schema.audioProcessors.id, sanitizedProcessorId),
             { 
-              status: 'offline',
+              status: 'offline' as const,
               ipAddress: cleanedIp
             }
           )
