@@ -143,6 +143,31 @@ export default function AtlasProgrammingInterface() {
     setTimeout(() => setMessage(null), 5000)
   }
 
+  // Helper function to safely extract error message from various error formats
+  const getErrorMessage = (error: any, defaultMessage: string = 'Unknown error'): string => {
+    if (typeof error === 'string') return error
+    if (error?.error) {
+      // Handle nested error objects
+      if (typeof error.error === 'string') return error.error
+      if (error.error.str) return error.error.str
+      if (error.error.message) return error.error.message
+    }
+    if (error?.message) {
+      if (typeof error.message === 'string') return error.message
+      if (error.message.str) return error.message.str
+    }
+    if (error?.str) return error.str
+    // If it's an object, try to stringify it
+    if (typeof error === 'object') {
+      try {
+        return JSON.stringify(error)
+      } catch {
+        return defaultMessage
+      }
+    }
+    return defaultMessage
+  }
+
   useEffect(() => {
     fetchProcessors()
   }, [])
@@ -308,13 +333,13 @@ export default function AtlasProgrammingInterface() {
         if (!response.ok) {
           const error = await response.json()
           console.error('Failed to set input gain:', error)
-          showMessage(`Failed to set gain for ${input.name}: ${error.error || 'Unknown error'}`, 'error')
+          showMessage(`Failed to set gain for ${input.name}: ${getErrorMessage(error)}`, 'error')
         } else {
           console.log(`Successfully set gain for Input ${input.physicalInput} to ${updates.gainDb}dB`)
         }
       } catch (error) {
         console.error('Error setting input gain:', error)
-        showMessage('Failed to communicate with Atlas processor', 'error')
+        showMessage(`Failed to communicate with Atlas processor: ${getErrorMessage(error)}`, 'error')
       }
     }
   }
@@ -412,11 +437,11 @@ export default function AtlasProgrammingInterface() {
         showMessage('Configuration saved successfully')
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to save configuration', 'error')
+        showMessage(getErrorMessage(error, 'Failed to save configuration'), 'error')
       }
     } catch (error) {
       console.error('Error saving configuration:', error)
-      showMessage('Failed to save configuration', 'error')
+      showMessage(`Failed to save configuration: ${getErrorMessage(error)}`, 'error')
     } finally {
       setSaving(false)
     }
@@ -442,11 +467,11 @@ export default function AtlasProgrammingInterface() {
         showMessage('Configuration uploaded to processor successfully')
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to upload configuration', 'error')
+        showMessage(getErrorMessage(error, 'Failed to upload configuration'), 'error')
       }
     } catch (error) {
       console.error('Error uploading configuration:', error)
-      showMessage('Failed to upload configuration', 'error')
+      showMessage(`Failed to upload configuration: ${getErrorMessage(error)}`, 'error')
     }
   }
 
@@ -471,11 +496,11 @@ export default function AtlasProgrammingInterface() {
         showMessage('Configuration downloaded from processor successfully')
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to download configuration', 'error')
+        showMessage(getErrorMessage(error, 'Failed to download configuration'), 'error')
       }
     } catch (error) {
       console.error('Error downloading configuration:', error)
-      showMessage('Failed to download configuration', 'error')
+      showMessage(`Failed to download configuration: ${getErrorMessage(error)}`, 'error')
     }
   }
 
@@ -518,11 +543,11 @@ export default function AtlasProgrammingInterface() {
         showMessage(`Scene ${sceneId} recalled successfully`)
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to recall scene', 'error')
+        showMessage(getErrorMessage(error, 'Failed to recall scene'), 'error')
       }
     } catch (error) {
       console.error('Error recalling scene:', error)
-      showMessage('Failed to recall scene', 'error')
+      showMessage(`Failed to recall scene: ${getErrorMessage(error)}`, 'error')
     }
   }
 
@@ -553,11 +578,11 @@ export default function AtlasProgrammingInterface() {
         showMessage(`Processor "${data.processor.name}" added successfully`)
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to add processor', 'error')
+        showMessage(getErrorMessage(error, 'Failed to add processor'), 'error')
       }
     } catch (error) {
       console.error('Error adding processor:', error)
-      showMessage('Failed to add processor', 'error')
+      showMessage(`Failed to add processor: ${getErrorMessage(error)}`, 'error')
     }
   }
 
@@ -627,11 +652,11 @@ export default function AtlasProgrammingInterface() {
         showMessage('Processor updated successfully')
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to update processor', 'error')
+        showMessage(getErrorMessage(error, 'Failed to update processor'), 'error')
       }
     } catch (error) {
       console.error('Error updating processor:', error)
-      showMessage('Failed to update processor', 'error')
+      showMessage(`Failed to update processor: ${getErrorMessage(error)}`, 'error')
     }
   }
 
@@ -653,11 +678,11 @@ export default function AtlasProgrammingInterface() {
         showMessage('Processor deleted successfully')
       } else {
         const error = await response.json()
-        showMessage(error.error || 'Failed to delete processor', 'error')
+        showMessage(getErrorMessage(error, 'Failed to delete processor'), 'error')
       }
     } catch (error) {
       console.error('Error deleting processor:', error)
-      showMessage('Failed to delete processor', 'error')
+      showMessage(`Failed to delete processor: ${getErrorMessage(error)}`, 'error')
     }
   }
 
