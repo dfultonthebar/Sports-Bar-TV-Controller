@@ -186,12 +186,13 @@ export async function queryAtlasHardwareConfiguration(
   }
 
   // STRATEGY 2: Fall back to TCP probing
-  const client = new AtlasTCPClient({ ipAddress, port: tcpPort })
+  const client = new AtlasTCPClient({ ipAddress, port: tcpPort, timeout: 10000 })
   
   try {
     console.log(`[Atlas Query] Connecting via TCP to ${ipAddress}:${tcpPort}...`)
+    console.log(`[Atlas Query] Using TCP port: ${tcpPort} (NOT ${httpPort})`)
     await client.connect()
-    console.log(`[Atlas Query] Connected successfully`)
+    console.log(`[Atlas Query] Connected successfully to ${ipAddress}:${tcpPort}`)
 
     // Determine number of sources and zones based on model
     const maxSources = getMaxSourcesForModel(model)
@@ -204,6 +205,7 @@ export async function queryAtlasHardwareConfiguration(
     for (let i = 0; i < maxSources; i++) {
       try {
         const paramName = `SourceName_${i}`
+        console.log(`[Atlas Query] Querying ${paramName}...`)
         const response = await client.getParameter(paramName, 'str')
         
         if (response.success && response.data && response.data.result) {
@@ -215,12 +217,18 @@ export async function queryAtlasHardwareConfiguration(
             name: sourceName,
             parameterName: paramName
           })
-          console.log(`[Atlas Query] Source ${i}: ${sourceName}`)
+          console.log(`[Atlas Query] ✓ Source ${i}: ${sourceName}`)
         } else {
-          console.warn(`[Atlas Query] Failed to get ${paramName}`)
+          console.warn(`[Atlas Query] ✗ Failed to get ${paramName}: ${JSON.stringify(response)}`)
+          // Still add source to list but with default name
+          sources.push({
+            index: i,
+            name: `Source ${i + 1}`,
+            parameterName: paramName
+          })
         }
       } catch (error) {
-        console.error(`[Atlas Query] Error querying source ${i}:`, error)
+        console.error(`[Atlas Query] ✗ Error querying source ${i}:`, error instanceof Error ? error.message : error)
         // Add a placeholder source
         sources.push({
           index: i,
@@ -230,7 +238,7 @@ export async function queryAtlasHardwareConfiguration(
       }
       
       // Small delay between queries to avoid overwhelming the device
-      await delay(100)
+      await delay(150)
     }
 
     // Query all zone names and current status
@@ -292,7 +300,7 @@ export async function queryAtlasHardwareConfiguration(
 
     const config: AtlasHardwareConfig = {
       ipAddress,
-      port,
+      port: tcpPort,
       model,
       sources,
       zones,

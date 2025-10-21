@@ -56,7 +56,10 @@ export async function GET(
     const hardwareConfig = await queryAtlasHardwareConfiguration(
       processor.ipAddress,
       processor.tcpPort || 5321, // Use tcpPort instead of port
-      processor.model
+      processor.model,
+      processor.port || 80, // HTTP port for configuration discovery
+      processor.username || undefined, // HTTP basic auth username
+      processor.password || undefined  // HTTP basic auth password
     )
 
     // Format the response with zones including their current sources
