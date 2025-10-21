@@ -145,12 +145,25 @@ Created Python script: `/scripts/convert-prisma-to-drizzle.py`
 | Category | Total | Migrated | Remaining | Progress |
 |----------|-------|----------|-----------|----------|
 | Wolfpack Routes | 2 | 2 | 0 | 100% ✅ |
-| Audio Routes | 7 | 0 | 7 | 0% |
-| Matrix Routes | 5 | 0 | 5 | 0% |
-| CEC Routes | 3 | 0 | 3 | 0% |
-| Other API Routes | 80+ | 0 | 80+ | 0% |
+| Audio Processor Routes | 9 | 6 | 3 | 67% 🔄 |
+| Matrix Routes | 8 | 0 | 8 | 0% |
+| CEC Routes | 4 | 0 | 4 | 0% |
+| Test Routes | 3 | 0 | 3 | 0% |
+| Other API Routes | 53+ | 0 | 53+ | 0% |
 | Service Files | 10+ | 0 | 10+ | 0% |
-| **TOTAL** | **~107** | **2** | **~105** | **~2%** |
+| **TOTAL** | **~79** | **8** | **~71** | **~10%** |
+
+### Recently Completed (Latest Session)
+✅ **Audio Processor Routes** (6 fully migrated, 3 partial):
+- `/api/audio-processor/zones` - GET, POST ✅
+- `/api/audio-processor/inputs` - GET ✅
+- `/api/audio-processor/outputs` - GET ✅
+- `/api/audio-processor/control` - POST (volume, mute, source, scene, message, combine) ✅
+- `/api/audio-processor/input-levels` - GET, POST ✅
+- `/api/audio-processor/matrix-routing` - GET, POST ✅
+- `/api/audio-processor/meter-status` - Partial 🔄
+- `/api/audio-processor/[id]/ai-gain-control` - Partial 🔄
+- `/api/audio-processor/[id]/input-gain` - Partial 🔄
 
 ## 🎯 Next Steps (Priority Order)
 
