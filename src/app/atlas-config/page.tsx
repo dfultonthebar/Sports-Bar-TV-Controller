@@ -2,11 +2,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, Settings, Speaker, Volume2, Brain } from 'lucide-react'
+import { ArrowLeft, Save, Settings, Speaker, Volume2, Brain, Map } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import AtlasProgrammingInterface from '@/components/AtlasProgrammingInterface'
 import AtlasAIMonitor from '@/components/AtlasAIMonitor'
+import AtlasMappingManager from '@/components/AtlasMappingManager'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 
@@ -41,7 +42,7 @@ export default function AtlasConfigPage() {
     <SportsBarLayout>
       <SportsBarHeader
         title="Atlas Audio System"
-        subtitle="Audio processing & zone management"
+        subtitle="Complete audio system management - Atlas, Zones, and Soundtrack"
         icon={<Speaker className="w-8 h-8 text-teal-400" />}
       />
 
@@ -87,8 +88,12 @@ export default function AtlasConfigPage() {
               </p>
             </div>
           ) : (
-            <Tabs defaultValue="configuration" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs defaultValue="mappings" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="mappings" className="flex items-center space-x-2">
+                  <Map className="w-4 h-4" />
+                  <span>Parameter Mappings</span>
+                </TabsTrigger>
                 <TabsTrigger value="configuration" className="flex items-center space-x-2">
                   <Settings className="w-4 h-4" />
                   <span>Configuration</span>
@@ -98,6 +103,16 @@ export default function AtlasConfigPage() {
                   <span>AI Monitor</span>
                 </TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="mappings" className="mt-6">
+                {selectedProcessor ? (
+                  <AtlasMappingManager processorId={selectedProcessor.id} />
+                ) : (
+                  <div className="text-center py-12 text-slate-400">
+                    Select a processor to manage mappings
+                  </div>
+                )}
+              </TabsContent>
               
               <TabsContent value="configuration" className="mt-6">
                 <AtlasProgrammingInterface />

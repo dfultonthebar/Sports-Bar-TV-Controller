@@ -761,3 +761,44 @@ export const atlasConnectionStates = sqliteTable('AtlasConnectionState', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
+
+// Atlas Mappings Model (for mapping app-friendly names to Atlas parameter names)
+export const atlasMappings = sqliteTable('AtlasMapping', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  appKey: text('appKey').notNull(), // App-friendly key (e.g., 'mainBarGain', 'zone1Volume')
+  atlasParam: text('atlasParam').notNull(), // Atlas parameter name (e.g., 'ZoneGain_0', 'SourceMute_2')
+  paramType: text('paramType').notNull(), // Type: 'zone', 'source', 'mix', 'group', 'message', 'scene', etc.
+  paramCategory: text('paramCategory').notNull(), // Category: 'gain', 'mute', 'source', 'meter', 'name', 'action'
+  minValue: real('minValue'), // Minimum value (for gain/volume parameters, typically -80)
+  maxValue: real('maxValue'), // Maximum value (for gain/volume parameters, typically 0)
+  minPercent: real('minPercent'), // Minimum percentage (typically 0)
+  maxPercent: real('maxPercent'), // Maximum percentage (typically 100)
+  format: text('format').notNull().default('val'), // 'val', 'pct', or 'str'
+  description: text('description'), // User-friendly description
+  isReadOnly: integer('isReadOnly', { mode: 'boolean' }).notNull().default(false), // Whether parameter is read-only
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  processorAppKeyIdx: uniqueIndex('AtlasMapping_processorId_appKey_key').on(table.processorId, table.appKey),
+  processorAtlasParamIdx: index('AtlasMapping_processorId_atlasParam_idx').on(table.processorId, table.atlasParam),
+  paramTypeIdx: index('AtlasMapping_paramType_idx').on(table.paramType),
+}))
+
+// Atlas Subscriptions Model (for tracking active parameter subscriptions)
+export const atlasSubscriptions = sqliteTable('AtlasSubscription', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  paramName: text('paramName').notNull(), // Atlas parameter name being subscribed to
+  format: text('format').notNull().default('val'), // 'val', 'pct', or 'str'
+  subscriptionType: text('subscriptionType').notNull().default('tcp'), // 'tcp' or 'udp'
+  lastUpdate: timestamp('lastUpdate'), // Last time we received an update
+  updateCount: integer('updateCount').notNull().default(0), // Number of updates received
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true), // Whether subscription is active
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  processorParamIdx: uniqueIndex('AtlasSubscription_processorId_paramName_format_key').on(table.processorId, table.paramName, table.format),
+  processorIdIdx: index('AtlasSubscription_processorId_idx').on(table.processorId),
+  isActiveIdx: index('AtlasSubscription_isActive_idx').on(table.isActive),
+}))

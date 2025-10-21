@@ -157,8 +157,84 @@ ollama list
 - **Home:** Dashboard and quick actions
 - **AI Hub:** Chat with AI assistant
 - **Matrix Control:** HDMI matrix switching
+- **Atlas Config:** Audio processor configuration and parameter mappings
 - **Device Config:** Configure TVs, audio, and IR devices
 - **CEC Discovery:** Detect and control HDMI-CEC devices
+
+---
+
+## 🎵 **Atlas Audio Integration**
+
+Comprehensive integration with AtlasIED Atmosphere AZM4/AZM8 audio processors featuring:
+
+### Features
+- ✅ **Real-time Control:** Set zone volumes, mute/unmute, switch sources
+- ✅ **Parameter Mapping:** Map user-friendly names to Atlas parameters
+- ✅ **Batch Operations:** Execute multiple commands in a single request
+- ✅ **Subscriptions:** Real-time parameter monitoring via TCP/UDP
+- ✅ **Scene Management:** Trigger preset scenes and configurations
+- ✅ **AI Integration:** Automatic gain control and audio monitoring
+- ✅ **Dashboard UI:** Visual management of mappings and subscriptions
+
+### Quick Setup
+
+1. **Enable Third-Party Control in Atlas:**
+   - Open Atlas UI (http://192.168.5.101)
+   - Navigate to Settings → Third Party Control
+   - Enable Third Party Control
+   - Set TCP Port: 5321, UDP Port: 3131
+
+2. **Configure in Application:**
+   - Navigate to Audio Control page
+   - Add new Audio Processor
+   - Enter Atlas IP (192.168.5.101) and port (5321)
+
+3. **Create Parameter Mappings:**
+   - Go to Atlas Config → Parameter Mappings
+   - Click "Add Mapping"
+   - Map app-friendly names (e.g., "mainBarVolume") to Atlas parameters (e.g., "ZoneGain_0")
+
+### API Endpoints
+
+```bash
+# Set zone volume
+POST /api/atlas/set-gain
+{
+  "processorId": "xxx",
+  "appKey": "mainBarVolume",
+  "value": 75,
+  "format": "pct"
+}
+
+# Mute/unmute zone
+POST /api/atlas/set-mute
+{
+  "processorId": "xxx",
+  "appKey": "mainBarMute",
+  "muted": true
+}
+
+# Trigger scene
+POST /api/atlas/trigger-scene
+{
+  "processorId": "xxx",
+  "sceneIndex": 0
+}
+
+# Batch operations
+POST /api/atlas/batch
+{
+  "processorId": "xxx",
+  "commands": [
+    { "method": "set", "appKey": "zone1Volume", "value": 75 },
+    { "method": "set", "appKey": "zone2Volume", "value": 80 }
+  ]
+}
+```
+
+📖 **Complete Documentation:** [Atlas Integration Guide](docs/ATLAS_INTEGRATION_GUIDE.md)
+
+---
 
 ### Managing the Service
 
