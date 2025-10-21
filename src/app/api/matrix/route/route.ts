@@ -1,11 +1,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { db, schema } from '@/db'
+import { eq, and } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 
 export async function POST(request: NextRequest) {
   try {
     const { input, output } = await request.json()
+
+    logger.api.request('POST', '/api/matrix/route', { input, output })
 
     // Validate input parameters
     if (!input || !output || input < 1 || output < 1 || input > 32 || output > 32) {
@@ -16,44 +20,55 @@ export async function POST(request: NextRequest) {
     }
 
     // Get active matrix configuration
-    const activeConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true, connectionStatus: 'connected' }
-    })
+    const activeConfigs = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
 
-    if (!activeConfig) {
+    if (!activeConfigs || activeConfigs.length === 0) {
       return NextResponse.json(
         { error: 'No active matrix configuration found' },
         { status: 404 }
       )
     }
 
+    const activeConfig = activeConfigs[0]
+
     // Here you would implement the actual Wolf Pack communication
     // For now, we'll simulate the routing and store it in the database
     
     // Store/update the route in the database
     // First try to find existing route for this output
-    const existingRoute = await prisma.matrixRoute.findFirst({
-      where: { outputNum: output }
-    })
+    const existingRoutes = await db
+      .select()
+      .from(schema.matrixRoutes)
+      .where(eq(schema.matrixRoutes.outputNum, output))
+      .limit(1)
 
-    if (existingRoute) {
+    if (existingRoutes && existingRoutes.length > 0) {
       // Update existing route
-      await prisma.matrixRoute.update({
-        where: { id: existingRoute.id },
-        data: {
+      await db
+        .update(schema.matrixRoutes)
+        .set({
           inputNum: input,
-          isActive: true
-        }
-      })
+          isActive: true,
+          updatedAt: new Date()
+        })
+        .where(eq(schema.matrixRoutes.id, existingRoutes[0].id))
+      
+      logger.api.info('Updated matrix route', { input, output })
     } else {
       // Create new route
-      await prisma.matrixRoute.create({
-        data: {
+      await db
+        .insert(schema.matrixRoutes)
+        .values({
           inputNum: input,
           outputNum: output,
           isActive: true
-        }
-      })
+        })
+      
+      logger.api.info('Created matrix route', { input, output })
     }
 
     // Send actual Wolf Pack command using correct format: YXZ.
