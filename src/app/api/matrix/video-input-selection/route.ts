@@ -1,19 +1,26 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { db, schema } from '@/db'
+import { eq, and, gte, lte, asc } from 'drizzle-orm'
+import { findFirst, findMany, update, create } from '@/lib/db-helpers'
+import { logger } from '@/lib/logger'
 import { routeWolfpackToMatrix } from '@/services/wolfpackMatrixService'
 
 /**
  * Matrix Video Input Selection API
  * Handles video input selection for matrix outputs and routes audio accordingly
+ * Migrated to Drizzle ORM
  */
 
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/matrix/video-input-selection')
+  
   try {
     const { matrixOutputNumber, videoInputNumber, videoInputLabel } = await request.json()
 
     // Validate input parameters
     if (!matrixOutputNumber || !videoInputNumber) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error('Missing required parameters'))
       return NextResponse.json(
         { error: 'Matrix output number and video input number are required' },
         { status: 400 }
@@ -22,6 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Validate matrix output is 1-4 (Matrix outputs)
     if (matrixOutputNumber < 1 || matrixOutputNumber > 4) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error('Invalid matrix output number'))
       return NextResponse.json(
         { error: 'Matrix output number must be between 1 and 4' },
         { status: 400 }
@@ -29,35 +37,46 @@ export async function POST(request: NextRequest) {
     }
 
     // Get active matrix configuration
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { channelNumber: videoInputNumber }
-        },
-        outputs: {
-          where: { channelNumber: 32 + matrixOutputNumber } // Matrix outputs are 33-36
-        }
-      }
+    const config = await findFirst('matrixConfigurations', {
+      where: eq(schema.matrixConfigurations.isActive, true)
     })
 
     if (!config) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error('No active matrix configuration'))
       return NextResponse.json(
         { error: 'No active matrix configuration found' },
         { status: 404 }
       )
     }
 
-    const videoInput = config.inputs[0]
+    // Get the video input
+    const videoInputs = await findMany('matrixInputs', {
+      where: and(
+        eq(schema.matrixInputs.configId, config.id),
+        eq(schema.matrixInputs.channelNumber, parseInt(videoInputNumber))
+      )
+    })
+
+    const videoInput = videoInputs[0]
     if (!videoInput) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error(`Video input ${videoInputNumber} not found`))
       return NextResponse.json(
         { error: `Video input ${videoInputNumber} not found` },
         { status: 404 }
       )
     }
 
-    const matrixOutput = config.outputs[0]
+    // Get the matrix output (channels 33-36 for Matrix 1-4)
+    const matrixOutputs = await findMany('matrixOutputs', {
+      where: and(
+        eq(schema.matrixOutputs.configId, config.id),
+        eq(schema.matrixOutputs.channelNumber, 32 + parseInt(matrixOutputNumber))
+      )
+    })
+
+    const matrixOutput = matrixOutputs[0]
     if (!matrixOutput) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error(`Matrix output ${matrixOutputNumber} not found`))
       return NextResponse.json(
         { error: `Matrix output ${matrixOutputNumber} not found` },
         { status: 404 }
@@ -65,7 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Route the video input to the matrix output via Wolfpack
-    console.log(`Routing video input ${videoInputNumber} (${videoInput.label}) to Matrix ${matrixOutputNumber}`)
+    logger.info(`Routing video input ${videoInputNumber} (${videoInput.label}) to Matrix ${matrixOutputNumber}`)
     
     const routingResult = await routeWolfpackToMatrix(
       config,
@@ -75,6 +94,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (!routingResult.success) {
+      logger.api.error('POST', '/api/matrix/video-input-selection', new Error(routingResult.error))
       return NextResponse.json(
         { 
           error: 'Failed to route video input to matrix output',
@@ -85,49 +105,49 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Update the matrix output with selected video input info
-    await prisma.matrixOutput.update({
-      where: { id: matrixOutput.id },
-      data: {
-        selectedVideoInput: parseInt(videoInputNumber),
-        videoInputLabel: videoInput.label,
-        label: videoInput.label // Update label to match video input
-      }
+    await update('matrixOutputs', matrixOutput.id, {
+      selectedVideoInput: parseInt(videoInputNumber),
+      videoInputLabel: videoInput.label,
+      label: videoInput.label
     })
 
-    // Step 3: Update the Wolfpack-Matrix routing state
-    await prisma.wolfpackMatrixRouting.upsert({
-      where: { matrixOutputNumber: parseInt(matrixOutputNumber) },
-      update: {
+    // Step 3: Update or create the Wolfpack-Matrix routing state
+    const existingRouting = await findFirst('wolfpackMatrixRoutings', {
+      where: eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, parseInt(matrixOutputNumber))
+    })
+
+    if (existingRouting) {
+      await update('wolfpackMatrixRoutings', existingRouting.id, {
         wolfpackInputNumber: parseInt(videoInputNumber),
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
-        lastRouted: new Date(),
-        updatedAt: new Date()
-      },
-      create: {
+        lastRouted: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })
+    } else {
+      await create('wolfpackMatrixRoutings', {
         matrixOutputNumber: parseInt(matrixOutputNumber),
         wolfpackInputNumber: parseInt(videoInputNumber),
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
         isActive: true,
-        lastRouted: new Date()
-      }
-    })
+        lastRouted: new Date().toISOString()
+      })
+    }
 
     // Step 4: Log the routing state
-    await prisma.wolfpackMatrixState.create({
-      data: {
-        matrixOutputNumber: parseInt(matrixOutputNumber),
-        wolfpackInputNumber: parseInt(videoInputNumber),
-        wolfpackInputLabel: videoInput.label,
-        channelInfo: JSON.stringify({
-          deviceType: videoInput.deviceType,
-          inputType: videoInput.inputType,
-          selectedAt: new Date().toISOString()
-        })
-      }
+    await create('wolfpackMatrixStates', {
+      matrixOutputNumber: parseInt(matrixOutputNumber),
+      wolfpackInputNumber: parseInt(videoInputNumber),
+      wolfpackInputLabel: videoInput.label,
+      channelInfo: JSON.stringify({
+        deviceType: videoInput.deviceType,
+        inputType: videoInput.inputType,
+        selectedAt: new Date().toISOString()
+      })
     })
 
+    logger.api.response('POST', '/api/matrix/video-input-selection', 200, { success: true })
     return NextResponse.json({
       success: true,
       message: `Successfully routed ${videoInput.label} to Matrix ${matrixOutputNumber}`,
@@ -146,7 +166,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in video input selection:', error)
+    logger.api.error('POST', '/api/matrix/video-input-selection', error)
     return NextResponse.json(
       { 
         error: 'Failed to process video input selection',
@@ -161,40 +181,53 @@ export async function POST(request: NextRequest) {
  * GET endpoint to retrieve current video input selections for matrix outputs
  */
 export async function GET(request: NextRequest) {
+  logger.api.request('GET', '/api/matrix/video-input-selection')
+  
   try {
     const { searchParams } = new URL(request.url)
     const matrixOutputNumber = searchParams.get('matrixOutputNumber')
 
     // Get active matrix configuration
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        outputs: {
-          where: matrixOutputNumber 
-            ? { channelNumber: 32 + parseInt(matrixOutputNumber) }
-            : { channelNumber: { gte: 33, lte: 36 } }, // Matrix outputs 1-4 (channels 33-36)
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
+    const config = await findFirst('matrixConfigurations', {
+      where: eq(schema.matrixConfigurations.isActive, true)
     })
 
     if (!config) {
+      logger.api.error('GET', '/api/matrix/video-input-selection', new Error('No active matrix configuration'))
       return NextResponse.json(
         { error: 'No active matrix configuration found' },
         { status: 404 }
       )
     }
 
-    // Get routing states
-    const routingStates = await prisma.wolfpackMatrixRouting.findMany({
+    // Get matrix outputs (channels 33-36 for Matrix 1-4)
+    const outputs = await findMany('matrixOutputs', {
       where: matrixOutputNumber 
-        ? { matrixOutputNumber: parseInt(matrixOutputNumber) }
-        : { matrixOutputNumber: { gte: 1, lte: 4 } },
-      orderBy: { matrixOutputNumber: 'asc' }
+        ? and(
+            eq(schema.matrixOutputs.configId, config.id),
+            eq(schema.matrixOutputs.channelNumber, 32 + parseInt(matrixOutputNumber))
+          )
+        : and(
+            eq(schema.matrixOutputs.configId, config.id),
+            gte(schema.matrixOutputs.channelNumber, 33),
+            lte(schema.matrixOutputs.channelNumber, 36)
+          ),
+      orderBy: asc(schema.matrixOutputs.channelNumber)
+    })
+
+    // Get routing states
+    const routingStates = await findMany('wolfpackMatrixRoutings', {
+      where: matrixOutputNumber 
+        ? eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, parseInt(matrixOutputNumber))
+        : and(
+            gte(schema.wolfpackMatrixRoutings.matrixOutputNumber, 1),
+            lte(schema.wolfpackMatrixRoutings.matrixOutputNumber, 4)
+          ),
+      orderBy: asc(schema.wolfpackMatrixRoutings.matrixOutputNumber)
     })
 
     // Combine output info with routing state
-    const selections = config.outputs.map(output => {
+    const selections = outputs.map(output => {
       const matrixNum = output.channelNumber - 32 // Convert 33-36 to 1-4
       const routingState = routingStates.find(r => r.matrixOutputNumber === matrixNum)
       
@@ -209,13 +242,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    logger.api.response('GET', '/api/matrix/video-input-selection', 200, { count: selections.length })
     return NextResponse.json({
       success: true,
       selections
     })
 
   } catch (error) {
-    console.error('Error fetching video input selections:', error)
+    logger.api.error('GET', '/api/matrix/video-input-selection', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch video input selections',
