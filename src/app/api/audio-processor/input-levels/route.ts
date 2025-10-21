@@ -2,11 +2,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import * as dgram from 'dgram'
-import * as net from 'net'
+import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
 
-// Global maps to track active UDP servers and subscriptions
-const activeUdpServers = new Map<string, dgram.Socket>()
+// Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
 
 export async function GET(request: NextRequest) {
@@ -92,33 +90,32 @@ async function startInputLevelMonitoring(processor: any, inputMeter: any) {
   console.log(`Starting input level monitoring for ${inputMeter.parameterName} on ${processor.ipAddress}`)
   
   try {
-    // Set up UDP listener for meter updates (port 3131)
-    let udpServer = activeUdpServers.get(serverKey)
+    // Get the centralized Atlas client (this manages the UDP socket on port 3131)
+    // NO duplicate UDP server creation - the AtlasTCPClient handles all UDP communication
+    const atlasClient = await getAtlasClient(processor.id, {
+      ipAddress: processor.ipAddress,
+      tcpPort: processor.port || 5321,
+      udpPort: processor.udpPort || 3131
+    })
     
-    if (!udpServer) {
-      udpServer = dgram.createSocket('udp4')
-      activeUdpServers.set(serverKey, udpServer)
-      
-      udpServer.on('message', async (msg, rinfo) => {
-        try {
-          const data = JSON.parse(msg.toString())
-          if (data.method === 'set' && data.params) {
-            await handleMeterUpdate(processor.id, data.params)
-          }
-        } catch (error) {
-          console.error('Error parsing UDP meter message:', error)
-        }
+    // Register callback for meter updates (if not already registered)
+    if (!activeSubscriptions.has(serverKey)) {
+      atlasClient.addUpdateCallback(async (processorId, param, value, fullParams) => {
+        // Handle meter updates for this processor
+        await handleMeterUpdate(processorId, { param, val: value, ...fullParams })
       })
-      
-      udpServer.on('error', (error) => {
-        console.error(`UDP server error for ${serverKey}:`, error)
-      })
-      
-      udpServer.bind(3131) // Listen on UDP port 3131 for meter updates
     }
     
-    // Subscribe to meter updates via TCP (port 5321)
-    await subscribeToMeterUpdates(processor, inputMeter.parameterName)
+    // Subscribe to meter updates using the Atlas client
+    await atlasClient.subscribe(inputMeter.parameterName, 'val')
+    
+    // Track this subscription
+    if (!activeSubscriptions.has(serverKey)) {
+      activeSubscriptions.set(serverKey, new Set())
+    }
+    activeSubscriptions.get(serverKey)?.add(inputMeter.parameterName)
+    
+    console.log(`Successfully subscribed to ${inputMeter.parameterName}`)
     
   } catch (error) {
     console.error('Error setting up input level monitoring:', error)
@@ -126,68 +123,7 @@ async function startInputLevelMonitoring(processor: any, inputMeter: any) {
   }
 }
 
-// Subscribe to meter updates via TCP
-async function subscribeToMeterUpdates(processor: any, parameterName: string) {
-  return new Promise<void>((resolve, reject) => {
-    const client = new net.Socket()
-    const serverKey = `${processor.ipAddress}:${processor.port}`
-    
-    client.connect(5321, processor.ipAddress, () => {
-      console.log(`Connected to processor ${processor.ipAddress} for meter subscription`)
-      
-      // Subscribe to the specific input meter
-      const subscribeCommand = {
-        jsonrpc: "2.0",
-        method: "sub",
-        params: {
-          param: parameterName,
-          fmt: "val" // Get dB values
-        }
-      }
-      
-      client.write(JSON.stringify(subscribeCommand) + '\n')
-      
-      // Track this subscription
-      if (!activeSubscriptions.has(serverKey)) {
-        activeSubscriptions.set(serverKey, new Set())
-      }
-      activeSubscriptions.get(serverKey)?.add(parameterName)
-      
-      // Set up keep-alive (every 4 minutes to be safe)
-      const keepAliveInterval = setInterval(() => {
-        const keepAliveCommand = {
-          jsonrpc: "2.0",
-          method: "get",
-          params: {
-            param: "KeepAlive",
-            fmt: "str"
-          }
-        }
-        client.write(JSON.stringify(keepAliveCommand) + '\n')
-      }, 240000) // 4 minutes
-      
-      // Clean up on disconnect
-      client.on('close', () => {
-        console.log(`TCP connection closed for ${serverKey}`)
-        clearInterval(keepAliveInterval)
-        activeSubscriptions.delete(serverKey)
-      })
-      
-      client.on('error', (error) => {
-        console.error(`TCP connection error for ${serverKey}:`, error)
-        clearInterval(keepAliveInterval)
-        reject(error)
-      })
-      
-      resolve()
-    })
-    
-    client.on('error', (error) => {
-      console.error(`Failed to connect to processor ${processor.ipAddress}:`, error)
-      reject(error)
-    })
-  })
-}
+
 
 // Handle meter update from UDP message
 async function handleMeterUpdate(processorId: string, params: any) {
