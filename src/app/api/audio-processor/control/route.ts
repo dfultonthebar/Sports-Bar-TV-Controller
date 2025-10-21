@@ -1,6 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findUnique, updateMany, update } from '@/lib/db-helpers'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 
 interface ControlCommand {
@@ -14,40 +17,34 @@ interface ControlCommand {
 
 export async function POST(request: NextRequest) {
   try {
+    logger.api.request('POST', '/api/audio-processor/control')
+    
     const { processorId, command }: { processorId: string, command: ControlCommand } = await request.json()
 
     if (!processorId || !command) {
+      logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Missing params' })
       return NextResponse.json(
         { error: 'Processor ID and command are required' },
         { status: 400 }
       )
     }
 
-    // Verify database connection is available
-    if (!prisma) {
-      console.error('[Control API] Database client is not initialized')
-      return NextResponse.json(
-        { error: 'Database connection error. Please check server configuration.' },
-        { status: 500 }
-      )
-    }
-
     // Get processor details
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    }).catch((dbError) => {
-      console.error('[Control API] Database query error:', dbError)
-      throw new Error(`Database error: ${dbError.message}`)
-    })
+    const processor = await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorId))
+      .catch((dbError) => {
+        logger.error('[Control API] Database query error:', dbError)
+        throw new Error(`Database error: ${dbError.message}`)
+      })
 
     if (!processor) {
+      logger.api.response('POST', '/api/audio-processor/control', 404, { error: 'Processor not found' })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
       )
     }
 
-    console.log(`Executing ${command.action} command on processor ${processor.name}`)
+    logger.info(`Executing ${command.action} command on processor ${processor.name}`)
 
     let result;
     switch (command.action) {
@@ -70,6 +67,7 @@ export async function POST(request: NextRequest) {
         result = await combineRooms(processor, command.zones!)
         break
       default:
+        logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Unknown command' })
         return NextResponse.json(
           { error: `Unknown command action: ${command.action}` },
           { status: 400 }
@@ -77,11 +75,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last seen timestamp
-    await prisma.audioProcessor.update({
-      where: { id: processorId },
-      data: { lastSeen: new Date() }
+    await update('audioProcessors', eq(schema.audioProcessors.id, processorId), {
+      lastSeen: new Date().toISOString()
     })
 
+    logger.api.response('POST', '/api/audio-processor/control', 200, { action: command.action })
     return NextResponse.json({ 
       success: true, 
       result,
@@ -89,7 +87,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error executing audio processor control:', error)
+    logger.api.error('POST', '/api/audio-processor/control', error)
     return NextResponse.json(
       { error: 'Failed to execute control command' },
       { status: 500 }
@@ -106,7 +104,7 @@ export async function POST(request: NextRequest) {
  * @param volume Volume percentage (0-100)
  */
 async function setZoneVolume(processor: any, zone: number, volume: number): Promise<any> {
-  console.log(`[Control API] Setting zone ${zone} volume to ${volume}% on ${processor.ipAddress}`)
+  logger.info(`[Control API] Setting zone ${zone} volume to ${volume}% on ${processor.ipAddress}`)
   
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
@@ -118,18 +116,19 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to set zone volume:', result.error)
+    logger.error('[Control API] Failed to set zone volume:', result.error)
     throw new Error(result.error || 'Failed to set zone volume')
   }
   
   // Update zone volume in database for state tracking
-  await prisma.audioZone.updateMany({
-    where: { 
-      processorId: processor.id,
-      zoneNumber: zone 
-    },
-    data: { volume }
-  })
+  await updateMany(
+    'audioZones',
+    and(
+      eq(schema.audioZones.processorId, processor.id),
+      eq(schema.audioZones.zoneNumber, zone)
+    ),
+    { volume }
+  )
 
   return { zone, volume, timestamp: new Date(), atlasResponse: result }
 }
@@ -141,7 +140,7 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
  * @param muted Mute state (true = muted, false = unmuted)
  */
 async function setZoneMute(processor: any, zone: number, muted: boolean): Promise<any> {
-  console.log(`[Control API] ${muted ? 'Muting' : 'Unmuting'} zone ${zone} on ${processor.ipAddress}`)
+  logger.info(`[Control API] ${muted ? 'Muting' : 'Unmuting'} zone ${zone} on ${processor.ipAddress}`)
   
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
@@ -153,18 +152,19 @@ async function setZoneMute(processor: any, zone: number, muted: boolean): Promis
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to set zone mute:', result.error)
+    logger.error('[Control API] Failed to set zone mute:', result.error)
     throw new Error(result.error || 'Failed to set zone mute')
   }
   
   // Update zone mute state in database for state tracking
-  await prisma.audioZone.updateMany({
-    where: { 
-      processorId: processor.id,
-      zoneNumber: zone 
-    },
-    data: { muted }
-  })
+  await updateMany(
+    'audioZones',
+    and(
+      eq(schema.audioZones.processorId, processor.id),
+      eq(schema.audioZones.zoneNumber, zone)
+    ),
+    { muted }
+  )
 
   return { zone, muted, timestamp: new Date(), atlasResponse: result }
 }
@@ -176,7 +176,7 @@ async function setZoneMute(processor: any, zone: number, muted: boolean): Promis
  * @param source Source identifier (could be "Source 1", "input_1", etc.)
  */
 async function setZoneSource(processor: any, zone: number, source: string): Promise<any> {
-  console.log(`[Control API] Setting zone ${zone} source to ${source} on ${processor.ipAddress}`)
+  logger.info(`[Control API] Setting zone ${zone} source to ${source} on ${processor.ipAddress}`)
   
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
@@ -204,7 +204,7 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
     sourceIndex = parseInt(source)
   }
 
-  console.log(`[Control API] Mapped source "${source}" to index ${sourceIndex}`)
+  logger.info(`[Control API] Mapped source "${source}" to index ${sourceIndex}`)
   
   // Send command to Atlas processor via TCP (port 23 for telnet)
   const result = await executeAtlasCommand(
@@ -213,18 +213,19 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to set zone source:', result.error)
+    logger.error('[Control API] Failed to set zone source:', result.error)
     throw new Error(result.error || 'Failed to set zone source')
   }
   
   // Update zone source in database for state tracking
-  await prisma.audioZone.updateMany({
-    where: { 
-      processorId: processor.id,
-      zoneNumber: zone 
-    },
-    data: { currentSource: source }
-  })
+  await updateMany(
+    'audioZones',
+    and(
+      eq(schema.audioZones.processorId, processor.id),
+      eq(schema.audioZones.zoneNumber, zone)
+    ),
+    { currentSource: source }
+  )
 
   return { zone, source, sourceIndex, timestamp: new Date(), atlasResponse: result }
 }
@@ -235,7 +236,7 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
  * @param sceneId Scene ID (0-based)
  */
 async function recallScene(processor: any, sceneId: number): Promise<any> {
-  console.log(`[Control API] Recalling scene ${sceneId} on ${processor.ipAddress}`)
+  logger.info(`[Control API] Recalling scene ${sceneId} on ${processor.ipAddress}`)
   
   // Send command to Atlas processor via TCP (port 23 for telnet)
   const result = await executeAtlasCommand(
@@ -244,7 +245,7 @@ async function recallScene(processor: any, sceneId: number): Promise<any> {
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to recall scene:', result.error)
+    logger.error('[Control API] Failed to recall scene:', result.error)
     throw new Error(result.error || 'Failed to recall scene')
   }
   
@@ -259,7 +260,7 @@ async function recallScene(processor: any, sceneId: number): Promise<any> {
  */
 async function playMessage(processor: any, messageId: number, zones?: number[]): Promise<any> {
   const targetZones = zones || 'all'
-  console.log(`[Control API] Playing message ${messageId} to zones ${targetZones} on ${processor.ipAddress}`)
+  logger.info(`[Control API] Playing message ${messageId} to zones ${targetZones} on ${processor.ipAddress}`)
   
   // Send command to Atlas processor via TCP (port 23 for telnet)
   const result = await executeAtlasCommand(
@@ -268,7 +269,7 @@ async function playMessage(processor: any, messageId: number, zones?: number[]):
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to play message:', result.error)
+    logger.error('[Control API] Failed to play message:', result.error)
     throw new Error(result.error || 'Failed to play message')
   }
   
@@ -281,13 +282,13 @@ async function playMessage(processor: any, messageId: number, zones?: number[]):
  * @param zones Zones to combine
  */
 async function combineRooms(processor: any, zones: number[]): Promise<any> {
-  console.log(`[Control API] Combining zones ${zones.join(', ')} on ${processor.ipAddress}`)
+  logger.info(`[Control API] Combining zones ${zones.join(', ')} on ${processor.ipAddress}`)
   
   // Note: Atlas uses GroupActive parameter to combine zones
   // This requires a group to be configured in the Atlas processor
   // For now, we'll just log this as it requires additional group configuration
   
-  console.warn('[Control API] Zone combining requires GroupActive configuration in Atlas')
+  logger.warn('[Control API] Zone combining requires GroupActive configuration in Atlas')
   
   // If you have a specific group index, you can use:
   // const result = await executeAtlasCommand(

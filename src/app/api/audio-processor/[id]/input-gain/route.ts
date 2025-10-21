@@ -16,7 +16,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 import * as net from 'net'
 import { atlasLogger } from '@/lib/atlas-logger'
 
@@ -38,7 +40,7 @@ export async function GET(
 
     // Verify database connection is available
     if (!prisma) {
-      console.error('[Input Gain API] Database client is not initialized')
+      logger.error('[Input Gain API] Database client is not initialized')
       return NextResponse.json(
         { error: 'Database connection error. Please check server configuration.' },
         { status: 500 }
@@ -48,7 +50,7 @@ export async function GET(
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId }
     }).catch((dbError) => {
-      console.error('[Input Gain API] Database query error:', dbError)
+      logger.error('[Input Gain API] Database query error:', dbError)
       throw new Error(`Database error: ${dbError.message}`)
     })
 
@@ -73,7 +75,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error fetching input gain settings:', error)
+    logger.error('Error fetching input gain settings:', error)
     return NextResponse.json(
       { error: 'Failed to fetch input gain settings' },
       { status: 500 }
@@ -101,7 +103,7 @@ export async function POST(
 
     // Verify database connection is available
     if (!prisma) {
-      console.error('[Input Gain API] Database client is not initialized')
+      logger.error('[Input Gain API] Database client is not initialized')
       return NextResponse.json(
         { error: 'Database connection error. Please check server configuration.' },
         { status: 500 }
@@ -111,7 +113,7 @@ export async function POST(
     const processor = await prisma.audioProcessor.findUnique({
       where: { id: processorId }
     }).catch((dbError) => {
-      console.error('[Input Gain API] Database query error:', dbError)
+      logger.error('[Input Gain API] Database query error:', dbError)
       throw new Error(`Database error: ${dbError.message}`)
     })
 
@@ -185,7 +187,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error setting input gain:', error)
+    logger.error('Error setting input gain:', error)
     return NextResponse.json(
       { error: 'Failed to set input gain' },
       { status: 500 }

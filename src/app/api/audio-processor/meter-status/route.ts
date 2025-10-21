@@ -1,7 +1,9 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ inputMeters: metersWithStatus })
   } catch (error) {
-    console.error('Error fetching meter status:', error)
+    logger.error('Error fetching meter status:', error)
     return NextResponse.json(
       { error: 'Failed to fetch meter status' },
       { status: 500 }
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: 'Peak levels reset' })
   } catch (error) {
-    console.error('Error resetting peak levels:', error)
+    logger.error('Error resetting peak levels:', error)
     return NextResponse.json(
       { error: 'Failed to reset peak levels' },
       { status: 500 }

@@ -2,7 +2,10 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findUnique } from '@/lib/db-helpers'
 import { getAvailableInputs } from '@/lib/atlas-models-config'
 
 /**
@@ -14,10 +17,13 @@ import { getAvailableInputs } from '@/lib/atlas-models-config'
  */
 export async function GET(request: NextRequest) {
   try {
+    logger.api.request('GET', '/api/audio-processor/inputs')
+    
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
 
     if (!processorId) {
+      logger.api.response('GET', '/api/audio-processor/inputs', 400, { error: 'Missing processorId' })
       return NextResponse.json(
         { error: 'Processor ID is required' },
         { status: 400 }
@@ -25,11 +31,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch the processor to get its model
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorId))
 
     if (!processor) {
+      logger.api.response('GET', '/api/audio-processor/inputs', 404, { error: 'Processor not found' })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
@@ -79,7 +84,8 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        console.log(`Merged ${mergedInputs.length} inputs (${configData.inputs.length} custom, ${inputs.length} total)`)
+        logger.info(`Merged ${mergedInputs.length} inputs (${configData.inputs.length} custom, ${inputs.length} total)`)
+        logger.api.response('GET', '/api/audio-processor/inputs', 200, { count: mergedInputs.length })
 
         return NextResponse.json({
           success: true,
@@ -89,10 +95,11 @@ export async function GET(request: NextRequest) {
         })
       }
     } catch (configError) {
-      console.log('No custom input configuration found, using model defaults')
+      logger.info('No custom input configuration found, using model defaults')
     }
 
     // Return model default inputs
+    logger.api.response('GET', '/api/audio-processor/inputs', 200, { count: inputs.length })
     return NextResponse.json({
       success: true,
       inputs: inputs.map(input => ({
@@ -110,7 +117,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching audio processor inputs:', error)
+    logger.api.error('GET', '/api/audio-processor/inputs', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch inputs',

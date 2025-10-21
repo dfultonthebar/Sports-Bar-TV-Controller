@@ -1,7 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findMany, findUnique, create, updateMany } from '@/lib/db-helpers'
 import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
 
 // Global map to track active subscriptions
@@ -9,24 +12,28 @@ const activeSubscriptions = new Map<string, Set<string>>()
 
 export async function GET(request: NextRequest) {
   try {
+    logger.api.request('GET', '/api/audio-processor/input-levels')
+    
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
 
     if (!processorId) {
+      logger.api.response('GET', '/api/audio-processor/input-levels', 400, { error: 'Missing processorId' })
       return NextResponse.json(
         { error: 'Processor ID is required' },
         { status: 400 }
       )
     }
 
-    const inputMeters = await prisma.audioInputMeter.findMany({
-      where: { processorId: processorId },
-      orderBy: { inputNumber: 'asc' }
+    const inputMeters = await findMany('audioInputMeters', {
+      where: eq(schema.audioInputMeters.processorId, processorId),
+      orderBy: asc(schema.audioInputMeters.inputNumber)
     })
 
+    logger.api.response('GET', '/api/audio-processor/input-levels', 200, { count: inputMeters.length })
     return NextResponse.json({ inputMeters })
   } catch (error) {
-    console.error('Error fetching input meters:', error)
+    logger.api.error('GET', '/api/audio-processor/input-levels', error)
     return NextResponse.json(
       { error: 'Failed to fetch input meters' },
       { status: 500 }
@@ -36,10 +43,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    logger.api.request('POST', '/api/audio-processor/input-levels')
+    
     const data = await request.json()
     const { processorId, inputNumber, parameterName, inputName, warningThreshold, dangerThreshold } = data
 
     if (!processorId || inputNumber === undefined || !parameterName) {
+      logger.api.response('POST', '/api/audio-processor/input-levels', 400, { error: 'Missing params' })
       return NextResponse.json(
         { error: 'Processor ID, input number, and parameter name are required' },
         { status: 400 }
@@ -47,35 +57,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Get processor info
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorId))
 
     if (!processor) {
+      logger.api.response('POST', '/api/audio-processor/input-levels', 404, { error: 'Processor not found' })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
       )
     }
 
-    const inputMeter = await prisma.audioInputMeter.create({
-      data: {
-        processorId,
-        inputNumber,
-        parameterName,
-        inputName: inputName || `Input ${inputNumber + 1}`,
-        warningThreshold: warningThreshold || -12.0,
-        dangerThreshold: dangerThreshold || -3.0,
-        isActive: true
-      }
+    const inputMeter = await create('audioInputMeters', {
+      processorId,
+      inputNumber,
+      parameterName,
+      inputName: inputName || `Input ${inputNumber + 1}`,
+      warningThreshold: warningThreshold || -12.0,
+      dangerThreshold: dangerThreshold || -3.0,
+      isActive: true
     })
 
     // Start monitoring this input
     await startInputLevelMonitoring(processor, inputMeter)
 
+    logger.api.response('POST', '/api/audio-processor/input-levels', 200, { meterId: inputMeter.id })
     return NextResponse.json({ inputMeter })
   } catch (error) {
-    console.error('Error creating input meter:', error)
+    logger.api.error('POST', '/api/audio-processor/input-levels', error)
     return NextResponse.json(
       { error: 'Failed to create input meter' },
       { status: 500 }
@@ -87,7 +95,7 @@ export async function POST(request: NextRequest) {
 async function startInputLevelMonitoring(processor: any, inputMeter: any) {
   const serverKey = `${processor.ipAddress}:${processor.port}`
   
-  console.log(`Starting input level monitoring for ${inputMeter.parameterName} on ${processor.ipAddress}`)
+  logger.info(`Starting input level monitoring for ${inputMeter.parameterName} on ${processor.ipAddress}`)
   
   try {
     // Get the centralized Atlas client (this manages the UDP socket on port 3131)
@@ -115,10 +123,10 @@ async function startInputLevelMonitoring(processor: any, inputMeter: any) {
     }
     activeSubscriptions.get(serverKey)?.add(inputMeter.parameterName)
     
-    console.log(`Successfully subscribed to ${inputMeter.parameterName}`)
+    logger.info(`Successfully subscribed to ${inputMeter.parameterName}`)
     
   } catch (error) {
-    console.error('Error setting up input level monitoring:', error)
+    logger.error('Error setting up input level monitoring:', error)
     throw error
   }
 }
@@ -137,26 +145,24 @@ async function handleMeterUpdate(processorId: string, params: any) {
     }
     
     // Update the database with the new level
-    await prisma.audioInputMeter.updateMany({
-      where: {
-        processorId: processorId,
-        parameterName: paramName
-      },
-      data: {
+    await updateMany(
+      'audioInputMeters',
+      and(
+        eq(schema.audioInputMeters.processorId, processorId),
+        eq(schema.audioInputMeters.parameterName, paramName)
+      ),
+      {
         currentLevel: levelValue,
-        peakLevel: {
-          // Only update peak if this level is higher
-          set: levelValue
-        },
+        peakLevel: levelValue, // Update to new value
         levelPercent: Math.round(((levelValue + 80) / 80) * 100), // Convert dB to percentage
-        lastUpdate: new Date()
+        lastUpdate: new Date().toISOString()
       }
-    })
+    )
     
-    console.log(`Updated ${paramName}: ${levelValue}dB`)
+    logger.info(`Updated ${paramName}: ${levelValue}dB`)
     
   } catch (error) {
-    console.error('Error handling meter update:', error)
+    logger.error('Error handling meter update:', error)
   }
 }
 

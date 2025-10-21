@@ -2,7 +2,10 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findUnique } from '@/lib/db-helpers'
 import { getAvailableOutputs } from '@/lib/atlas-models-config'
 
 /**
@@ -15,11 +18,14 @@ import { getAvailableOutputs } from '@/lib/atlas-models-config'
  */
 export async function GET(request: NextRequest) {
   try {
+    logger.api.request('GET', '/api/audio-processor/outputs')
+    
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
     const includeGroups = searchParams.get('includeGroups') !== 'false'
 
     if (!processorId) {
+      logger.api.response('GET', '/api/audio-processor/outputs', 400, { error: 'Missing processorId' })
       return NextResponse.json(
         { error: 'Processor ID is required' },
         { status: 400 }
@@ -27,11 +33,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch the processor to get its model
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorId))
 
     if (!processor) {
+      logger.api.response('GET', '/api/audio-processor/outputs', 404, { error: 'Processor not found' })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
@@ -104,10 +109,10 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        console.log(`Merged ${outputs.length} outputs (${configData.outputs.length} custom, ${modelOutputs.length} total)`)
+        logger.info(`Merged ${outputs.length} outputs (${configData.outputs.length} custom, ${modelOutputs.length} total)`)
       }
     } catch (configError) {
-      console.log('No custom output configuration found, using model defaults')
+      logger.info('No custom output configuration found, using model defaults')
     }
 
     // Detect zone groups if requested
@@ -141,6 +146,11 @@ export async function GET(request: NextRequest) {
       outputs = outputs.filter(o => !groupedOutputIds.has(o.id))
     }
 
+    logger.api.response('GET', '/api/audio-processor/outputs', 200, { 
+      outputCount: outputs.length, 
+      groupCount: groups.length 
+    })
+
     return NextResponse.json({
       success: true,
       outputs,
@@ -151,7 +161,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching audio processor outputs:', error)
+    logger.api.error('GET', '/api/audio-processor/outputs', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch outputs',

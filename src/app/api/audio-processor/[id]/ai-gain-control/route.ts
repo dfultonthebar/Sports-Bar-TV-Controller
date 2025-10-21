@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 interface RouteContext {
   params: Promise<{
@@ -49,7 +51,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error fetching AI gain control settings:', error)
+    logger.error('Error fetching AI gain control settings:', error)
     return NextResponse.json(
       { error: 'Failed to fetch AI gain control settings' },
       { status: 500 }
@@ -164,7 +166,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error updating AI gain control settings:', error)
+    logger.error('Error updating AI gain control settings:', error)
     return NextResponse.json(
       { error: 'Failed to update AI gain control settings' },
       { status: 500 }
@@ -213,7 +215,7 @@ export async function DELETE(
     })
 
   } catch (error) {
-    console.error('Error deleting AI gain configuration:', error)
+    logger.error('Error deleting AI gain configuration:', error)
     return NextResponse.json(
       { error: 'Failed to delete AI gain configuration' },
       { status: 500 }
