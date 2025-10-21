@@ -1,29 +1,44 @@
 
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, and, asc } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 export async function GET() {
   try {
+    logger.api.request('GET', '/api/wolfpack/inputs')
+    
     // Get active matrix configuration
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
-    })
+    const config = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
     if (!config) {
+      logger.api.response('GET', '/api/wolfpack/inputs', 404, { error: 'No active config' })
       return NextResponse.json(
         { error: 'No active matrix configuration found' },
         { status: 404 }
       )
     }
 
+    // Get active inputs for this configuration
+    const inputs = await db
+      .select()
+      .from(schema.matrixInputs)
+      .where(
+        and(
+          eq(schema.matrixInputs.configId, config.id),
+          eq(schema.matrixInputs.isActive, true)
+        )
+      )
+      .orderBy(asc(schema.matrixInputs.channelNumber))
+      .all()
+
     // Format inputs with current channel info
-    const inputs = config.inputs.map(input => ({
+    const formattedInputs = inputs.map(input => ({
       id: input.id,
       channelNumber: input.channelNumber,
       label: input.label,
@@ -35,15 +50,20 @@ export async function GET() {
       isActive: input.isActive
     }))
 
+    logger.api.response('GET', '/api/wolfpack/inputs', 200, { 
+      count: formattedInputs.length,
+      configId: config.id 
+    })
+
     return NextResponse.json({
       success: true,
-      inputs,
+      inputs: formattedInputs,
       configId: config.id,
       configName: config.name
     })
 
   } catch (error) {
-    console.error('Error fetching Wolfpack inputs:', error)
+    logger.api.error('GET', '/api/wolfpack/inputs', error)
     return NextResponse.json(
       { error: 'Failed to fetch Wolfpack inputs' },
       { status: 500 }
