@@ -91,21 +91,42 @@ export async function queryAtlasHardwareConfiguration(
           try {
             // Get current source
             const sourceResponse = await client.getParameter(`ZoneSource_${zone.index}`, 'val')
-            const currentSource = sourceResponse.success && sourceResponse.data?.result?.val !== undefined
-              ? sourceResponse.data.result.val
-              : -1
+            let currentSource = -1
+            if (sourceResponse.success && sourceResponse.data) {
+              if (sourceResponse.data.method === 'getResp' && sourceResponse.data.params) {
+                currentSource = sourceResponse.data.params.val ?? -1
+              } else if (sourceResponse.data.value !== undefined) {
+                currentSource = sourceResponse.data.value
+              } else if (sourceResponse.data.result?.val !== undefined) {
+                currentSource = sourceResponse.data.result.val
+              }
+            }
 
             // Get volume (as percentage)
             const volumeResponse = await client.getParameter(`ZoneGain_${zone.index}`, 'pct')
-            const volume = volumeResponse.success && volumeResponse.data?.result?.pct !== undefined
-              ? volumeResponse.data.result.pct
-              : 50
+            let volume = 50
+            if (volumeResponse.success && volumeResponse.data) {
+              if (volumeResponse.data.method === 'getResp' && volumeResponse.data.params) {
+                volume = volumeResponse.data.params.pct ?? 50
+              } else if (volumeResponse.data.value !== undefined) {
+                volume = volumeResponse.data.value
+              } else if (volumeResponse.data.result?.pct !== undefined) {
+                volume = volumeResponse.data.result.pct
+              }
+            }
 
             // Get mute state
             const muteResponse = await client.getParameter(`ZoneMute_${zone.index}`, 'val')
-            const muted = muteResponse.success && muteResponse.data?.result?.val !== undefined
-              ? muteResponse.data.result.val === 1
-              : false
+            let muted = false
+            if (muteResponse.success && muteResponse.data) {
+              if (muteResponse.data.method === 'getResp' && muteResponse.data.params) {
+                muted = muteResponse.data.params.val === 1
+              } else if (muteResponse.data.value !== undefined) {
+                muted = muteResponse.data.value === 1
+              } else if (muteResponse.data.result?.val !== undefined) {
+                muted = muteResponse.data.result.val === 1
+              }
+            }
 
             zones.push({
               index: zone.index,
@@ -208,10 +229,22 @@ export async function queryAtlasHardwareConfiguration(
         console.log(`[Atlas Query] Querying ${paramName}...`)
         const response = await client.getParameter(paramName, 'str')
         
-        if (response.success && response.data && response.data.result) {
-          // JSON-RPC 2.0 response format: {"jsonrpc":"2.0","result":{"param":"SourceName_0","str":"Matrix 1 (M1)"},"id":N}
-          const result = response.data.result
-          const sourceName = result.str || result.val || `Source ${i + 1}`
+        if (response.success && response.data) {
+          // CRITICAL: GET responses use method "getResp" with "params"
+          // Response format: {"jsonrpc":"2.0","method":"getResp","params":{"param":"SourceName_0","str":"Matrix 1 (M1)"}}
+          let sourceName = `Source ${i + 1}` // Default fallback
+          
+          if (response.data.method === 'getResp' && response.data.params) {
+            sourceName = response.data.params.str || response.data.params.val || sourceName
+          } else if (response.data.value !== undefined) {
+            // Use the extracted value from the client
+            sourceName = response.data.value
+          } else if (response.data.result) {
+            // Fallback for old format
+            const result = response.data.result
+            sourceName = result.str || result.val || sourceName
+          }
+          
           sources.push({
             index: i,
             name: sourceName,
@@ -249,27 +282,59 @@ export async function queryAtlasHardwareConfiguration(
         
         // Get zone name
         const nameResponse = await client.getParameter(paramName, 'str')
-        const zoneName = nameResponse.success && nameResponse.data?.result?.str 
-          ? nameResponse.data.result.str 
-          : `Zone ${i + 1}`
+        let zoneName = `Zone ${i + 1}` // Default fallback
+        
+        if (nameResponse.success && nameResponse.data) {
+          if (nameResponse.data.method === 'getResp' && nameResponse.data.params) {
+            zoneName = nameResponse.data.params.str || zoneName
+          } else if (nameResponse.data.value !== undefined) {
+            zoneName = nameResponse.data.value
+          } else if (nameResponse.data.result?.str) {
+            zoneName = nameResponse.data.result.str
+          }
+        }
 
         // Get current source
         const sourceResponse = await client.getParameter(`ZoneSource_${i}`, 'val')
-        const currentSource = sourceResponse.success && sourceResponse.data?.result?.val !== undefined
-          ? sourceResponse.data.result.val
-          : -1
+        let currentSource = -1
+        
+        if (sourceResponse.success && sourceResponse.data) {
+          if (sourceResponse.data.method === 'getResp' && sourceResponse.data.params) {
+            currentSource = sourceResponse.data.params.val ?? -1
+          } else if (sourceResponse.data.value !== undefined) {
+            currentSource = sourceResponse.data.value
+          } else if (sourceResponse.data.result?.val !== undefined) {
+            currentSource = sourceResponse.data.result.val
+          }
+        }
 
         // Get volume (as percentage)
         const volumeResponse = await client.getParameter(`ZoneGain_${i}`, 'pct')
-        const volume = volumeResponse.success && volumeResponse.data?.result?.pct !== undefined
-          ? volumeResponse.data.result.pct
-          : 50
+        let volume = 50
+        
+        if (volumeResponse.success && volumeResponse.data) {
+          if (volumeResponse.data.method === 'getResp' && volumeResponse.data.params) {
+            volume = volumeResponse.data.params.pct ?? 50
+          } else if (volumeResponse.data.value !== undefined) {
+            volume = volumeResponse.data.value
+          } else if (volumeResponse.data.result?.pct !== undefined) {
+            volume = volumeResponse.data.result.pct
+          }
+        }
 
         // Get mute state
         const muteResponse = await client.getParameter(`ZoneMute_${i}`, 'val')
-        const muted = muteResponse.success && muteResponse.data?.result?.val !== undefined
-          ? muteResponse.data.result.val === 1
-          : false
+        let muted = false
+        
+        if (muteResponse.success && muteResponse.data) {
+          if (muteResponse.data.method === 'getResp' && muteResponse.data.params) {
+            muted = muteResponse.data.params.val === 1
+          } else if (muteResponse.data.value !== undefined) {
+            muted = muteResponse.data.value === 1
+          } else if (muteResponse.data.result?.val !== undefined) {
+            muted = muteResponse.data.result.val === 1
+          }
+        }
 
         zones.push({
           index: i,

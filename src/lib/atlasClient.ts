@@ -1,25 +1,31 @@
 /**
- * Atlas TCP Client Library
+ * Atlas TCP/UDP Client Library
  * 
  * Implements JSON-RPC 2.0 protocol for controlling AtlasIED Atmosphere audio processors
- * via TCP connection on port 5321.
  * 
- * Protocol Details:
- * - Messages must be terminated with \r\n
- * - Parameters use 0-based indexing (Zone 1 = ZoneSource_0, etc.)
- * - JSON-RPC 2.0 format: {"jsonrpc":"2.0","method":"...","params":{...},"id":N}
+ * CRITICAL PROTOCOL REQUIREMENTS (from ATS006993-B specification):
+ * - TCP Port 5321 for commands and responses
+ * - UDP Port 3131 for meter subscription updates
+ * - Messages MUST be newline-terminated with "\n" (not "\r\n")
+ * - GET responses use method "getResp" with "params" (not "result")
+ * - Keep-alive: send "get" for "KeepAlive" every 4-5 minutes
+ * - Subscriptions are lost on disconnect - must resubscribe on reconnect
+ * - Parameters are 0-indexed (ZoneSource_0 is Zone 1)
  * 
  * @see ATS006993-B-AZM4-AZM8-3rd-Party-Control.pdf for protocol specification
  */
 
 import { Socket } from 'net'
+import * as dgram from 'dgram'
 import { atlasLogger } from './atlas-logger'
 
 export interface AtlasConnectionConfig {
   ipAddress: string
-  port?: number
+  tcpPort?: number
+  udpPort?: number
   timeout?: number
   maxRetries?: number
+  keepAliveInterval?: number
 }
 
 export interface AtlasCommand {
@@ -35,27 +41,43 @@ export interface AtlasResponse {
   error?: string
 }
 
+interface PendingCommand {
+  resolve: (value: any) => void
+  reject: (reason: any) => void
+  timeout: NodeJS.Timeout
+}
+
+interface Subscription {
+  param: string
+  format: 'val' | 'pct' | 'str'
+}
+
 /**
- * Atlas TCP Client for JSON-RPC 2.0 communication
+ * Atlas TCP/UDP Client for JSON-RPC 2.0 communication
+ * 
+ * This implementation follows the official AtlasIED Atmosphere protocol specification.
  */
 export class AtlasTCPClient {
-  private socket: Socket | null = null
+  private tcpSocket: Socket | null = null
+  private udpSocket: dgram.Socket | null = null
   private connected: boolean = false
   private readonly config: Required<AtlasConnectionConfig>
   private commandId: number = 1
   private responseBuffer: string = ''
-  private pendingResponses: Map<number, {
-    resolve: (value: any) => void
-    reject: (reason: any) => void
-    timeout: NodeJS.Timeout
-  }> = new Map()
+  private pendingResponses: Map<number, PendingCommand> = new Map()
+  private subscriptions: Set<string> = new Set()
+  private keepAliveTimer: NodeJS.Timeout | null = null
+  private reconnectAttempts: number = 0
+  private maxReconnectAttempts: number = 10
 
   constructor(config: AtlasConnectionConfig) {
     this.config = {
       ipAddress: config.ipAddress,
-      port: config.port || 5321,  // Atlas AZMP8 uses port 5321 for TCP control
+      tcpPort: config.tcpPort || 5321,  // TCP control port
+      udpPort: config.udpPort || 3131,  // UDP meter port
       timeout: config.timeout || 5000,
-      maxRetries: config.maxRetries || 3
+      maxRetries: config.maxRetries || 3,
+      keepAliveInterval: config.keepAliveInterval || 240000 // 4 minutes
     }
   }
 
@@ -63,10 +85,10 @@ export class AtlasTCPClient {
    * Connect to the Atlas processor with retry logic
    */
   async connect(): Promise<void> {
-    if (this.connected && this.socket) {
+    if (this.connected && this.tcpSocket) {
       atlasLogger.info('CONNECTION', 'Already connected to Atlas processor', {
         ipAddress: this.config.ipAddress,
-        port: this.config.port
+        port: this.config.tcpPort
       })
       return
     }
@@ -76,15 +98,16 @@ export class AtlasTCPClient {
     for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
       try {
         await this.attemptConnection(attempt)
+        this.reconnectAttempts = 0
         return // Connection successful
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         
         if (attempt < this.config.maxRetries) {
-          const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 5000) // Exponential backoff, max 5s
+          const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
           atlasLogger.warn('CONNECTION', `Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`, {
             ipAddress: this.config.ipAddress,
-            port: this.config.port,
+            port: this.config.tcpPort,
             error: lastError.message
           })
           await new Promise(resolve => setTimeout(resolve, retryDelay))
@@ -95,7 +118,7 @@ export class AtlasTCPClient {
     // All retries failed
     atlasLogger.error('CONNECTION', `Failed to connect after ${this.config.maxRetries} attempts`, {
       ipAddress: this.config.ipAddress,
-      port: this.config.port,
+      port: this.config.tcpPort,
       error: lastError
     })
     throw lastError || new Error('Connection failed')
@@ -107,105 +130,268 @@ export class AtlasTCPClient {
   private async attemptConnection(attempt: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        atlasLogger.connectionAttempt(this.config.ipAddress, this.config.port)
+        atlasLogger.connectionAttempt(this.config.ipAddress, this.config.tcpPort)
         
-        this.socket = new Socket()
+        this.tcpSocket = new Socket()
         
         // Set timeout for connection
-        this.socket.setTimeout(this.config.timeout)
+        this.tcpSocket.setTimeout(this.config.timeout)
 
         // Handle connection success
-        this.socket.on('connect', () => {
+        this.tcpSocket.on('connect', () => {
           this.connected = true
-          atlasLogger.connectionSuccess(this.config.ipAddress, this.config.port)
+          atlasLogger.connectionSuccess(this.config.ipAddress, this.config.tcpPort)
+          
+          // Start keep-alive mechanism
+          this.startKeepAlive()
+          
+          // Resubscribe to all previous subscriptions
+          this.resubscribeAll()
+          
+          // Initialize UDP socket for meter updates
+          this.initializeUdpSocket()
+          
           resolve()
         })
 
         // Handle incoming data
-        this.socket.on('data', (data) => {
-          this.handleData(data)
+        this.tcpSocket.on('data', (data) => {
+          this.handleTcpData(data)
         })
 
         // Handle connection errors
-        this.socket.on('error', (error) => {
-          atlasLogger.connectionFailure(this.config.ipAddress, this.config.port, error)
+        this.tcpSocket.on('error', (error) => {
+          atlasLogger.connectionFailure(this.config.ipAddress, this.config.tcpPort, error)
           this.connected = false
-          this.socket?.destroy()
+          this.tcpSocket?.destroy()
           reject(error)
         })
 
         // Handle connection timeout
-        this.socket.on('timeout', () => {
+        this.tcpSocket.on('timeout', () => {
           const timeoutError = new Error('Connection timeout')
-          atlasLogger.connectionFailure(this.config.ipAddress, this.config.port, timeoutError)
-          this.socket?.destroy()
+          atlasLogger.connectionFailure(this.config.ipAddress, this.config.tcpPort, timeoutError)
+          this.tcpSocket?.destroy()
           this.connected = false
           reject(timeoutError)
         })
 
         // Handle connection close
-        this.socket.on('close', () => {
-          atlasLogger.connectionClosed(this.config.ipAddress, this.config.port)
+        this.tcpSocket.on('close', () => {
+          atlasLogger.connectionClosed(this.config.ipAddress, this.config.tcpPort)
           this.connected = false
+          
+          // Stop keep-alive
+          if (this.keepAliveTimer) {
+            clearInterval(this.keepAliveTimer)
+            this.keepAliveTimer = null
+          }
+          
           // Reject all pending responses
           this.pendingResponses.forEach(({ reject, timeout }) => {
             clearTimeout(timeout)
             reject(new Error('Connection closed'))
           })
           this.pendingResponses.clear()
+          
+          // Attempt reconnection
+          this.handleReconnection()
         })
 
         // Initiate connection
-        this.socket.connect(this.config.port, this.config.ipAddress)
+        this.tcpSocket.connect(this.config.tcpPort, this.config.ipAddress)
       } catch (error) {
-        atlasLogger.connectionFailure(this.config.ipAddress, this.config.port, error)
+        atlasLogger.connectionFailure(this.config.ipAddress, this.config.tcpPort, error)
         reject(error)
       }
     })
   }
 
   /**
-   * Disconnect from the Atlas processor
+   * Initialize UDP socket for meter updates
    */
-  disconnect(): void {
-    if (this.socket) {
-      this.socket.destroy()
-      this.socket = null
-      this.connected = false
-      console.log('[Atlas] Disconnected')
+  private initializeUdpSocket(): void {
+    try {
+      if (this.udpSocket) {
+        this.udpSocket.close()
+      }
+
+      this.udpSocket = dgram.createSocket('udp4')
+
+      this.udpSocket.on('message', (msg) => {
+        this.handleUdpData(msg)
+      })
+
+      this.udpSocket.on('error', (error) => {
+        atlasLogger.error('UDP', 'UDP socket error', error)
+      })
+
+      this.udpSocket.bind(this.config.udpPort)
+      
+      atlasLogger.info('UDP', 'UDP socket initialized for meter updates', {
+        port: this.config.udpPort
+      })
+    } catch (error) {
+      atlasLogger.error('UDP', 'Failed to initialize UDP socket', error)
     }
   }
 
   /**
-   * Handle incoming data from the socket
+   * Handle reconnection attempts
    */
-  private handleData(data: Buffer): void {
-    // Append data to buffer
-    this.responseBuffer += data.toString()
+  private async handleReconnection(): Promise<void> {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      atlasLogger.error('RECONNECT', 'Max reconnection attempts reached', {
+        attempts: this.reconnectAttempts
+      })
+      return
+    }
 
-    // Process complete messages (terminated with \r\n)
-    let newlineIndex: number
-    while ((newlineIndex = this.responseBuffer.indexOf('\r\n')) !== -1) {
-      const message = this.responseBuffer.substring(0, newlineIndex)
-      this.responseBuffer = this.responseBuffer.substring(newlineIndex + 2)
+    this.reconnectAttempts++
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
+    
+    atlasLogger.info('RECONNECT', `Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
+      ipAddress: this.config.ipAddress
+    })
 
-      if (message.length > 0) {
-        this.handleMessage(message)
+    setTimeout(async () => {
+      try {
+        await this.connect()
+      } catch (error) {
+        atlasLogger.error('RECONNECT', 'Reconnection failed', error)
+      }
+    }, delay)
+  }
+
+  /**
+   * Start keep-alive mechanism
+   * Sends "get" for "KeepAlive" parameter every 4 minutes
+   */
+  private startKeepAlive(): void {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer)
+    }
+
+    this.keepAliveTimer = setInterval(async () => {
+      try {
+        atlasLogger.debug('KEEPALIVE', 'Sending keep-alive', {
+          ipAddress: this.config.ipAddress
+        })
+        
+        await this.getParameter('KeepAlive', 'str')
+      } catch (error) {
+        atlasLogger.error('KEEPALIVE', 'Keep-alive failed', error)
+      }
+    }, this.config.keepAliveInterval)
+  }
+
+  /**
+   * Resubscribe to all previous subscriptions
+   * Called after reconnection
+   */
+  private async resubscribeAll(): Promise<void> {
+    if (this.subscriptions.size === 0) {
+      return
+    }
+
+    atlasLogger.info('RESUBSCRIBE', `Resubscribing to ${this.subscriptions.size} parameters`, {
+      ipAddress: this.config.ipAddress
+    })
+
+    for (const subKey of this.subscriptions) {
+      try {
+        const [param, format] = subKey.split(':')
+        await this.subscribe(param, format as 'val' | 'pct' | 'str')
+      } catch (error) {
+        atlasLogger.error('RESUBSCRIBE', `Failed to resubscribe to ${subKey}`, error)
       }
     }
   }
 
   /**
-   * Handle a complete JSON-RPC message
+   * Disconnect from the Atlas processor
    */
-  private handleMessage(message: string): void {
+  disconnect(): void {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer)
+      this.keepAliveTimer = null
+    }
+
+    if (this.tcpSocket) {
+      this.tcpSocket.destroy()
+      this.tcpSocket = null
+      this.connected = false
+    }
+
+    if (this.udpSocket) {
+      this.udpSocket.close()
+      this.udpSocket = null
+    }
+
+    atlasLogger.info('DISCONNECT', 'Disconnected from Atlas processor', {
+      ipAddress: this.config.ipAddress
+    })
+  }
+
+  /**
+   * Handle incoming TCP data
+   * 
+   * CRITICAL: Messages are terminated with "\n" (newline), NOT "\r\n"
+   */
+  private handleTcpData(data: Buffer): void {
+    // Append data to buffer
+    this.responseBuffer += data.toString()
+
+    // Process complete messages (terminated with \n)
+    let newlineIndex: number
+    while ((newlineIndex = this.responseBuffer.indexOf('\n')) !== -1) {
+      const message = this.responseBuffer.substring(0, newlineIndex).trim()
+      this.responseBuffer = this.responseBuffer.substring(newlineIndex + 1)
+
+      if (message.length > 0) {
+        this.handleMessage(message, 'TCP')
+      }
+    }
+  }
+
+  /**
+   * Handle incoming UDP data for meter updates
+   */
+  private handleUdpData(data: Buffer): void {
+    const message = data.toString().trim()
+    if (message.length > 0) {
+      this.handleMessage(message, 'UDP')
+    }
+  }
+
+  /**
+   * Handle a complete JSON-RPC message
+   * 
+   * CRITICAL: GET responses use method "getResp" with "params", NOT "result"
+   * Response format: {"jsonrpc":"2.0","method":"getResp","params":{"param":"ZoneName_0","str":"Main Bar"}}
+   */
+  private handleMessage(message: string, source: 'TCP' | 'UDP'): void {
     try {
       const response = JSON.parse(message)
       
       atlasLogger.responseReceived(response, this.config.ipAddress)
       
-      // Handle responses with ID (responses to our commands)
-      if (response.id !== undefined) {
+      // Handle "getResp" method (response to "get" command)
+      if (response.method === 'getResp') {
+        // Find pending response by matching parameter name
+        // Response format: {"jsonrpc":"2.0","method":"getResp","params":{"param":"ZoneName_0","str":"Main Bar"}}
+        if (response.id !== undefined) {
+          const pending = this.pendingResponses.get(response.id)
+          if (pending) {
+            clearTimeout(pending.timeout)
+            this.pendingResponses.delete(response.id)
+            pending.resolve(response)
+          }
+        }
+      }
+      
+      // Handle responses with ID (standard JSON-RPC responses)
+      else if (response.id !== undefined) {
         const pending = this.pendingResponses.get(response.id)
         if (pending) {
           clearTimeout(pending.timeout)
@@ -220,22 +406,43 @@ export class AtlasTCPClient {
         }
       }
       
-      // Handle update messages (subscribed parameter updates)
-      if (response.method === 'update') {
+      // Handle "update" method (subscription updates)
+      else if (response.method === 'update') {
         const param = response.params?.param || 'unknown'
-        const value = response.params?.val || response.params?.pct || response.params?.str
+        const value = response.params?.val !== undefined ? response.params.val 
+                    : response.params?.pct !== undefined ? response.params.pct 
+                    : response.params?.str
+        
         atlasLogger.parameterUpdate(param, value, this.config.ipAddress)
+        
+        // Emit update event (can be extended for real-time UI updates)
+        this.handleParameterUpdate(param, value, response.params)
       }
     } catch (error) {
-      atlasLogger.error('PARSING', 'Error parsing message from Atlas', { message, error })
+      atlasLogger.error('PARSING', 'Error parsing message from Atlas', { 
+        message, 
+        source,
+        error 
+      })
     }
   }
 
   /**
+   * Handle parameter update from subscription
+   * Override this method to implement custom update handling
+   */
+  protected handleParameterUpdate(param: string, value: any, fullParams: any): void {
+    // Default implementation: just log
+    // Subclasses can override this for custom handling
+  }
+
+  /**
    * Send a command to the Atlas processor
+   * 
+   * CRITICAL: Messages MUST be terminated with "\n" (newline), NOT "\r\n"
    */
   private async sendCommand(command: AtlasCommand, withResponse: boolean = true): Promise<any> {
-    if (!this.connected || !this.socket) {
+    if (!this.connected || !this.tcpSocket) {
       throw new Error('Not connected to Atlas processor')
     }
 
@@ -272,13 +479,13 @@ export class AtlasTCPClient {
       message.id = id
     }
 
-    // Convert to JSON and add terminator
-    const jsonMessage = JSON.stringify(message) + '\r\n'
+    // Convert to JSON and add newline terminator (NOT \r\n)
+    const jsonMessage = JSON.stringify(message) + '\n'
     
     atlasLogger.commandSent(message, this.config.ipAddress)
 
     // Send the message
-    this.socket.write(jsonMessage)
+    this.tcpSocket.write(jsonMessage)
 
     // If we don't need a response, return immediately
     if (!withResponse) {
@@ -393,10 +600,12 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Recalled scene ${sceneIndex}`)
+      atlasLogger.info('SCENE', `Recalled scene ${sceneIndex}`, {
+        ipAddress: this.config.ipAddress
+      })
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error recalling scene:', error)
+      atlasLogger.error('SCENE', 'Error recalling scene', { sceneIndex, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -418,10 +627,12 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Playing message ${messageIndex}`)
+      atlasLogger.info('MESSAGE', `Playing message ${messageIndex}`, {
+        ipAddress: this.config.ipAddress
+      })
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error playing message:', error)
+      atlasLogger.error('MESSAGE', 'Error playing message', { messageIndex, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -444,10 +655,12 @@ export class AtlasTCPClient {
         format: 'val'
       })
 
-      console.log(`[Atlas] Set group ${groupIndex} to ${active ? 'active' : 'inactive'}`)
+      atlasLogger.info('GROUP', `Set group ${groupIndex} to ${active ? 'active' : 'inactive'}`, {
+        ipAddress: this.config.ipAddress
+      })
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error setting group active:', error)
+      atlasLogger.error('GROUP', 'Error setting group active', { groupIndex, active, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -466,12 +679,17 @@ export class AtlasTCPClient {
         method: 'sub',
         param,
         format
-      })
+      }, false) // Don't wait for response
 
-      console.log(`[Atlas] Subscribed to ${param} (${format})`)
+      // Track subscription for reconnection
+      this.subscriptions.add(`${param}:${format}`)
+
+      atlasLogger.info('SUBSCRIBE', `Subscribed to ${param} (${format})`, {
+        ipAddress: this.config.ipAddress
+      })
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error subscribing:', error)
+      atlasLogger.error('SUBSCRIBE', 'Error subscribing', { param, format, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -490,12 +708,17 @@ export class AtlasTCPClient {
         method: 'unsub',
         param,
         format
-      })
+      }, false) // Don't wait for response
 
-      console.log(`[Atlas] Unsubscribed from ${param} (${format})`)
+      // Remove from subscriptions
+      this.subscriptions.delete(`${param}:${format}`)
+
+      atlasLogger.info('UNSUBSCRIBE', `Unsubscribed from ${param} (${format})`, {
+        ipAddress: this.config.ipAddress
+      })
       return { success: true, data: response }
     } catch (error) {
-      console.error('[Atlas] Error unsubscribing:', error)
+      atlasLogger.error('UNSUBSCRIBE', 'Error unsubscribing', { param, format, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -505,6 +728,10 @@ export class AtlasTCPClient {
 
   /**
    * Get current value of a parameter
+   * 
+   * CRITICAL: Response uses method "getResp" with "params"
+   * Response format: {"jsonrpc":"2.0","method":"getResp","params":{"param":"ZoneName_0","str":"Main Bar"}}
+   * 
    * @param param Parameter name (e.g., 'ZoneSource_0')
    * @param format Format ('val', 'pct', or 'str')
    */
@@ -516,10 +743,35 @@ export class AtlasTCPClient {
         format
       })
 
-      console.log(`[Atlas] Got ${param}: ${JSON.stringify(response)}`)
-      return { success: true, data: response }
+      atlasLogger.debug('GET', `Got ${param}`, { 
+        ipAddress: this.config.ipAddress,
+        response 
+      })
+      
+      // Extract value from response based on format
+      let value = null
+      if (response.method === 'getResp' && response.params) {
+        if (format === 'val') {
+          value = response.params.val
+        } else if (format === 'pct') {
+          value = response.params.pct
+        } else if (format === 'str') {
+          value = response.params.str
+        }
+      } else if (response.result) {
+        // Fallback for non-standard responses
+        value = response.result
+      }
+
+      return { 
+        success: true, 
+        data: {
+          ...response,
+          value // Add extracted value for convenience
+        }
+      }
     } catch (error) {
-      console.error('[Atlas] Error getting parameter:', error)
+      atlasLogger.error('GET', 'Error getting parameter', { param, format, error })
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -531,7 +783,7 @@ export class AtlasTCPClient {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.connected && this.socket !== null
+    return this.connected && this.tcpSocket !== null
   }
 }
 
@@ -558,7 +810,7 @@ export async function executeAtlasCommand(
     const result = await commandFn(client)
     return result
   } catch (error) {
-    console.error('[Atlas] Command execution error:', error)
+    atlasLogger.error('COMMAND', 'Command execution error', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
