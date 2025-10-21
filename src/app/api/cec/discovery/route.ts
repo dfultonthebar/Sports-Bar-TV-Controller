@@ -7,7 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discovery-service'
-import { prisma } from '@/lib/db'
+import { db, schema } from '@/db'
+import { eq, asc } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 /**
  * POST /api/cec/discovery
@@ -66,23 +68,23 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const outputs = await prisma.matrixOutput.findMany({
-      where: {
-        isActive: true
-      },
-      select: {
-        channelNumber: true,
-        label: true,
-        tvBrand: true,
-        tvModel: true,
-        cecAddress: true,
-        lastDiscovery: true
-      },
-      orderBy: {
-        channelNumber: 'asc'
-      }
-    })
+    logger.api.request('GET', '/api/cec/discovery', {})
+
+    const outputs = await db
+      .select({
+        channelNumber: schema.matrixOutputs.channelNumber,
+        label: schema.matrixOutputs.label,
+        tvBrand: schema.matrixOutputs.tvBrand,
+        tvModel: schema.matrixOutputs.tvModel,
+        cecAddress: schema.matrixOutputs.cecAddress,
+        lastDiscovery: schema.matrixOutputs.lastDiscovery
+      })
+      .from(schema.matrixOutputs)
+      .where(eq(schema.matrixOutputs.isActive, true))
+      .orderBy(asc(schema.matrixOutputs.channelNumber))
     
+    logger.api.response('GET', '/api/cec/discovery', { outputCount: outputs.length })
+
     return NextResponse.json({
       success: true,
       outputs: outputs.map(o => ({
