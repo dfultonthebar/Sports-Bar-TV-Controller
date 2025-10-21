@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all input meters for the processor with current levels
-    const inputMeters = await prisma.audioInputMeter.findMany({
+    const inputMeters = await audioInputMeters.findMany({
       where: { 
         processorId: processorId,
         isActive: true 
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await prisma.audioInputMeter.updateMany({
+    await audioInputMeters.updateMany({
       where: { processorId },
       data: { peakLevel: -80.0 } // Reset to minimum
     })

@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { eq, and, desc, asc } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 
 interface RouteContext {
@@ -19,39 +19,62 @@ export async function GET(
     const params = await context.params
     const processorId = params.id
 
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId },
-      include: {
-        inputMeters: {
-          include: {
-            aiGainConfig: true
-          },
-          orderBy: {
-            inputNumber: 'asc'
-          }
-        }
-      }
-    })
+    logger.api.request('GET', `/api/audio-processor/${processorId}/ai-gain-control`, {})
 
-    if (!processor) {
+    // Find processor
+    const processor = await db
+      .select()
+      .from(schema.audioProcessors)
+      .where(eq(schema.audioProcessors.id, processorId))
+      .limit(1)
+
+    if (!processor || processor.length === 0) {
+      logger.api.error('Audio processor not found', { processorId })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
       )
     }
 
+    // Get all input meters for this processor
+    const inputMeters = await db
+      .select()
+      .from(schema.audioInputMeters)
+      .where(eq(schema.audioInputMeters.processorId, processorId))
+      .orderBy(asc(schema.audioInputMeters.inputNumber))
+
+    // Get all AI gain configs for this processor
+    const aiGainConfigs = await db
+      .select()
+      .from(schema.aiGainConfigurations)
+      .where(eq(schema.aiGainConfigurations.processorId, processorId))
+
+    // Combine the data
+    const inputMetersWithConfig = inputMeters.map(meter => {
+      const config = aiGainConfigs.find(c => c.inputNumber === meter.inputNumber)
+      return {
+        ...meter,
+        aiGainConfig: config || null
+      }
+    })
+
+    logger.api.response('GET', `/api/audio-processor/${processorId}/ai-gain-control`, { 
+      processor: processor[0],
+      inputCount: inputMetersWithConfig.length
+    })
+
     return NextResponse.json({ 
       success: true,
       processor: {
-        id: processor.id,
-        name: processor.name,
-        model: processor.model
+        id: processor[0].id,
+        name: processor[0].name,
+        model: processor[0].model
       },
-      inputMeters: processor.inputMeters
+      inputMeters: inputMetersWithConfig
     })
 
   } catch (error) {
-    logger.error('Error fetching AI gain control settings:', error)
+    logger.api.error('Error fetching AI gain control settings:', error)
     return NextResponse.json(
       { error: 'Failed to fetch AI gain control settings' },
       { status: 500 }
@@ -71,16 +94,11 @@ export async function POST(
     const { 
       inputNumber, 
       aiEnabled, 
-      inputType,
       targetLevel,
-      fastModeThreshold,
-      silenceThreshold,
-      silenceDuration,
-      fastModeStep,
-      slowModeStep,
-      minGain,
-      maxGain
+      inputName
     } = data
+
+    logger.api.request('POST', `/api/audio-processor/${processorId}/ai-gain-control`, { inputNumber, aiEnabled })
 
     if (inputNumber === undefined) {
       return NextResponse.json(
@@ -89,75 +107,84 @@ export async function POST(
       )
     }
 
-    // Validate input type
-    if (inputType && !['mic', 'line'].includes(inputType)) {
-      return NextResponse.json(
-        { error: 'Input type must be "mic" or "line"' },
-        { status: 400 }
-      )
-    }
-
     // Find or create the input meter
-    let inputMeter = await prisma.audioInputMeter.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    let inputMeter = await db
+      .select()
+      .from(schema.audioInputMeters)
+      .where(
+        and(
+          eq(schema.audioInputMeters.processorId, processorId),
+          eq(schema.audioInputMeters.inputNumber, inputNumber)
+        )
+      )
+      .limit(1)
 
-    if (!inputMeter) {
+    if (!inputMeter || inputMeter.length === 0) {
       // Create input meter if it doesn't exist
-      inputMeter = await prisma.audioInputMeter.create({
-        data: {
+      const newMeter = await db
+        .insert(schema.audioInputMeters)
+        .values({
           processorId: processorId,
           inputNumber: inputNumber,
-          parameterName: `SourceMeter_${inputNumber}`,
-          inputName: `Input ${inputNumber + 1}`,
-          isActive: true
-        }
-      })
+          inputName: inputName || `Input ${inputNumber + 1}`,
+          level: 0,
+          peak: 0,
+          clipping: false
+        })
+        .returning()
+      
+      inputMeter = newMeter
     }
 
-    // Find or create AI gain configuration
-    let aiConfig = await prisma.aIGainConfiguration.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    // Find existing AI gain configuration
+    const existingConfig = await db
+      .select()
+      .from(schema.aiGainConfigurations)
+      .where(
+        and(
+          eq(schema.aiGainConfigurations.processorId, processorId),
+          eq(schema.aiGainConfigurations.inputNumber, inputNumber)
+        )
+      )
+      .limit(1)
 
     const configData: any = {
-      inputType: inputType || 'line',
-      aiEnabled: aiEnabled !== undefined ? aiEnabled : false
+      processorId: processorId,
+      inputNumber: inputNumber,
+      inputName: inputName || `Input ${inputNumber + 1}`,
+      enabled: aiEnabled !== undefined ? aiEnabled : false,
+      targetLevel: targetLevel !== undefined ? targetLevel : -20,
+      updatedAt: new Date()
     }
 
-    // Add optional parameters if provided
-    if (targetLevel !== undefined) configData.targetLevel = targetLevel
-    if (fastModeThreshold !== undefined) configData.fastModeThreshold = fastModeThreshold
-    if (silenceThreshold !== undefined) configData.silenceThreshold = silenceThreshold
-    if (silenceDuration !== undefined) configData.silenceDuration = silenceDuration
-    if (fastModeStep !== undefined) configData.fastModeStep = fastModeStep
-    if (slowModeStep !== undefined) configData.slowModeStep = slowModeStep
-    if (minGain !== undefined) configData.minGain = minGain
-    if (maxGain !== undefined) configData.maxGain = maxGain
+    let aiConfig
 
-    if (aiConfig) {
+    if (existingConfig && existingConfig.length > 0) {
       // Update existing configuration
-      aiConfig = await prisma.aIGainConfiguration.update({
-        where: { id: aiConfig.id },
-        data: configData
-      })
+      const updated = await db
+        .update(schema.aiGainConfigurations)
+        .set(configData)
+        .where(eq(schema.aiGainConfigurations.id, existingConfig[0].id))
+        .returning()
+      
+      aiConfig = updated[0]
+      logger.api.info('Updated AI gain configuration', { configId: aiConfig.id, inputNumber })
     } else {
       // Create new configuration
-      aiConfig = await prisma.aIGainConfiguration.create({
-        data: {
-          inputMeterId: inputMeter.id,
-          processorId: processorId,
-          inputNumber: inputNumber,
-          ...configData
-        }
-      })
+      const created = await db
+        .insert(schema.aiGainConfigurations)
+        .values(configData)
+        .returning()
+      
+      aiConfig = created[0]
+      logger.api.info('Created AI gain configuration', { configId: aiConfig.id, inputNumber })
     }
+
+    logger.api.response('POST', `/api/audio-processor/${processorId}/ai-gain-control`, { 
+      success: true,
+      inputNumber,
+      aiEnabled
+    })
 
     return NextResponse.json({ 
       success: true,
@@ -166,7 +193,7 @@ export async function POST(
     })
 
   } catch (error) {
-    logger.error('Error updating AI gain control settings:', error)
+    logger.api.error('Error updating AI gain control settings:', error)
     return NextResponse.json(
       { error: 'Failed to update AI gain control settings' },
       { status: 500 }
@@ -180,9 +207,12 @@ export async function DELETE(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
     const { searchParams } = new URL(request.url)
     const inputNumber = parseInt(searchParams.get('inputNumber') || '')
+
+    logger.api.request('DELETE', `/api/audio-processor/${processorId}/ai-gain-control`, { inputNumber })
 
     if (isNaN(inputNumber)) {
       return NextResponse.json(
@@ -191,22 +221,31 @@ export async function DELETE(
       )
     }
 
-    const aiConfig = await prisma.aIGainConfiguration.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    const aiConfig = await db
+      .select()
+      .from(schema.aiGainConfigurations)
+      .where(
+        and(
+          eq(schema.aiGainConfigurations.processorId, processorId),
+          eq(schema.aiGainConfigurations.inputNumber, inputNumber)
+        )
+      )
+      .limit(1)
 
-    if (!aiConfig) {
+    if (!aiConfig || aiConfig.length === 0) {
       return NextResponse.json(
         { error: 'AI gain configuration not found' },
         { status: 404 }
       )
     }
 
-    await prisma.aIGainConfiguration.delete({
-      where: { id: aiConfig.id }
+    await db
+      .delete(schema.aiGainConfigurations)
+      .where(eq(schema.aiGainConfigurations.id, aiConfig[0].id))
+
+    logger.api.response('DELETE', `/api/audio-processor/${processorId}/ai-gain-control`, { 
+      success: true,
+      inputNumber
     })
 
     return NextResponse.json({ 
@@ -215,7 +254,7 @@ export async function DELETE(
     })
 
   } catch (error) {
-    logger.error('Error deleting AI gain configuration:', error)
+    logger.api.error('Error deleting AI gain configuration:', error)
     return NextResponse.json(
       { error: 'Failed to delete AI gain configuration' },
       { status: 500 }

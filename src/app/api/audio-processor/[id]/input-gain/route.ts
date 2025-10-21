@@ -17,7 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import * as net from 'net'
 import { atlasLogger } from '@/lib/atlas-logger'
@@ -38,23 +38,20 @@ export async function GET(
     const params = await context.params
     const processorId = params.id
 
-    // Verify database connection is available
-    if (!prisma) {
-      logger.error('[Input Gain API] Database client is not initialized')
-      return NextResponse.json(
-        { error: 'Database connection error. Please check server configuration.' },
-        { status: 500 }
-      )
-    }
+    logger.api.request('GET', `/api/audio-processor/${processorId}/input-gain`, {})
 
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    }).catch((dbError) => {
-      logger.error('[Input Gain API] Database query error:', dbError)
-      throw new Error(`Database error: ${dbError.message}`)
-    })
+    const processor = await db
+      .select()
+      .from(schema.audioProcessors)
+      .where(eq(schema.audioProcessors.id, processorId))
+      .limit(1)
+      .catch((dbError) => {
+        logger.api.error('[Input Gain API] Database query error:', dbError)
+        throw new Error(`Database error: ${dbError.message}`)
+      })
 
-    if (!processor) {
+    if (!processor || processor.length === 0) {
+      logger.api.error('[Input Gain API] Audio processor not found', { processorId })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
@@ -62,20 +59,25 @@ export async function GET(
     }
 
     // Get gain settings from the processor
-    const gainSettings = await getInputGainSettings(processor)
+    const gainSettings = await getInputGainSettings(processor[0])
+
+    logger.api.response('GET', `/api/audio-processor/${processorId}/input-gain`, {
+      processorName: processor[0].name,
+      settingsCount: gainSettings.length
+    })
 
     return NextResponse.json({ 
       success: true,
       processor: {
-        id: processor.id,
-        name: processor.name,
-        model: processor.model
+        id: processor[0].id,
+        name: processor[0].name,
+        model: processor[0].model
       },
       gainSettings 
     })
 
   } catch (error) {
-    logger.error('Error fetching input gain settings:', error)
+    logger.api.error('Error fetching input gain settings:', error)
     return NextResponse.json(
       { error: 'Failed to fetch input gain settings' },
       { status: 500 }
@@ -94,6 +96,8 @@ export async function POST(
     const processorId = params.id
     const { inputNumber, gain, reason = 'manual_override' } = await request.json()
 
+    logger.api.request('POST', `/api/audio-processor/${processorId}/input-gain`, { inputNumber, gain })
+
     if (inputNumber === undefined || gain === undefined) {
       return NextResponse.json(
         { error: 'Input number and gain value are required' },
@@ -101,23 +105,18 @@ export async function POST(
       )
     }
 
-    // Verify database connection is available
-    if (!prisma) {
-      logger.error('[Input Gain API] Database client is not initialized')
-      return NextResponse.json(
-        { error: 'Database connection error. Please check server configuration.' },
-        { status: 500 }
-      )
-    }
+    const processor = await db
+      .select()
+      .from(schema.audioProcessors)
+      .where(eq(schema.audioProcessors.id, processorId))
+      .limit(1)
+      .catch((dbError) => {
+        logger.api.error('[Input Gain API] Database query error:', dbError)
+        throw new Error(`Database error: ${dbError.message}`)
+      })
 
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    }).catch((dbError) => {
-      logger.error('[Input Gain API] Database query error:', dbError)
-      throw new Error(`Database error: ${dbError.message}`)
-    })
-
-    if (!processor) {
+    if (!processor || processor.length === 0) {
+      logger.api.error('[Input Gain API] Audio processor not found', { processorId })
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
@@ -135,48 +134,62 @@ export async function POST(
     }
 
     // Set the gain on the processor
-    const result = await setInputGain(processor, inputNumber, gain)
+    const result = await setInputGain(processor[0], inputNumber, gain)
 
     // Update AI gain configuration if it exists
-    const aiConfig = await prisma.aIGainConfiguration.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    }).catch((dbError) => {
-      console.warn('[Input Gain API] Error fetching AI config (non-critical):', dbError)
-      return null  // Continue even if AI config fetch fails
-    })
-
-    if (aiConfig) {
-      const previousGain = aiConfig.currentGain
-
-      await prisma.aIGainConfiguration.update({
-        where: { id: aiConfig.id },
-        data: {
-          currentGain: gain,
-          lastAdjustment: new Date(),
-          adjustmentCount: { increment: 1 }
-        }
+    const aiConfig = await db
+      .select()
+      .from(schema.aiGainConfigurations)
+      .where(
+        and(
+          eq(schema.aiGainConfigurations.processorId, processorId),
+          eq(schema.aiGainConfigurations.inputNumber, inputNumber)
+        )
+      )
+      .limit(1)
+      .catch((dbError) => {
+        logger.api.warn('[Input Gain API] Error fetching AI config (non-critical):', dbError)
+        return []  // Continue even if AI config fetch fails
       })
+
+    if (aiConfig && aiConfig.length > 0) {
+      const config = aiConfig[0]
+      const previousLevel = 0 // We don't track currentGain in the schema
+
+      await db
+        .update(schema.aiGainConfigurations)
+        .set({
+          lastAdjustment: new Date(),
+          adjustmentCount: config.adjustmentCount + 1,
+          updatedAt: new Date()
+        })
+        .where(eq(schema.aiGainConfigurations.id, config.id))
 
       // Log the adjustment
-      await prisma.aIGainAdjustmentLog.create({
-        data: {
-          configId: aiConfig.id,
+      await db
+        .insert(schema.aiGainAdjustmentLogs)
+        .values({
+          configId: config.id,
           processorId: processorId,
           inputNumber: inputNumber,
-          previousGain: previousGain,
-          newGain: gain,
-          gainChange: gain - previousGain,
-          inputLevel: 0, // Will be updated by monitoring service
-          targetLevel: aiConfig.targetLevel,
-          adjustmentMode: 'manual',
-          reason: reason,
-          success: true
-        }
+          previousLevel: previousLevel,
+          newLevel: gain,
+          adjustment: gain - previousLevel,
+          reason: reason
+        })
+
+      logger.api.info('[Input Gain API] AI gain configuration updated', { 
+        configId: config.id,
+        inputNumber,
+        gain
       })
     }
+
+    logger.api.response('POST', `/api/audio-processor/${processorId}/input-gain`, {
+      inputNumber,
+      gain,
+      success: true
+    })
 
     return NextResponse.json({ 
       success: true,
@@ -187,7 +200,7 @@ export async function POST(
     })
 
   } catch (error) {
-    logger.error('Error setting input gain:', error)
+    logger.api.error('Error setting input gain:', error)
     return NextResponse.json(
       { error: 'Failed to set input gain' },
       { status: 500 }
