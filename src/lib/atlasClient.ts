@@ -209,6 +209,9 @@ export class AtlasTCPClient {
 
   /**
    * Initialize UDP socket for meter updates
+   * 
+   * CRITICAL FIX: Uses SO_REUSEADDR to allow multiple processes (PM2 cluster workers)
+   * to bind to the same UDP port. This prevents EADDRINUSE errors in cluster mode.
    */
   private initializeUdpSocket(): void {
     try {
@@ -216,7 +219,11 @@ export class AtlasTCPClient {
         this.udpSocket.close()
       }
 
-      this.udpSocket = dgram.createSocket('udp4')
+      // Create UDP socket with reuseAddr option to support PM2 cluster mode
+      this.udpSocket = dgram.createSocket({
+        type: 'udp4',
+        reuseAddr: true  // Allow multiple processes to bind to the same port
+      })
 
       this.udpSocket.on('message', (msg) => {
         this.handleUdpData(msg)
@@ -226,10 +233,16 @@ export class AtlasTCPClient {
         atlasLogger.error('UDP', 'UDP socket error', error)
       })
 
-      this.udpSocket.bind(this.config.udpPort)
+      // Bind with reuseAddr to allow PM2 cluster workers to share the port
+      this.udpSocket.bind({
+        port: this.config.udpPort,
+        exclusive: false  // Allow port sharing across cluster workers
+      })
       
       atlasLogger.info('UDP', 'UDP socket initialized for meter updates', {
-        port: this.config.udpPort
+        port: this.config.udpPort,
+        reuseAddr: true,
+        exclusive: false
       })
     } catch (error) {
       atlasLogger.error('UDP', 'Failed to initialize UDP socket', error)
