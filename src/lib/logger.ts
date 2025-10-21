@@ -69,6 +69,27 @@ class Logger {
     return `${timestamp}${levelColor}[${level}]${reset}${categoryColor}${categoryStr}${reset} ${message}`
   }
 
+  /**
+   * Safely stringify data, handling circular references
+   */
+  private safeStringify(data: any): string {
+    const seen = new WeakSet()
+    return JSON.stringify(data, (key, value) => {
+      // Skip Drizzle ORM internal properties
+      if (key === 'table' || key === 'queryConfig' || key === '_' || key === 'session') {
+        return undefined
+      }
+      
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]'
+        }
+        seen.add(value)
+      }
+      return value
+    }, 2)
+  }
+
   private logWithData(
     level: LogLevel,
     message: string,
@@ -85,7 +106,11 @@ class Logger {
     
     // Log additional data if provided
     if (options?.data) {
-      console.log('  Data:', JSON.stringify(options.data, null, 2))
+      try {
+        console.log('  Data:', this.safeStringify(options.data))
+      } catch (error) {
+        console.log('  Data: [Unable to serialize - circular reference detected]')
+      }
     }
     
     // Log error details if provided
@@ -199,6 +224,13 @@ class Logger {
     disconnect: (ip: string, port: number) => {
       this.logWithData(LogLevel.WARN, `Atlas: Disconnected from ${ip}:${port}`, {
         category: LogCategory.ATLAS,
+      })
+    },
+    
+    info: (message: string, data?: any) => {
+      this.logWithData(LogLevel.INFO, `Atlas: ${message}`, {
+        category: LogCategory.ATLAS,
+        data,
       })
     },
   }

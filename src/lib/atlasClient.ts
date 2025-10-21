@@ -60,7 +60,7 @@ export class AtlasTCPClient {
   }
 
   /**
-   * Connect to the Atlas processor
+   * Connect to the Atlas processor with retry logic
    */
   async connect(): Promise<void> {
     if (this.connected && this.socket) {
@@ -71,6 +71,40 @@ export class AtlasTCPClient {
       return
     }
 
+    let lastError: Error | null = null
+    
+    for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+      try {
+        await this.attemptConnection(attempt)
+        return // Connection successful
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        
+        if (attempt < this.config.maxRetries) {
+          const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 5000) // Exponential backoff, max 5s
+          atlasLogger.warn('CONNECTION', `Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`, {
+            ipAddress: this.config.ipAddress,
+            port: this.config.port,
+            error: lastError.message
+          })
+          await new Promise(resolve => setTimeout(resolve, retryDelay))
+        }
+      }
+    }
+    
+    // All retries failed
+    atlasLogger.error('CONNECTION', `Failed to connect after ${this.config.maxRetries} attempts`, {
+      ipAddress: this.config.ipAddress,
+      port: this.config.port,
+      error: lastError
+    })
+    throw lastError || new Error('Connection failed')
+  }
+
+  /**
+   * Single connection attempt
+   */
+  private async attemptConnection(attempt: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         atlasLogger.connectionAttempt(this.config.ipAddress, this.config.port)
@@ -96,6 +130,7 @@ export class AtlasTCPClient {
         this.socket.on('error', (error) => {
           atlasLogger.connectionFailure(this.config.ipAddress, this.config.port, error)
           this.connected = false
+          this.socket?.destroy()
           reject(error)
         })
 
