@@ -46,18 +46,23 @@ export async function GET(
       )
     }
 
+    // Ensure port values are properly defined
+    const tcpPort = processor.tcpPort ?? 5321
+    const httpPort = processor.port ?? 80
+    
     logger.atlas.info('Querying hardware configuration', {
       processorName: processor.name,
       ipAddress: processor.ipAddress,
-      tcpPort: processor.tcpPort
+      tcpPort: tcpPort,
+      httpPort: httpPort
     })
 
     // Query the actual hardware configuration
     const hardwareConfig = await queryAtlasHardwareConfiguration(
       processor.ipAddress,
-      processor.tcpPort || 5321, // Use tcpPort instead of port
+      tcpPort, // TCP control port (JSON-RPC)
       processor.model,
-      processor.port || 80, // HTTP port for configuration discovery
+      httpPort, // HTTP port for configuration discovery
       processor.username || undefined, // HTTP basic auth username
       processor.password || undefined  // HTTP basic auth password
     )
@@ -105,7 +110,8 @@ export async function GET(
     })
 
   } catch (error) {
-    logger.api.error('GET', `/api/audio-processor/${context.params}/zones-status`, error)
+    const params = await context.params
+    logger.api.error('GET', `/api/audio-processor/${params.id}/zones-status`, error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch zones status from Atlas processor',
