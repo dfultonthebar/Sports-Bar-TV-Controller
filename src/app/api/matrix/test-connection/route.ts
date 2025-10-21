@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
-import prisma from "@/lib/prisma"
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
 
 
 export async function GET() {
   try {
-    // Get the active matrix configuration from database
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
-    })
+    logger.api.request('GET', '/api/matrix/test-connection', {})
 
-    if (!matrixConfig) {
+    // Get the active matrix configuration from database
+    const matrixConfigs = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+
+    if (!matrixConfigs || matrixConfigs.length === 0) {
       return NextResponse.json({ 
         success: false, 
         error: 'No active matrix configuration found' 
       })
     }
+
+    const matrixConfig = matrixConfigs[0]
 
     const { ipAddress, tcpPort, protocol } = matrixConfig
     const port = protocol === 'TCP' ? tcpPort : matrixConfig.udpPort
