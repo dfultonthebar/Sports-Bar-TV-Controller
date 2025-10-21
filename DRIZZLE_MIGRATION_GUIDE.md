@@ -1,539 +1,295 @@
 # Drizzle ORM Migration Guide
 
 ## Overview
-
-This project has been migrated from Prisma ORM to Drizzle ORM with comprehensive verbose logging. This guide explains the migration process and provides clear examples for converting remaining files.
+This guide documents the migration from Prisma to Drizzle ORM in the Sports Bar TV Controller application.
 
 ## Migration Status
 
-✅ **Completed:**
-- Drizzle schema created in `src/db/schema.ts`
-- Drizzle configuration in `drizzle.config.ts`
-- Database connection with logging in `src/db/index.ts`
-- Comprehensive logging utility in `src/lib/logger.ts`
-- Database helper functions with logging in `src/lib/db-helpers.ts`
-- Example API routes migrated:
+### ✅ Completed
+- Core Drizzle configuration (`src/db/index.ts`)
+- Schema definition (`src/db/schema.ts`)
+- Helper functions (`src/lib/db-helpers.ts`)
+- Wolfpack API routes:
+  - `src/app/api/wolfpack/inputs/route.ts`
+  - `src/app/api/wolfpack/route-to-matrix/route.ts`
+- Example routes:
   - `src/app/api/schedules/route.ts`
   - `src/app/api/home-teams/route.ts`
-- Installation scripts updated
-- README updated
 
-⚠️ **Remaining Work:**
-- ~104 API routes and service files still using Prisma adapter
-- These files need to be migrated to use direct Drizzle with db-helpers
+### 🔄 In Progress
+- Audio processor routes
+- Test routes
+- Additional API endpoints
 
-## Architecture
-
-### Database Layer
-
-```
-┌─────────────────────────────────────┐
-│   API Routes / Services             │
-├─────────────────────────────────────┤
-│   DB Helpers (with logging)         │  ← Use this layer
-│   src/lib/db-helpers.ts             │
-├─────────────────────────────────────┤
-│   Drizzle ORM                        │
-│   src/db/index.ts                   │
-├─────────────────────────────────────┤
-│   SQLite Database                    │
-│   prisma/data/sports_bar.db         │
-└─────────────────────────────────────┘
-```
-
-### Logging System
-
-All database operations, API calls, and system events are logged using the comprehensive logging utility in `src/lib/logger.ts`.
-
-**Log Categories:**
-- `DATABASE` - All database operations (queries, inserts, updates, deletes)
-- `API` - API endpoint calls and responses
-- `ATLAS` - Atlas processor TCP communication
-- `NETWORK` - Network requests
-- `AUTH` - Authentication events
-- `SYSTEM` - System startup/shutdown
-- `CACHE` - Cache operations
+### ❌ To Be Migrated
+- Remaining API routes (~100 files)
+- Service files using Prisma
+- Remove Prisma compatibility adapter
+- Remove prisma directory
 
 ## Migration Pattern
 
-### Old Prisma Pattern
+### 1. Import Changes
 
+**Before (Prisma):**
 ```typescript
-import { prisma } from '@/lib/db';
-
-// GET - List records
-export async function GET(request: NextRequest) {
-  try {
-    const records = await prisma.schedule.findMany({
-      where: { enabled: true },
-      orderBy: { createdAt: 'desc' }
-    });
-    
-    return NextResponse.json({ records });
-  } catch (error: any) {
-    console.error('Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch records' },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Create record
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    
-    const record = await prisma.schedule.create({
-      data: {
-        name: body.name,
-        enabled: body.enabled
-      }
-    });
-    
-    return NextResponse.json({ record }, { status: 201 });
-  } catch (error: any) {
-    console.error('Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to create record' },
-      { status: 500 }
-    );
-  }
-}
+import { prisma } from '@/lib/db'
 ```
 
-### New Drizzle Pattern with Logging
-
+**After (Drizzle):**
 ```typescript
-import { NextRequest, NextResponse } from 'next/server';
-import { schema } from '@/db';
-import { desc, eq } from 'drizzle-orm';
-import { logger } from '@/lib/logger';
-import { findMany, create } from '@/lib/db-helpers';
-
-// GET - List records
-export async function GET(request: NextRequest) {
-  logger.api.request('GET', '/api/schedules');
-  
-  try {
-    const records = await findMany('schedules', {
-      where: eq(schema.schedules.enabled, true),
-      orderBy: desc(schema.schedules.createdAt)
-    });
-    
-    logger.api.response('GET', '/api/schedules', 200, { count: records.length });
-    return NextResponse.json({ records });
-  } catch (error: any) {
-    logger.api.error('GET', '/api/schedules', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch records', details: error.message },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Create record
-export async function POST(request: NextRequest) {
-  logger.api.request('POST', '/api/schedules');
-  
-  try {
-    const body = await request.json();
-    logger.debug('Creating record', { data: body });
-    
-    const record = await create('schedules', {
-      name: body.name,
-      enabled: body.enabled
-    });
-    
-    logger.api.response('POST', '/api/schedules', 201, { id: record.id });
-    return NextResponse.json({ record }, { status: 201 });
-  } catch (error: any) {
-    logger.api.error('POST', '/api/schedules', error);
-    return NextResponse.json(
-      { error: 'Failed to create record', details: error.message },
-      { status: 500 }
-    );
-  }
-}
+import { db, schema } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { logger } from '@/lib/logger'
+import { findFirst, findMany, create, update, upsert } from '@/lib/db-helpers'
 ```
 
-## Common Conversions
+### 2. Query Conversions
 
-### Import Statements
+#### Find First
 
-**OLD:**
+**Before (Prisma):**
 ```typescript
-import { prisma } from '@/lib/db';
+const config = await prisma.matrixConfiguration.findFirst({
+  where: { isActive: true }
+})
 ```
 
-**NEW:**
+**After (Drizzle with helpers):**
 ```typescript
-import { schema } from '@/db';
-import { logger } from '@/lib/logger';
-import { findMany, findFirst, findUnique, create, update, deleteRecord, eq, and, or, desc, asc } from '@/lib/db-helpers';
+const config = await findFirst('matrixConfigurations', {
+  where: eq(schema.matrixConfigurations.isActive, true)
+})
 ```
 
-### Find Many
-
-**OLD:**
+**After (Drizzle direct):**
 ```typescript
-const records = await prisma.schedule.findMany({
-  where: { enabled: true },
-  orderBy: { createdAt: 'desc' },
-  take: 10,
-  skip: 0
-});
+const config = await db
+  .select()
+  .from(schema.matrixConfigurations)
+  .where(eq(schema.matrixConfigurations.isActive, true))
+  .limit(1)
+  .get()
 ```
 
-**NEW:**
+#### Find Many with Relations
+
+**Before (Prisma):**
 ```typescript
-const records = await findMany('schedules', {
-  where: eq(schema.schedules.enabled, true),
-  orderBy: desc(schema.schedules.createdAt),
-  limit: 10,
-  offset: 0
-});
-```
-
-### Find First/Unique
-
-**OLD:**
-```typescript
-const record = await prisma.schedule.findFirst({
-  where: { id: 'some-id' }
-});
-
-const unique = await prisma.schedule.findUnique({
-  where: { id: 'some-id' }
-});
-```
-
-**NEW:**
-```typescript
-const record = await findFirst('schedules', {
-  where: eq(schema.schedules.id, 'some-id')
-});
-
-const unique = await findUnique('schedules', 
-  eq(schema.schedules.id, 'some-id')
-);
-```
-
-### Create
-
-**OLD:**
-```typescript
-const record = await prisma.schedule.create({
-  data: {
-    name: 'Test',
-    enabled: true
-  }
-});
-```
-
-**NEW:**
-```typescript
-const record = await create('schedules', {
-  name: 'Test',
-  enabled: true
-});
-```
-
-### Update
-
-**OLD:**
-```typescript
-const record = await prisma.schedule.update({
-  where: { id: 'some-id' },
-  data: { enabled: false }
-});
-```
-
-**NEW:**
-```typescript
-const record = await update('schedules',
-  eq(schema.schedules.id, 'some-id'),
-  { enabled: false }
-);
-```
-
-### Delete
-
-**OLD:**
-```typescript
-await prisma.schedule.delete({
-  where: { id: 'some-id' }
-});
-```
-
-**NEW:**
-```typescript
-await deleteRecord('schedules',
-  eq(schema.schedules.id, 'some-id')
-);
-```
-
-### Count
-
-**OLD:**
-```typescript
-const count = await prisma.schedule.count({
-  where: { enabled: true }
-});
-```
-
-**NEW:**
-```typescript
-const count = await count('schedules',
-  eq(schema.schedules.enabled, true)
-);
-```
-
-### Complex Where Clauses
-
-**OLD:**
-```typescript
-const records = await prisma.schedule.findMany({
-  where: {
-    enabled: true,
-    createdAt: {
-      gte: new Date('2024-01-01')
+const config = await prisma.matrixConfiguration.findFirst({
+  where: { isActive: true },
+  include: {
+    inputs: {
+      where: { isActive: true },
+      orderBy: { channelNumber: 'asc' }
     }
   }
-});
+})
 ```
 
-**NEW:**
+**After (Drizzle - Two Queries):**
 ```typescript
-import { gte } from '@/lib/db-helpers';
+// Get config
+const config = await db
+  .select()
+  .from(schema.matrixConfigurations)
+  .where(eq(schema.matrixConfigurations.isActive, true))
+  .limit(1)
+  .get()
 
-const records = await findMany('schedules', {
-  where: and(
-    eq(schema.schedules.enabled, true),
-    gte(schema.schedules.createdAt, new Date('2024-01-01').toISOString())
+// Get related inputs
+const inputs = await db
+  .select()
+  .from(schema.matrixInputs)
+  .where(
+    and(
+      eq(schema.matrixInputs.configId, config.id),
+      eq(schema.matrixInputs.isActive, true)
+    )
   )
-});
+  .orderBy(asc(schema.matrixInputs.channelNumber))
+  .all()
 ```
 
-### Multiple Order By
+#### Create
 
-**OLD:**
+**Before (Prisma):**
 ```typescript
-const records = await prisma.homeTeam.findMany({
-  orderBy: [
-    { isPrimary: 'desc' },
-    { teamName: 'asc' }
-  ]
-});
+await prisma.testLog.create({
+  data: {
+    testType: 'wolfpack',
+    testName: 'Connection Test',
+    status: 'success'
+  }
+})
 ```
 
-**NEW:**
+**After (Drizzle with helpers):**
 ```typescript
-const records = await findMany('homeTeams', {
-  orderBy: [
-    desc(schema.homeTeams.isPrimary),
-    asc(schema.homeTeams.teamName)
-  ]
-});
+await create('testLogs', {
+  testType: 'wolfpack',
+  testName: 'Connection Test',
+  status: 'success'
+})
 ```
+
+#### Upsert
+
+**Before (Prisma):**
+```typescript
+await prisma.wolfpackMatrixRouting.upsert({
+  where: { matrixOutputNumber },
+  update: {
+    wolfpackInputNumber,
+    wolfpackInputLabel: input.label
+  },
+  create: {
+    matrixOutputNumber,
+    wolfpackInputNumber,
+    wolfpackInputLabel: input.label
+  }
+})
+```
+
+**After (Drizzle with helpers):**
+```typescript
+await upsert(
+  'wolfpackMatrixRoutings',
+  eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixOutputNumber),
+  {
+    // create data
+    matrixOutputNumber,
+    wolfpackInputNumber,
+    wolfpackInputLabel: input.label
+  },
+  {
+    // update data
+    wolfpackInputNumber,
+    wolfpackInputLabel: input.label
+  }
+)
+```
+
+### 3. Logging
+
+Add comprehensive logging to all database operations:
+
+```typescript
+logger.api.request('GET', '/api/wolfpack/inputs')
+logger.api.response('GET', '/api/wolfpack/inputs', 200, { count: inputs.length })
+logger.api.error('GET', '/api/wolfpack/inputs', error)
+```
+
+### 4. Error Handling
+
+Replace `console.error` with `logger.error`:
+
+```typescript
+// Before
+console.error('Error fetching data:', error)
+
+// After  
+logger.api.error('GET', '/api/endpoint', error)
+```
+
+## Database Helper Functions
+
+Available from `@/lib/db-helpers`:
+
+- **findFirst** - Find single record
+- **findMany** - Find multiple records
+- **findUnique** - Find by unique field
+- **create** - Create single record
+- **createMany** - Create multiple records
+- **update** - Update single record
+- **updateMany** - Update multiple records
+- **upsert** - Create or update
+- **deleteRecord** - Delete single record
+- **deleteMany** - Delete multiple records
+- **count** - Count records
+- **transaction** - Execute in transaction
+
+## Drizzle Operators
+
+Available from `drizzle-orm`:
+
+- **eq** - Equal to
+- **ne** - Not equal to
+- **gt** - Greater than
+- **gte** - Greater than or equal
+- **lt** - Less than
+- **lte** - Less than or equal
+- **and** - Logical AND
+- **or** - Logical OR
+- **inArray** - IN clause
+- **like** - LIKE pattern matching
+- **desc** - Descending order
+- **asc** - Ascending order
 
 ## Table Name Mapping
 
-Prisma model names to Drizzle table names:
+Prisma models map to Drizzle tables with different casing:
 
-| Prisma Model              | Drizzle Table Name         |
-|---------------------------|----------------------------|
-| `prisma.schedule`         | `'schedules'`              |
-| `prisma.scheduleLog`      | `'scheduleLogs'`           |
-| `prisma.homeTeam`         | `'homeTeams'`              |
-| `prisma.fireTVDevice`     | `'fireTVDevices'`          |
-| `prisma.matrixConfiguration` | `'matrixConfigurations'` |
-| `prisma.matrixInput`      | `'matrixInputs'`           |
-| `prisma.matrixOutput`     | `'matrixOutputs'`          |
-| `prisma.audioProcessor`   | `'audioProcessors'`        |
-| `prisma.audioZone`        | `'audioZones'`             |
-| `prisma.channelPreset`    | `'channelPresets'`         |
-| `prisma.qaEntry`          | `'qaEntries'`              |
-| `prisma.chatSession`      | `'chatSessions'`           |
-| `prisma.document`         | `'documents'`              |
+| Prisma Model | Drizzle Table |
+|--------------|---------------|
+| `prisma.matrixConfiguration` | `schema.matrixConfigurations` |
+| `prisma.matrixInput` | `schema.matrixInputs` |
+| `prisma.matrixOutput` | `schema.matrixOutputs` |
+| `prisma.wolfpackMatrixRouting` | `schema.wolfpackMatrixRoutings` |
+| `prisma.wolfpackMatrixState` | `schema.wolfpackMatrixStates` |
+| `prisma.testLog` | `schema.testLogs` |
+| `prisma.audioProcessor` | `schema.audioProcessors` |
+| `prisma.audioZone` | `schema.audioZones` |
 
-For a complete list, see `src/db/schema.ts`.
+See `src/db/schema.ts` for complete table definitions.
 
-## Available DB Helper Functions
+## Testing
 
-All functions include comprehensive logging:
+After migration, test:
 
-- `findMany(tableName, options)` - Find multiple records
-- `findFirst(tableName, options)` - Find first matching record
-- `findUnique(tableName, where)` - Find unique record
-- `create(tableName, data)` - Create single record
-- `createMany(tableName, data[])` - Create multiple records
-- `update(tableName, where, data)` - Update single record
-- `updateMany(tableName, where, data)` - Update multiple records
-- `deleteRecord(tableName, where)` - Delete single record
-- `deleteMany(tableName, where)` - Delete multiple records
-- `count(tableName, where?)` - Count records
-- `upsert(tableName, where, createData, updateData)` - Insert or update
-- `transaction(callback)` - Execute in transaction
+1. **API Endpoints** - All CRUD operations
+2. **Relations** - Data fetching with related tables
+3. **Logging** - Verify logger output
+4. **Error Handling** - Test error scenarios
+5. **Performance** - Check query performance
 
-## Available Operators
+## Cleanup Checklist
 
-```typescript
-import { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne } from '@/lib/db-helpers';
-```
+Once all files are migrated:
 
-- `eq(column, value)` - Equals
-- `ne(column, value)` - Not equals
-- `gt(column, value)` - Greater than
-- `gte(column, value)` - Greater than or equal
-- `lt(column, value)` - Less than
-- `lte(column, value)` - Less than or equal
-- `like(column, pattern)` - Pattern matching
-- `inArray(column, values[])` - In array
-- `and(...conditions)` - Logical AND
-- `or(...conditions)` - Logical OR
-- `desc(column)` - Descending order
-- `asc(column)` - Ascending order
+1. ✅ Remove `src/db/prisma-adapter.ts`
+2. ✅ Remove `src/lib/prisma.ts`
+3. ✅ Remove `prisma/` directory
+4. ✅ Update all imports to use Drizzle
+5. ✅ Test all features end-to-end
+6. ✅ Remove Prisma from package.json (if exists)
+7. ✅ Update documentation
 
-## Logging Best Practices
+## Reference Examples
 
-### API Endpoints
+See these files for complete migration examples:
+- `src/app/api/schedules/route.ts` - Full CRUD with helpers
+- `src/app/api/wolfpack/inputs/route.ts` - Simple query with relations
+- `src/app/api/wolfpack/route-to-matrix/route.ts` - Complex upsert operations
+- `src/lib/db-helpers.ts` - All helper function implementations
 
-Always log API requests and responses:
+## Common Issues
 
-```typescript
-export async function GET(request: NextRequest) {
-  logger.api.request('GET', '/api/endpoint');
-  
-  try {
-    // ... your code ...
-    logger.api.response('GET', '/api/endpoint', 200, { count: results.length });
-    return NextResponse.json({ results });
-  } catch (error: any) {
-    logger.api.error('GET', '/api/endpoint', error);
-    return NextResponse.json({ error: 'Failed' }, { status: 500 });
-  }
-}
-```
+### Issue: Boolean values not working
+**Solution:** Use integers (0/1) for boolean fields in SQLite
 
-### Database Operations
+### Issue: Date fields showing as strings
+**Solution:** Convert dates with `new Date().toISOString()`
 
-Use the db-helper functions which include automatic logging, or log manually:
+### Issue: Relations not working
+**Solution:** Use separate queries and manually join data
 
-```typescript
-// Automatic logging via helpers
-const records = await findMany('schedules', { ... });
-
-// Or log manually for custom queries
-logger.database.query('customQuery', 'schedules', { params });
-const result = await db.select().from(schema.schedules).where(...);
-logger.database.success('customQuery', 'schedules', result);
-```
-
-### Atlas Communication
-
-```typescript
-logger.atlas.connect(ipAddress, port);
-logger.atlas.command('setVolume', { zone: 1, volume: 50 });
-logger.atlas.response('setVolume', response);
-```
-
-## Database Commands
-
-### Development
-
-```bash
-# Generate migrations
-npm run db:generate
-
-# Push schema changes to database
-npm run db:push
-
-# Open Drizzle Studio (database GUI)
-npm run db:studio
-```
-
-### Schema Location
-
-The database schema is now defined in TypeScript:
-- **Schema file:** `src/db/schema.ts`
-- **Database file:** `prisma/data/sports_bar.db` (unchanged)
-- **Migrations:** `drizzle/` directory
-
-## Testing After Migration
-
-After migrating a file:
-
-1. **Build the project:**
-   ```bash
-   npm run build
-   ```
-
-2. **Test the API endpoint:**
-   ```bash
-   curl http://localhost:3000/api/your-endpoint
-   ```
-
-3. **Check logs:**
-   - Verify database operations are logged
-   - Verify API requests/responses are logged
-   - Check for any errors
-
-4. **Test in browser:**
-   - Use the application UI to test functionality
-   - Open browser console to see logs (if applicable)
-
-## Migration Checklist
-
-For each file you migrate:
-
-- [ ] Update import statements
-- [ ] Convert all Prisma queries to Drizzle with db-helpers
-- [ ] Add API request/response logging
-- [ ] Add error logging
-- [ ] Test the endpoint
-- [ ] Verify logs are appearing
-- [ ] Commit changes
-
-## Examples to Study
-
-**Completed Migrations:**
-1. `src/app/api/schedules/route.ts` - Complete CRUD with logging
-2. `src/app/api/home-teams/route.ts` - Multiple orderBy with logging
-3. `src/db/index.ts` - Database connection with logging
-4. `src/lib/logger.ts` - Comprehensive logging utility
-5. `src/lib/db-helpers.ts` - Database helpers with logging
-
-## Need Help?
-
-- Review the completed example files
-- Check `src/db/schema.ts` for table structures
-- See `src/lib/db-helpers.ts` for available functions
-- Consult Drizzle ORM documentation: https://orm.drizzle.team/
-
-## Backward Compatibility
-
-The Prisma compatibility adapter (`src/db/prisma-adapter.ts`) is kept temporarily for files that haven't been migrated yet. However:
-
-⚠️ **This adapter is DEPRECATED and will be removed**
-
-All new code should use direct Drizzle ORM with the db-helpers.
-
-## Performance Notes
-
-Drizzle ORM benefits:
-- ✅ Lightweight (no generation step needed)
-- ✅ Type-safe SQL queries
-- ✅ Better performance than Prisma
-- ✅ Full control over queries
-- ✅ Comprehensive logging built in
-- ✅ Smaller bundle size
+### Issue: Type errors
+**Solution:** Use `schema.tableName.fieldName` for type safety
 
 ## Support
 
-If you encounter issues during migration:
-1. Check this guide for the correct pattern
-2. Review completed example files
-3. Verify your imports and table names
-4. Check the logs for detailed error messages
-5. Test incrementally (one file at a time)
+For questions or issues:
+1. Check the Drizzle ORM documentation: https://orm.drizzle.team
+2. Review example files in the codebase
+3. Test queries in Drizzle Studio: `npm run db:studio`
