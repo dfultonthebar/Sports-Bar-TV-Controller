@@ -82,7 +82,7 @@ export async function queryAtlasHardwareConfiguration(
       console.log(`[Atlas Query] Found ${discoveredConfig.sources.length} sources and ${discoveredConfig.zones.length} zones`)
 
       // Now get real-time status via TCP for each zone
-      const client = new AtlasTCPClient({ ipAddress, port: tcpPort, timeout: 5000 })
+      const client = new AtlasTCPClient({ ipAddress, tcpPort: tcpPort, timeout: 10000 })
       try {
         await client.connect()
         
@@ -207,7 +207,7 @@ export async function queryAtlasHardwareConfiguration(
   }
 
   // STRATEGY 2: Fall back to TCP probing
-  const client = new AtlasTCPClient({ ipAddress, port: tcpPort, timeout: 10000 })
+  const client = new AtlasTCPClient({ ipAddress, tcpPort: tcpPort, timeout: 10000, maxRetries: 5 })
   
   try {
     console.log(`[Atlas Query] Connecting via TCP to ${ipAddress}:${tcpPort}...`)
@@ -431,15 +431,16 @@ function delay(ms: number): Promise<void> {
 /**
  * Validate that we can connect to the Atlas hardware
  */
-export async function testAtlasConnection(ipAddress: string, port: number = 5321): Promise<boolean> {
-  const client = new AtlasTCPClient({ ipAddress, port, timeout: 5000 })
+export async function testAtlasConnection(ipAddress: string, tcpPort: number = 5321): Promise<boolean> {
+  const client = new AtlasTCPClient({ ipAddress, tcpPort: tcpPort, timeout: 10000, maxRetries: 3 })
   
   try {
+    console.log(`[Atlas Test] Testing connection to ${ipAddress}:${tcpPort}`)
     await client.connect()
-    console.log(`[Atlas Test] Connection successful to ${ipAddress}:${port}`)
+    console.log(`[Atlas Test] Connection successful to ${ipAddress}:${tcpPort}`)
     
     // Try to get a simple parameter to verify communication
-    const response = await client.getParameter('SourceName_0', 'str')
+    const response = await client.getParameter('KeepAlive', 'str')
     const success = response.success
     
     console.log(`[Atlas Test] Communication test: ${success ? 'PASSED' : 'FAILED'}`)

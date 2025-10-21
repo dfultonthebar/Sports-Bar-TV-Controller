@@ -75,10 +75,17 @@ export class AtlasTCPClient {
       ipAddress: config.ipAddress,
       tcpPort: config.tcpPort || 5321,  // TCP control port
       udpPort: config.udpPort || 3131,  // UDP meter port
-      timeout: config.timeout || 5000,
+      timeout: config.timeout || 10000,  // Increased default timeout to 10 seconds
       maxRetries: config.maxRetries || 3,
       keepAliveInterval: config.keepAliveInterval || 240000 // 4 minutes
     }
+    
+    atlasLogger.info('CLIENT_INIT', 'Atlas TCP client initialized', {
+      ipAddress: this.config.ipAddress,
+      tcpPort: this.config.tcpPort,
+      udpPort: this.config.udpPort,
+      timeout: this.config.timeout
+    })
   }
 
   /**
@@ -132,7 +139,21 @@ export class AtlasTCPClient {
       try {
         atlasLogger.connectionAttempt(this.config.ipAddress, this.config.tcpPort)
         
+        // Clean up any existing socket
+        if (this.tcpSocket) {
+          try {
+            this.tcpSocket.destroy()
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
+          this.tcpSocket = null
+        }
+        
         this.tcpSocket = new Socket()
+        
+        // Set socket options for better reliability
+        this.tcpSocket.setKeepAlive(true, 30000)  // Enable TCP keepalive
+        this.tcpSocket.setNoDelay(true)  // Disable Nagle's algorithm for low-latency
         
         // Set timeout for connection
         this.tcpSocket.setTimeout(this.config.timeout)
@@ -160,11 +181,12 @@ export class AtlasTCPClient {
         })
 
         // Handle connection errors
-        this.tcpSocket.on('error', (error) => {
-          atlasLogger.connectionFailure(this.config.ipAddress, this.config.tcpPort, error)
+        this.tcpSocket.on('error', (error: any) => {
+          const errorMessage = this.getConnectionErrorMessage(error)
+          atlasLogger.connectionFailure(this.config.ipAddress, this.config.tcpPort, errorMessage)
           this.connected = false
           this.tcpSocket?.destroy()
-          reject(error)
+          reject(new Error(errorMessage))
         })
 
         // Handle connection timeout
@@ -246,6 +268,28 @@ export class AtlasTCPClient {
       })
     } catch (error) {
       atlasLogger.error('UDP', 'Failed to initialize UDP socket', error)
+    }
+  }
+
+  /**
+   * Get a user-friendly error message from a connection error
+   */
+  private getConnectionErrorMessage(error: any): string {
+    const code = error.code || error.errno
+    const message = error.message || String(error)
+    
+    if (code === 'ECONNREFUSED') {
+      return `Connection refused by Atlas processor at ${this.config.ipAddress}:${this.config.tcpPort}. Please verify the IP address and port, and ensure the processor is powered on and network accessible.`
+    } else if (code === 'ETIMEDOUT' || code === 'ETIME OUT') {
+      return `Connection timed out connecting to ${this.config.ipAddress}:${this.config.tcpPort}. The processor may be unreachable or the network is slow.`
+    } else if (code === 'EHOSTUNREACH') {
+      return `Host unreachable at ${this.config.ipAddress}. Please check network connectivity and routing.`
+    } else if (code === 'ENETUNREACH') {
+      return `Network unreachable for ${this.config.ipAddress}. Please check network configuration.`
+    } else if (code === 'ENOTFOUND') {
+      return `Host not found: ${this.config.ipAddress}. Please verify the IP address.`
+    } else {
+      return `Connection error: ${message} (${code || 'unknown'})`
     }
   }
 
@@ -455,8 +499,13 @@ export class AtlasTCPClient {
    * CRITICAL: Messages MUST be terminated with "\n" (newline), NOT "\r\n"
    */
   private async sendCommand(command: AtlasCommand, withResponse: boolean = true): Promise<any> {
-    if (!this.connected || !this.tcpSocket) {
-      throw new Error('Not connected to Atlas processor')
+    if (!this.connected || !this.tcpSocket || this.tcpSocket.destroyed) {
+      atlasLogger.error('COMMAND', 'Cannot send command - not connected', {
+        connected: this.connected,
+        hasSocket: !!this.tcpSocket,
+        socketDestroyed: this.tcpSocket?.destroyed
+      })
+      throw new Error(`Not connected to Atlas processor at ${this.config.ipAddress}:${this.config.tcpPort}`)
     }
 
     const id = this.commandId++
