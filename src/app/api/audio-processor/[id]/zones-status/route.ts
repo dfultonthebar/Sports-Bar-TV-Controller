@@ -67,27 +67,76 @@ export async function GET(
       processor.password || undefined  // HTTP basic auth password
     )
 
+    // Helper function to extract string from Atlas name format
+    // Atlas can return names in various formats:
+    // - Plain string: "Zone 1"
+    // - Object with str: {str: "Zone 1"}
+    // - Object with param and str: {param: "ZoneName", str: "Zone 1"}
+    // - Array: [{str: "Zone 1"}]
+    const extractNameString = (nameField: any, defaultName: string): string => {
+      // Already a string
+      if (typeof nameField === 'string') {
+        return nameField
+      }
+      
+      // Object with str property
+      if (nameField && typeof nameField === 'object' && !Array.isArray(nameField)) {
+        // Handle {param: "...", str: "..."}
+        if (nameField.str !== undefined) {
+          return String(nameField.str)
+        }
+        // Handle {val: "..."}
+        if (nameField.val !== undefined) {
+          return String(nameField.val)
+        }
+      }
+      
+      // Array format
+      if (Array.isArray(nameField) && nameField.length > 0) {
+        const first = nameField[0]
+        if (typeof first === 'string') {
+          return first
+        }
+        if (first && typeof first === 'object') {
+          if (first.str !== undefined) {
+            return String(first.str)
+          }
+          if (first.val !== undefined) {
+            return String(first.val)
+          }
+        }
+      }
+      
+      // Fallback to default
+      return defaultName
+    }
+
     // Format the response with zones including their current sources
-    const zonesWithStatus = hardwareConfig.zones.map(zone => ({
-      id: `zone_${zone.index}`,
-      zoneNumber: zone.index + 1, // Convert to 1-based for UI display
-      atlasIndex: zone.index, // Keep 0-based for Atlas protocol
-      name: zone.name,
-      currentSource: zone.currentSource,
-      currentSourceName: zone.currentSource >= 0 
-        ? hardwareConfig.sources[zone.currentSource]?.name || `Source ${zone.currentSource + 1}`
-        : 'Not Set',
-      volume: zone.volume || 50,
-      isMuted: zone.muted || false,
-      isActive: true
-    }))
+    const zonesWithStatus = hardwareConfig.zones.map(zone => {
+      const zoneName = extractNameString(zone.name, `Zone ${zone.index + 1}`)
+      const sourceName = zone.currentSource >= 0 && hardwareConfig.sources[zone.currentSource]
+        ? extractNameString(hardwareConfig.sources[zone.currentSource].name, `Source ${zone.currentSource + 1}`)
+        : 'Not Set'
+      
+      return {
+        id: `zone_${zone.index}`,
+        zoneNumber: zone.index + 1, // Convert to 1-based for UI display
+        atlasIndex: zone.index, // Keep 0-based for Atlas protocol
+        name: zoneName,
+        currentSource: zone.currentSource,
+        currentSourceName: sourceName,
+        volume: zone.volume || 50,
+        isMuted: zone.muted || false,
+        isActive: true
+      }
+    })
 
     // Format sources for dropdown selection
     const sources = hardwareConfig.sources.map(source => ({
       id: `source_${source.index}`,
       sourceNumber: source.index + 1, // Convert to 1-based for UI display
       atlasIndex: source.index, // Keep 0-based for Atlas protocol
-      name: source.name,
+      name: extractNameString(source.name, `Source ${source.index + 1}`),
       parameterName: source.parameterName
     }))
 
