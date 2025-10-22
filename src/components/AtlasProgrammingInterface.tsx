@@ -179,11 +179,40 @@ export default function AtlasProgrammingInterface() {
         console.log('[Atlas Config] Received configuration:', config)
         
         // Helper function to extract string from Atlas name format
-        const extractName = (nameField: any, defaultName: string) => {
-          if (typeof nameField === 'string') return nameField
-          if (Array.isArray(nameField) && nameField.length > 0 && nameField[0].str) {
-            return nameField[0].str || defaultName
+        // This prevents React error #31 by ensuring we never try to render objects
+        const extractName = (nameField: any, defaultName: string): string => {
+          // Already a string - most common case
+          if (typeof nameField === 'string') {
+            return nameField
           }
+          
+          // Object with str property: {str: "Input 1"} or {param: "InputName", str: "Input 1"}
+          if (nameField && typeof nameField === 'object' && !Array.isArray(nameField)) {
+            if (nameField.str !== undefined) {
+              return String(nameField.str)
+            }
+            if (nameField.val !== undefined) {
+              return String(nameField.val)
+            }
+          }
+          
+          // Array format: [{str: "Input 1"}]
+          if (Array.isArray(nameField) && nameField.length > 0) {
+            const first = nameField[0]
+            if (typeof first === 'string') {
+              return first
+            }
+            if (first && typeof first === 'object') {
+              if (first.str !== undefined) {
+                return String(first.str)
+              }
+              if (first.val !== undefined) {
+                return String(first.val)
+              }
+            }
+          }
+          
+          // Fallback to default - ensures we always return a string
           return defaultName
         }
         
