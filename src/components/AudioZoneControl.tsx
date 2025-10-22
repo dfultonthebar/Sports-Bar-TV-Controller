@@ -56,8 +56,10 @@ export default function AudioZoneControl() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeProcessorId, setActiveProcessorId] = useState<string | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setIsMounted(true)
     // Fetch dynamic Atlas configuration on component mount
     fetchDynamicAtlasConfiguration()
   }, [])
@@ -256,7 +258,8 @@ export default function AudioZoneControl() {
     ))
   }
 
-  if (loading) {
+  // Prevent hydration errors by only rendering after mount
+  if (!isMounted || loading) {
     return (
       <div className="bg-slate-800 rounded-lg p-6">
         <div className="flex items-center justify-center">
