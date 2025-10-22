@@ -251,6 +251,34 @@ export default function AtlasProgrammingInterface() {
     }
   }
 
+  const queryHardware = async () => {
+    if (!selectedProcessor) return
+    
+    try {
+      showMessage('Querying Atlas hardware...', 'success')
+      const response = await fetch('/api/atlas/query-hardware', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        showMessage(`Hardware queried successfully! Found ${result.inputs?.length || 0} inputs and ${result.outputs?.length || 0} outputs`, 'success')
+        // Reload configuration to show the queried data
+        await fetchConfiguration(selectedProcessor.id)
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to query hardware', 'error')
+      }
+    } catch (error) {
+      console.error('Error querying hardware:', error)
+      showMessage('Failed to query hardware', 'error')
+    }
+  }
+
   const generateDefaultInputs = (): InputConfig[] => {
     return Array.from({ length: selectedProcessor?.inputs || 8 }, (_, i) => ({
       id: i + 1,
@@ -1170,6 +1198,16 @@ export default function AtlasProgrammingInterface() {
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={queryHardware}
+                      variant="outline"
+                      size="sm"
+                      className="border-green-800/40 text-green-300 hover:bg-green-900/20"
+                      title="Query real inputs/outputs from Atlas hardware at 192.168.5.101:5321"
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      Query Hardware
+                    </Button>
                     <Button
                       onClick={downloadConfiguration}
                       variant="outline"

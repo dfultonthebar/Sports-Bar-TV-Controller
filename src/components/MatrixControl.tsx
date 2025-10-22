@@ -502,7 +502,9 @@ export default function MatrixControl() {
                         {/* Simple outputs (1-4) show only label and resolution */}
                         
                         {/* Video Input Selection for Matrix Outputs (33-36) */}
-                        {isMatrixOutput && (
+                        {/* TEMPORARILY DISABLED: Matrix input routing section hidden until basic Atlas integration is working */}
+                        {/* TODO: Re-enable this section after Atlas Programming Interface is pulling real data */}
+                        {false && isMatrixOutput && (
                           <div className="mt-3 p-3 bg-slate-900 rounded border border-indigo-500/30">
                             <div className="text-xs font-semibold text-indigo-400 mb-2">
                               Matrix {matrixNumber} Audio Routing
