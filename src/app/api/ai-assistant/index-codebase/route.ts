@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { db } from '@/db';
+import { indexedFiles } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -159,24 +161,24 @@ export async function POST(request: NextRequest) {
     for (const file of files) {
       try {
         // Check if file already exists in database
-        const existing = await prisma.indexedFile.findUnique({
-          where: { filePath: file.path }
-        });
+        const existing = await db.select()
+          .from(indexedFiles)
+          .where(eq(indexedFiles.filePath, file.path))
+          .limit(1);
         
-        if (existing) {
+        if (existing.length > 0) {
           // Check if file has changed
-          if (existing.hash !== file.hash) {
-            await prisma.indexedFile.update({
-              where: { id: existing.id },
-              data: {
+          if (existing[0].hash !== file.hash) {
+            await db.update(indexedFiles)
+              .set({
                 content: file.content,
                 fileSize: file.size,
                 lastModified: file.lastModified,
                 lastIndexed: new Date(),
                 hash: file.hash,
                 updatedAt: new Date()
-              }
-            });
+              })
+              .where(eq(indexedFiles.id, existing[0].id));
             updated++;
             if (updated % 10 === 0) {
               console.log(`[AI INDEXING] Progress: Updated ${updated} files so far...`);
@@ -186,25 +188,23 @@ export async function POST(request: NextRequest) {
           }
         } else {
           // Create new record
-          await prisma.indexedFile.create({
-            data: {
-              id: crypto.randomUUID(),
-              filePath: file.path,
-              fileName: file.name,
-              fileType: file.type,
-              content: file.content,
-              fileSize: file.size,
-              lastModified: file.lastModified,
-              lastIndexed: new Date(),
-              hash: file.hash,
-              isActive: true,
-              metadata: JSON.stringify({
-                extension: path.extname(file.name),
-                directory: path.dirname(file.path)
-              }),
-              createdAt: new Date(),
-              updatedAt: new Date()
-            }
+          await db.insert(indexedFiles).values({
+            id: crypto.randomUUID(),
+            filePath: file.path,
+            fileName: file.name,
+            fileType: file.type,
+            content: file.content,
+            fileSize: file.size,
+            lastModified: file.lastModified,
+            lastIndexed: new Date(),
+            hash: file.hash,
+            isActive: true,
+            metadata: JSON.stringify({
+              extension: path.extname(file.name),
+              directory: path.dirname(file.path)
+            }),
+            createdAt: new Date(),
+            updatedAt: new Date()
           });
           indexed++;
           if (indexed % 10 === 0) {
@@ -220,19 +220,18 @@ export async function POST(request: NextRequest) {
     
     // Mark files that no longer exist as inactive
     console.log('[AI INDEXING] Checking for deleted files...');
-    const allIndexedFiles = await prisma.indexedFile.findMany({
-      where: { isActive: true }
-    });
+    const allIndexedFiles = await db.select()
+      .from(indexedFiles)
+      .where(eq(indexedFiles.isActive, true));
     
     const currentFilePaths = new Set(files.map(f => f.path));
     let deactivated = 0;
     
     for (const indexedFile of allIndexedFiles) {
       if (!currentFilePaths.has(indexedFile.filePath)) {
-        await prisma.indexedFile.update({
-          where: { id: indexedFile.id },
-          data: { isActive: false, updatedAt: new Date() }
-        });
+        await db.update(indexedFiles)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(indexedFiles.id, indexedFile.id));
         deactivated++;
       }
     }
@@ -279,43 +278,52 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   console.log('[AI INDEXING] GET request - Fetching index stats');
   try {
-    const stats = await prisma.indexedFile.aggregate({
-      where: { isActive: true },
-      _count: true,
-      _sum: {
-        fileSize: true
-      }
-    });
+    // Get total count and sum of file sizes
+    const countResult = await db.select({
+      count: sql<number>`count(*)`,
+      totalSize: sql<number>`sum(${indexedFiles.fileSize})`
+    })
+    .from(indexedFiles)
+    .where(eq(indexedFiles.isActive, true));
     
-    const filesByType = await prisma.indexedFile.groupBy({
-      by: ['fileType'],
-      where: { isActive: true },
-      _count: true
-    });
+    const totalFiles = countResult[0]?.count || 0;
+    const totalSize = countResult[0]?.totalSize || 0;
     
-    const lastIndexed = await prisma.indexedFile.findFirst({
-      where: { isActive: true },
-      orderBy: { lastIndexed: 'desc' },
-      select: { lastIndexed: true }
-    });
+    // Get files grouped by type
+    const filesByTypeResult = await db.select({
+      fileType: indexedFiles.fileType,
+      count: sql<number>`count(*)`
+    })
+    .from(indexedFiles)
+    .where(eq(indexedFiles.isActive, true))
+    .groupBy(indexedFiles.fileType);
+    
+    // Get last indexed timestamp
+    const lastIndexedResult = await db.select({
+      lastIndexed: indexedFiles.lastIndexed
+    })
+    .from(indexedFiles)
+    .where(eq(indexedFiles.isActive, true))
+    .orderBy(sql`${indexedFiles.lastIndexed} DESC`)
+    .limit(1);
     
     console.log('[AI INDEXING] Stats retrieved:', {
-      totalFiles: stats._count,
-      totalSize: `${((stats._sum.fileSize || 0) / 1024).toFixed(2)} KB`,
-      typeCount: filesByType.length,
-      lastIndexed: lastIndexed?.lastIndexed
+      totalFiles,
+      totalSize: `${((totalSize || 0) / 1024).toFixed(2)} KB`,
+      typeCount: filesByTypeResult.length,
+      lastIndexed: lastIndexedResult[0]?.lastIndexed
     });
     
     return NextResponse.json({
       success: true,
       stats: {
-        totalFiles: stats._count,
-        totalSize: stats._sum.fileSize || 0,
-        filesByType: filesByType.map(ft => ({
+        totalFiles: totalFiles,
+        totalSize: totalSize,
+        filesByType: filesByTypeResult.map(ft => ({
           type: ft.fileType,
-          count: ft._count
+          count: ft.count
         })),
-        lastIndexed: lastIndexed?.lastIndexed
+        lastIndexed: lastIndexedResult[0]?.lastIndexed
       }
     });
     

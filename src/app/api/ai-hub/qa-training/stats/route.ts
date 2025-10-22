@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { count, findMany, eq, sql } from '@/lib/db-helpers';
+import { schema } from '@/db';
+import { db } from '@/lib/db-helpers';
 
 /**
  * GET /api/ai-hub/qa-training/stats
@@ -17,38 +19,26 @@ export async function GET(request: NextRequest) {
       sourceTypeGroups,
     ] = await Promise.all([
       // Total Q&As
-      prisma.qAEntry.count(),
+      count('qAEntries'),
       
       // Active Q&As
-      prisma.qAEntry.count({
-        where: { isActive: true },
-      }),
+      count('qAEntries', eq(schema.qAEntries.isActive, true)),
       
-      // Q&As by category
-      prisma.qAEntry.groupBy({
-        by: ['category'],
-        _count: {
-          id: true,
-        },
-        orderBy: {
-          _count: {
-            id: 'desc',
-          },
-        },
-      }),
+      // Q&As by category - using raw SQL for groupBy
+      db.all(sql`
+        SELECT category, COUNT(*) as count
+        FROM qAEntries
+        GROUP BY category
+        ORDER BY count DESC
+      `),
       
-      // Q&As by source type
-      prisma.qAEntry.groupBy({
-        by: ['sourceType'],
-        _count: {
-          id: true,
-        },
-        orderBy: {
-          _count: {
-            id: 'desc',
-          },
-        },
-      }),
+      // Q&As by source type - using raw SQL for groupBy
+      db.all(sql`
+        SELECT sourceType, COUNT(*) as count
+        FROM qAEntries
+        GROUP BY sourceType
+        ORDER BY count DESC
+      `),
     ]);
 
     // Format the response
@@ -56,13 +46,13 @@ export async function GET(request: NextRequest) {
       total: totalCount,
       active: activeCount,
       inactive: totalCount - activeCount,
-      byCategory: categoryGroups.map(group => ({
+      byCategory: categoryGroups.map((group: any) => ({
         category: group.category,
-        count: group._count.id,
+        count: group.count,
       })),
-      bySource: sourceTypeGroups.map(group => ({
+      bySource: sourceTypeGroups.map((group: any) => ({
         source: group.sourceType,
-        count: group._count.id,
+        count: group.count,
       })),
     };
 

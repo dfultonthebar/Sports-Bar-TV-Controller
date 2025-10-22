@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { findMany, findUnique, desc, eq } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 
 export async function GET(request: NextRequest) {
   try {
     // Get all AI API keys from the database (these represent AI providers)
-    const apiKeys = await prisma.apiKey.findMany({
-      orderBy: { createdAt: 'desc' }
+    const apiKeys = await findMany('apiKeys', {
+      orderBy: desc(schema.apiKeys.createdAt)
     })
 
     // Count active providers (those with API keys configured)
@@ -84,9 +85,7 @@ export async function POST(request: NextRequest) {
 
 async function testProvider(providerId: string) {
   try {
-    const apiKey = await prisma.apiKey.findUnique({
-      where: { id: providerId }
-    })
+    const apiKey = await findUnique('apiKeys', eq(schema.apiKeys.id, providerId))
 
     if (!apiKey) {
       return NextResponse.json(
@@ -125,8 +124,8 @@ async function testProvider(providerId: string) {
 async function refreshProviderStatus() {
   try {
     // Get fresh provider data
-    const apiKeys = await prisma.apiKey.findMany({
-      orderBy: { createdAt: 'desc' }
+    const apiKeys = await findMany('apiKeys', {
+      orderBy: desc(schema.apiKeys.createdAt)
     })
 
     const activeCount = apiKeys.filter(k => k.keyValue && k.keyValue.length > 0).length
