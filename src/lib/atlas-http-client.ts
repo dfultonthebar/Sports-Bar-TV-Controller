@@ -318,7 +318,7 @@ export class AtlasHttpClient {
     
     const client = new AtlasTCPClient({
       ipAddress: this.config.ipAddress,
-      port: 5321, // TCP control port
+      tcpPort: 5321, // TCP control port (fixed: was 'port', should be 'tcpPort')
       timeout: 5000
     })
 
