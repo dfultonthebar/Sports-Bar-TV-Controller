@@ -19,15 +19,15 @@ export async function GET(request: NextRequest) {
       sourceTypeGroups,
     ] = await Promise.all([
       // Total Q&As
-      count('qAEntries'),
+      count('qaEntries'),
       
       // Active Q&As
-      count('qAEntries', eq(schema.qAEntries.isActive, true)),
+      count('qaEntries', eq(schema.qaEntries.isActive, true)),
       
       // Q&As by category - using raw SQL for groupBy
       db.all(sql`
         SELECT category, COUNT(*) as count
-        FROM qAEntries
+        FROM QAEntry
         GROUP BY category
         ORDER BY count DESC
       `),
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       // Q&As by source type - using raw SQL for groupBy
       db.all(sql`
         SELECT sourceType, COUNT(*) as count
-        FROM qAEntries
+        FROM QAEntry
         GROUP BY sourceType
         ORDER BY count DESC
       `),

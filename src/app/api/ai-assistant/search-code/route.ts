@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { findMany, like, and, or, desc } from '@/lib/db-helpers';
+import { findMany, like, and, or, desc, eq } from '@/lib/db-helpers';
 import { schema } from '@/db';
 
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const conditions: any[] = [];
     
     // Add isActive condition
-    conditions.push(schema.indexedFiles.isActive);
+    conditions.push(eq(schema.indexedFiles.isActive, true));
     
     // Add search conditions for each term
     for (const term of queryTerms) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (fileTypes && fileTypes.length > 0) {
       // For multiple file types, we need to check each one
       const fileTypeConditions = fileTypes.map((ft: string) => 
-        schema.indexedFiles.fileType === ft
+        eq(schema.indexedFiles.fileType, ft)
       );
       conditions.push(or(...fileTypeConditions));
     }
