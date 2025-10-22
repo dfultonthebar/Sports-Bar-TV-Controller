@@ -142,10 +142,12 @@ export async function findMany<T extends TableName>(
     }
     
     const result = await query.all()
-    logger.database.success('findMany', displayName, result)
     
-    // Serialize result to remove circular references
-    return serializeDrizzleResult(result)
+    // Serialize result to remove circular references BEFORE logging
+    const serialized = serializeDrizzleResult(result)
+    logger.database.success('findMany', displayName, serialized)
+    
+    return serialized
   } catch (error) {
     logger.database.error('findMany', displayName, error)
     throw error
