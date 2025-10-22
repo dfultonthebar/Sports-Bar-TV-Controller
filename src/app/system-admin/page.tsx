@@ -19,7 +19,8 @@ import {
   Filter,
   XCircle,
   Power,
-  ListTodo
+  ListTodo,
+  Workflow
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,6 +30,7 @@ import SystemControlPanel from '@/components/SystemControlPanel'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
 import TodoDetails from '@/components/TodoDetails'
+import N8nWorkflowManager from '@/components/N8nWorkflowManager'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
@@ -389,7 +391,7 @@ export default function SystemAdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="power" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-7 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
@@ -409,6 +411,10 @@ export default function SystemAdminPage() {
             <TabsTrigger value="tests" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Activity className="w-4 h-4 mr-2" />
               Tests
+            </TabsTrigger>
+            <TabsTrigger value="n8n" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Workflow className="w-4 h-4 mr-2" />
+              n8n
             </TabsTrigger>
             <TabsTrigger value="todos" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <ListTodo className="w-4 h-4 mr-2" />
@@ -986,6 +992,11 @@ export default function SystemAdminPage() {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* n8n Workflow Automation Tab */}
+          <TabsContent value="n8n" className="space-y-6">
+            <N8nWorkflowManager />
           </TabsContent>
 
           {/* TODOs Tab */}

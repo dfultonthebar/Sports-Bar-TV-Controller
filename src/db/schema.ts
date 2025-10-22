@@ -802,3 +802,16 @@ export const n8nWorkflowConfigs = sqliteTable('N8nWorkflowConfig', {
   workflowIdIdx: index('N8nWorkflowConfig_workflowId_idx').on(table.workflowId),
   isActiveIdx: index('N8nWorkflowConfig_isActive_idx').on(table.isActive),
 }))
+
+// n8n Connections Model (for storing n8n instance connections)
+export const n8nConnections = sqliteTable('N8nConnection', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(), // Connection name
+  url: text('url').notNull(), // n8n instance URL
+  apiKey: text('apiKey').notNull(), // API key for authentication
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  lastTested: timestamp('lastTested'),
+  testResult: text('testResult'), // Last test result status
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
