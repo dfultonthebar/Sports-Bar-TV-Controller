@@ -3,21 +3,25 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Music, Speaker, Volume2, Disc, Sliders, Settings, Brain } from 'lucide-react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
-import AtlasProgrammingInterface from '@/components/AtlasProgrammingInterface'
-import AtlasAIMonitor from '@/components/AtlasAIMonitor'
-import AudioProcessorManager from '@/components/AudioProcessorManager'
-import AudioZoneControl from '@/components/AudioZoneControl'
-import SoundtrackControl from '@/components/SoundtrackControl'
-import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
+
+// Import components dynamically to prevent hydration errors
+const AtlasProgrammingInterface = dynamic(() => import('@/components/AtlasProgrammingInterface'), { ssr: false })
+const AtlasAIMonitor = dynamic(() => import('@/components/AtlasAIMonitor'), { ssr: false })
+const AudioZoneControl = dynamic(() => import('@/components/AudioZoneControl'), { ssr: false })
+const SoundtrackControl = dynamic(() => import('@/components/SoundtrackControl'), { ssr: false })
+const SoundtrackConfiguration = dynamic(() => import('@/components/SoundtrackConfiguration'), { ssr: false })
 
 export default function AudioControlCenterPage() {
   const [activeProcessor, setActiveProcessor] = useState<any>(null)
   const [loadingProcessor, setLoadingProcessor] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setIsMounted(true)
     fetchActiveProcessor()
   }, [])
 
@@ -43,6 +47,25 @@ export default function AudioControlCenterPage() {
       <span>← Back to Home</span>
     </Link>
   )
+
+  // Prevent hydration mismatch by only rendering after client mount
+  if (!isMounted) {
+    return (
+      <SportsBarLayout>
+        <SportsBarHeader
+          title="Audio Control Center"
+          subtitle="Complete audio system management - Atlas, Zones, and Soundtrack"
+          icon={<Music className="w-8 h-8 text-teal-400" />}
+          actions={headerActions}
+        />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="card p-6 flex items-center justify-center min-h-[400px]">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-400"></div>
+          </div>
+        </main>
+      </SportsBarLayout>
+    )
+  }
 
   return (
     <SportsBarLayout>
