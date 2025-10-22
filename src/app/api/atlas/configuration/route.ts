@@ -31,10 +31,28 @@ export async function GET(request: NextRequest) {
       const configData = await fs.readFile(configPath, 'utf-8')
       const config = JSON.parse(configData)
       
+      console.log('[Atlas Config GET] Loaded configuration for processor:', processorId)
+      console.log('[Atlas Config GET] Inputs count:', config.inputs?.length || 0)
+      console.log('[Atlas Config GET] Outputs count:', config.outputs?.length || 0)
+      
+      // Ensure names are strings, not objects
+      const inputs = (config.inputs || []).map((input: any) => ({
+        ...input,
+        name: typeof input.name === 'string' ? input.name : (input.name?.str || input.name?.val || `Input ${input.number || input.id || '?'}`)
+      }))
+      
+      const outputs = (config.outputs || []).map((output: any) => ({
+        ...output,
+        name: typeof output.name === 'string' ? output.name : (output.name?.str || output.name?.val || `Zone ${output.number || output.id || '?'}`)
+      }))
+      
+      console.log('[Atlas Config GET] Sample input name:', inputs[0]?.name)
+      console.log('[Atlas Config GET] Sample output name:', outputs[0]?.name)
+      
       return NextResponse.json({
         success: true,
-        inputs: config.inputs || [],
-        outputs: config.outputs || [],
+        inputs,
+        outputs,
         scenes: config.scenes || [],
         messages: config.messages || []
       })
