@@ -81,13 +81,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert hardware config to API format
+    // Ensure names are always strings, not objects
     const inputs = hardwareConfig.sources.map(source => ({
       id: `source_${source.index}`,
       number: source.index + 1, // 1-based numbering for display
-      name: source.name,
+      name: typeof source.name === 'string' ? source.name : `Input ${source.index + 1}`,
       type: 'atlas_configured',
       connector: 'Hardware',
-      description: `Atlas configured source: ${source.name}`,
+      description: `Atlas configured source: ${typeof source.name === 'string' ? source.name : `Input ${source.index + 1}`}`,
       parameterName: source.parameterName,
       isCustom: true,
       queriedFromHardware: true
@@ -96,10 +97,10 @@ export async function POST(request: NextRequest) {
     const outputs = hardwareConfig.zones.map(zone => ({
       id: `zone_${zone.index}`,
       number: zone.index + 1, // 1-based numbering for display
-      name: zone.name,
+      name: typeof zone.name === 'string' ? zone.name : `Zone ${zone.index + 1}`,
       type: 'zone',
       connector: 'Hardware',
-      description: `Atlas configured zone: ${zone.name}`,
+      description: `Atlas configured zone: ${typeof zone.name === 'string' ? zone.name : `Zone ${zone.index + 1}`}`,
       parameterName: zone.parameterName,
       currentSource: zone.currentSource,
       volume: zone.volume,
@@ -107,6 +108,9 @@ export async function POST(request: NextRequest) {
       isCustom: true,
       queriedFromHardware: true
     }))
+    
+    console.log('[Query Hardware] Converted inputs:', JSON.stringify(inputs, null, 2))
+    console.log('[Query Hardware] Converted outputs:', JSON.stringify(outputs, null, 2))
 
     // Save configuration to file
     const config = {
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Query Hardware] Successfully saved configuration for processor ${processorId}`)
+    console.log(`[Query Hardware] Returning ${inputs.length} inputs and ${outputs.length} outputs`)
 
     return NextResponse.json({
       success: true,
@@ -188,7 +193,7 @@ export async function POST(request: NextRequest) {
       ipAddress,
       httpPort,
       tcpPort
-    })
+    }, { status: 200 })
 
   } catch (error) {
     console.error('[Query Hardware] Error:', error)

@@ -180,44 +180,74 @@ export default function AtlasProgrammingInterface() {
         
         // Helper function to extract string from Atlas name format
         const extractName = (nameField: any, defaultName: string) => {
+          // If it's already a string, return it
           if (typeof nameField === 'string') return nameField
-          if (Array.isArray(nameField) && nameField.length > 0 && nameField[0].str) {
-            return nameField[0].str || defaultName
+          
+          // If it's an object with str property
+          if (nameField && typeof nameField === 'object' && nameField.str) {
+            return nameField.str
           }
+          
+          // If it's an object with val property
+          if (nameField && typeof nameField === 'object' && nameField.val) {
+            return String(nameField.val)
+          }
+          
+          // If it's an array with objects containing str
+          if (Array.isArray(nameField) && nameField.length > 0) {
+            if (nameField[0].str) return nameField[0].str
+            if (nameField[0].val) return String(nameField[0].val)
+          }
+          
+          // If we got an object but couldn't extract a name, log it for debugging
+          if (nameField && typeof nameField === 'object') {
+            console.warn('[Atlas Config] Could not extract name from object:', nameField)
+          }
+          
           return defaultName
         }
         
         // Normalize inputs to ensure routing array exists and convert Atlas format
-        const normalizedInputs = (config.inputs || generateDefaultInputs()).map((input: any, index: number) => ({
-          id: index + 1,
-          name: extractName(input.name, `Input ${index + 1}`),
-          type: input.type || 'line',
-          physicalInput: index + 1,
-          stereoMode: input.stereoMode || 'mono',
-          gainDb: input.gain !== undefined ? input.gain : 0,
-          phantom: input.phantom || false,
-          lowcut: input.lowcut || false,
-          compressor: input.compressor || false,
-          gate: input.gate || false,
-          eq: input.eq || { band1: 0, band2: 0, band3: 0 },
-          routing: Array.isArray(input.routing) ? input.routing : []
-        }))
+        const normalizedInputs = (config.inputs || generateDefaultInputs()).map((input: any, index: number) => {
+          const extractedName = extractName(input.name, `Input ${index + 1}`)
+          console.log(`[Atlas Config] Input ${index}: raw name =`, input.name, ', extracted =', extractedName)
+          
+          return {
+            id: index + 1,
+            name: extractedName,
+            type: input.type || 'line',
+            physicalInput: index + 1,
+            stereoMode: input.stereoMode || 'mono',
+            gainDb: input.gain !== undefined ? input.gain : 0,
+            phantom: input.phantom || false,
+            lowcut: input.lowcut || false,
+            compressor: input.compressor || false,
+            gate: input.gate || false,
+            eq: input.eq || { band1: 0, band2: 0, band3: 0 },
+            routing: Array.isArray(input.routing) ? input.routing : []
+          }
+        })
         
         // Normalize outputs to ensure all properties exist and convert Atlas format
-        const normalizedOutputs = (config.outputs || generateDefaultOutputs()).map((output: any, index: number) => ({
-          id: index + 1,
-          name: extractName(output.name, `Zone ${index + 1}`),
-          type: output.type || 'speaker',
-          physicalOutput: index + 1,
-          levelDb: output.gain !== undefined ? output.gain : -10,
-          muted: output.mute || false,
-          delay: output.delay || 0,
-          eq: output.eq || { band1: 0, band2: 0, band3: 0 },
-          compressor: output.compressor || false,
-          limiter: output.limiter !== undefined ? output.limiter : true,
-          groupId: output.groupId,
-          groupName: output.groupName
-        }))
+        const normalizedOutputs = (config.outputs || generateDefaultOutputs()).map((output: any, index: number) => {
+          const extractedName = extractName(output.name, `Zone ${index + 1}`)
+          console.log(`[Atlas Config] Output ${index}: raw name =`, output.name, ', extracted =', extractedName)
+          
+          return {
+            id: index + 1,
+            name: extractedName,
+            type: output.type || 'speaker',
+            physicalOutput: index + 1,
+            levelDb: output.gain !== undefined ? output.gain : -10,
+            muted: output.mute || false,
+            delay: output.delay || 0,
+            eq: output.eq || { band1: 0, band2: 0, band3: 0 },
+            compressor: output.compressor || false,
+            limiter: output.limiter !== undefined ? output.limiter : true,
+            groupId: output.groupId,
+            groupName: output.groupName
+          }
+        })
         
         // Normalize scenes
         const normalizedScenes = (config.scenes || []).map((scene: any, index: number) => ({
@@ -248,6 +278,34 @@ export default function AtlasProgrammingInterface() {
       setOutputs(generateDefaultOutputs())
       setScenes([])
       setMessages([])
+    }
+  }
+
+  const queryHardware = async () => {
+    if (!selectedProcessor) return
+    
+    try {
+      showMessage('Querying Atlas hardware...', 'success')
+      const response = await fetch('/api/atlas/query-hardware', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        showMessage(`Hardware queried successfully! Found ${result.inputs?.length || 0} inputs and ${result.outputs?.length || 0} outputs`, 'success')
+        // Reload configuration to show the queried data
+        await fetchConfiguration(selectedProcessor.id)
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to query hardware', 'error')
+      }
+    } catch (error) {
+      console.error('Error querying hardware:', error)
+      showMessage('Failed to query hardware', 'error')
     }
   }
 
@@ -1170,6 +1228,16 @@ export default function AtlasProgrammingInterface() {
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={queryHardware}
+                      variant="outline"
+                      size="sm"
+                      className="border-green-800/40 text-green-300 hover:bg-green-900/20"
+                      title="Query real inputs/outputs from Atlas hardware at 192.168.5.101:5321"
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      Query Hardware
+                    </Button>
                     <Button
                       onClick={downloadConfiguration}
                       variant="outline"
