@@ -56,6 +56,55 @@ function sanitizeData(data: any): any {
 }
 
 /**
+ * Serialize Drizzle query result to plain object
+ * This removes circular references from Drizzle proxy objects
+ */
+export function serializeDrizzleResult<T>(result: T): T {
+  if (!result) return result
+  if (Array.isArray(result)) {
+    return result.map(item => serializeDrizzleResult(item)) as T
+  }
+  if (typeof result === 'object') {
+    // Use a WeakSet to track seen objects and prevent infinite recursion
+    const seen = new WeakSet()
+    
+    const serialize = (obj: any): any => {
+      if (obj === null || typeof obj !== 'object') {
+        return obj
+      }
+      
+      // Check for circular reference
+      if (seen.has(obj)) {
+        return undefined  // Skip circular references
+      }
+      seen.add(obj)
+      
+      // Handle arrays
+      if (Array.isArray(obj)) {
+        return obj.map(item => serialize(item))
+      }
+      
+      // Handle plain objects - copy only enumerable own properties
+      const serialized: any = {}
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          const value = obj[key]
+          // Skip functions and symbols
+          if (typeof value !== 'function' && typeof value !== 'symbol') {
+            serialized[key] = serialize(value)
+          }
+        }
+      }
+      
+      return serialized
+    }
+    
+    return serialize(result) as T
+  }
+  return result
+}
+
+/**
  * Find many records with logging
  */
 export async function findMany<T extends TableName>(
@@ -95,7 +144,8 @@ export async function findMany<T extends TableName>(
     const result = await query.all()
     logger.database.success('findMany', displayName, result)
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('findMany', displayName, error)
     throw error
@@ -132,7 +182,8 @@ export async function findFirst<T extends TableName>(
     const result = await query.limit(1).get()
     logger.database.success('findFirst', displayName, result ? { found: true } : { found: false })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('findFirst', displayName, error)
     throw error
@@ -155,7 +206,8 @@ export async function findUnique<T extends TableName>(
     const result = await db.select().from(table).where(where).limit(1).get()
     logger.database.success('findUnique', displayName, result ? { found: true } : { found: false })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('findUnique', displayName, error)
     throw error
@@ -186,7 +238,8 @@ export async function create<T extends TableName>(
     
     logger.database.success('create', displayName, { id: result?.id })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('create', displayName, error)
     throw error
@@ -218,7 +271,8 @@ export async function createMany<T extends TableName>(
     
     logger.database.success('createMany', displayName, { count: result.length })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('createMany', displayName, error)
     throw error
@@ -250,7 +304,8 @@ export async function update<T extends TableName>(
     
     logger.database.success('update', displayName, { id: result?.id })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('update', displayName, error)
     throw error
@@ -282,7 +337,8 @@ export async function updateMany<T extends TableName>(
     
     logger.database.success('updateMany', displayName, { count: result.length })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('updateMany', displayName, error)
     throw error
@@ -306,7 +362,8 @@ export async function deleteRecord<T extends TableName>(
     
     logger.database.success('delete', displayName, { id: result?.id })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('delete', displayName, error)
     throw error
@@ -330,7 +387,8 @@ export async function deleteMany<T extends TableName>(
     
     logger.database.success('deleteMany', displayName, { count: result.length })
     
-    return result
+    // Serialize result to remove circular references
+    return serializeDrizzleResult(result)
   } catch (error) {
     logger.database.error('deleteMany', displayName, error)
     throw error
@@ -396,7 +454,8 @@ export async function upsert<T extends TableName>(
       
       logger.database.success('upsert (update)', displayName, { id: result?.id })
       
-      return result
+      // Serialize result to remove circular references
+      return serializeDrizzleResult(result)
     } else {
       const dataWithTimestamp = { ...createData }
       if ('updatedAt' in table && !dataWithTimestamp.updatedAt) {
@@ -408,7 +467,8 @@ export async function upsert<T extends TableName>(
       
       logger.database.success('upsert (create)', displayName, { id: result?.id })
       
-      return result
+      // Serialize result to remove circular references
+      return serializeDrizzleResult(result)
     }
   } catch (error) {
     logger.database.error('upsert', displayName, error)

@@ -34,9 +34,9 @@ export async function GET(
     logger.api.request('GET', `/api/audio-processor/${processorId}/zones-status`)
 
     // Use Drizzle ORM with db-helpers for proper field mapping
-    const processor = await findFirst('audioProcessors',
-      eq(schema.audioProcessors.id, processorId)
-    )
+    const processor = await findFirst('audioProcessors', {
+      where: eq(schema.audioProcessors.id, processorId)
+    })
 
     if (!processor) {
       logger.api.response('GET', `/api/audio-processor/${processorId}/zones-status`, 404)
