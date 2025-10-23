@@ -894,7 +894,7 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <AudioZoneControl />
+            <AudioZoneControl bartenderMode={true} />
           </div>
         )}
 

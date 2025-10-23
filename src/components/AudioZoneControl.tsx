@@ -61,7 +61,11 @@ interface AtlasZoneGroup {
   outputs: AtlasOutputConfig[]
 }
 
-export default function AudioZoneControl() {
+interface AudioZoneControlProps {
+  bartenderMode?: boolean // When true, show simplified single-slider interface
+}
+
+export default function AudioZoneControl({ bartenderMode = false }: AudioZoneControlProps) {
   const [audioInputs, setAudioInputs] = useState<AudioInput[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
@@ -338,6 +342,67 @@ export default function AudioZoneControl() {
     }
   }
 
+  /**
+   * Handle master volume change - updates all outputs proportionally
+   * Used in bartender mode for simplified control
+   */
+  const handleMasterVolumeChange = async (zoneId: string, newMasterVolume: number) => {
+    const zone = zones.find(z => z.id === zoneId)
+    if (!zone || !zone.outputs || zone.outputs.length === 0 || !activeProcessorId) return
+
+    // Calculate the current average volume across all outputs
+    const currentAvgVolume = zone.outputs.reduce((sum, output) => sum + output.volume, 0) / zone.outputs.length
+    
+    // Calculate the volume change delta
+    const volumeDelta = newMasterVolume - currentAvgVolume
+
+    // Update all outputs proportionally
+    const updatedOutputs = zone.outputs.map(output => ({
+      ...output,
+      volume: Math.max(0, Math.min(100, output.volume + volumeDelta))
+    }))
+
+    // Optimistically update UI
+    setZones(zones.map(z => 
+      z.id === zoneId 
+        ? { ...z, volume: newMasterVolume, outputs: updatedOutputs }
+        : z
+    ))
+
+    // Send commands to update all outputs
+    try {
+      const updatePromises = updatedOutputs.map(output => 
+        fetch('/api/audio-processor/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processorId: activeProcessorId,
+            command: {
+              action: 'output-volume',
+              zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
+              outputIndex: output.atlasIndex,
+              value: output.volume,
+              parameterName: output.parameterName
+            }
+          })
+        })
+      )
+
+      const responses = await Promise.all(updatePromises)
+      const failedResponses = responses.filter(r => !r.ok)
+      
+      if (failedResponses.length > 0) {
+        console.error('Some output volume updates failed')
+        // Revert to actual state
+        await fetchDynamicAtlasConfiguration()
+      }
+    } catch (error) {
+      console.error('Error setting master volume:', error)
+      // Revert to actual state
+      await fetchDynamicAtlasConfiguration()
+    }
+  }
+
   const toggleMute = async (zoneId: string) => {
     // Find the zone to get its zone number and current mute state
     const zone = zones.find(z => z.id === zoneId)
@@ -500,54 +565,95 @@ export default function AudioZoneControl() {
             {/* Volume Control - Multiple Outputs Support */}
             {zone.outputs && zone.outputs.length > 1 ? (
               /* Multi-Output Zone (e.g., Mono+Sub, Stereo) */
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs text-slate-400 uppercase tracking-wide">
-                    Output Controls ({zone.outputs.length} outputs)
-                  </label>
-                  <button
-                    onClick={() => toggleZoneExpanded(zone.id)}
-                    className="text-xs text-teal-400 hover:text-teal-300 underline"
-                  >
-                    {expandedZones.has(zone.id) ? 'Collapse' : 'Expand'}
-                  </button>
-                </div>
-                
-                {expandedZones.has(zone.id) ? (
-                  /* Expanded View - Show All Outputs */
-                  <div className="space-y-3">
-                    {zone.outputs.map(output => (
-                      <div key={output.id} className="bg-slate-900 rounded-lg p-3 border border-slate-700">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-slate-300">{output.name}</span>
-                          <span className="text-sm font-medium text-teal-400">{output.volume}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={output.volume}
-                          onChange={(e) => handleOutputVolumeChange(zone.id, output.id, parseInt(e.target.value))}
-                          disabled={zone.isMuted}
-                          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                      </div>
+              bartenderMode ? (
+                /* BARTENDER MODE: Simplified Single Master Slider */
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">
+                      Master Volume
+                    </label>
+                    <span className="text-sm font-medium text-teal-400">
+                      {Math.round(zone.outputs.reduce((sum, output) => sum + output.volume, 0) / zone.outputs.length)}%
+                    </span>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(zone.outputs.reduce((sum, output) => sum + output.volume, 0) / zone.outputs.length)}
+                      onChange={(e) => handleMasterVolumeChange(zone.id, parseInt(e.target.value))}
+                      disabled={zone.isMuted}
+                      className="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <div className="flex justify-between text-xs text-slate-500 mt-2">
+                      <span>0%</span>
+                      <span>50%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+                  {/* Show output levels in bartender mode for reference only */}
+                  <div className="mt-2 text-xs text-slate-500 flex items-center gap-2">
+                    <span>Output Levels:</span>
+                    {zone.outputs.map((output, idx) => (
+                      <span key={output.id}>
+                        {output.name.replace(/Amp Out \d+ - /, '')}: {output.volume}%
+                        {idx < zone.outputs.length - 1 && ' •'}
+                      </span>
                     ))}
                   </div>
-                ) : (
-                  /* Collapsed View - Show Summary */
-                  <div className="bg-slate-900 rounded-lg p-3 border border-slate-700">
-                    <div className="space-y-1">
+                </div>
+              ) : (
+                /* ADMIN MODE: Detailed Individual Output Controls */
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">
+                      Output Controls ({zone.outputs.length} outputs)
+                    </label>
+                    <button
+                      onClick={() => toggleZoneExpanded(zone.id)}
+                      className="text-xs text-teal-400 hover:text-teal-300 underline"
+                    >
+                      {expandedZones.has(zone.id) ? 'Collapse' : 'Expand'}
+                    </button>
+                  </div>
+                  
+                  {expandedZones.has(zone.id) ? (
+                    /* Expanded View - Show All Outputs */
+                    <div className="space-y-3">
                       {zone.outputs.map(output => (
-                        <div key={output.id} className="flex items-center justify-between text-sm">
-                          <span className="text-slate-400">{output.name}:</span>
-                          <span className="text-teal-400 font-medium">{output.volume}%</span>
+                        <div key={output.id} className="bg-slate-900 rounded-lg p-3 border border-slate-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-slate-300">{output.name}</span>
+                            <span className="text-sm font-medium text-teal-400">{output.volume}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={output.volume}
+                            onChange={(e) => handleOutputVolumeChange(zone.id, output.id, parseInt(e.target.value))}
+                            disabled={zone.isMuted}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    /* Collapsed View - Show Summary */
+                    <div className="bg-slate-900 rounded-lg p-3 border border-slate-700">
+                      <div className="space-y-1">
+                        {zone.outputs.map(output => (
+                          <div key={output.id} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-400">{output.name}:</span>
+                            <span className="text-teal-400 font-medium">{output.volume}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               /* Single Output Zone (backward compatibility) */
               <div>

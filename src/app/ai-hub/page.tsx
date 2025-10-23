@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, GraduationCap } from 'lucide-react'
+import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, GraduationCap, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
@@ -297,7 +297,7 @@ export default function AIHubPage() {
         </div>
 
         <Tabs defaultValue="assistant" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-6 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="assistant" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <MessageSquare className="w-4 h-4 mr-2" />
               AI Assistant
@@ -309,6 +309,10 @@ export default function AIHubPage() {
             <TabsTrigger value="devices" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Cpu className="w-4 h-4 mr-2" />
               Enhanced Devices
+            </TabsTrigger>
+            <TabsTrigger value="n8n" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Workflow className="w-4 h-4 mr-2" />
+              n8n
             </TabsTrigger>
             <TabsTrigger value="configuration" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <SettingsIcon className="w-4 h-4 mr-2" />
@@ -680,6 +684,97 @@ export default function AIHubPage() {
                   <div className="bg-sportsBar-800/5 rounded-lg p-4">
                     <h4 className="font-medium text-purple-300 mb-2">⚡ LM Studio</h4>
                     <p>Download from <a href="https://lmstudio.ai" className="text-blue-400 hover:underline">lmstudio.ai</a> and enable local server</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* n8n Workflow Automation Tab */}
+          <TabsContent value="n8n" className="space-y-6">
+            <div className="card p-6">
+              <div className="mb-6">
+                <div className="flex items-center space-x-3 mb-2">
+                  <Workflow className="w-6 h-6 text-purple-400" />
+                  <h2 className="text-xl font-bold text-slate-100">n8n Workflow Automation</h2>
+                </div>
+                <p className="text-sm text-slate-300">Automate your sports bar operations with n8n workflows</p>
+              </div>
+
+              <div className="space-y-6">
+                {/* n8n Embedded Interface */}
+                <div className="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
+                  <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-b border-purple-500/30 p-4">
+                    <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-purple-400" />
+                      n8n Workflow Editor
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Create and manage automation workflows for your sports bar
+                    </p>
+                  </div>
+                  
+                  <div className="relative" style={{ height: '600px' }}>
+                    <iframe
+                      src="http://24.123.87.42:5678"
+                      className="w-full h-full border-0"
+                      title="n8n Workflow Automation"
+                      allow="clipboard-read; clipboard-write"
+                    />
+                  </div>
+                </div>
+
+                {/* n8n Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                    <h4 className="font-medium text-purple-300 mb-2 flex items-center gap-2">
+                      <Workflow className="w-4 h-4" />
+                      Workflow Capabilities
+                    </h4>
+                    <ul className="text-sm text-slate-300 space-y-2">
+                      <li>• Automate audio/video routing based on schedules</li>
+                      <li>• Integrate with external APIs and services</li>
+                      <li>• Create custom triggers and actions</li>
+                      <li>• Monitor system health and send alerts</li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                    <h4 className="font-medium text-blue-300 mb-2 flex items-center gap-2">
+                      <Database className="w-4 h-4" />
+                      Integration Points
+                    </h4>
+                    <ul className="text-sm text-slate-300 space-y-2">
+                      <li>• Atlas Audio System</li>
+                      <li>• Matrix Video Switching</li>
+                      <li>• Sports Data APIs</li>
+                      <li>• Webhook endpoints at /api/n8n/webhook</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Quick Links */}
+                <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-lg p-4">
+                  <h4 className="font-medium text-slate-200 mb-3">Quick Access</h4>
+                  <div className="flex flex-wrap gap-3">
+                    <a
+                      href="http://24.123.87.42:5678"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                    >
+                      <Workflow className="w-4 h-4" />
+                      Open n8n in New Tab
+                    </a>
+                    <a
+                      href="https://docs.n8n.io"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm transition-colors flex items-center gap-2"
+                    >
+                      <FileCode className="w-4 h-4" />
+                      n8n Documentation
+                    </a>
                   </div>
                 </div>
               </div>
