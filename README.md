@@ -1,3 +1,5 @@
+[![CI/CD Pipeline](https://github.com/dfultonthebar/Sports-Bar-TV-Controller/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/dfultonthebar/Sports-Bar-TV-Controller/actions/workflows/ci-cd.yml)
+
 
 # 🏈 Sports Bar AI Assistant
 
