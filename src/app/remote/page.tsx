@@ -145,6 +145,9 @@ export default function BartenderRemotePage() {
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   
+  // Atlas processor configuration
+  const [atlasProcessorIp, setAtlasProcessorIp] = useState<string>('192.168.5.101')
+  
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
 
@@ -894,7 +897,9 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <BartenderRemoteAudioPanel />
+            <BartenderRemoteAudioPanel 
+              processorIp={atlasProcessorIp}
+            />
           </div>
         )}
 
