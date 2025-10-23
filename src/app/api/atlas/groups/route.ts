@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AtlasTCPClient } from '@/lib/atlasClient'
 
-import { NextRequest, NextResponse } from 'next/server'
-import { AtlasTCPClient } from '@/lib/atlasClient'
-
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -93,6 +90,30 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { processorIp, groupIndex, action, value } = body
+
+    if (!processorIp || groupIndex === undefined) {
+      return NextResponse.json(
+        { success: false, error: 'Processor IP and group index are required' },
+        { status: 400 }
+      )
+    }
+
+    const client = new AtlasTCPClient({
+      ipAddress: processorIp,
+      tcpPort: 5321,
+      timeout: 5000
+    })
+
+    await client.connect()
+
+    let result
+    switch (action) {
+      case 'setActive':
         result = await client.sendCommand({
           method: 'set',
           param: `GroupActive_${groupIndex}`,
