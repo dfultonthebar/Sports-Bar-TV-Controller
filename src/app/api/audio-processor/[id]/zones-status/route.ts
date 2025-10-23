@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { queryAtlasHardware } from '@/lib/atlas-hardware-query'
+import { queryAtlasHardwareConfiguration as queryAtlasHardware } from '@/lib/atlas-hardware-query'
 
 export async function GET(
   request: NextRequest,
