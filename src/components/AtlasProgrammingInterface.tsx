@@ -479,6 +479,40 @@ export default function AtlasProgrammingInterface() {
     }
   }
 
+  const queryHardware = async () => {
+    if (!selectedProcessor) return
+
+    try {
+      showMessage('Querying Atlas hardware for actual zone and source names...', 'success')
+      
+      const response = await fetch(`/api/atlas/query-hardware`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: selectedProcessor.id
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        
+        if (result.success) {
+          // Reload configuration to get the queried hardware data
+          await fetchConfiguration(selectedProcessor.id)
+          showMessage(`✓ Hardware queried successfully! Found ${result.configuration.sources} sources and ${result.configuration.zones} zones`, 'success')
+        } else {
+          showMessage(result.error || 'Failed to query hardware', 'error')
+        }
+      } else {
+        const error = await response.json()
+        showMessage(error.error || 'Failed to query hardware', 'error')
+      }
+    } catch (error) {
+      console.error('Error querying hardware:', error)
+      showMessage('Failed to query hardware configuration', 'error')
+    }
+  }
+
   const createScene = () => {
     const newScene: SceneConfig = {
       id: scenes.length + 1,
@@ -1170,6 +1204,16 @@ export default function AtlasProgrammingInterface() {
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={queryHardware}
+                      variant="outline"
+                      size="sm"
+                      className="border-green-800/40 text-green-300 hover:bg-green-900/20"
+                      title="Query the Atlas processor for actual zone and source names"
+                    >
+                      <Router className="h-4 w-4 mr-2" />
+                      Query Hardware
+                    </Button>
                     <Button
                       onClick={downloadConfiguration}
                       variant="outline"

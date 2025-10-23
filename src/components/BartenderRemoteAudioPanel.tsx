@@ -27,15 +27,8 @@ export default function BartenderRemoteAudioPanel({
         Audio Control
       </h3>
 
-      <Tabs defaultValue="zones" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-slate-900/50">
-          <TabsTrigger 
-            value="zones"
-            className="text-xs data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
-          >
-            <Volume2 className="w-3 h-3 mr-1" />
-            Zones
-          </TabsTrigger>
+      <Tabs defaultValue="groups" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 bg-slate-900/50">
           <TabsTrigger 
             value="groups"
             className="text-xs data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
@@ -58,16 +51,6 @@ export default function BartenderRemoteAudioPanel({
             Output Meters
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="zones" className="mt-4">
-          {showZoneControls && zoneControlsComponent ? (
-            zoneControlsComponent
-          ) : (
-            <div className="text-center py-8 text-slate-400">
-              Zone controls not available
-            </div>
-          )}
-        </TabsContent>
 
         <TabsContent value="groups" className="mt-4">
           <AtlasGroupsControl 
