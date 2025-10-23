@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         update: {
           name: config.name,
           ipAddress: config.ipAddress,
-          tcpPort: config.tcpPort || 23,
+          tcpPort: config.tcpPort || 5000,
           udpPort: config.udpPort || 4000,
           protocol: config.protocol || 'TCP',
           isActive: config.isActive !== false, // Default to true
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
           id: configId,
           name: config.name,
           ipAddress: config.ipAddress,
-          tcpPort: config.tcpPort || 23,
+          tcpPort: config.tcpPort || 5000,
           udpPort: config.udpPort || 4000,
           protocol: config.protocol || 'TCP',
           isActive: config.isActive !== false, // Default to true

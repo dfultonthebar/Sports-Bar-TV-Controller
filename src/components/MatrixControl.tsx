@@ -48,8 +48,8 @@ export default function MatrixControl() {
   const [currentConfig, setCurrentConfig] = useState<MatrixConfig>({
     name: 'Wolf Pack Matrix',
     ipAddress: '',
-    port: 23,
-    tcpPort: 23,
+    port: 5000,
+    tcpPort: 5000,
     udpPort: 4000,
     protocol: 'TCP',
     isActive: true,
@@ -294,11 +294,11 @@ export default function MatrixControl() {
               <label className="block text-sm font-medium mb-2 text-slate-200">TCP Port</label>
               <input
                 type="number"
-                value={currentConfig.tcpPort || 23}
+                value={currentConfig.tcpPort || 5000}
                 onChange={(e) => setCurrentConfig({ ...currentConfig, tcpPort: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
               />
-              <p className="text-xs text-slate-400 mt-1">Default: 23 (Telnet/Wolfpack standard)</p>
+              <p className="text-xs text-slate-400 mt-1">Default: 5000 (Wolfpack FM36S standard)</p>
             </div>
           )}
 
