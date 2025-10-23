@@ -67,7 +67,7 @@ export async function GET(
       processor.password || undefined  // HTTP basic auth password
     )
 
-    // Format the response with zones including their current sources
+    // Format the response with zones including their current sources and outputs
     const zonesWithStatus = hardwareConfig.zones.map(zone => ({
       id: `zone_${zone.index}`,
       zoneNumber: zone.index + 1, // Convert to 1-based for UI display
@@ -79,7 +79,24 @@ export async function GET(
         : 'Not Set',
       volume: zone.volume || 50,
       isMuted: zone.muted || false,
-      isActive: true
+      isActive: true,
+      outputs: zone.outputs?.map(output => ({
+        id: `output_${zone.index}_${output.index}`,
+        outputNumber: output.index + 1, // Convert to 1-based for UI display
+        atlasIndex: output.index, // Keep 0-based for Atlas protocol
+        name: output.name,
+        type: output.type,
+        volume: output.volume || 50,
+        parameterName: output.parameterName
+      })) || [{
+        id: `output_${zone.index}_0`,
+        outputNumber: 1,
+        atlasIndex: 0,
+        name: 'Main',
+        type: 'mono',
+        volume: zone.volume || 50,
+        parameterName: `ZoneGain_${zone.index}`
+      }]
     }))
 
     // Format sources for dropdown selection

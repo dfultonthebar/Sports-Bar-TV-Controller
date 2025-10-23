@@ -22,13 +22,22 @@ export interface AtlasHardwareSource {
   parameterName: string // e.g., "SourceName_0"
 }
 
+export interface AtlasZoneOutput {
+  index: number // Output index within the zone (0-based)
+  name: string // e.g., "Main", "Sub", "Left", "Right"
+  type: string // e.g., "main", "sub", "left", "right", "mono"
+  volume?: number // 0-100 percentage
+  parameterName?: string // e.g., "ZoneGain_0" for backward compatibility, or "AmpOutGain_0_0" for new format
+}
+
 export interface AtlasHardwareZone {
   index: number
   name: string
   parameterName: string // e.g., "ZoneName_0"
   currentSource?: number
-  volume?: number // 0-100 percentage
+  volume?: number // 0-100 percentage (for backward compatibility - represents main output or all outputs)
   muted?: boolean
+  outputs?: AtlasZoneOutput[] // Array of amplifier outputs for this zone (empty or single item for simple zones)
 }
 
 export interface AtlasHardwareConfig {
@@ -128,13 +137,17 @@ export async function queryAtlasHardwareConfiguration(
               }
             }
 
+            // Query zone outputs (for multi-output zones like Mono+Sub, Stereo, etc.)
+            const outputs = await queryZoneOutputs(client, zone.index, zone.name)
+
             zones.push({
               index: zone.index,
               name: zone.name,
               parameterName: zone.nameParam || `ZoneName_${zone.index}`,
               currentSource,
               volume,
-              muted
+              muted,
+              outputs
             })
             
             await delay(50)
@@ -146,7 +159,14 @@ export async function queryAtlasHardwareConfiguration(
               parameterName: zone.nameParam || `ZoneName_${zone.index}`,
               currentSource: -1,
               volume: 50,
-              muted: false
+              muted: false,
+              outputs: [{
+                index: 0,
+                name: 'Main',
+                type: 'mono',
+                volume: 50,
+                parameterName: `ZoneGain_${zone.index}`
+              }]
             })
           }
         }
@@ -186,7 +206,14 @@ export async function queryAtlasHardwareConfiguration(
           parameterName: zone.nameParam || `ZoneName_${zone.index}`,
           currentSource: -1,
           volume: 50,
-          muted: false
+          muted: false,
+          outputs: [{
+            index: 0,
+            name: 'Main',
+            type: 'mono',
+            volume: 50,
+            parameterName: `ZoneGain_${zone.index}`
+          }]
         }))
 
         return {
@@ -336,16 +363,20 @@ export async function queryAtlasHardwareConfiguration(
           }
         }
 
+        // Query zone outputs (for multi-output zones like Mono+Sub, Stereo, etc.)
+        const outputs = await queryZoneOutputs(client, i, zoneName)
+        
         zones.push({
           index: i,
           name: zoneName,
           parameterName: paramName,
           currentSource,
           volume,
-          muted
+          muted,
+          outputs
         })
 
-        console.log(`[Atlas Query] Zone ${i}: ${zoneName} (Source: ${currentSource}, Volume: ${volume}%, Muted: ${muted})`)
+        console.log(`[Atlas Query] Zone ${i}: ${zoneName} (Source: ${currentSource}, Volume: ${volume}%, Muted: ${muted}, Outputs: ${outputs.length})`)
       } catch (error) {
         console.error(`[Atlas Query] Error querying zone ${i}:`, error)
         // Add a placeholder zone
@@ -355,7 +386,14 @@ export async function queryAtlasHardwareConfiguration(
           parameterName: `ZoneName_${i}`,
           currentSource: -1,
           volume: 50,
-          muted: false
+          muted: false,
+          outputs: [{
+            index: 0,
+            name: 'Main',
+            type: 'mono',
+            volume: 50,
+            parameterName: `ZoneGain_${i}`
+          }]
         })
       }
       
@@ -419,6 +457,169 @@ function getMaxZonesForModel(model: string): number {
   }
   
   return 5 // Default based on actual hardware
+}
+
+/**
+ * Query zone outputs for a specific zone
+ * 
+ * This function attempts to discover if a zone has multiple amplifier outputs
+ * (e.g., Mono+Sub, Stereo, etc.) and retrieves their individual gain settings.
+ * 
+ * Strategy:
+ * 1. Try to get zone output configuration (ZoneOutputType, ZoneOutputCount, etc.)
+ * 2. Fall back to probing common parameter patterns
+ * 3. If no multiple outputs found, return single output using ZoneGain
+ * 
+ * @param client - Connected Atlas TCP client
+ * @param zoneIndex - Zone index (0-based)
+ * @param zoneName - Zone name for labeling
+ */
+async function queryZoneOutputs(
+  client: AtlasTCPClient,
+  zoneIndex: number,
+  zoneName: string
+): Promise<AtlasZoneOutput[]> {
+  const outputs: AtlasZoneOutput[] = []
+  
+  try {
+    // STRATEGY 1: Try to get zone output configuration
+    // Common parameters that might exist: ZoneOutputCount, ZoneOutputType, ZoneChannels, etc.
+    const outputCountParams = [
+      `ZoneOutputCount_${zoneIndex}`,
+      `ZoneChannels_${zoneIndex}`,
+      `ZoneAmpCount_${zoneIndex}`,
+      `NumOutputs_${zoneIndex}`
+    ]
+    
+    let outputCount = 1 // Default to single output
+    
+    for (const param of outputCountParams) {
+      try {
+        const response = await client.getParameter(param, 'val')
+        if (response.success && response.data) {
+          const count = extractValueFromResponse(response.data, 'val')
+          if (count && count > 0) {
+            outputCount = count
+            console.log(`[Atlas Query] Found ${outputCount} outputs for zone ${zoneIndex} via ${param}`)
+            break
+          }
+        }
+      } catch (error) {
+        // Parameter doesn't exist, try next
+        continue
+      }
+    }
+    
+    // STRATEGY 2: Query individual output gains
+    if (outputCount > 1) {
+      // Try multiple output parameter patterns
+      const paramPatterns = [
+        (zIdx: number, outIdx: number) => `ZoneOutput${outIdx + 1}Gain_${zIdx}`,
+        (zIdx: number, outIdx: number) => `AmpOutGain_${zIdx}_${outIdx}`,
+        (zIdx: number, outIdx: number) => `ZoneAmp${outIdx}Gain_${zIdx}`,
+        (zIdx: number, outIdx: number) => `Output${outIdx + 1}Gain_${zIdx}`
+      ]
+      
+      for (let outIdx = 0; outIdx < outputCount; outIdx++) {
+        let gainValue = 50 // Default
+        let gainParam = `ZoneGain_${zoneIndex}` // Fallback
+        
+        // Try each parameter pattern
+        for (const pattern of paramPatterns) {
+          const paramName = pattern(zoneIndex, outIdx)
+          try {
+            const response = await client.getParameter(paramName, 'pct')
+            if (response.success && response.data) {
+              const value = extractValueFromResponse(response.data, 'pct')
+              if (value !== null && value !== undefined) {
+                gainValue = value
+                gainParam = paramName
+                console.log(`[Atlas Query] Found output ${outIdx} gain for zone ${zoneIndex}: ${gainValue}% via ${paramName}`)
+                break
+              }
+            }
+          } catch (error) {
+            continue
+          }
+        }
+        
+        // Determine output name and type based on index and count
+        let outName = `Output ${outIdx + 1}`
+        let outType = 'output'
+        
+        if (outputCount === 2) {
+          if (outIdx === 0) {
+            outName = 'Main'
+            outType = 'main'
+          } else {
+            outName = 'Sub'
+            outType = 'sub'
+          }
+        } else if (outputCount === 2 && zoneName.toLowerCase().includes('stereo')) {
+          outName = outIdx === 0 ? 'Left' : 'Right'
+          outType = outIdx === 0 ? 'left' : 'right'
+        }
+        
+        outputs.push({
+          index: outIdx,
+          name: outName,
+          type: outType,
+          volume: gainValue,
+          parameterName: gainParam
+        })
+        
+        await delay(50) // Small delay between queries
+      }
+    }
+    
+    // STRATEGY 3: Fallback to single output using ZoneGain
+    if (outputs.length === 0) {
+      const response = await client.getParameter(`ZoneGain_${zoneIndex}`, 'pct')
+      let gainValue = 50
+      
+      if (response.success && response.data) {
+        const value = extractValueFromResponse(response.data, 'pct')
+        if (value !== null && value !== undefined) {
+          gainValue = value
+        }
+      }
+      
+      outputs.push({
+        index: 0,
+        name: 'Main',
+        type: 'mono',
+        volume: gainValue,
+        parameterName: `ZoneGain_${zoneIndex}`
+      })
+    }
+    
+    return outputs
+  } catch (error) {
+    console.error(`[Atlas Query] Error querying zone outputs for zone ${zoneIndex}:`, error)
+    // Return single output as fallback
+    return [{
+      index: 0,
+      name: 'Main',
+      type: 'mono',
+      volume: 50,
+      parameterName: `ZoneGain_${zoneIndex}`
+    }]
+  }
+}
+
+/**
+ * Extract value from Atlas response data
+ * Handles different response formats from Atlas processor
+ */
+function extractValueFromResponse(data: any, format: 'val' | 'pct' | 'str'): any {
+  if (data.method === 'getResp' && data.params) {
+    return data.params[format]
+  } else if (data.value !== undefined) {
+    return data.value
+  } else if (data.result && data.result[format] !== undefined) {
+    return data.result[format]
+  }
+  return null
 }
 
 /**

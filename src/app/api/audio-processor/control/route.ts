@@ -4,12 +4,14 @@ import { prisma } from '@/lib/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 
 interface ControlCommand {
-  action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine'
+  action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
   zone?: number
   value?: string | number | boolean
   zones?: number[]  // for room combine
   sceneId?: number
   messageId?: number
+  outputIndex?: number  // for output-volume action (0-based)
+  parameterName?: string  // for output-volume action (e.g., "ZoneOutput1Gain_0")
 }
 
 export async function POST(request: NextRequest) {
@@ -53,6 +55,9 @@ export async function POST(request: NextRequest) {
     switch (command.action) {
       case 'volume':
         result = await setZoneVolume(processor, command.zone!, command.value as number)
+        break
+      case 'output-volume':
+        result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
         break
       case 'mute':
         result = await setZoneMute(processor, command.zone!, command.value as boolean)
@@ -132,6 +137,71 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
   })
 
   return { zone, volume, timestamp: new Date(), atlasResponse: result }
+}
+
+/**
+ * Set zone output volume (for multi-output zones like Mono+Sub, Stereo, etc.)
+ * @param processor Audio processor details
+ * @param zone Zone number (1-based from UI)
+ * @param outputIndex Output index (0-based)
+ * @param volume Volume percentage (0-100)
+ * @param parameterName Optional Atlas parameter name (e.g., "ZoneOutput1Gain_0")
+ */
+async function setZoneOutputVolume(processor: any, zone: number, outputIndex: number, volume: number, parameterName?: string): Promise<any> {
+  console.log(`[Control API] Setting zone ${zone} output ${outputIndex} volume to ${volume}% on ${processor.ipAddress}`)
+  
+  // Zone numbers are 1-based in UI, 0-based in Atlas protocol
+  const zoneIndex = zone - 1
+  
+  // Determine the Atlas parameter name for this output
+  // If parameterName is provided, use it; otherwise, try common patterns
+  let atlasParamName = parameterName
+  
+  if (!atlasParamName) {
+    // Try common parameter naming patterns
+    const paramPatterns = [
+      `ZoneOutput${outputIndex + 1}Gain_${zoneIndex}`,
+      `AmpOutGain_${zoneIndex}_${outputIndex}`,
+      `ZoneAmp${outputIndex}Gain_${zoneIndex}`,
+      `Output${outputIndex + 1}Gain_${zoneIndex}`
+    ]
+    
+    // For now, use the first pattern as default
+    // In a real implementation, we might want to probe which pattern works
+    atlasParamName = paramPatterns[0]
+  }
+  
+  console.log(`[Control API] Using parameter: ${atlasParamName}`)
+  
+  // Send command to Atlas processor
+  const result = await executeAtlasCommand(
+    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
+    async (client) => {
+      // Use setParameter method to set the output gain
+      // Atlas expects volume in percentage (0-100)
+      const response = await client.sendCommand({
+        method: 'set',
+        param: atlasParamName!,
+        value: volume,
+        format: 'pct'
+      })
+      return response
+    }
+  )
+
+  if (!result.success) {
+    console.error('[Control API] Failed to set output volume:', result.error)
+    throw new Error(result.error || 'Failed to set output volume')
+  }
+  
+  return { 
+    zone, 
+    outputIndex, 
+    volume, 
+    parameterName: atlasParamName,
+    timestamp: new Date(), 
+    atlasResponse: result 
+  }
 }
 
 /**
