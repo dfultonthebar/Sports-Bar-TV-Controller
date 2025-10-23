@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { db } from '@/db'
+import { matrixConfigurations, matrixInputs, matrixOutputs, testLogs } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
 import * as net from 'net'
 
 // TCP command with timeout
@@ -69,28 +71,23 @@ export async function POST(request: NextRequest) {
   try {
     console.log('📂 [WOLFPACK] Loading configuration from database...')
     
-    // Get the active matrix configuration with inputs and outputs
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        },
-        outputs: {
-          where: { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
-    })
+    // Get the active matrix configuration
+    const matrixConfigResults = await db
+      .select()
+      .from(matrixConfigurations)
+      .where(eq(matrixConfigurations.isActive, true))
+      .limit(1)
+    
+    const matrixConfig = matrixConfigResults[0]
 
     if (!matrixConfig) {
       console.error('❌ [WOLFPACK] No active matrix configuration found')
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       const duration = Date.now() - startTime
-      const errorLog = await prisma.testLog.create({
-        data: {
+      const errorLogResults = await db
+        .insert(testLogs)
+        .values({
           testType: 'wolfpack_switching',
           testName: 'Wolf Pack Comprehensive Switching Test',
           status: 'failed',
@@ -101,8 +98,10 @@ export async function POST(request: NextRequest) {
           inputChannel: null,
           outputChannel: null,
           metadata: null
-        }
-      })
+        })
+        .returning()
+      
+      const errorLog = errorLogResults[0]
 
       return NextResponse.json({ 
         success: false,
@@ -111,15 +110,34 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // Get active inputs and outputs for this configuration
+    const inputs = await db
+      .select()
+      .from(matrixInputs)
+      .where(and(
+        eq(matrixInputs.configId, matrixConfig.id),
+        eq(matrixInputs.isActive, true)
+      ))
+      .orderBy(matrixInputs.channelNumber)
+    
+    const outputs = await db
+      .select()
+      .from(matrixOutputs)
+      .where(and(
+        eq(matrixOutputs.configId, matrixConfig.id),
+        eq(matrixOutputs.isActive, true)
+      ))
+      .orderBy(matrixOutputs.channelNumber)
+
     console.log('✅ [WOLFPACK] Configuration loaded')
     console.log('Configuration ID:', matrixConfig.id)
     console.log('Name:', matrixConfig.name)
     console.log('IP Address:', matrixConfig.ipAddress)
     console.log('TCP Port:', matrixConfig.tcpPort)
     console.log('Protocol:', matrixConfig.protocol)
-    console.log('Active Inputs:', matrixConfig.inputs.length)
-    console.log('Active Outputs:', matrixConfig.outputs.length)
-    console.log('Total Tests:', matrixConfig.inputs.length * matrixConfig.outputs.length)
+    console.log('Active Inputs:', inputs.length)
+    console.log('Active Outputs:', outputs.length)
+    console.log('Total Tests:', inputs.length * outputs.length)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const ipAddress = matrixConfig.ipAddress
@@ -128,8 +146,9 @@ export async function POST(request: NextRequest) {
     console.log('💾 [WOLFPACK] Creating test start log...')
     
     // Log test start
-    const testStartLog = await prisma.testLog.create({
-      data: {
+    const testStartLogResults = await db
+      .insert(testLogs)
+      .values({
         testType: 'wolfpack_switching',
         testName: 'Wolf Pack Comprehensive Switching Test',
         status: 'running',
@@ -143,13 +162,15 @@ export async function POST(request: NextRequest) {
           ipAddress,
           port,
           protocol: matrixConfig.protocol,
-          totalInputs: matrixConfig.inputs.length,
-          totalOutputs: matrixConfig.outputs.length,
-          totalTests: matrixConfig.inputs.length * matrixConfig.outputs.length,
+          totalInputs: inputs.length,
+          totalOutputs: outputs.length,
+          totalTests: inputs.length * outputs.length,
           startTime: new Date().toISOString()
         })
-      }
-    })
+      })
+      .returning()
+    
+    const testStartLog = testStartLogResults[0]
     
     console.log('✅ [WOLFPACK] Test start log created')
     console.log('Test Log ID:', testStartLog.id)
@@ -164,10 +185,10 @@ export async function POST(request: NextRequest) {
     let passedTests = 0
     let failedTests = 0
     let testNumber = 0
-    const totalTests = matrixConfig.inputs.length * matrixConfig.outputs.length
+    const totalTests = inputs.length * outputs.length
 
-    for (const input of matrixConfig.inputs) {
-      for (const output of matrixConfig.outputs) {
+    for (const input of inputs) {
+      for (const output of outputs) {
         testNumber++
         const testStart = Date.now()
         
@@ -189,8 +210,9 @@ export async function POST(request: NextRequest) {
             passedTests++
             
             // Log individual successful test
-            const testLog = await prisma.testLog.create({
-              data: {
+            const testLogResults = await db
+              .insert(testLogs)
+              .values({
                 testType: 'wolfpack_switching',
                 testName: `Switch: Input ${input.channelNumber} → Output ${output.channelNumber}`,
                 status: 'success',
@@ -208,8 +230,10 @@ export async function POST(request: NextRequest) {
                   testNumber,
                   totalTests
                 })
-              }
-            })
+              })
+              .returning()
+            
+            const testLog = testLogResults[0]
 
             testResults.push({
               input: input.channelNumber,
@@ -229,8 +253,9 @@ export async function POST(request: NextRequest) {
             failedTests++
             
             // Log individual failed test
-            const testLog = await prisma.testLog.create({
-              data: {
+            const testLogResults = await db
+              .insert(testLogs)
+              .values({
                 testType: 'wolfpack_switching',
                 testName: `Switch: Input ${input.channelNumber} → Output ${output.channelNumber}`,
                 status: 'failed',
@@ -248,8 +273,10 @@ export async function POST(request: NextRequest) {
                   testNumber,
                   totalTests
                 })
-              }
-            })
+              })
+              .returning()
+            
+            const testLog = testLogResults[0]
 
             testResults.push({
               input: input.channelNumber,
@@ -276,8 +303,9 @@ export async function POST(request: NextRequest) {
           failedTests++
           
           // Log individual error test
-          const testLog = await prisma.testLog.create({
-            data: {
+          const testLogResults = await db
+            .insert(testLogs)
+            .values({
               testType: 'wolfpack_switching',
               testName: `Switch: Input ${input.channelNumber} → Output ${output.channelNumber}`,
               status: 'error',
@@ -296,8 +324,10 @@ export async function POST(request: NextRequest) {
                 totalTests,
                 error: errorMessage
               })
-            }
-          })
+            })
+            .returning()
+          
+          const testLog = testLogResults[0]
 
           testResults.push({
             input: input.channelNumber,
@@ -331,8 +361,9 @@ export async function POST(request: NextRequest) {
     console.log('💾 [WOLFPACK] Saving test completion log...')
     
     // Log test completion
-    const testCompleteLog = await prisma.testLog.create({
-      data: {
+    const testCompleteLogResults = await db
+      .insert(testLogs)
+      .values({
         testType: 'wolfpack_switching',
         testName: 'Wolf Pack Comprehensive Switching Test',
         status: failedTests === 0 ? 'success' : 'failed',
@@ -352,8 +383,10 @@ export async function POST(request: NextRequest) {
           successRate: `${successRate}%`,
           averageDuration: `${(totalDuration / totalTests).toFixed(0)}ms`
         })
-      }
-    })
+      })
+      .returning()
+    
+    const testCompleteLog = testCompleteLogResults[0]
 
     console.log('✅ [WOLFPACK] Test completion log saved')
     console.log('Test Log ID:', testCompleteLog.id)
@@ -384,8 +417,9 @@ export async function POST(request: NextRequest) {
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {
-      const errorLog = await prisma.testLog.create({
-        data: {
+      const errorLogResults = await db
+        .insert(testLogs)
+        .values({
           testType: 'wolfpack_switching',
           testName: 'Wolf Pack Comprehensive Switching Test',
           status: 'error',
@@ -400,8 +434,10 @@ export async function POST(request: NextRequest) {
             stack: error instanceof Error ? error.stack : undefined,
             timestamp: new Date().toISOString()
           })
-        }
-      })
+        })
+        .returning()
+      
+      const errorLog = errorLogResults[0]
 
       return NextResponse.json({
         success: false,
