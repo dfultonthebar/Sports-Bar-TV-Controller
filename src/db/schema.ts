@@ -93,7 +93,7 @@ export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   ipAddress: text('ipAddress').notNull(),
-  tcpPort: integer('tcpPort').notNull().default(23),
+  tcpPort: integer('tcpPort').notNull().default(5000),
   udpPort: integer('udpPort').notNull().default(4000),
   protocol: text('protocol').notNull().default('TCP'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
