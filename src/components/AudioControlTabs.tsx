@@ -5,6 +5,7 @@ import { Sliders, Volume2, Disc, Settings, Brain } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import AtlasProgrammingInterface from '@/components/AtlasProgrammingInterface'
 import AtlasAIMonitor from '@/components/AtlasAIMonitor'
+import AtlasOutputMeters from '@/components/AtlasOutputMeters'
 import AudioZoneControl from '@/components/AudioZoneControl'
 import SoundtrackControl from '@/components/SoundtrackControl'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
@@ -105,6 +106,15 @@ export default function AudioControlTabs() {
               
               <TabsContent value="configuration" className="mt-6">
                 <AtlasProgrammingInterface />
+                
+                {/* Atlas Output Meters */}
+                <div className="mt-6">
+                  <AtlasOutputMeters 
+                    processorId={activeProcessor?.id || "atlas-001"}
+                    autoRefresh={true}
+                    refreshInterval={1000}
+                  />
+                </div>
               </TabsContent>
               
               <TabsContent value="ai-monitor" className="mt-6">
