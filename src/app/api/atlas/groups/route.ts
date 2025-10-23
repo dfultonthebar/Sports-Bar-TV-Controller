@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.log(`[Atlas Groups API] Fetching groups from ${processorIp}:5321`)
+
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
       tcpPort: 5321,
@@ -20,24 +22,44 @@ export async function GET(request: NextRequest) {
     })
 
     await client.connect()
+    console.log(`[Atlas Groups API] Connected to Atlas processor`)
 
     // Get group information
     const groups: any[] = []
     
     for (let i = 0; i < 8; i++) {
       const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
-        client.sendCommand({ method: 'get', param: `GroupName_${i}`, format: 'str' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupActive_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupSource_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupGain_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupMute_${i}`, format: 'val' }).catch(() => null)
+        client.sendCommand({ method: 'get', param: `GroupName_${i}`, format: 'str' }).catch((err) => {
+          console.error(`[Atlas Groups API] Error fetching GroupName_${i}:`, err)
+          return null
+        }),
+        client.sendCommand({ method: 'get', param: `GroupActive_${i}`, format: 'val' }).catch((err) => {
+          console.error(`[Atlas Groups API] Error fetching GroupActive_${i}:`, err)
+          return null
+        }),
+        client.sendCommand({ method: 'get', param: `GroupSource_${i}`, format: 'val' }).catch((err) => {
+          console.error(`[Atlas Groups API] Error fetching GroupSource_${i}:`, err)
+          return null
+        }),
+        client.sendCommand({ method: 'get', param: `GroupGain_${i}`, format: 'val' }).catch((err) => {
+          console.error(`[Atlas Groups API] Error fetching GroupGain_${i}:`, err)
+          return null
+        }),
+        client.sendCommand({ method: 'get', param: `GroupMute_${i}`, format: 'val' }).catch((err) => {
+          console.error(`[Atlas Groups API] Error fetching GroupMute_${i}:`, err)
+          return null
+        })
       ])
 
-      const name = nameResult?.data?.str || `Group ${i + 1}`
-      const isActive = activeResult?.data?.val === 1
-      const source = sourceResult?.data?.val ?? -1
-      const gain = gainResult?.data?.val ?? -10
-      const muted = muteResult?.data?.val === 1
+      // Atlas returns responses in format: { result: [{ param: "GroupName_0", str: "Main Bar" }] }
+      // Extract values from the result array
+      const name = nameResult?.result?.[0]?.str || `Group ${i + 1}`
+      const isActive = activeResult?.result?.[0]?.val === 1
+      const source = sourceResult?.result?.[0]?.val ?? -1
+      const gain = gainResult?.result?.[0]?.val ?? -10
+      const muted = muteResult?.result?.[0]?.val === 1
+
+      console.log(`[Atlas Groups API] Group ${i}: name="${name}", active=${isActive}, source=${source}, gain=${gain}, muted=${muted}`)
 
       groups.push({
         index: i,
@@ -50,6 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     await client.disconnect()
+    console.log(`[Atlas Groups API] Successfully fetched ${groups.length} groups`)
 
     return NextResponse.json({
       success: true,
@@ -57,7 +80,7 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('Error fetching groups:', error)
+    console.error('[Atlas Groups API] Error fetching groups:', error)
     return NextResponse.json(
       { 
         success: false, 

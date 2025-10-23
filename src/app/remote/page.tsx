@@ -144,6 +144,7 @@ export default function BartenderRemotePage() {
   })
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
+  const [audioProcessor, setAudioProcessor] = useState<any>(null)
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
@@ -156,6 +157,7 @@ export default function BartenderRemotePage() {
     loadDirecTVDevices()
     loadFireTVDevices()
     loadTVLayout()
+    loadAudioProcessor()
     // Also fetch matrix data on initial load
     fetchMatrixData()
     
@@ -251,6 +253,22 @@ export default function BartenderRemotePage() {
   const loadInputs = async () => {
     // Matrix inputs are loaded via fetchMatrixData()
     // This function is kept for compatibility
+  }
+
+  const loadAudioProcessor = async () => {
+    try {
+      const response = await fetch('/api/audio-processor')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.processors && data.processors.length > 0) {
+          // Get the first active processor or just the first one
+          const processor = data.processors.find((p: any) => p.isActive) || data.processors[0]
+          setAudioProcessor(processor)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading audio processor:', error)
+    }
   }
 
   const loadTVLayout = async () => {
@@ -894,7 +912,18 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <BartenderRemoteAudioPanel />
+            {audioProcessor ? (
+              <BartenderRemoteAudioPanel 
+                processorIp={audioProcessor.ipAddress}
+                processorId={audioProcessor.id}
+              />
+            ) : (
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-8 text-center">
+                <Volume2 className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+                <h3 className="text-xl font-semibold text-slate-300 mb-2">No Audio Processor Configured</h3>
+                <p className="text-slate-400">Please configure an Atlas audio processor in the Audio Manager to use this feature.</p>
+              </div>
+            )}
           </div>
         )}
 
