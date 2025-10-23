@@ -37,6 +37,21 @@ const nextConfig = {
       config.externals = config.externals || [];
       config.externals.push('isolated-vm');
     }
+
+    // Fix React error #31: Ensure React and ReactDOM are properly deduplicated
+    // Only apply to client-side bundle to avoid breaking Next.js internal imports
+    if (!isServer) {
+      const path = require('path');
+      const reactPath = path.dirname(require.resolve('react/package.json'));
+      const reactDomPath = path.dirname(require.resolve('react-dom/package.json'));
+      
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'react': reactPath,
+        'react-dom': reactDomPath,
+      };
+    }
+
     return config;
   },
 };
