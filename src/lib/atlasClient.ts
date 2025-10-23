@@ -163,6 +163,12 @@ export class AtlasTCPClient {
           this.connected = true
           atlasLogger.connectionSuccess(this.config.ipAddress, this.config.tcpPort)
           
+          // CRITICAL FIX: Clear the connection timeout after successful connection
+          // The timeout was causing immediate disconnections after connecting
+          if (this.tcpSocket) {
+            this.tcpSocket.setTimeout(0)  // Disable timeout - we'll use keepalive instead
+          }
+          
           // Start keep-alive mechanism
           this.startKeepAlive()
           
