@@ -204,17 +204,20 @@ async function setZoneMute(processor: any, zone: number, muted: boolean): Promis
  * Set zone source
  * @param processor Audio processor details
  * @param zone Zone number (1-based from UI)
- * @param source Source identifier (could be "Source 1", "input_1", etc.)
+ * @param source Source identifier (could be "Source 1", "input_1", numeric index, etc.)
  */
-async function setZoneSource(processor: any, zone: number, source: string): Promise<any> {
+async function setZoneSource(processor: any, zone: number, source: string | number): Promise<any> {
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
   
-  // Parse source index from source string
-  // Source can be: "Source 1", "input_1", "matrix_audio_1", etc.
+  // Parse source index from source parameter
+  // Source can be: "Source 1", "input_1", "matrix_audio_1", or a direct numeric index (0-based)
   let sourceIndex = -1
   
-  if (source.startsWith('Source ')) {
+  // If source is already a number, use it directly (0-based Atlas index)
+  if (typeof source === 'number') {
+    sourceIndex = source
+  } else if (source.startsWith('Source ')) {
     // Format: "Source 1" -> index 0
     sourceIndex = parseInt(source.replace('Source ', '')) - 1
   } else if (source.startsWith('input_')) {
@@ -228,9 +231,9 @@ async function setZoneSource(processor: any, zone: number, source: string): Prom
     // For now, assuming matrix audio starts after physical inputs
     // You may need to adjust this based on actual configuration
     sourceIndex = matrixNum + 99  // Placeholder, needs actual mapping
-  } else if (!isNaN(parseInt(source))) {
-    // Direct number
-    sourceIndex = parseInt(source)
+  } else if (!isNaN(parseInt(source as string))) {
+    // Direct number as string
+    sourceIndex = parseInt(source as string)
   }
 
   atlasLogger.info('ZONE_SOURCE', `Setting zone ${zone} source to ${source} (index ${sourceIndex})`, {
