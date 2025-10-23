@@ -30,7 +30,7 @@ import SportsGuide from '@/components/SportsGuide'
 import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
-import AudioZoneControl from '@/components/AudioZoneControl'
+import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 
 interface MatrixInput {
   id: string
@@ -894,7 +894,7 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <AudioZoneControl bartenderMode={true} />
+            <BartenderRemoteAudioPanel />
           </div>
         )}
 
