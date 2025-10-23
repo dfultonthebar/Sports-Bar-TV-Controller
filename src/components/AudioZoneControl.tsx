@@ -207,7 +207,9 @@ export default function AudioZoneControl() {
 
   const handleSourceChange = async (zoneId: string, sourceId: string) => {
     const source = audioInputs.find(input => input.id === sourceId)
-    if (!source) return
+    const zone = zones.find(z => z.id === zoneId)
+    
+    if (!source || !zone || !activeProcessorId) return
 
     try {
       // For Matrix inputs, route video to Atlas
@@ -224,21 +226,59 @@ export default function AudioZoneControl() {
         if (!response.ok) {
           const error = await response.json()
           console.error('Failed to route Matrix to zone:', error)
+          alert(`Failed to route Matrix source: ${error.error || 'Unknown error'}`)
           return
         }
-      }
 
-      // Direct routing for Atlas inputs (audio only)
-      // This would use Atlas API to route the input to the zone
+        console.log(`Successfully routed Matrix ${source.matrixNumber} to zone ${zone.name}`)
+      }
       
-      // Update local state
-      setZones(zones.map(zone => 
-        zone.id === zoneId 
-          ? { ...zone, currentSource: source.name }
-          : zone
+      // Direct routing for Atlas inputs (audio only)
+      if (source.type === 'atlas' && source.atlasIndex !== undefined) {
+        // Optimistically update UI
+        setZones(zones.map(z => 
+          z.id === zoneId 
+            ? { ...z, currentSource: source.name }
+            : z
+        ))
+
+        const response = await fetch('/api/audio-processor/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processorId: activeProcessorId,
+            command: {
+              action: 'source',
+              zone: zone.atlasIndex! + 1, // Convert 0-based to 1-based for API
+              value: source.atlasIndex // Use the 0-based Atlas source index
+            }
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          console.error('Failed to set Atlas source:', error)
+          alert(`Failed to set audio source: ${error.error || 'Unknown error'}`)
+          // Revert optimistic update
+          await fetchDynamicAtlasConfiguration()
+          return
+        }
+
+        const result = await response.json()
+        console.log(`Successfully set zone ${zone.name} to Atlas source ${source.name}`, result)
+      }
+      
+      // Update local state for successful changes
+      setZones(zones.map(z => 
+        z.id === zoneId 
+          ? { ...z, currentSource: source.name }
+          : z
       ))
     } catch (error) {
       console.error('Error routing audio:', error)
+      alert(`Error routing audio: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      // Revert to actual hardware state
+      await fetchDynamicAtlasConfiguration()
     }
   }
 
