@@ -255,19 +255,19 @@ export default function AudioZoneControl() {
   }
 
   const handleVolumeChange = async (zoneId: string, newVolume: number) => {
-    // For backward compatibility - update zone-level volume
-    // This will be used for zones with single output
-    setZones(zones.map(zone => 
-      zone.id === zoneId 
-        ? { ...zone, volume: newVolume }
-        : zone
-    ))
-
-    // Send volume command to backend
+    // Find the zone to get its zone number
     const zone = zones.find(z => z.id === zoneId)
     if (!zone || !activeProcessorId) return
 
+    // Optimistically update UI
+    setZones(zones.map(z => 
+      z.id === zoneId 
+        ? { ...z, volume: newVolume }
+        : z
+    ))
+
     try {
+      // Send command to Atlas processor
       const response = await fetch('/api/audio-processor/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -282,13 +282,17 @@ export default function AudioZoneControl() {
       })
 
       if (!response.ok) {
-        console.error('Failed to set zone volume:', await response.json())
+        const error = await response.json()
+        console.error('Failed to set zone volume:', error)
+        // Revert optimistic update
+        await fetchDynamicAtlasConfiguration()
       }
     } catch (error) {
       console.error('Error setting zone volume:', error)
+      // Revert optimistic update
+      await fetchDynamicAtlasConfiguration()
     }
   }
-
   const handleOutputVolumeChange = async (zoneId: string, outputId: string, newVolume: number) => {
     // Update the output volume in state
     setZones(zones.map(zone => {
@@ -334,14 +338,47 @@ export default function AudioZoneControl() {
     }
   }
 
-  const toggleMute = (zoneId: string) => {
-    setZones(zones.map(zone => 
-      zone.id === zoneId 
-        ? { ...zone, isMuted: !zone.isMuted }
-        : zone
-    ))
-  }
+  const toggleMute = async (zoneId: string) => {
+    // Find the zone to get its zone number and current mute state
+    const zone = zones.find(z => z.id === zoneId)
+    if (!zone || !activeProcessorId) return
 
+    const newMutedState = !zone.isMuted
+
+    // Optimistically update UI
+    setZones(zones.map(z => 
+      z.id === zoneId 
+        ? { ...z, isMuted: newMutedState }
+        : z
+    ))
+
+    try {
+      // Send command to Atlas processor
+      const response = await fetch('/api/audio-processor/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          processorId: activeProcessorId,
+          command: {
+            action: 'mute',
+            zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
+            value: newMutedState
+          }
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('Failed to toggle mute:', error)
+        // Revert optimistic update
+        await fetchDynamicAtlasConfiguration()
+      }
+    } catch (error) {
+      console.error('Error toggling mute:', error)
+      // Revert optimistic update
+      await fetchDynamicAtlasConfiguration()
+    }
+  }
   const toggleZoneExpanded = (zoneId: string) => {
     setExpandedZones(prev => {
       const newSet = new Set(prev)

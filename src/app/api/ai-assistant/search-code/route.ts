@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { findMany, like, and, or, desc, eq } from '@/lib/db-helpers';
+import { schema } from '@/db';
 
 
 export async function POST(request: NextRequest) {
@@ -17,27 +18,37 @@ export async function POST(request: NextRequest) {
     const queryLower = query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter((term: string) => term.length > 2);
     
-    // Build where clause
-    const whereClause: any = {
-      isActive: true,
-      OR: queryTerms.map((term: string) => ({
-        OR: [
-          { content: { contains: term } },
-          { filePath: { contains: term } },
-          { fileName: { contains: term } }
-        ]
-      }))
-    };
+    // Build where conditions using Drizzle ORM
+    const conditions: any[] = [];
     
-    if (fileTypes && fileTypes.length > 0) {
-      whereClause.fileType = { in: fileTypes };
+    // Add isActive condition
+    conditions.push(eq(schema.indexedFiles.isActive, true));
+    
+    // Add search conditions for each term
+    for (const term of queryTerms) {
+      conditions.push(
+        or(
+          like(schema.indexedFiles.content, `%${term}%`),
+          like(schema.indexedFiles.filePath, `%${term}%`),
+          like(schema.indexedFiles.fileName, `%${term}%`)
+        )
+      );
     }
     
-    // Search for matching files
-    const files = await prisma.indexedFile.findMany({
-      where: whereClause,
-      take: maxResults,
-      orderBy: { lastIndexed: 'desc' }
+    // Add file type filter if provided
+    if (fileTypes && fileTypes.length > 0) {
+      // For multiple file types, we need to check each one
+      const fileTypeConditions = fileTypes.map((ft: string) => 
+        eq(schema.indexedFiles.fileType, ft)
+      );
+      conditions.push(or(...fileTypeConditions));
+    }
+    
+    // Search for matching files using Drizzle
+    const files = await findMany('indexedFiles', {
+      where: and(...conditions),
+      orderBy: desc(schema.indexedFiles.lastIndexed),
+      limit: maxResults
     });
     
     // Score and rank results

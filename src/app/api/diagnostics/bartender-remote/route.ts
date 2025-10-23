@@ -1,16 +1,18 @@
-
 import { NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { findMany, eq } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import fs from 'fs'
 import path from 'path'
 
-
 export async function GET() {
   try {
-    // Get Matrix inputs from database (the correct model name is MatrixInput)
-    const matrixInputs = await prisma.matrixInput.findMany({
-      where: { isActive: true },
-      orderBy: { channelNumber: 'asc' }
+    logger.api.request('GET', '/api/diagnostics/bartender-remote', {})
+    
+    // Get Matrix inputs from database using Drizzle ORM
+    const matrixInputs = await findMany('matrixInputs', {
+      where: eq(schema.matrixInputs.isActive, true),
+      orderBy: schema.matrixInputs.channelNumber
     })
 
     // Get IR devices from JSON file
@@ -21,7 +23,7 @@ export async function GET() {
       const parsedData = JSON.parse(irDevicesData)
       irDevices = parsedData.devices || []
     } catch (err) {
-      console.error('Failed to load IR devices from JSON:', err)
+      logger.error('Failed to load IR devices from JSON:', err)
     }
 
     // Simulate what BartenderRemoteControl.tsx filtering does
@@ -62,7 +64,7 @@ export async function GET() {
       { id: '6', channelNumber: 6, label: 'Gaming Console', inputType: 'Gaming', isActive: true },
     ]
 
-    return NextResponse.json({
+    const response = {
       status: 'success',
       data: {
         matrixInputsTotal: matrixInputs.length,
@@ -78,10 +80,13 @@ export async function GET() {
         fallbackUsed: customInputs.length === 0
       },
       message: `Found ${matrixInputs.length} Matrix inputs, ${irDevices.length} IR devices, ${customInputs.length > 0 ? customInputs.length : 'fallback'} will show in remote`
-    })
+    }
+
+    logger.api.response('GET', '/api/diagnostics/bartender-remote', 200, response)
+    return NextResponse.json(response)
 
   } catch (error) {
-    console.error('Error in bartender remote diagnostics:', error)
+    logger.api.error('GET', '/api/diagnostics/bartender-remote', error)
     return NextResponse.json({
       status: 'error',
       message: error instanceof Error ? error.message : 'Unknown error',

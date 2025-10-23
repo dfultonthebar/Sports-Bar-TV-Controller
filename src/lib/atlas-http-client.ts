@@ -176,6 +176,46 @@ export class AtlasHttpClient {
   }
 
   /**
+   * Helper function to extract string value from Atlas parameter response
+   * Atlas returns values in format: [{param: "SourceName_0", str: "Matrix 1"}]
+   */
+  private extractStringValue(value: any, defaultValue: string): string {
+    if (typeof value === 'string') {
+      return value
+    }
+    if (Array.isArray(value) && value.length > 0) {
+      const first = value[0]
+      if (typeof first === 'object' && first !== null) {
+        return first.str || first.val || defaultValue
+      }
+    }
+    if (typeof value === 'object' && value !== null) {
+      return value.str || value.val || defaultValue
+    }
+    return defaultValue
+  }
+
+  /**
+   * Helper function to extract numeric value from Atlas parameter response
+   * Atlas returns values in format: [{param: "ZoneGain_0", pct: 100}] or [{param: "ZoneSource_0", val: -1}]
+   */
+  private extractNumericValue(value: any, defaultValue: number): number {
+    if (typeof value === 'number') {
+      return value
+    }
+    if (Array.isArray(value) && value.length > 0) {
+      const first = value[0]
+      if (typeof first === 'object' && first !== null) {
+        return first.pct ?? first.val ?? defaultValue
+      }
+    }
+    if (typeof value === 'object' && value !== null) {
+      return value.pct ?? value.val ?? defaultValue
+    }
+    return defaultValue
+  }
+
+  /**
    * Parse JSON message table response
    */
   private parseJsonMessageTable(data: any): AtlasDiscoveredConfig {
@@ -189,7 +229,7 @@ export class AtlasHttpClient {
       data.sources.forEach((source: any, index: number) => {
         sources.push({
           index,
-          name: source.name || `Source ${index + 1}`,
+          name: this.extractStringValue(source.name, `Source ${index + 1}`),
           gainParam: source.gainParam || `SourceGain_${index}`,
           meterParam: source.meterParam || `SourceMeter_${index}`,
           muteParam: source.muteParam || `SourceMute_${index}`,
@@ -203,7 +243,7 @@ export class AtlasHttpClient {
       data.zones.forEach((zone: any, index: number) => {
         zones.push({
           index,
-          name: zone.name || `Zone ${index + 1}`,
+          name: this.extractStringValue(zone.name, `Zone ${index + 1}`),
           gainParam: zone.gainParam || `ZoneGain_${index}`,
           meterParam: zone.meterParam || `ZoneMeter_${index}`,
           muteParam: zone.muteParam || `ZoneMute_${index}`,
@@ -219,7 +259,7 @@ export class AtlasHttpClient {
       data.scenes.forEach((scene: any, index: number) => {
         scenes.push({
           index,
-          name: scene.name || `Scene ${index + 1}`,
+          name: this.extractStringValue(scene.name, `Scene ${index + 1}`),
           recallParam: scene.recallParam || 'RecallScene'
         })
       })
@@ -230,7 +270,7 @@ export class AtlasHttpClient {
       data.messages.forEach((message: any, index: number) => {
         messages.push({
           index,
-          name: message.name || `Message ${index + 1}`,
+          name: this.extractStringValue(message.name, `Message ${index + 1}`),
           playParam: message.playParam || 'PlayMessage'
         })
       })
