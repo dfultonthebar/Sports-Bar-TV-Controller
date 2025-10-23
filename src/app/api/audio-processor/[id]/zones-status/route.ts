@@ -1,69 +1,31 @@
-/**
- * Atlas Zones Status API
- * 
- * Fetches real-time zone status from the Atlas processor including:
- * - Zone names (as configured in Atlas)
- * - Current source assignments
- * - Volume levels
- * - Mute states
- * 
- * Uses the atlas-hardware-query service to query the actual hardware.
- */
-
 import { NextRequest, NextResponse } from 'next/server'
-import { findFirst, eq } from '@/lib/db-helpers'
-import { schema } from '@/db'
-import { logger } from '@/lib/logger'
-import { queryAtlasHardwareConfiguration } from '@/lib/atlas-hardware-query'
-
-interface RouteContext {
-  params: Promise<{
-    id: string
-  }>
-}
+import { prisma } from '@/lib/db'
+import { queryAtlasHardware } from '@/lib/atlas-hardware-query'
 
 export async function GET(
   request: NextRequest,
-  context: RouteContext
+  { params }: { params: { id: string } }
 ) {
   try {
-    // Await params for Next.js 15+ compatibility
-    const params = await context.params
     const processorId = params.id
 
-    logger.api.request('GET', `/api/audio-processor/${processorId}/zones-status`)
-
-    // Use Drizzle ORM with db-helpers for proper field mapping
-    const processor = await findFirst('audioProcessors', {
-      where: eq(schema.audioProcessors.id, processorId)
+    // Fetch processor from database
+    const processor = await prisma.audioProcessor.findUnique({
+      where: { id: processorId }
     })
 
     if (!processor) {
-      logger.api.response('GET', `/api/audio-processor/${processorId}/zones-status`, 404)
       return NextResponse.json(
         { error: 'Audio processor not found' },
         { status: 404 }
       )
     }
 
-    // Ensure port values are properly defined
-    const tcpPort = processor.tcpPort ?? 5321
-    const httpPort = processor.port ?? 80
-    
-    logger.atlas.info('Querying hardware configuration', {
-      processorName: processor.name,
-      ipAddress: processor.ipAddress,
-      tcpPort: tcpPort,
-      httpPort: httpPort
-    })
-
-    // Query the actual hardware configuration
-    const hardwareConfig = await queryAtlasHardwareConfiguration(
+    // Query the Atlas hardware for current configuration
+    const hardwareConfig = await queryAtlasHardware(
       processor.ipAddress,
-      tcpPort, // TCP control port (JSON-RPC)
-      processor.model,
-      httpPort, // HTTP port for configuration discovery
-      processor.username || undefined, // HTTP basic auth username
+      processor.tcpPort || 5321,
+      processor.username || undefined,  // HTTP basic auth username
       processor.password || undefined  // HTTP basic auth password
     )
 
@@ -107,7 +69,7 @@ export async function GET(
       return defaultValue
     }
 
-    // Format the response with zones including their current sources
+    // Format the response with zones including their current sources and outputs
     const zonesWithStatus = hardwareConfig.zones.map(zone => {
       const zoneName = extractStringValue(zone.name, `Zone ${zone.index + 1}`)
       const currentSource = extractNumericValue(zone.currentSource, -1)
@@ -125,43 +87,48 @@ export async function GET(
           : 'Not Set',
         volume: volume,
         isMuted: isMuted,
-        isActive: true
+        isActive: true,
+        outputs: zone.outputs?.map(output => ({
+          id: `output_${zone.index}_${output.index}`,
+          outputNumber: output.index + 1, // Convert to 1-based for UI display
+          atlasIndex: output.index, // Keep 0-based for Atlas protocol
+          name: output.name,
+          type: output.type,
+          volume: extractNumericValue(output.volume, 50),
+          parameterName: output.parameterName
+        })) || [{
+          id: `output_${zone.index}_0`,
+          outputNumber: 1,
+          atlasIndex: 0,
+          name: 'Main',
+          type: 'mono',
+          volume: volume,
+          parameterName: `ZoneGain_${zone.index}`
+        }]
       }
     })
 
     // Format sources for dropdown selection
     const sources = hardwareConfig.sources.map(source => ({
       id: `source_${source.index}`,
-      sourceNumber: source.index + 1, // Convert to 1-based for UI display
-      atlasIndex: source.index, // Keep 0-based for Atlas protocol
+      sourceNumber: source.index + 1,
+      atlasIndex: source.index,
       name: extractStringValue(source.name, `Source ${source.index + 1}`),
-      parameterName: source.parameterName
+      type: source.type || 'unknown'
     }))
-
-    logger.api.response('GET', `/api/audio-processor/${processor.id}/zones-status`, 200, {
-      zonesCount: zonesWithStatus.length,
-      sourcesCount: sources.length
-    })
 
     return NextResponse.json({
       success: true,
-      processor: {
-        id: processor.id,
-        name: processor.name,
-        model: processor.model,
-        ipAddress: processor.ipAddress
-      },
       zones: zonesWithStatus,
       sources: sources,
-      queriedAt: hardwareConfig.queriedAt
+      timestamp: new Date().toISOString()
     })
 
   } catch (error) {
-    const params = await context.params
-    logger.api.error('GET', `/api/audio-processor/${params.id}/zones-status`, error)
+    console.error('Error fetching zones status:', error)
     return NextResponse.json(
       { 
-        error: 'Failed to fetch zones status from Atlas processor',
+        error: 'Failed to fetch zones status',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
