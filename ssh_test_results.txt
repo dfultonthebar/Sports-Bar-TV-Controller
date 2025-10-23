@@ -1,0 +1,201 @@
+=== SSH Connection Reliability Testing ===
+Server: 24.123.87.42:224
+Test Date: Thu Oct 23 18:13:11 UTC 2025
+
+----------------------------------------
+Test #1: Basic Connection (Verbose)
+Options: -v -o StrictHostKeyChecking=no
+Status: ✓ SUCCESS
+Connection Time: s
+Output: OpenSSH_9.2p1 Debian-2+deb12u7, OpenSSL 3.0.17 1 Jul 2025
+debug1: Reading configuration data /etc/ssh/ssh_config
+debug1: /etc/ssh/ssh_config line 19: include /etc/ssh/ssh_config.d/*.conf matched no files
+debug1: /etc/ssh/ssh_config line 21: Applying options for *
+debug1: Connecting to 24.123.87.42 [24.123.87.42] port 224.
+debug1: Connection established.
+debug1: identity file /home/ubuntu/.ssh/id_rsa type -1
+debug1: identity file /home/ubuntu/.ssh/id_rsa-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_ecdsa type -1
+debug1: identity file /home/ubuntu/.ssh/id_ecdsa-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_ecdsa_sk type -1
+debug1: identity file /home/ubuntu/.ssh/id_ecdsa_sk-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_ed25519 type -1
+debug1: identity file /home/ubuntu/.ssh/id_ed25519-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_ed25519_sk type -1
+debug1: identity file /home/ubuntu/.ssh/id_ed25519_sk-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_xmss type -1
+debug1: identity file /home/ubuntu/.ssh/id_xmss-cert type -1
+debug1: identity file /home/ubuntu/.ssh/id_dsa type -1
+debug1: identity file /home/ubuntu/.ssh/id_dsa-cert type -1
+debug1: Local version string SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u7
+debug1: Remote protocol version 2.0, remote software version OpenSSH_8.9p1 Ubuntu-3ubuntu0.13
+debug1: compat_banner: match: OpenSSH_8.9p1 Ubuntu-3ubuntu0.13 pat OpenSSH* compat 0x04000000
+debug1: Authenticating to 24.123.87.42:224 as 'ubuntu'
+debug1: load_hostkeys: fopen /home/ubuntu/.ssh/known_hosts2: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts2: No such file or directory
+debug1: SSH2_MSG_KEXINIT sent
+debug1: SSH2_MSG_KEXINIT received
+debug1: kex: algorithm: sntrup761x25519-sha512@openssh.com
+debug1: kex: host key algorithm: ssh-ed25519
+debug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+debug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+debug1: expecting SSH2_MSG_KEX_ECDH_REPLY
+debug1: SSH2_MSG_KEX_ECDH_REPLY received
+debug1: Server host key: ssh-ed25519 SHA256:Zy9wvbKHVpGGc/bTxLOMkUFMvPW0e+5dPVAkkdpMzfs
+debug1: load_hostkeys: fopen /home/ubuntu/.ssh/known_hosts2: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts2: No such file or directory
+debug1: Host '[24.123.87.42]:224' is known and matches the ED25519 host key.
+debug1: Found key in /home/ubuntu/.ssh/known_hosts:1
+debug1: ssh_packet_send2_wrapped: resetting send seqnr 3
+debug1: rekey out after 134217728 blocks
+debug1: SSH2_MSG_NEWKEYS sent
+debug1: expecting SSH2_MSG_NEWKEYS
+debug1: ssh_packet_read_poll2: resetting read seqnr 3
+debug1: SSH2_MSG_NEWKEYS received
+debug1: rekey in after 134217728 blocks
+debug1: Will attempt key: /home/ubuntu/.ssh/id_rsa 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_ecdsa 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_ecdsa_sk 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_ed25519 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_ed25519_sk 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_xmss 
+debug1: Will attempt key: /home/ubuntu/.ssh/id_dsa 
+debug1: SSH2_MSG_EXT_INFO received
+debug1: kex_input_ext_info: server-sig-algs=<ssh-ed25519,sk-ssh-ed25519@openssh.com,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com,webauthn-sk-ecdsa-sha2-nistp256@openssh.com>
+debug1: kex_input_ext_info: publickey-hostbound@openssh.com=<0>
+debug1: SSH2_MSG_SERVICE_ACCEPT received
+debug1: Authentications that can continue: publickey,password
+debug1: Next authentication method: publickey
+debug1: Trying private key: /home/ubuntu/.ssh/id_rsa
+debug1: Trying private key: /home/ubuntu/.ssh/id_ecdsa
+debug1: Trying private key: /home/ubuntu/.ssh/id_ecdsa_sk
+debug1: Trying private key: /home/ubuntu/.ssh/id_ed25519
+debug1: Trying private key: /home/ubuntu/.ssh/id_ed25519_sk
+debug1: Trying private key: /home/ubuntu/.ssh/id_xmss
+debug1: Trying private key: /home/ubuntu/.ssh/id_dsa
+debug1: Next authentication method: password
+Authenticated to 24.123.87.42 ([24.123.87.42]:224) using "password".
+debug1: channel 0: new session [client-session] (inactive timeout: 0)
+debug1: Requesting no-more-sessions@openssh.com
+debug1: Entering interactive session.
+debug1: pledge: filesystem
+debug1: client_input_global_request: rtype hostkeys-00@openssh.com want_reply 0
+debug1: client_input_hostkeys: searching /home/ubuntu/.ssh/known_hosts for [24.123.87.42]:224 / (none)
+debug1: client_input_hostkeys: searching /home/ubuntu/.ssh/known_hosts2 for [24.123.87.42]:224 / (none)
+debug1: client_input_hostkeys: hostkeys file /home/ubuntu/.ssh/known_hosts2 does not exist
+debug1: client_input_hostkeys: no new or deprecated keys from server
+debug1: Sending environment.
+debug1: channel 0: setting env LC_CTYPE = "C.UTF-8"
+debug1: Sending command: echo 'Connection successful' && uptime && echo 'Test command executed'
+debug1: pledge: fork
+Connection successful
+ 13:13:12 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+debug1: client_input_channel_req: channel 0 rtype exit-status reply 0
+debug1: client_input_channel_req: channel 0 rtype eow@openssh.com reply 0
+Test command executed
+debug1: channel 0: free: client-session, nchannels 1
+Transferred: sent 3320, received 3700 bytes, in 0.5 seconds
+Bytes per second: sent 7246.2, received 8075.5
+debug1: Exit status 0
+Rating: RELIABLE
+
+----------------------------------------
+Test #2: Keep-Alive (60s interval, 3 max)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:13 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #3: Optimized Timeout (30s interval, 5 max)
+Options: -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=5
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:14 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #4: Compression Enabled
+Options: -C -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:15 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #5: Keep-Alive (15s interval)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:16 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #6: Keep-Alive (30s interval)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:17 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #7: Keep-Alive (120s interval)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=120 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:18 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #8: Aggressive Keep-Alive (15s interval, 10 max)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=10 -o ConnectTimeout=20
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:19 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #9: Balanced Config (45s interval, 4 max)
+Options: -o StrictHostKeyChecking=no -o ServerAliveInterval=45 -o ServerAliveCountMax=4 -o ConnectTimeout=25
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:21 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+----------------------------------------
+Test #10: TCP Keep-Alive
+Options: -o StrictHostKeyChecking=no -o TCPKeepAlive=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+Status: ✓ SUCCESS
+Connection Time: s
+Output: Connection successful
+ 13:13:22 up  5:08,  1 user,  load average: 0.03, 0.03, 0.00
+Test command executed
+Rating: RELIABLE
+
+========================================
+SUMMARY
+========================================
+Total Tests: 10
+Successful: 10
+Failed: 0
+Success Rate: %
+
