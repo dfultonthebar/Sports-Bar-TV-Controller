@@ -1,28 +1,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { and, asc, desc, eq, or } from 'drizzle-orm'
+import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 
 
 export async function GET() {
   try {
     // Get the active matrix configuration
-    const activeConfig = await prisma.matrixConfiguration.findFirst({
-      where: {
-        isActive: true
-      },
-      include: {
-        outputs: {
-          where: {
-            status: 'active'
-          },
-          orderBy: {
-            channelNumber: 'asc'
-          }
-        }
-      }
-    })
+    const activeConfig = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
     if (!activeConfig) {
       return NextResponse.json({
@@ -31,14 +21,26 @@ export async function GET() {
       }, { status: 404 })
     }
 
+    // Get active outputs for this configuration
+    const outputs = await db.select()
+      .from(schema.matrixOutputs)
+      .where(
+        and(
+          eq(schema.matrixOutputs.configId, activeConfig.id),
+          eq(schema.matrixOutputs.status, 'active')
+        )
+      )
+      .orderBy(asc(schema.matrixOutputs.channelNumber))
+      .all()
+
     // Get outputs with daily turn-on/off settings
-    const dailyTurnOnOutputs = activeConfig.outputs.filter(o => o.dailyTurnOn)
-    const dailyTurnOffOutputs = activeConfig.outputs.filter(o => o.dailyTurnOff)
-    const availableOutputs = activeConfig.outputs.filter(o => !o.dailyTurnOn && !o.dailyTurnOff)
+    const dailyTurnOnOutputs = outputs.filter(o => o.dailyTurnOn)
+    const dailyTurnOffOutputs = outputs.filter(o => o.dailyTurnOff)
+    const availableOutputs = outputs.filter(o => !o.dailyTurnOn && !o.dailyTurnOff)
 
     return NextResponse.json({
       success: true,
-      outputs: activeConfig.outputs,
+      outputs,
       dailyTurnOnOutputs,
       dailyTurnOffOutputs,
       availableOutputs,
@@ -66,13 +68,29 @@ export async function PUT(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const updated = await prisma.matrixOutput.update({
-      where: { id: outputId },
-      data: {
-        dailyTurnOn: dailyTurnOn !== undefined ? dailyTurnOn : undefined,
-        dailyTurnOff: dailyTurnOff !== undefined ? dailyTurnOff : undefined
-      }
-    })
+    // Prepare update data
+    const updateData: any = {
+      updatedAt: new Date().toISOString()
+    }
+    
+    if (dailyTurnOn !== undefined) {
+      updateData.dailyTurnOn = dailyTurnOn
+    }
+    
+    if (dailyTurnOff !== undefined) {
+      updateData.dailyTurnOff = dailyTurnOff
+    }
+
+    await db.update(schema.matrixOutputs)
+      .set(updateData)
+      .where(eq(schema.matrixOutputs.id, outputId))
+      .run()
+
+    const updated = await db.select()
+      .from(schema.matrixOutputs)
+      .where(eq(schema.matrixOutputs.id, outputId))
+      .limit(1)
+      .get()
 
     return NextResponse.json({
       success: true,

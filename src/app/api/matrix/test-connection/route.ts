@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
-import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { and, asc, desc, eq, or } from 'drizzle-orm'
+import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 
 
 export async function GET() {
   try {
     // Get the active matrix configuration from database
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
-    })
+    const matrixConfig = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
     if (!matrixConfig) {
       return NextResponse.json({ 

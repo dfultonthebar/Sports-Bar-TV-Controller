@@ -1,58 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { and, asc, desc, eq, or } from 'drizzle-orm'
+import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
 
 export async function GET() {
   try {
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          orderBy: { channelNumber: 'asc' },
-          select: {
-            id: true,
-            configId: true,
-            channelNumber: true,
-            label: true,
-            inputType: true,
-            deviceType: true,
-            isActive: true,
-            status: true,
-            powerOn: true,
-            isCecPort: true,
-            createdAt: true,
-            updatedAt: true
-          }
-        },
-        outputs: {
-          orderBy: { channelNumber: 'asc' },
-          select: {
-            id: true,
-            configId: true,
-            channelNumber: true,
-            label: true,
-            resolution: true,
-            isActive: true,
-            status: true,
-            audioOutput: true,
-            powerOn: true,
-            createdAt: true,
-            updatedAt: true
-            // Exclude selectedVideoInput and videoInputLabel - they don't exist in database
-          }
-        }
-      }
-    })
+    // Find active configuration
+    const config = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
     
     if (config) {
+      // Get inputs for this configuration
+      const inputs = await db.select()
+        .from(schema.matrixInputs)
+        .where(eq(schema.matrixInputs.configId, config.id))
+        .orderBy(asc(schema.matrixInputs.channelNumber))
+        .all()
+      
+      // Get outputs for this configuration
+      const outputs = await db.select()
+        .from(schema.matrixOutputs)
+        .where(eq(schema.matrixOutputs.configId, config.id))
+        .orderBy(asc(schema.matrixOutputs.channelNumber))
+        .all()
+      
       // Return format expected by Bartender Remote
       return NextResponse.json({
-        configs: [config],
-        config,
-        inputs: config.inputs,
-        outputs: config.outputs
+        configs: [{ ...config, inputs, outputs }],
+        config: { ...config, inputs, outputs },
+        inputs,
+        outputs
       })
     } else {
       return NextResponse.json({
@@ -81,91 +62,127 @@ export async function POST(request: NextRequest) {
 
     // Generate ID if not provided
     const configId = config.id || randomUUID()
+    const now = new Date().toISOString()
 
     // Use transaction to ensure atomicity
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // First, deactivate all other configurations if this one is active
       if (config.isActive !== false) {
-        await tx.matrixConfiguration.updateMany({
-          where: { 
-            id: { not: configId }
-          },
-          data: { isActive: false }
-        })
+        const allConfigs = await tx.select()
+          .from(schema.matrixConfigurations)
+          .where(eq(schema.matrixConfigurations.isActive, true))
+          .all()
+        
+        for (const cfg of allConfigs) {
+          if (cfg.id !== configId) {
+            await tx.update(schema.matrixConfigurations)
+              .set({ isActive: false, updatedAt: now })
+              .where(eq(schema.matrixConfigurations.id, cfg.id))
+              .run()
+          }
+        }
       }
 
-      // Save or update matrix configuration
-      const savedConfig = await tx.matrixConfiguration.upsert({
-        where: { id: configId },
-        update: {
-          name: config.name,
-          ipAddress: config.ipAddress,
-          tcpPort: config.tcpPort || 23,
-          udpPort: config.udpPort || 4000,
-          protocol: config.protocol || 'TCP',
-          isActive: config.isActive !== false, // Default to true
-          cecInputChannel: config.cecInputChannel || null,
-          updatedAt: new Date()
-        },
-        create: {
-          id: configId,
-          name: config.name,
-          ipAddress: config.ipAddress,
-          tcpPort: config.tcpPort || 23,
-          udpPort: config.udpPort || 4000,
-          protocol: config.protocol || 'TCP',
-          isActive: config.isActive !== false, // Default to true
-          cecInputChannel: config.cecInputChannel || null
-        }
-      })
+      // Check if configuration exists
+      const existingConfig = await tx.select()
+        .from(schema.matrixConfigurations)
+        .where(eq(schema.matrixConfigurations.id, configId))
+        .limit(1)
+        .get()
+
+      let savedConfig
+      if (existingConfig) {
+        // Update existing configuration
+        await tx.update(schema.matrixConfigurations)
+          .set({
+            name: config.name,
+            ipAddress: config.ipAddress,
+            tcpPort: config.tcpPort || 23,
+            udpPort: config.udpPort || 4000,
+            protocol: config.protocol || 'TCP',
+            isActive: config.isActive !== false,
+            cecInputChannel: config.cecInputChannel || null,
+            updatedAt: now
+          })
+          .where(eq(schema.matrixConfigurations.id, configId))
+          .run()
+        
+        savedConfig = await tx.select()
+          .from(schema.matrixConfigurations)
+          .where(eq(schema.matrixConfigurations.id, configId))
+          .limit(1)
+          .get()
+      } else {
+        // Create new configuration
+        savedConfig = await tx.insert(schema.matrixConfigurations)
+          .values({
+            id: configId,
+            name: config.name,
+            ipAddress: config.ipAddress,
+            tcpPort: config.tcpPort || 23,
+            udpPort: config.udpPort || 4000,
+            protocol: config.protocol || 'TCP',
+            isActive: config.isActive !== false,
+            cecInputChannel: config.cecInputChannel || null,
+            createdAt: now,
+            updatedAt: now
+          })
+          .returning()
+          .get()
+      }
 
       // Clear existing inputs and outputs for this config
-      await tx.matrixInput.deleteMany({
-        where: { configId: savedConfig.id }
-      })
-      await tx.matrixOutput.deleteMany({
-        where: { configId: savedConfig.id }
-      })
+      await tx.delete(schema.matrixInputs)
+        .where(eq(schema.matrixInputs.configId, savedConfig.id))
+        .run()
+      
+      await tx.delete(schema.matrixOutputs)
+        .where(eq(schema.matrixOutputs.configId, savedConfig.id))
+        .run()
 
       // Save inputs - only fields that exist in actual database
       if (inputs?.length > 0) {
-        await tx.matrixInput.createMany({
-          data: inputs.map((input: any) => ({
-            id: randomUUID(),
-            configId: savedConfig.id,
-            channelNumber: input.channelNumber,
-            label: input.label || `Input ${input.channelNumber}`,
-            inputType: input.inputType || 'HDMI',
-            deviceType: input.deviceType || 'Other',
-            isActive: input.isActive !== false, // Default to true
-            status: input.status || 'active',
-            powerOn: input.powerOn || false,
-            isCecPort: input.isCecPort || false,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }))
-        })
+        for (const input of inputs) {
+          await tx.insert(schema.matrixInputs)
+            .values({
+              id: randomUUID(),
+              configId: savedConfig.id,
+              channelNumber: input.channelNumber,
+              label: input.label || `Input ${input.channelNumber}`,
+              inputType: input.inputType || 'HDMI',
+              deviceType: input.deviceType || 'Other',
+              isActive: input.isActive !== false,
+              status: input.status || 'active',
+              powerOn: input.powerOn || false,
+              isCecPort: input.isCecPort || false,
+              createdAt: now,
+              updatedAt: now
+            })
+            .run()
+        }
       }
 
-      // Save outputs - only fields that exist in actual database and Prisma schema
+      // Save outputs - only fields that exist in actual database
       if (outputs?.length > 0) {
-        await tx.matrixOutput.createMany({
-          data: outputs.map((output: any) => ({
-            id: randomUUID(),
-            configId: savedConfig.id,
-            channelNumber: output.channelNumber,
-            label: output.label || `Output ${output.channelNumber}`,
-            resolution: output.resolution || '1080p',
-            isActive: output.isActive !== false,
-            status: output.status || 'active',
-            audioOutput: output.audioOutput || null,
-            powerOn: output.powerOn || false,
-            dailyTurnOn: true,
-            dailyTurnOff: true,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }))
-        })
+        for (const output of outputs) {
+          await tx.insert(schema.matrixOutputs)
+            .values({
+              id: randomUUID(),
+              configId: savedConfig.id,
+              channelNumber: output.channelNumber,
+              label: output.label || `Output ${output.channelNumber}`,
+              resolution: output.resolution || '1080p',
+              isActive: output.isActive !== false,
+              status: output.status || 'active',
+              audioOutput: output.audioOutput || null,
+              powerOn: output.powerOn || false,
+              dailyTurnOn: true,
+              dailyTurnOff: true,
+              createdAt: now,
+              updatedAt: now
+            })
+            .run()
+        }
       }
 
       return savedConfig

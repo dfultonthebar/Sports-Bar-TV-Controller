@@ -1,8 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, create, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { and, asc, desc, eq, or } from 'drizzle-orm'
+import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { randomUUID } from 'crypto'
 
 
 export async function POST(request: NextRequest) {
@@ -18,9 +19,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get active matrix configuration
-    const activeConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true, connectionStatus: 'connected' }
-    })
+    const activeConfig = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
     if (!activeConfig) {
       return NextResponse.json(
@@ -34,26 +37,36 @@ export async function POST(request: NextRequest) {
     
     // Store/update the route in the database
     // First try to find existing route for this output
-    const existingRoute = await prisma.matrixRoute.findFirst({
-      where: { outputNum: output }
-    })
+    const existingRoute = await db.select()
+      .from(schema.matrixRoutes)
+      .where(eq(schema.matrixRoutes.outputNum, output))
+      .limit(1)
+      .get()
+
+    const now = new Date().toISOString()
 
     if (existingRoute) {
       // Update existing route
-      await prisma.matrixRoute.update({
-        where: { id: existingRoute.id },
-        data: {
+      await db.update(schema.matrixRoutes)
+        .set({
           inputNum: input,
-          isActive: true
-        }
-      })
+          isActive: true,
+          updatedAt: now
+        })
+        .where(eq(schema.matrixRoutes.id, existingRoute.id))
+        .run()
     } else {
       // Create new route
-      await create('matrixRoutes', {
+      await db.insert(schema.matrixRoutes)
+        .values({
+          id: randomUUID(),
           inputNum: input,
           outputNum: output,
-          isActive: true
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
         })
+        .run()
     }
 
     // Send actual Wolf Pack command using correct format: YXZ.
