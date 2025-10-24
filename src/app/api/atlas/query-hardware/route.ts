@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryAtlasHardwareConfiguration, testAtlasConnection } from '@/lib/atlas-hardware-query'
 import { prisma } from '@/lib/db'
+import { eq, and } from 'drizzle-orm'
+import { db } from '@/db'
+import { audioZones } from '@/db/schema'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -146,31 +149,59 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Update or create zones in database
+    // Update or create zones in database using direct Drizzle ORM
+    // This fixes the SQLite binding error by properly handling the composite key
     for (const zone of hardwareConfig.zones) {
-      await prisma.audioZone.upsert({
-        where: {
-          processorId_zoneNumber: {
-            processorId: processorId,
-            zoneNumber: zone.index
-          }
-        },
-        update: {
-          name: zone.name,
-          volume: zone.volume || 50,
-          muted: zone.muted || false,
-          currentSource: zone.currentSource !== -1 ? String(zone.currentSource) : null
-        },
-        create: {
-          processorId: processorId,
-          zoneNumber: zone.index,
+      try {
+        // First, try to find existing zone by processorId and zoneNumber
+        const existingZone = await db
+          .select()
+          .from(audioZones)
+          .where(
+            and(
+              eq(audioZones.processorId, processorId),
+              eq(audioZones.zoneNumber, zone.index)
+            )
+          )
+          .limit(1)
+          .get()
+
+        const zoneData = {
           name: zone.name,
           volume: zone.volume || 50,
           muted: zone.muted || false,
           currentSource: zone.currentSource !== -1 ? String(zone.currentSource) : null,
-          enabled: true
+          updatedAt: new Date().toISOString()
         }
-      })
+
+        if (existingZone) {
+          // Update existing zone
+          await db
+            .update(audioZones)
+            .set(zoneData)
+            .where(eq(audioZones.id, existingZone.id))
+            .run()
+        } else {
+          // Create new zone
+          await db
+            .insert(audioZones)
+            .values({
+              processorId: processorId,
+              zoneNumber: zone.index,
+              name: zone.name,
+              volume: zone.volume || 50,
+              muted: zone.muted || false,
+              currentSource: zone.currentSource !== -1 ? String(zone.currentSource) : null,
+              enabled: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            })
+            .run()
+        }
+      } catch (zoneError) {
+        console.error(`[Query Hardware] Error upserting zone ${zone.index}:`, zoneError)
+        // Continue with other zones even if one fails
+      }
     }
 
     console.log(`[Query Hardware] Successfully saved configuration for processor ${processorId}`)
