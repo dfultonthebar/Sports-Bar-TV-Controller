@@ -49,7 +49,7 @@ interface PendingCommand {
 
 interface Subscription {
   param: string
-  format: 'val' | 'pct' | 'str'
+  fmt: 'val' | 'pct' | 'str'
 }
 
 /**
@@ -438,6 +438,20 @@ export class AtlasTCPClient {
       const response = JSON.parse(message)
       
       atlasLogger.responseReceived(response, this.config.ipAddress)
+
+      // Handle standard JSON-RPC result format (what Atlas actually returns)
+      // Response format: {"jsonrpc":"2.0","result":[{"param":"GroupName_0","str":"Bar"}],"id":1}
+      if (response.result !== undefined && response.id !== undefined) {
+        const pending = this.pendingResponses.get(response.id)
+        if (pending) {
+          clearTimeout(pending.timeout)
+          this.pendingResponses.delete(response.id)
+          // Extract the first result item's data
+          const data = Array.isArray(response.result) && response.result.length > 0 ? response.result[0] : response.result
+          pending.resolve({ success: true, data })
+        }
+        return
+      }
       
       // Handle "getResp" method (response to "get" command)
       if (response.method === 'getResp') {
@@ -586,7 +600,7 @@ export class AtlasTCPClient {
         method: 'set',
         param,
         value: sourceIndex,
-        format: 'val'
+        fmt: 'val'
       })
 
       return { success: true, data: response }
@@ -641,7 +655,7 @@ export class AtlasTCPClient {
         method: 'set',
         param,
         value: muted ? 1 : 0,
-        format: 'val'
+        fmt: 'val'
       })
 
       return { success: true, data: response }
@@ -665,7 +679,7 @@ export class AtlasTCPClient {
         method: 'set',
         param,
         value: sceneIndex,
-        format: 'val'
+        fmt: 'val'
       })
 
       atlasLogger.info('SCENE', `Recalled scene ${sceneIndex}`, {
@@ -692,7 +706,7 @@ export class AtlasTCPClient {
         method: 'set',
         param,
         value: messageIndex,
-        format: 'val'
+        fmt: 'val'
       })
 
       atlasLogger.info('MESSAGE', `Playing message ${messageIndex}`, {
@@ -720,7 +734,7 @@ export class AtlasTCPClient {
         method: 'set',
         param,
         value: active ? 1 : 0,
-        format: 'val'
+        fmt: 'val'
       })
 
       atlasLogger.info('GROUP', `Set group ${groupIndex} to ${active ? 'active' : 'inactive'}`, {
@@ -741,7 +755,7 @@ export class AtlasTCPClient {
    * @param param Parameter name (e.g., 'ZoneGain_0')
    * @param format Format ('val', 'pct', or 'str')
    */
-  async subscribe(param: string, format: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
+  async subscribe(param: string, fmt: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
     try {
       const response = await this.sendCommand({
         method: 'sub',
@@ -770,7 +784,7 @@ export class AtlasTCPClient {
    * @param param Parameter name (e.g., 'ZoneGain_0')
    * @param format Format ('val', 'pct', or 'str')
    */
-  async unsubscribe(param: string, format: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
+  async unsubscribe(param: string, fmt: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
     try {
       const response = await this.sendCommand({
         method: 'unsub',
@@ -803,7 +817,7 @@ export class AtlasTCPClient {
    * @param param Parameter name (e.g., 'ZoneSource_0')
    * @param format Format ('val', 'pct', or 'str')
    */
-  async getParameter(param: string, format: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
+  async getParameter(param: string, fmt: 'val' | 'pct' | 'str' = 'val'): Promise<AtlasResponse> {
     try {
       const response = await this.sendCommand({
         method: 'get',
