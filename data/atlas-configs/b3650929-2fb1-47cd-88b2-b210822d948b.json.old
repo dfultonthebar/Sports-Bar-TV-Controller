@@ -1,0 +1,306 @@
+{
+  "processorId": "b3650929-2fb1-47cd-88b2-b210822d948b",
+  "ipAddress": "192.168.5.101",
+  "httpPort": 80,
+  "tcpPort": 5321,
+  "model": "AZMP8",
+  "inputs": [
+    {
+      "id": "source_0",
+      "number": 1,
+      "name": "Matrix 1",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Matrix 1",
+      "parameterName": "SourceName_0",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_1",
+      "number": 2,
+      "name": "Matrix 2",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Matrix 2",
+      "parameterName": "SourceName_1",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_2",
+      "number": 3,
+      "name": "Matrix 3",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Matrix 3",
+      "parameterName": "SourceName_2",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_3",
+      "number": 4,
+      "name": "Matrix 4",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Matrix 4",
+      "parameterName": "SourceName_3",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_4",
+      "number": 5,
+      "name": "Mic 1",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Mic 1",
+      "parameterName": "SourceName_4",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_5",
+      "number": 6,
+      "name": "Mic 2",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Mic 2",
+      "parameterName": "SourceName_5",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_6",
+      "number": 7,
+      "name": "Spotify",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Spotify",
+      "parameterName": "SourceName_6",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_7",
+      "number": 8,
+      "name": "Party Room East",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Party Room East",
+      "parameterName": "SourceName_7",
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "source_8",
+      "number": 9,
+      "name": "Party Room West",
+      "type": "atlas_configured",
+      "connector": "Hardware",
+      "description": "Atlas configured source: Party Room West",
+      "parameterName": "SourceName_8",
+      "isCustom": true,
+      "queriedFromHardware": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "zone_0",
+      "number": 1,
+      "name": "Main Bar",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Main Bar",
+      "parameterName": "ZoneName_0",
+      "currentSource": [
+        {
+          "param": "ZoneSource_0",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_0",
+          "pct": 100
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_1",
+      "number": 2,
+      "name": "Dining Room",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Dining Room",
+      "parameterName": "ZoneName_1",
+      "currentSource": [
+        {
+          "param": "ZoneSource_1",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_1",
+          "pct": 65
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_2",
+      "number": 3,
+      "name": "Party Room West",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Party Room West",
+      "parameterName": "ZoneName_2",
+      "currentSource": [
+        {
+          "param": "ZoneSource_2",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_2",
+          "pct": 70
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_3",
+      "number": 4,
+      "name": "Party Room East",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Party Room East",
+      "parameterName": "ZoneName_3",
+      "currentSource": [
+        {
+          "param": "ZoneSource_3",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_3",
+          "pct": 50
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_4",
+      "number": 5,
+      "name": "Patio",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Patio",
+      "parameterName": "ZoneName_4",
+      "currentSource": [
+        {
+          "param": "ZoneSource_4",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_4",
+          "pct": 50
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_5",
+      "number": 6,
+      "name": "Bathroom",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Bathroom",
+      "parameterName": "ZoneName_5",
+      "currentSource": [
+        {
+          "param": "ZoneSource_5",
+          "val": 6
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_5",
+          "pct": 50
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_6",
+      "number": 7,
+      "name": "Zone 7",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Zone 7",
+      "parameterName": "ZoneName_6",
+      "currentSource": [
+        {
+          "param": "ZoneSource_6",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_6",
+          "pct": 50
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    },
+    {
+      "id": "zone_7",
+      "number": 8,
+      "name": "Zone 8",
+      "type": "zone",
+      "connector": "Hardware",
+      "description": "Atlas configured zone: Zone 8",
+      "parameterName": "ZoneName_7",
+      "currentSource": [
+        {
+          "param": "ZoneSource_7",
+          "val": -1
+        }
+      ],
+      "volume": [
+        {
+          "param": "ZoneGain_7",
+          "pct": 50
+        }
+      ],
+      "muted": false,
+      "isCustom": true,
+      "queriedFromHardware": true
+    }
+  ],
+  "scenes": [],
+  "messages": [],
+  "queriedAt": "2025-10-22T04:46:42.650Z",
+  "source": "hardware_query"
+}
