@@ -176,7 +176,7 @@ export const atlasLogger = {
    */
   error(category: string, message: string, error: any) {
     writeLog('ERROR', category.toUpperCase(), message, {
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error)),
       stack: error instanceof Error ? error.stack : undefined
     })
   },
