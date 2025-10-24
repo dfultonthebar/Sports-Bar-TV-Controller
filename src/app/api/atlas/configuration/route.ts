@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
+import { AtlasTCPClient } from '@/lib/atlasClient'
 
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
@@ -18,7 +19,40 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
+    const processorIp = searchParams.get('processorIp')
+    const param = searchParams.get('param')
 
+    // If processorIp and param are provided, fetch from Atlas hardware directly
+    if (processorIp && param) {
+      try {
+        const client = new AtlasTCPClient({
+          ipAddress: processorIp,
+          tcpPort: 5321,
+          timeout: 5000
+        })
+
+        await client.connect()
+        const result = await client.sendCommand({
+          method: 'get',
+          param: param,
+          format: 'str'
+        })
+        await client.disconnect()
+
+        return NextResponse.json({
+          success: true,
+          value: result?.data?.str || result?.data?.val || null
+        })
+      } catch (error) {
+        console.error('Error fetching Atlas parameter:', error)
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to fetch parameter'
+        }, { status: 500 })
+      }
+    }
+
+    // Original file-based configuration logic
     if (!processorId) {
       return NextResponse.json({ error: 'Processor ID is required' }, { status: 400 })
     }
