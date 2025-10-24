@@ -24,12 +24,13 @@ export async function GET(request: NextRequest) {
 
     const meters: any[] = []
 
-    // Get zone/output meters (ZoneMeter_0 through ZoneMeter_7 for AZM8)
+    // Dynamically discover zones by querying until we get an error
     const zoneMeterPromises = []
     const zoneNamePromises = []
     const zoneMutePromises = []
     
-    for (let i = 0; i < 8; i++) {
+    // Try up to 16 zones (more than any Atlas model supports)
+    for (let i = 0; i < 16; i++) {
       zoneMeterPromises.push(
         client.sendCommand({
           method: 'get',
@@ -86,7 +87,8 @@ export async function GET(request: NextRequest) {
       const groupMutePromises = []
       const groupActivePromises = []
       
-      for (let i = 0; i < 8; i++) {
+      // Dynamically discover groups (try up to 16)
+      for (let i = 0; i < 16; i++) {
         groupMeterPromises.push(
           client.sendCommand({
             method: 'get',

@@ -59,19 +59,29 @@ export default function AtlasGroupsControl({
 
   const fetchSources = async () => {
     try {
-      // Fetch source names
-      const sourcePromises = []
-      for (let i = 0; i < 14; i++) {
-        sourcePromises.push(
-          fetch(`/api/atlas/configuration?processorIp=${processorIp}&param=SourceName_${i}`)
-            .then(r => r.json())
-            .then(d => ({ index: i, name: d.value || `Source ${i + 1}` }))
-            .catch(() => ({ index: i, name: `Source ${i + 1}` }))
-        )
+      // Dynamically discover sources by querying until we get an error or empty name
+      const discoveredSources: AtlasSource[] = []
+      
+      // Try up to 16 sources (more than any Atlas model supports)
+      for (let i = 0; i < 16; i++) {
+        try {
+          const response = await fetch(`/api/atlas/configuration?processorIp=${processorIp}&param=SourceName_${i}`)
+          const data = await response.json()
+          
+          if (data.value && data.value.trim() !== '') {
+            discoveredSources.push({ index: i, name: data.value })
+          } else {
+            // No more sources
+            break
+          }
+        } catch (err) {
+          // Error means we've reached the limit
+          break
+        }
       }
       
-      const sourceResults = await Promise.all(sourcePromises)
-      setSources(sourceResults)
+      console.log(`Discovered ${discoveredSources.length} sources from Atlas device`)
+      setSources(discoveredSources)
     } catch (err) {
       console.error('Error fetching sources:', err)
     }

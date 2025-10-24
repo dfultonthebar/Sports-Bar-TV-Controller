@@ -21,9 +21,12 @@ export async function GET(request: NextRequest) {
 
     await client.connect()
 
-    // Subscribe to input meters (SourceMeter_0 through SourceMeter_13 for AZMP8)
+    // Dynamically discover sources by querying until we get an error
     const meterPromises = []
-    for (let i = 0; i < 14; i++) {
+    const namePromises = []
+    
+    // Try up to 16 sources (more than any Atlas model supports)
+    for (let i = 0; i < 16; i++) {
       meterPromises.push(
         client.sendCommand({
           method: 'get',
@@ -31,11 +34,6 @@ export async function GET(request: NextRequest) {
           format: 'val'
         }).catch(() => null)
       )
-    }
-
-    // Also get source names
-    const namePromises = []
-    for (let i = 0; i < 14; i++) {
       namePromises.push(
         client.sendCommand({
           method: 'get',

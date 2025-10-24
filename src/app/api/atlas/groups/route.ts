@@ -21,32 +21,44 @@ export async function GET(request: NextRequest) {
 
     await client.connect()
 
-    // Get group information
+    // Dynamically discover how many groups exist by querying until we get an error
     const groups: any[] = []
     
-    for (let i = 0; i < 8; i++) {
-      const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
-        client.sendCommand({ method: 'get', param: `GroupName_${i}`, format: 'str' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupActive_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupSource_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupGain_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupMute_${i}`, format: 'val' }).catch(() => null)
-      ])
+    // Try up to 16 groups (more than any Atlas model supports)
+    for (let i = 0; i < 16; i++) {
+      try {
+        const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
+          client.sendCommand({ method: 'get', param: `GroupName_${i}`, format: 'str' }).catch(() => null),
+          client.sendCommand({ method: 'get', param: `GroupActive_${i}`, format: 'val' }).catch(() => null),
+          client.sendCommand({ method: 'get', param: `GroupSource_${i}`, format: 'val' }).catch(() => null),
+          client.sendCommand({ method: 'get', param: `GroupGain_${i}`, format: 'val' }).catch(() => null),
+          client.sendCommand({ method: 'get', param: `GroupMute_${i}`, format: 'val' }).catch(() => null)
+        ])
 
-      const name = nameResult?.data?.str || `Group ${i + 1}`
-      const isActive = activeResult?.data?.val === 1
-      const source = sourceResult?.data?.val ?? -1
-      const gain = gainResult?.data?.val ?? -10
-      const muted = muteResult?.data?.val === 1
+        // If we can't get a name, this group doesn't exist
+        if (!nameResult?.data?.str) {
+          break
+        }
 
-      groups.push({
-        index: i,
-        name,
-        isActive,
-        source,
-        gain,
-        muted
-      })
+        const name = nameResult.data.str
+        const isActive = activeResult?.data?.val === 1
+        const source = sourceResult?.data?.val ?? -1
+        const gain = gainResult?.data?.val ?? -10
+        const muted = muteResult?.data?.val === 1
+
+        groups.push({
+          index: i,
+          name,
+          isActive,
+          source,
+          gain,
+          muted
+        })
+      } catch (error) {
+        // Error means we've reached the limit of available groups
+        console.log(`Discovered ${groups.length} groups (stopped at index ${i})`)
+        break
+      }
     }
 
     await client.disconnect()
@@ -54,6 +66,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       groups,
+      totalGroups: groups.length,
+      activeGroups: groups.filter(g => g.isActive).length,
       timestamp: Date.now()
     })
   } catch (error) {
