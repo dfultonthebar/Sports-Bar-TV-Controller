@@ -80,3 +80,27 @@ sshpass -p '6809233DjD$$$' ssh -p 224 \
 
 ## Last Updated
 October 20, 2025 - Verified working during PR #220 deployment
+
+## n8n Automation Platform
+
+### Access Details
+- **URL:** http://24.123.87.42:5678
+- **Email:** sgtfulton@gmail.com
+- **Password:** 6809233DjD$$$
+
+### Purpose
+n8n is used for automation workflows, including:
+- Prisma to Drizzle migration scanning
+- Automated code analysis and reporting
+- CI/CD integration tasks
+
+### Usage
+1. Navigate to http://24.123.87.42:5678
+2. Log in with the credentials above
+3. Access workflows from the dashboard
+
+### Security Notes
+- n8n instance is running on the same server as the application
+- Credentials should be rotated periodically
+- Consider implementing OAuth or SSO for production environments
+
