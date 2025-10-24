@@ -145,6 +145,10 @@ export default function BartenderRemotePage() {
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   
+  // Audio processor state
+  const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
+  const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
+  
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
 
@@ -156,6 +160,7 @@ export default function BartenderRemotePage() {
     loadDirecTVDevices()
     loadFireTVDevices()
     loadTVLayout()
+    loadAudioProcessor()
     // Also fetch matrix data on initial load
     fetchMatrixData()
     
@@ -251,6 +256,23 @@ export default function BartenderRemotePage() {
   const loadInputs = async () => {
     // Matrix inputs are loaded via fetchMatrixData()
     // This function is kept for compatibility
+  }
+
+  const loadAudioProcessor = async () => {
+    try {
+      const response = await fetch('/api/audio-processor')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.processors && data.processors.length > 0) {
+          // Use the first audio processor found
+          const processor = data.processors[0]
+          setAudioProcessorIp(processor.ipAddress)
+          setAudioProcessorId(processor.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading audio processor:', error)
+    }
   }
 
   const loadTVLayout = async () => {
@@ -894,7 +916,10 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <BartenderRemoteAudioPanel />
+            <BartenderRemoteAudioPanel 
+              processorIp={audioProcessorIp}
+              processorId={audioProcessorId}
+            />
           </div>
         )}
 
