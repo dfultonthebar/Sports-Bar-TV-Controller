@@ -154,22 +154,90 @@ export async function POST(request: NextRequest) {
     for (const zone of hardwareConfig.zones) {
       try {
         // Extract primitive values from Atlas response objects
-        // Atlas returns data in format: [{ param: "ZoneName_0", str: "Bar" }]
+        // This handles multiple data formats that Atlas might return
         const extractValue = (data: any, defaultValue: any = null) => {
-          if (Array.isArray(data) && data.length > 0) {
-            // Extract from array format
-            return data[0].str !== undefined ? data[0].str : 
-                   data[0].val !== undefined ? data[0].val : 
-                   data[0].pct !== undefined ? Math.round(data[0].pct) : 
-                   defaultValue
+          // Handle null/undefined
+          if (data === null || data === undefined) {
+            return defaultValue
           }
-          return data !== undefined ? data : defaultValue
+          
+          // Handle arrays
+          if (Array.isArray(data)) {
+            // Empty array - return default
+            if (data.length === 0) {
+              return defaultValue
+            }
+            
+            const firstItem = data[0]
+            
+            // Handle array of objects with Atlas response format
+            if (typeof firstItem === 'object' && firstItem !== null) {
+              // Try to extract value from common Atlas response fields
+              if (firstItem.str !== undefined) return String(firstItem.str)
+              if (firstItem.val !== undefined) return firstItem.val
+              if (firstItem.pct !== undefined) return Math.round(firstItem.pct)
+            }
+            
+            // Handle array of primitives
+            if (typeof firstItem === 'string' || typeof firstItem === 'number' || typeof firstItem === 'boolean') {
+              return firstItem
+            }
+            
+            return defaultValue
+          }
+          
+          // Handle objects (but not arrays)
+          if (typeof data === 'object') {
+            // If it's a nested object, try to extract a primitive value
+            if (data.value !== undefined) {
+              return extractValue(data.value, defaultValue)
+            }
+            if (data.str !== undefined) return String(data.str)
+            if (data.val !== undefined) return data.val
+            if (data.pct !== undefined) return Math.round(data.pct)
+            
+            // If we can't extract a primitive, return default
+            console.warn(`[Query Hardware] Cannot extract primitive from object for zone ${zone.index}:`, JSON.stringify(data))
+            return defaultValue
+          }
+          
+          // Handle primitives (string, number, boolean)
+          if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+            return data
+          }
+          
+          // Fallback
+          return defaultValue
         }
 
         const zoneName = extractValue(zone.name, `Zone ${zone.index + 1}`)
         const zoneVolume = extractValue(zone.volume, 50)
         const zoneMuted = zone.muted === true || zone.muted === 1
         const zoneSource = extractValue(zone.currentSource, -1)
+        
+        // Validate and sanitize all values to ensure SQLite compatibility
+        // SQLite can only bind: numbers, strings, bigints, buffers, and null
+        const sanitizedName = typeof zoneName === 'string' ? zoneName : 
+                             typeof zoneName === 'number' ? String(zoneName) : 
+                             `Zone ${zone.index + 1}`
+        
+        const sanitizedVolume = typeof zoneVolume === 'number' ? Math.round(zoneVolume) : 
+                               typeof zoneVolume === 'string' ? parseInt(zoneVolume, 10) || 50 : 
+                               50
+        
+        const sanitizedMuted = Boolean(zoneMuted)
+        
+        const sanitizedSource = zoneSource === null || zoneSource === undefined || zoneSource === -1 ? null :
+                               typeof zoneSource === 'number' ? String(zoneSource) :
+                               typeof zoneSource === 'string' ? zoneSource :
+                               null
+        
+        console.log(`[Query Hardware] Zone ${zone.index} sanitized values:`, {
+          name: sanitizedName,
+          volume: sanitizedVolume,
+          muted: sanitizedMuted,
+          currentSource: sanitizedSource
+        })
         
         // First, try to find existing zone by processorId and zoneNumber
         const existingZone = await db
@@ -185,10 +253,10 @@ export async function POST(request: NextRequest) {
           .get()
 
         const zoneData = {
-          name: zoneName,
-          volume: typeof zoneVolume === 'number' ? zoneVolume : 50,
-          muted: zoneMuted,
-          currentSource: zoneSource !== -1 ? String(zoneSource) : null,
+          name: sanitizedName,
+          volume: sanitizedVolume,
+          muted: sanitizedMuted,
+          currentSource: sanitizedSource,
           updatedAt: new Date().toISOString()
         }
 
@@ -206,16 +274,18 @@ export async function POST(request: NextRequest) {
             .values({
               processorId: processorId,
               zoneNumber: zone.index,
-              name: zoneName,
-              volume: typeof zoneVolume === 'number' ? zoneVolume : 50,
-              muted: zoneMuted,
-              currentSource: zoneSource !== -1 ? String(zoneSource) : null,
+              name: sanitizedName,
+              volume: sanitizedVolume,
+              muted: sanitizedMuted,
+              currentSource: sanitizedSource,
               enabled: true,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             })
             .run()
         }
+        
+        console.log(`[Query Hardware] Successfully saved zone ${zone.index}: ${sanitizedName}`)
       } catch (zoneError) {
         console.error(`[Query Hardware] Error upserting zone ${zone.index}:`, zoneError)
         // Continue with other zones even if one fails
