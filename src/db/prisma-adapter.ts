@@ -72,7 +72,26 @@ if (!where) return undefined
 const conditions: any[] = []
 
 Object.entries(where).forEach(([field, value]) => {
+// Check if this is a composite key (e.g., processorId_zoneNumber)
+// Composite keys contain underscore and the field doesn't exist in table
+if (field.includes('_') && !table[field]) {
+// This is a composite key, extract individual fields
+if (typeof value === 'object' && value !== null) {
+Object.entries(value).forEach(([subField, subValue]) => {
+const column = table[subField]
+if (column) {
+conditions.push(eq(column, subValue))
+}
+})
+}
+return
+}
+
 const column = table[field]
+if (!column) {
+console.warn(`[prisma-adapter] Column ${field} not found in table`)
+return
+}
 
 if (value === null) {
 conditions.push(eq(column, null))
