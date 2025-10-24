@@ -510,35 +510,16 @@ async function queryZoneOutputs(
   const outputs: AtlasZoneOutput[] = []
   
   try {
-    // STRATEGY 1: Try to get zone output configuration
-    // Common parameters that might exist: ZoneOutputCount, ZoneOutputType, ZoneChannels, etc.
-    const outputCountParams = [
-      `ZoneOutputCount_${zoneIndex}`,
-      `ZoneChannels_${zoneIndex}`,
-      `ZoneAmpCount_${zoneIndex}`,
-      `NumOutputs_${zoneIndex}`
-    ]
+    // STRATEGY 1: Skip querying output count parameters as they're rarely supported
+    // Most Atlas devices use simple single-output zones with ZoneGain_X
+    // Multi-output zones are uncommon and would require specific configuration
     
-    let outputCount = 1 // Default to single output
+    // STRATEGY 2: Just use the standard ZoneGain parameter
+    // If multi-output support is needed in the future, it can be added with proper device detection
     
-    for (const param of outputCountParams) {
-      try {
-        const response = await client.getParameter(param, 'val')
-        if (response.success && response.data) {
-          const count = extractValueFromResponse(response.data, 'val')
-          if (count && count > 0) {
-            outputCount = count
-            console.log(`[Atlas Query] Found ${outputCount} outputs for zone ${zoneIndex} via ${param}`)
-            break
-          }
-        }
-      } catch (error) {
-        // Parameter doesn't exist, try next
-        continue
-      }
-    }
+    const outputCount = 1 // Always use single output for now
     
-    // STRATEGY 2: Query individual output gains
+    // STRATEGY 3: Fallback to single output using ZoneGain (always used for now)
     if (outputCount > 1) {
       // Try multiple output parameter patterns
       const paramPatterns = [
