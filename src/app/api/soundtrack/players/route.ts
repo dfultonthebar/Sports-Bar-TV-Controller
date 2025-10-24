@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 
@@ -11,7 +13,7 @@ export async function GET(request: NextRequest) {
     const bartenderOnly = searchParams.get('bartenderOnly') === 'true'
 
     // Get configuration with CACHED API key from database
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
     
     if (!config) {
       return NextResponse.json({ 
@@ -21,8 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get player settings from database
-    const dbPlayers = await prisma.soundtrackPlayer.findMany({
-      where: {
+    const dbPlayers = await findMany('soundtrackPlayers', { where: {
         configId: config.id,
         ...(bartenderOnly && { bartenderVisible: true })
       },
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, players })
   } catch (error: any) {
-    console.error('Error fetching Soundtrack players:', error)
+    logger.error('Error fetching Soundtrack players:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
@@ -76,7 +77,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get CACHED API key from database
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
     if (!config) {
       return NextResponse.json({ 
         success: false, 
@@ -104,7 +105,7 @@ export async function PATCH(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error controlling Soundtrack player:', error)
+    logger.error('Error controlling Soundtrack player:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 

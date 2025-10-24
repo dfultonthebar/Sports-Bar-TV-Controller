@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, create, deleteMany, deleteRecord, desc, eq, findFirst, or, update, updateMany, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { getSoundtrackAPI, setSoundtrackAPIToken, clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 
@@ -36,7 +38,7 @@ export async function GET() {
       hasConfig: true
     })
   } catch (error: any) {
-    console.error('Error fetching Soundtrack config:', error)
+    logger.error('Error fetching Soundtrack config:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest) {
           details: testResult.details
         }, { status: 400 })
       }
-      console.log('[Soundtrack] Token validated successfully - will be cached in database')
+      logger.debug('[Soundtrack] Token validated successfully - will be cached in database')
     } catch (error: any) {
       clearSoundtrackAPI()
       return NextResponse.json({ 
@@ -91,12 +93,12 @@ export async function POST(request: NextRequest) {
         ? accountInfo.accounts[0] 
         : null
     } catch (error: any) {
-      console.log('Could not fetch account info, will save token anyway:', error.message)
+      logger.debug('Could not fetch account info, will save token anyway:', error.message)
       // Continue anyway - we'll use default values
     }
     
     // Save or update configuration
-    const existingConfig = await prisma.soundtrackConfig.findFirst()
+    const existingConfig = await findFirst('soundtrackConfigs')
 
     const config = existingConfig
       ? await prisma.soundtrackConfig.update({
@@ -109,15 +111,13 @@ export async function POST(request: NextRequest) {
             lastTested: new Date()
           }
         })
-      : await prisma.soundtrackConfig.create({
-          data: {
+      : await create('soundtrackConfigs', {
             apiKey,
             accountId: firstAccount?.id || 'unknown',
             accountName: firstAccount?.name || 'Soundtrack Account',
             status: 'active',
             lastTested: new Date()
-          }
-        })
+          })
 
     // Fetch sound zones ONCE during initial setup
     // After this, we'll use the cached token from database for all operations
@@ -149,12 +149,12 @@ export async function POST(request: NextRequest) {
             }
           })
         }
-        console.log(`[Soundtrack] Synced ${soundZones.length} sound zones`)
+        logger.debug(`[Soundtrack] Synced ${soundZones.length} sound zones`)
       } else {
         zonesWarning = 'No sound zones found. Please configure players in your Soundtrack account.'
       }
     } catch (error: any) {
-      console.error('Error syncing sound zones:', error)
+      logger.error('Error syncing sound zones:', error)
       zonesWarning = 'Could not fetch sound zones automatically. Use the "Refresh" button to try again.'
     }
 
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       testResult: testResult.details
     })
   } catch (error: any) {
-    console.error('Error saving Soundtrack config:', error)
+    logger.error('Error saving Soundtrack config:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
@@ -199,7 +199,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, player })
   } catch (error: any) {
-    console.error('Error updating player settings:', error)
+    logger.error('Error updating player settings:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
@@ -211,7 +211,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE() {
   try {
     // Find existing config
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
 
     if (!config) {
       return NextResponse.json({ 
@@ -238,7 +238,7 @@ export async function DELETE() {
       message: 'Soundtrack configuration deleted successfully' 
     })
   } catch (error: any) {
-    console.error('Error deleting Soundtrack config:', error)
+    logger.error('Error deleting Soundtrack config:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 

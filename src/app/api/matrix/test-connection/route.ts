@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export async function GET() {
@@ -104,7 +106,7 @@ export async function GET() {
       }
     }
   } catch (error) {
-    console.error('Error testing connection:', error)
+    logger.error('Error testing connection:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Connection test failed: ' + error
@@ -202,7 +204,7 @@ export async function POST(request: NextRequest) {
       }
     }
   } catch (error) {
-    console.error('Error testing connection:', error)
+    logger.error('Error testing connection:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Connection test failed: ' + error

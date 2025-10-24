@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { Socket } from 'net'
 import dgram from 'dgram'
 
@@ -17,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get CEC configuration
-    const cecConfig = await prisma.cECConfiguration.findFirst()
+    const cecConfig = await findFirst('cecConfigurations')
     if (!cecConfig || !cecConfig.isEnabled || !cecConfig.cecInputChannel) {
       return NextResponse.json({ 
         success: false, 
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    console.log(`CEC ${action} requested for outputs: ${targetOutputs.join(', ')}`)
+    logger.debug(`CEC ${action} requested for outputs: ${targetOutputs.join(', ')}`)
 
     const results: any[] = []
     const errors: any[] = []
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
           )
           results.push(result)
         } catch (error) {
-          console.error(`Error controlling output ${outputNum}:`, error)
+          logger.error(`Error controlling output ${outputNum}:`, error)
           errors.push(`Output ${outputNum}: ${error}`)
         }
       }
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
         )
         results.push(result)
       } catch (error) {
-        console.error('Error in batch TV control:', error)
+        logger.error('Error in batch TV control:', error)
         errors.push(`Batch control failed: ${error}`)
       }
     }
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in CEC power control:', error)
+    logger.error('Error in CEC power control:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'CEC power control failed: ' + error 
@@ -116,7 +118,7 @@ async function controlIndividualTV(
   matrixConfig: any
 ): Promise<any> {
   
-  console.log(`Starting individual ${action} for output ${outputNumber}`)
+  logger.debug(`Starting individual ${action} for output ${outputNumber}`)
   
   // Step 1: Route CEC input to this specific output
   const routeSuccess = await routeInputToOutput(
@@ -156,7 +158,7 @@ async function controlAllTVs(
   matrixConfig: any
 ): Promise<any> {
   
-  console.log(`Starting batch ${action} for outputs: ${outputNumbers.join(', ')}`)
+  logger.debug(`Starting batch ${action} for outputs: ${outputNumbers.join(', ')}`)
   
   const results: any[] = []
   
@@ -201,7 +203,7 @@ async function routeInputToOutput(
 ): Promise<boolean> {
   
   const command = `${inputNumber}X${outputNumber}.`
-  console.log(`Routing Wolf Pack: ${command}`)
+  logger.debug(`Routing Wolf Pack: ${command}`)
   
   try {
     if (matrixConfig.protocol === 'UDP') {
@@ -218,7 +220,7 @@ async function routeInputToOutput(
       )
     }
   } catch (error) {
-    console.error(`Wolf Pack routing error: ${error}`)
+    logger.error(`Wolf Pack routing error: ${error}`)
     return false
   }
 }
@@ -231,7 +233,7 @@ async function sendCECCommand(
 ): Promise<boolean> {
   
   const cecCommand = action === 'power_on' ? 'on' : 'standby'
-  console.log(`Sending CEC ${cecCommand} command to outputs: ${outputNumbers.join(', ')}`)
+  logger.debug(`Sending CEC ${cecCommand} command to outputs: ${outputNumbers.join(', ')}`)
   
   try {
     // This assumes a CEC HTTP server/bridge (like cec-web-api or similar)
@@ -249,14 +251,14 @@ async function sendCECCommand(
     
     if (response.ok) {
       const result = await response.json()
-      console.log('CEC command response:', result)
+      logger.debug('CEC command response:', result)
       return true
     } else {
-      console.error('CEC command failed:', response.status, response.statusText)
+      logger.error('CEC command failed:', response.status, response.statusText)
       return false
     }
   } catch (error) {
-    console.error('CEC HTTP request failed:', error)
+    logger.error('CEC HTTP request failed:', error)
     
     // Fallback: try sending CEC commands via a simple TCP socket if HTTP fails
     return await sendCECCommandTCP(action, outputNumbers, cecConfig)
@@ -288,14 +290,14 @@ async function sendCECCommandTCP(
 
     socket.on('data', (data) => {
       const response = data.toString()
-      console.log('CEC TCP response:', response)
+      logger.debug('CEC TCP response:', response)
       clearTimeout(timeout)
       socket.destroy()
       resolve(response.includes('success') || response.includes('OK'))
     })
 
     socket.on('error', (error) => {
-      console.error('CEC TCP error:', error)
+      logger.error('CEC TCP error:', error)
       clearTimeout(timeout)
       resolve(false)
     })
@@ -318,14 +320,14 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
 
     socket.on('data', (data) => {
       const response = data.toString().trim()
-      console.log(`Wolf Pack TCP response: ${response}`)
+      logger.debug(`Wolf Pack TCP response: ${response}`)
       clearTimeout(timeout)
       socket.destroy()
       resolve(response === 'OK')
     })
 
     socket.on('error', (error) => {
-      console.error('Wolf Pack TCP error:', error)
+      logger.error('Wolf Pack TCP error:', error)
       clearTimeout(timeout)
       resolve(false)
     })
@@ -350,19 +352,19 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
         return
       }
       
-      console.log(`Wolf Pack UDP command sent: ${command}`)
+      logger.debug(`Wolf Pack UDP command sent: ${command}`)
     })
 
     client.on('message', (data) => {
       const response = data.toString().trim()
-      console.log(`Wolf Pack UDP response: ${response}`)
+      logger.debug(`Wolf Pack UDP response: ${response}`)
       clearTimeout(timeout)
       client.close()
       resolve(response === 'OK')
     })
 
     client.on('error', (error) => {
-      console.error('Wolf Pack UDP error:', error)
+      logger.error('Wolf Pack UDP error:', error)
       clearTimeout(timeout)
       client.close()
       resolve(false)

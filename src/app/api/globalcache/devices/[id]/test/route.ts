@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 // Converted to Drizzle ORM
 import net from 'net'
 import { globalCacheDevices } from '@/db/schema'

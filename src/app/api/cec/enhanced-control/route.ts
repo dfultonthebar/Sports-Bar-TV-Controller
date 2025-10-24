@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { CECCommand, getCECCommandMapping } from '@/lib/enhanced-cec-commands'
 import { getBrandConfig } from '@/lib/tv-brands-config'
 
@@ -17,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get CEC configuration
-    const cecConfig = await prisma.cECConfiguration.findFirst()
+    const cecConfig = await findFirst('cecConfigurations')
     if (!cecConfig || !cecConfig.isEnabled) {
       return NextResponse.json({ 
         success: false, 
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
       // Use detected brand from CEC discovery if available
       if (output?.tvBrand) {
         brandConfig = getBrandConfig(output.tvBrand)
-        console.log(`[CEC Enhanced Control] Using brand-specific config for ${output.tvBrand}`)
+        logger.debug(`[CEC Enhanced Control] Using brand-specific config for ${output.tvBrand}`)
       }
     }
 
@@ -125,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Enhanced CEC control error:', error)
+    logger.error('Enhanced CEC control error:', error)
     return NextResponse.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

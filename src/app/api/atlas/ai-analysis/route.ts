@@ -5,7 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findMany, findUnique, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export const dynamic = 'force-dynamic'
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Atlas AI analysis API error:', error)
+    logger.error('Atlas AI analysis API error:', error)
     return NextResponse.json(
       { 
         error: 'Failed to analyze Atlas data',
@@ -101,7 +103,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Atlas AI history API error:', error)
+    logger.error('Atlas AI history API error:', error)
     return NextResponse.json(
       { error: 'Failed to retrieve Atlas analysis history' },
       { status: 500 }

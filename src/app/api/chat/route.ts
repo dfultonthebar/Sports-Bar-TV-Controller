@@ -10,6 +10,7 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
 import { chatSessions } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 import {
   executeTool,
   getAvailableTools,

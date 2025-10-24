@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
     // 2. AI Providers Check
     if (shouldRunCheck('ai_providers')) {
       try {
-        const apiKeys = await prisma.apiKey.findMany()
+        const apiKeys = await findMany('apiKeys')
         const activeProviders = apiKeys.filter(k => k.keyValue && k.keyValue.length > 0)
         
         diagnosticResults.push({
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     // 3. Matrix Inputs Check
     if (shouldRunCheck('matrix_inputs')) {
       try {
-        const matrixInputs = await prisma.matrixInput.findMany()
+        const matrixInputs = await findMany('matrixInputs')
         const activeInputs = matrixInputs.filter(i => i.isActive)
         
         diagnosticResults.push({
@@ -351,7 +353,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error running diagnostics:', error)
+    logger.error('Error running diagnostics:', error)
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to run diagnostics',
@@ -369,7 +371,7 @@ export async function GET(request: NextRequest) {
     if (quick) {
       // Quick health check - just database and AI providers
       const dbCheck = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false)
-      const apiKeys = await prisma.apiKey.findMany().catch(() => [] as any[])
+      const apiKeys = await findMany('apiKeys').catch(() => [] as any[])
       const activeProviders = apiKeys.filter(k => k.keyValue && k.keyValue.length > 0)
 
       return NextResponse.json({
@@ -410,7 +412,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in diagnostics GET:', error)
+    logger.error('Error in diagnostics GET:', error)
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get diagnostics info',

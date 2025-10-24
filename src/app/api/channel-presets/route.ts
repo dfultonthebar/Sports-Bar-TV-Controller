@@ -1,30 +1,37 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { findMany, findFirst, create, eq, and, asc, desc } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 // GET /api/channel-presets - Get all presets (optionally filtered by deviceType)
 export async function GET(request: NextRequest) {
+  logger.api.request('GET', '/api/channel-presets')
+  
   try {
     const searchParams = request.nextUrl.searchParams
     const deviceType = searchParams.get('deviceType')
 
-    const where = deviceType ? { deviceType, isActive: true } : { isActive: true }
+    const whereClause = deviceType 
+      ? and(eq(schema.channelPresets.deviceType, deviceType), eq(schema.channelPresets.isActive, true))
+      : eq(schema.channelPresets.isActive, true)
 
-    const presets = await prisma.channelPreset.findMany({
-      where,
+    const presets = await findMany('channelPresets', {
+      where: whereClause,
       orderBy: [
-        { order: 'asc' },
-        { name: 'asc' }
+        asc(schema.channelPresets.order),
+        asc(schema.channelPresets.name)
       ]
     })
 
+    logger.api.response('GET', '/api/channel-presets', 200, { count: presets.length })
     return NextResponse.json({ 
       success: true, 
       presets 
     })
   } catch (error) {
-    console.error('Error fetching channel presets:', error)
+    logger.api.error('GET', '/api/channel-presets', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -38,12 +45,17 @@ export async function GET(request: NextRequest) {
 
 // POST /api/channel-presets - Create a new preset
 export async function POST(request: NextRequest) {
+  logger.api.request('POST', '/api/channel-presets')
+  
   try {
     const body = await request.json()
     const { name, channelNumber, deviceType, order } = body
 
+    logger.debug('Creating channel preset', { name, channelNumber, deviceType, order })
+
     // Validate required fields
     if (!name || !channelNumber || !deviceType) {
+      logger.api.response('POST', '/api/channel-presets', 400, { error: 'Missing required fields' })
       return NextResponse.json(
         { 
           success: false, 
@@ -55,6 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Validate deviceType
     if (!['cable', 'directv'].includes(deviceType)) {
+      logger.api.response('POST', '/api/channel-presets', 400, { error: 'Invalid deviceType' })
       return NextResponse.json(
         { 
           success: false, 
@@ -67,28 +80,27 @@ export async function POST(request: NextRequest) {
     // If no order specified, get the next available order number
     let presetOrder = order
     if (presetOrder === undefined || presetOrder === null) {
-      const maxOrderPreset = await prisma.channelPreset.findFirst({
-        where: { deviceType },
-        orderBy: { order: 'desc' }
+      const maxOrderPreset = await findFirst('channelPresets', {
+        where: eq(schema.channelPresets.deviceType, deviceType),
+        orderBy: desc(schema.channelPresets.order)
       })
       presetOrder = maxOrderPreset ? maxOrderPreset.order + 1 : 0
     }
 
-    const preset = await prisma.channelPreset.create({
-      data: {
-        name,
-        channelNumber,
-        deviceType,
-        order: presetOrder
-      }
+    const preset = await create('channelPresets', {
+      name,
+      channelNumber,
+      deviceType,
+      order: presetOrder
     })
 
+    logger.api.response('POST', '/api/channel-presets', 201, { presetId: preset.id })
     return NextResponse.json({ 
       success: true, 
       preset 
     })
   } catch (error) {
-    console.error('Error creating channel preset:', error)
+    logger.api.error('POST', '/api/channel-presets', error)
     return NextResponse.json(
       { 
         success: false, 

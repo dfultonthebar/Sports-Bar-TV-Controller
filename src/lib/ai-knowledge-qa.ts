@@ -4,7 +4,9 @@
  * Integrates Q&A training data with the existing knowledge base
  */
 
-import prisma from "@/lib/prisma";
+import { and, asc, desc, eq, findMany, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 import { loadKnowledgeBase, DocumentChunk, searchKnowledgeBase } from './ai-knowledge';
 
 // Using singleton prisma from @/lib/prisma;
@@ -103,7 +105,7 @@ export async function searchQAForContext(
 
     return topEntries;
   } catch (error) {
-    console.error('Error searching Q&A entries:', error);
+    logger.error('Error searching Q&A entries:', error);
     return [];
   }
 }

@@ -3,7 +3,9 @@
  * Collects and stores real-time audio level data from Atlas processors
  */
 
-import prisma from "@/lib/prisma"
+import { and, asc, deleteMany, desc, eq, findUnique, or, update, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 // Using singleton prisma from @/lib/prisma
 
@@ -25,14 +27,14 @@ export class AtlasMeterService {
     // Stop existing monitoring if any
     this.stopMonitoring(processorId)
     
-    console.log(`Starting Atlas meter monitoring for processor ${processorId}`)
+    logger.debug(`Starting Atlas meter monitoring for processor ${processorId}`)
     
     // Start periodic monitoring
     const interval = setInterval(async () => {
       try {
         await this.collectAndStoreMeterData(processorId)
       } catch (error) {
-        console.error(`Error collecting meter data for ${processorId}:`, error)
+        logger.error(`Error collecting meter data for ${processorId}:`, error)
       }
     }, intervalMs)
     
@@ -50,7 +52,7 @@ export class AtlasMeterService {
     if (interval) {
       clearInterval(interval)
       this.monitoringIntervals.delete(processorId)
-      console.log(`Stopped Atlas meter monitoring for processor ${processorId}`)
+      logger.debug(`Stopped Atlas meter monitoring for processor ${processorId}`)
     }
   }
   
@@ -65,7 +67,7 @@ export class AtlasMeterService {
       })
       
       if (!processor) {
-        console.error(`Processor ${processorId} not found`)
+        logger.error(`Processor ${processorId} not found`)
         return
       }
       
@@ -109,10 +111,10 @@ export class AtlasMeterService {
         }
       })
       
-      console.log(`Stored ${meterReadings.length} meter readings for ${processor.name}`)
+      logger.debug(`Stored ${meterReadings.length} meter readings for ${processor.name}`)
       
     } catch (error) {
-      console.error(`Failed to collect meter data for ${processorId}:`, error)
+      logger.error(`Failed to collect meter data for ${processorId}:`, error)
     }
   }
   
@@ -174,7 +176,7 @@ export class AtlasMeterService {
       }
     })
     
-    console.log(`Cleaned up ${result.count} old meter readings`)
+    logger.debug(`Cleaned up ${result.count} old meter readings`)
     return result.count
   }
 }

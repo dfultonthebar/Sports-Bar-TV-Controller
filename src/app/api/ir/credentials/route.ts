@@ -7,6 +7,7 @@ import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import crypto from 'crypto'
 import { irDatabaseCredentials } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {

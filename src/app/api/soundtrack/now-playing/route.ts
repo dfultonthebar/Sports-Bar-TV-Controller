@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get API key from config
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
     
     if (!config) {
       return NextResponse.json({ 
@@ -34,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, nowPlaying })
   } catch (error: any) {
-    console.error('Error fetching now playing:', error)
+    logger.error('Error fetching now playing:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 

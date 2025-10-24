@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { encrypt, decrypt } from '@/lib/encryption'
 import { apiKeys } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 export async function GET() {
   try {

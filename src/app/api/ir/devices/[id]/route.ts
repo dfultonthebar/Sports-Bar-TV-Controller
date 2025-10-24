@@ -5,6 +5,7 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irDevices } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 /**
  * GET /api/ir/devices/:id

@@ -3,7 +3,9 @@
 
 import cron from 'node-cron';
 import { ADBClient } from './adb-client';
-import prisma from "@/lib/prisma";
+import { and, asc, create, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 
@@ -26,9 +28,9 @@ export class KeepAwakeScheduler {
         await this.scheduleDevice(device.id, device.keepAwakeStart, device.keepAwakeEnd);
       }
 
-      console.log(`Initialized keep-awake schedules for ${devices.length} devices`);
+      logger.debug(`Initialized keep-awake schedules for ${devices.length} devices`);
     } catch (error) {
-      console.error('Failed to initialize keep-awake schedules:', error);
+      logger.error('Failed to initialize keep-awake schedules:', error);
     }
   }
 
@@ -102,9 +104,9 @@ export class KeepAwakeScheduler {
       this.scheduledTasks.set(`${deviceId}_sleep`, sleepTask);
       this.scheduledTasks.set(`${deviceId}_keepalive`, keepAliveTask);
 
-      console.log(`Scheduled keep-awake for device ${device.name} (${startTime} - ${endTime})`);
+      logger.debug(`Scheduled keep-awake for device ${device.name} (${startTime} - ${endTime})`);
     } catch (error) {
-      console.error(`Failed to schedule device ${deviceId}:`, error);
+      logger.error(`Failed to schedule device ${deviceId}:`, error);
       throw error;
     }
   }
@@ -154,12 +156,12 @@ export class KeepAwakeScheduler {
       await this.logAction(deviceId, 'wake_up', success);
 
       if (success) {
-        console.log(`Woke up device ${device.name}`);
+        logger.debug(`Woke up device ${device.name}`);
       } else {
-        console.error(`Failed to wake up device ${device.name}`);
+        logger.error(`Failed to wake up device ${device.name}`);
       }
     } catch (error) {
-      console.error(`Error waking up device ${deviceId}:`, error);
+      logger.error(`Error waking up device ${deviceId}:`, error);
       await this.logAction(deviceId, 'wake_up', false, (error as Error).message);
     }
   }
@@ -217,12 +219,12 @@ export class KeepAwakeScheduler {
       await this.logAction(deviceId, 'allow_sleep', success);
 
       if (success) {
-        console.log(`Allowed sleep for device ${device.name}`);
+        logger.debug(`Allowed sleep for device ${device.name}`);
       } else {
-        console.error(`Failed to allow sleep for device ${device.name}`);
+        logger.error(`Failed to allow sleep for device ${device.name}`);
       }
     } catch (error) {
-      console.error(`Error allowing sleep for device ${deviceId}:`, error);
+      logger.error(`Error allowing sleep for device ${deviceId}:`, error);
       await this.logAction(deviceId, 'allow_sleep', false, (error as Error).message);
     }
   }
@@ -237,17 +239,15 @@ export class KeepAwakeScheduler {
     errorMessage?: string
   ): Promise<void> {
     try {
-      await prisma.fireCubeKeepAwakeLog.create({
-        data: {
+      await create('fireCubeKeepAwakeLogs', {
           deviceId,
           action,
           success,
           errorMessage,
           timestamp: new Date()
-        }
-      });
+        });
     } catch (error) {
-      console.error('Failed to log keep-awake action:', error);
+      logger.error('Failed to log keep-awake action:', error);
     }
   }
 
@@ -277,7 +277,7 @@ export class KeepAwakeScheduler {
         this.cancelSchedule(deviceId);
       }
     } catch (error) {
-      console.error('Failed to update device schedule:', error);
+      logger.error('Failed to update device schedule:', error);
       throw error;
     }
   }
@@ -293,7 +293,7 @@ export class KeepAwakeScheduler {
         take: limit
       });
     } catch (error) {
-      console.error('Failed to get device logs:', error);
+      logger.error('Failed to get device logs:', error);
       return [];
     }
   }
@@ -328,7 +328,7 @@ export class KeepAwakeScheduler {
 
       return status;
     } catch (error) {
-      console.error('Failed to get keep-awake status:', error);
+      logger.error('Failed to get keep-awake status:', error);
       return [];
     }
   }
@@ -341,7 +341,7 @@ export class KeepAwakeScheduler {
       task.stop();
     }
     this.scheduledTasks.clear();
-    console.log('Stopped all keep-awake schedules');
+    logger.debug('Stopped all keep-awake schedules');
   }
 }
 

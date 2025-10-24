@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { wolfpackMatrixRoutings, wolfpackMatrixStates } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 export async function GET() {
   try {

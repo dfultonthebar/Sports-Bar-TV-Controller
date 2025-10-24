@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { globalCachePorts } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 // Converted to Drizzle ORM
 
 /**

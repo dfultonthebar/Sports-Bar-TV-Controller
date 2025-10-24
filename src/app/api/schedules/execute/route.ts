@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { homeTeams, matrixOutputs, scheduleLogs, schedules } from '@/db/schema'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
+import { prisma } from '@/db/prisma-adapter'
 
 
 // POST - Execute a schedule immediately

@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 /**
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('Error fetching matrix display data:', error)
+    logger.error('Error fetching matrix display data:', error)
     return NextResponse.json(
       { error: 'Failed to fetch matrix display data' },
       { status: 500 }

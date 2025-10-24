@@ -10,6 +10,7 @@ import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discov
 import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { matrixOutputs } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 /**
  * POST /api/cec/discovery

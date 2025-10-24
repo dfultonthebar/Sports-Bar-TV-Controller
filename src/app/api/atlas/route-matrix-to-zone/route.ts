@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 /**
  * Atlas Matrix-to-Zone Routing API
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     // Here you would send actual commands to the Atlas processor
     // For now, we'll simulate the routing by updating the database
-    console.log(`Routing Matrix ${matrixInputNumber} (${videoInputLabel}) to zones: ${zoneNumbers.join(', ')}`)
+    logger.debug(`Routing Matrix ${matrixInputNumber} (${videoInputLabel}) to zones: ${zoneNumbers.join(', ')}`)
     
     // In a real implementation, you would:
     // 1. Get the Atlas processor configuration
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error routing Matrix to Atlas zone:', error)
+    logger.error('Error routing Matrix to Atlas zone:', error)
     return NextResponse.json(
       { 
         error: 'Failed to route Matrix to Atlas zone',
@@ -188,7 +190,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching Matrix-to-Zone routing state:', error)
+    logger.error('Error fetching Matrix-to-Zone routing state:', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch routing state',

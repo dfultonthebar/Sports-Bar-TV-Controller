@@ -1,5 +1,7 @@
 
-import prisma from "@/lib/prisma";
+import { and, asc, desc, eq, findMany, findUnique, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 import { loadKnowledgeBase, DocumentChunk } from './ai-knowledge';
 
 // Using singleton prisma from @/lib/prisma;
@@ -78,7 +80,7 @@ export async function searchCodebase(
     };
     
   } catch (error) {
-    console.error('Error searching codebase:', error);
+    logger.error('Error searching codebase:', error);
     return {
       files: [] as any[],
       totalFiles: 0
@@ -133,7 +135,7 @@ export async function buildEnhancedContext(
         });
       }
     } catch (error) {
-      console.error('Error loading documentation:', error);
+      logger.error('Error loading documentation:', error);
     }
   }
   
@@ -165,7 +167,7 @@ export async function buildEnhancedContext(
         });
       }
     } catch (error) {
-      console.error('Error loading codebase context:', error);
+      logger.error('Error loading codebase context:', error);
     }
   }
   
@@ -187,7 +189,7 @@ export async function getFileByPath(filePath: string): Promise<any | null> {
     });
     return file;
   } catch (error) {
-    console.error('Error getting file:', error);
+    logger.error('Error getting file:', error);
     return null;
   }
 }
@@ -220,7 +222,7 @@ export async function getCodebaseStats() {
       }))
     };
   } catch (error) {
-    console.error('Error getting codebase stats:', error);
+    logger.error('Error getting codebase stats:', error);
     return null;
   }
 }

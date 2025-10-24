@@ -1,7 +1,9 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -71,7 +73,7 @@ export async function GET() {
       }
     })
   } catch (error) {
-    console.error('Error getting current time:', error)
+    logger.error('Error getting current time:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to get current time' },
       { status: 500 }

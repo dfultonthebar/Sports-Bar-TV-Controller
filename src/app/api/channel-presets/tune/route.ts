@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 // POST /api/channel-presets/tune - Send channel change command
@@ -64,9 +66,9 @@ export async function POST(request: NextRequest) {
               lastUsed: new Date()
             }
           })
-          console.log(`[Usage Tracking] Preset ${presetId} usage recorded`)
+          logger.debug(`[Usage Tracking] Preset ${presetId} usage recorded`)
         } catch (error) {
-          console.error('[Usage Tracking] Failed to update preset usage:', error)
+          logger.error('[Usage Tracking] Failed to update preset usage:', error)
           // Don't fail the request if usage tracking fails
         }
       }
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('Error tuning channel:', error)
+    logger.error('Error tuning channel:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -141,7 +143,7 @@ async function sendDirecTVChannelChange(deviceIp: string, channelNumber: string)
       message: `DirecTV tuned to channel ${channelNumber}` 
     }
   } catch (error) {
-    console.error('DirecTV channel change error:', error)
+    logger.error('DirecTV channel change error:', error)
     return { 
       success: false, 
       error: 'Failed to change DirecTV channel',
@@ -169,7 +171,7 @@ async function sendCableBoxChannelChange(channelNumber: string) {
     //   await new Promise(resolve => setTimeout(resolve, cmd.delay))
     // }
 
-    console.log(`Cable Box channel change to ${channelNumber} - IR control integration needed`)
+    logger.debug(`Cable Box channel change to ${channelNumber} - IR control integration needed`)
     
     return { 
       success: true, 
@@ -177,7 +179,7 @@ async function sendCableBoxChannelChange(channelNumber: string) {
       note: 'IR control integration required for full functionality'
     }
   } catch (error) {
-    console.error('Cable Box channel change error:', error)
+    logger.error('Cable Box channel change error:', error)
     return { 
       success: false, 
       error: 'Failed to change Cable Box channel',

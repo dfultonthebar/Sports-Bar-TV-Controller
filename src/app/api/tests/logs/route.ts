@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, count, deleteMany, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export async function GET(request: NextRequest) {
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching test logs:', error)
+    logger.error('Error fetching test logs:', error)
     return NextResponse.json({ 
       success: false, 
       error: String(error)
@@ -81,7 +83,7 @@ export async function DELETE(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error('Error deleting test logs:', error)
+    logger.error('Error deleting test logs:', error)
     return NextResponse.json({ 
       success: false, 
       error: String(error)

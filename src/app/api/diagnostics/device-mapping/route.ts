@@ -1,6 +1,8 @@
 
 import { NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
@@ -75,7 +77,7 @@ export async function GET() {
       irDevices
     })
   } catch (error) {
-    console.error('Error analyzing device mapping:', error)
+    logger.error('Error analyzing device mapping:', error)
     return NextResponse.json({ error: 'Failed to analyze device mapping' }, { status: 500 })
   }
 }

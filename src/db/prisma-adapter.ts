@@ -431,6 +431,13 @@ fireTVDevice: createModelAdapter('fireTVDevice', schema.fireTVDevices),
 schedule: createModelAdapter('schedule', schema.schedules),
 scheduleLog: createModelAdapter('scheduleLog', schema.scheduleLogs),
 
+// FireCube models
+fireCubeDevice: createModelAdapter('fireCubeDevice', schema.fireCubeDevices),
+fireCubeApp: createModelAdapter('fireCubeApp', schema.fireCubeApps),
+fireCubeSportsContent: createModelAdapter('fireCubeSportsContent', schema.fireCubeSportsContents),
+fireCubeSideloadOperation: createModelAdapter('fireCubeSideloadOperation', schema.fireCubeSideloadOperations),
+fireCubeKeepAwakeLog: createModelAdapter('fireCubeKeepAwakeLog', schema.fireCubeKeepAwakeLogs),
+
 // Home team models
 homeTeam: createModelAdapter('homeTeam', schema.homeTeams),
 

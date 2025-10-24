@@ -1,5 +1,7 @@
 
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findMany, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 // Using singleton prisma from @/lib/prisma
 
@@ -9,7 +11,7 @@ import prisma from "@/lib/prisma"
  */
 export async function reorderAllPresets() {
   try {
-    console.log('[Preset Reorder] Starting preset reordering based on usage...')
+    logger.debug('[Preset Reorder] Starting preset reordering based on usage...')
 
     // Get all active presets grouped by device type
     const cablePresets = await prisma.channelPreset.findMany({
@@ -44,7 +46,7 @@ export async function reorderAllPresets() {
       })
     }
 
-    console.log(`[Preset Reorder] Successfully reordered ${cablePresets.length} cable presets and ${directvPresets.length} DirecTV presets`)
+    logger.debug(`[Preset Reorder] Successfully reordered ${cablePresets.length} cable presets and ${directvPresets.length} DirecTV presets`)
 
     return {
       success: true,
@@ -52,7 +54,7 @@ export async function reorderAllPresets() {
       directvPresetsReordered: directvPresets.length
     }
   } catch (error) {
-    console.error('[Preset Reorder] Error reordering presets:', error)
+    logger.error('[Preset Reorder] Error reordering presets:', error)
     throw error
   }
 }
@@ -104,7 +106,7 @@ export async function getUsageStatistics() {
       leastUsedPresets: leastUsedPresets.slice(0, 10)
     }
   } catch (error) {
-    console.error('[Preset Statistics] Error fetching statistics:', error)
+    logger.error('[Preset Statistics] Error fetching statistics:', error)
     throw error
   }
 }
@@ -137,7 +139,7 @@ export async function checkReorderingNeeded(deviceType: 'cable' | 'directv'): Pr
 
     return false // No reordering needed
   } catch (error) {
-    console.error('[Preset Reorder Check] Error checking reordering:', error)
+    logger.error('[Preset Reorder Check] Error checking reordering:', error)
     return false
   }
 }

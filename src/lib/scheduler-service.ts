@@ -6,7 +6,9 @@
  * It checks every minute for schedules that need to be executed.
  */
 
-import prisma from "@/lib/prisma";
+import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 
@@ -19,11 +21,11 @@ class SchedulerService {
    */
   start() {
     if (this.isRunning) {
-      console.log('Scheduler service is already running');
+      logger.debug('Scheduler service is already running');
       return;
     }
 
-    console.log('Starting scheduler service...');
+    logger.debug('Starting scheduler service...');
     this.isRunning = true;
 
     // Check every minute for schedules to execute
@@ -44,7 +46,7 @@ class SchedulerService {
       this.intervalId = null;
     }
     this.isRunning = false;
-    console.log('Scheduler service stopped');
+    logger.debug('Scheduler service stopped');
   }
 
   /**
@@ -69,16 +71,16 @@ class SchedulerService {
         const shouldExecute = timeDiff >= 0 && timeDiff < 60000;
 
         if (shouldExecute) {
-          console.log(`Executing schedule: ${schedule.name} (${schedule.id})`);
+          logger.debug(`Executing schedule: ${schedule.name} (${schedule.id})`);
           
           // Execute schedule asynchronously
           this.executeSchedule(schedule.id).catch(error => {
-            console.error(`Error executing schedule ${schedule.name}:`, error);
+            logger.error(`Error executing schedule ${schedule.name}:`, error);
           });
         }
       }
     } catch (error) {
-      console.error('Error checking schedules:', error);
+      logger.error('Error checking schedules:', error);
     }
   }
 
@@ -96,12 +98,12 @@ class SchedulerService {
       const result = await response.json();
       
       if (result.result?.success) {
-        console.log(`Schedule executed successfully: ${scheduleId}`);
+        logger.debug(`Schedule executed successfully: ${scheduleId}`);
       } else {
-        console.error(`Schedule execution had issues: ${scheduleId}`, result.result?.message);
+        logger.error(`Schedule execution had issues: ${scheduleId}`, result.result?.message);
       }
     } catch (error) {
-      console.error(`Failed to execute schedule: ${scheduleId}`, error);
+      logger.error(`Failed to execute schedule: ${scheduleId}`, error);
     }
   }
 

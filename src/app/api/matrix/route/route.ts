@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, create, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export async function POST(request: NextRequest) {
@@ -47,13 +49,11 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Create new route
-      await prisma.matrixRoute.create({
-        data: {
+      await create('matrixRoutes', {
           inputNum: input,
           outputNum: output,
           isActive: true
-        }
-      })
+        })
     }
 
     // Send actual Wolf Pack command using correct format: YXZ.
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error routing signal:', error)
+    logger.error('Error routing signal:', error)
     return NextResponse.json(
       { error: 'Failed to route signal' },
       { status: 500 }
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
 
 // Wolf Pack TCP/UDP Communication Implementation
 async function sendWolfPackCommand(ipAddress: string, port: number, command: string, protocol: string = 'TCP'): Promise<boolean> {
-  console.log(`Sending Wolf Pack command: ${command} to ${ipAddress}:${port} via ${protocol}`)
+  logger.debug(`Sending Wolf Pack command: ${command} to ${ipAddress}:${port} via ${protocol}`)
   
   if (protocol.toLowerCase() === 'udp') {
     return await sendUDPCommand(ipAddress, port, command)
@@ -108,10 +108,10 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
     let response = ''
     
     const client = net.createConnection({ port, host: ipAddress }, () => {
-      console.log(`TCP Connected to Wolf Pack at ${ipAddress}:${port}`)
+      logger.debug(`TCP Connected to Wolf Pack at ${ipAddress}:${port}`)
       // Add \r\n for proper Telnet/TCP protocol
       const commandWithLineEnding = command + '\r\n'
-      console.log(`Sending command: "${command}" (with \\r\\n)`)
+      logger.debug(`Sending command: "${command}" (with \\r\\n)`)
       client.write(commandWithLineEnding)
     })
     
@@ -119,7 +119,7 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
     
     client.on('data', (data) => {
       response += data.toString()
-      console.log(`Wolf Pack TCP response: ${response}`)
+      logger.debug(`Wolf Pack TCP response: ${response}`)
       
       // Check for response completion
       if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
@@ -130,26 +130,26 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
         if (response.includes('OK')) {
           resolve(true)
         } else {
-          console.error(`Wolf Pack command failed: ${response}`)
+          logger.error(`Wolf Pack command failed: ${response}`)
           resolve(false)
         }
       }
     })
     
     client.on('timeout', () => {
-      console.error(`TCP connection timeout. Response so far: "${response}"`)
+      logger.error(`TCP connection timeout. Response so far: "${response}"`)
       client.destroy()
       resolve(false)
     })
     
     client.on('error', (err) => {
-      console.error('TCP connection error:', err.message)
+      logger.error('TCP connection error:', err.message)
       resolve(false)
     })
     
     client.on('close', () => {
       if (!responseReceived && response.length > 0) {
-        console.log(`Connection closed. Response received: "${response}"`)
+        logger.debug(`Connection closed. Response received: "${response}"`)
         // If we got some response but no explicit OK/ERR, consider it based on content
         resolve(response.length > 0)
       }
@@ -170,19 +170,19 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
     
     client.send(message, port, ipAddress, (err) => {
       if (err) {
-        console.error('UDP send error:', err.message)
+        logger.error('UDP send error:', err.message)
         client.close()
         resolve(false)
         return
       }
       
-      console.log(`UDP command sent to Wolf Pack at ${ipAddress}:${port}: ${command}`)
+      logger.debug(`UDP command sent to Wolf Pack at ${ipAddress}:${port}: ${command}`)
     })
     
     // Listen for response
     client.on('message', (data, rinfo) => {
       const response = data.toString().trim()
-      console.log(`Wolf Pack UDP response from ${rinfo.address}:${rinfo.port}: ${response}`)
+      logger.debug(`Wolf Pack UDP response from ${rinfo.address}:${rinfo.port}: ${response}`)
       
       client.close()
       
@@ -190,20 +190,20 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
       if (response.includes('OK')) {
         resolve(true)
       } else {
-        console.error(`Wolf Pack command failed: ${response}`)
+        logger.error(`Wolf Pack command failed: ${response}`)
         resolve(false)
       }
     })
     
     client.on('error', (err) => {
-      console.error('UDP error:', err.message)
+      logger.error('UDP error:', err.message)
       client.close()
       resolve(false)
     })
     
     // Timeout after 5 seconds
     setTimeout(() => {
-      console.error('UDP response timeout')
+      logger.error('UDP response timeout')
       client.close()
       resolve(false)
     }, 5000)

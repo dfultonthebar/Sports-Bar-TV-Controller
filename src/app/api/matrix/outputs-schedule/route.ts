@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export async function GET() {
@@ -43,7 +45,7 @@ export async function GET() {
       configName: activeConfig.name
     })
   } catch (error: any) {
-    console.error('Error fetching outputs for schedule:', error)
+    logger.error('Error fetching outputs for schedule:', error)
     return NextResponse.json({
       success: false,
       message: error.message || 'Failed to fetch outputs'
@@ -77,7 +79,7 @@ export async function PUT(request: NextRequest) {
       output: updated
     })
   } catch (error: any) {
-    console.error('Error updating output schedule settings:', error)
+    logger.error('Error updating output schedule settings:', error)
     return NextResponse.json({
       success: false,
       message: error.message || 'Failed to update output'

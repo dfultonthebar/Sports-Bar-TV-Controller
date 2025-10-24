@@ -6,7 +6,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import prisma from "@/lib/prisma";
+import { and, asc, count, create, deleteRecord, desc, eq, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 import { calculateFileHash } from '@/lib/utils/file-hash';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
@@ -51,7 +53,7 @@ export async function generateQAsFromRepository(
   });
 
   processQAGeneration(job.id, options).catch(error => {
-    console.error('Q&A generation failed:', error);
+    logger.error('Q&A generation failed:', error);
     prisma.qAGenerationJob.update({
       where: { id: job.id },
       data: {
@@ -118,7 +120,7 @@ async function shouldProcessFile(
     // File unchanged, skip processing
     return { shouldProcess: false, reason: 'already_processed' };
   } catch (error) {
-    console.error(`Error checking file tracking for ${filePath}:`, error);
+    logger.error(`Error checking file tracking for ${filePath}:`, error);
     // On error, process the file to be safe
     return { shouldProcess: true, reason: 'tracking_error' };
   }
@@ -154,7 +156,7 @@ async function updateFileTracking(
       },
     });
   } catch (error) {
-    console.error(`Error updating file tracking for ${filePath}:`, error);
+    logger.error(`Error updating file tracking for ${filePath}:`, error);
   }
 }
 
@@ -175,8 +177,8 @@ async function processQAGeneration(
 
     const files = await collectFilesForGeneration(options);
     
-    console.log(`Starting Q&A generation for ${files.length} files with ${MAX_CONCURRENT_FILES} concurrent workers`);
-    console.log(`Force regenerate: ${options.forceRegenerate ? 'YES' : 'NO'}`);
+    logger.debug(`Starting Q&A generation for ${files.length} files with ${MAX_CONCURRENT_FILES} concurrent workers`);
+    logger.debug(`Force regenerate: ${options.forceRegenerate ? 'YES' : 'NO'}`);
     
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
@@ -201,12 +203,12 @@ async function processQAGeneration(
         const { shouldProcess, reason } = await shouldProcessFile(file, options.forceRegenerate || false);
         
         if (!shouldProcess) {
-          console.log(`[${index + 1}/${files.length}] ⏭️  Skipping (${reason}): ${file}`);
+          logger.debug(`[${index + 1}/${files.length}] ⏭️  Skipping (${reason}): ${file}`);
           skippedFiles++;
           return { success: true, qas: [], skipped: true };
         }
 
-        console.log(`[${index + 1}/${files.length}] 🔄 Processing (${reason}): ${file}`);
+        logger.debug(`[${index + 1}/${files.length}] 🔄 Processing (${reason}): ${file}`);
         
         // Check file size before processing
         const stats = fs.statSync(file);
@@ -246,7 +248,7 @@ async function processQAGeneration(
             });
             savedQAs.push(qa);
           } catch (dbError) {
-            console.error(`Error saving Q&A to database:`, dbError);
+            logger.error(`Error saving Q&A to database:`, dbError);
             errors.push(`DB error for ${file}: ${dbError instanceof Error ? dbError.message : 'Unknown'}`);
           }
         }
@@ -254,12 +256,12 @@ async function processQAGeneration(
         // Update file tracking
         await updateFileTracking(file, savedQAs.length, options.sourceType, 'processed');
 
-        console.log(`[${index + 1}/${files.length}] ✅ Generated ${savedQAs.length} Q&As from ${file}`);
+        logger.debug(`[${index + 1}/${files.length}] ✅ Generated ${savedQAs.length} Q&As from ${file}`);
         return { success: true, qas: savedQAs };
       } catch (error) {
         failedFiles++;
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Error processing file ${file}:`, errorMsg);
+        logger.error(`Error processing file ${file}:`, errorMsg);
         errors.push(`${file}: ${errorMsg}`);
         await updateFileTracking(file, 0, options.sourceType, 'failed');
         return { success: false, qas: [] };
@@ -275,7 +277,7 @@ async function processQAGeneration(
     processedFiles = results.filter(r => !r.skipped).length;
     generatedQAs = results.reduce((sum, r) => sum + r.qas.length, 0);
     
-    console.log(`\n📊 Summary: ${processedFiles} processed, ${skippedFiles} skipped, ${failedFiles} failed`);
+    logger.debug(`\n📊 Summary: ${processedFiles} processed, ${skippedFiles} skipped, ${failedFiles} failed`);
 
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
@@ -283,7 +285,7 @@ async function processQAGeneration(
     });
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`⏱️  Completed in ${elapsedTime}s`);
+    logger.debug(`⏱️  Completed in ${elapsedTime}s`);
 
     const finalStatus = generatedQAs > 0 ? 'completed' : 'failed';
     const errorMessage = errors.length > 0 
@@ -301,9 +303,9 @@ async function processQAGeneration(
       },
     });
 
-    console.log(`✅ Q&A generation ${finalStatus}: ${generatedQAs} Q&As from ${processedFiles} files`);
+    logger.debug(`✅ Q&A generation ${finalStatus}: ${generatedQAs} Q&As from ${processedFiles} files`);
   } catch (error) {
-    console.error('Q&A generation process failed:', error);
+    logger.error('Q&A generation process failed:', error);
     await prisma.qAGenerationJob.update({
       where: { id: jobId },
       data: {
@@ -335,7 +337,7 @@ async function collectFilesForGeneration(options: QAGenerationOptions): Promise<
           files.push(...dirFiles);
         }
       } catch (error) {
-        console.error(`Error accessing path ${fullPath}:`, error);
+        logger.error(`Error accessing path ${fullPath}:`, error);
       }
     }
   } else {
@@ -385,7 +387,7 @@ async function collectFilesFromDirectory(dirPath: string): Promise<string[]> {
       }
     }
   } catch (error) {
-    console.error(`Error reading directory ${dirPath}:`, error);
+    logger.error(`Error reading directory ${dirPath}:`, error);
   }
 
   return files;
@@ -425,12 +427,12 @@ async function generateQAsFromFile(
     const fileName = path.basename(filePath);
 
     if (content.length < 100) {
-      console.log(`Skipping ${fileName}: content too short`);
+      logger.debug(`Skipping ${fileName}: content too short`);
       return [];
     }
 
     const chunks = chunkContent(content, CHUNK_SIZE);
-    console.log(`Processing ${fileName} in ${chunks.length} chunk(s)`);
+    logger.debug(`Processing ${fileName} in ${chunks.length} chunk(s)`);
 
     const allQAs: GeneratedQA[] = [];
 
@@ -438,7 +440,7 @@ async function generateQAsFromFile(
       const chunk = chunks[i];
       const chunkLabel = chunks.length > 1 ? ` (chunk ${i + 1}/${chunks.length})` : '';
       
-      console.log(`Processing ${fileName}${chunkLabel}...`);
+      logger.debug(`Processing ${fileName}${chunkLabel}...`);
 
       const prompt = `You are a helpful assistant that generates question-answer pairs from documentation.
 
@@ -497,10 +499,10 @@ Remember: Output ONLY the JSON object, nothing else.`;
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`Ollama API error for ${fileName}${chunkLabel}:`, response.status, errorText);
+            logger.error(`Ollama API error for ${fileName}${chunkLabel}:`, response.status, errorText);
             
             if (retries === 0 && options.model === DEFAULT_MODEL) {
-              console.log(`Retrying with fallback model: ${FALLBACK_MODEL}`);
+              logger.debug(`Retrying with fallback model: ${FALLBACK_MODEL}`);
               options.model = FALLBACK_MODEL;
               retries++;
               continue;
@@ -512,7 +514,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
           const data = await response.json();
 
           if (!data.response) {
-            console.error(`Invalid Ollama response structure for ${fileName}${chunkLabel}:`, data);
+            logger.error(`Invalid Ollama response structure for ${fileName}${chunkLabel}:`, data);
             throw new Error('Invalid response structure from Ollama');
           }
 
@@ -525,7 +527,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
             console.warn(`Response appears truncated for ${fileName}${chunkLabel}`);
             
             if (retries < MAX_RETRIES) {
-              console.log(`Retrying with increased token limit (attempt ${retries + 1}/${MAX_RETRIES})...`);
+              logger.debug(`Retrying with increased token limit (attempt ${retries + 1}/${MAX_RETRIES})...`);
               retries++;
               continue;
             }
@@ -540,22 +542,22 @@ Remember: Output ONLY the JSON object, nothing else.`;
             console.warn(`No valid Q&As parsed from response for ${fileName}${chunkLabel}`);
             
             if (retries < MAX_RETRIES) {
-              console.log(`Retrying (attempt ${retries + 1}/${MAX_RETRIES})...`);
+              logger.debug(`Retrying (attempt ${retries + 1}/${MAX_RETRIES})...`);
               retries++;
               await new Promise(resolve => setTimeout(resolve, 1000));
               continue;
             }
             
-            console.error(`Failed to generate valid Q&As after ${MAX_RETRIES} retries`);
+            logger.error(`Failed to generate valid Q&As after ${MAX_RETRIES} retries`);
             break;
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
             const timeoutSeconds = QA_GENERATION_TIMEOUT / 1000;
-            console.error(`Q&A generation timed out after ${timeoutSeconds}s for ${fileName}${chunkLabel}`);
+            logger.error(`Q&A generation timed out after ${timeoutSeconds}s for ${fileName}${chunkLabel}`);
             
             if (retries < MAX_RETRIES) {
-              console.log(`Retrying (${retries + 1}/${MAX_RETRIES})...`);
+              logger.debug(`Retrying (${retries + 1}/${MAX_RETRIES})...`);
               retries++;
               continue;
             }
@@ -564,7 +566,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
           }
           
           if (retries < MAX_RETRIES) {
-            console.error(`Error on attempt ${retries + 1}:`, error);
+            logger.error(`Error on attempt ${retries + 1}:`, error);
             retries++;
             await new Promise(resolve => setTimeout(resolve, 2000));
             continue;
@@ -578,7 +580,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
     return allQAs;
   } catch (error) {
     if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
-      console.error(`Cannot connect to Ollama at ${OLLAMA_BASE_URL} for ${filePath}`);
+      logger.error(`Cannot connect to Ollama at ${OLLAMA_BASE_URL} for ${filePath}`);
       throw new Error('Ollama service is not running or not accessible');
     }
     throw error;
@@ -594,7 +596,7 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
     const hasClosingBrace = cleanedResponse.includes('}');
     
     if (!hasOpeningBrace || !hasClosingBrace) {
-      console.error(`Incomplete JSON response for ${sourceFile} - missing braces`);
+      logger.error(`Incomplete JSON response for ${sourceFile} - missing braces`);
       return [];
     }
     
@@ -607,7 +609,7 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
     const jsonString = jsonMatch[0];
     
     if (jsonString.includes('...') || !jsonString.trim().endsWith('}')) {
-      console.error(`Response appears truncated for ${sourceFile}`);
+      logger.error(`Response appears truncated for ${sourceFile}`);
       return [];
     }
 
@@ -615,7 +617,7 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
     try {
       parsed = JSON.parse(jsonString);
     } catch (parseError) {
-      console.error(`JSON parse error for ${sourceFile}:`, parseError);
+      logger.error(`JSON parse error for ${sourceFile}:`, parseError);
       return [];
     }
     
@@ -641,7 +643,7 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
 
     return validQAs;
   } catch (error) {
-    console.error(`Error parsing Q&As for ${sourceFile}:`, error);
+    logger.error(`Error parsing Q&As for ${sourceFile}:`, error);
     return [];
   }
 }

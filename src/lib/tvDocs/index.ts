@@ -5,7 +5,9 @@
  * Main service for fetching, storing, and managing TV documentation
  */
 
-import prisma from "@/lib/prisma"
+import { and, asc, count, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { searchTVManual, validateManualUrl } from './searchManual'
 import { downloadTVManual, getManualPath } from './downloadManual'
 import { generateQAFromManual } from './generateQA'
@@ -22,13 +24,13 @@ export async function fetchTVManual(
   const { manufacturer, model, forceRefetch = false } = options
   
   try {
-    console.log(`[TV Docs] Fetching manual for ${manufacturer} ${model}`)
+    logger.debug(`[TV Docs] Fetching manual for ${manufacturer} ${model}`)
     
     // Check if manual already exists
     if (!forceRefetch) {
       const existingPath = await getManualPath(manufacturer, model)
       if (existingPath) {
-        console.log(`[TV Docs] Manual already exists: ${existingPath}`)
+        logger.debug(`[TV Docs] Manual already exists: ${existingPath}`)
         
         // Check if Q&A pairs were already generated
         const existingQA = await prisma.qAEntry.count({
@@ -51,7 +53,7 @@ export async function fetchTVManual(
     }
     
     // Search for manual
-    console.log(`[TV Docs] Searching for manual online...`)
+    logger.debug(`[TV Docs] Searching for manual online...`)
     const searchResults = await searchTVManual(manufacturer, model)
     
     if (searchResults.length === 0) {
@@ -66,7 +68,7 @@ export async function fetchTVManual(
     }
     
     // Validate and download manual
-    console.log(`[TV Docs] Found ${searchResults.length} potential sources, attempting download...`)
+    logger.debug(`[TV Docs] Found ${searchResults.length} potential sources, attempting download...`)
     const downloadResult = await downloadTVManual(manufacturer, model, searchResults)
     
     if (!downloadResult) {
@@ -80,10 +82,10 @@ export async function fetchTVManual(
       }
     }
     
-    console.log(`[TV Docs] Manual downloaded successfully: ${downloadResult.path}`)
+    logger.debug(`[TV Docs] Manual downloaded successfully: ${downloadResult.path}`)
     
     // Generate Q&A pairs
-    console.log(`[TV Docs] Generating Q&A pairs from manual...`)
+    logger.debug(`[TV Docs] Generating Q&A pairs from manual...`)
     const qaResult = await generateQAFromManual(downloadResult.path, manufacturer, model)
     
     return {
@@ -96,7 +98,7 @@ export async function fetchTVManual(
       qaPairsCount: qaResult.qaPairsCount
     }
   } catch (error: any) {
-    console.error('[TV Docs] Error fetching TV manual:', error)
+    logger.error('[TV Docs] Error fetching TV manual:', error)
     return {
       success: false,
       manufacturer,
@@ -155,7 +157,7 @@ export async function getAllTVDocumentation(): Promise<TVDocumentationRecord[]> 
     
     return records
   } catch (error) {
-    console.error('[TV Docs] Error getting TV documentation:', error)
+    logger.error('[TV Docs] Error getting TV documentation:', error)
     return []
   }
 }
@@ -169,22 +171,22 @@ export async function autoFetchDocumentation(
   outputNumber: number
 ): Promise<void> {
   try {
-    console.log(`[TV Docs] Auto-fetching documentation for ${manufacturer} ${model} (Output ${outputNumber})`)
+    logger.debug(`[TV Docs] Auto-fetching documentation for ${manufacturer} ${model} (Output ${outputNumber})`)
     
     // Run fetch in background (don't await)
     fetchTVManual({ manufacturer, model, outputNumber })
       .then(result => {
         if (result.success) {
-          console.log(`[TV Docs] Successfully auto-fetched documentation for ${manufacturer} ${model}`)
+          logger.debug(`[TV Docs] Successfully auto-fetched documentation for ${manufacturer} ${model}`)
         } else {
           console.warn(`[TV Docs] Failed to auto-fetch documentation: ${result.error}`)
         }
       })
       .catch(error => {
-        console.error('[TV Docs] Error in auto-fetch:', error)
+        logger.error('[TV Docs] Error in auto-fetch:', error)
       })
   } catch (error) {
-    console.error('[TV Docs] Error starting auto-fetch:', error)
+    logger.error('[TV Docs] Error starting auto-fetch:', error)
   }
 }
 

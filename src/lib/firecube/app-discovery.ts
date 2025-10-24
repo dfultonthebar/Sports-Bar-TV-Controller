@@ -3,7 +3,9 @@
 
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, FireCubeApp, InstalledApp } from './types';
-import prisma from "@/lib/prisma";
+import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, updateMany } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 
@@ -52,13 +54,13 @@ export class AppDiscoveryService {
             apps.push(app);
           }
         } catch (error) {
-          console.error(`Failed to get details for ${packageName}:`, error);
+          logger.error(`Failed to get details for ${packageName}:`, error);
         }
       }
 
       return apps;
     } catch (error) {
-      console.error('App discovery failed:', error);
+      logger.error('App discovery failed:', error);
       return [];
     } finally {
       await client.disconnect();
@@ -106,8 +108,7 @@ export class AppDiscoveryService {
       // Add new apps
       for (const app of apps) {
         if (!existingPackages.has(app.packageName)) {
-          await prisma.fireCubeApp.create({
-            data: {
+          await create('fireCubeApps', {
               deviceId: app.deviceId,
               packageName: app.packageName,
               appName: app.appName,
@@ -121,8 +122,7 @@ export class AppDiscoveryService {
               subscriptionStatus: app.subscriptionStatus,
               lastChecked: app.lastChecked,
               installedAt: app.installedAt
-            }
-          });
+            });
         } else {
           // Update existing app
           await prisma.fireCubeApp.updateMany({
@@ -150,7 +150,7 @@ export class AppDiscoveryService {
         }
       }
     } catch (error) {
-      console.error('Failed to sync apps to database:', error);
+      logger.error('Failed to sync apps to database:', error);
       throw error;
     }
   }
@@ -168,7 +168,7 @@ export class AppDiscoveryService {
         ]
       });
     } catch (error) {
-      console.error('Failed to get device apps:', error);
+      logger.error('Failed to get device apps:', error);
       return [];
     }
   }
@@ -186,7 +186,7 @@ export class AppDiscoveryService {
         ]
       });
     } catch (error) {
-      console.error('Failed to get sports apps:', error);
+      logger.error('Failed to get sports apps:', error);
       return [];
     }
   }
@@ -211,7 +211,7 @@ export class AppDiscoveryService {
 
       return result;
     } catch (error) {
-      console.error(`Failed to launch app ${packageName}:`, error);
+      logger.error(`Failed to launch app ${packageName}:`, error);
       return false;
     }
   }
@@ -236,7 +236,7 @@ export class AppDiscoveryService {
 
       return result;
     } catch (error) {
-      console.error(`Failed to stop app ${packageName}:`, error);
+      logger.error(`Failed to stop app ${packageName}:`, error);
       return false;
     }
   }

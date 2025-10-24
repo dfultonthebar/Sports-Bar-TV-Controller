@@ -2,7 +2,9 @@
 // App Sideloading Service for Fire Cubes
 
 import { ADBClient } from './adb-client';
-import prisma from "@/lib/prisma";
+import { and, asc, create, desc, eq, findFirst, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
@@ -27,7 +29,7 @@ export class SideloadService {
         await mkdir(this.apkCacheDir, { recursive: true });
       }
     } catch (error) {
-      console.error('Failed to create APK cache directory:', error);
+      logger.error('Failed to create APK cache directory:', error);
     }
   }
 
@@ -62,8 +64,7 @@ export class SideloadService {
       }
 
       // Create sideload operation
-      const operation = await prisma.fireCubeSideloadOperation.create({
-        data: {
+      const operation = await create('fireCubeSideloadOperations', {
           sourceDeviceId,
           targetDeviceIds: JSON.stringify(targetDeviceIds),
           packageName,
@@ -74,18 +75,17 @@ export class SideloadService {
           completedDevices: 0,
           failedDevices: 0,
           startedAt: new Date()
-        }
-      });
+        });
 
       // Start sideload process asynchronously
       this.performSideload(operation.id, sourceDevice, targetDeviceIds, packageName, app.appName)
         .catch(error => {
-          console.error('Sideload operation failed:', error);
+          logger.error('Sideload operation failed:', error);
         });
 
       return operation.id;
     } catch (error) {
-      console.error('Failed to initiate sideload:', error);
+      logger.error('Failed to initiate sideload:', error);
       throw error;
     }
   }
@@ -196,7 +196,7 @@ export class SideloadService {
           fs.unlinkSync(apkPath);
         }
       } catch (error) {
-        console.error('Failed to clean up APK file:', error);
+        logger.error('Failed to clean up APK file:', error);
       }
 
       // Step 4: Update final status
@@ -215,9 +215,9 @@ export class SideloadService {
         }
       });
 
-      console.log(`Sideload operation ${operationId} completed: ${completedDevices} succeeded, ${failedDevices} failed`);
+      logger.debug(`Sideload operation ${operationId} completed: ${completedDevices} succeeded, ${failedDevices} failed`);
     } catch (error: any) {
-      console.error('Sideload operation failed:', error);
+      logger.error('Sideload operation failed:', error);
       
       await prisma.fireCubeSideloadOperation.update({
         where: { id: operationId },
@@ -275,7 +275,7 @@ export class SideloadService {
         errorLog: operation.errorLog ? JSON.parse(operation.errorLog) : []
       };
     } catch (error) {
-      console.error('Failed to get operation status:', error);
+      logger.error('Failed to get operation status:', error);
       throw error;
     }
   }
@@ -296,7 +296,7 @@ export class SideloadService {
         errorLog: op.errorLog ? JSON.parse(op.errorLog) : []
       }));
     } catch (error) {
-      console.error('Failed to get operations:', error);
+      logger.error('Failed to get operations:', error);
       return [];
     }
   }
@@ -330,13 +330,13 @@ export class SideloadService {
           );
           operations.push(operationId);
         } catch (error) {
-          console.error(`Failed to sideload ${app.packageName}:`, error);
+          logger.error(`Failed to sideload ${app.packageName}:`, error);
         }
       }
 
       return JSON.stringify(operations);
     } catch (error) {
-      console.error('Failed to clone device:', error);
+      logger.error('Failed to clone device:', error);
       throw error;
     }
   }
@@ -362,7 +362,7 @@ export class SideloadService {
 
       return await this.sideloadApp(sourceDeviceId, targetDeviceIds, packageName);
     } catch (error) {
-      console.error('Failed to sync app to all devices:', error);
+      logger.error('Failed to sync app to all devices:', error);
       throw error;
     }
   }
@@ -393,7 +393,7 @@ export class SideloadService {
         }
       });
     } catch (error) {
-      console.error('Failed to cancel operation:', error);
+      logger.error('Failed to cancel operation:', error);
       throw error;
     }
   }

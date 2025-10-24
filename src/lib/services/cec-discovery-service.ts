@@ -6,7 +6,9 @@
  * using CEC protocol queries via USB CEC adapter
  */
 
-import prisma from "@/lib/prisma"
+import { and, asc, create, desc, eq, findFirst, findMany, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { cecService } from '@/lib/cec-service'
 import { autoFetchDocumentation } from '@/lib/tvDocs'
 
@@ -29,7 +31,7 @@ export interface CECDiscoveryResult {
 function parseBrandFromOSD(osdName: string): { brand: string; model: string } {
   const normalized = osdName.trim().toUpperCase()
   
-  console.log(`[CEC Discovery] Parsing OSD name: "${osdName}" (normalized: "${normalized}")`)
+  logger.debug(`[CEC Discovery] Parsing OSD name: "${osdName}" (normalized: "${normalized}")`)
   
   // Brand detection patterns
   const brandPatterns = [
@@ -47,12 +49,12 @@ function parseBrandFromOSD(osdName: string): { brand: string; model: string } {
   
   for (const { pattern, brand } of brandPatterns) {
     if (pattern.test(normalized)) {
-      console.log(`[CEC Discovery] Brand detected: ${brand}`)
+      logger.debug(`[CEC Discovery] Brand detected: ${brand}`)
       return { brand, model: osdName.trim() }
     }
   }
   
-  console.log(`[CEC Discovery] No brand pattern matched, returning Unknown`)
+  logger.debug(`[CEC Discovery] No brand pattern matched, returning Unknown`)
   return { brand: 'Unknown', model: osdName.trim() }
 }
 
@@ -60,24 +62,22 @@ function parseBrandFromOSD(osdName: string): { brand: string; model: string } {
  * Ensure CEC configuration exists with safe defaults
  */
 async function ensureCECConfiguration() {
-  console.log('[CEC Discovery] Checking CEC configuration...')
+  logger.debug('[CEC Discovery] Checking CEC configuration...')
   
-  let cecConfig = await prisma.cECConfiguration.findFirst()
+  let cecConfig = await findFirst('cecConfigurations')
   
   if (!cecConfig) {
-    console.log('[CEC Discovery] No CEC configuration found, creating default configuration')
-    cecConfig = await prisma.cECConfiguration.create({
-      data: {
+    logger.debug('[CEC Discovery] No CEC configuration found, creating default configuration')
+    cecConfig = await create('cecConfigurations', {
         isEnabled: false,
         cecInputChannel: null,
         usbDevicePath: '/dev/ttyACM0',
         powerOnDelay: 2000,
         powerOffDelay: 1000,
-      }
-    })
-    console.log('[CEC Discovery] Default CEC configuration created (disabled)')
+      })
+    logger.debug('[CEC Discovery] Default CEC configuration created (disabled)')
   } else {
-    console.log(`[CEC Discovery] CEC configuration found: isEnabled=${cecConfig.isEnabled}, device=${cecConfig.usbDevicePath}`)
+    logger.debug(`[CEC Discovery] CEC configuration found: isEnabled=${cecConfig.isEnabled}, device=${cecConfig.usbDevicePath}`)
   }
   
   return cecConfig
@@ -90,11 +90,11 @@ async function queryCECDevice(
   outputNumber: number
 ): Promise<{ osdName?: string; physicalAddress?: string; error?: string }> {
   try {
-    console.log(`[CEC Discovery] Scanning CEC devices for output ${outputNumber}...`)
+    logger.debug(`[CEC Discovery] Scanning CEC devices for output ${outputNumber}...`)
     
     // Scan for CEC devices using the USB adapter
     const devices = await cecService.scanDevices(true)
-    console.log(`[CEC Discovery] Found ${devices.length} CEC devices`)
+    logger.debug(`[CEC Discovery] Found ${devices.length} CEC devices`)
     
     if (devices.length === 0) {
       console.warn('[CEC Discovery] No CEC devices detected on the bus')
@@ -103,7 +103,7 @@ async function queryCECDevice(
     
     // Log all detected devices
     devices.forEach((device, index) => {
-      console.log(`[CEC Discovery] Device ${index + 1}: address=${device.address}, vendor=${device.vendor}, osdName="${device.osdName}"`)
+      logger.debug(`[CEC Discovery] Device ${index + 1}: address=${device.address}, vendor=${device.vendor}, osdName="${device.osdName}"`)
     })
     
     // For now, we'll use the first TV device found (address 0)
@@ -111,19 +111,19 @@ async function queryCECDevice(
     const tvDevice = devices.find(d => d.address === '0') || devices[0]
     
     if (!tvDevice) {
-      console.error('[CEC Discovery] No TV device found on CEC bus')
+      logger.error('[CEC Discovery] No TV device found on CEC bus')
       return { error: 'No TV device found on CEC bus' }
     }
     
-    console.log(`[CEC Discovery] Using device: ${tvDevice.osdName} (${tvDevice.vendor}) at address ${tvDevice.address}`)
+    logger.debug(`[CEC Discovery] Using device: ${tvDevice.osdName} (${tvDevice.vendor}) at address ${tvDevice.address}`)
     
     return {
       osdName: tvDevice.osdName,
       physicalAddress: tvDevice.address
     }
   } catch (error: any) {
-    console.error(`[CEC Discovery] Error querying output ${outputNumber}:`, error.message)
-    console.error(`[CEC Discovery] Error stack:`, error.stack)
+    logger.error(`[CEC Discovery] Error querying output ${outputNumber}:`, error.message)
+    logger.error(`[CEC Discovery] Error stack:`, error.stack)
     return { error: error.message }
   }
 }
@@ -133,7 +133,7 @@ async function queryCECDevice(
  */
 export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
   try {
-    console.log('[CEC Discovery] ========== Starting Full Discovery ==========')
+    logger.debug('[CEC Discovery] ========== Starting Full Discovery ==========')
     
     // Ensure CEC configuration exists
     const cecConfig = await ensureCECConfiguration()
@@ -143,18 +143,18 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
       throw new Error('CEC is not enabled. Please enable CEC in the configuration settings.')
     }
     
-    console.log(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
+    logger.debug(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
     
     // Initialize CEC adapter
-    console.log('[CEC Discovery] Initializing CEC adapter...')
+    logger.debug('[CEC Discovery] Initializing CEC adapter...')
     const initResult = await cecService.initialize()
     
     if (!initResult.success) {
-      console.error(`[CEC Discovery] Failed to initialize CEC adapter: ${initResult.message}`)
+      logger.error(`[CEC Discovery] Failed to initialize CEC adapter: ${initResult.message}`)
       throw new Error(initResult.message)
     }
     
-    console.log(`[CEC Discovery] CEC adapter initialized successfully: ${initResult.adapters.join(', ')}`)
+    logger.debug(`[CEC Discovery] CEC adapter initialized successfully: ${initResult.adapters.join(', ')}`)
     
     // Get all active matrix outputs
     const outputs = await prisma.matrixOutput.findMany({
@@ -167,21 +167,21 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
       }
     })
     
-    console.log(`[CEC Discovery] Found ${outputs.length} active matrix outputs to scan`)
+    logger.debug(`[CEC Discovery] Found ${outputs.length} active matrix outputs to scan`)
     outputs.forEach(output => {
-      console.log(`[CEC Discovery]   - Output ${output.channelNumber}: ${output.label}`)
+      logger.debug(`[CEC Discovery]   - Output ${output.channelNumber}: ${output.label}`)
     })
     
     const results: CECDiscoveryResult[] = []
     
     // Query each output sequentially to avoid conflicts
     for (const output of outputs) {
-      console.log(`\n[CEC Discovery] ===== Processing Output ${output.channelNumber}: ${output.label} =====`)
+      logger.debug(`\n[CEC Discovery] ===== Processing Output ${output.channelNumber}: ${output.label} =====`)
       
       const deviceInfo = await queryCECDevice(output.channelNumber)
       
       if (deviceInfo.error) {
-        console.error(`[CEC Discovery] Failed for output ${output.channelNumber}: ${deviceInfo.error}`)
+        logger.error(`[CEC Discovery] Failed for output ${output.channelNumber}: ${deviceInfo.error}`)
         results.push({
           outputNumber: output.channelNumber,
           label: output.label,
@@ -194,7 +194,7 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
       if (deviceInfo.osdName) {
         const { brand, model } = parseBrandFromOSD(deviceInfo.osdName)
         
-        console.log(`[CEC Discovery] Updating database for output ${output.channelNumber}`)
+        logger.debug(`[CEC Discovery] Updating database for output ${output.channelNumber}`)
         // Update database with discovered information
         await prisma.matrixOutput.update({
           where: { id: output.id },
@@ -215,14 +215,14 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
           success: true
         })
         
-        console.log(`[CEC Discovery] ✓ Output ${output.channelNumber}: Detected ${brand} - ${model}`)
+        logger.debug(`[CEC Discovery] ✓ Output ${output.channelNumber}: Detected ${brand} - ${model}`)
         
         // Auto-fetch documentation for newly discovered TV
         if (brand !== 'Unknown') {
-          console.log(`[CEC Discovery] Scheduling auto-fetch documentation for ${brand} ${model}`)
+          logger.debug(`[CEC Discovery] Scheduling auto-fetch documentation for ${brand} ${model}`)
           autoFetchDocumentation(brand, model, output.channelNumber)
             .catch(error => {
-              console.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error.message)
+              logger.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error.message)
             })
         }
       } else {
@@ -236,21 +236,21 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
       }
       
       // Small delay between queries
-      console.log('[CEC Discovery] Waiting 1 second before next query...')
+      logger.debug('[CEC Discovery] Waiting 1 second before next query...')
       await new Promise(resolve => setTimeout(resolve, 1000))
     }
     
     const successCount = results.filter(r => r.success).length
-    console.log(`\n[CEC Discovery] ========== Discovery Complete ==========`)
-    console.log(`[CEC Discovery] Total outputs scanned: ${results.length}`)
-    console.log(`[CEC Discovery] Successfully detected: ${successCount}`)
-    console.log(`[CEC Discovery] Failed: ${results.length - successCount}`)
+    logger.debug(`\n[CEC Discovery] ========== Discovery Complete ==========`)
+    logger.debug(`[CEC Discovery] Total outputs scanned: ${results.length}`)
+    logger.debug(`[CEC Discovery] Successfully detected: ${successCount}`)
+    logger.debug(`[CEC Discovery] Failed: ${results.length - successCount}`)
     
     return results
   } catch (error: any) {
-    console.error('[CEC Discovery] ========== Fatal Error ==========')
-    console.error('[CEC Discovery] Error:', error.message)
-    console.error('[CEC Discovery] Stack:', error.stack)
+    logger.error('[CEC Discovery] ========== Fatal Error ==========')
+    logger.error('[CEC Discovery] Error:', error.message)
+    logger.error('[CEC Discovery] Stack:', error.stack)
     throw error
   }
 }
@@ -260,7 +260,7 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
  */
 export async function discoverSingleTV(outputNumber: number): Promise<CECDiscoveryResult> {
   try {
-    console.log(`[CEC Discovery] ========== Starting Single Discovery for Output ${outputNumber} ==========`)
+    logger.debug(`[CEC Discovery] ========== Starting Single Discovery for Output ${outputNumber} ==========`)
     
     // Ensure CEC configuration exists
     const cecConfig = await ensureCECConfiguration()
@@ -270,18 +270,18 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
       throw new Error('CEC is not enabled. Please enable CEC in the configuration settings.')
     }
     
-    console.log(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
+    logger.debug(`[CEC Discovery] CEC enabled, using device: ${cecConfig.usbDevicePath}`)
     
     // Initialize CEC adapter
-    console.log('[CEC Discovery] Initializing CEC adapter...')
+    logger.debug('[CEC Discovery] Initializing CEC adapter...')
     const initResult = await cecService.initialize()
     
     if (!initResult.success) {
-      console.error(`[CEC Discovery] Failed to initialize CEC adapter: ${initResult.message}`)
+      logger.error(`[CEC Discovery] Failed to initialize CEC adapter: ${initResult.message}`)
       throw new Error(initResult.message)
     }
     
-    console.log(`[CEC Discovery] CEC adapter initialized: ${initResult.adapters.join(', ')}`)
+    logger.debug(`[CEC Discovery] CEC adapter initialized: ${initResult.adapters.join(', ')}`)
     
     // Get the specific output
     const output = await prisma.matrixOutput.findFirst({
@@ -293,17 +293,17 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
     
     if (!output) {
       const errorMsg = `Output ${outputNumber} not found or not active`
-      console.error(`[CEC Discovery] ${errorMsg}`)
+      logger.error(`[CEC Discovery] ${errorMsg}`)
       throw new Error(errorMsg)
     }
     
-    console.log(`[CEC Discovery] Found output: ${output.label}`)
-    console.log(`[CEC Discovery] Querying CEC device...`)
+    logger.debug(`[CEC Discovery] Found output: ${output.label}`)
+    logger.debug(`[CEC Discovery] Querying CEC device...`)
     
     const deviceInfo = await queryCECDevice(outputNumber)
     
     if (deviceInfo.error) {
-      console.error(`[CEC Discovery] Query failed: ${deviceInfo.error}`)
+      logger.error(`[CEC Discovery] Query failed: ${deviceInfo.error}`)
       return {
         outputNumber,
         label: output.label,
@@ -315,7 +315,7 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
     if (deviceInfo.osdName) {
       const { brand, model } = parseBrandFromOSD(deviceInfo.osdName)
       
-      console.log(`[CEC Discovery] Updating database...`)
+      logger.debug(`[CEC Discovery] Updating database...`)
       // Update database
       await prisma.matrixOutput.update({
         where: { id: output.id },
@@ -327,18 +327,18 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
         }
       })
       
-      console.log(`[CEC Discovery] ✓ Output ${outputNumber}: Detected ${brand} - ${model}`)
+      logger.debug(`[CEC Discovery] ✓ Output ${outputNumber}: Detected ${brand} - ${model}`)
       
       // Auto-fetch documentation for newly discovered TV
       if (brand !== 'Unknown') {
-        console.log(`[CEC Discovery] Scheduling auto-fetch documentation for ${brand} ${model}`)
+        logger.debug(`[CEC Discovery] Scheduling auto-fetch documentation for ${brand} ${model}`)
         autoFetchDocumentation(brand, model, outputNumber)
           .catch(error => {
-            console.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error.message)
+            logger.error(`[CEC Discovery] Error auto-fetching docs for ${brand} ${model}:`, error.message)
           })
       }
       
-      console.log(`[CEC Discovery] ========== Discovery Complete ==========`)
+      logger.debug(`[CEC Discovery] ========== Discovery Complete ==========`)
       
       return {
         outputNumber,
@@ -358,9 +358,9 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
       error: 'No OSD name returned'
     }
   } catch (error: any) {
-    console.error(`[CEC Discovery] ========== Fatal Error ==========`)
-    console.error(`[CEC Discovery] Error for output ${outputNumber}:`, error.message)
-    console.error(`[CEC Discovery] Stack:`, error.stack)
+    logger.error(`[CEC Discovery] ========== Fatal Error ==========`)
+    logger.error(`[CEC Discovery] Error for output ${outputNumber}:`, error.message)
+    logger.error(`[CEC Discovery] Stack:`, error.stack)
     throw error
   }
 }

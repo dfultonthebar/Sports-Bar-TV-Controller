@@ -818,3 +818,101 @@ export const n8nWorkflowConfigs = sqliteTable('N8nWorkflowConfig', {
   workflowIdIdx: index('N8nWorkflowConfig_workflowId_idx').on(table.workflowId),
   isActiveIdx: index('N8nWorkflowConfig_isActive_idx').on(table.isActive),
 }))
+
+
+// ============================================================================
+// FIRECUBE MODELS
+// ============================================================================
+
+export const fireCubeDevices = sqliteTable('FireCubeDevice', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  ipAddress: text('ipAddress').notNull().unique(),
+  port: integer('port').notNull().default(5555),
+  macAddress: text('macAddress'),
+  serialNumber: text('serialNumber').unique(),
+  deviceModel: text('deviceModel'),
+  softwareVersion: text('softwareVersion'),
+  location: text('location'),
+  matrixInputChannel: integer('matrixInputChannel'),
+  adbEnabled: integer('adbEnabled', { mode: 'boolean' }).notNull().default(false),
+  status: text('status').notNull().default('discovered'),
+  lastSeen: text('lastSeen'),
+  keepAwakeEnabled: integer('keepAwakeEnabled', { mode: 'boolean' }).notNull().default(false),
+  keepAwakeStart: text('keepAwakeStart').default('07:00'),
+  keepAwakeEnd: text('keepAwakeEnd').default('01:00'),
+  createdAt: text('createdAt').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updatedAt').notNull(),
+})
+
+export const fireCubeApps = sqliteTable('FireCubeApp', {
+  id: text('id').primaryKey(),
+  deviceId: text('deviceId').notNull().references(() => fireCubeDevices.id, { onDelete: 'cascade' }),
+  packageName: text('packageName').notNull(),
+  appName: text('appName').notNull(),
+  version: text('version'),
+  versionCode: integer('versionCode'),
+  category: text('category'),
+  iconUrl: text('iconUrl'),
+  isSystemApp: integer('isSystemApp', { mode: 'boolean' }).notNull().default(false),
+  isSportsApp: integer('isSportsApp', { mode: 'boolean' }).notNull().default(false),
+  hasSubscription: integer('hasSubscription', { mode: 'boolean' }).notNull().default(false),
+  subscriptionStatus: text('subscriptionStatus'),
+  lastChecked: text('lastChecked'),
+  installedAt: text('installedAt'),
+  updatedAt: text('updatedAt').notNull(),
+}, (table) => ({
+  deviceIdPackageNameIdx: uniqueIndex('FireCubeApp_deviceId_packageName_key').on(table.deviceId, table.packageName),
+  deviceIdIdx: index('FireCubeApp_deviceId_idx').on(table.deviceId),
+}))
+
+export const fireCubeSportsContents = sqliteTable('FireCubeSportsContent', {
+  id: text('id').primaryKey(),
+  appId: text('appId').notNull().references(() => fireCubeApps.id, { onDelete: 'cascade' }),
+  deviceId: text('deviceId').notNull().references(() => fireCubeDevices.id, { onDelete: 'cascade' }),
+  contentTitle: text('contentTitle').notNull(),
+  contentType: text('contentType').notNull(),
+  league: text('league'),
+  teams: text('teams'),
+  startTime: text('startTime'),
+  endTime: text('endTime'),
+  channel: text('channel'),
+  isLive: integer('isLive', { mode: 'boolean' }).notNull().default(false),
+  deepLink: text('deepLink'),
+  thumbnailUrl: text('thumbnailUrl'),
+  description: text('description'),
+  lastUpdated: text('lastUpdated').notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  deviceIdIdx: index('FireCubeSportsContent_deviceId_idx').on(table.deviceId),
+}))
+
+export const fireCubeSideloadOperations = sqliteTable('FireCubeSideloadOperation', {
+  id: text('id').primaryKey(),
+  sourceDeviceId: text('sourceDeviceId').notNull().references(() => fireCubeDevices.id, { onDelete: 'cascade' }),
+  targetDeviceIds: text('targetDeviceIds').notNull(),
+  packageName: text('packageName').notNull(),
+  appName: text('appName').notNull(),
+  status: text('status').notNull().default('pending'),
+  progress: integer('progress').notNull().default(0),
+  totalDevices: integer('totalDevices').notNull(),
+  completedDevices: integer('completedDevices').notNull().default(0),
+  failedDevices: integer('failedDevices').notNull().default(0),
+  errorLog: text('errorLog'),
+  startedAt: text('startedAt').notNull().default(sql`CURRENT_TIMESTAMP`),
+  completedAt: text('completedAt'),
+}, (table) => ({
+  statusIdx: index('FireCubeSideloadOperation_status_idx').on(table.status),
+  startedAtIdx: index('FireCubeSideloadOperation_startedAt_idx').on(table.startedAt),
+}))
+
+export const fireCubeKeepAwakeLogs = sqliteTable('FireCubeKeepAwakeLog', {
+  id: text('id').primaryKey(),
+  deviceId: text('deviceId').notNull().references(() => fireCubeDevices.id, { onDelete: 'cascade' }),
+  action: text('action').notNull(),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  timestamp: text('timestamp').notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  deviceIdIdx: index('FireCubeKeepAwakeLog_deviceId_idx').on(table.deviceId),
+  timestampIdx: index('FireCubeKeepAwakeLog_timestamp_idx').on(table.timestamp),
+}))

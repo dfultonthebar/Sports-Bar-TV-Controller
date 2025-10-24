@@ -1,12 +1,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 export async function GET() {
   try {
     // Get CEC configuration from database or return default
-    const cecConfig = await prisma.cECConfiguration.findFirst()
+    const cecConfig = await findFirst('cecConfigurations')
     
     return NextResponse.json({
       success: true,
@@ -19,7 +21,7 @@ export async function GET() {
       }
     })
   } catch (error) {
-    console.error('Error loading CEC configuration:', error)
+    logger.error('Error loading CEC configuration:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to load CEC configuration' 
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       config: savedConfig 
     })
   } catch (error) {
-    console.error('Error saving CEC configuration:', error)
+    logger.error('Error saving CEC configuration:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to save CEC configuration' 

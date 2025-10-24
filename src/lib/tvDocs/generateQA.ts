@@ -5,7 +5,9 @@
  * Generates Q&A pairs from TV manual content for AI training
  */
 
-import prisma from "@/lib/prisma"
+import { and, asc, create, desc, eq, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { extractManualContent, splitContentIntoChunks, extractKeySections } from './extractContent'
 
 // Using singleton prisma from @/lib/prisma
@@ -56,7 +58,7 @@ async function generateQAPairsFromChunk(
     
     return []
   } catch (error) {
-    console.error('[TV Docs] Error generating Q&A pairs:', error)
+    logger.error('[TV Docs] Error generating Q&A pairs:', error)
     return []
   }
 }
@@ -131,27 +133,25 @@ async function saveQAPairsToDatabase(qaPairs: QAPair[]): Promise<number> {
     
     for (const pair of qaPairs) {
       try {
-        await prisma.qAEntry.create({
-          data: {
+        await create('qaEntries', {
             question: pair.question,
             answer: pair.answer,
             category: pair.category,
             sourceType: 'auto-generated',
             sourceFile: pair.source,
             isActive: true
-          }
-        })
+          })
         savedCount++
       } catch (error) {
-        console.error('[TV Docs] Error saving Q&A pair:', error)
+        logger.error('[TV Docs] Error saving Q&A pair:', error)
       }
     }
     
-    console.log(`[TV Docs] Saved ${savedCount}/${qaPairs.length} Q&A pairs to database`)
+    logger.debug(`[TV Docs] Saved ${savedCount}/${qaPairs.length} Q&A pairs to database`)
     
     return savedCount
   } catch (error) {
-    console.error('[TV Docs] Error saving Q&A pairs:', error)
+    logger.error('[TV Docs] Error saving Q&A pairs:', error)
     return 0
   }
 }
@@ -165,7 +165,7 @@ export async function generateQAFromManual(
   model: string
 ): Promise<{ success: boolean; qaPairsCount: number; error?: string }> {
   try {
-    console.log(`[TV Docs] Generating Q&A pairs from manual: ${manualPath}`)
+    logger.debug(`[TV Docs] Generating Q&A pairs from manual: ${manualPath}`)
     
     // Extract content from manual
     const content = await extractManualContent(manualPath)
@@ -203,7 +203,7 @@ export async function generateQAFromManual(
     // Combine all Q&A pairs
     const allQAPairs = [...templateQAPairs, ...aiQAPairs]
     
-    console.log(`[TV Docs] Generated ${allQAPairs.length} Q&A pairs (${templateQAPairs.length} template + ${aiQAPairs.length} AI-generated)`)
+    logger.debug(`[TV Docs] Generated ${allQAPairs.length} Q&A pairs (${templateQAPairs.length} template + ${aiQAPairs.length} AI-generated)`)
     
     // Save to database
     const savedCount = await saveQAPairsToDatabase(allQAPairs)
@@ -213,7 +213,7 @@ export async function generateQAFromManual(
       qaPairsCount: savedCount
     }
   } catch (error: any) {
-    console.error('[TV Docs] Error generating Q&A from manual:', error)
+    logger.error('[TV Docs] Error generating Q&A from manual:', error)
     return {
       success: false,
       qaPairsCount: 0,

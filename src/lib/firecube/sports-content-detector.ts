@@ -3,7 +3,9 @@
 
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, FireCubeSportsContent, LiveSportsContent } from './types';
-import prisma from "@/lib/prisma";
+import { and, asc, deleteMany, desc, eq, findMany, or, upsert } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 
@@ -29,13 +31,13 @@ export class SportsContentDetector {
           const content = await this.getAppSportsContent(deviceId, app.packageName);
           allContent.push(...content);
         } catch (error) {
-          console.error(`Failed to get sports content for ${app.packageName}:`, error);
+          logger.error(`Failed to get sports content for ${app.packageName}:`, error);
         }
       }
 
       return allContent;
     } catch (error) {
-      console.error('Failed to detect live sports:', error);
+      logger.error('Failed to detect live sports:', error);
       return [];
     }
   }
@@ -162,7 +164,7 @@ export class SportsContentDetector {
         });
       }
     } catch (error) {
-      console.error('Failed to sync sports content:', error);
+      logger.error('Failed to sync sports content:', error);
       throw error;
     }
   }
@@ -182,7 +184,7 @@ export class SportsContentDetector {
         }
       });
     } catch (error) {
-      console.error('Failed to get live sports content:', error);
+      logger.error('Failed to get live sports content:', error);
       return [];
     }
   }
@@ -208,7 +210,7 @@ export class SportsContentDetector {
         }
       });
     } catch (error) {
-      console.error('Failed to get upcoming sports content:', error);
+      logger.error('Failed to get upcoming sports content:', error);
       return [];
     }
   }
@@ -236,7 +238,7 @@ export class SportsContentDetector {
         }
       });
     } catch (error) {
-      console.error('Failed to search sports content:', error);
+      logger.error('Failed to search sports content:', error);
       return [];
     }
   }
@@ -258,7 +260,7 @@ export class SportsContentDetector {
         }
       });
     } catch (error) {
-      console.error('Failed to get content by league:', error);
+      logger.error('Failed to get content by league:', error);
       return [];
     }
   }

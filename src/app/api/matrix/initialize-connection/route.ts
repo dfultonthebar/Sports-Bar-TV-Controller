@@ -1,6 +1,8 @@
 
 import { NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { Socket } from 'net'
 
 /**
@@ -9,7 +11,7 @@ import { Socket } from 'net'
  */
 export async function POST() {
   try {
-    console.log('Initializing Wolf Pack matrix connection...')
+    logger.debug('Initializing Wolf Pack matrix connection...')
 
     // Get active matrix configuration
     const matrixConfig = await prisma.matrixConfiguration.findFirst({
@@ -17,7 +19,7 @@ export async function POST() {
     })
 
     if (!matrixConfig) {
-      console.log('No active matrix configuration found')
+      logger.debug('No active matrix configuration found')
       return NextResponse.json({
         success: false,
         error: 'No active matrix configuration found'
@@ -27,20 +29,20 @@ export async function POST() {
     const { ipAddress, tcpPort, protocol } = matrixConfig
     const port = protocol === 'TCP' ? tcpPort : matrixConfig.udpPort
 
-    console.log(`Testing connection to ${ipAddress}:${port} via ${protocol}...`)
+    logger.debug(`Testing connection to ${ipAddress}:${port} via ${protocol}...`)
 
     // Test connection
     const isConnected = await testConnection(ipAddress, port, protocol)
 
     if (isConnected) {
-      console.log(`✓ Successfully connected to Wolf Pack matrix at ${ipAddress}:${port}`)
+      logger.debug(`✓ Successfully connected to Wolf Pack matrix at ${ipAddress}:${port}`)
       
       // Trigger the connection manager to establish persistent connection
       await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/matrix/connection-manager`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'connect' })
-      }).catch(err => console.error('Error calling connection manager:', err))
+      }).catch(err => logger.error('Error calling connection manager:', err))
 
       return NextResponse.json({
         success: true,
@@ -48,14 +50,14 @@ export async function POST() {
         config: { ipAddress, port, protocol }
       })
     } else {
-      console.log(`✗ Failed to connect to Wolf Pack matrix at ${ipAddress}:${port}`)
+      logger.debug(`✗ Failed to connect to Wolf Pack matrix at ${ipAddress}:${port}`)
       return NextResponse.json({
         success: false,
         error: `Unable to connect to Wolf Pack matrix at ${ipAddress}:${port}`
       })
     }
   } catch (error) {
-    console.error('Error initializing Wolf Pack connection:', error)
+    logger.error('Error initializing Wolf Pack connection:', error)
     return NextResponse.json({
       success: false,
       error: String(error)

@@ -5,6 +5,7 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
 import { audioInputMeters, audioProcessors } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()

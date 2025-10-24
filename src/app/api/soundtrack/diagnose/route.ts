@@ -1,13 +1,15 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
 
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
     
     if (!config || !config.apiKey) {
       return NextResponse.json({
@@ -31,13 +33,11 @@ export async function GET(request: NextRequest) {
       ]
     })
   } catch (error: any) {
-    console.error('Soundtrack diagnostic error:', error)
+    logger.error('Soundtrack diagnostic error:', error)
     return NextResponse.json({
       success: false,
       error: error.message
     }, { status: 500 })
-  } finally {
-    await prisma.$disconnect()
   }
 }
 

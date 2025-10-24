@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { schedules } from '@/db/schema'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
+import { prisma } from '@/db/prisma-adapter'
 
 
 // GET - Get single schedule

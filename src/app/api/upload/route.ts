@@ -5,6 +5,7 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { saveFile, generateUniqueFilename } from '@/lib/file-utils'
 import { extractTextFromFile } from '@/lib/text-extractor'
 import { documents } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 export async function POST(request: NextRequest) {
   console.log('📁 Upload request received')

@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 /**
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    console.log(`[Usage Tracking] Preset "${updatedPreset.name}" usage updated: ${updatedPreset.usageCount} uses`)
+    logger.debug(`[Usage Tracking] Preset "${updatedPreset.name}" usage updated: ${updatedPreset.usageCount} uses`)
 
     return NextResponse.json({
       success: true,
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       message: 'Usage tracking updated successfully'
     })
   } catch (error) {
-    console.error('[Usage Tracking] Error updating preset usage:', error)
+    logger.error('[Usage Tracking] Error updating preset usage:', error)
     return NextResponse.json(
       {
         success: false,

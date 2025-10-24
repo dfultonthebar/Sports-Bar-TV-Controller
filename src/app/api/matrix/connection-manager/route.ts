@@ -2,7 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 // Global connection state
 let connectionState = {
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error('Error in connection manager:', error)
+    logger.error('Error in connection manager:', error)
     connectionState.isConnected = false
     return NextResponse.json({
       success: false,

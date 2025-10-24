@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
 
 export async function GET() {
@@ -61,7 +63,7 @@ export async function GET() {
       })
     }
   } catch (error) {
-    console.error('Error loading matrix configuration:', error)
+    logger.error('Error loading matrix configuration:', error)
     return NextResponse.json({ error: 'Failed to load configuration' }, { status: 500 })
   }
 }
@@ -169,9 +171,9 @@ export async function POST(request: NextRequest) {
       return savedConfig
     })
 
-    console.log(`Configuration saved successfully: ${result.name} (${result.id})`)
-    console.log(`- Inputs saved: ${inputs?.length || 0}`)
-    console.log(`- Outputs saved: ${outputs?.length || 0}`)
+    logger.debug(`Configuration saved successfully: ${result.name} (${result.id})`)
+    logger.debug(`- Inputs saved: ${inputs?.length || 0}`)
+    logger.debug(`- Outputs saved: ${outputs?.length || 0}`)
 
     return NextResponse.json({ 
       success: true, 
@@ -181,7 +183,7 @@ export async function POST(request: NextRequest) {
       outputCount: outputs?.length || 0
     })
   } catch (error) {
-    console.error('Error saving matrix configuration:', error)
+    logger.error('Error saving matrix configuration:', error)
     
     // Provide more detailed error information
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'

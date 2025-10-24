@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 /**
@@ -58,13 +60,13 @@ export async function POST(request: NextRequest) {
   try {
     const { layoutDescription, matrixOutputs, availableOutputs, imageUrl, availableInputs } = await request.json()
     
-    console.log('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs, imageUrl })
+    logger.debug('AI Analysis - Input:', { layoutDescription, matrixOutputs, availableOutputs, imageUrl })
     
     // NEW: Use AI Vision to detect TV positions from the actual image
     let tvLocations: TVLocation[] = []
     
     if (imageUrl) {
-      console.log('AI Analysis - Using Vision API to detect TV positions from image')
+      logger.debug('AI Analysis - Using Vision API to detect TV positions from image')
       try {
         const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/ai/vision-analyze-layout`, {
           method: 'POST',
@@ -85,24 +87,24 @@ export async function POST(request: NextRequest) {
                 wall: determineWallFromPosition(detection.position.x, detection.position.y)
               }
             }))
-            console.log('AI Analysis - Vision detected', tvLocations.length, 'TVs with accurate positions')
+            logger.debug('AI Analysis - Vision detected', tvLocations.length, 'TVs with accurate positions')
           }
         } else {
           console.warn('AI Analysis - Vision API failed, falling back to description parsing')
         }
       } catch (visionError) {
-        console.error('AI Analysis - Vision API error:', visionError)
-        console.log('AI Analysis - Falling back to description parsing')
+        logger.error('AI Analysis - Vision API error:', visionError)
+        logger.debug('AI Analysis - Falling back to description parsing')
       }
     }
     
     // Fallback: Parse the layout description if vision analysis failed or no image provided
     if (tvLocations.length === 0) {
-      console.log('AI Analysis - Using description parsing (fallback)')
+      logger.debug('AI Analysis - Using description parsing (fallback)')
       tvLocations = await parseLayoutDescription(layoutDescription, imageUrl)
     }
     
-    console.log('AI Analysis - Final Locations:', tvLocations.length, tvLocations.slice(0, 3))
+    logger.debug('AI Analysis - Final Locations:', tvLocations.length, tvLocations.slice(0, 3))
     
     // Get actual Wolfpack outputs from database configuration
     let activeOutputs: any[] = []
@@ -122,9 +124,9 @@ export async function POST(request: NextRequest) {
       
       if (config && config.outputs) {
         activeOutputs = config.outputs
-        console.log('AI Analysis - Loaded Wolfpack Outputs from DB:', activeOutputs.length, 'active outputs')
+        logger.debug('AI Analysis - Loaded Wolfpack Outputs from DB:', activeOutputs.length, 'active outputs')
       } else {
-        console.log('AI Analysis - No active Wolfpack configuration found, using fallback')
+        logger.debug('AI Analysis - No active Wolfpack configuration found, using fallback')
         // Fallback to provided outputs if database query fails
         if (availableOutputs && Array.isArray(availableOutputs)) {
           activeOutputs = availableOutputs.filter(output => 
@@ -133,7 +135,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (dbError) {
-      console.error('AI Analysis - Database query failed:', dbError)
+      logger.error('AI Analysis - Database query failed:', dbError)
       // Fallback to provided outputs
       if (availableOutputs && Array.isArray(availableOutputs)) {
         activeOutputs = availableOutputs.filter(output => 
@@ -142,17 +144,17 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log('AI Analysis - Active Outputs:', activeOutputs.length, 'outputs available')
+    logger.debug('AI Analysis - Active Outputs:', activeOutputs.length, 'outputs available')
     
     // Generate intelligent output mappings only for active outputs
     const suggestions = generateOutputMappings(tvLocations, matrixOutputs, activeOutputs)
-    console.log('AI Analysis - Generated Suggestions:', suggestions.length, suggestions.slice(0, 3))
+    logger.debug('AI Analysis - Generated Suggestions:', suggestions.length, suggestions.slice(0, 3))
     
     // Generate AI input mapping suggestions
     let inputMappingSuggestions: InputMapping[] = []
     if (availableInputs && Array.isArray(availableInputs) && availableInputs.length > 0) {
       inputMappingSuggestions = generateInputMappingSuggestions(suggestions, availableInputs)
-      console.log('AI Analysis - Generated Input Mapping:', inputMappingSuggestions.length, inputMappingSuggestions.slice(0, 3))
+      logger.debug('AI Analysis - Generated Input Mapping:', inputMappingSuggestions.length, inputMappingSuggestions.slice(0, 3))
     }
     
     const analysis: LayoutAnalysis = {
@@ -162,11 +164,11 @@ export async function POST(request: NextRequest) {
       inputMappingSuggestions: inputMappingSuggestions
     }
     
-    console.log('AI Analysis - Final Result:', { totalTVs: analysis.totalTVs, suggestionsCount: analysis.suggestions.length })
+    logger.debug('AI Analysis - Final Result:', { totalTVs: analysis.totalTVs, suggestionsCount: analysis.suggestions.length })
     
     return NextResponse.json({ analysis })
   } catch (error) {
-    console.error('Error analyzing layout:', error)
+    logger.error('Error analyzing layout:', error)
     return NextResponse.json(
       { error: 'Failed to analyze layout' },
       { status: 500 }
@@ -195,7 +197,7 @@ function determineWallFromPosition(x: number, y: number): string {
 }
 
 async function parseLayoutDescription(description: string, imageUrl?: string): Promise<TVLocation[]> {
-  console.log('Parsing layout description with image:', !!imageUrl)
+  logger.debug('Parsing layout description with image:', !!imageUrl)
   
   // Extract TV/marker numbers from the description using regex
   const markerRegex = /marker (\d+)/gi
@@ -235,7 +237,7 @@ async function parseLayoutDescription(description: string, imageUrl?: string): P
   const locations: TVLocation[] = []
   const sortedNumbers = Array.from(foundNumbers).sort((a, b) => a - b)
   
-  console.log('Found TV/marker numbers:', sortedNumbers)
+  logger.debug('Found TV/marker numbers:', sortedNumbers)
   
   // Parse each number and try to determine its position from the description
   for (const number of sortedNumbers) {
@@ -245,7 +247,7 @@ async function parseLayoutDescription(description: string, imageUrl?: string): P
   
   // If still no locations found, create a fallback based on description analysis
   if (locations.length === 0) {
-    console.log('No specific numbers found, creating fallback locations')
+    logger.debug('No specific numbers found, creating fallback locations')
     // Analyze description for general layout info
     const estimatedCount = estimateTVCountFromDescription(description)
     for (let i = 1; i <= estimatedCount; i++) {
@@ -257,7 +259,7 @@ async function parseLayoutDescription(description: string, imageUrl?: string): P
     }
   }
   
-  console.log('Generated locations:', locations.length)
+  logger.debug('Generated locations:', locations.length)
   return locations.sort((a, b) => a.number - b.number)
 }
 
@@ -445,13 +447,13 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
   if (activeOutputs.length > 0) {
     // Extract actual output channel numbers from Wolfpack configuration
     availableOutputNumbers = activeOutputs.map(output => output.channelNumber).sort((a, b) => a - b)
-    console.log(`Using ${availableOutputNumbers.length} actual Wolfpack output numbers:`, availableOutputNumbers)
+    logger.debug(`Using ${availableOutputNumbers.length} actual Wolfpack output numbers:`, availableOutputNumbers)
   } else {
     // Fallback: generate output numbers if no active outputs configured
     console.warn('No active Wolfpack outputs found - generating fallback output numbers')
     const maxOutputs = Math.max(matrixOutputs, locations.length)
     availableOutputNumbers = Array.from({ length: maxOutputs }, (_, i) => i + 1)
-    console.log(`Generated ${availableOutputNumbers.length} fallback output numbers for ${locations.length} TV locations`)
+    logger.debug(`Generated ${availableOutputNumbers.length} fallback output numbers for ${locations.length} TV locations`)
   }
   
   // Limit locations to available outputs to prevent mapping to non-existent outputs
@@ -461,7 +463,7 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     console.warn(`Warning: ${locations.length} TVs detected but only ${availableOutputNumbers.length} Wolfpack outputs available. Mapping first ${availableOutputNumbers.length} TVs only.`)
   }
   
-  console.log(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available Wolfpack outputs`)
+  logger.debug(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available Wolfpack outputs`)
   
   for (let i = 0; i < locationsToProcess.length; i++) {
     const location = locationsToProcess[i]
@@ -495,7 +497,7 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     })
   }
   
-  console.log(`Successfully created ${suggestions.length} output mappings for all TV locations`)
+  logger.debug(`Successfully created ${suggestions.length} output mappings for all TV locations`)
   
   return suggestions
 }

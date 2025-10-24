@@ -5,6 +5,7 @@ import { documentSearch } from '@/lib/enhanced-document-search'
 import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { apiKeys, chatSessions, documents } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 export const dynamic = 'force-dynamic'
 

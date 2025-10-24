@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import * as net from 'net'
 import { aiGainAdjustmentLogs, aiGainConfigurations, audioProcessors } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 interface AIGainConfig {
   id: string

@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, deleteRecord, desc, eq, findUnique, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 // PUT /api/channel-presets/[id] - Update a preset
@@ -51,7 +53,7 @@ export async function PUT(
       preset 
     })
   } catch (error) {
-    console.error('Error updating channel preset:', error)
+    logger.error('Error updating channel preset:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -92,7 +94,7 @@ export async function DELETE(
       message: 'Preset deleted successfully' 
     })
   } catch (error) {
-    console.error('Error deleting channel preset:', error)
+    logger.error('Error deleting channel preset:', error)
     return NextResponse.json(
       { 
         success: false, 

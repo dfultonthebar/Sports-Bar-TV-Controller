@@ -4,7 +4,9 @@
  * Handles uploading and parsing Q&A documents in various formats
  */
 
-import prisma from "@/lib/prisma";
+import { and, asc, create, desc, eq, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 

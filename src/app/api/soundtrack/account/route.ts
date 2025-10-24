@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 
@@ -10,7 +12,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   try {
     // Get API key from config
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
     
     if (!config || !config.apiKey) {
       return NextResponse.json(
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
     const account = await api.getAccount()
     return NextResponse.json({ success: true, account })
   } catch (error: any) {
-    console.error('Soundtrack account error:', error)
+    logger.error('Soundtrack account error:', error)
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

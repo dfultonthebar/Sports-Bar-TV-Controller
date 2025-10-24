@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { deleteFile } from '@/lib/file-utils'
 import { documents } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 export async function DELETE(
   request: NextRequest,

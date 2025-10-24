@@ -3,7 +3,9 @@
 
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, SubscriptionCheckResult } from './types';
-import prisma from "@/lib/prisma";
+import { and, asc, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger';
 
 // Using singleton prisma from @/lib/prisma;
 
@@ -90,7 +92,7 @@ export class SubscriptionDetector {
         method
       };
     } catch (error) {
-      console.error(`Subscription check failed for ${packageName}:`, error);
+      logger.error(`Subscription check failed for ${packageName}:`, error);
       return {
         packageName,
         hasSubscription: false,
@@ -234,11 +236,11 @@ export class SubscriptionDetector {
             }
           });
         } catch (error) {
-          console.error(`Failed to check subscription for ${app.packageName}:`, error);
+          logger.error(`Failed to check subscription for ${app.packageName}:`, error);
         }
       }
     } catch (error) {
-      console.error('Failed to check all subscriptions:', error);
+      logger.error('Failed to check all subscriptions:', error);
       throw error;
     }
   }
@@ -258,7 +260,7 @@ export class SubscriptionDetector {
         }
       });
     } catch (error) {
-      console.error('Failed to get subscribed apps:', error);
+      logger.error('Failed to get subscribed apps:', error);
       return [];
     }
   }
@@ -301,7 +303,7 @@ export class SubscriptionDetector {
 
       return summary;
     } catch (error) {
-      console.error('Failed to get subscription summary:', error);
+      logger.error('Failed to get subscription summary:', error);
       return { totalDevices: 0, subscriptions: {} };
     }
   }

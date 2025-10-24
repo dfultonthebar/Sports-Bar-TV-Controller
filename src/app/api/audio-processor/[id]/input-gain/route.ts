@@ -229,8 +229,8 @@ export async function POST(
     try {
       const aiConfigs = await db
         .select()
-        .from(schema.aIGainConfiguration)
-        .where(eq(schema.aIGainConfiguration.processorId, processorId))
+        .from(schema.aiGainConfigurations)
+        .where(eq(schema.aiGainConfigurations.processorId, processorId))
         .all()
       
       const aiConfig = aiConfigs.find(config => config.inputNumber === inputNumber)
@@ -239,17 +239,17 @@ export async function POST(
         const previousGain = aiConfig.currentGain || 0
 
         await db
-          .update(schema.aIGainConfiguration)
+          .update(schema.aiGainConfigurations)
           .set({
             currentGain: gain,
             lastAdjustment: new Date().toISOString(),
             adjustmentCount: (aiConfig.adjustmentCount || 0) + 1,
             updatedAt: new Date().toISOString()
           })
-          .where(eq(schema.aIGainConfiguration.id, aiConfig.id))
+          .where(eq(schema.aiGainConfigurations.id, aiConfig.id))
 
         // Log the adjustment
-        await db.insert(schema.aIGainAdjustmentLog).values({
+        await db.insert(schema.aiGainAdjustmentLogs).values({
           configId: aiConfig.id,
           processorId: processorId,
           inputNumber: inputNumber,

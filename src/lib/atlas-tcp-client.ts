@@ -63,7 +63,7 @@ export class AtlasTCPClient {
     }
   }
 
-  private async sendCommand(command: AtlasCommand): Promise<AtlasResponse | null> {
+  public async sendCommand(command: AtlasCommand): Promise<AtlasResponse | null> {
     if (!this.connected || !this.socket) {
       throw new Error('Not connected to Atlas processor')
     }

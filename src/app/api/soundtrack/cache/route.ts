@@ -1,6 +1,8 @@
 
 import { NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 import { clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
 
@@ -12,7 +14,7 @@ import { clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 export async function DELETE() {
   try {
     // Find existing config
-    const config = await prisma.soundtrackConfig.findFirst()
+    const config = await findFirst('soundtrackConfigs')
 
     if (!config) {
       return NextResponse.json({ 
@@ -33,14 +35,14 @@ export async function DELETE() {
       }
     })
 
-    console.log('[Soundtrack] Token cache cleared - fresh authentication will be required')
+    logger.debug('[Soundtrack] Token cache cleared - fresh authentication will be required')
 
     return NextResponse.json({ 
       success: true, 
       message: 'Token cache cleared successfully. Fresh authentication will be required on next request.' 
     })
   } catch (error: any) {
-    console.error('Error clearing Soundtrack token cache:', error)
+    logger.error('Error clearing Soundtrack token cache:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 

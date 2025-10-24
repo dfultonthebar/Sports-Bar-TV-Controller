@@ -6,6 +6,7 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irCommands, irDatabaseCredentials, irDevices } from '@/db/schema'
+import { prisma } from '@/db/prisma-adapter'
 
 /**
  * POST /api/ir/database/download

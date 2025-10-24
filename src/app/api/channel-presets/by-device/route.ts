@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from "@/lib/prisma"
+import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@/lib/logger'
 
 
 /**
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
       orderingMethod: hasUsageData ? 'usage-based' : 'alphabetical'
     })
   } catch (error) {
-    console.error('[Preset Fetch] Error fetching presets by device:', error)
+    logger.error('[Preset Fetch] Error fetching presets by device:', error)
     return NextResponse.json(
       {
         success: false,

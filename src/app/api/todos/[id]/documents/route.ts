@@ -1,5 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/db/prisma-adapter'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 // Converted to Drizzle ORM
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
