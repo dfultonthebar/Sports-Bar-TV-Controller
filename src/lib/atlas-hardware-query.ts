@@ -672,6 +672,15 @@ async function queryGroups(
         const active = extractValueFromResponse(activeResponse.data, 'val')
         isActive = active === 1
       }
+      
+      // WORKAROUND: If GroupActive_X returns 0 but group has a custom name (not default "Group X"),
+      // treat it as active. This handles cases where the Combine toggle is enabled in the web interface
+      // but GroupActive_X still returns 0. Groups with custom names are considered intentionally configured.
+      const hasCustomName = groupName !== `Group ${i + 1}`
+      if (!isActive && hasCustomName) {
+        console.log(`[Atlas Query] Group ${i} (${groupName}) has custom name but GroupActive_${i}=0, treating as active`)
+        isActive = true
+      }
 
       // NOTE: GroupSource_X, GroupGain_X, and GroupMute_X are NOT supported by Atlas processor
       // Groups inherit these properties from their member zones
