@@ -40,14 +40,26 @@ export interface AtlasHardwareZone {
   outputs?: AtlasZoneOutput[] // Array of amplifier outputs for this zone (empty or single item for simple zones)
 }
 
+export interface AtlasHardwareGroup {
+  index: number
+  name: string
+  parameterName: string // e.g., "GroupName_0"
+  isActive: boolean
+  currentSource?: number
+  gain?: number // in dB
+  muted?: boolean
+}
+
 export interface AtlasHardwareConfig {
   ipAddress: string
   port: number
   model: string
   sources: AtlasHardwareSource[]
   zones: AtlasHardwareZone[]
+  groups: AtlasHardwareGroup[]
   totalSources: number
   totalZones: number
+  totalGroups: number
   queriedAt: string
 }
 
@@ -171,6 +183,9 @@ export async function queryAtlasHardwareConfiguration(
           }
         }
 
+        // Query groups
+        const groups = await queryGroups(client, 12)
+        
         client.disconnect()
 
         const sources: AtlasHardwareSource[] = discoveredConfig.sources.map(source => ({
@@ -185,8 +200,10 @@ export async function queryAtlasHardwareConfiguration(
           model,
           sources,
           zones,
+          groups,
           totalSources: sources.length,
           totalZones: zones.length,
+          totalGroups: groups.length,
           queriedAt: discoveredConfig.queriedAt
         }
       } catch (tcpError) {
@@ -216,14 +233,19 @@ export async function queryAtlasHardwareConfiguration(
           }]
         }))
 
+        // Return empty groups array since we couldn't query them
+        const groups: AtlasHardwareGroup[] = []
+
         return {
           ipAddress,
           port: tcpPort,
           model,
           sources,
           zones,
+          groups,
           totalSources: sources.length,
           totalZones: zones.length,
+          totalGroups: groups.length,
           queriedAt: discoveredConfig.queriedAt
         }
       }
@@ -401,20 +423,26 @@ export async function queryAtlasHardwareConfiguration(
       await delay(100)
     }
 
+    // Query groups
+    const groups = await queryGroups(client, 12)
+
     const config: AtlasHardwareConfig = {
       ipAddress,
       port: tcpPort,
       model,
       sources,
       zones,
+      groups,
       totalSources: sources.length,
       totalZones: zones.length,
+      totalGroups: groups.length,
       queriedAt: new Date().toISOString()
     }
 
     console.log(`[Atlas Query] Successfully queried hardware configuration:`, {
       sources: config.totalSources,
-      zones: config.totalZones
+      zones: config.totalZones,
+      groups: config.totalGroups
     })
 
     return config
@@ -605,6 +633,101 @@ async function queryZoneOutputs(
       parameterName: `ZoneGain_${zoneIndex}`
     }]
   }
+}
+
+/**
+ * Query groups from Atlas processor
+ * 
+ * Groups are zone combinations that can be controlled together.
+ * Each group has: name, active state, source, gain, and mute.
+ * 
+ * @param client - Connected Atlas TCP client
+ * @param maxGroups - Maximum number of groups to query (default: 12)
+ */
+async function queryGroups(
+  client: AtlasTCPClient,
+  maxGroups: number = 12
+): Promise<AtlasHardwareGroup[]> {
+  const groups: AtlasHardwareGroup[] = []
+  
+  console.log(`[Atlas Query] Querying ${maxGroups} groups...`)
+  
+  for (let i = 0; i < maxGroups; i++) {
+    try {
+      // Get group name
+      const nameResponse = await client.getParameter(`GroupName_${i}`, 'str')
+      let groupName = `Group ${i + 1}` // Default fallback
+      
+      if (nameResponse.success && nameResponse.data) {
+        const name = extractValueFromResponse(nameResponse.data, 'str')
+        if (name) groupName = name
+      }
+
+      // Get active state (combine toggle)
+      const activeResponse = await client.getParameter(`GroupActive_${i}`, 'val')
+      let isActive = false
+      
+      if (activeResponse.success && activeResponse.data) {
+        const active = extractValueFromResponse(activeResponse.data, 'val')
+        isActive = active === 1
+      }
+
+      // Get current source
+      const sourceResponse = await client.getParameter(`GroupSource_${i}`, 'val')
+      let currentSource = -1
+      
+      if (sourceResponse.success && sourceResponse.data) {
+        const source = extractValueFromResponse(sourceResponse.data, 'val')
+        if (source !== null && source !== undefined) currentSource = source
+      }
+
+      // Get gain (in dB)
+      const gainResponse = await client.getParameter(`GroupGain_${i}`, 'val')
+      let gain = -10
+      
+      if (gainResponse.success && gainResponse.data) {
+        const gainVal = extractValueFromResponse(gainResponse.data, 'val')
+        if (gainVal !== null && gainVal !== undefined) gain = gainVal
+      }
+
+      // Get mute state
+      const muteResponse = await client.getParameter(`GroupMute_${i}`, 'val')
+      let muted = false
+      
+      if (muteResponse.success && muteResponse.data) {
+        const muteVal = extractValueFromResponse(muteResponse.data, 'val')
+        muted = muteVal === 1
+      }
+
+      groups.push({
+        index: i,
+        name: groupName,
+        parameterName: `GroupName_${i}`,
+        isActive,
+        currentSource,
+        gain,
+        muted
+      })
+
+      console.log(`[Atlas Query] Group ${i}: ${groupName} (Active: ${isActive}, Source: ${currentSource}, Gain: ${gain} dB, Muted: ${muted})`)
+      
+      await delay(100) // Small delay between queries
+    } catch (error) {
+      console.error(`[Atlas Query] Error querying group ${i}:`, error)
+      // Add a placeholder group
+      groups.push({
+        index: i,
+        name: `Group ${i + 1}`,
+        parameterName: `GroupName_${i}`,
+        isActive: false,
+        currentSource: -1,
+        gain: -10,
+        muted: false
+      })
+    }
+  }
+  
+  return groups
 }
 
 /**

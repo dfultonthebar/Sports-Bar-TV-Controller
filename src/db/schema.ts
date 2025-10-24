@@ -217,6 +217,22 @@ export const audioZones = sqliteTable('AudioZone', {
   processorZoneIdx: uniqueIndex('AudioZone_processorId_zoneNumber_key').on(table.processorId, table.zoneNumber),
 }))
 
+// Audio Group Model
+export const audioGroups = sqliteTable('AudioGroup', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
+  groupNumber: integer('groupNumber').notNull(),
+  name: text('name').notNull(),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(false),
+  currentSource: text('currentSource'),
+  gain: real('gain').notNull().default(-10),
+  muted: integer('muted', { mode: 'boolean' }).notNull().default(false),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  processorGroupIdx: uniqueIndex('AudioGroup_processorId_groupNumber_key').on(table.processorId, table.groupNumber),
+}))
+
 // Audio Scene Model
 export const audioScenes = sqliteTable('AudioScene', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

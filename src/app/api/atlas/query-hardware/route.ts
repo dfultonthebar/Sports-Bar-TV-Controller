@@ -3,7 +3,7 @@ import { queryAtlasHardwareConfiguration, testAtlasConnection } from '@/lib/atla
 import { prisma } from '@/lib/db'
 import { eq, and } from 'drizzle-orm'
 import { db } from '@/db'
-import { audioZones } from '@/db/schema'
+import { audioZones, audioGroups } from '@/db/schema'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -292,6 +292,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Update or create groups in database
+    for (const group of hardwareConfig.groups) {
+      try {
+        const groupName = typeof group.name === 'string' ? group.name : `Group ${group.index + 1}`
+        const groupIsActive = Boolean(group.isActive)
+        const groupGain = typeof group.gain === 'number' ? group.gain : -10
+        const groupMuted = Boolean(group.muted)
+        const groupSource = group.currentSource === null || group.currentSource === undefined || group.currentSource === -1 ? null :
+                           typeof group.currentSource === 'number' ? String(group.currentSource) :
+                           typeof group.currentSource === 'string' ? group.currentSource :
+                           null
+        
+        console.log(`[Query Hardware] Group ${group.index} sanitized values:`, {
+          name: groupName,
+          isActive: groupIsActive,
+          gain: groupGain,
+          muted: groupMuted,
+          currentSource: groupSource
+        })
+        
+        // First, try to find existing group by processorId and groupNumber
+        const existingGroup = await db
+          .select()
+          .from(audioGroups)
+          .where(
+            and(
+              eq(audioGroups.processorId, processorId),
+              eq(audioGroups.groupNumber, group.index)
+            )
+          )
+          .limit(1)
+          .get()
+
+        const groupData = {
+          name: groupName,
+          isActive: groupIsActive,
+          currentSource: groupSource,
+          gain: groupGain,
+          muted: groupMuted,
+          updatedAt: new Date().toISOString()
+        }
+
+        if (existingGroup) {
+          // Update existing group
+          await db
+            .update(audioGroups)
+            .set(groupData)
+            .where(eq(audioGroups.id, existingGroup.id))
+            .run()
+        } else {
+          // Create new group
+          await db
+            .insert(audioGroups)
+            .values({
+              processorId: processorId,
+              groupNumber: group.index,
+              name: groupName,
+              isActive: groupIsActive,
+              currentSource: groupSource,
+              gain: groupGain,
+              muted: groupMuted,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            })
+            .run()
+        }
+        
+        console.log(`[Query Hardware] Successfully saved group ${group.index}: ${groupName} (Active: ${groupIsActive})`)
+      } catch (groupError) {
+        console.error(`[Query Hardware] Error upserting group ${group.index}:`, groupError)
+        // Continue with other groups even if one fails
+      }
+    }
+
     console.log(`[Query Hardware] Successfully saved configuration for processor ${processorId}`)
 
     return NextResponse.json({
@@ -300,6 +374,7 @@ export async function POST(request: NextRequest) {
       configuration: {
         sources: hardwareConfig.totalSources,
         zones: hardwareConfig.totalZones,
+        groups: hardwareConfig.totalGroups,
         queriedAt: hardwareConfig.queriedAt
       },
       inputs,
