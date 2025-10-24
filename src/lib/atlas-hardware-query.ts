@@ -651,6 +651,7 @@ async function queryGroups(
   const groups: AtlasHardwareGroup[] = []
   
   console.log(`[Atlas Query] Querying ${maxGroups} groups...`)
+  console.log(`[Atlas Query] NOTE: Only GroupName_X and GroupActive_X parameters are supported by Atlas processor`)
   
   for (let i = 0; i < maxGroups; i++) {
     try {
@@ -672,32 +673,12 @@ async function queryGroups(
         isActive = active === 1
       }
 
-      // Get current source
-      const sourceResponse = await client.getParameter(`GroupSource_${i}`, 'val')
-      let currentSource = -1
-      
-      if (sourceResponse.success && sourceResponse.data) {
-        const source = extractValueFromResponse(sourceResponse.data, 'val')
-        if (source !== null && source !== undefined) currentSource = source
-      }
-
-      // Get gain (in dB)
-      const gainResponse = await client.getParameter(`GroupGain_${i}`, 'val')
-      let gain = -10
-      
-      if (gainResponse.success && gainResponse.data) {
-        const gainVal = extractValueFromResponse(gainResponse.data, 'val')
-        if (gainVal !== null && gainVal !== undefined) gain = gainVal
-      }
-
-      // Get mute state
-      const muteResponse = await client.getParameter(`GroupMute_${i}`, 'val')
-      let muted = false
-      
-      if (muteResponse.success && muteResponse.data) {
-        const muteVal = extractValueFromResponse(muteResponse.data, 'val')
-        muted = muteVal === 1
-      }
+      // NOTE: GroupSource_X, GroupGain_X, and GroupMute_X are NOT supported by Atlas processor
+      // Groups inherit these properties from their member zones
+      // Using default/placeholder values for now
+      const currentSource = -1  // Not available from Atlas
+      const gain = 0             // Not available from Atlas
+      const muted = false        // Not available from Atlas
 
       groups.push({
         index: i,
@@ -709,7 +690,7 @@ async function queryGroups(
         muted
       })
 
-      console.log(`[Atlas Query] Group ${i}: ${groupName} (Active: ${isActive}, Source: ${currentSource}, Gain: ${gain} dB, Muted: ${muted})`)
+      console.log(`[Atlas Query] Group ${i}: ${groupName} (Active: ${isActive})`)
       
       await delay(100) // Small delay between queries
     } catch (error) {
