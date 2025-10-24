@@ -25,6 +25,8 @@ export async function GET(
     const hardwareConfig = await queryAtlasHardware(
       processor.ipAddress,
       processor.tcpPort || 5321,
+      processor.model || 'AZMP8',  // Atlas processor model
+      processor.port || 80,  // HTTP port
       processor.username || undefined,  // HTTP basic auth username
       processor.password || undefined  // HTTP basic auth password
     )

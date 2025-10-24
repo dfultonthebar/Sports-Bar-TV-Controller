@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
               eq(schema.audioProcessors.id, sanitizedProcessorId),
               { 
                 status: 'online' as const,
-                lastSeen: new Date(), // Fixed: Use Date object instead of ISO string for timestamp fields
+                lastSeen: new Date().toISOString(), // Fixed: Use ISO string for SQLite timestamp fields
                 ipAddress: cleanedIp,
                 username: workingCreds.username,
                 password: encryptPassword(workingCreds.password)
@@ -234,13 +234,13 @@ export async function POST(request: NextRequest) {
         try {
           const updateData: {
             status: 'online'
-            lastSeen: Date // Fixed: Use Date type instead of string for timestamp fields
+            lastSeen: string // Fixed: Use string type for SQLite timestamp fields
             ipAddress: string
             username?: string
             password?: string
           } = { 
             status: 'online',
-            lastSeen: new Date(), // Fixed: Use Date object instead of ISO string for timestamp fields
+            lastSeen: new Date().toISOString(), // Fixed: Use ISO string for SQLite timestamp fields
             ipAddress: cleanedIp
           }
           
