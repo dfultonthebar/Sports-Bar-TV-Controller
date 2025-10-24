@@ -5,9 +5,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
+import { chatSessions } from '@/db/schema'
 import {
   executeTool,
   getAvailableTools,

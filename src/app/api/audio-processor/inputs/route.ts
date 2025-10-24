@@ -2,8 +2,10 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { getAvailableInputs } from '@/lib/atlas-models-config'
+import { audioProcessors } from '@/db/schema'
 
 /**
  * GET /api/audio-processor/inputs
@@ -25,9 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch the processor to get its model
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
 
     if (!processor) {
       return NextResponse.json(

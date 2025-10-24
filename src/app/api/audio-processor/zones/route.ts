@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { audioZones } from '@/db/schema'
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,8 +43,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const zone = await prisma.audioZone.create({
-      data: {
+    const zone = await db.insert(audioZones).values({
         processorId: processorId,
         zoneNumber,
         name,
@@ -51,8 +52,7 @@ export async function POST(request: NextRequest) {
         volume: volume || 50,
         muted: muted || false,
         enabled: true
-      }
-    })
+      }).returning().get()
 
     return NextResponse.json({ zone })
   } catch (error) {

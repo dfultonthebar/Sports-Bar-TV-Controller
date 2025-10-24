@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
+import { todos } from '@/db/schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,9 +99,7 @@ export async function DELETE(
       select: { title: true }
     })
 
-    await prisma.todo.delete({
-      where: { id: params.id }
-    })
+    await db.delete(todos).where(eq(todos.id, params.id)).returning().get()
 
     // Sync to GitHub in background
     if (todo) {

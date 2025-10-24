@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { aiGainConfigurations, audioInputMeters, audioProcessors } from '@/db/schema'
 
 interface RouteContext {
   params: Promise<{
@@ -96,12 +98,7 @@ export async function POST(
     }
 
     // Find or create the input meter
-    let inputMeter = await prisma.audioInputMeter.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    let inputMeter = await db.select().from(audioInputMeters).where(eq(audioInputMeters.processorId, processorId)).limit(1).get()
 
     if (!inputMeter) {
       // Create input meter if it doesn't exist
@@ -117,12 +114,7 @@ export async function POST(
     }
 
     // Find or create AI gain configuration
-    let aiConfig = await prisma.aIGainConfiguration.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    let aiConfig = await db.select().from(aiGainConfigurations).where(eq(aiGainConfigurations.processorId, processorId)).limit(1).get()
 
     const configData: any = {
       inputType: inputType || 'line',
@@ -147,14 +139,12 @@ export async function POST(
       })
     } else {
       // Create new configuration
-      aiConfig = await prisma.aIGainConfiguration.create({
-        data: {
+      aiConfig = await db.insert(aiGainConfigurations).values({
           inputMeterId: inputMeter.id,
           processorId: processorId,
           inputNumber: inputNumber,
           ...configData
-        }
-      })
+        }).returning().get()
     }
 
     return NextResponse.json({ 
@@ -189,12 +179,7 @@ export async function DELETE(
       )
     }
 
-    const aiConfig = await prisma.aIGainConfiguration.findFirst({
-      where: {
-        processorId: processorId,
-        inputNumber: inputNumber
-      }
-    })
+    const aiConfig = await db.select().from(aiGainConfigurations).where(eq(aiGainConfigurations.processorId, processorId)).limit(1).get()
 
     if (!aiConfig) {
       return NextResponse.json(
@@ -203,9 +188,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.aIGainConfiguration.delete({
-      where: { id: aiConfig.id }
-    })
+    await db.delete(aiGainConfigurations).where(eq(aiGainConfigurations.id, aiConfig.id)).returning().get()
 
     return NextResponse.json({ 
       success: true,

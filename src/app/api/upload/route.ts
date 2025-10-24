@@ -1,8 +1,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { saveFile, generateUniqueFilename } from '@/lib/file-utils'
 import { extractTextFromFile } from '@/lib/text-extractor'
+import { documents } from '@/db/schema'
 
 export async function POST(request: NextRequest) {
   console.log('📁 Upload request received')

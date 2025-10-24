@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { db } from '@/db'
+import { homeTeams, matrixOutputs, scheduleLogs, schedules } from '@/db/schema'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 
 
 // POST - Execute a schedule immediately
@@ -15,9 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const schedule = await prisma.schedule.findUnique({
-      where: { id: scheduleId }
-    });
+    const schedule = await db.select().from(schedules).where(eq(schedules.id, scheduleId)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
@@ -30,18 +30,14 @@ export async function POST(request: NextRequest) {
     const result = await executeSchedule(schedule);
     
     // Update schedule execution stats
-    await prisma.schedule.update({
-      where: { id: scheduleId },
-      data: {
+    await db.update(schedules).set({
         lastExecuted: new Date(),
         executionCount: schedule.executionCount + 1,
         lastResult: JSON.stringify(result)
-      }
-    });
+      }).where(eq(schedules.id, scheduleId)).returning().get();
 
     // Log the execution
-    await prisma.scheduleLog.create({
-      data: {
+    await db.insert(scheduleLogs).values({
         scheduleId: schedule.id,
         scheduleName: schedule.name,
         success: result.success,
@@ -51,8 +47,7 @@ export async function POST(request: NextRequest) {
         tvsControlled: result.tvsControlled || 0,
         channelsSet: result.channelsSet || 0,
         errors: result.errors ? JSON.stringify(result.errors) : null
-      }
-    });
+      }).returning().get();
 
     return NextResponse.json({ result });
   } catch (error: any) {

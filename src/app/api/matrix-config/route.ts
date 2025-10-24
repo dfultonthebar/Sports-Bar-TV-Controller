@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+// Converted to Drizzle ORM;
 
 export async function GET(request: NextRequest) {
   try {

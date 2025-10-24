@@ -2,7 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { operationLogger } from '@/lib/operation-logger'
 import { documentSearch } from '@/lib/enhanced-document-search'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { apiKeys, chatSessions, documents } from '@/db/schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,7 +76,7 @@ export async function GET(request: NextRequest) {
 
 async function getDocumentStatus() {
   try {
-    const totalDocs = await prisma.document.count()
+    const totalDocs = (await db.select().from(documents).all()).length
     const docsWithContent = await prisma.document.count({
       where: {
         content: {
@@ -106,9 +108,9 @@ async function getDatabaseHealth() {
     await prisma.$queryRaw`SELECT 1`
     
     // Get table counts
-    const documentCount = await prisma.document.count()
-    const sessionCount = await prisma.chatSession.count()
-    const keyCount = await prisma.apiKey.count()
+    const documentCount = (await db.select().from(documents).all()).length
+    const sessionCount = (await db.select().from(chatSessions).all()).length
+    const keyCount = (await db.select().from(apiKeys).all()).length
     
     return {
       status: 'healthy',

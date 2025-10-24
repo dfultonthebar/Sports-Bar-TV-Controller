@@ -6,7 +6,9 @@ import {
   deleteQAEntry,
   getQAStatistics,
 } from '@/lib/services/qa-generator';
-import { prisma } from '@/lib/db';
+import { db } from '@/db'
+import { qaEntries } from '@/db/schema'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
 

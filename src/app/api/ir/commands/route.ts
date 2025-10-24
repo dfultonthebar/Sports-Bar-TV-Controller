@@ -1,8 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
+import { irCommands } from '@/db/schema'
 
 /**
  * POST /api/ir/commands
@@ -40,8 +42,7 @@ export async function POST(request: NextRequest) {
     console.log('   Function:', functionName)
     console.log('   Category:', category || 'N/A')
 
-    const command = await prisma.iRCommand.create({
-      data: {
+    const command = await db.insert(irCommands).values({
         deviceId,
         functionName,
         irCode,
@@ -49,8 +50,7 @@ export async function POST(request: NextRequest) {
         codeSetId,
         category,
         description
-      }
-    })
+      }).returning().get()
 
     console.log('✅ [IR COMMANDS] Command created successfully')
     console.log('   ID:', command.id)
@@ -107,9 +107,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log('   ID:', commandId)
 
-    await prisma.iRCommand.delete({
-      where: { id: commandId }
-    })
+    await db.delete(irCommands).where(eq(irCommands.id, commandId)).returning().get()
 
     console.log('✅ [IR COMMANDS] Command deleted successfully')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

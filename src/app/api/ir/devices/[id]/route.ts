@@ -1,8 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
+import { irDevices } from '@/db/schema'
 
 /**
  * GET /api/ir/devices/:id
@@ -171,9 +173,7 @@ export async function DELETE(
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    await prisma.iRDevice.delete({
-      where: { id: params.id }
-    })
+    await db.delete(irDevices).where(eq(irDevices.id, params.id)).returning().get()
 
     console.log('✅ [IR DEVICES] Device deleted successfully')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

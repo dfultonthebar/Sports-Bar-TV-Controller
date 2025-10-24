@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { db } from '@/db'
+import { scheduleLogs } from '@/db/schema'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 
 
 // GET - Get schedule execution logs

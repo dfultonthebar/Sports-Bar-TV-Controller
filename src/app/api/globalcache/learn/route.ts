@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import net from 'net'
+import { globalCacheDevices } from '@/db/schema'
 
 /**
  * POST /api/globalcache/learn
@@ -28,9 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get device from database
-    const device = await prisma.globalCacheDevice.findUnique({
-      where: { id: deviceId }
-    })
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
 
     if (!device) {
       console.log('❌ [GLOBAL CACHE] Error: Device not found')
@@ -100,9 +99,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Get device from database
-    const device = await prisma.globalCacheDevice.findUnique({
-      where: { id: deviceId }
-    })
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
 
     if (!device) {
       console.log('❌ [GLOBAL CACHE] Error: Device not found')

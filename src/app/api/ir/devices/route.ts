@@ -1,8 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
+import { irDevices } from '@/db/schema'
 
 /**
  * GET /api/ir/devices

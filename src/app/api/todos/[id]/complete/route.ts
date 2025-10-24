@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
+import { todos } from '@/db/schema'
 
 export const dynamic = 'force-dynamic'
 

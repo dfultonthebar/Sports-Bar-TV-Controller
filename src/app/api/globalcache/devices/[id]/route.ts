@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { globalCacheDevices } from '@/db/schema'
+// Converted to Drizzle ORM
 
 /**
  * GET /api/globalcache/devices/[id]
@@ -50,9 +51,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.globalCacheDevice.delete({
-      where: { id: params.id }
-    })
+    await db.delete(globalCacheDevices).where(eq(globalCacheDevices.id, params.id)).returning().get()
 
     console.log(`Global Cache device deleted: ${params.id}`)
 

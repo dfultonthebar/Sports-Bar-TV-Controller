@@ -1,8 +1,10 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
+import { audioInputMeters, audioProcessors } from '@/db/schema'
 
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
@@ -47,9 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get processor info
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
 
     if (!processor) {
       return NextResponse.json(

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { globalCachePorts } from '@/db/schema'
+// Converted to Drizzle ORM
 
 /**
  * PUT /api/globalcache/ports/[id]
@@ -13,15 +14,12 @@ export async function PUT(
     const body = await request.json()
     const { assignedTo, assignedDeviceId, irCodeSet, enabled } = body
 
-    const port = await prisma.globalCachePort.update({
-      where: { id: params.id },
-      data: {
+    const port = await db.update(globalCachePorts).set({
         assignedTo: assignedTo || null,
         assignedDeviceId: assignedDeviceId || null,
         irCodeSet: irCodeSet || null,
         enabled: enabled !== undefined ? enabled : undefined
-      }
-    })
+      }).where(eq(globalCachePorts.id, params.id)).returning().get()
 
     console.log(`Global Cache port updated: Port ${port.portNumber} assigned to ${assignedTo || 'none'}`)
 

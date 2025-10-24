@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { queryAtlasHardwareConfiguration as queryAtlasHardware } from '@/lib/atlas-hardware-query'
+import { audioProcessors } from '@/db/schema'
 
 export async function GET(
   request: NextRequest,
@@ -10,9 +12,7 @@ export async function GET(
     const processorId = params.id
 
     // Fetch processor from database
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
 
     if (!processor) {
       return NextResponse.json(

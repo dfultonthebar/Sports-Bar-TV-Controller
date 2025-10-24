@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { db } from '@/db'
+import { schedules } from '@/db/schema'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 
 
 // GET - Get single schedule
@@ -9,9 +11,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const schedule = await prisma.schedule.findUnique({
-      where: { id: params.id }
-    });
+    const schedule = await db.select().from(schedules).where(eq(schedules.id, params.id)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
@@ -79,9 +79,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.schedule.delete({
-      where: { id: params.id }
-    });
+    await db.delete(schedules).where(eq(schedules.id, params.id)).returning().get();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

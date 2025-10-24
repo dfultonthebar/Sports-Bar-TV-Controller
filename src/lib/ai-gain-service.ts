@@ -1,6 +1,8 @@
 
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import * as net from 'net'
+import { aiGainAdjustmentLogs, aiGainConfigurations, audioProcessors } from '@/db/schema'
 
 interface AIGainConfig {
   id: string
@@ -44,9 +46,7 @@ export class AIGainService {
     this.stopMonitoring(processorId)
 
     // Get processor details
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
 
     if (!processor) {
       throw new Error(`Processor ${processorId} not found`)
@@ -104,9 +104,7 @@ export class AIGainService {
     }
 
     // Get processor details
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
 
     if (!processor) {
       return
@@ -141,10 +139,7 @@ export class AIGainService {
 
     // Update last audio detected timestamp
     if (isAudioPresent) {
-      await prisma.aIGainConfiguration.update({
-        where: { id: config.id },
-        data: { lastAudioDetected: new Date() }
-      })
+      await db.update(aiGainConfigurations).set({ lastAudioDetected: new Date() }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
     }
 
     // Check if we should wait for audio
@@ -157,10 +152,7 @@ export class AIGainService {
         if (silenceDurationMs > silenceThresholdMs) {
           // Been silent too long, switch to waiting mode
           if (config.adjustmentMode !== 'waiting') {
-            await prisma.aIGainConfiguration.update({
-              where: { id: config.id },
-              data: { adjustmentMode: 'waiting' }
-            })
+            await db.update(aiGainConfigurations).set({ adjustmentMode: 'waiting' }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
             console.log(`Input ${config.inputNumber}: Waiting for audio source`)
           }
           return // Don't adjust while waiting
@@ -175,10 +167,7 @@ export class AIGainService {
     if (Math.abs(levelDifference) < tolerance) {
       // Level is within tolerance, mark as idle
       if (config.adjustmentMode !== 'idle') {
-        await prisma.aIGainConfiguration.update({
-          where: { id: config.id },
-          data: { adjustmentMode: 'idle' }
-        })
+        await db.update(aiGainConfigurations).set({ adjustmentMode: 'idle' }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
         console.log(`Input ${config.inputNumber}: Target level reached (${currentLevel.toFixed(1)}dB)`)
       }
       return
@@ -230,8 +219,7 @@ export class AIGainService {
       })
 
       // Log the adjustment
-      await prisma.aIGainAdjustmentLog.create({
-        data: {
+      await db.insert(aiGainAdjustmentLogs).values({
           configId: config.id,
           processorId: processor.id,
           inputNumber: config.inputNumber,
@@ -243,8 +231,7 @@ export class AIGainService {
           adjustmentMode: adjustmentMode,
           reason: 'tracking',
           success: true
-        }
-      })
+        }).returning().get()
 
       console.log(
         `Input ${config.inputNumber}: Adjusted gain ${currentGain.toFixed(1)}dB → ${newGain.toFixed(1)}dB ` +
@@ -255,8 +242,7 @@ export class AIGainService {
       console.error(`Failed to adjust gain for input ${config.inputNumber}:`, error)
       
       // Log the failed adjustment
-      await prisma.aIGainAdjustmentLog.create({
-        data: {
+      await db.insert(aiGainAdjustmentLogs).values({
           configId: config.id,
           processorId: processor.id,
           inputNumber: config.inputNumber,
@@ -269,8 +255,7 @@ export class AIGainService {
           reason: 'tracking',
           success: false,
           errorMessage: error instanceof Error ? error.message : 'Unknown error'
-        }
-      })
+        }).returning().get()
     }
   }
 

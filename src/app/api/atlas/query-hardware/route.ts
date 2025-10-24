@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryAtlasHardwareConfiguration, testAtlasConnection } from '@/lib/atlas-hardware-query'
-import { prisma } from '@/lib/db'
 import { eq, and } from 'drizzle-orm'
 import { db } from '@/db'
-import { audioZones, audioGroups } from '@/db/schema'
+import { audioZones, audioGroups, audioProcessors } from '@/db/schema'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -26,9 +25,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch the processor from database
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId }
-    })
+    const processor = await db
+      .select()
+      .from(audioProcessors)
+      .where(eq(audioProcessors.id, processorId))
+      .limit(1)
+      .get()
 
     if (!processor) {
       return NextResponse.json({ error: 'Audio processor not found' }, { status: 404 })
@@ -141,13 +143,14 @@ export async function POST(request: NextRequest) {
     await fs.writeFile(backupPath, JSON.stringify(config, null, 2))
 
     // Update processor status to online
-    await prisma.audioProcessor.update({
-      where: { id: processorId },
-      data: {
+    await db
+      .update(audioProcessors)
+      .set({
         status: 'online',
-        lastSeen: new Date()
-      }
-    })
+        lastSeen: new Date().toISOString()
+      })
+      .where(eq(audioProcessors.id, processorId))
+      .run()
 
     // Update or create zones in database using direct Drizzle ORM
     // This fixes the SQLite binding error by properly handling the composite key

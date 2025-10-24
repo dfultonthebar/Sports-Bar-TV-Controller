@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import net from 'net'
+import { globalCacheDevices } from '@/db/schema'
 
 /**
  * GET /api/globalcache/devices

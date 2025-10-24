@@ -7,7 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discovery-service'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { matrixOutputs } from '@/db/schema'
 
 /**
  * POST /api/cec/discovery

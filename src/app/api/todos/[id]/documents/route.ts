@@ -1,9 +1,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { todoDocuments, todos } from '@/db/schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +49,7 @@ export async function POST(
     }
 
     // Verify todo exists
-    const todo = await prisma.todo.findUnique({
-      where: { id: params.id }
-    })
+    const todo = await db.select().from(todos).where(eq(todos.id, params.id)).limit(1).get()
 
     if (!todo) {
       return NextResponse.json(
@@ -77,15 +76,13 @@ export async function POST(
     await writeFile(filepath, buffer)
 
     // Save document record to database
-    const document = await prisma.todoDocument.create({
-      data: {
+    const document = await db.insert(todoDocuments).values({
         todoId: params.id,
         filename: file.name,
         filepath: publicPath,
         filesize: file.size,
         mimetype: file.type
-      }
-    })
+      }).returning().get()
 
     return NextResponse.json({
       success: true,
@@ -116,9 +113,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.todoDocument.delete({
-      where: { id: documentId }
-    })
+    await db.delete(todoDocuments).where(eq(todoDocuments.id, documentId)).returning().get()
 
     return NextResponse.json({
       success: true,

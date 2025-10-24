@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import * as net from 'net'
+import { matrixConfigurations, testLogs } from '@/db/schema'
 
 // TCP connection test with timeout
 async function testTCPConnection(
@@ -78,17 +79,14 @@ export async function POST(request: NextRequest) {
     console.log('📂 [WOLFPACK CONNECTION TEST] Loading matrix configuration from database...')
     
     // Get the active matrix configuration
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
-    })
+    const matrixConfig = await db.select().from(matrixConfigurations).where(eq(matrixConfigurations.isActive, true)).limit(1).get()
 
     if (!matrixConfig) {
       console.error('❌ [WOLFPACK CONNECTION TEST] No active matrix configuration found')
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       const duration = Date.now() - startTime
-      const errorLog = await prisma.testLog.create({
-        data: {
+      const errorLog = await db.insert(testLogs).values({
           testType: 'wolfpack_connection',
           testName: 'Wolf Pack Connection Test',
           status: 'failed',
@@ -99,8 +97,7 @@ export async function POST(request: NextRequest) {
           inputChannel: null,
           outputChannel: null,
           metadata: null
-        }
-      })
+        }).returning().get()
 
       return NextResponse.json({ 
         success: false,

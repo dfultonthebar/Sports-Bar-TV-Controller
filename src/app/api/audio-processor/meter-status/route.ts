@@ -1,7 +1,9 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { audioInputMeters } from '@/db/schema'
 
 export async function GET(request: NextRequest) {
   try {

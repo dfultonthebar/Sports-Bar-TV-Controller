@@ -1,9 +1,11 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
+import { irCommands, irDatabaseCredentials, irDevices } from '@/db/schema'
 
 /**
  * POST /api/ir/database/download
@@ -35,9 +37,7 @@ export async function POST(request: NextRequest) {
     console.log('   Functions count:', functions.length)
 
     // Get active credentials
-    const credentials = await prisma.iRDatabaseCredentials.findFirst({
-      where: { isActive: true }
-    })
+    const credentials = await db.select().from(irDatabaseCredentials).where(eq(irDatabaseCredentials.isActive, true)).limit(1).get()
 
     if (!credentials || !credentials.apiKey) {
       console.log('❌ [IR DATABASE API] No active credentials found')
@@ -84,29 +84,24 @@ export async function POST(request: NextRequest) {
 
         if (existingCommand) {
           // Update existing command
-          const updated = await prisma.iRCommand.update({
-            where: { id: existingCommand.id },
-            data: {
+          const updated = await db.update(irCommands).set({
               irCode: code.Code1,
               hexCode: code.HexCode1 || null,
               codeSetId: codesetId,
               category: func.category
-            }
-          })
+            }).where(eq(irCommands.id, existingCommand.id)).returning().get()
           downloadedCommands.push(updated)
           console.log(`✅ Updated command: ${func.functionName}`)
         } else {
           // Create new command
-          const created = await prisma.iRCommand.create({
-            data: {
+          const created = await db.insert(irCommands).values({
               deviceId,
               functionName: func.functionName,
               irCode: code.Code1,
               hexCode: code.HexCode1 || null,
               codeSetId: codesetId,
               category: func.category
-            }
-          })
+            }).returning().get()
           downloadedCommands.push(created)
           console.log(`✅ Created command: ${func.functionName}`)
         }
@@ -126,10 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update device with codeset ID
-    await prisma.iRDevice.update({
-      where: { id: deviceId },
-      data: { irCodeSetId: codesetId }
-    })
+    await db.update(irDevices).set({ irCodeSetId: codesetId }).where(eq(irDevices.id, deviceId)).returning().get()
 
     console.log('✅ [IR DATABASE API] Download complete')
     console.log('   Success:', downloadedCommands.length)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+// Converted to Drizzle ORM
 import net from 'net'
+import { globalCacheDevices } from '@/db/schema'
 
 /**
  * POST /api/globalcache/devices/[id]/test
@@ -11,9 +12,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const device = await prisma.globalCacheDevice.findUnique({
-      where: { id: params.id }
-    })
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, params.id)).limit(1).get()
 
     if (!device) {
       return NextResponse.json(
@@ -27,13 +26,10 @@ export async function POST(
     const result = await testDeviceConnection(device.ipAddress, device.port)
 
     // Update device status
-    await prisma.globalCacheDevice.update({
-      where: { id: params.id },
-      data: {
+    await db.update(globalCacheDevices).set({
         status: result.online ? 'online' : 'offline',
         lastSeen: result.online ? new Date() : device.lastSeen
-      }
-    })
+      }).where(eq(globalCacheDevices.id, params.id)).returning().get()
 
     console.log(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
     if (result.deviceInfo) {
