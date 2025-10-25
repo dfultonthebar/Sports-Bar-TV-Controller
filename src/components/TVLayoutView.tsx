@@ -37,56 +37,59 @@ interface TVDefinition {
 
 // Define all 25 TVs with their physical locations and areas - mapped to Graystone Layout drawing
 // Based on the actual physical layout:
-// - TVs 5-10 are mounted back-to-back on the partial wall above the bar
-// - TVs 5-7 face the dining room (East side of partial wall)
-// - TVs 8-10 face the bar area (West side of partial wall)
-// - TVs 1-4 are in various locations (East and other areas)
+// - TVs 05-10: Located south of the bar in the correct order from the layout
+// - TVs 11-13: Around the outside wall around the bar
+// - TVs 14-19: On the inside of the partial wall around the bar
+// - TV 25: On the patio outside the building
+// - TVs 1-4, 20-24: Various locations (East, Party East/West, West, Dining)
 interface ExtendedTVDefinition extends TVDefinition {
   orientation?: 'facing-dining' | 'facing-bar' | 'normal'
 }
 
 const TV_LAYOUT: ExtendedTVDefinition[] = [
   // EAST area (top right corner) - TV 01, TV 02
-  { tvNumber: 1, outputNumber: 1, area: 'EAST', gridColumn: '10 / 11', gridRow: '1 / 2', label: 'TV 01', orientation: 'normal' },
-  { tvNumber: 2, outputNumber: 2, area: 'EAST', gridColumn: '11 / 12', gridRow: '1 / 2', label: 'TV 02', orientation: 'normal' },
+  { tvNumber: 1, outputNumber: 1, area: 'EAST', gridColumn: '13 / 14', gridRow: '1 / 2', label: 'TV 01', orientation: 'normal' },
+  { tvNumber: 2, outputNumber: 2, area: 'EAST', gridColumn: '14 / 15', gridRow: '1 / 2', label: 'TV 02', orientation: 'normal' },
   
   // PARTY EAST (left side) - TV 20, TV 13, TV 15, TV 21, TV 22
   { tvNumber: 20, outputNumber: 20, area: 'PARTY EAST', gridColumn: '1 / 2', gridRow: '2 / 3', label: 'TV 20', orientation: 'normal' },
   { tvNumber: 13, outputNumber: 13, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '3 / 4', label: 'TV 13', orientation: 'normal' },
-  { tvNumber: 15, outputNumber: 15, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '4 / 5', label: 'TV 15', orientation: 'normal' },
-  { tvNumber: 21, outputNumber: 21, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '6 / 7', label: 'TV 21', orientation: 'normal' },
-  { tvNumber: 22, outputNumber: 22, area: 'PARTY EAST', gridColumn: '3 / 4', gridRow: '6 / 7', label: 'TV 22', orientation: 'normal' },
+  { tvNumber: 15, outputNumber: 15, area: 'PARTY EAST', gridColumn: '3 / 4', gridRow: '4 / 5', label: 'TV 15', orientation: 'normal' },
+  { tvNumber: 21, outputNumber: 21, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '7 / 8', label: 'TV 21', orientation: 'normal' },
+  { tvNumber: 22, outputNumber: 22, area: 'PARTY EAST', gridColumn: '3 / 4', gridRow: '7 / 8', label: 'TV 22', orientation: 'normal' },
   
-  // Partial Wall TVs - BAR SIDE (TVs 8-10 facing the bar area - West side of partial wall)
-  { tvNumber: 8, outputNumber: 8, area: 'BAR', gridColumn: '5 / 6', gridRow: '3 / 4', label: 'TV 08', orientation: 'facing-bar' },
-  { tvNumber: 9, outputNumber: 9, area: 'BAR', gridColumn: '6 / 7', gridRow: '3 / 4', label: 'TV 09', orientation: 'facing-bar' },
-  { tvNumber: 10, outputNumber: 10, area: 'BAR', gridColumn: '7 / 8', gridRow: '3 / 4', label: 'TV 10', orientation: 'facing-bar' },
+  // TVs around OUTSIDE wall around the bar - TV 11, TV 12, TV 13
+  { tvNumber: 11, outputNumber: 11, area: 'BAR', gridColumn: '11 / 12', gridRow: '4 / 5', label: 'TV 11', orientation: 'normal' },
+  { tvNumber: 12, outputNumber: 12, area: 'BAR', gridColumn: '7 / 8', gridRow: '8 / 9', label: 'TV 12', orientation: 'normal' },
   
-  // Partial Wall TVs - DINING SIDE (TVs 5-7 facing the dining room - East side of partial wall)
-  { tvNumber: 5, outputNumber: 5, area: 'DINING', gridColumn: '7 / 8', gridRow: '3 / 4', label: 'TV 05', orientation: 'facing-dining' },
-  { tvNumber: 6, outputNumber: 6, area: 'DINING', gridColumn: '6 / 7', gridRow: '3 / 4', label: 'TV 06', orientation: 'facing-dining' },
-  { tvNumber: 7, outputNumber: 7, area: 'DINING', gridColumn: '5 / 6', gridRow: '3 / 4', label: 'TV 07', orientation: 'facing-dining' },
-  
-  // Other BAR area TVs - TV 14, TV 16, TV 11, TV 19, TV 18, TV 12
+  // TVs on INSIDE of partial wall around the bar - TV 14, TV 15, TV 16, TV 18, TV 19
   { tvNumber: 14, outputNumber: 14, area: 'BAR', gridColumn: '4 / 5', gridRow: '3 / 4', label: 'TV 14', orientation: 'normal' },
-  { tvNumber: 19, outputNumber: 19, area: 'BAR', gridColumn: '8 / 9', gridRow: '3 / 4', label: 'TV 19', orientation: 'normal' },
-  { tvNumber: 11, outputNumber: 11, area: 'BAR', gridColumn: '8 / 9', gridRow: '4 / 5', label: 'TV 11', orientation: 'normal' },
-  { tvNumber: 16, outputNumber: 16, area: 'BAR', gridColumn: '5 / 6', gridRow: '4 / 5', label: 'TV 16', orientation: 'normal' },
-  { tvNumber: 18, outputNumber: 18, area: 'BAR', gridColumn: '6 / 7', gridRow: '5 / 6', label: 'TV 18', orientation: 'normal' },
-  { tvNumber: 12, outputNumber: 12, area: 'BAR', gridColumn: '6 / 7', gridRow: '7 / 8', label: 'TV 12', orientation: 'normal' },
+  { tvNumber: 16, outputNumber: 16, area: 'BAR', gridColumn: '7 / 8', gridRow: '6 / 7', label: 'TV 16', orientation: 'normal' },
+  { tvNumber: 18, outputNumber: 18, area: 'BAR', gridColumn: '7 / 8', gridRow: '7 / 8', label: 'TV 18', orientation: 'normal' },
+  { tvNumber: 19, outputNumber: 19, area: 'BAR', gridColumn: '11 / 12', gridRow: '3 / 4', label: 'TV 19', orientation: 'normal' },
   
-  // DINING area TVs (remaining) - TV 01-04 are in dining/other areas per drawing
-  { tvNumber: 4, outputNumber: 4, area: 'DINING', gridColumn: '10 / 11', gridRow: '8 / 9', label: 'TV 04', orientation: 'normal' },
+  // TVs 05-10 SOUTH of the bar (right side in layout) - properly ordered
+  { tvNumber: 10, outputNumber: 10, area: 'BAR', gridColumn: '12 / 13', gridRow: '5 / 6', label: 'TV 10', orientation: 'normal' },
+  { tvNumber: 9, outputNumber: 9, area: 'BAR', gridColumn: '12 / 13', gridRow: '4 / 5', label: 'TV 09', orientation: 'normal' },
+  { tvNumber: 8, outputNumber: 8, area: 'BAR', gridColumn: '13 / 14', gridRow: '3 / 4', label: 'TV 08', orientation: 'normal' },
+  { tvNumber: 7, outputNumber: 7, area: 'BAR', gridColumn: '13 / 14', gridRow: '4 / 5', label: 'TV 07', orientation: 'normal' },
+  { tvNumber: 6, outputNumber: 6, area: 'BAR', gridColumn: '12 / 13', gridRow: '4 / 5', label: 'TV 06', orientation: 'normal' },
+  { tvNumber: 5, outputNumber: 5, area: 'BAR', gridColumn: '13 / 14', gridRow: '5 / 6', label: 'TV 05', orientation: 'normal' },
   
-  // PARTY WEST (bottom left) - TV 24, TV 25
-  { tvNumber: 24, outputNumber: 24, area: 'PARTY WEST', gridColumn: '4 / 5', gridRow: '9 / 10', label: 'TV 24', orientation: 'normal' },
-  { tvNumber: 25, outputNumber: 25, area: 'PARTY WEST', gridColumn: '5 / 6', gridRow: '10 / 11', label: 'TV 25', orientation: 'normal' },
+  // DINING area TVs (remaining) - TV 04
+  { tvNumber: 4, outputNumber: 4, area: 'DINING', gridColumn: '12 / 13', gridRow: '10 / 11', label: 'TV 04', orientation: 'normal' },
   
-  // PATIO (bottom left corner) - TV 23
-  { tvNumber: 23, outputNumber: 23, area: 'PATIO', gridColumn: '1 / 2', gridRow: '10 / 11', label: 'TV 23', orientation: 'normal' },
+  // PARTY WEST (bottom area) - TV 24
+  { tvNumber: 24, outputNumber: 24, area: 'PARTY WEST', gridColumn: '5 / 6', gridRow: '10 / 11', label: 'TV 24', orientation: 'normal' },
   
-  // WEST section (bottom center)
-  { tvNumber: 3, outputNumber: 3, area: 'WEST', gridColumn: '11 / 12', gridRow: '9 / 10', label: 'TV 03', orientation: 'normal' },
+  // TV 25 on PATIO outside the building
+  { tvNumber: 25, outputNumber: 25, area: 'PATIO', gridColumn: '4 / 5', gridRow: '11 / 12', label: 'TV 25', orientation: 'normal' },
+  
+  // PATIO - TV 23
+  { tvNumber: 23, outputNumber: 23, area: 'PATIO', gridColumn: '1 / 2', gridRow: '11 / 12', label: 'TV 23', orientation: 'normal' },
+  
+  // WEST section - TV 03
+  { tvNumber: 3, outputNumber: 3, area: 'WEST', gridColumn: '13 / 14', gridRow: '10 / 11', label: 'TV 03', orientation: 'normal' },
 ]
 
 export default function TVLayoutView() {
@@ -220,10 +223,10 @@ export default function TVLayoutView() {
             Graystone Sports Bar TV Layout
           </h2>
           <p className="text-slate-400 text-sm mt-1">
-            Physical floor plan with 25 TVs across 8 zones - TVs 5-10 mounted back-to-back on partial wall above bar
+            Physical floor plan with 25 TVs across 8 zones
           </p>
           <p className="text-slate-500 text-xs mt-1">
-            TVs 5-7 face dining room | TVs 8-10 face bar area | Click any TV to change its source
+            TVs 05-10: South of bar | TVs 11-13: Outside wall | TVs 14-19: Inside partial wall | TV 25: Patio | Click any TV to change source
           </p>
         </div>
         
@@ -284,11 +287,11 @@ export default function TVLayoutView() {
           </div>
           <div className="flex items-center space-x-1">
             <div className="w-3 h-3 bg-slate-700 border-2 border-white rounded-sm"></div>
-            <span className="text-slate-300">Walls/Structure</span>
+            <span className="text-slate-300">Bar Structure</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-amber-900/40 border-2 border-amber-600 rounded-sm"></div>
-            <span className="text-slate-300">Partial Wall (TVs 5-10)</span>
+            <div className="w-3 h-3 bg-amber-900/20 border-2 border-amber-600/50 rounded-sm"></div>
+            <span className="text-slate-300">Partial Wall Area</span>
           </div>
         </div>
         
@@ -297,33 +300,33 @@ export default function TVLayoutView() {
           {/* Room Outer Walls - Black border representing physical walls */}
           <div className="absolute inset-0 border-4 border-white rounded-lg pointer-events-none z-10"></div>
           
-          {/* Bar Structure - Central rectangular area */}
+          {/* Bar Structure - Central rectangular area (smaller) */}
           <div 
             className="absolute bg-green-900/20 border-4 border-white rounded-md pointer-events-none z-10"
             style={{
-              left: '33%',
-              top: '30%',
-              width: '28%',
-              height: '35%'
+              left: '38%',
+              top: '28%',
+              width: '20%',
+              height: '28%'
             }}
           >
             <div className="flex items-center justify-center h-full">
-              <span className="text-white font-bold text-lg opacity-30">BAR STRUCTURE</span>
+              <span className="text-white font-bold text-base opacity-30">BAR</span>
             </div>
           </div>
           
-          {/* Partial Wall Above Bar - Where TVs 5-10 are mounted back-to-back */}
+          {/* Partial Wall Around Bar - Visual indicator */}
           <div 
-            className="absolute bg-amber-900/40 border-4 border-amber-600 rounded-sm pointer-events-none z-20"
+            className="absolute bg-amber-900/20 border-2 border-amber-600/50 rounded-sm pointer-events-none z-5"
             style={{
-              left: '33%',
-              top: '18%',
-              width: '28%',
-              height: '8%'
+              left: '25%',
+              top: '20%',
+              width: '48%',
+              height: '50%'
             }}
           >
             <div className="flex items-center justify-center h-full">
-              <span className="text-amber-200 font-semibold text-xs">PARTIAL WALL (TVs 5-10 Back-to-Back)</span>
+              <span className="text-amber-200/30 font-semibold text-xs">PARTIAL WALL AREA</span>
             </div>
           </div>
           
@@ -342,30 +345,35 @@ export default function TVLayoutView() {
           </div>
           
           {/* Grid Layout for TVs */}
-          <div className="grid grid-cols-12 grid-rows-11 gap-3 min-h-[700px] relative z-20">
+          <div className="grid grid-cols-15 grid-rows-12 gap-2 min-h-[750px] relative z-20" style={{gridTemplateColumns: 'repeat(15, minmax(0, 1fr))'}}>
             {/* EAST Label (top right) */}
-            <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-base bg-blue-900/50 rounded-lg border-2 border-blue-700" style={{gridColumn: '10 / 12', gridRow: '1 / 2'}}>
+            <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-base bg-blue-900/50 rounded-lg border-2 border-blue-700" style={{gridColumn: '13 / 15', gridRow: '1 / 2'}}>
               EAST
             </div>
             
             {/* PARTY EAST Label (left side) */}
-            <div className="col-span-2 row-span-2 flex items-center justify-center text-white font-bold text-sm bg-red-900/50 rounded-lg border-2 border-red-700" style={{gridColumn: '1 / 3', gridRow: '2 / 4'}}>
+            <div className="col-span-2 row-span-3 flex items-center justify-center text-white font-bold text-sm bg-red-900/50 rounded-lg border-2 border-red-700" style={{gridColumn: '1 / 3', gridRow: '2 / 5'}}>
               PARTY EAST
             </div>
             
             {/* DINING Label (right side) */}
-            <div className="col-span-2 row-span-3 flex items-center justify-center text-white font-bold text-sm bg-purple-900/50 rounded-lg border-2 border-purple-700" style={{gridColumn: '10 / 12', gridRow: '4 / 7'}}>
-              DINING ROOM
+            <div className="col-span-2 row-span-4 flex items-center justify-center text-white font-bold text-sm bg-purple-900/50 rounded-lg border-2 border-purple-700" style={{gridColumn: '13 / 15', gridRow: '6 / 10'}}>
+              DINING
             </div>
             
             {/* PATIO Label (bottom left corner) */}
-            <div className="col-span-1 row-span-1 flex items-center justify-center text-white font-bold text-xs bg-orange-900/50 rounded-lg border-2 border-orange-700" style={{gridColumn: '1 / 2', gridRow: '10 / 11'}}>
+            <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-xs bg-orange-900/50 rounded-lg border-2 border-orange-700" style={{gridColumn: '1 / 3', gridRow: '11 / 12'}}>
               PATIO
             </div>
             
-            {/* PARTY WEST Label (bottom left) */}
-            <div className="col-span-2 row-span-2 flex items-center justify-center text-white font-bold text-sm bg-yellow-900/50 rounded-lg border-2 border-yellow-700" style={{gridColumn: '3 / 5', gridRow: '9 / 11'}}>
+            {/* PARTY WEST Label (bottom area) */}
+            <div className="col-span-2 row-span-2 flex items-center justify-center text-white font-bold text-sm bg-yellow-900/50 rounded-lg border-2 border-yellow-700" style={{gridColumn: '4 / 6', gridRow: '10 / 12'}}>
               PARTY WEST
+            </div>
+            
+            {/* WEST Label (bottom right) */}
+            <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-xs bg-pink-900/50 rounded-lg border-2 border-pink-700" style={{gridColumn: '13 / 15', gridRow: '11 / 12'}}>
+              WEST
             </div>
             
             {/* Render all TVs */}
@@ -374,21 +382,13 @@ export default function TVLayoutView() {
               const output = outputs.find(o => o.channelNumber === tv.outputNumber)
               const isRouting = routingInProgress === tv.outputNumber
               
-              // Add visual indicator for back-to-back TVs
-              const isPartialWallTV = tv.orientation === 'facing-dining' || tv.orientation === 'facing-bar'
-              const borderColor = tv.orientation === 'facing-dining' ? 'border-amber-400' : 
-                                 tv.orientation === 'facing-bar' ? 'border-amber-600' : 
-                                 'border-slate-500'
-              
               return (
                 <div
                   key={tv.tvNumber}
-                  className={isPartialWallTV ? `border-2 ${borderColor} rounded-lg bg-amber-900/20` : ''}
                   style={{
                     gridColumn: tv.gridColumn,
                     gridRow: tv.gridRow
                   }}
-                  title={isPartialWallTV ? `Mounted on partial wall - ${tv.orientation}` : ''}
                 >
                   <TVButton
                     tvNumber={tv.tvNumber}
@@ -400,11 +400,6 @@ export default function TVLayoutView() {
                     isRouting={isRouting}
                     onClick={() => handleTVClick(tv)}
                   />
-                  {isPartialWallTV && (
-                    <div className="text-center text-[10px] text-amber-300 font-semibold mt-1">
-                      {tv.orientation === 'facing-dining' ? '→ Dining' : '← Bar'}
-                    </div>
-                  )}
                 </div>
               )
             })}
