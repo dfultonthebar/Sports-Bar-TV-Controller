@@ -68,12 +68,14 @@ const TV_LAYOUT: ExtendedTVDefinition[] = [
   { tvNumber: 18, outputNumber: 18, area: 'BAR', gridColumn: '7 / 8', gridRow: '7 / 8', label: 'TV 18', orientation: 'normal' },
   { tvNumber: 19, outputNumber: 19, area: 'BAR', gridColumn: '11 / 12', gridRow: '3 / 4', label: 'TV 19', orientation: 'normal' },
   
-  // TVs 05-10 SOUTH of the bar (right side in layout) - properly ordered
-  { tvNumber: 10, outputNumber: 10, area: 'BAR', gridColumn: '12 / 13', gridRow: '5 / 6', label: 'TV 10', orientation: 'normal' },
+  // TVs 05-10 SOUTH of the bar (right side in layout) - properly ordered in 2 columns of 3
+  // Left column (top to bottom): TV 08, TV 09, TV 10
+  // Right column (top to bottom): TV 07, TV 06, TV 05
+  { tvNumber: 8, outputNumber: 8, area: 'BAR', gridColumn: '12 / 13', gridRow: '3 / 4', label: 'TV 08', orientation: 'normal' },
   { tvNumber: 9, outputNumber: 9, area: 'BAR', gridColumn: '12 / 13', gridRow: '4 / 5', label: 'TV 09', orientation: 'normal' },
-  { tvNumber: 8, outputNumber: 8, area: 'BAR', gridColumn: '13 / 14', gridRow: '3 / 4', label: 'TV 08', orientation: 'normal' },
-  { tvNumber: 7, outputNumber: 7, area: 'BAR', gridColumn: '13 / 14', gridRow: '4 / 5', label: 'TV 07', orientation: 'normal' },
-  { tvNumber: 6, outputNumber: 6, area: 'BAR', gridColumn: '12 / 13', gridRow: '4 / 5', label: 'TV 06', orientation: 'normal' },
+  { tvNumber: 10, outputNumber: 10, area: 'BAR', gridColumn: '12 / 13', gridRow: '5 / 6', label: 'TV 10', orientation: 'normal' },
+  { tvNumber: 7, outputNumber: 7, area: 'BAR', gridColumn: '13 / 14', gridRow: '3 / 4', label: 'TV 07', orientation: 'normal' },
+  { tvNumber: 6, outputNumber: 6, area: 'BAR', gridColumn: '13 / 14', gridRow: '4 / 5', label: 'TV 06', orientation: 'normal' },
   { tvNumber: 5, outputNumber: 5, area: 'BAR', gridColumn: '13 / 14', gridRow: '5 / 6', label: 'TV 05', orientation: 'normal' },
   
   // DINING area TVs (remaining) - TV 04
@@ -300,29 +302,29 @@ export default function TVLayoutView() {
           {/* Room Outer Walls - Black border representing physical walls */}
           <div className="absolute inset-0 border-4 border-white rounded-lg pointer-events-none z-10"></div>
           
-          {/* Bar Structure - Central rectangular area (smaller) */}
+          {/* Bar Structure - Central rectangular area (scaled down more) */}
           <div 
             className="absolute bg-green-900/20 border-4 border-white rounded-md pointer-events-none z-10"
             style={{
-              left: '38%',
-              top: '28%',
-              width: '20%',
-              height: '28%'
+              left: '40%',
+              top: '30%',
+              width: '16%',
+              height: '22%'
             }}
           >
             <div className="flex items-center justify-center h-full">
-              <span className="text-white font-bold text-base opacity-30">BAR</span>
+              <span className="text-white font-bold text-sm opacity-30">BAR</span>
             </div>
           </div>
           
-          {/* Partial Wall Around Bar - Visual indicator */}
+          {/* Partial Wall Around Bar - Visual indicator (scaled down) */}
           <div 
             className="absolute bg-amber-900/20 border-2 border-amber-600/50 rounded-sm pointer-events-none z-5"
             style={{
-              left: '25%',
-              top: '20%',
-              width: '48%',
-              height: '50%'
+              left: '28%',
+              top: '22%',
+              width: '42%',
+              height: '44%'
             }}
           >
             <div className="flex items-center justify-center h-full">
