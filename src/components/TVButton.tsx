@@ -37,6 +37,7 @@ const AREA_COLORS: Record<string, string> = {
   'PARTY WEST': 'from-yellow-900/20 to-yellow-800/20',
   'PATIO': 'from-orange-900/20 to-orange-800/20',
   'WEST': 'from-pink-900/20 to-pink-800/20',
+  'SOUTH': 'from-cyan-900/20 to-cyan-800/20',
 }
 
 export default function TVButton({

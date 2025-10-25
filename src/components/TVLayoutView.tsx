@@ -35,43 +35,47 @@ interface TVDefinition {
   label?: string
 }
 
-// Define all 25 TVs with their physical locations and areas
+// Define all 25 TVs with their physical locations and areas - mapped to Graystone Layout drawing
 const TV_LAYOUT: TVDefinition[] = [
-  // EAST area (top right)
-  { tvNumber: 1, outputNumber: 1, area: 'EAST', gridColumn: '10 / 11', gridRow: '1 / 2' },
-  { tvNumber: 2, outputNumber: 2, area: 'EAST', gridColumn: '11 / 12', gridRow: '1 / 2' },
-  { tvNumber: 13, outputNumber: 13, area: 'EAST', gridColumn: '8 / 9', gridRow: '3 / 4' },
-  { tvNumber: 14, outputNumber: 14, area: 'EAST', gridColumn: '9 / 10', gridRow: '2 / 3' },
-  { tvNumber: 15, outputNumber: 15, area: 'EAST', gridColumn: '8 / 9', gridRow: '4 / 5' },
+  // EAST area (top right corner) - TV 01, TV 02
+  { tvNumber: 1, outputNumber: 1, area: 'EAST', gridColumn: '10 / 11', gridRow: '1 / 2', label: 'TV 01' },
+  { tvNumber: 2, outputNumber: 2, area: 'EAST', gridColumn: '11 / 12', gridRow: '1 / 2', label: 'TV 02' },
   
-  // BAR area (center)
-  { tvNumber: 11, outputNumber: 11, area: 'BAR', gridColumn: '7 / 8', gridRow: '3 / 4' },
-  { tvNumber: 16, outputNumber: 16, area: 'BAR', gridColumn: '6 / 7', gridRow: '6 / 7' },
-  { tvNumber: 12, outputNumber: 12, area: 'BAR', gridColumn: '6 / 7', gridRow: '7 / 8' },
-  { tvNumber: 18, outputNumber: 18, area: 'BAR', gridColumn: '7 / 8', gridRow: '4 / 5' },
-  { tvNumber: 19, outputNumber: 19, area: 'BAR', gridColumn: '9 / 10', gridRow: '3 / 4' },
+  // PARTY EAST (left side) - TV 20, TV 13, TV 15, TV 21, TV 22
+  { tvNumber: 20, outputNumber: 20, area: 'PARTY EAST', gridColumn: '1 / 2', gridRow: '2 / 3', label: 'TV 20' },
+  { tvNumber: 13, outputNumber: 13, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '3 / 4', label: 'TV 13' },
+  { tvNumber: 15, outputNumber: 15, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '4 / 5', label: 'TV 15' },
+  { tvNumber: 21, outputNumber: 21, area: 'PARTY EAST', gridColumn: '2 / 3', gridRow: '6 / 7', label: 'TV 21' },
+  { tvNumber: 22, outputNumber: 22, area: 'PARTY EAST', gridColumn: '3 / 4', gridRow: '6 / 7', label: 'TV 22' },
   
-  // DINING area (right side)
-  { tvNumber: 3, outputNumber: 3, area: 'DINING', gridColumn: '11 / 12', gridRow: '8 / 9' },
-  { tvNumber: 4, outputNumber: 4, area: 'DINING', gridColumn: '10 / 11', gridRow: '9 / 10' },
-  { tvNumber: 5, outputNumber: 5, area: 'DINING', gridColumn: '10 / 11', gridRow: '5 / 6' },
-  { tvNumber: 6, outputNumber: 6, area: 'DINING', gridColumn: '10 / 11', gridRow: '4 / 5' },
-  { tvNumber: 7, outputNumber: 7, area: 'DINING', gridColumn: '10 / 11', gridRow: '3 / 4' },
-  { tvNumber: 8, outputNumber: 8, area: 'DINING', gridColumn: '9 / 10', gridRow: '4 / 5' },
-  { tvNumber: 9, outputNumber: 9, area: 'DINING', gridColumn: '10 / 11', gridRow: '6 / 7' },
-  { tvNumber: 10, outputNumber: 10, area: 'DINING', gridColumn: '10 / 11', gridRow: '7 / 8' },
+  // BAR area (center) - TV 14, TV 19, TV 11, TV 16, TV 18, TV 12
+  { tvNumber: 14, outputNumber: 14, area: 'BAR', gridColumn: '5 / 6', gridRow: '3 / 4', label: 'TV 14' },
+  { tvNumber: 19, outputNumber: 19, area: 'BAR', gridColumn: '7 / 8', gridRow: '3 / 4', label: 'TV 19' },
+  { tvNumber: 11, outputNumber: 11, area: 'BAR', gridColumn: '7 / 8', gridRow: '4 / 5', label: 'TV 11' },
+  { tvNumber: 16, outputNumber: 16, area: 'BAR', gridColumn: '5 / 6', gridRow: '4 / 5', label: 'TV 16' },
+  { tvNumber: 18, outputNumber: 18, area: 'BAR', gridColumn: '6 / 7', gridRow: '5 / 6', label: 'TV 18' },
+  { tvNumber: 12, outputNumber: 12, area: 'BAR', gridColumn: '6 / 7', gridRow: '7 / 8', label: 'TV 12' },
   
-  // PARTY EAST (left side)
-  { tvNumber: 20, outputNumber: 20, area: 'PARTY EAST', gridColumn: '1 / 2', gridRow: '2 / 3' },
-  { tvNumber: 21, outputNumber: 21, area: 'PARTY EAST', gridColumn: '3 / 4', gridRow: '6 / 7' },
-  { tvNumber: 22, outputNumber: 22, area: 'PARTY EAST', gridColumn: '4 / 5', gridRow: '6 / 7' },
+  // DINING area (right side) - TV 07, TV 09, TV 06, TV 08, TV 05, TV 10
+  { tvNumber: 7, outputNumber: 7, area: 'DINING', gridColumn: '10 / 11', gridRow: '3 / 4', label: 'TV 07' },
+  { tvNumber: 9, outputNumber: 9, area: 'DINING', gridColumn: '10 / 11', gridRow: '4 / 5', label: 'TV 09' },
+  { tvNumber: 6, outputNumber: 6, area: 'DINING', gridColumn: '10 / 11', gridRow: '5 / 6', label: 'TV 06' },
+  { tvNumber: 8, outputNumber: 8, area: 'DINING', gridColumn: '9 / 10', gridRow: '3 / 4', label: 'TV 08' },
+  { tvNumber: 5, outputNumber: 5, area: 'DINING', gridColumn: '10 / 11', gridRow: '6 / 7', label: 'TV 05' },
+  { tvNumber: 10, outputNumber: 10, area: 'DINING', gridColumn: '10 / 11', gridRow: '7 / 8', label: 'TV 10' },
   
-  // PARTY WEST (bottom left)
-  { tvNumber: 24, outputNumber: 24, area: 'PARTY WEST', gridColumn: '4 / 5', gridRow: '9 / 10' },
-  { tvNumber: 25, outputNumber: 25, area: 'PARTY WEST', gridColumn: '5 / 6', gridRow: '10 / 11' },
+  // PARTY WEST (bottom left) - TV 24, TV 25
+  { tvNumber: 24, outputNumber: 24, area: 'PARTY WEST', gridColumn: '4 / 5', gridRow: '9 / 10', label: 'TV 24' },
+  { tvNumber: 25, outputNumber: 25, area: 'PARTY WEST', gridColumn: '5 / 6', gridRow: '10 / 11', label: 'TV 25' },
   
-  // PATIO (bottom left corner)
-  { tvNumber: 23, outputNumber: 23, area: 'PATIO', gridColumn: '1 / 2', gridRow: '9 / 10' },
+  // PATIO (bottom left corner) - TV 23
+  { tvNumber: 23, outputNumber: 23, area: 'PATIO', gridColumn: '1 / 2', gridRow: '10 / 11', label: 'TV 23' },
+  
+  // WEST section (bottom center) - TV 04
+  { tvNumber: 4, outputNumber: 4, area: 'WEST', gridColumn: '6 / 7', gridRow: '9 / 10', label: 'TV 04' },
+  
+  // SOUTH section (bottom right) - TV 03
+  { tvNumber: 3, outputNumber: 3, area: 'SOUTH', gridColumn: '11 / 12', gridRow: '9 / 10', label: 'TV 03' },
 ]
 
 export default function TVLayoutView() {
@@ -202,10 +206,10 @@ export default function TVLayoutView() {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center">
             <Monitor className="w-6 h-6 mr-2" />
-            Sports Bar TV Layout
+            Graystone Sports Bar TV Layout
           </h2>
           <p className="text-slate-400 text-sm mt-1">
-            Click any TV to change its source
+            Floor plan with 25 TVs across 8 zones - Click any TV to change its source
           </p>
         </div>
         
@@ -234,40 +238,86 @@ export default function TVLayoutView() {
 
       {/* Grid Layout */}
       <div className="relative w-full bg-slate-900/50 rounded-2xl p-6 border border-slate-700/50 backdrop-blur-sm">
+        {/* Floor Plan Legend */}
+        <div className="mb-4 flex flex-wrap gap-2 text-xs">
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-blue-900/30 border border-blue-700/30 rounded"></div>
+            <span className="text-slate-300">EAST</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-red-900/30 border border-red-700/30 rounded"></div>
+            <span className="text-slate-300">PARTY EAST</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-green-900/30 border border-green-700/30 rounded"></div>
+            <span className="text-slate-300">BAR</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-purple-900/30 border border-purple-700/30 rounded"></div>
+            <span className="text-slate-300">DINING</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-yellow-900/30 border border-yellow-700/30 rounded"></div>
+            <span className="text-slate-300">PARTY WEST</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-orange-900/30 border border-orange-700/30 rounded"></div>
+            <span className="text-slate-300">PATIO</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-pink-900/30 border border-pink-700/30 rounded"></div>
+            <span className="text-slate-300">WEST</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 bg-cyan-900/30 border border-cyan-700/30 rounded"></div>
+            <span className="text-slate-300">SOUTH</span>
+          </div>
+        </div>
+        
         {/* Area Labels */}
         <div className="grid grid-cols-12 grid-rows-11 gap-3 min-h-[700px]">
-          {/* EAST Label */}
-          <div className="col-span-4 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-blue-900/30 rounded-lg border border-blue-700/30" style={{gridColumn: '8 / 12', gridRow: '1 / 1'}}>
+          {/* North Label (top left) */}
+          <div className="col-span-1 row-span-1 flex items-center justify-center text-white font-semibold text-sm bg-slate-800/40 rounded-lg border border-slate-600/30" style={{gridColumn: '1 / 2', gridRow: '1 / 2'}}>
+            North
+          </div>
+          
+          {/* EAST Label (top right) */}
+          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-base bg-blue-900/30 rounded-lg border border-blue-700/30" style={{gridColumn: '10 / 12', gridRow: '1 / 2'}}>
             EAST
           </div>
           
-          {/* BAR Label */}
-          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-green-900/30 rounded-lg border border-green-700/30" style={{gridColumn: '6 / 8', gridRow: '2 / 2'}}>
-            BAR
-          </div>
-          
-          {/* DINING Label */}
-          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-purple-900/30 rounded-lg border border-purple-700/30" style={{gridColumn: '10 / 12', gridRow: '2 / 2'}}>
-            DINING
-          </div>
-          
-          {/* PARTY EAST Label */}
-          <div className="col-span-3 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-red-900/30 rounded-lg border border-red-700/30" style={{gridColumn: '1 / 4', gridRow: '1 / 1'}}>
+          {/* PARTY EAST Label (left side) */}
+          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-sm bg-red-900/30 rounded-lg border border-red-700/30" style={{gridColumn: '1 / 3', gridRow: '3 / 4'}}>
             PARTY EAST
           </div>
           
-          {/* PARTY WEST Label */}
-          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-yellow-900/30 rounded-lg border border-yellow-700/30" style={{gridColumn: '4 / 6', gridRow: '8 / 8'}}>
-            PARTY WEST
+          {/* BAR Label (center) */}
+          <div className="col-span-2 row-span-2 flex items-center justify-center text-white font-bold text-lg bg-green-900/30 rounded-lg border border-green-700/30" style={{gridColumn: '6 / 8', gridRow: '3 / 5'}}>
+            BAR
           </div>
           
-          {/* PATIO Label */}
-          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-orange-900/30 rounded-lg border border-orange-700/30" style={{gridColumn: '1 / 3', gridRow: '8 / 8'}}>
+          {/* DINING Label (right side) */}
+          <div className="col-span-1 row-span-1 flex items-center justify-center text-white font-bold text-sm bg-purple-900/30 rounded-lg border border-purple-700/30" style={{gridColumn: '11 / 12', gridRow: '2 / 3'}}>
+            DINING
+          </div>
+          
+          {/* South Label (right side) */}
+          <div className="col-span-1 row-span-1 flex items-center justify-center text-white font-semibold text-sm bg-slate-800/40 rounded-lg border border-slate-600/30" style={{gridColumn: '11 / 12', gridRow: '8 / 9'}}>
+            South
+          </div>
+          
+          {/* PATIO Label (bottom left corner) */}
+          <div className="col-span-1 row-span-1 flex items-center justify-center text-white font-bold text-sm bg-orange-900/30 rounded-lg border border-orange-700/30" style={{gridColumn: '1 / 2', gridRow: '9 / 10'}}>
             PATIO
           </div>
           
-          {/* WEST Label */}
-          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-lg bg-pink-900/30 rounded-lg border border-pink-700/30" style={{gridColumn: '5 / 7', gridRow: '9 / 9'}}>
+          {/* PARTY WEST Label (bottom left) */}
+          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-sm bg-yellow-900/30 rounded-lg border border-yellow-700/30" style={{gridColumn: '3 / 5', gridRow: '8 / 9'}}>
+            PARTY WEST
+          </div>
+          
+          {/* WEST Label (bottom center) */}
+          <div className="col-span-2 row-span-1 flex items-center justify-center text-white font-bold text-sm bg-pink-900/30 rounded-lg border border-pink-700/30" style={{gridColumn: '5 / 7', gridRow: '8 / 9'}}>
             WEST
           </div>
           
