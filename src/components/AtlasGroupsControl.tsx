@@ -59,21 +59,22 @@ export default function AtlasGroupsControl({
 
   const fetchSources = async () => {
     try {
-      // Fetch source names
-      const sourcePromises = []
-      for (let i = 0; i < 14; i++) {
-        sourcePromises.push(
-          fetch(`/api/atlas/configuration?processorIp=${processorIp}&param=SourceName_${i}`)
-            .then(r => r.json())
-            .then(d => ({ index: i, name: d.value || `Source ${i + 1}` }))
-            .catch(() => ({ index: i, name: `Source ${i + 1}` }))
-        )
-      }
+      const response = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
       
-      const sourceResults = await Promise.all(sourcePromises)
-      setSources(sourceResults)
+      if (!response.ok) {
+        throw new Error('Failed to fetch sources')
+      }
+
+      const data = await response.json()
+      setSources(data.sources || [])
     } catch (err) {
       console.error('Error fetching sources:', err)
+      // Fallback to default source names if API fails
+      const fallbackSources = Array.from({ length: 14 }, (_, i) => ({
+        index: i,
+        name: `Source ${i + 1}`
+      }))
+      setSources(fallbackSources)
     }
   }
 
