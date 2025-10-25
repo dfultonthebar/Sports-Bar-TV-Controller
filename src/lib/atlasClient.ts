@@ -737,6 +737,93 @@ export class AtlasTCPClient {
   }
 
   /**
+   * Set group source
+   * @param groupIndex Group index (0-based)
+   * @param sourceIndex Source index (0-based, -1 for no source)
+   */
+  async setGroupSource(groupIndex: number, sourceIndex: number): Promise<AtlasResponse> {
+    try {
+      const param = `GroupSource_${groupIndex}`
+      atlasLogger.info('GROUP', `Setting group ${groupIndex} source to ${sourceIndex}`, {
+        ipAddress: this.config.ipAddress
+      })
+      
+      const response = await this.sendCommand({
+        method: 'set',
+        param,
+        value: sourceIndex,
+        format: 'val'
+      })
+
+      return { success: true, data: response }
+    } catch (error) {
+      atlasLogger.error('GROUP', 'Error setting group source', { groupIndex, sourceIndex, error })
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
+    }
+  }
+
+  /**
+   * Set group volume
+   * @param groupIndex Group index (0-based)
+   * @param gainDb Gain in dB (-80 to 0)
+   */
+  async setGroupVolume(groupIndex: number, gainDb: number): Promise<AtlasResponse> {
+    try {
+      const param = `GroupGain_${groupIndex}`
+      atlasLogger.info('GROUP', `Setting group ${groupIndex} volume to ${gainDb}dB`, {
+        ipAddress: this.config.ipAddress
+      })
+      
+      const response = await this.sendCommand({
+        method: 'set',
+        param,
+        value: gainDb,
+        format: 'val'
+      })
+
+      return { success: true, data: response }
+    } catch (error) {
+      atlasLogger.error('GROUP', 'Error setting group volume', { groupIndex, gainDb, error })
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
+    }
+  }
+
+  /**
+   * Set group mute state
+   * @param groupIndex Group index (0-based)
+   * @param muted true to mute, false to unmute
+   */
+  async setGroupMute(groupIndex: number, muted: boolean): Promise<AtlasResponse> {
+    try {
+      const param = `GroupMute_${groupIndex}`
+      atlasLogger.info('GROUP', `Setting group ${groupIndex} mute to ${muted}`, {
+        ipAddress: this.config.ipAddress
+      })
+      
+      const response = await this.sendCommand({
+        method: 'set',
+        param,
+        value: muted ? 1 : 0,
+        format: 'val'
+      })
+
+      return { success: true, data: response }
+    } catch (error) {
+      atlasLogger.error('GROUP', 'Error setting group mute', { groupIndex, muted, error })
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
+    }
+  }
+
+  /**
    * Subscribe to parameter updates
    * @param param Parameter name (e.g., 'ZoneGain_0')
    * @param format Format ('val', 'pct', or 'str')
@@ -818,6 +905,8 @@ export class AtlasTCPClient {
       
       // Extract value from response based on format
       let value = null
+      
+      // Handle "getResp" method response (params object)
       if (response.method === 'getResp' && response.params) {
         if (format === 'val') {
           value = response.params.val
@@ -826,8 +915,20 @@ export class AtlasTCPClient {
         } else if (format === 'str') {
           value = response.params.str
         }
-      } else if (response.result) {
-        // Fallback for non-standard responses
+      } 
+      // Handle result array response (newer firmware format)
+      else if (response.result && Array.isArray(response.result) && response.result.length > 0) {
+        const resultObj = response.result[0]
+        if (format === 'val') {
+          value = resultObj.val
+        } else if (format === 'pct') {
+          value = resultObj.pct
+        } else if (format === 'str') {
+          value = resultObj.str
+        }
+      }
+      // Handle direct result value (fallback)
+      else if (response.result !== undefined && !Array.isArray(response.result)) {
         value = response.result
       }
 

@@ -26,18 +26,47 @@ export async function GET(request: NextRequest) {
     
     for (let i = 0; i < 8; i++) {
       const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
-        client.sendCommand({ method: 'get', param: `GroupName_${i}`, format: 'str' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupActive_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupSource_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupGain_${i}`, format: 'val' }).catch(() => null),
-        client.sendCommand({ method: 'get', param: `GroupMute_${i}`, format: 'val' }).catch(() => null)
+        client.getParameter(`GroupName_${i}`, 'str').catch((err) => {
+          console.error(`Error getting GroupName_${i}:`, err)
+          return { success: false }
+        }),
+        client.getParameter(`GroupActive_${i}`, 'val').catch((err) => {
+          console.error(`Error getting GroupActive_${i}:`, err)
+          return { success: false }
+        }),
+        client.getParameter(`GroupSource_${i}`, 'val').catch((err) => {
+          console.error(`Error getting GroupSource_${i}:`, err)
+          return { success: false }
+        }),
+        client.getParameter(`GroupGain_${i}`, 'val').catch((err) => {
+          console.error(`Error getting GroupGain_${i}:`, err)
+          return { success: false }
+        }),
+        client.getParameter(`GroupMute_${i}`, 'val').catch((err) => {
+          console.error(`Error getting GroupMute_${i}:`, err)
+          return { success: false }
+        })
       ])
 
-      const name = nameResult?.data?.str || `Group ${i + 1}`
-      const isActive = activeResult?.data?.val === 1
-      const source = sourceResult?.data?.val ?? -1
-      const gain = gainResult?.data?.val ?? -10
-      const muted = muteResult?.data?.val === 1
+      console.log(`Group ${i} results:`, {
+        nameResult,
+        activeResult,
+        sourceResult,
+        gainResult,
+        muteResult
+      })
+
+      // Extract values from the response structure
+      // Response format: { success: true, data: { ...response, value: extractedValue } }
+      const name = (nameResult.success && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '') 
+        ? nameResult.data.value 
+        : `Group ${i + 1}`
+      const isActive = (activeResult.success && activeResult.data?.value === 1)
+      const source = (sourceResult.success && sourceResult.data?.value !== undefined) ? sourceResult.data.value : -1
+      const gain = (gainResult.success && gainResult.data?.value !== undefined) ? gainResult.data.value : -10
+      const muted = (muteResult.success && muteResult.data?.value === 1)
+
+      console.log(`Group ${i} extracted values:`, { name, isActive, source, gain, muted })
 
       groups.push({
         index: i,
@@ -51,9 +80,14 @@ export async function GET(request: NextRequest) {
 
     await client.disconnect()
 
+    // Count active groups
+    const activeGroups = groups.filter(g => g.isActive)
+
     return NextResponse.json({
       success: true,
       groups,
+      totalGroups: groups.length,
+      activeGroups: activeGroups.length,
       timestamp: Date.now()
     })
   } catch (error) {
@@ -91,39 +125,22 @@ export async function POST(request: NextRequest) {
     let result
     switch (action) {
       case 'setActive':
-        result = await client.sendCommand({
-          method: 'set',
-          param: `GroupActive_${groupIndex}`,
-          value: value ? 1 : 0,
-          format: 'val'
-        })
+        result = await client.setGroupActive(groupIndex, value)
         break
       
       case 'setSource':
-        result = await client.sendCommand({
-          method: 'set',
-          param: `GroupSource_${groupIndex}`,
-          value: value,
-          format: 'val'
-        })
+        // Need to add setGroupSource method to atlasClient
+        result = await client.setGroupSource(groupIndex, value)
         break
       
       case 'setGain':
-        result = await client.sendCommand({
-          method: 'set',
-          param: `GroupGain_${groupIndex}`,
-          value: value,
-          format: 'val'
-        })
+        // Need to add setGroupVolume method to atlasClient
+        result = await client.setGroupVolume(groupIndex, value)
         break
       
       case 'setMute':
-        result = await client.sendCommand({
-          method: 'set',
-          param: `GroupMute_${groupIndex}`,
-          value: value ? 1 : 0,
-          format: 'val'
-        })
+        // Need to add setGroupMute method to atlasClient
+        result = await client.setGroupMute(groupIndex, value)
         break
       
       default:
@@ -137,8 +154,9 @@ export async function POST(request: NextRequest) {
     await client.disconnect()
 
     return NextResponse.json({
-      success: true,
-      result,
+      success: result.success,
+      result: result.data,
+      error: result.error,
       timestamp: Date.now()
     })
   } catch (error) {
