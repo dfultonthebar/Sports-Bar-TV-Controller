@@ -38,14 +38,14 @@ export async function GET(request: NextRequest) {
 
     // Fetch presets for the specified device type
     // Order by: order field (which is set by AI reordering), then by name
-    const presets = await prisma.channelPreset.findMany({
-      where: { 
-        deviceType,
-        isActive: true 
-      },
+    const presets = await findMany('channelPresets', {
+      where: and(
+        eq(schema.channelPresets.deviceType, deviceType),
+        eq(schema.channelPresets.isActive, true)
+      ),
       orderBy: [
-        { order: 'asc' },
-        { name: 'asc' }
+        asc(schema.channelPresets.order),
+        asc(schema.channelPresets.name)
       ]
     })
 
