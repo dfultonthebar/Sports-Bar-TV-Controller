@@ -15,6 +15,7 @@ import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import CECDiscoveryPanel from '@/components/CECDiscoveryPanel'
 import GlobalCacheControl from '@/components/globalcache/GlobalCacheControl'
 import { IRDeviceSetup } from '@/components/ir/IRDeviceSetup'
+import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
@@ -29,7 +30,8 @@ import {
   Target,
   BarChart3,
   Music2,
-  Tv
+  Tv,
+  Star
 } from 'lucide-react'
 
 export default function DeviceConfigPage() {
@@ -137,8 +139,12 @@ export default function DeviceConfigPage() {
         )}
 
       {/* Device Tabs */}
-      <Tabs defaultValue="directv" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
+      <Tabs defaultValue="channel-presets" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="channel-presets" className="flex items-center gap-2">
+            <Star className="w-4 h-4" />
+            Channel Presets
+          </TabsTrigger>
           <TabsTrigger value="directv" className="flex items-center gap-2">
             <Satellite className="w-4 h-4" />
             DirecTV
@@ -168,6 +174,30 @@ export default function DeviceConfigPage() {
             Subscriptions
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="channel-presets" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-yellow-400" />
+                Channel Presets Configuration
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {aiEnhancementsEnabled 
+                  ? "Configure quick-access channel presets for Cable Box and DirecTV with AI-powered usage analytics and smart reordering"
+                  : "Configure quick-access channel presets for Cable Box and DirecTV inputs"
+                }
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <ChannelPresetsPanel />
+        </TabsContent>
 
         <TabsContent value="directv" className="space-y-4">
           <Card>
