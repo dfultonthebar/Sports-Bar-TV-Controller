@@ -81,18 +81,32 @@ export class ADBClient {
     
     console.log(`[ADB CLIENT] Starting keep-alive for ${this.deviceAddress}`)
     
+    let consecutiveFailures = 0
+    const MAX_FAILURES_BEFORE_RECONNECT = 3
+    
     this.keepAliveTimer = setInterval(async () => {
       try {
         // Send a lightweight command to keep connection alive
         await this.executeShellCommand('echo keepalive')
         console.log(`[ADB CLIENT] Keep-alive ping successful for ${this.deviceAddress}`)
+        
+        // Reset failure counter on success
+        consecutiveFailures = 0
       } catch (error) {
-        console.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress}:`, error)
-        // Attempt reconnection
-        try {
-          await this.connect()
-        } catch (reconnectError) {
-          console.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}`)
+        consecutiveFailures++
+        console.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure ${consecutiveFailures}/${MAX_FAILURES_BEFORE_RECONNECT}):`, error)
+        
+        // Only attempt reconnection after multiple consecutive failures
+        if (consecutiveFailures >= MAX_FAILURES_BEFORE_RECONNECT) {
+          console.log(`[ADB CLIENT] Attempting reconnection for ${this.deviceAddress} after ${consecutiveFailures} failures`)
+          
+          try {
+            await this.connect()
+            consecutiveFailures = 0 // Reset on successful reconnection
+          } catch (reconnectError) {
+            console.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}`)
+            // Don't reset counter - let health monitor handle this
+          }
         }
       }
     }, this.options.keepAliveInterval)

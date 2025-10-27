@@ -1,43 +1,7 @@
 // Fire TV Send Command API - Execute commands with persistent connections
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ADBClient } from '@/lib/firecube/adb-client'
-
-// Store active connections for reuse (keep-alive)
-const activeConnections = new Map<string, ADBClient>()
-
-// Cleanup old connections after 5 minutes of inactivity
-const CONNECTION_TIMEOUT = 5 * 60 * 1000
-
-function getOrCreateClient(deviceAddress: string, ip: string, port: number): ADBClient {
-  const existing = activeConnections.get(deviceAddress)
-  
-  if (existing && existing.getConnectionStatus()) {
-    console.log(`[FIRE CUBE] Reusing existing connection for ${deviceAddress}`)
-    return existing
-  }
-  
-  // Create new client with keep-alive
-  console.log(`[FIRE CUBE] Creating new connection for ${deviceAddress}`)
-  const client = new ADBClient(ip, port, {
-    keepAliveInterval: 30000, // 30 seconds
-    connectionTimeout: 5000
-  })
-  
-  activeConnections.set(deviceAddress, client)
-  
-  // Set timeout to cleanup inactive connections
-  setTimeout(() => {
-    const clientToCheck = activeConnections.get(deviceAddress)
-    if (clientToCheck === client) {
-      console.log(`[FIRE CUBE] Cleaning up inactive connection for ${deviceAddress}`)
-      client.cleanup()
-      activeConnections.delete(deviceAddress)
-    }
-  }, CONNECTION_TIMEOUT)
-  
-  return client
-}
+import { connectionManager } from '@/services/firetv-connection-manager'
 
 // Key code mappings for Fire TV
 const KEY_CODES: Record<string, number> = {
@@ -66,8 +30,6 @@ const KEY_CODES: Record<string, number> = {
 }
 
 export async function POST(request: NextRequest) {
-  let adbClient: ADBClient | null = null
-  
   try {
     const { deviceId, command, appPackage, ipAddress, port } = await request.json()
     
@@ -98,21 +60,8 @@ export async function POST(request: NextRequest) {
     const devicePort = parseInt(port.toString())
     const deviceAddress = `${ip}:${devicePort}`
     
-    // Get or create persistent connection
-    adbClient = getOrCreateClient(deviceAddress, ip, devicePort)
-    
-    // Ensure connection is established
-    if (!adbClient.getConnectionStatus()) {
-      console.log('[FIRE CUBE] Establishing connection...')
-      const connected = await adbClient.connect()
-      
-      if (!connected) {
-        return NextResponse.json({
-          success: false,
-          message: 'Failed to connect to Fire TV device'
-        }, { status: 500 })
-      }
-    }
+    // Get or create persistent connection using connection manager
+    const adbClient = await connectionManager.getOrCreateConnection(deviceId, ip, devicePort)
     
     let result: string
     let commandType: string
@@ -209,12 +158,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Cleanup handler for graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('[FIRE CUBE] Cleaning up all ADB connections...')
-  activeConnections.forEach((client, address) => {
-    console.log(`[FIRE CUBE] Cleaning up connection: ${address}`)
-    client.cleanup()
-  })
-  activeConnections.clear()
-})
+// Note: Cleanup is now handled by the connection manager service

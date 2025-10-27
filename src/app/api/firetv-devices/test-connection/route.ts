@@ -2,11 +2,9 @@
 // Fire TV Test Connection API - Direct ADB connection with keep-alive support
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ADBClient } from '@/lib/firecube/adb-client'
+import { connectionManager } from '@/services/firetv-connection-manager'
 
 export async function POST(request: NextRequest) {
-  let adbClient: ADBClient | null = null
-  
   try {
     const { deviceId, ipAddress, port } = await request.json()
     
@@ -32,39 +30,17 @@ export async function POST(request: NextRequest) {
     const ip = ipAddress.trim()
     const devicePort = parseInt(port.toString())
     
-    // Create ADB client with keep-alive enabled (30 second interval)
-    adbClient = new ADBClient(ip, devicePort, {
-      keepAliveInterval: 30000, // 30 seconds
-      connectionTimeout: 5000    // 5 second timeout
-    })
+    // Use connection manager to get or create connection
+    const adbClient = await connectionManager.getOrCreateConnection(deviceId, ip, devicePort)
     
-    // Test connection
-    const connected = await adbClient.testConnection()
-    
-    if (!connected) {
-      console.log('[FIRE CUBE] ❌ Connection test failed')
-      return NextResponse.json({
-        success: false,
-        message: 'Failed to connect to Fire TV device',
-        data: {
-          suggestions: [
-            'Verify ADB debugging is enabled on the Fire TV device',
-            'Check that the IP address and port are correct',
-            'Ensure the device is powered on and connected to the network',
-            'Try restarting the Fire TV device'
-          ]
-        }
-      })
-    }
-    
-    // Get device information
+    // Test connection by getting device info
     const deviceInfo = await adbClient.getDeviceInfo()
     
     console.log('[FIRE CUBE] ✅ Connection successful!')
     console.log('[FIRE CUBE] Device Info:', deviceInfo)
     
-    // Note: We don't call cleanup() here to keep the connection alive
-    // The keep-alive mechanism will maintain the connection
+    // Get connection status
+    const connectionStatus = connectionManager.getConnectionStatus(deviceId)
     
     return NextResponse.json({
       success: true,
@@ -75,17 +51,14 @@ export async function POST(request: NextRequest) {
         serialNumber: deviceInfo.serialNumber || 'Unknown',
         softwareVersion: deviceInfo.softwareVersion || 'Unknown',
         keepAliveEnabled: true,
-        keepAliveInterval: '30 seconds'
+        keepAliveInterval: '30 seconds',
+        managedByConnectionManager: true,
+        connectionStatus: connectionStatus?.status || 'unknown'
       }
     })
     
   } catch (error: any) {
     console.error('[FIRE CUBE] ❌ Connection error:', error)
-    
-    // Cleanup on error
-    if (adbClient) {
-      adbClient.cleanup()
-    }
     
     let errorMessage = 'Connection test failed'
     const suggestions: string[] = []
