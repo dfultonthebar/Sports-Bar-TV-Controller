@@ -1,212 +1,121 @@
 
+// Fire TV Test Connection API - Direct ADB connection with keep-alive support
+
 import { NextRequest, NextResponse } from 'next/server'
 import { ADBClient } from '@/lib/firecube/adb-client'
 
-async function testFireTVConnection(ip: string, port: number): Promise<{ success: boolean; message: string; data?: any }> {
-  const timestamp = new Date().toISOString()
+export async function POST(request: NextRequest) {
+  let adbClient: ADBClient | null = null
   
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-  console.log(`🔍 [FIRE CUBE] Testing connection`)
-  console.log(`   IP: ${ip}`)
-  console.log(`   Port: ${port}`)
-  console.log(`   Timestamp: ${timestamp}`)
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-
   try {
-    // Create ADB client instance
-    const adbClient = new ADBClient(ip, port)
+    const { deviceId, ipAddress, port } = await request.json()
     
-    console.log(`[FIRE CUBE] Attempting ADB connection to ${ip}:${port}...`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 [FIRE CUBE] Testing connection')
+    console.log(`   Device ID: ${deviceId}`)
+    console.log(`   IP: ${ipAddress}`)
+    console.log(`   Port: ${port}`)
+    console.log(`   Timestamp: ${new Date().toISOString()}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
-    // Test connection using ADB client
+    if (!ipAddress || !port) {
+      console.log('[FIRE CUBE] ❌ Missing required fields')
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: 'IP address and port are required'
+        },
+        { status: 400 }
+      )
+    }
+    
+    const ip = ipAddress.trim()
+    const devicePort = parseInt(port.toString())
+    
+    // Create ADB client with keep-alive enabled (30 second interval)
+    adbClient = new ADBClient(ip, devicePort, {
+      keepAliveInterval: 30000, // 30 seconds
+      connectionTimeout: 5000    // 5 second timeout
+    })
+    
+    // Test connection
     const connected = await adbClient.testConnection()
     
-    if (connected) {
-      console.log(`[FIRE CUBE] ✅ Connection successful!`)
-      
-      // Get device information
-      let deviceInfo: any = {}
-      try {
-        const model = await adbClient.getModel()
-        const serialNumber = await adbClient.getSerialNumber()
-        const softwareVersion = await adbClient.getSoftwareVersion()
-        
-        deviceInfo = {
-          model: model || 'Unknown',
-          serialNumber: serialNumber || 'Unknown',
-          softwareVersion: softwareVersion || 'Unknown'
-        }
-        
-        console.log(`[FIRE CUBE] Device Info:`, deviceInfo)
-      } catch (infoError) {
-        console.log(`[FIRE CUBE] ⚠️ Could not retrieve device info:`, infoError)
-      }
-      
-      return {
-        success: true,
-        message: 'Fire TV device connected successfully via ADB',
-        data: {
-          method: 'Direct ADB',
-          ip,
-          port,
-          connected: true,
-          adbEnabled: true,
-          deviceInfo,
-          testedAt: timestamp
-        }
-      }
-    } else {
-      console.log(`[FIRE CUBE] ❌ Connection failed - device not responding`)
-      
-      return {
+    if (!connected) {
+      console.log('[FIRE CUBE] ❌ Connection test failed')
+      return NextResponse.json({
         success: false,
-        message: 'Fire TV device not responding to ADB commands',
+        message: 'Failed to connect to Fire TV device',
         data: {
-          method: 'Direct ADB',
-          ip,
-          port,
-          connected: false,
-          error: 'Device not responding',
           suggestions: [
-            'Ensure ADB debugging is enabled on the Fire TV device',
-            'Go to Settings → My Fire TV → Developer Options → ADB Debugging → ON',
-            'Make sure the Fire TV is powered on and connected to the network',
-            'Verify the IP address is correct',
+            'Verify ADB debugging is enabled on the Fire TV device',
+            'Check that the IP address and port are correct',
+            'Ensure the device is powered on and connected to the network',
             'Try restarting the Fire TV device'
-          ],
-          testedAt: timestamp
+          ]
         }
-      }
-    }
-  } catch (error) {
-    console.error(`[FIRE CUBE] ❌ Connection test error:`, error)
-    
-    let errorMessage = 'Connection failed'
-    let suggestions: string[] = []
-    
-    if (error instanceof Error) {
-      errorMessage = error.message
-      
-      if (error.message.includes('adb') && error.message.includes('not found')) {
-        errorMessage = 'ADB command-line tool not installed on server'
-        suggestions = [
-          'Install ADB on the server: sudo apt-get install adb',
-          'Verify ADB installation: adb version',
-          'Restart the application after installing ADB'
-        ]
-      } else if (error.message.includes('ECONNREFUSED')) {
-        errorMessage = 'Connection refused - ADB may be disabled'
-        suggestions = [
-          'Enable Developer Options on Fire TV: Settings → My Fire TV → About',
-          'Enable ADB Debugging: Developer Options → ADB Debugging → ON',
-          'Restart the Fire TV device after enabling ADB'
-        ]
-      } else if (error.message.includes('ENETUNREACH')) {
-        errorMessage = 'Network unreachable - check network connectivity'
-        suggestions = [
-          'Ensure Fire TV and controller are on the same network',
-          'Check network firewall settings',
-          'Verify the IP address is correct'
-        ]
-      } else if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
-        errorMessage = 'Connection timed out'
-        suggestions = [
-          'Device may be offline or sleeping',
-          'Try waking the device with the remote',
-          'Check network connectivity',
-          'Verify ADB debugging is enabled'
-        ]
-      } else {
-        suggestions = [
-          'Check device power and network status',
-          'Verify ADB debugging is enabled',
-          'Ensure correct IP address and port',
-          'Check server logs for detailed error information'
-        ]
-      }
+      })
     }
     
-    return {
+    // Get device information
+    const deviceInfo = await adbClient.getDeviceInfo()
+    
+    console.log('[FIRE CUBE] ✅ Connection successful!')
+    console.log('[FIRE CUBE] Device Info:', deviceInfo)
+    
+    // Note: We don't call cleanup() here to keep the connection alive
+    // The keep-alive mechanism will maintain the connection
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Successfully connected to Fire TV device',
+      data: {
+        connected: true,
+        deviceModel: deviceInfo.model || 'Unknown',
+        serialNumber: deviceInfo.serialNumber || 'Unknown',
+        softwareVersion: deviceInfo.softwareVersion || 'Unknown',
+        keepAliveEnabled: true,
+        keepAliveInterval: '30 seconds'
+      }
+    })
+    
+  } catch (error: any) {
+    console.error('[FIRE CUBE] ❌ Connection error:', error)
+    
+    // Cleanup on error
+    if (adbClient) {
+      adbClient.cleanup()
+    }
+    
+    let errorMessage = 'Connection test failed'
+    const suggestions: string[] = []
+    
+    if (error.message && error.message.includes('ADB command-line tool not installed')) {
+      errorMessage = 'ADB is not installed on the server'
+      suggestions.push('Install ADB: sudo apt-get install adb')
+    } else if (error.message && error.message.includes('timeout')) {
+      errorMessage = 'Connection timeout'
+      suggestions.push('Check if the Fire TV device is powered on')
+      suggestions.push('Verify the device is on the same network')
+      suggestions.push('Ensure ADB debugging is enabled')
+    } else if (error.message && error.message.includes('refused')) {
+      errorMessage = 'Connection refused'
+      suggestions.push('Enable ADB debugging: Settings → My Fire TV → Developer Options → ADB Debugging')
+      suggestions.push('Ensure port 5555 is not blocked by a firewall')
+    }
+    
+    return NextResponse.json({
       success: false,
       message: errorMessage,
       data: {
-        method: 'Direct ADB',
-        ip,
-        port,
-        error: errorMessage,
-        suggestions,
-        testedAt: timestamp
+        error: error.message,
+        suggestions: suggestions.length > 0 ? suggestions : [
+          'Verify ADB debugging is enabled on the Fire TV device',
+          'Check network connectivity between server and Fire TV',
+          'Ensure the correct IP address and port are used',
+          'Try manually connecting via command line: adb connect <ip>:5555'
+        ]
       }
-    }
+    }, { status: 500 })
   }
 }
-
-export async function POST(request: NextRequest) {
-  try {
-    const { ipAddress, port, deviceId } = await request.json()
-    
-    if (!ipAddress) {
-      return NextResponse.json(
-        { error: 'IP address is required' },
-        { status: 400 }
-      )
-    }
-    
-    const targetPort = port || 5555
-    const result = await testFireTVConnection(ipAddress, targetPort)
-    
-    return NextResponse.json({
-      ...result,
-      deviceId: deviceId || null,
-      testedAt: new Date().toISOString(),
-      target: `${ipAddress}:${targetPort}`
-    })
-    
-  } catch (error) {
-    console.error('Fire TV Connection Test API Error:', error)
-    return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Failed to test Fire TV connection',
-        success: false 
-      },
-      { status: 500 }
-    )
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const ipAddress = searchParams.get('ip')
-    const port = searchParams.get('port')
-    const deviceId = searchParams.get('deviceId')
-    
-    if (!ipAddress) {
-      return NextResponse.json(
-        { error: 'IP address is required' },
-        { status: 400 }
-      )
-    }
-    
-    const targetPort = port ? parseInt(port) : 5555
-    const result = await testFireTVConnection(ipAddress, targetPort)
-    
-    return NextResponse.json({
-      ...result,
-      deviceId: deviceId || null,
-      testedAt: new Date().toISOString(),
-      target: `${ipAddress}:${targetPort}`
-    })
-    
-  } catch (error) {
-    console.error('Fire TV Connection Test API Error:', error)
-    return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Failed to test Fire TV connection',
-        success: false 
-      },
-      { status: 500 }
-    )
-  }
-}
-

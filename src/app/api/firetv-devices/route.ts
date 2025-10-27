@@ -1,143 +1,168 @@
 
+// Fire TV Devices API - CRUD operations (No Prisma, uses JSON file storage)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { readFile, writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
-import { existsSync } from 'fs'
+import { promises as fs } from 'fs'
+import path from 'path'
 
-const FIRETV_DEVICES_FILE = join(process.cwd(), 'data', 'firetv-devices.json')
+const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
-// Ensure data directory exists
-async function ensureDataDir() {
-  const dataDir = join(process.cwd(), 'data')
-  
-  if (!existsSync(dataDir)) {
-    await mkdir(dataDir, { recursive: true })
-  }
+interface FireTVDevice {
+  id: string
+  name: string
+  ipAddress: string
+  port: number
+  deviceType: string
+  isOnline: boolean
+  adbEnabled?: boolean
+  addedAt: string
+  updatedAt?: string
+  inputChannel?: number
+  serialNumber?: string
+  deviceModel?: string
+  softwareVersion?: string
+  lastSeen?: string
+  keepAwakeEnabled?: boolean
+  keepAwakeStart?: string
+  keepAwakeEnd?: string
 }
 
-async function loadFireTVDevices() {
+async function readDevices(): Promise<{ devices: FireTVDevice[] }> {
   try {
-    await ensureDataDir()
-    const data = await readFile(FIRETV_DEVICES_FILE, 'utf8')
+    const data = await fs.readFile(DATA_FILE, 'utf-8')
     return JSON.parse(data)
   } catch (error) {
-    return { devices: [] as any[] }
+    console.error('Error reading devices file:', error)
+    return { devices: [] }
   }
 }
 
-async function saveFireTVDevices(devices: any[]) {
-  await ensureDataDir()
-  await writeFile(FIRETV_DEVICES_FILE, JSON.stringify({ devices }, null, 2))
-}
-
-export async function GET() {
+async function writeDevices(data: { devices: FireTVDevice[] }): Promise<void> {
   try {
-    const data = await loadFireTVDevices()
-    return NextResponse.json(data)
+    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
   } catch (error) {
-    console.error('Error loading Fire TV devices:', error)
-    return NextResponse.json({ error: 'Failed to load Fire TV devices' }, { status: 500 })
+    console.error('Error writing devices file:', error)
+    throw error
   }
 }
 
+// GET - List all Fire TV devices
+export async function GET(request: NextRequest) {
+  try {
+    console.log('[FIRETV API] GET request - fetching all devices')
+    const data = await readDevices()
+    
+    console.log(`[FIRETV API] Found ${data.devices.length} devices`)
+    return NextResponse.json(data)
+  } catch (error: any) {
+    console.error('[FIRETV API] GET error:', error)
+    return NextResponse.json(
+      { error: 'Failed to load devices', details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// POST - Add new Fire TV device
 export async function POST(request: NextRequest) {
   try {
-    const newDevice = await request.json()
-    const data = await loadFireTVDevices()
+    console.log('[FIRETV API] POST request - adding new device')
+    const newDevice: FireTVDevice = await request.json()
     
-    // Validate required fields
-    if (!newDevice.name || !newDevice.ipAddress) {
-      return NextResponse.json({ error: 'Name and IP address are required' }, { status: 400 })
-    }
+    const data = await readDevices()
     
-    // Validate IP address format
-    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
-    if (!ipRegex.test(newDevice.ipAddress)) {
-      return NextResponse.json({ error: 'Invalid IP address format' }, { status: 400 })
-    }
+    // Set timestamps
+    newDevice.addedAt = new Date().toISOString()
+    newDevice.updatedAt = new Date().toISOString()
     
-    // Add timestamp and ensure device has required fields
-    const device = {
-      ...newDevice,
-      id: newDevice.id || `firetv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      port: newDevice.port || 5555, // Default ADB port for Fire TV
-      deviceType: newDevice.deviceType || 'Fire TV Cube',
-      isOnline: newDevice.isOnline || false,
-      adbEnabled: newDevice.adbEnabled || false,
-      addedAt: new Date().toISOString()
-    }
+    // Add device to list
+    data.devices.push(newDevice)
     
-    // Check for duplicate IP addresses
-    const existingDevice = data.devices.find((d: any) => d.ipAddress === device.ipAddress && d.port === device.port)
-    if (existingDevice) {
-      return NextResponse.json({ error: 'Device with this IP address and port already exists' }, { status: 409 })
-    }
+    await writeDevices(data)
     
-    data.devices.push(device)
-    await saveFireTVDevices(data.devices)
-    
-    return NextResponse.json({ message: 'Fire TV device added successfully', device })
-  } catch (error) {
-    console.error('Error adding Fire TV device:', error)
-    return NextResponse.json({ error: 'Failed to add Fire TV device' }, { status: 500 })
+    console.log(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
+    return NextResponse.json({ success: true, device: newDevice })
+  } catch (error: any) {
+    console.error('[FIRETV API] POST error:', error)
+    return NextResponse.json(
+      { error: 'Failed to add device', details: error.message },
+      { status: 500 }
+    )
   }
 }
 
+// PUT - Update existing Fire TV device
 export async function PUT(request: NextRequest) {
   try {
-    const updatedDevice = await request.json()
-    const data = await loadFireTVDevices()
+    console.log('[FIRETV API] PUT request - updating device')
+    const updatedDevice: FireTVDevice = await request.json()
     
-    const index = data.devices.findIndex((d: any) => d.id === updatedDevice.id)
-    if (index >= 0) {
-      // Preserve original creation timestamp
-      const originalDevice = data.devices[index]
-      data.devices[index] = { 
-        ...originalDevice, 
-        ...updatedDevice, 
-        addedAt: originalDevice.addedAt,
-        updatedAt: new Date().toISOString() 
-      }
-      
-      await saveFireTVDevices(data.devices)
-      return NextResponse.json({ message: 'Fire TV device updated successfully', device: data.devices[index] })
-    } else {
-      return NextResponse.json({ error: 'Fire TV device not found' }, { status: 404 })
+    const data = await readDevices()
+    const deviceIndex = data.devices.findIndex(d => d.id === updatedDevice.id)
+    
+    if (deviceIndex === -1) {
+      return NextResponse.json(
+        { error: 'Device not found' },
+        { status: 404 }
+      )
     }
-  } catch (error) {
-    console.error('Error updating Fire TV device:', error)
-    return NextResponse.json({ error: 'Failed to update Fire TV device' }, { status: 500 })
+    
+    // Update timestamp
+    updatedDevice.updatedAt = new Date().toISOString()
+    
+    // Replace device
+    data.devices[deviceIndex] = updatedDevice
+    
+    await writeDevices(data)
+    
+    console.log(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
+    return NextResponse.json({ success: true, device: updatedDevice })
+  } catch (error: any) {
+    console.error('[FIRETV API] PUT error:', error)
+    return NextResponse.json(
+      { error: 'Failed to update device', details: error.message },
+      { status: 500 }
+    )
   }
 }
 
+// DELETE - Remove Fire TV device
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
     
+    console.log(`[FIRETV API] DELETE request - removing device: ${deviceId}`)
+    
     if (!deviceId) {
-      return NextResponse.json({ error: 'Device ID required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Device ID required' },
+        { status: 400 }
+      )
     }
     
-    const data = await loadFireTVDevices()
-    const originalLength = data.devices.length
-    const deviceToDelete = data.devices.find((d: any) => d.id === deviceId)
+    const data = await readDevices()
+    const deviceIndex = data.devices.findIndex(d => d.id === deviceId)
     
-    if (!deviceToDelete) {
-      return NextResponse.json({ error: 'Fire TV device not found' }, { status: 404 })
+    if (deviceIndex === -1) {
+      return NextResponse.json(
+        { error: 'Device not found' },
+        { status: 404 }
+      )
     }
     
-    data.devices = data.devices.filter((d: any) => d.id !== deviceId)
+    const removedDevice = data.devices[deviceIndex]
+    data.devices.splice(deviceIndex, 1)
     
-    await saveFireTVDevices(data.devices)
-    return NextResponse.json({ 
-      message: 'Fire TV device deleted successfully', 
-      deletedDevice: { name: deviceToDelete.name, ipAddress: deviceToDelete.ipAddress }
-    })
-  } catch (error) {
-    console.error('Error deleting Fire TV device:', error)
-    return NextResponse.json({ error: 'Failed to delete Fire TV device' }, { status: 500 })
+    await writeDevices(data)
+    
+    console.log(`[FIRETV API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
+    return NextResponse.json({ success: true, message: 'Device deleted successfully' })
+  } catch (error: any) {
+    console.error('[FIRETV API] DELETE error:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete device', details: error.message },
+      { status: 500 }
+    )
   }
 }
-

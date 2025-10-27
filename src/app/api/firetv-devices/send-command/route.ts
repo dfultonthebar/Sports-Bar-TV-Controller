@@ -1,202 +1,220 @@
+// Fire TV Send Command API - Execute commands with persistent connections
 
 import { NextRequest, NextResponse } from 'next/server'
-import { FIRETV_COMMANDS, getAppLaunchCommand, isValidFireTVCommand } from '@/lib/firetv-utils'
 import { ADBClient } from '@/lib/firecube/adb-client'
 
-// Execute ADB command using direct ADB client
-async function executeADBCommand(ip: string, port: number, command: string): Promise<{ success: boolean; message: string; data?: any }> {
-  const timestamp = new Date().toISOString()
-  
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-  console.log(`🎮 [FIRE CUBE] Executing command`)
-  console.log(`   IP: ${ip}`)
-  console.log(`   Port: ${port}`)
-  console.log(`   Command: ${command}`)
-  console.log(`   Timestamp: ${timestamp}`)
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+// Store active connections for reuse (keep-alive)
+const activeConnections = new Map<string, ADBClient>()
 
-  try {
-    // Create ADB client instance
-    const adbClient = new ADBClient(ip, port)
-    
-    console.log(`[FIRE CUBE] Connecting to device...`)
-    
-    // Connect to device
-    const connected = await adbClient.connect()
-    
-    if (!connected) {
-      console.log(`[FIRE CUBE] ❌ Failed to connect to device`)
-      return {
-        success: false,
-        message: 'Failed to connect to Fire TV device'
-      }
-    }
-    
-    console.log(`[FIRE CUBE] ✅ Connected, executing command...`)
-    
-    // Parse and execute command
-    let result: string | boolean = ''
-    let commandType = 'unknown'
-    
-    // Handle different command types
-    if (command.startsWith('input keyevent')) {
-      // Key event command
-      const keyCode = command.replace('input keyevent', '').trim()
-      result = await adbClient.sendKey(keyCode)
-      commandType = 'keyevent'
-    } else if (command.startsWith('monkey -p')) {
-      // App launch command
-      const packageMatch = command.match(/monkey -p ([\w.]+)/)
-      if (packageMatch) {
-        const packageName = packageMatch[1]
-        result = await adbClient.launchApp(packageName)
-        commandType = 'launch_app'
-      }
-    } else if (command.startsWith('am force-stop')) {
-      // Stop app command
-      const packageMatch = command.match(/am force-stop ([\w.]+)/)
-      if (packageMatch) {
-        const packageName = packageMatch[1]
-        result = await adbClient.stopApp(packageName)
-        commandType = 'stop_app'
-      }
-    } else {
-      // Generic shell command
-      result = await adbClient.shell(command)
-      commandType = 'shell'
-    }
-    
-    console.log(`[FIRE CUBE] ✅ Command executed successfully`)
-    console.log(`[FIRE CUBE] Result:`, result)
-    
-    return {
-      success: true,
-      message: 'Fire TV command executed successfully',
-      data: {
-        command,
-        commandType,
-        result,
-        device: `${ip}:${port}`,
-        executedAt: timestamp,
-        method: 'Direct ADB'
-      }
-    }
-  } catch (error) {
-    console.error(`[FIRE CUBE] ❌ Command execution error:`, error)
-    
-    let errorMessage = 'Unknown error'
-    
-    if (error instanceof Error) {
-      errorMessage = error.message
-      
-      if (error.message.includes('adb') && error.message.includes('not found')) {
-        errorMessage = 'ADB command-line tool not installed on server'
-      } else if (error.name === 'AbortError') {
-        errorMessage = 'Command timed out - device may be offline or ADB disabled'
-      } else if (error.message.includes('ECONNREFUSED')) {
-        errorMessage = 'Connection refused - ADB may be disabled on device'
-      } else if (error.message.includes('device offline')) {
-        errorMessage = 'Fire TV device is offline or ADB is disabled'
-      } else if (error.message.includes('unauthorized')) {
-        errorMessage = 'ADB connection unauthorized - check device pairing'
-      }
-    }
-    
-    return {
-      success: false,
-      message: `Fire TV command failed: ${errorMessage}`,
-      data: {
-        command,
-        error: errorMessage,
-        device: `${ip}:${port}`,
-        executedAt: timestamp
-      }
-    }
+// Cleanup old connections after 5 minutes of inactivity
+const CONNECTION_TIMEOUT = 5 * 60 * 1000
+
+function getOrCreateClient(deviceAddress: string, ip: string, port: number): ADBClient {
+  const existing = activeConnections.get(deviceAddress)
+  
+  if (existing && existing.getConnectionStatus()) {
+    console.log(`[FIRE CUBE] Reusing existing connection for ${deviceAddress}`)
+    return existing
   }
+  
+  // Create new client with keep-alive
+  console.log(`[FIRE CUBE] Creating new connection for ${deviceAddress}`)
+  const client = new ADBClient(ip, port, {
+    keepAliveInterval: 30000, // 30 seconds
+    connectionTimeout: 5000
+  })
+  
+  activeConnections.set(deviceAddress, client)
+  
+  // Set timeout to cleanup inactive connections
+  setTimeout(() => {
+    const clientToCheck = activeConnections.get(deviceAddress)
+    if (clientToCheck === client) {
+      console.log(`[FIRE CUBE] Cleaning up inactive connection for ${deviceAddress}`)
+      client.cleanup()
+      activeConnections.delete(deviceAddress)
+    }
+  }, CONNECTION_TIMEOUT)
+  
+  return client
+}
+
+// Key code mappings for Fire TV
+const KEY_CODES: Record<string, number> = {
+  'UP': 19,
+  'DOWN': 20,
+  'LEFT': 21,
+  'RIGHT': 22,
+  'OK': 23,
+  'SELECT': 23,
+  'HOME': 3,
+  'BACK': 4,
+  'MENU': 82,
+  'PLAY_PAUSE': 85,
+  'PLAY': 126,
+  'PAUSE': 127,
+  'STOP': 86,
+  'REWIND': 89,
+  'FAST_FORWARD': 90,
+  'NEXT': 87,
+  'PREVIOUS': 88,
+  'VOL_UP': 24,
+  'VOL_DOWN': 25,
+  'MUTE': 164,
+  'POWER': 26,
+  'SEARCH': 84
 }
 
 export async function POST(request: NextRequest) {
+  let adbClient: ADBClient | null = null
+  
   try {
-    const { deviceId, command, ipAddress, port, appPackage } = await request.json()
-
-    if (!deviceId || !ipAddress) {
+    const { deviceId, command, appPackage, ipAddress, port } = await request.json()
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎮 [FIRE CUBE] Sending command')
+    console.log(`   Device ID: ${deviceId}`)
+    console.log(`   Command: ${command}`)
+    console.log(`   Package: ${appPackage || 'N/A'}`)
+    console.log(`   IP: ${ipAddress}:${port}`)
+    console.log(`   Timestamp: ${new Date().toISOString()}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    if (!ipAddress || !port) {
       return NextResponse.json(
-        { error: 'Missing required parameters: deviceId and ipAddress are required' },
+        { success: false, message: 'IP address and port are required' },
         { status: 400 }
       )
     }
-
-    let finalCommand: string
-    let originalCommand = command
-
-    // Handle app launch commands
-    if (appPackage) {
-      finalCommand = getAppLaunchCommand(appPackage)
-      originalCommand = `LAUNCH_APP:${appPackage}`
-    } 
-    // Handle predefined commands
-    else if (command && FIRETV_COMMANDS[command as keyof typeof FIRETV_COMMANDS]) {
-      finalCommand = FIRETV_COMMANDS[command as keyof typeof FIRETV_COMMANDS]
-    } 
-    // Handle raw ADB commands
-    else if (command && isValidFireTVCommand(command)) {
-      finalCommand = command
-    } 
-    else {
+    
+    if (!command) {
       return NextResponse.json(
-        { error: `Command '${command}' not supported for Fire TV` },
+        { success: false, message: 'Command is required' },
         { status: 400 }
       )
     }
-
-    // Use provided port or default to 5555 (ADB)
-    const targetPort = port || 5555
-
-    console.log(`[FIRE CUBE] Sending Fire TV command: ${originalCommand} -> ${finalCommand} to ${ipAddress}:${targetPort}`)
-
-    // Execute command using direct ADB client
-    const result = await executeADBCommand(ipAddress, targetPort, finalCommand)
-
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        message: result.message,
-        deviceId,
-        command: finalCommand,
-        originalCommand,
-        sentAt: new Date().toISOString(),
-        data: result.data
-      })
-    } else {
-      return NextResponse.json(
-        { 
-          error: result.message,
+    
+    const ip = ipAddress.trim()
+    const devicePort = parseInt(port.toString())
+    const deviceAddress = `${ip}:${devicePort}`
+    
+    // Get or create persistent connection
+    adbClient = getOrCreateClient(deviceAddress, ip, devicePort)
+    
+    // Ensure connection is established
+    if (!adbClient.getConnectionStatus()) {
+      console.log('[FIRE CUBE] Establishing connection...')
+      const connected = await adbClient.connect()
+      
+      if (!connected) {
+        return NextResponse.json({
           success: false,
-          deviceId,
-          command: finalCommand,
-          originalCommand,
-          suggestions: [
-            'Ensure ADB debugging is enabled on the Fire TV device',
-            'Go to Settings → My Fire TV → Developer Options → ADB Debugging → ON',
-            'Check if the device is connected to the same network',
-            'Verify the IP address and port are correct',
-            'Install ADB on server if not already installed: sudo apt-get install adb',
-            'Try restarting the Fire TV device'
-          ]
-        },
-        { status: 500 }
-      )
+          message: 'Failed to connect to Fire TV device'
+        }, { status: 500 })
+      }
     }
-
-  } catch (error) {
-    console.error('[FIRE CUBE] Fire TV Command API Error:', error)
-    return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Failed to send Fire TV command',
-        success: false 
-      },
-      { status: 500 }
-    )
+    
+    let result: string
+    let commandType: string
+    
+    // Parse and execute command
+    if (command === 'LAUNCH_APP' && appPackage) {
+      console.log(`[FIRE CUBE] Launching app: ${appPackage}`)
+      result = await adbClient.launchApp(appPackage)
+      commandType = 'Launch App'
+      
+    } else if (command === 'STOP_APP' && appPackage) {
+      console.log(`[FIRE CUBE] Stopping app: ${appPackage}`)
+      result = await adbClient.stopApp(appPackage)
+      commandType = 'Stop App'
+      
+    } else if (command === 'WAKE') {
+      console.log('[FIRE CUBE] Waking device')
+      result = await adbClient.wakeDevice()
+      commandType = 'Wake Device'
+      
+    } else if (command === 'KEEP_AWAKE_ON') {
+      console.log('[FIRE CUBE] Enabling stay awake')
+      result = await adbClient.keepAwake(true)
+      commandType = 'Enable Stay Awake'
+      
+    } else if (command === 'KEEP_AWAKE_OFF') {
+      console.log('[FIRE CUBE] Disabling stay awake')
+      result = await adbClient.keepAwake(false)
+      commandType = 'Disable Stay Awake'
+      
+    } else if (KEY_CODES[command]) {
+      console.log(`[FIRE CUBE] Sending key: ${command} (${KEY_CODES[command]})`)
+      result = await adbClient.sendKey(KEY_CODES[command])
+      commandType = `Key: ${command}`
+      
+    } else if (command.startsWith('input keyevent ')) {
+      const keyCode = parseInt(command.replace('input keyevent ', ''))
+      console.log(`[FIRE CUBE] Sending keyevent: ${keyCode}`)
+      result = await adbClient.sendKey(keyCode)
+      commandType = `Keyevent: ${keyCode}`
+      
+    } else if (command.startsWith('monkey -p ')) {
+      const packageName = command.match(/monkey -p ([^\s]+)/)?.[1]
+      if (packageName) {
+        console.log(`[FIRE CUBE] Launching app via monkey: ${packageName}`)
+        result = await adbClient.launchApp(packageName)
+        commandType = `Launch: ${packageName}`
+      } else {
+        throw new Error('Invalid monkey command format')
+      }
+      
+    } else {
+      // Generic shell command
+      console.log(`[FIRE CUBE] Executing shell command: ${command}`)
+      result = await adbClient.executeShellCommand(command)
+      commandType = 'Shell Command'
+    }
+    
+    console.log('[FIRE CUBE] ✅ Command executed successfully')
+    console.log(`[FIRE CUBE] Result: ${result}`)
+    
+    return NextResponse.json({
+      success: true,
+      message: `${commandType} executed successfully`,
+      data: {
+        command,
+        result,
+        deviceAddress,
+        persistentConnection: true,
+        keepAliveActive: true
+      }
+    })
+    
+  } catch (error: any) {
+    console.error('[FIRE CUBE] ❌ Command execution error:', error)
+    
+    let errorMessage = 'Failed to execute command'
+    
+    if (error.message && error.message.includes('timeout')) {
+      errorMessage = 'Command execution timeout'
+    } else if (error.message && error.message.includes('refused')) {
+      errorMessage = 'Connection refused'
+    } else if (error.message && error.message.includes('unauthorized')) {
+      errorMessage = 'Device unauthorized - please accept the ADB authorization prompt on the Fire TV'
+    }
+    
+    return NextResponse.json({
+      success: false,
+      message: errorMessage,
+      data: {
+        error: error.message
+      }
+    }, { status: 500 })
   }
 }
 
+// Cleanup handler for graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[FIRE CUBE] Cleaning up all ADB connections...')
+  activeConnections.forEach((client, address) => {
+    console.log(`[FIRE CUBE] Cleaning up connection: ${address}`)
+    client.cleanup()
+  })
+  activeConnections.clear()
+})
