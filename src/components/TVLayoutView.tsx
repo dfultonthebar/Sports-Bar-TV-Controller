@@ -302,29 +302,29 @@ export default function TVLayoutView() {
           {/* Room Outer Walls - Black border representing physical walls */}
           <div className="absolute inset-0 border-4 border-white rounded-lg pointer-events-none z-10"></div>
           
-          {/* Bar Structure - Central rectangular area (scaled down more) */}
+          {/* Bar Structure - Central rectangular area (scaled down significantly) */}
           <div 
-            className="absolute bg-green-900/20 border-4 border-white rounded-md pointer-events-none z-10"
+            className="absolute bg-green-900/20 border-2 border-white rounded-md pointer-events-none z-10"
             style={{
-              left: '40%',
-              top: '30%',
-              width: '16%',
-              height: '22%'
+              left: '42%',
+              top: '32%',
+              width: '12%',
+              height: '16%'
             }}
           >
             <div className="flex items-center justify-center h-full">
-              <span className="text-white font-bold text-sm opacity-30">BAR</span>
+              <span className="text-white font-bold text-xs opacity-30">BAR</span>
             </div>
           </div>
           
-          {/* Partial Wall Around Bar - Visual indicator (scaled down) */}
+          {/* Partial Wall Around Bar - Visual indicator (scaled down significantly) */}
           <div 
-            className="absolute bg-amber-900/20 border-2 border-amber-600/50 rounded-sm pointer-events-none z-5"
+            className="absolute bg-amber-900/20 border border-amber-600/50 rounded-sm pointer-events-none z-5"
             style={{
-              left: '28%',
-              top: '22%',
-              width: '42%',
-              height: '44%'
+              left: '30%',
+              top: '24%',
+              width: '36%',
+              height: '36%'
             }}
           >
             <div className="flex items-center justify-center h-full">
