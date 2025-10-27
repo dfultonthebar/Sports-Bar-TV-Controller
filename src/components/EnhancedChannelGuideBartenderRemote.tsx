@@ -261,6 +261,11 @@ export default function EnhancedChannelGuideBartenderRemote() {
       inputLabel: input?.label
     })
 
+    // Clear existing guide data when switching inputs to show fresh filtering
+    setGuideData(null)
+    setFilteredPrograms([])
+    setSearchQuery('')
+
     // If channel guide is open, reload data for new input
     if (showChannelGuide) {
       loadChannelGuideForInput()
@@ -759,9 +764,29 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     <Calendar className="mr-2 w-5 h-5" />
                     {inputs.find(i => i.channelNumber === selectedInput)?.label} Guide
                   </h2>
-                  <p className="text-sm text-gray-300">
-                    {getDeviceTypeForInput(selectedInput)?.toUpperCase()} • Sports Programming
-                  </p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <Badge 
+                      variant="outline" 
+                      className={`
+                        ${getDeviceTypeForInput(selectedInput) === 'satellite' 
+                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                          : getDeviceTypeForInput(selectedInput) === 'cable'
+                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                          : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                        }
+                      `}
+                    >
+                      {getDeviceTypeForInput(selectedInput) === 'satellite' && <Satellite className="w-3 h-3 mr-1" />}
+                      {getDeviceTypeForInput(selectedInput) === 'cable' && <Cable className="w-3 h-3 mr-1" />}
+                      {getDeviceTypeForInput(selectedInput) === 'streaming' && <Smartphone className="w-3 h-3 mr-1" />}
+                      {getDeviceTypeForInput(selectedInput)?.toUpperCase()} Channels Only
+                    </Badge>
+                    {guideData && (
+                      <Badge variant="outline" className="bg-slate-500/20 text-slate-400 border-slate-500/30">
+                        {guideData.channels.length} Channels • {guideData.programs.length} Programs
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Button
@@ -881,7 +906,21 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-slate-500 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-white mb-2">No Sports Programming Found</h3>
-                    <p className="text-slate-500">Try adjusting your search or check again later</p>
+                    <p className="text-slate-500 mb-3">
+                      {searchQuery 
+                        ? 'Try adjusting your search or check again later'
+                        : `No ${getDeviceTypeForInput(selectedInput)?.toUpperCase()} channels available for this time period`
+                      }
+                    </p>
+                    {guideData.channels.length === 0 && (
+                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto">
+                        <p className="text-sm text-blue-400">
+                          <strong>Filtering Active:</strong> Only showing channels available on {getDeviceTypeForInput(selectedInput)?.toUpperCase()} devices.
+                          {getDeviceTypeForInput(selectedInput) === 'cable' && ' DirecTV channels are hidden.'}
+                          {getDeviceTypeForInput(selectedInput) === 'satellite' && ' Cable channels are hidden.'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>

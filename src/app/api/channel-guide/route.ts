@@ -81,46 +81,50 @@ export async function POST(request: NextRequest) {
 
     for (const group of guide.listing_groups || []) {
       for (const listing of group.listings || []) {
-        // Create program entry
-        const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
-        
-        // Extract channel info based on device type
+        // Extract channel info based on device type - STRICT FILTERING
         let channelInfo: any = null
         
-        if (deviceType === 'satellite' && listing.channel_numbers?.SAT) {
-          // DirecTV/Satellite
-          const satChannels = listing.channel_numbers.SAT
-          const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-          const firstChannel = Object.values(satChannels)[0] as any
-          const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
-          
-          channelInfo = {
-            id: `sat-${firstStation}`,
-            name: firstStation,
-            number: String(channelNumber),
-            type: 'satellite',
-            cost: 'subscription',
-            platforms: ['DirecTV', 'Dish Network'],
-            channelNumber: String(channelNumber)
+        // CRITICAL: Only create channels that match the requested device type
+        if (deviceType === 'satellite') {
+          // DirecTV/Satellite - ONLY if SAT channels exist
+          if (listing.channel_numbers?.SAT) {
+            const satChannels = listing.channel_numbers.SAT
+            const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
+            const firstChannel = Object.values(satChannels)[0] as any
+            const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
+            
+            channelInfo = {
+              id: `sat-${firstStation}`,
+              name: firstStation,
+              number: String(channelNumber),
+              type: 'satellite',
+              cost: 'subscription',
+              platforms: ['DirecTV', 'Dish Network'],
+              channelNumber: String(channelNumber),
+              deviceType: 'satellite'
+            }
           }
-        } else if (deviceType === 'cable' && listing.channel_numbers?.CAB) {
-          // Cable
-          const cableChannels = listing.channel_numbers.CAB
-          const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-          const firstChannel = Object.values(cableChannels)[0] as any
-          const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
-          
-          channelInfo = {
-            id: `cable-${firstStation}`,
-            name: firstStation,
-            number: String(channelNumber),
-            type: 'cable',
-            cost: 'subscription',
-            platforms: ['Cable'],
-            channelNumber: String(channelNumber)
+        } else if (deviceType === 'cable') {
+          // Cable - ONLY if CAB channels exist
+          if (listing.channel_numbers?.CAB) {
+            const cableChannels = listing.channel_numbers.CAB
+            const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
+            const firstChannel = Object.values(cableChannels)[0] as any
+            const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
+            
+            channelInfo = {
+              id: `cable-${firstStation}`,
+              name: firstStation,
+              number: String(channelNumber),
+              type: 'cable',
+              cost: 'subscription',
+              platforms: ['Cable'],
+              channelNumber: String(channelNumber),
+              deviceType: 'cable'
+            }
           }
         } else if (deviceType === 'streaming') {
-          // Streaming services
+          // Streaming services - always available
           const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
           
           channelInfo = {
@@ -129,27 +133,26 @@ export async function POST(request: NextRequest) {
             type: 'streaming',
             cost: 'subscription',
             platforms: ['Streaming Services'],
-            channelNumber: firstStation
+            channelNumber: firstStation,
+            deviceType: 'streaming'
           }
-        } else {
-          // Default fallback
-          const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-          channelInfo = {
-            id: `channel-${firstStation}`,
-            name: firstStation,
-            type: deviceType,
-            cost: 'subscription',
-            platforms: [deviceType],
-            channelNumber: firstStation
-          }
+        }
+
+        // CRITICAL: Skip this listing if no matching channel was found for the device type
+        if (!channelInfo) {
+          logInfo(`Skipping listing - no ${deviceType} channel available`, {
+            groupTitle: group.group_title,
+            time: listing.time,
+            availableLineups: Object.keys(listing.channel_numbers || {})
+          })
+          continue
         }
 
         // Add channel to map
-        if (channelInfo) {
-          channels.set(channelInfo.id, channelInfo)
-        }
+        channels.set(channelInfo.id, channelInfo)
 
         // Create program entry
+        const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
         const program = {
           id: programId,
           league: group.group_title,
