@@ -59,14 +59,19 @@ export async function POST(request: NextRequest) {
       // Track usage if presetId is provided
       if (presetId) {
         try {
-          await prisma.channelPreset.update({
-            where: { id: presetId },
-            data: {
-              usageCount: { increment: 1 },
-              lastUsed: new Date()
-            }
+          // Get current preset to increment usage count
+          const { findFirst } = await import('@/lib/db-helpers')
+          const currentPreset = await findFirst('channelPresets', {
+            where: eq(schema.channelPresets.id, presetId)
           })
-          logger.debug(`[Usage Tracking] Preset ${presetId} usage recorded`)
+          
+          if (currentPreset) {
+            await update('channelPresets', presetId, {
+              usageCount: currentPreset.usageCount + 1,
+              lastUsed: new Date().toISOString()
+            })
+            logger.debug(`[Usage Tracking] Preset ${presetId} usage recorded`)
+          }
         } catch (error) {
           logger.error('[Usage Tracking] Failed to update preset usage:', error)
           // Don't fail the request if usage tracking fails

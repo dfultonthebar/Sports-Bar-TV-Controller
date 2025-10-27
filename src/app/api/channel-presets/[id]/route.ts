@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, deleteRecord, desc, eq, findUnique, or, update } from '@/lib/db-helpers'
+import { and, asc, deleteRecord, desc, eq, findFirst, findUnique, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 
@@ -16,8 +16,8 @@ export async function PUT(
     const { name, channelNumber, deviceType, order, isActive } = body
 
     // Check if preset exists
-    const existingPreset = await prisma.channelPreset.findUnique({
-      where: { id }
+    const existingPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, id)
     })
 
     if (!existingPreset) {
@@ -43,9 +43,11 @@ export async function PUT(
     if (order !== undefined) updateData.order = order
     if (isActive !== undefined) updateData.isActive = isActive
 
-    const preset = await prisma.channelPreset.update({
-      where: { id },
-      data: updateData
+    await update('channelPresets', id, updateData)
+
+    // Get the updated preset
+    const preset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, id)
     })
 
     return NextResponse.json({ 
@@ -74,8 +76,8 @@ export async function DELETE(
     const { id } = params
 
     // Check if preset exists
-    const existingPreset = await prisma.channelPreset.findUnique({
-      where: { id }
+    const existingPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, id)
     })
 
     if (!existingPreset) {
@@ -85,9 +87,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.channelPreset.delete({
-      where: { id }
-    })
+    await deleteRecord('channelPresets', id)
 
     return NextResponse.json({ 
       success: true, 

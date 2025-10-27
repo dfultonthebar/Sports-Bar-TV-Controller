@@ -3,8 +3,6 @@ import { and, asc, desc, eq, findMany, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 
-// Using singleton prisma from @/lib/prisma
-
 /**
  * Reorder all presets based on usage count
  * This function is called by the monthly cron job
@@ -14,35 +12,39 @@ export async function reorderAllPresets() {
     logger.debug('[Preset Reorder] Starting preset reordering based on usage...')
 
     // Get all active presets grouped by device type
-    const cablePresets = await prisma.channelPreset.findMany({
-      where: { deviceType: 'cable', isActive: true },
+    const cablePresets = await findMany('channelPresets', {
+      where: and(
+        eq(schema.channelPresets.deviceType, 'cable'),
+        eq(schema.channelPresets.isActive, true)
+      ),
       orderBy: [
-        { usageCount: 'desc' },
-        { name: 'asc' }
+        desc(schema.channelPresets.usageCount),
+        asc(schema.channelPresets.name)
       ]
     })
 
-    const directvPresets = await prisma.channelPreset.findMany({
-      where: { deviceType: 'directv', isActive: true },
+    const directvPresets = await findMany('channelPresets', {
+      where: and(
+        eq(schema.channelPresets.deviceType, 'directv'),
+        eq(schema.channelPresets.isActive, true)
+      ),
       orderBy: [
-        { usageCount: 'desc' },
-        { name: 'asc' }
+        desc(schema.channelPresets.usageCount),
+        asc(schema.channelPresets.name)
       ]
     })
 
     // Update order field for cable presets
     for (let i = 0; i < cablePresets.length; i++) {
-      await prisma.channelPreset.update({
-        where: { id: cablePresets[i].id },
-        data: { order: i }
+      await update('channelPresets', cablePresets[i].id, {
+        order: i
       })
     }
 
     // Update order field for directv presets
     for (let i = 0; i < directvPresets.length; i++) {
-      await prisma.channelPreset.update({
-        where: { id: directvPresets[i].id },
-        data: { order: i }
+      await update('channelPresets', directvPresets[i].id, {
+        order: i
       })
     }
 
@@ -64,9 +66,9 @@ export async function reorderAllPresets() {
  */
 export async function getUsageStatistics() {
   try {
-    const allPresets = await prisma.channelPreset.findMany({
-      where: { isActive: true },
-      orderBy: { usageCount: 'desc' }
+    const allPresets = await findMany('channelPresets', {
+      where: eq(schema.channelPresets.isActive, true),
+      orderBy: desc(schema.channelPresets.usageCount)
     })
 
     const cablePresets = allPresets.filter(p => p.deviceType === 'cable')
@@ -117,9 +119,12 @@ export async function getUsageStatistics() {
  */
 export async function checkReorderingNeeded(deviceType: 'cable' | 'directv'): Promise<boolean> {
   try {
-    const presets = await prisma.channelPreset.findMany({
-      where: { deviceType, isActive: true },
-      orderBy: { order: 'asc' }
+    const presets = await findMany('channelPresets', {
+      where: and(
+        eq(schema.channelPresets.deviceType, deviceType),
+        eq(schema.channelPresets.isActive, true)
+      ),
+      orderBy: asc(schema.channelPresets.order)
     })
 
     // Check if current order matches usage-based order

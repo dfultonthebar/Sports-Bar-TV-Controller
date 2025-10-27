@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, or, update } from '@/lib/db-helpers'
+import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 
@@ -24,16 +24,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update the preset's usage count and last used timestamp
-    const updatedPreset = await prisma.channelPreset.update({
-      where: { id: presetId },
-      data: {
-        usageCount: { increment: 1 },
-        lastUsed: new Date()
-      }
+    // Get current preset to increment usage count
+    const currentPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, presetId)
     })
 
-    logger.debug(`[Usage Tracking] Preset "${updatedPreset.name}" usage updated: ${updatedPreset.usageCount} uses`)
+    if (!currentPreset) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Preset not found' 
+        },
+        { status: 404 }
+      )
+    }
+
+    // Update the preset's usage count and last used timestamp
+    await update('channelPresets', presetId, {
+      usageCount: currentPreset.usageCount + 1,
+      lastUsed: new Date().toISOString()
+    })
+
+    // Get the updated preset
+    const updatedPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, presetId)
+    })
+
+    logger.debug(`[Usage Tracking] Preset "${updatedPreset?.name}" usage updated: ${updatedPreset?.usageCount} uses`)
 
     return NextResponse.json({
       success: true,
