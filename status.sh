@@ -11,10 +11,10 @@ SERVER_PIDS=$(ps aux | grep -v grep | grep next | awk '{print $2}')
 if [ -n "$SERVER_PIDS" ]; then
     echo "✅ Server Status: RUNNING"
     echo "📍 Server PIDs: $SERVER_PIDS"
-    echo "🌐 Application URL: http://localhost:3000"
+    echo "🌐 Application URL: http://localhost:3001"
     
     # Test connection
-    if curl -s http://localhost:3000 > /dev/null; then
+    if curl -s http://localhost:3001 > /dev/null; then
         echo "✅ Connection Test: SUCCESS"
     else
         echo "❌ Connection Test: FAILED"
@@ -46,4 +46,4 @@ else
 fi
 
 echo ""
-echo "🎯 Quick Access: http://localhost:3000"
+echo "🎯 Quick Access: http://localhost:3001"

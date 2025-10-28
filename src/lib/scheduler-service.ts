@@ -89,7 +89,7 @@ class SchedulerService {
    */
   private async executeSchedule(scheduleId: string) {
     try {
-      const response = await fetch('http://localhost:3000/api/schedules/execute', {
+      const response = await fetch('http://localhost:3001/api/schedules/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scheduleId })

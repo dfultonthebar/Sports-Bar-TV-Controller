@@ -8,7 +8,7 @@ export async function initializeWolfPackConnection() {
   try {
     console.log('[Startup] Initializing Wolf Pack matrix connection...')
     
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'
     
     const response = await fetch(`${baseUrl}/api/matrix/initialize-connection`, {
       method: 'POST',

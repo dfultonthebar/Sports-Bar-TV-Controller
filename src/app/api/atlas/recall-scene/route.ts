@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get processor details (you would typically fetch this from your processor database)
-    const processorResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/audio-processor`)
+    const processorResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/audio-processor`)
     let processor
     
     if (processorResponse.ok) {

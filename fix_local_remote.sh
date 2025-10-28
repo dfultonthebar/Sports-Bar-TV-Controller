@@ -19,11 +19,11 @@ node debug_remote_data.js
 echo ""
 echo "🔧 Step 4: Testing API endpoint..."
 echo "Matrix Config API test:"
-curl -s http://localhost:3000/api/matrix/config | jq '.inputs[] | {channelNumber: .channelNumber, label: .label}' 2>/dev/null || curl -s http://localhost:3000/api/matrix/config | head -20
+curl -s http://localhost:3001/api/matrix/config | jq '.inputs[] | {channelNumber: .channelNumber, label: .label}' 2>/dev/null || curl -s http://localhost:3001/api/matrix/config | head -20
 
 echo ""
 echo "📱 Step 5: Testing Bartender Remote page..."
-echo "Visit: http://localhost:3000/remote"
+echo "Visit: http://localhost:3001/remote"
 echo ""
 echo "✅ Fix completed! If you still see issues:"
 echo "   1. Make sure your local server is running: npm run dev"

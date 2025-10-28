@@ -98,7 +98,7 @@ echo "🔍 Step 5: Verifying deployment..."
 sshpass -p "$PASSWORD" ssh -p $PORT -o StrictHostKeyChecking=no $SERVER << 'ENDSSH'
 cd ~/Sports-Bar-TV-Controller
 echo "Checking application status..."
-curl -s http://localhost:3000 > /dev/null
+curl -s http://localhost:3001 > /dev/null
 if [ $? -eq 0 ]; then
     echo "✅ Application is responding on port 3000"
 else

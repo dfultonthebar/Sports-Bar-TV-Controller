@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     if (imageUrl) {
       logger.debug('AI Analysis - Using Vision API to detect TV positions from image')
       try {
-        const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/ai/vision-analyze-layout`, {
+        const visionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}/api/ai/vision-analyze-layout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageUrl })

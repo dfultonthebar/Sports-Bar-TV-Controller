@@ -65,9 +65,9 @@ npm start > server.log 2>&1 &
 sleep 3
 
 # Check if application is running
-if curl -s http://localhost:3000 > /dev/null; then
+if curl -s http://localhost:3001 > /dev/null; then
     echo "✅ Success! Sports Bar AI Assistant is running on:"
-    echo "   🌐 http://localhost:3000"
+    echo "   🌐 http://localhost:3001"
     echo "   🌐 http://$(hostname -I | awk '{print $1}'):3000"
     echo ""
     echo "🔧 Permanent fix applied! No more yarn issues on updates."
