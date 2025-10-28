@@ -151,16 +151,38 @@ export async function POST(request: NextRequest) {
         // Add channel to map
         channels.set(channelInfo.id, channelInfo)
 
-        // Create program entry
+        // Create program entry with proper date parsing
         const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
+        
+        // Parse the date properly - API returns dates like "Oct 27" without year
+        // We need to add the current year to make it valid
+        let eventDate: Date
+        if (listing.date) {
+          // Parse the date and add current year if missing
+          const currentYear = new Date().getFullYear()
+          const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
+          eventDate = new Date(dateWithYear)
+          
+          // If the parsed date is invalid or in the past (more than 1 day ago), try next year
+          if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+            eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
+          }
+        } else {
+          // Fallback to today if no date provided
+          eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
+        }
+        
+        // Calculate end time (3 hours after start for sports events)
+        const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+        
         const program = {
           id: programId,
           league: group.group_title,
           homeTeam: listing.data['home team'] || listing.data['team'] || '',
           awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
           gameTime: listing.time,
-          startTime: new Date(`${listing.date || new Date().toDateString()} ${listing.time}`).toISOString(),
-          endTime: new Date(new Date(`${listing.date || new Date().toDateString()} ${listing.time}`).getTime() + 3 * 60 * 60 * 1000).toISOString(),
+          startTime: eventDate.toISOString(),
+          endTime: endTime.toISOString(),
           channel: channelInfo,
           description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
           isSports: true,
