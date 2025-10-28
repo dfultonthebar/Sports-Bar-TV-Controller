@@ -212,12 +212,91 @@ export class ADBClient {
     }
   }
 
+  async getInstalledPackages(): Promise<string[]> {
+    try {
+      console.log(`[ADB CLIENT] Getting installed packages from ${this.deviceAddress}`)
+      const output = await this.executeShellCommand('pm list packages')
+      const packages = output
+        .split('\n')
+        .filter(line => line.startsWith('package:'))
+        .map(line => line.replace('package:', '').trim())
+      
+      console.log(`[ADB CLIENT] Found ${packages.length} installed packages`)
+      return packages
+    } catch (error) {
+      console.error(`[ADB CLIENT] Get installed packages error:`, error)
+      throw error
+    }
+  }
+
+  async isAppInstalled(packageName: string): Promise<boolean> {
+    try {
+      console.log(`[ADB CLIENT] Checking if ${packageName} is installed on ${this.deviceAddress}`)
+      const packages = await this.getInstalledPackages()
+      const isInstalled = packages.includes(packageName)
+      console.log(`[ADB CLIENT] ${packageName} is ${isInstalled ? 'INSTALLED' : 'NOT INSTALLED'}`)
+      return isInstalled
+    } catch (error) {
+      console.error(`[ADB CLIENT] Check app installed error:`, error)
+      return false
+    }
+  }
+
+  async getCurrentApp(): Promise<{ packageName: string; activityName: string } | null> {
+    try {
+      console.log(`[ADB CLIENT] Getting current app on ${this.deviceAddress}`)
+      const output = await this.executeShellCommand('dumpsys window windows | grep -E "mCurrentFocus"')
+      
+      // Parse output like: mCurrentFocus=Window{abc123 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity}
+      const match = output.match(/([a-zA-Z0-9._]+)\/([a-zA-Z0-9._]+)/)
+      
+      if (match) {
+        return {
+          packageName: match[1],
+          activityName: match[2]
+        }
+      }
+      
+      return null
+    } catch (error) {
+      console.error(`[ADB CLIENT] Get current app error:`, error)
+      return null
+    }
+  }
+
   async launchApp(packageName: string): Promise<string> {
     try {
       console.log(`[ADB CLIENT] Launching app ${packageName} on ${this.deviceAddress}`)
       return await this.executeShellCommand(`monkey -p ${packageName} -c android.intent.category.LAUNCHER 1`)
     } catch (error) {
       console.error(`[ADB CLIENT] Launch app error:`, error)
+      throw error
+    }
+  }
+
+  async launchAppWithIntent(packageName: string, activityName?: string): Promise<string> {
+    try {
+      console.log(`[ADB CLIENT] Launching app with intent: ${packageName}${activityName ? '/' + activityName : ''} on ${this.deviceAddress}`)
+      
+      if (activityName) {
+        // Launch specific activity
+        return await this.executeShellCommand(`am start -n ${packageName}/${activityName}`)
+      } else {
+        // Launch main launcher activity
+        return await this.executeShellCommand(`am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER ${packageName}`)
+      }
+    } catch (error) {
+      console.error(`[ADB CLIENT] Launch app with intent error:`, error)
+      throw error
+    }
+  }
+
+  async launchAppWithDeepLink(deepLink: string): Promise<string> {
+    try {
+      console.log(`[ADB CLIENT] Launching app with deep link: ${deepLink} on ${this.deviceAddress}`)
+      return await this.executeShellCommand(`am start -a android.intent.action.VIEW -d "${deepLink}"`)
+    } catch (error) {
+      console.error(`[ADB CLIENT] Launch app with deep link error:`, error)
       throw error
     }
   }
