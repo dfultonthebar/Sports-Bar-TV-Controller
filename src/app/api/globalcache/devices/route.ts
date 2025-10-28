@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/db/prisma-adapter'
-// Converted to Drizzle ORM
+import { db, schema } from '@/db'
+import { eq, desc, asc } from 'drizzle-orm'
+import { findMany, create } from '@/lib/db-helpers'
 import net from 'net'
-import { globalCacheDevices } from '@/db/schema'
+import { globalCacheDevices, globalCachePorts } from '@/db/schema'
 
 /**
  * GET /api/globalcache/devices
@@ -10,22 +11,25 @@ import { globalCacheDevices } from '@/db/schema'
  */
 export async function GET() {
   try {
-    const devices = await prisma.globalCacheDevice.findMany({
-      include: {
-        ports: {
-          orderBy: {
-            portNumber: 'asc'
-          }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+    // Fetch all Global Cache devices
+    const devices = await findMany('globalCacheDevices', {
+      orderBy: desc(schema.globalCacheDevices.createdAt)
     })
+
+    // Fetch all ports
+    const allPorts = await findMany('globalCachePorts', {
+      orderBy: asc(schema.globalCachePorts.portNumber)
+    })
+
+    // Combine devices with their ports
+    const devicesWithPorts = devices.map(device => ({
+      ...device,
+      ports: allPorts.filter(port => port.deviceId === device.id)
+    }))
 
     return NextResponse.json({
       success: true,
-      devices
+      devices: devicesWithPorts
     })
   } catch (error) {
     console.error('Error fetching Global Cache devices:', error)
@@ -63,9 +67,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if device with this IP already exists
-    const existingDevice = await prisma.globalCacheDevice.findUnique({
-      where: { ipAddress }
-    })
+    const existingDevice = await db.select()
+      .from(globalCacheDevices)
+      .where(eq(globalCacheDevices.ipAddress, ipAddress))
+      .limit(1)
+      .get()
 
     if (existingDevice) {
       return NextResponse.json(
@@ -79,33 +85,38 @@ export async function POST(request: NextRequest) {
     const connectionTest = await testDeviceConnection(ipAddress, port)
     
     // Create device in database
-    const device = await prisma.globalCacheDevice.create({
-      data: {
-        name,
-        ipAddress,
-        port,
-        model: model || null,
-        status: connectionTest.online ? 'online' : 'offline',
-        lastSeen: connectionTest.online ? new Date() : null,
-        ports: {
-          create: [
-            { portNumber: 1, portType: 'IR', enabled: true },
-            { portNumber: 2, portType: 'IR', enabled: true },
-            { portNumber: 3, portType: 'IR', enabled: true }
-          ]
-        }
-      },
-      include: {
-        ports: true
-      }
+    const device = await create('globalCacheDevices', {
+      name,
+      ipAddress,
+      port,
+      model: model || null,
+      status: connectionTest.online ? 'online' : 'offline',
+      lastSeen: connectionTest.online ? new Date().toISOString() : null
     })
+
+    // Create default ports for the device
+    const ports = []
+    for (let i = 1; i <= 3; i++) {
+      const createdPort = await create('globalCachePorts', {
+        deviceId: device.id,
+        portNumber: i,
+        portType: 'IR',
+        enabled: true
+      })
+      ports.push(createdPort)
+    }
+
+    const deviceWithPorts = {
+      ...device,
+      ports
+    }
 
     console.log(`Global Cache device added: ${device.name} (${device.ipAddress})`)
     console.log(`Connection status: ${device.status}`)
 
     return NextResponse.json({
       success: true,
-      device,
+      device: deviceWithPorts,
       connectionTest
     })
   } catch (error) {

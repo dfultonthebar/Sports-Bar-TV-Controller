@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { globalCachePorts } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
-import { db } from '@/db'
+import { globalCachePorts, globalCacheDevices } from '@/db/schema'
+import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
-// Converted to Drizzle ORM
+import { findFirst, update } from '@/lib/db-helpers'
 
 /**
  * PUT /api/globalcache/ports/[id]
@@ -17,12 +16,20 @@ export async function PUT(
     const body = await request.json()
     const { assignedTo, assignedDeviceId, irCodeSet, enabled } = body
 
-    const port = await db.update(globalCachePorts).set({
-        assignedTo: assignedTo || null,
-        assignedDeviceId: assignedDeviceId || null,
-        irCodeSet: irCodeSet || null,
-        enabled: enabled !== undefined ? enabled : undefined
-      }).where(eq(globalCachePorts.id, params.id)).returning().get()
+    const updateData: any = {}
+    if (assignedTo !== undefined) updateData.assignedTo = assignedTo || null
+    if (assignedDeviceId !== undefined) updateData.assignedDeviceId = assignedDeviceId || null
+    if (irCodeSet !== undefined) updateData.irCodeSet = irCodeSet || null
+    if (enabled !== undefined) updateData.enabled = enabled
+
+    const port = await update('globalCachePorts', eq(schema.globalCachePorts.id, params.id), updateData)
+
+    if (!port) {
+      return NextResponse.json(
+        { success: false, error: 'Port not found' },
+        { status: 404 }
+      )
+    }
 
     console.log(`Global Cache port updated: Port ${port.portNumber} assigned to ${assignedTo || 'none'}`)
 
@@ -48,11 +55,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const port = await prisma.globalCachePort.findUnique({
-      where: { id: params.id },
-      include: {
-        device: true
-      }
+    const port = await findFirst('globalCachePorts', {
+      where: eq(schema.globalCachePorts.id, params.id)
     })
 
     if (!port) {
@@ -62,9 +66,19 @@ export async function GET(
       )
     }
 
+    // Fetch the device for this port
+    const device = await findFirst('globalCacheDevices', {
+      where: eq(schema.globalCacheDevices.id, port.deviceId)
+    })
+
+    const portWithDevice = {
+      ...port,
+      device: device || null
+    }
+
     return NextResponse.json({
       success: true,
-      port
+      port: portWithDevice
     })
   } catch (error) {
     console.error('Error fetching port:', error)

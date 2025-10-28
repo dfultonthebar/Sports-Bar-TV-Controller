@@ -1,11 +1,11 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
+import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
-import { irDevices } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { irDevices, globalCachePorts, globalCacheDevices, irCommands } from '@/db/schema'
+import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
 
 /**
  * GET /api/ir/devices/:id
@@ -22,20 +22,8 @@ export async function GET(
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const device = await prisma.iRDevice.findUnique({
-      where: { id: params.id },
-      include: {
-        ports: {
-          include: {
-            device: true
-          }
-        },
-        commands: {
-          orderBy: {
-            category: 'asc'
-          }
-        }
-      }
+    const device = await findFirst('irDevices', {
+      where: eq(schema.irDevices.id, params.id)
     })
 
     if (!device) {
@@ -48,9 +36,29 @@ export async function GET(
       )
     }
 
+    // Fetch related ports if Global Cache device is assigned
+    let ports: any[] = []
+    if (device.globalCacheDeviceId) {
+      ports = await findMany('globalCachePorts', {
+        where: eq(schema.globalCachePorts.deviceId, device.globalCacheDeviceId)
+      })
+    }
+
+    // Fetch commands for this device
+    const commands = await findMany('irCommands', {
+      where: eq(schema.irCommands.deviceId, device.id),
+      orderBy: asc(schema.irCommands.category)
+    })
+
+    const deviceWithRelations = {
+      ...device,
+      ports,
+      commands
+    }
+
     console.log('✅ [IR DEVICES] Device fetched successfully')
     console.log('   Name:', device.name)
-    console.log('   Commands count:', device.commands.length)
+    console.log('   Commands count:', commands.length)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'get', {
@@ -58,7 +66,7 @@ export async function GET(
       name: device.name
     })
 
-    return NextResponse.json({ success: true, device })
+    return NextResponse.json({ success: true, device: deviceWithRelations })
   } catch (error: any) {
     console.error('❌ [IR DEVICES] Error fetching device:', error)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -110,26 +118,47 @@ export async function PUT(
     console.log('     Global Cache Device:', globalCacheDeviceId)
     console.log('     Global Cache Port:', globalCachePortNumber)
 
-    const device = await prisma.iRDevice.update({
-      where: { id: params.id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(deviceType !== undefined && { deviceType }),
-        ...(brand !== undefined && { brand }),
-        ...(model !== undefined && { model }),
-        ...(matrixInput !== undefined && { matrixInput }),
-        ...(matrixInputLabel !== undefined && { matrixInputLabel }),
-        ...(irCodeSetId !== undefined && { irCodeSetId }),
-        ...(globalCacheDeviceId !== undefined && { globalCacheDeviceId }),
-        ...(globalCachePortNumber !== undefined && { globalCachePortNumber }),
-        ...(description !== undefined && { description }),
-        ...(status !== undefined && { status })
-      },
-      include: {
-        ports: true,
-        commands: true
-      }
+    // Build update data object
+    const updateData: any = {}
+    if (name !== undefined) updateData.name = name
+    if (deviceType !== undefined) updateData.deviceType = deviceType
+    if (brand !== undefined) updateData.brand = brand
+    if (model !== undefined) updateData.model = model
+    if (matrixInput !== undefined) updateData.matrixInput = matrixInput
+    if (matrixInputLabel !== undefined) updateData.matrixInputLabel = matrixInputLabel
+    if (irCodeSetId !== undefined) updateData.irCodeSetId = irCodeSetId
+    if (globalCacheDeviceId !== undefined) updateData.globalCacheDeviceId = globalCacheDeviceId
+    if (globalCachePortNumber !== undefined) updateData.globalCachePortNumber = globalCachePortNumber
+    if (description !== undefined) updateData.description = description
+    if (status !== undefined) updateData.status = status
+
+    const device = await update('irDevices', eq(schema.irDevices.id, params.id), updateData)
+
+    if (!device) {
+      return NextResponse.json(
+        { success: false, error: 'Device not found' },
+        { status: 404 }
+      )
+    }
+
+    // Fetch related ports if Global Cache device is assigned
+    let ports: any[] = []
+    if (device.globalCacheDeviceId) {
+      ports = await findMany('globalCachePorts', {
+        where: eq(schema.globalCachePorts.deviceId, device.globalCacheDeviceId)
+      })
+    }
+
+    // Fetch commands for this device
+    const commands = await findMany('irCommands', {
+      where: eq(schema.irCommands.deviceId, device.id)
     })
+
+    const deviceWithRelations = {
+      ...device,
+      ports,
+      commands
+    }
 
     console.log('✅ [IR DEVICES] Device updated successfully')
     console.log('   Name:', device.name)
@@ -142,7 +171,7 @@ export async function PUT(
       name: device.name
     })
 
-    return NextResponse.json({ success: true, device })
+    return NextResponse.json({ success: true, device: deviceWithRelations })
   } catch (error: any) {
     console.error('❌ [IR DEVICES] Error updating device:', error)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -174,7 +203,7 @@ export async function DELETE(
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    await db.delete(irDevices).where(eq(irDevices.id, params.id)).returning().get()
+    await deleteRecord('irDevices', eq(schema.irDevices.id, params.id))
 
     console.log('✅ [IR DEVICES] Device deleted successfully')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

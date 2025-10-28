@@ -1,12 +1,12 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
+import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irCommands, irDatabaseCredentials, irDevices } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findFirst, create, update } from '@/lib/db-helpers'
 
 /**
  * POST /api/ir/database/download
@@ -74,35 +74,44 @@ export async function POST(request: NextRequest) {
         console.log(`   ✓ HexCode1: ${code.HexCode1 ? 'Yes' : 'No'}`)
 
         // Check if command already exists
-        const existingCommand = await prisma.iRCommand.findUnique({
-          where: {
-            deviceId_functionName: {
-              deviceId,
-              functionName: func.functionName
-            }
-          }
-        })
+        const existingCommand = await db.select()
+          .from(irCommands)
+          .where(
+            and(
+              eq(irCommands.deviceId, deviceId),
+              eq(irCommands.functionName, func.functionName)
+            )
+          )
+          .limit(1)
+          .get()
 
         if (existingCommand) {
           // Update existing command
-          const updated = await db.update(irCommands).set({
+          const updated = await update(
+            'irCommands',
+            and(
+              eq(schema.irCommands.deviceId, deviceId),
+              eq(schema.irCommands.functionName, func.functionName)
+            ),
+            {
               irCode: code.Code1,
               hexCode: code.HexCode1 || null,
               codeSetId: codesetId,
               category: func.category
-            }).where(eq(irCommands.id, existingCommand.id)).returning().get()
+            }
+          )
           downloadedCommands.push(updated)
           console.log(`✅ Updated command: ${func.functionName}`)
         } else {
           // Create new command
-          const created = await db.insert(irCommands).values({
-              deviceId,
-              functionName: func.functionName,
-              irCode: code.Code1,
-              hexCode: code.HexCode1 || null,
-              codeSetId: codesetId,
-              category: func.category
-            }).returning().get()
+          const created = await create('irCommands', {
+            deviceId,
+            functionName: func.functionName,
+            irCode: code.Code1,
+            hexCode: code.HexCode1 || null,
+            codeSetId: codesetId,
+            category: func.category
+          })
           downloadedCommands.push(created)
           console.log(`✅ Created command: ${func.functionName}`)
         }
@@ -122,7 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update device with codeset ID
-    await db.update(irDevices).set({ irCodeSetId: codesetId }).where(eq(irDevices.id, deviceId)).returning().get()
+    await update('irDevices', eq(schema.irDevices.id, deviceId), { irCodeSetId: codesetId })
 
     console.log('✅ [IR DATABASE API] Download complete')
     console.log('   Success:', downloadedCommands.length)

@@ -1,13 +1,13 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
+import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import crypto from 'crypto'
 import { irDatabaseCredentials } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findFirst, create, updateMany } from '@/lib/db-helpers'
 
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {
@@ -126,19 +126,19 @@ export async function POST(request: NextRequest) {
     const encryptedPassword = encrypt(password)
 
     // Deactivate old credentials
-    await prisma.iRDatabaseCredentials.updateMany({
-      where: { isActive: true },
-      data: { isActive: false }
-    })
+    await db.update(irDatabaseCredentials)
+      .set({ isActive: false })
+      .where(eq(irDatabaseCredentials.isActive, true))
+      .run()
 
     // Save new credentials
-    const credentials = await db.insert(irDatabaseCredentials).values({
-        email,
-        password: encryptedPassword,
-        apiKey: loginResult.Account.ApiKey,
-        isActive: true,
-        lastLogin: new Date()
-      }).returning().get()
+    const credentials = await create('irDatabaseCredentials', {
+      email,
+      password: encryptedPassword,
+      apiKey: loginResult.Account.ApiKey,
+      isActive: true,
+      lastLogin: new Date().toISOString()
+    })
 
     console.log('✅ [IR CREDENTIALS] Credentials saved successfully')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

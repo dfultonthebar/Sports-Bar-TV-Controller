@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { globalCacheDevices } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
-import { db } from '@/db'
+import { globalCacheDevices, globalCachePorts } from '@/db/schema'
+import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
-// Converted to Drizzle ORM
+import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
 
 /**
  * GET /api/globalcache/devices/[id]
@@ -14,15 +13,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const device = await prisma.globalCacheDevice.findUnique({
-      where: { id: params.id },
-      include: {
-        ports: {
-          orderBy: {
-            portNumber: 'asc'
-          }
-        }
-      }
+    const device = await findFirst('globalCacheDevices', {
+      where: eq(schema.globalCacheDevices.id, params.id)
     })
 
     if (!device) {
@@ -32,9 +24,20 @@ export async function GET(
       )
     }
 
+    // Fetch ports for this device
+    const ports = await findMany('globalCachePorts', {
+      where: eq(schema.globalCachePorts.deviceId, params.id),
+      orderBy: asc(schema.globalCachePorts.portNumber)
+    })
+
+    const deviceWithPorts = {
+      ...device,
+      ports
+    }
+
     return NextResponse.json({
       success: true,
-      device
+      device: deviceWithPorts
     })
   } catch (error) {
     console.error('Error fetching device:', error)
@@ -54,7 +57,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await db.delete(globalCacheDevices).where(eq(globalCacheDevices.id, params.id)).returning().get()
+    await deleteRecord('globalCacheDevices', eq(schema.globalCacheDevices.id, params.id))
 
     console.log(`Global Cache device deleted: ${params.id}`)
 
@@ -82,24 +85,37 @@ export async function PUT(
     const body = await request.json()
     const { name, ipAddress, port, model } = body
 
-    const device = await prisma.globalCacheDevice.update({
-      where: { id: params.id },
-      data: {
-        name,
-        ipAddress,
-        port,
-        model
-      },
-      include: {
-        ports: true
-      }
+    const updateData: any = {}
+    if (name !== undefined) updateData.name = name
+    if (ipAddress !== undefined) updateData.ipAddress = ipAddress
+    if (port !== undefined) updateData.port = port
+    if (model !== undefined) updateData.model = model
+
+    const device = await update('globalCacheDevices', eq(schema.globalCacheDevices.id, params.id), updateData)
+
+    if (!device) {
+      return NextResponse.json(
+        { success: false, error: 'Device not found' },
+        { status: 404 }
+      )
+    }
+
+    // Fetch ports for this device
+    const ports = await findMany('globalCachePorts', {
+      where: eq(schema.globalCachePorts.deviceId, params.id),
+      orderBy: asc(schema.globalCachePorts.portNumber)
     })
+
+    const deviceWithPorts = {
+      ...device,
+      ports
+    }
 
     console.log(`Global Cache device updated: ${device.name}`)
 
     return NextResponse.json({
       success: true,
-      device
+      device: deviceWithPorts
     })
   } catch (error) {
     console.error('Error updating device:', error)
