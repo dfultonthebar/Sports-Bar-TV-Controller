@@ -17,6 +17,7 @@ import {
   Search
 } from 'lucide-react'
 import { IRDatabaseSearch } from './IRDatabaseSearch'
+import { IRLearningPanel } from './IRLearningPanel'
 
 interface GlobalCacheDevice {
   id: string
@@ -59,6 +60,7 @@ export function IRDeviceSetup() {
   const [loading, setLoading] = useState(true)
   const [showAddDevice, setShowAddDevice] = useState(false)
   const [showIRDatabase, setShowIRDatabase] = useState(false)
+  const [showIRLearning, setShowIRLearning] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
   const [editingDevice, setEditingDevice] = useState<IRDevice | null>(null)
   const [newDevice, setNewDevice] = useState({
@@ -311,6 +313,17 @@ export function IRDeviceSetup() {
     await loadDevices()
   }
 
+  const openIRLearning = (device: IRDevice) => {
+    setSelectedDevice(device)
+    setShowIRLearning(true)
+  }
+
+  const closeIRLearning = async () => {
+    setShowIRLearning(false)
+    setSelectedDevice(null)
+    await loadDevices()
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -324,6 +337,15 @@ export function IRDeviceSetup() {
       <IRDatabaseSearch 
         device={selectedDevice}
         onClose={closeIRDatabase}
+      />
+    )
+  }
+
+  if (showIRLearning && selectedDevice) {
+    return (
+      <IRLearningPanel 
+        device={selectedDevice}
+        onClose={closeIRLearning}
       />
     )
   }
@@ -557,6 +579,15 @@ export function IRDeviceSetup() {
                     >
                       {device.commands.length} commands
                     </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openIRLearning(device)}
+                      className="flex items-center gap-1"
+                    >
+                      <Radio className="w-4 h-4" />
+                      Learn IR
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"

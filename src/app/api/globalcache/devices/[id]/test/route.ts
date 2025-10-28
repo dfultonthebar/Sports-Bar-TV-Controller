@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, schema } from '@/db'
-import { eq } from 'drizzle-orm'
-import { findFirst, update } from '@/lib/db-helpers'
+import { db } from '@/db'
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+// Converted to Drizzle ORM
 import net from 'net'
+import { globalCacheDevices } from '@/db/schema'
 
 /**
  * POST /api/globalcache/devices/[id]/test
@@ -13,9 +14,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const device = await findFirst('globalCacheDevices', {
-      where: eq(schema.globalCacheDevices.id, params.id)
-    })
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, params.id)).limit(1).get()
 
     if (!device) {
       return NextResponse.json(
@@ -28,11 +27,11 @@ export async function POST(
 
     const result = await testDeviceConnection(device.ipAddress, device.port)
 
-    // Update device status using db-helpers (includes proper data sanitization for SQLite)
-    await update('globalCacheDevices', eq(schema.globalCacheDevices.id, params.id), {
-      status: result.online ? 'online' : 'offline',
-      lastSeen: result.online ? new Date().toISOString() : device.lastSeen
-    })
+    // Update device status
+    await db.update(globalCacheDevices).set({
+        status: result.online ? 'online' : 'offline',
+        lastSeen: result.online ? new Date().toISOString() : device.lastSeen
+      }).where(eq(globalCacheDevices.id, params.id)).returning().get()
 
     console.log(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
     if (result.deviceInfo) {
