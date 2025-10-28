@@ -40,7 +40,7 @@ export async function POST() {
       logger.debug(`✓ Successfully connected to Wolf Pack matrix at ${ipAddress}:${port}`)
       
       // Trigger the connection manager to establish persistent connection
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/matrix/connection-manager`, {
+      await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/matrix/connection-manager`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'connect' })

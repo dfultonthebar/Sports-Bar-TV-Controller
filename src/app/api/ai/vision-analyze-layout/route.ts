@@ -97,7 +97,7 @@ async function analyzeWithOpenAI(imageUrl?: string, imagePath?: string): Promise
       imageContent = `data:${mimeType};base64,${base64Image}`
     } else if (imageUrl) {
       // Use URL directly
-      imageContent = imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${imageUrl}`
+      imageContent = imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}${imageUrl}`
     } else {
       return null
     }
@@ -212,7 +212,7 @@ async function analyzeWithAnthropic(imageUrl?: string, imagePath?: string): Prom
       }
     } else if (imageUrl) {
       // For URLs, we need to fetch and convert to base64
-      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${imageUrl}`
+      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}${imageUrl}`
       const response = await fetch(fullUrl)
       const arrayBuffer = await response.arrayBuffer()
       const base64Image = Buffer.from(arrayBuffer).toString('base64')

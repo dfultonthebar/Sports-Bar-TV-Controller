@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
       
       const endpointResults = await Promise.allSettled(
         criticalEndpoints.map(endpoint => 
-          fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${endpoint}`)
+          fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}${endpoint}`)
             .then(r => ({ endpoint, status: r.status, ok: r.ok }))
         )
       )

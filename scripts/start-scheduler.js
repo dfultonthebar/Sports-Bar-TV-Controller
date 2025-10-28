@@ -40,7 +40,7 @@ const req = http.request(options, (res) => {
     console.log('The scheduler is now running in the background.');
     console.log('It will automatically execute schedules at their configured times.');
     console.log('');
-    console.log('Manage schedules at: http://localhost:3000/scheduler');
+    console.log('Manage schedules at: http://localhost:3001/scheduler');
   });
 });
 

@@ -84,7 +84,7 @@ sleep 10
 # Test connection multiple times
 SUCCESS=false
 for i in {1..3}; do
-    if curl -s http://localhost:3000 > /dev/null; then
+    if curl -s http://localhost:3001 > /dev/null; then
         echo "   ✅ Server started successfully!"
         SUCCESS=true
         break
@@ -109,17 +109,17 @@ if [ "$SUCCESS" = true ]; then
     echo "✅ Sports Bar AI Assistant is running!"
     echo ""
     echo "🌐 Access your application:"
-    echo "   Local:  http://localhost:3000"
+    echo "   Local:  http://localhost:3001"
     echo "   Remote: http://$(hostname -I | awk '{print $1}'):3000"
 else
     echo "⚠️  Application installed but may need a moment to fully start"
-    echo "   Check status: curl http://localhost:3000"
+    echo "   Check status: curl http://localhost:3001"
     echo "   View logs: tail -f $PROJECT_DIR/server.log"
 fi
 
 echo ""
 echo "📋 Management Commands:"
-echo "   Check Status:   cd $PROJECT_DIR && curl http://localhost:3000"
+echo "   Check Status:   cd $PROJECT_DIR && curl http://localhost:3001"
 echo "   View Logs:      cd $PROJECT_DIR && tail -f server.log"
 echo "   Stop Server:    pkill -f 'next'"
 echo "   Restart:        cd $PROJECT_DIR && pkill -f 'next' && npm run dev > server.log 2>&1 &"
@@ -137,10 +137,10 @@ echo "🎯 Your Sports Bar AI Assistant is ready!"
 # Final status check
 echo ""
 echo "🔍 Final Status Check:"
-if curl -s http://localhost:3000 > /dev/null; then
+if curl -s http://localhost:3001 > /dev/null; then
     echo "   ✅ Server is responding correctly!"
     echo "   🚀 You can now use your application!"
 else
     echo "   ⏳ Server may still be starting up..."
-    echo "   💡 Wait 30 seconds and try: curl http://localhost:3000"
+    echo "   💡 Wait 30 seconds and try: curl http://localhost:3001"
 fi

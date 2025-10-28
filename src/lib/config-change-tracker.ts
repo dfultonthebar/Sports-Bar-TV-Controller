@@ -111,13 +111,13 @@ class ConfigChangeTracker {
 
   private async checkAutoSync(changeEvent: ConfigChangeEvent) {
     try {
-      const response = await fetch('http://localhost:3000/api/github/auto-config-sync')
+      const response = await fetch('http://localhost:3001/api/github/auto-config-sync')
       if (response.ok) {
         const autoSyncConfig = await response.json()
         
         if (autoSyncConfig.enabled && autoSyncConfig.autoCommitOnConfigChange) {
           // Trigger auto-push
-          const pushResponse = await fetch('http://localhost:3000/api/github/push-config', {
+          const pushResponse = await fetch('http://localhost:3001/api/github/push-config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

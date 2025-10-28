@@ -8,7 +8,7 @@
   "network": {
     "apiPort": 3000,
     "devPort": 3001,
-    "allowedOrigins": ["http://localhost:3000", "http://localhost:3001"]
+    "allowedOrigins": ["http://localhost:3001", "http://localhost:3001"]
   },
   "devices": {
     "autoDiscovery": true,

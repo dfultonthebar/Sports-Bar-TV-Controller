@@ -35,10 +35,10 @@ async function initializeSoundtrack() {
     }
     
     console.log('\n📝 Next steps:')
-    console.log('1. Visit http://localhost:3000/soundtrack to view configuration')
+    console.log('1. Visit http://localhost:3001/soundtrack to view configuration')
     console.log('2. The system will automatically fetch your players')
     console.log('3. Select which players should be visible to bartenders')
-    console.log('4. Bartenders can control music from http://localhost:3000/remote (Music tab)')
+    console.log('4. Bartenders can control music from http://localhost:3001/remote (Music tab)')
     
   } catch (error) {
     console.error('❌ Error initializing Soundtrack:', error)

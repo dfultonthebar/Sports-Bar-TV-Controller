@@ -57,10 +57,10 @@ yarn dev > server.log 2>&1 &
 sleep 5
 
 # Test connection
-if curl -s http://localhost:3000 > /dev/null; then
+if curl -s http://localhost:3001 > /dev/null; then
     echo "✅ SUCCESS! Sports Bar AI Assistant is running!"
     echo ""
-    echo "🎯 Access your application at: http://localhost:3000"
+    echo "🎯 Access your application at: http://localhost:3001"
     echo ""
     echo "📋 Management Commands:"
     echo "   Check Status:   ./status.sh"

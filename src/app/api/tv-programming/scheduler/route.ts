@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
           console.log('Running daily TV programming update...')
           
           // Call our programming update endpoint
-          const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/tv-programming`, {
+          const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/tv-programming`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           })
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       })
       
       // Also run immediately for testing
-      const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/tv-programming`, {
+      const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/tv-programming`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     
     if (action === 'run_now') {
       // Manual trigger for testing
-      const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/tv-programming`, {
+      const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/tv-programming`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })

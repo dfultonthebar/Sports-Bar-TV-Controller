@@ -99,7 +99,7 @@ if [ ! -f ".env" ]; then
         cat > .env << 'ENVEOF'
 DATABASE_URL="file:./prisma/dev.db"
 NODE_ENV="production"
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:3001"
 NEXTAUTH_SECRET="change-this-to-a-random-secret"
 ENVEOF
         print_success "Created basic .env file"
@@ -266,7 +266,7 @@ echo "  ✓ Updated database schema"
 echo "  ✓ Built application"
 echo ""
 echo "Next steps:"
-echo "  1. Access the application at http://localhost:3000"
+echo "  1. Access the application at http://localhost:3001"
 echo "  2. Test input gain controls"
 echo "  3. Test zone controls"
 echo ""

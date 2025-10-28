@@ -90,7 +90,7 @@ async function executeSchedule(schedule: any) {
       for (const output of outputs) {
         try {
           const command = schedule.powerOnTVs ? 'on' : 'standby';
-          const cecResponse = await fetch(`http://localhost:3000/api/cec/power`, {
+          const cecResponse = await fetch(`http://localhost:3001/api/cec/power`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -149,7 +149,7 @@ async function executeSchedule(schedule: any) {
         if (inputId && channel) {
           try {
             // Route the matrix
-            const routeResponse = await fetch(`http://localhost:3000/api/matrix/route`, {
+            const routeResponse = await fetch(`http://localhost:3001/api/matrix/route`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

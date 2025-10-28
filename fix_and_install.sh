@@ -79,13 +79,13 @@ echo "   Waiting for server to start..."
 sleep 8
 
 # Test connection
-if curl -s http://localhost:3000 > /dev/null; then
+if curl -s http://localhost:3001 > /dev/null; then
     echo "   ✅ Server started successfully!"
     SUCCESS=true
 else
     echo "   ⏳ Server still starting, checking again..."
     sleep 5
-    if curl -s http://localhost:3000 > /dev/null; then
+    if curl -s http://localhost:3001 > /dev/null; then
         echo "   ✅ Server started successfully!"
         SUCCESS=true
     else
@@ -102,7 +102,7 @@ if [ "$SUCCESS" = true ]; then
     echo "✅ Sports Bar AI Assistant is now running!"
     echo ""
     echo "🌐 Access your application:"
-    echo "   Local:  http://localhost:3000"
+    echo "   Local:  http://localhost:3001"
     echo "   Remote: http://$(hostname -I | awk '{print $1}'):3000"
     echo ""
     echo "📋 Management Commands:"

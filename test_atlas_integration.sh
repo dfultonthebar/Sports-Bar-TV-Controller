@@ -22,7 +22,7 @@ print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
 print_info() { echo -e "${NC}ℹ $1${NC}"; }
 
 # Configuration
-APP_URL="http://localhost:3000"
+APP_URL="http://localhost:3001"
 ATLAS_IP="192.168.1.100"
 ATLAS_TCP_PORT="5321"
 ATLAS_HTTP_PORT="80"

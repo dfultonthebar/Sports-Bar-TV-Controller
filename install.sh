@@ -992,8 +992,8 @@ print_final_instructions() {
     echo ""
     
     echo -e "${CYAN}Access the Application:${NC}"
-    echo -e "  Web Interface: ${YELLOW}http://localhost:3000${NC}"
-    echo -e "  Admin Panel: ${YELLOW}http://localhost:3000/admin${NC}"
+    echo -e "  Web Interface: ${YELLOW}http://localhost:3001${NC}"
+    echo -e "  Admin Panel: ${YELLOW}http://localhost:3001/admin${NC}"
     echo ""
     
     echo -e "${CYAN}Useful Commands:${NC}"

@@ -34,4 +34,4 @@ echo -e "${YELLOW}🔄 Restarting application...${NC}"
 pm2 restart sports-bar-ai || pm2 start ecosystem.config.js
 
 echo -e "${GREEN}✅ Deployment complete!${NC}"
-echo -e "${BLUE}🌐 Application running at: http://localhost:3000${NC}"
+echo -e "${BLUE}🌐 Application running at: http://localhost:3001${NC}"

@@ -132,7 +132,7 @@ sshpass -p "$REMOTE_PASSWORD" ssh -o StrictHostKeyChecking=no -p $REMOTE_PORT $R
     
     # Check if the application responds
     echo "Testing HTTP endpoint..."
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || echo "000")
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ || echo "000")
     if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
         echo "✅ Application is responding (HTTP $HTTP_STATUS)"
     else
@@ -145,7 +145,7 @@ sshpass -p "$REMOTE_PASSWORD" ssh -o StrictHostKeyChecking=no -p $REMOTE_PORT $R
     echo "Attempting to connect to Atlas processor..."
     
     # The API should be at /api/audio-processor
-    ATLAS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/audio-processor/atlas-001 || echo "000")
+    ATLAS_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/audio-processor/atlas-001 || echo "000")
     if [ "$ATLAS_TEST" -eq 200 ]; then
         echo "✅ Atlas processor API is responding (HTTP $ATLAS_TEST)"
     else
