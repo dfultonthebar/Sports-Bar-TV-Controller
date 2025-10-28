@@ -8,6 +8,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
 import ChannelPresetGrid from './ChannelPresetGrid'
+import RemoteControlPopup from './remotes/RemoteControlPopup'
 import { 
   Power, 
   Volume2, 
@@ -31,7 +32,8 @@ import {
   Cable,
   Radio,
   ExternalLink,
-  Star
+  Star,
+  Gamepad2
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -174,6 +176,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [lastOperationTime, setLastOperationTime] = useState<Date | null>(null)
+  const [showRemotePopup, setShowRemotePopup] = useState(false)
 
   useEffect(() => {
     loadAllDeviceConfigurations()
@@ -738,6 +741,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
             <Calendar className="w-3 h-3" />
             <span>Channel Guide</span>
           </button>
+          {selectedDevice && (
+            <button
+              onClick={() => setShowRemotePopup(true)}
+              className="px-3 py-1 rounded-full font-medium flex items-center space-x-1 transition-all bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
+            >
+              <Gamepad2 className="w-3 h-3" />
+              <span>Remote Control</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -999,6 +1011,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
             <p className="text-sm text-slate-300">Processing request...</p>
           </div>
         </div>
+      )}
+
+      {/* Remote Control Popup */}
+      {showRemotePopup && selectedDevice && selectedInput && (
+        <RemoteControlPopup
+          device={selectedDevice}
+          deviceType={getDeviceTypeForInput(selectedInput)!}
+          onClose={() => setShowRemotePopup(false)}
+        />
       )}
     </div>
   )
