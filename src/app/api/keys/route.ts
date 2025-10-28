@@ -1,28 +1,20 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { findMany, create, update, deleteRecord, eq, desc } from '@/lib/db-helpers'
 import { encrypt, decrypt } from '@/lib/encryption'
-import { apiKeys } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 // GET - List all API keys
 export async function GET() {
   try {
-    const apiKeys = await prisma.apiKey.findMany({
-      select: {
-        id: true,
-        name: true,
-        provider: true,
-        isActive: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-        // Don't return the actual key value for security
-      },
+    const apiKeysList = await findMany('apiKeys', {
+      orderBy: desc(schema.apiKeys.createdAt)
     })
 
-    return NextResponse.json({ success: true, data: apiKeys })
+    // Filter out keyValue for security
+    const safeApiKeys = apiKeysList.map(({ keyValue, ...safe }) => safe)
+
+    return NextResponse.json({ success: true, data: safeApiKeys })
   } catch (error) {
     console.error('Error fetching API keys:', error)
     return NextResponse.json(
@@ -48,29 +40,21 @@ export async function POST(request: NextRequest) {
     const encryptedKey = encrypt(keyValue)
 
     // Create the API key record
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        name,
-        provider,
-        keyValue: encryptedKey,
-        description: description || null,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        provider: true,
-        isActive: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const apiKey = await create('apiKeys', {
+      name,
+      provider,
+      keyValue: encryptedKey,
+      description: description || null,
+      isActive: true,
     })
+
+    // Remove keyValue from response
+    const { keyValue: _, ...safeApiKey } = apiKey
 
     return NextResponse.json({
       success: true,
       message: 'API key created successfully',
-      data: apiKey,
+      data: safeApiKey,
     })
   } catch (error) {
     console.error('Error creating API key:', error)
@@ -101,24 +85,15 @@ export async function PUT(request: NextRequest) {
     if (description !== undefined) updateData.description = description
     if (isActive !== undefined) updateData.isActive = isActive
 
-    const apiKey = await prisma.apiKey.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        provider: true,
-        isActive: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    })
+    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, id), updateData)
+
+    // Remove keyValue from response
+    const { keyValue: _, ...safeApiKey } = apiKey
 
     return NextResponse.json({
       success: true,
       message: 'API key updated successfully',
-      data: apiKey,
+      data: safeApiKey,
     })
   } catch (error) {
     console.error('Error updating API key:', error)
@@ -142,9 +117,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.apiKey.delete({
-      where: { id },
-    })
+    await deleteRecord('apiKeys', eq(schema.apiKeys.id, id))
 
     return NextResponse.json({
       success: true,

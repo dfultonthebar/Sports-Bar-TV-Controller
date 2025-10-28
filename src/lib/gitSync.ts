@@ -3,8 +3,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
-import { prisma } from '@/db/prisma-adapter'
-// Converted to Drizzle ORM;
+import { findMany, eq, asc, desc } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 const execAsync = promisify(exec);
 
@@ -79,16 +79,19 @@ function formatTodoForMarkdown(todo: Todo): string {
  * Generate TODO_LIST.md content from database
  */
 async function generateTodoListMarkdown(): Promise<string> {
-  const todos = await prisma.todo.findMany({
-    include: {
-      documents: true
-    },
-    orderBy: [
-      { status: 'asc' },
-      { priority: 'desc' },
-      { createdAt: 'desc' }
-    ]
+  const todosList = await findMany('todos', {
+    orderBy: [asc(schema.todos.status), desc(schema.todos.priority), desc(schema.todos.createdAt)]
   });
+
+  // Fetch documents for each todo
+  const todos = await Promise.all(
+    todosList.map(async (todo) => {
+      const documents = await findMany('todoDocuments', {
+        where: eq(schema.todoDocuments.todoId, todo.id)
+      })
+      return { ...todo, documents }
+    })
+  );
   
   const lines: string[] = [];
   

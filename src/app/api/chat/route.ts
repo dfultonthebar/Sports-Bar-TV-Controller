@@ -5,12 +5,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
-import { chatSessions } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findUnique, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
 import {
   executeTool,
   getAvailableTools,
@@ -218,9 +217,7 @@ async function processStreamingChat(
     console.log('[STREAMING] Getting chat session...')
     let session
     if (sessionId) {
-      session = await prisma.chatSession.findUnique({
-        where: { id: sessionId },
-      })
+      session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
       console.log('[STREAMING] Session found:', !!session)
     } else {
       console.log('[STREAMING] No sessionId provided')
@@ -394,12 +391,9 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
     })
 
     if (sessionId) {
-      await prisma.chatSession.update({
-        where: { id: sessionId },
-        data: {
-          messages: JSON.stringify(messages),
-          updatedAt: new Date(),
-        },
+      await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
+        messages: JSON.stringify(messages),
+        updatedAt: new Date(),
       })
     }
 
@@ -449,9 +443,7 @@ async function handleNonStreamingChat(
 
   let session
   if (sessionId) {
-    session = await prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    })
+    session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
   }
 
   const messages: ChatMessage[] = session ? JSON.parse(session.messages || '[]') : []
@@ -502,12 +494,9 @@ ${context}`,
   messages.push({ role: 'assistant', content: aiResponse })
 
   if (sessionId) {
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        updatedAt: new Date(),
-      },
+    await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
+      messages: JSON.stringify(messages),
+      updatedAt: new Date(),
     })
   }
 

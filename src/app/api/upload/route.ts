@@ -1,11 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { create, findMany, desc } from '@/lib/db-helpers'
 import { saveFile, generateUniqueFilename } from '@/lib/file-utils'
 import { extractTextFromFile } from '@/lib/text-extractor'
-import { documents } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 export async function POST(request: NextRequest) {
   console.log('📁 Upload request received')
@@ -56,15 +54,13 @@ export async function POST(request: NextRequest) {
 
         // Save to database
         console.log(`💿 Saving ${file.name} to database`)
-        const document = await prisma.document.create({
-          data: {
-            filename: uniqueFilename,
-            originalName: file.name,
-            filePath: filePath,
-            fileSize: file.size,
-            mimeType: file.type,
-            content: textContent,
-          },
+        const document = await create('documents', {
+          filename: uniqueFilename,
+          originalName: file.name,
+          filePath: filePath,
+          fileSize: file.size,
+          mimeType: file.type,
+          content: textContent,
         })
         console.log(`✅ Document saved with ID: ${document.id}`)
 
@@ -98,17 +94,19 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const documents = await prisma.document.findMany({
-      select: {
-        id: true,
-        filename: true,
-        originalName: true,
-        fileSize: true,
-        mimeType: true,
-        uploadedAt: true,
-      },
-      orderBy: { uploadedAt: 'desc' },
+    const documentsList = await findMany('documents', {
+      orderBy: desc(schema.documents.uploadedAt)
     })
+
+    // Select only needed fields
+    const documents = documentsList.map(doc => ({
+      id: doc.id,
+      filename: doc.filename,
+      originalName: doc.originalName,
+      fileSize: doc.fileSize,
+      mimeType: doc.mimeType,
+      uploadedAt: doc.uploadedAt,
+    }))
 
     return NextResponse.json({ documents })
   } catch (error) {

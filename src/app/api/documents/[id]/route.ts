@@ -1,10 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { findUnique, deleteRecord, eq } from '@/lib/db-helpers'
 import { deleteFile } from '@/lib/file-utils'
-import { documents } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 export async function DELETE(
   request: NextRequest,
@@ -14,9 +12,7 @@ export async function DELETE(
     const { id } = params
 
     // Find the document first
-    const document = await prisma.document.findUnique({
-      where: { id },
-    })
+    const document = await findUnique('documents', eq(schema.documents.id, id))
 
     if (!document) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 })
@@ -31,9 +27,7 @@ export async function DELETE(
     }
 
     // Delete from database
-    await prisma.document.delete({
-      where: { id },
-    })
+    await deleteRecord('documents', eq(schema.documents.id, id))
 
     return NextResponse.json({ message: 'Document deleted successfully' })
   } catch (error) {
@@ -52,9 +46,7 @@ export async function GET(
   try {
     const { id } = params
 
-    const document = await prisma.document.findUnique({
-      where: { id },
-    })
+    const document = await findUnique('documents', eq(schema.documents.id, id))
 
     if (!document) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 })

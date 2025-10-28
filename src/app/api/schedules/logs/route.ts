@@ -1,12 +1,8 @@
 export const dynamic = 'force-dynamic';
 
-
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db'
-import { scheduleLogs } from '@/db/schema'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
-import { prisma } from '@/db/prisma-adapter'
-
+import { findMany, eq, desc } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 // GET - Get schedule execution logs
 export async function GET(request: NextRequest) {
@@ -15,12 +11,10 @@ export async function GET(request: NextRequest) {
     const scheduleId = searchParams.get('scheduleId');
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    const where = scheduleId ? { scheduleId } : {};
-
-    const logs = await prisma.scheduleLog.findMany({
-      where,
-      orderBy: { executedAt: 'desc' },
-      take: limit
+    const logs = await findMany('scheduleLogs', {
+      where: scheduleId ? eq(schema.scheduleLogs.scheduleId, scheduleId) : undefined,
+      orderBy: desc(schema.scheduleLogs.executedAt),
+      limit
     });
 
     return NextResponse.json({ logs });

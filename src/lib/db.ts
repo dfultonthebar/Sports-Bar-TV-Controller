@@ -1,8 +1,7 @@
 
-// This file now exports the Drizzle database instance with Prisma compatibility layer
-// Maintains backward compatibility with existing imports
-import { prisma } from '@/db/prisma-adapter'
+// This file exports the Drizzle database instance
+// Prisma compatibility layer has been removed - use db-helpers instead
 import db from '@/db'
 
-export { prisma, db }
+export { db }
 export default db

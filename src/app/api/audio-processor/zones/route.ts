@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { audioZones } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 export async function GET(request: NextRequest) {
   try {

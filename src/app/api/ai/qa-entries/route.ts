@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/db/prisma-adapter'
 import {
   getAllQAEntries,
   searchQAEntries,
@@ -7,9 +6,8 @@ import {
   deleteQAEntry,
   getQAStatistics,
 } from '@/lib/services/qa-generator';
-import { db } from '@/db'
-import { qaEntries } from '@/db/schema'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
+import { create } from '@/lib/db-helpers'
+import { schema } from '@/db'
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -144,15 +142,13 @@ export async function POST(request: NextRequest) {
 
     try {
       console.log('[AI QA] Attempting to create Q&A entry in database...');
-      const entry = await prisma.qAEntry.create({
-        data: {
-          question,
-          answer,
-          category: category || 'general',
-          tags: tags ? JSON.stringify(tags) : null,
-          sourceType: 'manual',
-          confidence: 1.0,
-        },
+      const entry = await create('qaEntries', {
+        question,
+        answer,
+        category: category || 'general',
+        tags: tags ? JSON.stringify(tags) : null,
+        sourceType: 'manual',
+        confidence: 1.0,
       });
 
       console.log('[AI QA] ✓ Q&A entry created successfully');

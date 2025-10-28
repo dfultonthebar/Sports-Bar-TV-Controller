@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
+import { schema } from '@/db'
 // Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
 import { todos } from '@/db/schema'
@@ -20,21 +21,32 @@ export async function GET(request: NextRequest) {
     if (priority) where.priority = priority
     if (category) where.category = category
 
-    const todos = await prisma.todo.findMany({
-      where,
-      include: {
-        documents: true
-      },
-      orderBy: [
-        { status: 'asc' },
-        { priority: 'desc' },
-        { createdAt: 'desc' }
-      ]
+    // Build where conditions
+    const conditions = []
+    if (status) conditions.push(eq(schema.todos.status, status))
+    if (priority) conditions.push(eq(schema.todos.priority, priority))
+    if (category) conditions.push(eq(schema.todos.category, category))
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    const todosList = await findMany('todos', {
+      where: whereClause,
+      orderBy: [asc(schema.todos.status), desc(schema.todos.priority), desc(schema.todos.createdAt)]
     })
+
+    // Fetch documents for each todo
+    const todosWithDocuments = await Promise.all(
+      todosList.map(async (todo) => {
+        const documents = await findMany('todoDocuments', {
+          where: eq(schema.todoDocuments.todoId, todo.id)
+        })
+        return { ...todo, documents }
+      })
+    )
 
     return NextResponse.json({
       success: true,
-      data: todos
+      data: todosWithDocuments
     })
   } catch (error) {
     console.error('Error fetching todos:', error)
@@ -58,19 +70,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const todo = await prisma.todo.create({
-      data: {
-        title,
-        description,
-        priority: priority || 'MEDIUM',
-        status: status || 'PLANNED',
-        category,
-        tags: tags ? JSON.stringify(tags) : null
-      },
-      include: {
-        documents: true
-      }
+    const todo = await create('todos', {
+      title,
+      description,
+      priority: priority || 'MEDIUM',
+      status: status || 'PLANNED',
+      category,
+      tags: tags ? JSON.stringify(tags) : null
     })
+
+    // Fetch documents for the new todo (will be empty initially)
+    const documents = await findMany('todoDocuments', {
+      where: eq(schema.todoDocuments.todoId, todo.id)
+    })
+
+    const todoWithDocuments = { ...todo, documents }
 
     // Sync to GitHub in background (don't wait for it)
     syncTodosToGitHub(`chore: Add TODO - ${title}`).catch(err => {
@@ -79,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: todo
+      data: todoWithDocuments
     })
   } catch (error) {
     console.error('Error creating todo:', error)

@@ -1,11 +1,9 @@
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { findMany, findFirst, create, updateMany, eq, asc } from '@/lib/db-helpers'
 import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
-import { audioInputMeters, audioProcessors } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
@@ -22,9 +20,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const inputMeters = await prisma.audioInputMeter.findMany({
-      where: { processorId: processorId },
-      orderBy: { inputNumber: 'asc' }
+    const inputMeters = await findMany('audioInputMeters', {
+      where: eq(schema.audioInputMeters.processorId, processorId),
+      orderBy: asc(schema.audioInputMeters.inputNumber)
     })
 
     return NextResponse.json({ inputMeters })
@@ -50,7 +48,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get processor info
-    const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()
+    const processor = await findFirst('audioProcessors', {
+      where: eq(schema.audioProcessors.id, processorId)
+    })
 
     if (!processor) {
       return NextResponse.json(
@@ -59,16 +59,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const inputMeter = await prisma.audioInputMeter.create({
-      data: {
-        processorId,
-        inputNumber,
-        parameterName,
-        inputName: inputName || `Input ${inputNumber + 1}`,
-        warningThreshold: warningThreshold || -12.0,
-        dangerThreshold: dangerThreshold || -3.0,
-        isActive: true
-      }
+    const inputMeter = await create('audioInputMeters', {
+      processorId,
+      inputNumber,
+      parameterName,
+      inputName: inputName || `Input ${inputNumber + 1}`,
+      warningThreshold: warningThreshold || -12.0,
+      dangerThreshold: dangerThreshold || -3.0,
+      isActive: true
     })
 
     // Start monitoring this input
@@ -138,20 +136,14 @@ async function handleMeterUpdate(processorId: string, params: any) {
     }
     
     // Update the database with the new level
-    await prisma.audioInputMeter.updateMany({
-      where: {
-        processorId: processorId,
-        parameterName: paramName
-      },
-      data: {
-        currentLevel: levelValue,
-        peakLevel: {
-          // Only update peak if this level is higher
-          set: levelValue
-        },
-        levelPercent: Math.round(((levelValue + 80) / 80) * 100), // Convert dB to percentage
-        lastUpdate: new Date()
-      }
+    await updateMany('audioInputMeters', {
+      processorId: processorId,
+      parameterName: paramName
+    }, {
+      currentLevel: levelValue,
+      peakLevel: levelValue, // Only update peak if this level is higher
+      levelPercent: Math.round(((levelValue + 80) / 80) * 100), // Convert dB to percentage
+      lastUpdate: new Date()
     })
     
     console.log(`Updated ${paramName}: ${levelValue}dB`)

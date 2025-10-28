@@ -3,9 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { operationLogger } from '@/lib/operation-logger'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
-import { apiKeys, chatSessions, documents } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { count, executeRaw, ne } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,14 +76,8 @@ export async function GET(request: NextRequest) {
 
 async function getDocumentStatus() {
   try {
-    const totalDocs = (await db.select().from(documents).all()).length
-    const docsWithContent = await prisma.document.count({
-      where: {
-        content: {
-          not: null
-        }
-      }
-    })
+    const totalDocs = (await db.select().from(schema.documents).all()).length
+    const docsWithContent = await count('documents', ne(schema.documents.content, null))
     
     return {
       totalDocuments: totalDocs,
@@ -106,12 +99,12 @@ async function getDocumentStatus() {
 async function getDatabaseHealth() {
   try {
     // Test database connectivity
-    await prisma.$queryRaw`SELECT 1`
-    
+    await executeRaw('SELECT 1')
+
     // Get table counts
-    const documentCount = (await db.select().from(documents).all()).length
-    const sessionCount = (await db.select().from(chatSessions).all()).length
-    const keyCount = (await db.select().from(apiKeys).all()).length
+    const documentCount = (await db.select().from(schema.documents).all()).length
+    const sessionCount = (await db.select().from(schema.chatSessions).all()).length
+    const keyCount = (await db.select().from(schema.apiKeys).all()).length
     
     return {
       status: 'healthy',

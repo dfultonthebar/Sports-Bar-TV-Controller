@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { aiGainConfigurations, audioInputMeters, audioProcessors } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 interface RouteContext {
   params: Promise<{

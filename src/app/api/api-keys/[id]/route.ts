@@ -1,10 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { update, deleteRecord, eq } from '@/lib/db-helpers'
 import { encrypt } from '@/lib/encryption'
-import { apiKeys } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 export async function PUT(
   request: NextRequest,
@@ -25,10 +23,7 @@ export async function PUT(
       updateData.keyValue = encrypt(keyValue)
     }
 
-    const apiKey = await prisma.apiKey.update({
-      where: { id: params.id },
-      data: updateData,
-    })
+    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, params.id), updateData)
 
     // Return without the actual key value
     const { keyValue: _, ...safeApiKey } = apiKey
@@ -36,7 +31,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating API key:', error)
     return NextResponse.json(
-      { error: 'Failed to update API key' }, 
+      { error: 'Failed to update API key' },
       { status: 500 }
     )
   }
@@ -47,15 +42,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.apiKey.delete({
-      where: { id: params.id },
-    })
+    await deleteRecord('apiKeys', eq(schema.apiKeys.id, params.id))
 
     return NextResponse.json({ message: 'API key deleted successfully' })
   } catch (error) {
     console.error('Error deleting API key:', error)
     return NextResponse.json(
-      { error: 'Failed to delete API key' }, 
+      { error: 'Failed to delete API key' },
       { status: 500 }
     )
   }

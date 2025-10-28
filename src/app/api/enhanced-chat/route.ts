@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { EnhancedAIClient } from '@/lib/enhanced-ai-client'
-import { chatSessions, documents } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findUnique, findMany, create, update, like, or as orOp } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 export async function POST(request: NextRequest) {
   console.log('[ENHANCED-CHAT] POST request received')
@@ -38,9 +37,7 @@ export async function POST(request: NextRequest) {
     console.log('[ENHANCED-CHAT] Getting chat session...')
     let session
     if (sessionId) {
-      session = await prisma.chatSession.findUnique({
-        where: { id: sessionId },
-      })
+      session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
       console.log('[ENHANCED-CHAT] Session found:', !!session)
     }
 
@@ -64,16 +61,13 @@ export async function POST(request: NextRequest) {
 
     // Save or update session
     if (session) {
-      await prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { messages: JSON.stringify(messages) },
+      await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
+        messages: JSON.stringify(messages)
       })
     } else {
-      session = await prisma.chatSession.create({
-        data: {
-          title: message.substring(0, 50) + '...',
-          messages: JSON.stringify(messages),
-        },
+      session = await create('chatSessions', {
+        title: message.substring(0, 50) + '...',
+        messages: JSON.stringify(messages),
       })
     }
 
@@ -104,21 +98,23 @@ async function searchRelevantDocuments(query: string) {
 
     if (keywords.length === 0) return []
 
-    // Create search conditions for each keyword
-    const searchConditions = keywords.flatMap(keyword => [
-      { content: { contains: keyword } },
-      { originalName: { contains: keyword } }
-    ])
-
-    const documents = await prisma.document.findMany({
-      where: {
-        OR: searchConditions
-      },
-      take: 5, // Limit to top 5 relevant documents
+    // Search for documents containing any of the keywords
+    // Note: Since we can't do complex OR with contains, we'll fetch all docs and filter
+    const documents = await findMany('documents', {
+      limit: 100 // Get a reasonable set to filter
     })
 
+    // Filter documents that match keywords
+    const filteredDocs = documents.filter(doc => {
+      const contentLower = (doc.content || '').toLowerCase()
+      const nameLower = doc.originalName.toLowerCase()
+      return keywords.some(keyword =>
+        contentLower.includes(keyword) || nameLower.includes(keyword)
+      )
+    }).slice(0, 5) // Limit to top 5
+
     // Score documents by number of matching keywords
-    const scoredDocuments = documents.map(doc => {
+    const scoredDocuments = filteredDocs.map(doc => {
       const contentLower = (doc.content || '').toLowerCase()
       const nameLower = doc.originalName.toLowerCase()
       

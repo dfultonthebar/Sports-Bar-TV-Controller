@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
+import { schema } from '@/db'
 // Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
 import { todos } from '@/db/schema'

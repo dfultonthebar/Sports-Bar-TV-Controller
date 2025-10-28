@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
-import { homeTeams, matrixOutputs, scheduleLogs, schedules } from '@/db/schema'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, inArray } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 
 // POST - Execute a schedule immediately
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const schedule = await db.select().from(schedules).where(eq(schedules.id, scheduleId)).limit(1).get();
+    const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, scheduleId)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
@@ -29,16 +29,16 @@ export async function POST(request: NextRequest) {
 
     // Execute the schedule
     const result = await executeSchedule(schedule);
-    
+
     // Update schedule execution stats
-    await db.update(schedules).set({
+    await db.update(schema.schedules).set({
         lastExecuted: new Date(),
         executionCount: schedule.executionCount + 1,
         lastResult: JSON.stringify(result)
-      }).where(eq(schedules.id, scheduleId)).returning().get();
+      }).where(eq(schema.schedules.id, scheduleId)).returning().get();
 
     // Log the execution
-    await db.insert(scheduleLogs).values({
+    await db.insert(schema.scheduleLogs).values({
         scheduleId: schedule.id,
         scheduleName: schedule.name,
         success: result.success,
@@ -81,8 +81,8 @@ async function executeSchedule(schedule: any) {
     }
 
     // Get output details
-    const outputs = await prisma.matrixOutput.findMany({
-      where: { id: { in: selectedOutputs } }
+    const outputs = await findMany('matrixOutputs', {
+      where: inArray(schema.matrixOutputs.id, selectedOutputs)
     });
 
     // Step 1: Power on/off TVs if requested
@@ -198,8 +198,8 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
 
   try {
     // Get home teams
-    const homeTeams = await prisma.homeTeam.findMany({
-      where: { id: { in: homeTeamIds }, isActive: true }
+    const homeTeamsList = await findMany('homeTeams', {
+      where: inArray(schema.homeTeams.id, homeTeamIds)
     });
 
     // Get today's date range
@@ -209,7 +209,7 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
 
     // Search for games in channel guide data
     // This would integrate with your existing TV guide APIs
-    const games = await searchForGames(homeTeams, now, endOfDay);
+    const games = await searchForGames(homeTeamsList, now, endOfDay);
     
     result.games = games;
     result.gamesFound = games.length;

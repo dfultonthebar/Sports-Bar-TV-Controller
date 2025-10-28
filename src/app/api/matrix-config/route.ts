@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/db/prisma-adapter'
-// Converted to Drizzle ORM;
+import { findFirst, eq } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      select: { name: true, id: true },
+    const config = await findFirst('matrixConfigurations', {
+      where: eq(schema.matrixConfigurations.isActive, true)
     });
 
     if (!config) {
@@ -16,7 +15,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       name: config.name,
       id: config.id,
       configFileName: `${config.name.toLowerCase().replace(/\s+/g, '-')}.local.json`

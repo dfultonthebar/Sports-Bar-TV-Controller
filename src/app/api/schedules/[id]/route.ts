@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
-import { schedules } from '@/db/schema'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
-import { prisma } from '@/db/prisma-adapter'
+import { update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 
 // GET - Get single schedule
@@ -12,7 +12,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const schedule = await db.select().from(schedules).where(eq(schedules.id, params.id)).limit(1).get();
+    const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, params.id)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
@@ -59,10 +59,7 @@ export async function PUT(
     if (body.executionOrder !== undefined) updateData.executionOrder = body.executionOrder;
     if (body.delayBetweenCommands !== undefined) updateData.delayBetweenCommands = body.delayBetweenCommands;
 
-    const schedule = await prisma.schedule.update({
-      where: { id: params.id },
-      data: updateData
-    });
+    const schedule = await update('schedules', eq(schema.schedules.id, params.id), updateData);
 
     return NextResponse.json({ schedule });
   } catch (error: any) {
@@ -80,7 +77,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await db.delete(schedules).where(eq(schedules.id, params.id)).returning().get();
+    await db.delete(schema.schedules).where(eq(schema.schedules.id, params.id)).returning().get();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

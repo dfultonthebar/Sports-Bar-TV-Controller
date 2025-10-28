@@ -1,28 +1,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { findMany, create, desc, eq } from '@/lib/db-helpers'
 import { encrypt, decrypt } from '@/lib/encryption'
-import { apiKeys } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { schema } from '@/db'
 
 export async function GET() {
   try {
-    const apiKeys = await prisma.apiKey.findMany({
-      select: {
-        id: true,
-        name: true,
-        provider: true,
-        isActive: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-        // Don't return the actual key value for security
-      },
-      orderBy: { createdAt: 'desc' },
+    const apiKeysList = await findMany('apiKeys', {
+      orderBy: desc(schema.apiKeys.createdAt)
     })
 
-    return NextResponse.json({ apiKeys })
+    // Filter out keyValue for security
+    const safeApiKeys = apiKeysList.map(({ keyValue, ...safe }) => safe)
+
+    return NextResponse.json({ apiKeys: safeApiKeys })
   } catch (error) {
     console.error('Error fetching API keys:', error)
     return NextResponse.json(
@@ -46,13 +37,11 @@ export async function POST(request: NextRequest) {
     // Encrypt the API key before storing
     const encryptedKey = encrypt(keyValue)
 
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        name,
-        provider,
-        keyValue: encryptedKey,
-        description,
-      },
+    const apiKey = await create('apiKeys', {
+      name,
+      provider,
+      keyValue: encryptedKey,
+      description,
     })
 
     // Return without the actual key value

@@ -1,9 +1,9 @@
 
 import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import * as net from 'net'
-import { aiGainAdjustmentLogs, aiGainConfigurations, audioProcessors } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, findFirst, update, create } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 interface AIGainConfig {
   id: string
@@ -89,7 +89,7 @@ export class AIGainService {
    */
   private async processAIGainAdjustments(processorId: string): Promise<void> {
     // Get all AI-enabled configurations for this processor
-    const aiConfigs = await prisma.aIGainConfiguration.findMany({
+    const aiConfigs = await findMany('aiGainConfigurations', {
       where: {
         processorId: processorId,
         aiEnabled: true,
@@ -209,15 +209,19 @@ export class AIGainService {
       await this.setInputGain(processor, config.inputNumber, newGain)
 
       // Update configuration
-      await prisma.aIGainConfiguration.update({
-        where: { id: config.id },
-        data: {
+      const currentConfig = await findFirst('aiGainConfigurations', {
+        where: eq(schema.aiGainConfigurations.id, config.id)
+      })
+
+      await update('aiGainConfigurations',
+        eq(schema.aiGainConfigurations.id, config.id),
+        {
           currentGain: newGain,
           adjustmentMode: adjustmentMode,
           lastAdjustment: new Date(),
-          adjustmentCount: { increment: 1 }
+          adjustmentCount: (currentConfig?.adjustmentCount || 0) + 1
         }
-      })
+      )
 
       // Log the adjustment
       await db.insert(aiGainAdjustmentLogs).values({
@@ -323,7 +327,7 @@ export class AIGainService {
     inputNumber: number, 
     limit: number = 100
   ): Promise<any[]> {
-    return await prisma.aIGainAdjustmentLog.findMany({
+    return await findMany('aiGainAdjustmentLogs', {
       where: {
         processorId: processorId,
         inputNumber: inputNumber
@@ -339,7 +343,7 @@ export class AIGainService {
    * Get current status of all AI-enabled inputs
    */
   async getAIGainStatus(processorId: string): Promise<any[]> {
-    const configs = await prisma.aIGainConfiguration.findMany({
+    const configs = await findMany('aiGainConfigurations', {
       where: {
         processorId: processorId,
         aiEnabled: true

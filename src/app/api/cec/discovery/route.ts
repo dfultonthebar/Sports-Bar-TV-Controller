@@ -7,10 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discovery-service'
-import { db } from '@/db'
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
-import { matrixOutputs } from '@/db/schema'
-import { prisma } from '@/db/prisma-adapter'
+import { findMany, eq, asc } from '@/lib/db-helpers'
+import { schema } from '@/db'
 
 /**
  * POST /api/cec/discovery
@@ -69,21 +67,9 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const outputs = await prisma.matrixOutput.findMany({
-      where: {
-        isActive: true
-      },
-      select: {
-        channelNumber: true,
-        label: true,
-        tvBrand: true,
-        tvModel: true,
-        cecAddress: true,
-        lastDiscovery: true
-      },
-      orderBy: {
-        channelNumber: 'asc'
-      }
+    const outputs = await findMany('matrixOutputs', {
+      where: eq(schema.matrixOutputs.isActive, true),
+      orderBy: asc(schema.matrixOutputs.channelNumber)
     })
     
     return NextResponse.json({
