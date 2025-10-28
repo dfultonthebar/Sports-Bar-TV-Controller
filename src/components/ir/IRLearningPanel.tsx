@@ -13,7 +13,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Play
+  Play,
+  Download
 } from 'lucide-react'
 
 interface IRDevice {
@@ -43,6 +44,14 @@ interface IRCommand {
   createdAt: string
 }
 
+interface CommandTemplate {
+  id: string
+  name: string
+  brand: string
+  deviceType: string
+  commands: Array<{ name: string; category: string }>
+}
+
 interface IRLearningPanelProps {
   device: IRDevice
   onClose: () => void
@@ -57,12 +66,20 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
   const [learningCommandId, setLearningCommandId] = useState<string | null>(null)
   const [learningStatus, setLearningStatus] = useState<string>('')
   const [learningError, setLearningError] = useState<string>('')
+  
+  // Template loading state
+  const [templates, setTemplates] = useState<CommandTemplate[]>([])
+  const [showTemplateLoader, setShowTemplateLoader] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<CommandTemplate | null>(null)
+  const [selectedTemplateCommands, setSelectedTemplateCommands] = useState<Set<string>>(new Set())
+  const [loadingTemplate, setLoadingTemplate] = useState(false)
 
   const categories = ['Power', 'Volume', 'Channel', 'Menu', 'Navigation', 'Other']
 
   useEffect(() => {
     loadCommands()
     loadGlobalCacheDevices()
+    loadTemplates()
   }, [])
 
   const loadCommands = async () => {
@@ -91,6 +108,85 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
       }
     } catch (error) {
       console.error('Error loading Global Cache devices:', error)
+    }
+  }
+
+  const loadTemplates = async () => {
+    try {
+      const response = await fetch('/api/ir/templates')
+      const data = await response.json()
+      
+      if (data.success) {
+        setTemplates(data.templates || [])
+      }
+    } catch (error) {
+      console.error('Error loading command templates:', error)
+    }
+  }
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId)
+    if (template) {
+      setSelectedTemplate(template)
+      // Select all commands by default
+      setSelectedTemplateCommands(new Set(template.commands.map(cmd => cmd.name)))
+    }
+  }
+
+  const toggleTemplateCommand = (commandName: string) => {
+    const newSelected = new Set(selectedTemplateCommands)
+    if (newSelected.has(commandName)) {
+      newSelected.delete(commandName)
+    } else {
+      newSelected.add(commandName)
+    }
+    setSelectedTemplateCommands(newSelected)
+  }
+
+  const selectAllTemplateCommands = () => {
+    if (selectedTemplate) {
+      setSelectedTemplateCommands(new Set(selectedTemplate.commands.map(cmd => cmd.name)))
+    }
+  }
+
+  const deselectAllTemplateCommands = () => {
+    setSelectedTemplateCommands(new Set())
+  }
+
+  const loadCommandsFromTemplate = async () => {
+    if (!selectedTemplate) return
+    if (selectedTemplateCommands.size === 0) {
+      alert('Please select at least one command to load')
+      return
+    }
+
+    setLoadingTemplate(true)
+    try {
+      const response = await fetch(`/api/ir/devices/${device.id}/load-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: selectedTemplate.id,
+          selectedCommands: Array.from(selectedTemplateCommands)
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert(`Successfully loaded ${data.added} commands. ${data.skipped} commands were skipped (already exist).`)
+        await loadCommands()
+        setShowTemplateLoader(false)
+        setSelectedTemplate(null)
+        setSelectedTemplateCommands(new Set())
+      } else {
+        alert('Error loading commands: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Error loading commands from template:', error)
+      alert('Error loading commands from template')
+    } finally {
+      setLoadingTemplate(false)
     }
   }
 
@@ -328,12 +424,117 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
         </Card>
       )}
 
+      {/* Load Commands from Template */}
+      <Card className="border-slate-700 bg-slate-800/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-slate-100">Load Commands from Template</CardTitle>
+              <CardDescription>
+                Quickly add common commands for your device type
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowTemplateLoader(!showTemplateLoader)}
+            >
+              {showTemplateLoader ? 'Hide Templates' : 'Show Templates'}
+            </Button>
+          </div>
+        </CardHeader>
+        {showTemplateLoader && (
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="text-slate-300">Select Device Model Template</Label>
+              <select
+                value={selectedTemplate?.id || ''}
+                onChange={(e) => handleTemplateSelect(e.target.value)}
+                className="w-full h-10 px-3 mt-2 rounded-md bg-slate-700 border border-slate-600 text-slate-100"
+              >
+                <option value="">Choose a template...</option>
+                {templates.map(template => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} ({template.commands.length} commands)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedTemplate && (
+              <>
+                <div className="flex items-center justify-between">
+                  <Label className="text-slate-300">
+                    Select Commands to Load ({selectedTemplateCommands.size} selected)
+                  </Label>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={selectAllTemplateCommands}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={deselectAllTemplateCommands}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto border border-slate-600 rounded-md p-3 bg-slate-700/30">
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedTemplate.commands.map((cmd) => (
+                      <label
+                        key={cmd.name}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-slate-600/30 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTemplateCommands.has(cmd.name)}
+                          onChange={() => toggleTemplateCommand(cmd.name)}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm text-slate-200">{cmd.name}</span>
+                        <Badge variant="outline" className="ml-auto text-xs">
+                          {cmd.category}
+                        </Badge>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={loadCommandsFromTemplate}
+                  disabled={loadingTemplate || selectedTemplateCommands.size === 0}
+                  className="w-full"
+                >
+                  {loadingTemplate ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Commands...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load {selectedTemplateCommands.size} Commands
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
       {/* Add New Command */}
       <Card className="border-slate-700 bg-slate-800/50">
         <CardHeader>
-          <CardTitle className="text-slate-100">Add New Command</CardTitle>
+          <CardTitle className="text-slate-100">Add Individual Command</CardTitle>
           <CardDescription>
-            Give your command a name, then click "Learn" to capture the IR code from your remote
+            Or add a single custom command, then click "Learn" to capture the IR code from your remote
           </CardDescription>
         </CardHeader>
         <CardContent>
