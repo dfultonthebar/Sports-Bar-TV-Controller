@@ -577,7 +577,7 @@ export default function BartenderRemotePage() {
       </div>
 
       {/* Main Content Area - Changes based on active tab */}
-      <div className="flex-1 px-4 pb-20"> {/* pb-20 to make room for bottom tabs */}
+      <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
         {activeTab === 'video' && (
           <div className="max-w-7xl mx-auto">
             <TVLayoutView />
@@ -601,7 +601,7 @@ export default function BartenderRemotePage() {
       </div>
 
       {/* Bottom Tab Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700/10">
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700/10 z-50">
         <div className="flex justify-around items-center py-2">
           <button
             onClick={() => setActiveTab('video')}

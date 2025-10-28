@@ -33,7 +33,9 @@ import {
   Radio,
   ExternalLink,
   Star,
-  Gamepad2
+  Gamepad2,
+  Home,
+  ArrowLeft
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -712,7 +714,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
+    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4 pb-20">
+      {/* Navigation Help Banner */}
+      <div className="mb-4 bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center">
+        <p className="text-sm text-blue-300 flex items-center justify-center space-x-2">
+          <ArrowLeft className="w-4 h-4" />
+          <span>Use the bottom navigation tabs to switch between Video, Audio, Music, Guide, and Power controls</span>
+        </p>
+      </div>
+
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
