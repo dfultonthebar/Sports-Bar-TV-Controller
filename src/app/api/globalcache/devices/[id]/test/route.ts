@@ -30,7 +30,7 @@ export async function POST(
     // Update device status
     await db.update(globalCacheDevices).set({
         status: result.online ? 'online' : 'offline',
-        lastSeen: result.online ? new Date() : device.lastSeen
+        lastSeen: result.online ? new Date().toISOString() : device.lastSeen
       }).where(eq(globalCacheDevices.id, params.id)).returning().get()
 
     console.log(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
