@@ -186,7 +186,7 @@ export default function ChannelPresetPopup({
               ) : (
                 <div className="text-center py-8 text-gray-400">
                   <p>No channel presets configured</p>
-                  <p className="text-sm mt-2">Add presets in Sports Guide Settings</p>
+                  <p className="text-sm mt-2">Add presets in Sports Guide Config → Presets tab</p>
                 </div>
               )}
 

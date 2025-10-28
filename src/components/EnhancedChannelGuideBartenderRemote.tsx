@@ -167,6 +167,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filteredPrograms, setFilteredPrograms] = useState<GameListing[]>([])
   
+  // Channel Presets State
+  const [channelPresets, setChannelPresets] = useState<ChannelPreset[]>([])
+  
   // UI State
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -174,6 +177,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   useEffect(() => {
     loadAllDeviceConfigurations()
+    loadChannelPresets()
   }, [])
 
   useEffect(() => {
@@ -186,7 +190,20 @@ export default function EnhancedChannelGuideBartenderRemote() {
     if (guideData?.programs) {
       filterPrograms()
     }
-  }, [searchQuery, guideData])
+  }, [searchQuery, guideData, channelPresets])
+
+  const loadChannelPresets = async () => {
+    try {
+      const response = await fetch('/api/channel-presets')
+      const data = await response.json()
+      
+      if (data.success) {
+        setChannelPresets(data.presets || [])
+      }
+    } catch (error) {
+      console.error('Error loading channel presets:', error)
+    }
+  }
 
   const loadAllDeviceConfigurations = async () => {
     try {
@@ -260,11 +277,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
       deviceType,
       inputLabel: input?.label
     })
-
-    // Clear existing guide data when switching inputs to show fresh filtering
-    setGuideData(null)
-    setFilteredPrograms([])
-    setSearchQuery('')
 
     // If channel guide is open, reload data for new input
     if (showChannelGuide) {
@@ -437,6 +449,24 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
     let filtered = guideData.programs
 
+    // Filter out events past midnight of their scheduled day
+    const now = new Date()
+    filtered = filtered.filter(prog => {
+      try {
+        const startTime = new Date(prog.startTime)
+        // Get midnight of the event's day (next day at 00:00)
+        const eventDay = new Date(startTime)
+        eventDay.setHours(0, 0, 0, 0)
+        const nextDayMidnight = new Date(eventDay.getTime() + 24 * 60 * 60 * 1000)
+        
+        // Keep event if we haven't passed midnight of its scheduled day
+        return now < nextDayMidnight
+      } catch (error) {
+        console.error('Error parsing event date:', error)
+        return true // Keep event if we can't parse the date
+      }
+    })
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(prog => 
@@ -450,6 +480,36 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
     // Filter for sports content only
     filtered = filtered.filter(prog => prog.isSports)
+
+    // Map channel numbers from presets if available
+    const deviceType = getDeviceTypeForInput(selectedInput!)
+    const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType === 'cable' ? 'cable' : null
+    
+    if (presetDeviceType) {
+      filtered = filtered.map(prog => {
+        // Find matching preset by channel name or number
+        const matchingPreset = channelPresets.find(preset => 
+          preset.deviceType === presetDeviceType && 
+          (preset.name.toLowerCase() === prog.channel.name.toLowerCase() ||
+           preset.channelNumber === prog.channel.number)
+        )
+        
+        if (matchingPreset) {
+          // Use preset's channel number instead of guide's channel number
+          return {
+            ...prog,
+            channel: {
+              ...prog.channel,
+              number: matchingPreset.channelNumber,
+              channelNumber: matchingPreset.channelNumber,
+              _presetMapped: true  // Flag to indicate this was mapped from a preset
+            }
+          }
+        }
+        
+        return prog
+      })
+    }
 
     setFilteredPrograms(filtered)
   }
@@ -764,29 +824,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     <Calendar className="mr-2 w-5 h-5" />
                     {inputs.find(i => i.channelNumber === selectedInput)?.label} Guide
                   </h2>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <Badge 
-                      variant="outline" 
-                      className={`
-                        ${getDeviceTypeForInput(selectedInput) === 'satellite' 
-                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
-                          : getDeviceTypeForInput(selectedInput) === 'cable'
-                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                          : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                        }
-                      `}
-                    >
-                      {getDeviceTypeForInput(selectedInput) === 'satellite' && <Satellite className="w-3 h-3 mr-1" />}
-                      {getDeviceTypeForInput(selectedInput) === 'cable' && <Cable className="w-3 h-3 mr-1" />}
-                      {getDeviceTypeForInput(selectedInput) === 'streaming' && <Smartphone className="w-3 h-3 mr-1" />}
-                      {getDeviceTypeForInput(selectedInput)?.toUpperCase()} Channels Only
-                    </Badge>
-                    {guideData && (
-                      <Badge variant="outline" className="bg-slate-500/20 text-slate-400 border-slate-500/30">
-                        {guideData.channels.length} Channels • {guideData.programs.length} Programs
-                      </Badge>
-                    )}
-                  </div>
+                  <p className="text-sm text-gray-300">
+                    {getDeviceTypeForInput(selectedInput)?.toUpperCase()} • Sports Programming
+                  </p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Button
@@ -867,12 +907,24 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               }
                             </h4>
                             
-                            <div className="flex items-center space-x-4 text-sm text-gray-300">
+                            <div className="flex items-center space-x-4 text-sm text-gray-300 flex-wrap">
+                              {/* Date Display */}
+                              <span className="flex items-center space-x-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>{new Date(game.startTime).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  year: new Date(game.startTime).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                                })}</span>
+                              </span>
+                              
+                              {/* Time Display */}
                               <span className="flex items-center space-x-1">
                                 <Clock className="w-3 h-3" />
                                 <span>{game.gameTime}</span>
                               </span>
                               
+                              {/* Channel Display with Preset Mapping Indicator */}
                               <span className="flex items-center space-x-1">
                                 {guideData?.type === 'streaming' ? (
                                   <Smartphone className="w-3 h-3" />
@@ -883,7 +935,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 )}
                                 <span>{game.channel.name}</span>
                                 {game.channel.number && (
-                                  <span className="text-xs">({game.channel.number})</span>
+                                  <span className="text-xs">
+                                    ({game.channel.number})
+                                    {game.channel._presetMapped && (
+                                      <Star className="w-2 h-2 inline ml-0.5 text-yellow-400" title="Channel number from preset" />
+                                    )}
+                                  </span>
                                 )}
                               </span>
                             </div>
@@ -906,21 +963,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-slate-500 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-white mb-2">No Sports Programming Found</h3>
-                    <p className="text-slate-500 mb-3">
-                      {searchQuery 
-                        ? 'Try adjusting your search or check again later'
-                        : `No ${getDeviceTypeForInput(selectedInput)?.toUpperCase()} channels available for this time period`
-                      }
-                    </p>
-                    {guideData.channels.length === 0 && (
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto">
-                        <p className="text-sm text-blue-400">
-                          <strong>Filtering Active:</strong> Only showing channels available on {getDeviceTypeForInput(selectedInput)?.toUpperCase()} devices.
-                          {getDeviceTypeForInput(selectedInput) === 'cable' && ' DirecTV channels are hidden.'}
-                          {getDeviceTypeForInput(selectedInput) === 'satellite' && ' Cable channels are hidden.'}
-                        </p>
-                      </div>
-                    )}
+                    <p className="text-slate-500">Try adjusting your search or check again later</p>
                   </div>
                 ) : null}
               </div>

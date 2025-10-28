@@ -102,7 +102,7 @@ export default function ChannelPresetGrid({
         <div className="text-center py-4 text-slate-400">
           <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No channel presets configured</p>
-          <p className="text-xs mt-1">Add presets in Sports Guide settings</p>
+          <p className="text-xs mt-1">Add presets in Sports Guide Config → Presets tab</p>
         </div>
       </div>
     )
