@@ -50,12 +50,9 @@ NC='\033[0m' # No Color
 # Installation configuration
 # Default to user's home directory for simpler, user-friendly installation
 INSTALL_DIR="${INSTALL_DIR:-$HOME/Sports-Bar-TV-Controller}"
-SERVICE_NAME="sports-bar-tv-controller"
+SERVICE_NAME="sportsbar-assistant"
 REPO_URL="https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
-DATABASE_DIR="$HOME/sports-bar-data"
-PORT="3001"
-QA_WORKER_NAME="qa-worker"
 LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
 
 # Node.js version
@@ -255,7 +252,7 @@ check_system_requirements() {
 # Why this order matters:
 # - System packages provide the foundation (compilers, libraries, drivers)
 # - Node.js and npm need these tools to compile native modules
-# - SQLite libraries must be present before Drizzle can work with the database
+# - SQLite libraries must be present before Prisma can work with the database
 # - Build tools are required for npm packages with native dependencies
 #############################################################################
 
@@ -285,7 +282,7 @@ install_system_dependencies() {
         >> "$LOG_FILE" 2>&1
     
     log_and_print "Installing SQLite database libraries..."
-    # SQLite packages required for Drizzle and database operations
+    # SQLite packages required for Prisma and database operations
     # - sqlite3: SQLite command-line tool
     # - libsqlite3-dev: Development headers for SQLite (required for native modules)
     sudo apt-get install -y \
@@ -578,12 +575,12 @@ clone_repository() {
 #############################################################################
 # This phase installs all npm packages required by the application.
 # This MUST happen BEFORE database setup because:
-# - Drizzle CLI is installed as an npm package
-# - Database migrations require Drizzle to be available
+# - Prisma CLI is installed as an npm package
+# - Database migrations require Prisma to be available
 # - Native modules need the build tools we installed in Phase 1
 #
 # Why this is critical:
-# - Running migrations before npm install will fail because Drizzle isn't available
+# - Running migrations before npm install will fail because Prisma isn't available
 # - Some npm packages compile native code using the build tools from Phase 1
 # - All application code dependencies must be present before configuration
 #############################################################################
@@ -593,23 +590,22 @@ install_app_dependencies() {
     
     cd "$INSTALL_DIR"
     
-    log_and_print "Installing npm packages (including Drizzle)..."
+    log_and_print "Installing npm packages (including Prisma)..."
     print_info "This may take a few minutes as packages are downloaded and compiled..."
     
     # Install all npm dependencies
-    # This includes Drizzle, Next.js, and all other application dependencies
-    npm install
-    npm install -D tsx >> "$LOG_FILE" 2>&1
+    # This includes Prisma, Next.js, and all other application dependencies
+    npm install >> "$LOG_FILE" 2>&1
     
     print_success "Application dependencies installed"
-    print_info "Drizzle CLI and all required packages are now available"
+    print_info "Prisma CLI and all required packages are now available"
 }
 
 #############################################################################
 # PHASE 4: Configure Environment
 #############################################################################
 # Environment configuration must happen BEFORE database setup because:
-# - The .env file contains the DATABASE_URL that Drizzle needs
+# - The .env file contains the DATABASE_URL that Prisma needs
 # - Database migrations will fail without proper environment configuration
 # - Other environment variables may be needed by the migration process
 #############################################################################
@@ -624,7 +620,7 @@ configure_environment() {
         cp .env.example .env
         
         # Set default values
-        sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"file:.//home/ubuntu/sports-bar-data/production.db\"|g" .env
+        sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"file:./prisma/data/sports_bar.db\"|g" .env
         sed -i "s|OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=\"http://localhost:11434\"|g" .env
         
         print_success "Environment configured"
@@ -639,10 +635,10 @@ configure_environment() {
 #############################################################################
 # Database setup happens AFTER all dependencies and configuration are ready:
 # - System dependencies (Phase 1): SQLite libraries installed
-# - Application dependencies (Phase 3): Drizzle CLI available
+# - Application dependencies (Phase 3): Prisma CLI available
 # - Environment configuration (Phase 4): DATABASE_URL configured
 #
-# This ensures that Drizzle has everything it needs to successfully run migrations.
+# This ensures that Prisma has everything it needs to successfully run migrations.
 #############################################################################
 
 setup_database() {
@@ -651,23 +647,22 @@ setup_database() {
     cd "$INSTALL_DIR"
     
     # Create database directory
-    # Create database directory
-    mkdir -p "$DATABASE_DIR"
+    mkdir -p prisma/data
     
     # Function to detect and resolve failed migrations
     resolve_failed_migrations() {
         print_info "Checking for failed migrations..."
         
         # Check if migrations table exists and has failed entries
-        if [ -f "/home/ubuntu/sports-bar-data/production.db" ]; then
-            local failed_count=$(sqlite3 /home/ubuntu/sports-bar-data/production.db \
+        if [ -f "prisma/data/sports_bar.db" ]; then
+            local failed_count=$(sqlite3 prisma/data/sports_bar.db \
                 "SELECT COUNT(*) FROM drizzle_migrations WHERE finished_at IS NULL;" 2>/dev/null || echo "0")
             
             if [ "$failed_count" -gt 0 ]; then
                 print_warning "Found $failed_count failed migration(s)"
                 print_info "Marking failed migrations as rolled back..."
                 
-                sqlite3 /home/ubuntu/sports-bar-data/production.db \
+                sqlite3 prisma/data/sports_bar.db \
                     "UPDATE drizzle_migrations SET rolled_back_at = datetime('now') WHERE finished_at IS NULL;" \
                     >> "$LOG_FILE" 2>&1 || true
                 
@@ -732,7 +727,7 @@ setup_database() {
                 echo ""
                 echo "To manually fix:"
                 echo "  cd $INSTALL_DIR"
-                echo "  rm -f /home/ubuntu/sports-bar-data/production.db*"
+                echo "  rm -f prisma/data/sports_bar.db*"
                 echo "  npm run db:push"
                 echo ""
                 
@@ -741,10 +736,10 @@ setup_database() {
         fi
     fi
     
-    # Generate Drizzle client
-    log_and_print "Generating Drizzle client..."
+    # Generate Prisma client
+    log_and_print "Generating Prisma client..."
     if ! echo "Drizzle schema is ready (no generation needed)" >> "$LOG_FILE" 2>&1; then
-        print_error "Failed to generate Drizzle client"
+        print_error "Failed to generate Prisma client"
         return 1
     fi
     
@@ -756,7 +751,7 @@ setup_database() {
 #############################################################################
 # Building the application happens after database setup because:
 # - The build process may need to access the database schema
-# - Drizzle client generation (done in Phase 5) must complete first
+# - Prisma client generation (done in Phase 5) must complete first
 # - All dependencies and configuration are now in place
 #############################################################################
 
@@ -848,13 +843,13 @@ setup_pm2() {
     
     cd "$INSTALL_DIR"
     
-    # Clean up any existing PM2 processes that might conflict with port 3001
-    print_info "Checking for existing PM2 processes on port 3001..."
+    # Clean up any existing PM2 processes that might conflict with port 3000
+    print_info "Checking for existing PM2 processes on port 3000..."
     
     # Get list of all PM2 processes
     local pm2_processes=$(pm2 jlist 2>/dev/null || echo "[]")
     
-    # Check if any processes are using port 3001 or match our service names
+    # Check if any processes are using port 3000 or match our service names
     local processes_to_delete=()
     
     # Look for processes with our service name or old variations
@@ -865,16 +860,16 @@ setup_pm2() {
         fi
     done < <(echo "$pm2_processes" | jq -r '.[] | select(.name | test("sportsbar|sports-bar-tv")) | .name' 2>/dev/null || true)
     
-    # Also check for processes using port 3001 by examining their environment/script
+    # Also check for processes using port 3000 by examining their environment/script
     while IFS= read -r process_info; do
         if [ -n "$process_info" ]; then
             local proc_name=$(echo "$process_info" | jq -r '.name' 2>/dev/null || true)
             local proc_script=$(echo "$process_info" | jq -r '.pm2_env.pm_exec_path // ""' 2>/dev/null || true)
             
-            # Check if this process might be using port 3001 (Next.js default)
+            # Check if this process might be using port 3000 (Next.js default)
             if [[ "$proc_script" == *"next"* ]] || [[ "$proc_script" == *"start"* ]]; then
                 if [[ ! " ${processes_to_delete[@]} " =~ " ${proc_name} " ]]; then
-                    print_warning "Found potential port 3001 process: $proc_name"
+                    print_warning "Found potential port 3000 process: $proc_name"
                     processes_to_delete+=("$proc_name")
                 fi
             fi
@@ -894,35 +889,21 @@ setup_pm2() {
         # Wait a moment for ports to be released
         sleep 2
     else
-        print_info "No existing PM2 processes found that conflict with port 3001"
+        print_info "No existing PM2 processes found that conflict with port 3000"
     fi
     
-    # Verify port 3001 is actually free before starting
-    if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
-        print_error "Port 3001 is still in use after cleanup!"
-        print_error "Please manually check what's using port 3001:"
-        echo "  sudo lsof -i :3001"
-        echo "  sudo netstat -tulpn | grep :3001"
+    # Verify port 3000 is actually free before starting
+    if netstat -tuln 2>/dev/null | grep -q ":3000 " || ss -tuln 2>/dev/null | grep -q ":3000 "; then
+        print_error "Port 3000 is still in use after cleanup!"
+        print_error "Please manually check what's using port 3000:"
+        echo "  sudo lsof -i :3000"
+        echo "  sudo netstat -tulpn | grep :3000"
         exit 1
     fi
     
     # Start application with PM2
     log_and_print "Starting application with PM2..."
     pm2 start npm --name "$SERVICE_NAME" -- start >> "$LOG_FILE" 2>&1
-
-    # Start QA background worker
-    log_and_print "Starting QA background worker..."
-    pm2 start "/src/workers/qa-worker.ts" --name "qa-worker" --interpreter=node --node-args="--require=tsx" >> "$LOG_FILE" 2>&1
-    
-    # Wait for worker to start
-    sleep 2
-    
-    # Verify worker is running
-    if pm2 list 2>/dev/null | grep -q "qa-worker.*online"; then
-        log_and_print "QA worker started successfully"
-    else
-        print_warning "QA worker may not have started correctly"
-    fi
     
     # Wait for app to start
     sleep 3
@@ -984,12 +965,12 @@ verify_installation() {
         return 1
     fi
     
-    # Check if port 3001 is listening
+    # Check if port 3000 is listening
     sleep 5
-    if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
-        print_success "Application is listening on port 3001"
+    if netstat -tuln 2>/dev/null | grep -q ":3000 " || ss -tuln 2>/dev/null | grep -q ":3000 "; then
+        print_success "Application is listening on port 3000"
     else
-        print_warning "Application may not be listening on port 3001 yet"
+        print_warning "Application may not be listening on port 3000 yet"
     fi
     
     print_success "Installation verified"
@@ -1063,20 +1044,20 @@ trap 'print_error "Installation failed! Check log file: $LOG_FILE"' ERR
 #   Why: Need package.json to know what dependencies to install
 # 
 # PHASE 3: Application Dependencies
-#   - Run npm install to get all Node packages (including Drizzle)
-#   Why: Must happen BEFORE database setup because Drizzle CLI is an npm package
+#   - Run npm install to get all Node packages (including Prisma)
+#   Why: Must happen BEFORE database setup because Prisma CLI is an npm package
 # 
 # PHASE 4: Environment Configuration
 #   - Create .env file with database URL and other settings
-#   Why: Drizzle needs DATABASE_URL to run migrations
+#   Why: Prisma needs DATABASE_URL to run migrations
 # 
 # PHASE 5: Database Setup
-#   - Run Drizzle migrations to create database schema
-#   Why: Now we have SQLite libraries (Phase 1), Drizzle CLI (Phase 3), and config (Phase 4)
+#   - Run Prisma migrations to create database schema
+#   Why: Now we have SQLite libraries (Phase 1), Prisma CLI (Phase 3), and config (Phase 4)
 # 
 # PHASE 6: Build Application
 #   - Compile Next.js application
-#   Why: Build may need database schema and Drizzle client (generated in Phase 5)
+#   Why: Build may need database schema and Prisma client (generated in Phase 5)
 # 
 # PHASE 7: Service Setup
 #   - Configure PM2 to run the application
@@ -1122,13 +1103,13 @@ main() {
     # PHASE 2: Get the application code
     clone_repository
     
-    # PHASE 3: Install application dependencies (npm packages including Drizzle)
+    # PHASE 3: Install application dependencies (npm packages including Prisma)
     install_app_dependencies
     
     # PHASE 4: Configure environment (.env file with DATABASE_URL)
     configure_environment
     
-    # PHASE 5: Setup database (now that Drizzle CLI is available)
+    # PHASE 5: Setup database (now that Prisma CLI is available)
     setup_database
     
     # PHASE 6: Build the application
