@@ -6,10 +6,11 @@
 
 import fs from 'fs';
 import path from 'path';
-import { and, asc, count, create, deleteRecord, desc, eq, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
+import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger';
 import { calculateFileHash } from '@/lib/utils/file-hash';
+import { count as drizzleCount } from 'drizzle-orm';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const DEFAULT_MODEL = 'phi3:mini';
@@ -40,31 +41,22 @@ export interface GeneratedQA {
 
 /**
  * Generate Q&A pairs from repository files
+ *
+ * Creates a pending job in the database that will be picked up by the background worker.
+ * The worker runs independently to avoid issues with Next.js API route lifecycle.
  */
 export async function generateQAsFromRepository(
   options: QAGenerationOptions
 ): Promise<{ jobId: string; status: string }> {
-  const job = await prisma.qAGenerationJob.create({
-    data: {
-      status: 'pending',
-      sourceType: options.sourceType,
-      sourcePath: options.sourcePaths?.join(','),
-    },
+  const job = await create('qaGenerationJobs', {
+    status: 'pending',
+    sourceType: options.sourceType,
+    sourcePath: options.sourcePaths?.join(','),
   });
 
-  processQAGeneration(job.id, options).catch(error => {
-    logger.error('Q&A generation failed:', error);
-    prisma.qAGenerationJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'failed',
-        errorMessage: error.message,
-        completedAt: new Date(),
-      },
-    }).catch(console.error);
-  });
+  console.log(`[QA Generator] Created job ${job.id} - waiting for background worker to process`);
 
-  return { jobId: job.id, status: 'started' };
+  return { jobId: job.id, status: 'pending' };
 }
 
 class ConcurrencyLimiter {
@@ -102,9 +94,7 @@ async function shouldProcessFile(
 
   try {
     // Check if file exists in tracking
-    const tracked = await prisma.processedFile.findUnique({
-      where: { filePath },
-    });
+    const tracked = await findUnique('processedFiles', eq(schema.processedFiles.filePath, filePath));
 
     if (!tracked) {
       return { shouldProcess: true, reason: 'new_file' };
@@ -138,23 +128,24 @@ async function updateFileTracking(
   try {
     const fileHash = await calculateFileHash(filePath);
 
-    await prisma.processedFile.upsert({
-      where: { filePath },
-      update: {
-        fileHash,
-        lastProcessed: new Date(),
-        qaCount,
-        status,
-        updatedAt: new Date(),
-      },
-      create: {
+    await upsert(
+      'processedFiles',
+      eq(schema.processedFiles.filePath, filePath),
+      {
         filePath,
         fileHash,
         qaCount,
         sourceType,
         status,
       },
-    });
+      {
+        fileHash,
+        lastProcessed: new Date().toISOString(),
+        qaCount,
+        status,
+        updatedAt: new Date().toISOString(),
+      }
+    );
   } catch (error) {
     logger.error(`Error updating file tracking for ${filePath}:`, error);
   }
@@ -170,19 +161,18 @@ async function processQAGeneration(
   const startTime = Date.now();
   
   try {
-    await prisma.qAGenerationJob.update({
-      where: { id: jobId },
-      data: { status: 'running', startedAt: new Date() },
+    await update('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId), {
+      status: 'running',
+      startedAt: new Date().toISOString(),
     });
 
     const files = await collectFilesForGeneration(options);
-    
+
     logger.debug(`Starting Q&A generation for ${files.length} files with ${MAX_CONCURRENT_FILES} concurrent workers`);
     logger.debug(`Force regenerate: ${options.forceRegenerate ? 'YES' : 'NO'}`);
-    
-    await prisma.qAGenerationJob.update({
-      where: { id: jobId },
-      data: { totalFiles: files.length },
+
+    await update('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId), {
+      totalFiles: files.length,
     });
 
     if (files.length === 0) {
@@ -235,16 +225,14 @@ async function processQAGeneration(
         const savedQAs = [];
         for (const qa of qas) {
           try {
-            await prisma.qAEntry.create({
-              data: {
-                question: qa.question,
-                answer: qa.answer,
-                category: qa.category,
-                tags: JSON.stringify(qa.tags),
-                sourceType: 'auto-generated',
-                sourceFile: qa.sourceFile,
-                confidence: qa.confidence,
-              },
+            await create('qaEntries', {
+              question: qa.question,
+              answer: qa.answer,
+              category: qa.category,
+              tags: JSON.stringify(qa.tags),
+              sourceType: 'auto-generated',
+              sourceFile: qa.sourceFile,
+              confidence: qa.confidence,
             });
             savedQAs.push(qa);
           } catch (dbError) {
@@ -279,40 +267,34 @@ async function processQAGeneration(
     
     logger.debug(`\n📊 Summary: ${processedFiles} processed, ${skippedFiles} skipped, ${failedFiles} failed`);
 
-    await prisma.qAGenerationJob.update({
-      where: { id: jobId },
-      data: { processedFiles, generatedQAs },
+    await update('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId), {
+      processedFiles,
+      generatedQAs,
     });
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
     logger.debug(`⏱️  Completed in ${elapsedTime}s`);
 
     const finalStatus = generatedQAs > 0 ? 'completed' : 'failed';
-    const errorMessage = errors.length > 0 
+    const errorMessage = errors.length > 0
       ? `Generated ${generatedQAs} Q&As from ${processedFiles - failedFiles}/${processedFiles} files. Errors: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`
       : undefined;
 
-    await prisma.qAGenerationJob.update({
-      where: { id: jobId },
-      data: {
-        status: finalStatus,
-        processedFiles,
-        generatedQAs,
-        errorMessage,
-        completedAt: new Date(),
-      },
+    await update('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId), {
+      status: finalStatus,
+      processedFiles,
+      generatedQAs,
+      errorMessage,
+      completedAt: new Date().toISOString(),
     });
 
     logger.debug(`✅ Q&A generation ${finalStatus}: ${generatedQAs} Q&As from ${processedFiles} files`);
   } catch (error) {
     logger.error('Q&A generation process failed:', error);
-    await prisma.qAGenerationJob.update({
-      where: { id: jobId },
-      data: {
-        status: 'failed',
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        completedAt: new Date(),
-      },
+    await update('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId), {
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      completedAt: new Date().toISOString(),
     });
     throw error;
   }
@@ -649,9 +631,7 @@ function parseGeneratedQAs(response: string, sourceFile: string): GeneratedQA[] 
 }
 
 export async function getQAGenerationStatus(jobId: string) {
-  return await prisma.qAGenerationJob.findUnique({
-    where: { id: jobId },
-  });
+  return await findUnique('qaGenerationJobs', eq(schema.qaGenerationJobs.id, jobId));
 }
 
 export const getGenerationJobStatus = getQAGenerationStatus;
@@ -662,24 +642,34 @@ export async function getAllQAEntries(filters?: {
   limit?: number;
   offset?: number;
 }) {
-  const where: any = {};
-  
+  const conditions: any[] = [];
+
   if (filters?.category) {
-    where.category = filters.category;
-  }
-  
-  if (filters?.sourceType) {
-    where.sourceType = filters.sourceType;
+    conditions.push(eq(schema.qaEntries.category, filters.category));
   }
 
-  const entries = await prisma.qAEntry.findMany({
-    where,
-    take: filters?.limit || 100,
-    skip: filters?.offset || 0,
-    orderBy: { createdAt: 'desc' },
+  if (filters?.sourceType) {
+    conditions.push(eq(schema.qaEntries.sourceType, filters.sourceType));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const entries = await findMany('qaEntries', {
+    where: whereClause,
+    limit: filters?.limit || 100,
+    offset: filters?.offset || 0,
+    orderBy: desc(schema.qaEntries.createdAt),
   });
 
-  const total = await prisma.qAEntry.count({ where });
+  // Count total matching entries
+  const { db } = await import('@/lib/db');
+  const totalResult = await db
+    .select({ count: drizzleCount() })
+    .from(schema.qaEntries)
+    .where(whereClause)
+    .execute();
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     entries,
@@ -694,27 +684,33 @@ export async function searchQAEntries(query: string, filters?: {
   sourceType?: string;
   limit?: number;
 }) {
-  const where: any = {
-    OR: [
-      { question: { contains: query } },
-      { answer: { contains: query } },
-      { tags: { has: query } },
-    ],
-  };
+  // Use raw SQL for LIKE queries since Drizzle doesn't have a contains operator
+  const { db } = await import('@/lib/db');
+  const { like } = await import('drizzle-orm');
+
+  const conditions: any[] = [
+    or(
+      like(schema.qaEntries.question, `%${query}%`),
+      like(schema.qaEntries.answer, `%${query}%`),
+      like(schema.qaEntries.tags, `%${query}%`)
+    )
+  ];
 
   if (filters?.category) {
-    where.category = filters.category;
+    conditions.push(eq(schema.qaEntries.category, filters.category));
   }
 
   if (filters?.sourceType) {
-    where.sourceType = filters.sourceType;
+    conditions.push(eq(schema.qaEntries.sourceType, filters.sourceType));
   }
 
-  const entries = await prisma.qAEntry.findMany({
-    where,
-    take: filters?.limit || 50,
-    orderBy: { confidence: 'desc' },
-  });
+  const entries = await db
+    .select()
+    .from(schema.qaEntries)
+    .where(and(...conditions))
+    .limit(filters?.limit || 50)
+    .orderBy(desc(schema.qaEntries.confidence))
+    .execute();
 
   return {
     entries,
@@ -734,61 +730,76 @@ export async function updateQAEntry(
     isActive?: boolean;
   }
 ) {
-  return await prisma.qAEntry.update({
-    where: { id },
-    data: {
-      ...data,
-      updatedAt: new Date(),
-    },
+  return await update('qaEntries', eq(schema.qaEntries.id, id), {
+    ...data,
+    updatedAt: new Date().toISOString(),
   });
 }
 
 export async function deleteQAEntry(id: string) {
-  return await prisma.qAEntry.delete({
-    where: { id },
-  });
+  return await deleteRecord('qaEntries', eq(schema.qaEntries.id, id));
 }
 
 export async function getQAStatistics() {
-  const [
-    totalEntries,
-    activeEntries,
-    categoryCounts,
-    sourceTypeCounts,
-    recentJobs,
-  ] = await Promise.all([
-    prisma.qAEntry.count(),
-    prisma.qAEntry.count({ where: { isActive: true } }),
-    prisma.qAEntry.groupBy({
-      by: ['category'],
-      _count: true,
-    }),
-    prisma.qAEntry.groupBy({
-      by: ['sourceType'],
-      _count: true,
-    }),
-    prisma.qAGenerationJob.findMany({
-      take: 10,
-      orderBy: { createdAt: 'desc' },
-    }),
-  ]);
+  const { db } = await import('@/lib/db');
+  const { sql } = await import('drizzle-orm');
+
+  // Get total and active counts
+  const totalResult = await db
+    .select({ count: drizzleCount() })
+    .from(schema.qaEntries)
+    .execute();
+  const totalEntries = totalResult[0]?.count || 0;
+
+  const activeResult = await db
+    .select({ count: drizzleCount() })
+    .from(schema.qaEntries)
+    .where(eq(schema.qaEntries.isActive, true))
+    .execute();
+  const activeEntries = activeResult[0]?.count || 0;
+
+  // Get category counts using groupBy
+  const categoryCounts = await db
+    .select({
+      category: schema.qaEntries.category,
+      count: drizzleCount(),
+    })
+    .from(schema.qaEntries)
+    .groupBy(schema.qaEntries.category)
+    .execute();
+
+  // Get source type counts using groupBy
+  const sourceTypeCounts = await db
+    .select({
+      source: schema.qaEntries.sourceType,
+      count: drizzleCount(),
+    })
+    .from(schema.qaEntries)
+    .groupBy(schema.qaEntries.sourceType)
+    .execute();
+
+  // Get recent jobs
+  const recentJobs = await findMany('qaGenerationJobs', {
+    limit: 10,
+    orderBy: desc(schema.qaGenerationJobs.createdAt),
+  });
 
   return {
     total: totalEntries,
     active: activeEntries,
     byCategory: categoryCounts.map(c => ({
       category: c.category,
-      _count: c._count,
+      count: c.count,
     })),
-    bySourceType: sourceTypeCounts.map(s => ({
-      sourceType: s.sourceType,
-      _count: s._count,
+    bySource: sourceTypeCounts.map(s => ({
+      source: s.source,
+      count: s.count,
     })),
     recentJobs: recentJobs.map(job => ({
       id: job.id,
       status: job.status,
       sourceType: job.sourceType,
-      entriesGenerated: job.entriesGenerated,
+      entriesGenerated: job.entriesGenerated || 0,
       createdAt: job.createdAt,
       completedAt: job.completedAt,
     })),

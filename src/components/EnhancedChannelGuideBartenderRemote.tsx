@@ -9,6 +9,7 @@ import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
+import FireTVAppShortcuts from './FireTVAppShortcuts'
 import { 
   Power, 
   Volume2, 
@@ -806,13 +807,29 @@ export default function EnhancedChannelGuideBartenderRemote() {
           {/* Channel Presets - Show when input with cable/DirecTV device is selected */}
           {selectedInput && selectedDevice && (
             <>
-              {(getDeviceTypeForInput(selectedInput) === 'cable' || 
+              {(getDeviceTypeForInput(selectedInput) === 'cable' ||
                 getDeviceTypeForInput(selectedInput) === 'satellite') && (
                 <ChannelPresetGrid
                   deviceType={getDeviceTypeForInput(selectedInput) === 'satellite' ? 'directv' : 'cable'}
                   onPresetClick={handlePresetClick}
                   maxVisible={6}
                 />
+              )}
+
+              {/* Fire TV App Shortcuts - Show when Fire TV device is selected */}
+              {getDeviceTypeForInput(selectedInput) === 'streaming' && 'ipAddress' in selectedDevice && (
+                <div className="mt-4">
+                  <FireTVAppShortcuts
+                    deviceId={selectedDevice.id}
+                    deviceName={selectedDevice.name}
+                    ipAddress={selectedDevice.ipAddress}
+                    port={selectedDevice.port}
+                    onAppLaunch={(appId, appName) => {
+                      setCommandStatus(`✅ Launching ${appName}...`)
+                      setTimeout(() => setCommandStatus(''), 3000)
+                    }}
+                  />
+                </div>
               )}
             </>
           )}

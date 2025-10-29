@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "AudioProcessor" ADD COLUMN "tcpPort" INTEGER NOT NULL DEFAULT 3804;

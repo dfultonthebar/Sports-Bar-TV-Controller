@@ -11,11 +11,11 @@
           "type": "premium",
           "status": "active",
           "provider": "DIRECTV",
-          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 9563 | To Be Announced",
+          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 206 | Kings @ Sharks",
           "packageName": "Software v0xf3e | API v1.12"
         }
       ],
-      "lastPolled": "2025-10-28T16:50:17.023Z",
+      "lastPolled": "2025-10-29T04:10:51.088Z",
       "pollStatus": "success"
     },
     {
@@ -26,6 +26,33 @@
       "lastPolled": "2025-10-16T03:52:29.655Z",
       "pollStatus": "error",
       "error": "Unable to connect to Fire TV device via ADB"
+    },
+    {
+      "deviceId": "firetv_1761677515811_1s39qjm73",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 1",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 1"
+        }
+      ],
+      "lastPolled": "2025-10-28T19:04:17.926Z",
+      "pollStatus": "success"
     }
   ]
 }

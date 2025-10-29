@@ -48,7 +48,15 @@ export default function Home() {
               
               {/* Main System Controls */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
-                <a 
+                <a
+                  href="/system-health"
+                  className="block p-6 bg-gradient-to-br from-green-600/40 to-emerald-600/40 rounded-xl border-2 border-green-400/50 hover:border-green-400/70 hover:from-green-600/50 hover:to-emerald-600/50 transition-all duration-200 shadow-lg"
+                >
+                  <h3 className="font-bold text-green-200 mb-2">💚 System Health</h3>
+                  <p className="text-green-100/90 text-sm">Real-time monitoring & quick actions</p>
+                </a>
+
+                <a
                   href="/ai-hub"
                   className="block p-6 bg-gradient-to-br from-purple-600/40 to-blue-600/40 rounded-xl border-2 border-purple-400/50 hover:border-purple-400/70 hover:from-purple-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
                 >

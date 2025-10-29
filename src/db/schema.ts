@@ -701,6 +701,7 @@ export const soundtrackPlayers = sqliteTable('SoundtrackPlayer', {
   playerName: text('playerName').notNull(),
   locationName: text('locationName'),
   audioZoneId: text('audioZoneId').references(() => audioZones.id),
+  bartenderVisible: integer('bartenderVisible', { mode: 'boolean' }).notNull().default(false),
   displayOrder: integer('displayOrder').notNull().default(0),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
@@ -915,4 +916,53 @@ export const fireCubeKeepAwakeLogs = sqliteTable('FireCubeKeepAwakeLog', {
 }, (table) => ({
   deviceIdIdx: index('FireCubeKeepAwakeLog_deviceId_idx').on(table.deviceId),
   timestampIdx: index('FireCubeKeepAwakeLog_timestamp_idx').on(table.timestamp),
+}))
+
+// Sports Events Model - Track upcoming games for AI awareness
+export const sportsEvents = sqliteTable('SportsEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  externalId: text('externalId'), // TheSportsDB event ID
+  sport: text('sport').notNull(),
+  league: text('league').notNull(),
+  eventName: text('eventName').notNull(),
+  homeTeam: text('homeTeam').notNull(),
+  awayTeam: text('awayTeam').notNull(),
+  homeTeamId: text('homeTeamId').references(() => homeTeams.id),
+  eventDate: timestamp('eventDate').notNull(),
+  eventTime: text('eventTime'),
+  venue: text('venue'),
+  city: text('city'),
+  country: text('country'),
+  channel: text('channel'),
+  importance: text('importance').notNull().default('normal'), // 'low', 'normal', 'high', 'critical'
+  isHomeTeamFavorite: integer('isHomeTeamFavorite', { mode: 'boolean' }).default(false),
+  preGameCheckCompleted: integer('preGameCheckCompleted', { mode: 'boolean' }).default(false),
+  preGameCheckTime: timestamp('preGameCheckTime'),
+  status: text('status').notNull().default('scheduled'), // 'scheduled', 'in_progress', 'completed', 'cancelled'
+  thumbnail: text('thumbnail'),
+  description: text('description'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventDateIdx: index('SportsEvent_eventDate_idx').on(table.eventDate),
+  leagueIdx: index('SportsEvent_league_idx').on(table.league),
+  statusIdx: index('SportsEvent_status_idx').on(table.status),
+  importanceIdx: index('SportsEvent_importance_idx').on(table.importance),
+}))
+
+// Sports Event Sync Log - Track when we last synced schedules
+export const sportsEventSyncLogs = sqliteTable('SportsEventSyncLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  league: text('league').notNull(),
+  teamName: text('teamName'),
+  syncType: text('syncType').notNull(), // 'manual', 'auto', 'startup'
+  eventsFound: integer('eventsFound').notNull(),
+  eventsAdded: integer('eventsAdded').notNull(),
+  eventsUpdated: integer('eventsUpdated').notNull(),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  syncedAt: timestamp('syncedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  syncedAtIdx: index('SportsEventSyncLog_syncedAt_idx').on(table.syncedAt),
+  leagueIdx: index('SportsEventSyncLog_league_idx').on(table.league),
 }))

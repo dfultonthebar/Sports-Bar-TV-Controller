@@ -23,11 +23,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get player settings from database
-    const dbPlayers = await findMany('soundtrackPlayers', { where: {
-        configId: config.id,
-        ...(bartenderOnly && { bartenderVisible: true })
-      },
-      orderBy: { displayOrder: 'asc' }
+    let whereClause = eq(schema.soundtrackPlayers.configId, config.id)
+    if (bartenderOnly) {
+      whereClause = and(
+        eq(schema.soundtrackPlayers.configId, config.id),
+        eq(schema.soundtrackPlayers.bartenderVisible, true)
+      ) as any
+    }
+
+    const dbPlayers = await findMany('soundtrackPlayers', {
+      where: whereClause,
+      orderBy: asc(schema.soundtrackPlayers.displayOrder)
     })
 
     // Use CACHED token from database - no re-authentication needed
@@ -36,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // Merge database settings with live data
     const players = liveSoundZones
-      .map(soundZone => {
+      .map((soundZone: any) => {
         const dbPlayer = dbPlayers.find(p => p.playerId === soundZone.id)
         if (bartenderOnly && !dbPlayer?.bartenderVisible) {
           return null
@@ -46,11 +52,15 @@ export async function GET(request: NextRequest) {
           name: soundZone.name,
           account: soundZone.account,
           currentPlayback: soundZone.currentPlayback,
+          // Extract fields for UI compatibility
+          isPlaying: soundZone.currentPlayback?.playing || false,
+          volume: soundZone.currentPlayback?.volume || 0,
+          currentStation: soundZone.currentPlayback?.station || null,
           bartenderVisible: dbPlayer?.bartenderVisible || false,
           displayOrder: dbPlayer?.displayOrder || 0
         }
       })
-      .filter(p => p !== null)
+      .filter((p: any) => p !== null)
       .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
 
     return NextResponse.json({ success: true, players })
@@ -96,12 +106,16 @@ export async function PATCH(request: NextRequest) {
     
     const soundZone = await api.updateSoundZone(playerId, updatedData)
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       player: {
         id: soundZone.id,
         name: soundZone.name,
-        currentPlayback: soundZone.currentPlayback
+        currentPlayback: soundZone.currentPlayback,
+        // Extract fields for UI compatibility
+        isPlaying: soundZone.currentPlayback?.playing || false,
+        volume: soundZone.currentPlayback?.volume || 0,
+        currentStation: soundZone.currentPlayback?.station || null
       }
     })
   } catch (error: any) {

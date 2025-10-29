@@ -27,12 +27,9 @@ export async function DELETE() {
     clearSoundtrackAPI()
 
     // Update the config to mark it as needing re-authentication
-    await prisma.soundtrackConfig.update({
-      where: { id: config.id },
-      data: {
-        status: 'untested',
-        lastTested: null
-      }
+    await update('soundtrackConfigs', config.id, {
+      isActive: false,
+      lastSync: null
     })
 
     logger.debug('[Soundtrack] Token cache cleared - fresh authentication will be required')

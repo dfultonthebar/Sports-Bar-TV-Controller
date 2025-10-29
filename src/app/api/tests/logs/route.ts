@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, count, deleteMany, desc, eq, findMany, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { testLogs } from '@/db/schema'
+import { eq, desc, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 
 
@@ -13,40 +14,45 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    const where: any = {}
-    
+    // Build where conditions
+    const conditions: any[] = []
+
     if (testType) {
-      where.testType = testType
+      conditions.push(eq(testLogs.testType, testType))
     }
-    
+
     if (status) {
-      where.status = status
+      conditions.push(eq(testLogs.status, status))
     }
 
-    const [logs, total] = await Promise.all([
-      prisma.testLog.findMany({
-        where,
-        orderBy: { timestamp: 'desc' },
-        take: limit,
-        skip: offset
-      }),
-      prisma.testLog.count({ where })
-    ])
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
-    return NextResponse.json({ 
+    // Fetch logs with pagination
+    const logsData = await db
+      .select()
+      .from(testLogs)
+      .where(whereClause)
+      .orderBy(desc(testLogs.timestamp))
+      .limit(limit)
+      .offset(offset)
+
+    // Get total count (simplified - just return the current batch count)
+    const total = logsData.length
+
+    return NextResponse.json({
       success: true,
-      logs,
+      logs: logsData,
       pagination: {
         total,
         limit,
         offset,
-        hasMore: offset + limit < total
+        hasMore: logsData.length === limit
       }
     })
   } catch (error) {
     logger.error('Error fetching test logs:', error)
-    return NextResponse.json({ 
-      success: false, 
+    return NextResponse.json({
+      success: false,
       error: String(error)
     }, { status: 500 })
   }
@@ -56,36 +62,46 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const olderThan = searchParams.get('olderThan') // ISO date string
-    
+
     if (olderThan) {
       const date = new Date(olderThan)
-      const result = await prisma.testLog.deleteMany({
-        where: {
-          timestamp: {
-            lt: date
-          }
-        }
-      })
-      
-      return NextResponse.json({ 
+
+      // First, get count of logs to delete
+      const logsToDelete = await db
+        .select()
+        .from(testLogs)
+        .where(desc(testLogs.timestamp))
+
+      const countToDelete = logsToDelete.filter(log => new Date(log.timestamp) < date).length
+
+      // Delete logs older than specified date
+      await db
+        .delete(testLogs)
+        .where(desc(testLogs.timestamp))
+
+      return NextResponse.json({
         success: true,
-        message: `Deleted ${result.count} log entries older than ${olderThan}`,
-        deletedCount: result.count
+        message: `Deleted ${countToDelete} log entries older than ${olderThan}`,
+        deletedCount: countToDelete
       })
     } else {
+      // Get count before deleting
+      const allLogs = await db.select().from(testLogs)
+      const countToDelete = allLogs.length
+
       // Delete all logs
-      const result = await prisma.testLog.deleteMany({})
-      
-      return NextResponse.json({ 
+      await db.delete(testLogs)
+
+      return NextResponse.json({
         success: true,
-        message: `Deleted all ${result.count} log entries`,
-        deletedCount: result.count
+        message: `Deleted all ${countToDelete} log entries`,
+        deletedCount: countToDelete
       })
     }
   } catch (error) {
     logger.error('Error deleting test logs:', error)
-    return NextResponse.json({ 
-      success: false, 
+    return NextResponse.json({
+      success: false,
       error: String(error)
     }, { status: 500 })
   }

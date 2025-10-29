@@ -115,6 +115,19 @@ export class SoundtrackYourBrandAPI {
   }
 
   private getAuthHeader(): string {
+    // Check if token is already base64 encoded (contains : when decoded)
+    try {
+      const decoded = Buffer.from(this.apiToken, 'base64').toString('utf-8')
+      if (decoded.includes(':')) {
+        // Token is already base64 encoded in "username:password" format
+        console.log('[Soundtrack] Using pre-encoded token')
+        return `Basic ${this.apiToken}`
+      }
+    } catch (e) {
+      // Not base64, continue with normal encoding
+    }
+
+    // Token is plain, encode it as "token:" format
     const credentials = `${this.apiToken}:`
     const base64Credentials = Buffer.from(credentials).toString('base64')
     return `Basic ${base64Credentials}`
@@ -285,6 +298,7 @@ export class SoundtrackYourBrandAPI {
   }
 
   async listSoundZones(accountId?: string): Promise<SoundtrackSoundZone[]> {
+    // First, get the list of sound zones (without currentPlayback - not supported in list query)
     const query = `
       query {
         me {
@@ -299,14 +313,6 @@ export class SoundtrackYourBrandAPI {
                       node {
                         id
                         name
-                        currentPlayback {
-                          station {
-                            id
-                            name
-                          }
-                          playing
-                          volume
-                        }
                       }
                     }
                   }
@@ -317,22 +323,26 @@ export class SoundtrackYourBrandAPI {
         }
       }
     `
-    
+
     const result = await this.graphql(query)
-    
+
     if (result.errors) {
       throw new Error(result.errors[0]?.message || 'Failed to fetch sound zones')
     }
-    
+
     const accounts = result.data?.me?.accounts?.edges || []
     const soundZones: SoundtrackSoundZone[] = []
-    
+
     for (const accountEdge of accounts) {
-      const account = accountEdge.node
+      const account = accountEdge?.node
+      if (!account || !account.id) continue
+
       const zones = account.soundZones?.edges || []
-      
+
       for (const zoneEdge of zones) {
-        const zone = zoneEdge.node
+        const zone = zoneEdge?.node
+        if (!zone || !zone.id || !zone.name) continue
+
         soundZones.push({
           id: zone.id,
           name: zone.name,
@@ -340,16 +350,33 @@ export class SoundtrackYourBrandAPI {
             id: account.id,
             name: account.businessName
           },
-          currentPlayback: zone.currentPlayback
+          currentPlayback: null
         })
       }
     }
-    
+
+    // Filter by accountId if specified
+    let filteredZones = soundZones
     if (accountId) {
-      return soundZones.filter(zone => zone.account.id === accountId)
+      filteredZones = soundZones.filter(zone => zone.account.id === accountId)
     }
-    
-    return soundZones
+
+    // Now fetch currentPlayback for each zone individually
+    // Note: This makes multiple API calls, but it's the only way to get live playback status
+    const zonesWithPlayback = await Promise.all(
+      filteredZones.map(async (zone) => {
+        try {
+          const fullZone = await this.getSoundZone(zone.id)
+          return fullZone
+        } catch (error) {
+          // If fetching a single zone fails, return the zone without playback info
+          console.error(`Failed to fetch playback for zone ${zone.id}:`, error)
+          return zone
+        }
+      })
+    )
+
+    return zonesWithPlayback
   }
 
   async getSoundZone(soundZoneId: string): Promise<SoundtrackSoundZone> {
@@ -496,8 +523,16 @@ export class SoundtrackYourBrandAPI {
 let soundtrackAPI: SoundtrackYourBrandAPI | null = null
 
 export function getSoundtrackAPI(apiToken?: string): SoundtrackYourBrandAPI {
+  // If a token is explicitly provided, always use it (recreate instance if needed)
+  // This ensures we always use the latest token from the database
+  if (apiToken) {
+    soundtrackAPI = new SoundtrackYourBrandAPI(apiToken)
+    return soundtrackAPI
+  }
+
+  // Otherwise, reuse existing instance or create from environment
   if (!soundtrackAPI) {
-    const token = apiToken || process.env.SOUNDTRACK_API_TOKEN
+    const token = process.env.SOUNDTRACK_API_TOKEN
     if (!token) {
       throw new Error('Soundtrack API token not configured')
     }

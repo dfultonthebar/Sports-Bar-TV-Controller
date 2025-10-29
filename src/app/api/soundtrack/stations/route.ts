@@ -14,29 +14,29 @@ export async function GET() {
   try {
     // Get API key from config
     const config = await findFirst('soundtrackConfigs')
-    
+
     if (!config) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Soundtrack not configured' 
+      return NextResponse.json({
+        success: false,
+        error: 'Soundtrack not configured'
       }, { status: 404 })
     }
 
-    const api = getSoundtrackAPI(config.apiKey)
-    
-    // First get the account info
-    const account = await api.getAccount()
-    
-    // Get stations for the first available account
-    const accountId = account.accounts?.[0]?.id || account.id
-    const stations = await api.listStations(accountId)
+    // NOTE: The Soundtrack API does not currently provide a way to list all available stations/playlists
+    // via the PublicAPIClient schema. Stations can only be controlled via the soundZone.currentPlayback.station field.
+    // Return empty array for now to prevent UI from hanging.
+    logger.debug('[Soundtrack] Stations listing not supported by API - returning empty array')
 
-    return NextResponse.json({ success: true, stations })
+    return NextResponse.json({
+      success: true,
+      stations: [],
+      message: 'Station listing not available. Control playback via sound zones.'
+    })
   } catch (error: any) {
     logger.error('Error fetching Soundtrack stations:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
+    return NextResponse.json({
+      success: false,
+      error: error.message
     }, { status: 500 })
   }
 }

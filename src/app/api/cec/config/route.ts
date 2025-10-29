@@ -34,16 +34,17 @@ export async function POST(request: NextRequest) {
     const config = await request.json()
 
     // Save or update CEC configuration
-    const savedConfig = await prisma.cECConfiguration.upsert({
-      where: { id: config.id || 'default' },
-      update: {
+    const savedConfig = await upsert(
+      'cecConfigurations',
+      eq(schema.cecConfigurations.id, config.id || 'default'),
+      {
         cecInputChannel: config.cecInputChannel,
         usbDevicePath: config.usbDevicePath || '/dev/ttyACM0',
         isEnabled: config.isEnabled,
         powerOnDelay: config.powerOnDelay || 2000,
         powerOffDelay: config.powerOffDelay || 1000
       },
-      create: {
+      {
         id: 'default',
         cecInputChannel: config.cecInputChannel,
         usbDevicePath: config.usbDevicePath || '/dev/ttyACM0',
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
         powerOnDelay: config.powerOnDelay || 2000,
         powerOffDelay: config.powerOffDelay || 1000
       }
-    })
+    )
 
     return NextResponse.json({ 
       success: true, 

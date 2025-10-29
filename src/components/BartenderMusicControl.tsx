@@ -59,13 +59,23 @@ export default function BartenderMusicControl() {
   const [showStations, setShowStations] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
+  // Load data once on mount
   useEffect(() => {
     loadData()
+  }, [])
+
+  // Set up interval for updating now playing when player changes
+  useEffect(() => {
+    if (!selectedPlayer) return
+
+    // Update immediately
+    updateNowPlaying(selectedPlayer.id)
+
+    // Then update every 15 seconds
     const interval = setInterval(() => {
-      if (selectedPlayer) {
-        updateNowPlaying(selectedPlayer.id)
-      }
-    }, 15000) // Update every 15 seconds
+      updateNowPlaying(selectedPlayer.id)
+    }, 15000)
+
     return () => clearInterval(interval)
   }, [selectedPlayer])
 
@@ -329,60 +339,22 @@ export default function BartenderMusicControl() {
           </Button>
         </div>
 
-        {/* Playlist/Station Selection */}
-        <div>
-          <Button
-            onClick={() => setShowStations(!showStations)}
-            variant="outline"
-            className="w-full justify-between h-12 text-base"
-            disabled={actionLoading}
-          >
-            <div className="flex items-center">
-              <Radio className="w-5 h-5 mr-3" />
-              <span>{selectedPlayer.currentStation?.name || 'Select Playlist'}</span>
+        {/* Current Playlist Display */}
+        {selectedPlayer.currentStation && (
+          <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+            <div className="flex items-center text-slate-400 text-sm mb-1">
+              <Radio className="w-4 h-4 mr-2" />
+              <span>Current Playlist</span>
             </div>
-            <List className={`w-5 h-5 transition-transform ${showStations ? 'rotate-180' : ''}`} />
-          </Button>
+            <div className="text-white font-medium">{selectedPlayer.currentStation.name}</div>
+          </div>
+        )}
 
-          {showStations && (
-            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto bg-slate-800 or bg-slate-900/5 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-slate-500 mb-2 px-2">Available Playlists</h4>
-              {stations.map((station) => (
-                <button
-                  key={station.id}
-                  onClick={() => handleStationChange(station.id)}
-                  disabled={actionLoading}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
-                    selectedPlayer.currentStation?.id === station.id
-                      ? 'bg-purple-600 border-purple-400 text-white shadow-lg'
-                      : 'bg-slate-800 or bg-slate-900/5 border-gray-600 text-gray-300 hover:bg-slate-800 or bg-slate-900/10 hover:border-gray-500'
-                  } ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-semibold text-base">{station.name}</div>
-                      {station.description && (
-                        <div className="text-xs opacity-80 mt-1">{station.description}</div>
-                      )}
-                      {(station.genre || station.mood) && (
-                        <div className="flex gap-2 mt-2">
-                          {station.genre && (
-                            <Badge variant="secondary" className="text-xs">{station.genre}</Badge>
-                          )}
-                          {station.mood && (
-                            <Badge variant="outline" className="text-xs">{station.mood}</Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {selectedPlayer.currentStation?.id === station.id && (
-                      <Disc className="w-5 h-5 text-white animate-spin" style={{ animationDuration: '3s' }} />
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Info about playlist control */}
+        <div className="mt-4 p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+          <p className="text-xs text-blue-200">
+            <strong>Note:</strong> Playlists are managed through the Soundtrack Your Brand web app. Use the play/pause button above to control playback.
+          </p>
         </div>
 
         {/* Refresh Button */}

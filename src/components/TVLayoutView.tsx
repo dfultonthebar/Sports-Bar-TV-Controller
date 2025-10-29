@@ -100,7 +100,9 @@ export default function TVLayoutView() {
   const [routes, setRoutes] = useState<MatrixRoute[]>([])
   const [loading, setLoading] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
-  
+  const [layoutConfig, setLayoutConfig] = useState<any>(null)
+  const [useImageLayout, setUseImageLayout] = useState(false)
+
   // Modal state
   const [selectedTV, setSelectedTV] = useState<TVDefinition | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -108,16 +110,32 @@ export default function TVLayoutView() {
 
   useEffect(() => {
     loadMatrixData()
+    loadLayoutConfig()
     checkConnectionStatus()
-    
+
     // Refresh data every 10 seconds
     const interval = setInterval(() => {
       loadMatrixData()
       checkConnectionStatus()
     }, 10000)
-    
+
     return () => clearInterval(interval)
   }, [])
+
+  const loadLayoutConfig = async () => {
+    try {
+      const response = await fetch('/api/bartender/layout')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.layout && data.layout.imageUrl && data.layout.zones.length > 0) {
+          setLayoutConfig(data.layout)
+          setUseImageLayout(true)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading layout config:', error)
+    }
+  }
 
   const loadMatrixData = async () => {
     try {
@@ -222,27 +240,39 @@ export default function TVLayoutView() {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center">
             <Monitor className="w-6 h-6 mr-2" />
-            Graystone Sports Bar TV Layout
+            {useImageLayout ? layoutConfig?.name : 'Graystone Sports Bar TV Layout'}
           </h2>
           <p className="text-slate-400 text-sm mt-1">
-            Physical floor plan with 25 TVs across 8 zones
+            {useImageLayout ? `${layoutConfig?.zones.length || 0} TVs detected from uploaded layout` : 'Physical floor plan with 25 TVs across 8 zones'}
           </p>
-          <p className="text-slate-500 text-xs mt-1">
-            TVs 05-10: South of bar | TVs 11-13: Outside wall | TVs 14-19: Inside partial wall | TV 25: Patio | Click any TV to change source
-          </p>
+          {!useImageLayout && (
+            <p className="text-slate-500 text-xs mt-1">
+              TVs 05-10: South of bar | TVs 11-13: Outside wall | TVs 14-19: Inside partial wall | TV 25: Patio | Click any TV to change source
+            </p>
+          )}
         </div>
-        
+
         <div className="flex items-center space-x-3">
+          {/* Layout Toggle */}
+          {layoutConfig && (
+            <button
+              onClick={() => setUseImageLayout(!useImageLayout)}
+              className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg text-sm font-medium transition-all"
+            >
+              {useImageLayout ? 'Grid View' : 'Image View'}
+            </button>
+          )}
+
           {/* Connection Status */}
           <div className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center space-x-2 ${
-            connectionStatus === 'connected' 
+            connectionStatus === 'connected'
               ? 'bg-green-900/80 text-green-200 border border-green-700'
               : 'bg-red-900/80 text-red-200 border border-red-700'
           }`}>
             {connectionStatus === 'connected' ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
             <span>Matrix {connectionStatus}</span>
           </div>
-          
+
           {/* Refresh Button */}
           <button
             onClick={handleRefresh}
@@ -255,8 +285,69 @@ export default function TVLayoutView() {
         </div>
       </div>
 
-      {/* Grid Layout */}
-      <div className="relative w-full bg-slate-900/50 rounded-2xl p-6 border border-slate-700/50 backdrop-blur-sm">
+      {/* Image-Based Layout */}
+      {useImageLayout && layoutConfig ? (
+        <div className="relative w-full bg-slate-900/50 rounded-2xl p-6 border border-slate-700/50 backdrop-blur-sm">
+          <div className="relative w-full">
+            <img
+              src={layoutConfig.imageUrl}
+              alt={layoutConfig.name}
+              className="w-full h-auto rounded-lg"
+            />
+
+            {/* Overlay TV zones */}
+            {layoutConfig.zones.map((zone: any) => {
+              const source = getSourceForOutput(zone.outputNumber)
+              const output = outputs.find(o => o.channelNumber === zone.outputNumber)
+              const isRouting = routingInProgress === zone.outputNumber
+
+              return (
+                <div
+                  key={zone.id}
+                  onClick={() => handleTVClick({
+                    tvNumber: zone.outputNumber,
+                    outputNumber: zone.outputNumber,
+                    area: '',
+                    gridColumn: '',
+                    gridRow: '',
+                    label: output?.label || zone.label
+                  })}
+                  className={`absolute border-2 transition-all cursor-pointer ${
+                    isRouting
+                      ? 'border-yellow-500 bg-yellow-500/20'
+                      : 'border-green-500 bg-green-500/10 hover:bg-green-500/20 hover:border-green-400'
+                  }`}
+                  style={{
+                    left: `${zone.x}%`,
+                    top: `${zone.y}%`,
+                    width: `${zone.width}%`,
+                    height: `${zone.height}%`
+                  }}
+                >
+                  {/* TV Info Overlay */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-1 text-center">
+                    <div className="bg-slate-900/90 backdrop-blur-sm rounded px-2 py-1 border border-slate-700">
+                      <div className="text-white font-bold text-xs">
+                        {output?.label || zone.label}
+                      </div>
+                      {source && (
+                        <div className="text-green-400 text-xs mt-0.5 truncate max-w-[100px]">
+                          {source.sourceName}
+                        </div>
+                      )}
+                      {isRouting && (
+                        <Loader2 className="w-3 h-3 animate-spin text-yellow-400 mx-auto mt-1" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        /* Grid Layout (Original) */
+        <div className="relative w-full bg-slate-900/50 rounded-2xl p-6 border border-slate-700/50 backdrop-blur-sm">
         {/* Floor Plan Legend */}
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           <div className="flex items-center space-x-1">
@@ -407,7 +498,8 @@ export default function TVLayoutView() {
             })}
           </div>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Source Selection Modal */}
       {selectedTV && (

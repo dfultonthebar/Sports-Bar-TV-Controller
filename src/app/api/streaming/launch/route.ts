@@ -1,23 +1,27 @@
 
 /**
  * API Route: Launch Streaming App
- * 
+ *
  * Launches a streaming app on a Fire TV device
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { streamingManager } from '@/services/streaming-service-manager'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
+
+const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { 
-      deviceId, 
-      ipAddress, 
-      appId, 
+    const {
+      deviceId,
+      ipAddress,
+      appId,
       port = 5555,
       deepLink,
-      activityName 
+      activityName: providedActivityName
     } = body
 
     if (!deviceId || !ipAddress || !appId) {
@@ -28,6 +32,22 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[API] Launching app ${appId} on device ${deviceId}`)
+
+    // Try to get activity name from subscribed apps config if not provided
+    let activityName = providedActivityName
+    if (!activityName) {
+      try {
+        const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
+        const config = JSON.parse(data)
+        const appConfig = config.subscribedApps.find((app: any) => app.appId === appId)
+        if (appConfig?.activityName) {
+          activityName = appConfig.activityName
+          console.log(`[API] Using activity name from config: ${activityName}`)
+        }
+      } catch (error) {
+        console.log('[API] Could not load activity name from config')
+      }
+    }
 
     const success = await streamingManager.launchApp(
       deviceId,

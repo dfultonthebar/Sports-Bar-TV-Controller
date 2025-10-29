@@ -35,10 +35,9 @@ export default function CECControl({ tvAddress = '0', onCommandSent, compact = f
       const response = await fetch('/api/cec/initialize')
       const data = await response.json()
       setIsInitialized(data.success)
-      
-      if (data.success) {
-        await scanDevices()
-      }
+
+      // Skip automatic scan on load - user can click "Scan" button when needed
+      // This makes the page load instantly instead of waiting 3-7 seconds
     } catch (error) {
       console.error('Failed to initialize CEC:', error)
     }

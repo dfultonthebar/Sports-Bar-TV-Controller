@@ -134,9 +134,10 @@ export async function POST(request: NextRequest) {
 
     // Log the test result to database
     console.log('💾 [WOLFPACK CONNECTION TEST] Saving test result to database...')
-    
-    const testLog = await prisma.testLog.create({
-      data: {
+
+    const testLogResults = await db
+      .insert(testLogs)
+      .values({
         testType: 'wolfpack_connection',
         testName: 'Wolf Pack Connection Test',
         status: connectionResult.success ? 'success' : 'failed',
@@ -154,8 +155,10 @@ export async function POST(request: NextRequest) {
           configName: matrixConfig.name,
           timestamp: new Date().toISOString()
         })
-      }
-    })
+      })
+      .returning()
+
+    const testLog = testLogResults[0]
 
     console.log('✅ [WOLFPACK CONNECTION TEST] Test result saved')
     console.log('Test Log ID:', testLog.id)
@@ -184,8 +187,9 @@ export async function POST(request: NextRequest) {
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {
-      const errorLog = await prisma.testLog.create({
-        data: {
+      const errorLogResults = await db
+        .insert(testLogs)
+        .values({
           testType: 'wolfpack_connection',
           testName: 'Wolf Pack Connection Test',
           status: 'error',
@@ -200,8 +204,10 @@ export async function POST(request: NextRequest) {
             stack: error instanceof Error ? error.stack : undefined,
             timestamp: new Date().toISOString()
           })
-        }
-      })
+        })
+        .returning()
+
+      const errorLog = errorLogResults[0]
 
       return NextResponse.json({
         success: false,

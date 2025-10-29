@@ -38,6 +38,8 @@ export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
+  const [aiActionLoading, setAiActionLoading] = useState<string | null>(null)
+  const [aiActionResult, setAiActionResult] = useState<any>(null)
 
   // Load AI toggle state from localStorage on mount
   useEffect(() => {
@@ -57,6 +59,34 @@ export default function DeviceConfigPage() {
     setAiEnhancementsEnabled(newState)
     if (typeof window !== 'undefined') {
       localStorage.setItem('deviceConfigAiEnabled', String(newState))
+    }
+  }
+
+  // Handle AI Actions
+  const handleAiAction = async (action: string) => {
+    setAiActionLoading(action)
+    setAiActionResult(null)
+
+    try {
+      const response = await fetch('/api/ai/device-optimization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+
+      const data = await response.json()
+      setAiActionResult({ action, data })
+
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => setAiActionResult(null), 5000)
+    } catch (error) {
+      console.error('AI Action failed:', error)
+      setAiActionResult({
+        action,
+        data: { success: false, error: 'Action failed' }
+      })
+    } finally {
+      setAiActionLoading(null)
     }
   }
 
@@ -376,35 +406,102 @@ export default function DeviceConfigPage() {
               Quick AI Actions
             </CardTitle>
             <CardDescription>
-              Common AI-powered operations for device management
+              Real AI-powered operations using device performance data and sports context
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 h-auto p-4"
+                onClick={() => handleAiAction('analyze')}
+                disabled={aiActionLoading === 'analyze'}
+              >
                 <Brain className="w-5 h-5 text-blue-400" />
                 <div className="text-left">
                   <div className="font-medium">Run Full AI Analysis</div>
-                  <div className="text-xs text-slate-400">Complete device intelligence scan</div>
+                  <div className="text-xs text-slate-400">
+                    {aiActionLoading === 'analyze' ? 'Analyzing...' : 'Scan all devices & performance'}
+                  </div>
                 </div>
               </Button>
-              
-              <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
+
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 h-auto p-4"
+                onClick={() => handleAiAction('optimize')}
+                disabled={aiActionLoading === 'optimize'}
+              >
                 <Target className="w-5 h-5 text-green-400" />
                 <div className="text-left">
                   <div className="font-medium">Optimize All Devices</div>
-                  <div className="text-xs text-slate-400">Apply AI recommendations</div>
+                  <div className="text-xs text-slate-400">
+                    {aiActionLoading === 'optimize' ? 'Optimizing...' : 'Apply AI recommendations'}
+                  </div>
                 </div>
               </Button>
-              
-              <Button variant="outline" className="flex items-center gap-2 h-auto p-4">
+
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 h-auto p-4"
+                onClick={() => handleAiAction('insights')}
+                disabled={aiActionLoading === 'insights'}
+              >
                 <TrendingUp className="w-5 h-5 text-purple-400" />
                 <div className="text-left">
                   <div className="font-medium">View AI Insights</div>
-                  <div className="text-xs text-slate-400">Check performance predictions</div>
+                  <div className="text-xs text-slate-400">
+                    {aiActionLoading === 'insights' ? 'Loading...' : 'Weekly trends & predictions'}
+                  </div>
                 </div>
               </Button>
             </div>
+
+            {/* AI Action Results */}
+            {aiActionResult && aiActionResult.data.success && (
+              <div className="card p-4 border-blue-600/50 bg-gradient-to-r from-blue-900/20 to-purple-900/20">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-blue-400" />
+                    <span className="font-semibold text-blue-200">
+                      {aiActionResult.action === 'analyze' && 'Analysis Complete'}
+                      {aiActionResult.action === 'optimize' && 'Optimization Complete'}
+                      {aiActionResult.action === 'insights' && 'AI Insights'}
+                    </span>
+                  </div>
+
+                  {aiActionResult.action === 'analyze' && aiActionResult.data.analysis && (
+                    <div className="text-sm text-slate-300 space-y-1">
+                      <div>• {aiActionResult.data.analysis.onlineDevices}/{aiActionResult.data.analysis.totalDevices} devices online</div>
+                      <div>• Overall health: {Math.round(aiActionResult.data.analysis.overallHealth)}%</div>
+                      <div>• Success rate: {aiActionResult.data.analysis.recentPerformance.successRate}%</div>
+                      {aiActionResult.data.analysis.recommendations.map((rec: string, i: number) => (
+                        <div key={i}>• {rec}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {aiActionResult.action === 'optimize' && aiActionResult.data.optimizations && (
+                    <div className="text-sm text-slate-300 space-y-1">
+                      <div>• Found {aiActionResult.data.optimizationsApplied} optimization opportunities</div>
+                      {aiActionResult.data.optimizations.slice(0, 3).map((opt: any, i: number) => (
+                        <div key={i}>• {opt.message}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {aiActionResult.action === 'insights' && aiActionResult.data.insights && (
+                    <div className="text-sm text-slate-300 space-y-1">
+                      <div>• Overall success rate: {aiActionResult.data.insights.overallSuccessRate}%</div>
+                      <div>• Total tests: {aiActionResult.data.insights.totalTests} (last 7 days)</div>
+                      {aiActionResult.data.insights.predictions.map((pred: string, i: number) => (
+                        <div key={i}>• {pred}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

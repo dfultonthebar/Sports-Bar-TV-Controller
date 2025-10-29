@@ -74,13 +74,23 @@ export default function SoundtrackControl({
   const [error, setError] = useState<string | null>(null)
   const [showStations, setShowStations] = useState(false)
 
+  // Load data once on mount
   useEffect(() => {
     loadData()
+  }, [])
+
+  // Set up interval for updating now playing when player changes
+  useEffect(() => {
+    if (!selectedPlayer) return
+
+    // Update immediately
+    updateNowPlaying(selectedPlayer.id)
+
+    // Then update every 10 seconds
     const interval = setInterval(() => {
-      if (selectedPlayer) {
-        updateNowPlaying(selectedPlayer.id)
-      }
-    }, 10000) // Update every 10 seconds
+      updateNowPlaying(selectedPlayer.id)
+    }, 10000)
+
     return () => clearInterval(interval)
   }, [selectedPlayer])
 

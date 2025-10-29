@@ -25,7 +25,7 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
   {
     id: 'nfhs-network',
     name: 'NFHS Network',
-    packageName: 'com.nfhsnetwork.android',
+    packageName: 'com.playon.nfhslive',  // Updated for Fire TV
     category: 'sports',
     hasPublicApi: false,
     deepLinkSupport: true,
@@ -33,23 +33,23 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     description: 'High school sports streaming',
     sports: ['football', 'basketball', 'volleyball', 'soccer', 'baseball', 'softball', 'wrestling', 'track', 'swimming'],
     requiresSubscription: true,
-    notes: 'No public API available. Contact NFHS for API access: support@nfhsnetwork.com'
+    notes: 'No public API available. Fire TV package: com.playon.nfhslive'
   },
 
-  // ESPN+
+  // ESPN
   {
     id: 'espn-plus',
-    name: 'ESPN+',
-    packageName: 'com.espn.score_center',
+    name: 'ESPN',
+    packageName: 'com.espn.gtv',  // Updated for Fire TV (ESPN app, includes ESPN+)
     category: 'sports',
     hasPublicApi: true,
     apiDocUrl: 'https://www.espn.com/apis/devcenter/docs/',
     deepLinkSupport: true,
     deepLinkFormat: 'espn://x-callback-url/showEvent?eventId={eventId}',
-    description: 'ESPN+ streaming service with live sports and original content',
+    description: 'ESPN streaming with live sports, ESPN+, and original content',
     sports: ['football', 'basketball', 'baseball', 'hockey', 'soccer', 'ufc', 'boxing', 'tennis', 'cricket'],
     requiresSubscription: true,
-    notes: 'ESPN API provides schedule and event data'
+    notes: 'Fire TV package: com.espn.gtv (includes ESPN+)'
   },
 
   // Fox Sports
@@ -86,7 +86,7 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
   {
     id: 'youtube-tv',
     name: 'YouTube TV',
-    packageName: 'com.google.android.youtube.tvunplugged',
+    packageName: 'com.amazon.firetv.youtube',  // Updated for Fire TV
     category: 'live-tv',
     hasPublicApi: true,
     apiDocUrl: 'https://developers.google.com/youtube/v3',
@@ -95,7 +95,7 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     description: 'Live TV streaming service with sports channels',
     sports: ['all'],
     requiresSubscription: true,
-    notes: 'YouTube Data API available for channel and video information'
+    notes: 'Fire TV package: com.amazon.firetv.youtube - includes YouTube TV for subscribers'
   },
 
   // Hulu Live TV

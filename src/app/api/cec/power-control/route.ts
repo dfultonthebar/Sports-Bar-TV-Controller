@@ -28,22 +28,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Get active matrix configuration
-    const activeMatrix = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
+    const activeMatrix = await findFirst('matrixConfigurations', {
+      where: eq(schema.matrixConfigurations.isActive, true)
     })
-    
+
     if (!activeMatrix) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No active matrix configuration found' 
+      return NextResponse.json({
+        success: false,
+        error: 'No active matrix configuration found'
       }, { status: 404 })
     }
 
     // Get active outputs if not specified
     let targetOutputs = outputNumbers
     if (!targetOutputs) {
-      const activeOutputs = await prisma.matrixOutput.findMany({
-        where: { isActive: true }
+      const activeOutputs = await findMany('matrixOutputs', {
+        where: eq(schema.matrixOutputs.isActive, true)
       })
       targetOutputs = activeOutputs.map(output => output.channelNumber)
     }

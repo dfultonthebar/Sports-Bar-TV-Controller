@@ -31,7 +31,8 @@ import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
-import TVLayoutView from '@/components/TVLayoutView'
+import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
+import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 
 interface MatrixInput {
   id: string
@@ -145,7 +146,8 @@ export default function BartenderRemotePage() {
   })
   const [isRouting, setIsRouting] = useState(false)
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
-  
+  const [currentSources, setCurrentSources] = useState<Map<number, number>>(new Map()) // outputNumber -> inputNumber
+
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
@@ -426,6 +428,10 @@ export default function BartenderRemotePage() {
 
       if (response.ok) {
         setCommandStatus(`✅ Routed to Output ${outputNumber}`)
+        // Update current sources tracking
+        const newSources = new Map(currentSources)
+        newSources.set(outputNumber, inputNumber)
+        setCurrentSources(newSources)
       } else {
         setCommandStatus('❌ Failed to route signal')
       }
@@ -436,6 +442,30 @@ export default function BartenderRemotePage() {
       setIsRouting(false)
       // Clear status after 3 seconds
       setTimeout(() => setCommandStatus(''), 3000)
+    }
+  }
+
+  const handleLabelUpdate = async (zoneId: string, newLabel: string) => {
+    try {
+      // Update local state immediately for responsive UI
+      const updatedZones = tvLayout.zones.map(zone =>
+        zone.id === zoneId ? { ...zone, label: newLabel } : zone
+      )
+      setTVLayout({ ...tvLayout, zones: updatedZones })
+
+      // Save to backend if layout has an ID
+      if (tvLayout.id) {
+        await fetch('/api/bartender/layout', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            layoutId: tvLayout.id,
+            zones: updatedZones
+          })
+        })
+      }
+    } catch (error) {
+      console.error('Error updating label:', error)
     }
   }
 
@@ -579,8 +609,13 @@ export default function BartenderRemotePage() {
       {/* Main Content Area - Changes based on active tab */}
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
         {activeTab === 'video' && (
-          <div className="max-w-7xl mx-auto">
-            <TVLayoutView />
+          <div className="max-w-7xl mx-auto space-y-4">
+            <InteractiveBartenderLayout
+              layout={tvLayout}
+              onInputSelect={routeInputToOutput}
+              currentSources={currentSources}
+              inputs={inputs}
+            />
           </div>
         )}
 

@@ -112,19 +112,31 @@ export default function LayoutConfiguration() {
       const result = await response.json()
 
       if (response.ok) {
-        setUploadStatus('✅ Upload successful!')
-        
+        // Show detection results
+        const detectedZones = result.zones?.length || 0
+        const detectionCount = result.detection?.detectionsCount || 0
+
+        console.log('[Layout Config] Upload response:', { detectedZones, detectionCount, zones: result.zones })
+
+        if (detectedZones > 0) {
+          const statusMsg = `✅ Upload successful! Auto-detected ${detectedZones} TV zones with touch-friendly spacing`
+          setUploadStatus(statusMsg)
+          console.log('[Layout Config] Status message set:', statusMsg)
+        } else {
+          setUploadStatus('✅ Upload successful! (No TVs auto-detected)')
+        }
+
         const newLayout = {
           name: tvLayout.name,
           imageUrl: result.convertedImageUrl || result.imageUrl,
           originalFileUrl: result.imageUrl,
           fileType: result.fileType,
-          zones: tvLayout.zones
+          zones: result.zones || tvLayout.zones  // Use detected zones if available
         }
-        
+
         setTVLayout(newLayout)
 
-        // Save the layout
+        // Save the layout with detected zones
         await fetch('/api/bartender/layout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -143,7 +155,11 @@ export default function LayoutConfiguration() {
       setUploadStatus('❌ Upload failed')
     } finally {
       setIsUploading(false)
-      setTimeout(() => setUploadStatus(''), 5000)
+      // Keep status visible for 15 seconds so user has time to see it
+      setTimeout(() => {
+        console.log('[Layout Config] Clearing status message')
+        setUploadStatus('')
+      }, 15000)
     }
   }
 

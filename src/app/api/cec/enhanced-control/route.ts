@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
     // Get output info to determine brand if available
     let brandConfig = getBrandConfig('Generic')
     if (outputNumber) {
-      const output = await prisma.matrixOutput.findFirst({
-        where: { channelNumber: outputNumber }
+      const output = await findFirst('matrixOutputs', {
+        where: eq(schema.matrixOutputs.channelNumber, outputNumber)
       })
       // Use detected brand from CEC discovery if available
       if (output?.tvBrand) {
