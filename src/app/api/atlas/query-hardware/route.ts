@@ -85,33 +85,78 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Convert hardware config to API format
-    const inputs = hardwareConfig.sources.map(source => ({
-      id: `source_${source.index}`,
-      number: source.index + 1, // 1-based numbering for display
-      name: source.name,
-      type: 'atlas_configured',
-      connector: 'Hardware',
-      description: `Atlas configured source: ${source.name}`,
-      parameterName: source.parameterName,
-      isCustom: true,
-      queriedFromHardware: true
-    }))
+    // Helper function to extract string from Atlas name format
+    // Atlas can return names in various formats:
+    // - Plain string: "Input 1"
+    // - Object with str: {str: "Input 1"}
+    // - Object with param and str: {param: "InputName", str: "Input 1"}
+    // - Array: [{str: "Input 1"}]
+    const extractNameString = (nameField: any, defaultName: string): string => {
+      // Already a string
+      if (typeof nameField === 'string') {
+        return nameField
+      }
+      
+      // Object with str property
+      if (nameField && typeof nameField === 'object') {
+        // Handle {param: "...", str: "..."}
+        if (nameField.str) {
+          return String(nameField.str)
+        }
+        // Handle {val: "..."}
+        if (nameField.val !== undefined) {
+          return String(nameField.val)
+        }
+      }
+      
+      // Array format
+      if (Array.isArray(nameField) && nameField.length > 0) {
+        const first = nameField[0]
+        if (typeof first === 'string') {
+          return first
+        }
+        if (first && typeof first === 'object' && first.str) {
+          return String(first.str)
+        }
+      }
+      
+      // Fallback to default
+      return defaultName
+    }
 
-    const outputs = hardwareConfig.zones.map(zone => ({
-      id: `zone_${zone.index}`,
-      number: zone.index + 1, // 1-based numbering for display
-      name: zone.name,
-      type: 'zone',
-      connector: 'Hardware',
-      description: `Atlas configured zone: ${zone.name}`,
-      parameterName: zone.parameterName,
-      currentSource: zone.currentSource,
-      volume: zone.volume,
-      muted: zone.muted,
-      isCustom: true,
-      queriedFromHardware: true
-    }))
+    // Convert hardware config to API format with proper string extraction
+    const inputs = hardwareConfig.sources.map(source => {
+      const name = extractNameString(source.name, `Input ${source.index + 1}`)
+      return {
+        id: `source_${source.index}`,
+        number: source.index + 1, // 1-based numbering for display
+        name: name,
+        type: 'atlas_configured',
+        connector: 'Hardware',
+        description: `Atlas configured source: ${name}`,
+        parameterName: source.parameterName,
+        isCustom: true,
+        queriedFromHardware: true
+      }
+    })
+
+    const outputs = hardwareConfig.zones.map(zone => {
+      const name = extractNameString(zone.name, `Zone ${zone.index + 1}`)
+      return {
+        id: `zone_${zone.index}`,
+        number: zone.index + 1, // 1-based numbering for display
+        name: name,
+        type: 'zone',
+        connector: 'Hardware',
+        description: `Atlas configured zone: ${name}`,
+        parameterName: zone.parameterName,
+        currentSource: zone.currentSource,
+        volume: zone.volume,
+        muted: zone.muted,
+        isCustom: true,
+        queriedFromHardware: true
+      }
+    })
 
     // Save configuration to file
     const config = {
