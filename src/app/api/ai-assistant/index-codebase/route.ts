@@ -173,10 +173,10 @@ export async function POST(request: NextRequest) {
               .set({
                 content: file.content,
                 fileSize: file.size,
-                lastModified: file.lastModified,
-                lastIndexed: new Date(),
+                lastModified: file.lastModified.toISOString(),
+                lastIndexed: new Date().toISOString(),
                 hash: file.hash,
-                updatedAt: new Date()
+                updatedAt: new Date().toISOString()
               })
               .where(eq(indexedFiles.id, existing[0].id));
             updated++;
@@ -195,16 +195,16 @@ export async function POST(request: NextRequest) {
             fileType: file.type,
             content: file.content,
             fileSize: file.size,
-            lastModified: file.lastModified,
-            lastIndexed: new Date(),
+            lastModified: file.lastModified.toISOString(),
+            lastIndexed: new Date().toISOString(),
             hash: file.hash,
             isActive: true,
             metadata: JSON.stringify({
               extension: path.extname(file.name),
               directory: path.dirname(file.path)
             }),
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           });
           indexed++;
           if (indexed % 10 === 0) {
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
     for (const indexedFile of allIndexedFiles) {
       if (!currentFilePaths.has(indexedFile.filePath)) {
         await db.update(indexedFiles)
-          .set({ isActive: false, updatedAt: new Date() })
+          .set({ isActive: false, updatedAt: new Date().toISOString() })
           .where(eq(indexedFiles.id, indexedFile.id));
         deactivated++;
       }
