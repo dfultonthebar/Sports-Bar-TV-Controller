@@ -1,0 +1,210 @@
+{
+  "name": "AI Training - Auto Documentation Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Check Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "find /home/ubuntu/Sports-Bar-TV-Controller/docs -name '*.md' -type f -mmin -20 | head -20"
+      },
+      "id": "find-modified",
+      "name": "Find Recently Modified Docs",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.stdout}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-results",
+      "name": "Any Files Changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.first().json.stdout.split('\\n').filter(f => f.trim());\nconst results = [];\n\nfor (const file of files) {\n  if (file) {\n    results.push({\n      filePath: file,\n      fileName: file.split('/').pop(),\n      detectedAt: new Date().toISOString()\n    });\n  }\n}\n\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "process-files",
+      "name": "Process File List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:3001/api/ai/train",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "filePath",
+              "value": "={{$json.filePath}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-endpoint",
+      "name": "Call Training API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO PendingAITraining (id, filePath, fileName, detectedAt, status, createdAt, updatedAt) VALUES ('{{$json.filePath | hash}}', '{{$json.filePath}}', '{{$json.fileName}}', '{{$json.detectedAt}}', 'pending', datetime('now'), datetime('now')) ON CONFLICT(filePath) DO UPDATE SET detectedAt = '{{$json.detectedAt}}', updatedAt = datetime('now')",
+        "options": {}
+      },
+      "id": "save-to-queue",
+      "name": "Add to Training Queue",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [
+        1130,
+        350
+      ],
+      "credentials": {
+        "sqlite": {
+          "id": "production-db",
+          "name": "Production Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "echo '📚 New documentation detected! Run: tell Claude Code to process pending AI training docs' | wall"
+      },
+      "id": "notify-user",
+      "name": "Notify System",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        275
+      ]
+    }
+  ],
+  "connections": {
+    "Check Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Find Recently Modified Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Recently Modified Docs": {
+      "main": [
+        [
+          {
+            "node": "Any Files Changed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Files Changed?": {
+      "main": [
+        [
+          {
+            "node": "Process File List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process File List": {
+      "main": [
+        [
+          {
+            "node": "Call Training API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Add to Training Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Training API": {
+      "main": [
+        [
+          {
+            "node": "Notify System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Training Queue": {
+      "main": [
+        [
+          {
+            "node": "Notify System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-29T20:30:00.000Z",
+  "versionId": "1"
+}

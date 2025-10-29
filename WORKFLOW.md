@@ -39,6 +39,22 @@ pm2 start qa-worker
 # This takes 8-15 hours but runs automatically
 ```
 
+#### Method 3: n8n Automation (Best for Teams) ⭐
+Set up automatic detection and processing:
+```bash
+# See full setup guide
+cat docs/AI_TRAINING_AUTOMATION.md
+```
+
+The n8n workflow:
+- 🔍 Monitors `/docs` folder every 15 minutes
+- 📋 Adds new/modified files to queue automatically
+- 🔔 Notifies you when docs are ready to process
+- 🤖 You tell Claude Code to process the queue
+- ⚡ Fully automated with zero manual tracking
+
+**Setup:** Import `n8n-workflows/ai-training-auto.json` into n8n
+
 ### 4. Commit and Push
 ```bash
 git add .

@@ -13,8 +13,8 @@ import { logger } from '@/lib/logger';
 import { calculateFileHash } from '@/lib/utils/file-hash';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const DEFAULT_MODEL = 'phi3:mini';
-const FALLBACK_MODEL = 'llama3.2:3b';
+const DEFAULT_MODEL = 'tinyllama'; // Faster 1.1B param model for Q&A generation
+const FALLBACK_MODEL = 'phi3:mini';
 const QA_GENERATION_TIMEOUT = 600000; // 10 minutes
 const MAX_CONCURRENT_FILES = 2;
 const MAX_FILE_SIZE_MB = 2;
@@ -320,7 +320,8 @@ async function collectFilesForGeneration(options: QAGenerationOptions): Promise<
     }
   }
 
-  const supportedExtensions = ['.md', '.txt', '.rst', '.pdf'];
+  // Only process markdown files for faster, more reliable Q&A generation
+  const supportedExtensions = ['.md'];
   return files.filter(file =>
     supportedExtensions.some(ext => file.toLowerCase().endsWith(ext))
   );
