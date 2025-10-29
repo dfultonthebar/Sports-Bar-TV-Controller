@@ -250,6 +250,28 @@ You do NOT need to manually restore settings after normal updates.
 
 ---
 
+## 🧠 **Teaching the AI About New Features**
+
+**Important:** After adding features or fixes, update the AI Assistant's knowledge!
+
+### Quick Method (With Claude Code)
+When working with Claude Code, simply say:
+```
+"We just added [feature]. Generate Q&As to teach the local AI about it."
+```
+
+Claude will read your documentation and generate high-quality Q&A pairs in minutes.
+
+### Automatic Reminder
+After every `git commit` with `feat:` or `fix:`, you'll see a reminder to update AI training.
+
+### Full Workflow
+See [WORKFLOW.md](./WORKFLOW.md) for complete details on the development process.
+
+**Current Q&A Count:** 87 entries
+
+---
+
 ## 🛠️ **Troubleshooting**
 
 ### Installation Issues
