@@ -3,6 +3,8 @@
  *
  * This module contains the core processing logic for Q&A generation,
  * extracted to be used by both the API route and the background worker.
+ *
+ * Uses Claude API (Anthropic) for reliable, high-quality Q&A generation
  */
 
 import fs from 'fs';
@@ -11,15 +13,21 @@ import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, upd
 import { schema } from '@/db';
 import { logger } from '@/lib/logger';
 import { calculateFileHash } from '@/lib/utils/file-hash';
+import Anthropic from '@anthropic-ai/sdk';
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const DEFAULT_MODEL = 'tinyllama'; // Faster 1.1B param model for Q&A generation
-const FALLBACK_MODEL = 'phi3:mini';
-const QA_GENERATION_TIMEOUT = 600000; // 10 minutes
-const MAX_CONCURRENT_FILES = 2;
+// Claude API Configuration
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const DEFAULT_MODEL = 'claude-3-5-haiku-20241022'; // Fast and cost-effective
+const QA_GENERATION_TIMEOUT = 120000; // 2 minutes per chunk
+const MAX_CONCURRENT_FILES = 3; // Can handle more with Claude
 const MAX_FILE_SIZE_MB = 2;
-const CHUNK_SIZE = 3000;
+const CHUNK_SIZE = 4000; // Claude can handle larger chunks
 const MAX_RETRIES = 2;
+
+// Initialize Anthropic client
+const anthropic = new Anthropic({
+  apiKey: ANTHROPIC_API_KEY,
+});
 
 export interface QAGenerationOptions {
   sourceType: 'repository' | 'documentation' | 'codebase';
@@ -400,52 +408,112 @@ async function generateQAsFromChunk(
   category: string,
   options: QAGenerationOptions
 ): Promise<GeneratedQA[]> {
-  const model = options.model || DEFAULT_MODEL;
+  const fileName = path.basename(filePath);
 
-  const prompt = `Generate question-answer pairs from the following content. Return a JSON array of Q&A objects.
+  const prompt = `Analyze this documentation and generate 2-4 high-quality question-answer pairs that would help users understand this system.
 
-Each Q&A should have:
-- question: A clear, specific question
-- answer: A concise, accurate answer
-- tags: Array of relevant tags
+Document: ${fileName}
+Category: ${category}
 
 Content:
 ${chunk}
 
-Return ONLY valid JSON array, no other text.`;
+CRITICAL INSTRUCTIONS:
+1. Generate questions that users would actually ask about this system
+2. Answers should be clear, accurate, and based ONLY on the provided content
+3. Focus on practical, actionable information
+4. Return ONLY valid JSON - no markdown, no code blocks, no extra text
 
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        options: {
-          temperature: 0.7,
-          top_p: 0.9,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.statusText}`);
+Required JSON format:
+{
+  "qas": [
+    {
+      "question": "specific question here",
+      "answer": "detailed answer here",
+      "tags": ["tag1", "tag2"],
+      "confidence": 0.9
     }
+  ]
+}`;
 
-    const data = await response.json();
-    const qas = JSON.parse(data.response);
+  let retries = 0;
+  while (retries <= MAX_RETRIES) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), QA_GENERATION_TIMEOUT);
 
-    return qas.map((qa: any) => ({
-      question: qa.question,
-      answer: qa.answer,
-      category,
-      tags: qa.tags || [],
-      confidence: 0.8,
-      sourceFile: filePath,
-    }));
-  } catch (error) {
-    logger.error(`Error calling Ollama API:`, error);
-    return [];
+      const message = await anthropic.messages.create({
+        model: DEFAULT_MODEL,
+        max_tokens: 2048,
+        temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }],
+      }, {
+        signal: controller.signal as any,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!message.content || message.content.length === 0) {
+        throw new Error('Empty response from Claude API');
+      }
+
+      const responseText = message.content[0].type === 'text'
+        ? message.content[0].text
+        : '';
+
+      // Parse the JSON response
+      const cleaned = responseText.trim()
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      if (!parsed.qas || !Array.isArray(parsed.qas)) {
+        throw new Error('Invalid Q&A structure');
+      }
+
+      const validQAs = parsed.qas
+        .filter((qa: any) => qa.question && qa.answer)
+        .map((qa: any) => ({
+          question: qa.question,
+          answer: qa.answer,
+          category,
+          tags: Array.isArray(qa.tags) ? qa.tags : [],
+          confidence: typeof qa.confidence === 'number' ? qa.confidence : 0.85,
+          sourceFile: filePath,
+        }));
+
+      if (validQAs.length > 0) {
+        return validQAs;
+      }
+
+      throw new Error('No valid Q&As generated');
+
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.error(`Claude API timeout for ${fileName} (attempt ${retries + 1}/${MAX_RETRIES + 1})`);
+      } else {
+        logger.error(`Error calling Claude API (attempt ${retries + 1}/${MAX_RETRIES + 1}):`, error);
+      }
+
+      if (retries < MAX_RETRIES) {
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * retries)); // Exponential backoff
+        continue;
+      }
+
+      return []; // Return empty array after all retries
+    }
   }
+
+  return [];
 }

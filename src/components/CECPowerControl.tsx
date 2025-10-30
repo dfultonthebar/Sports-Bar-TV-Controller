@@ -28,6 +28,15 @@ interface CECConfig {
   powerOffDelay: number
 }
 
+interface CECDevice {
+  id: string
+  deviceName: string
+  deviceType: string
+  devicePath: string
+  matrixInputId: string | null
+  isActive: boolean
+}
+
 interface MatrixInput {
   id: string
   channelNumber: number
@@ -69,11 +78,13 @@ export default function CECPowerControl() {
   const [configLoading, setConfigLoading] = useState(false)
   const [status, setStatus] = useState<string>('')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  const [cecDevice, setCecDevice] = useState<CECDevice | null>(null)
 
   useEffect(() => {
     loadCECConfig()
     loadMatrixData()
     checkConnectionStatus()
+    loadCECDevice()
   }, [])
 
   const loadCECConfig = async () => {
@@ -127,6 +138,49 @@ export default function CECPowerControl() {
       setConnectionStatus(response.ok ? 'connected' : 'disconnected')
     } catch (error) {
       setConnectionStatus('disconnected')
+    }
+  }
+
+  const loadCECDevice = async () => {
+    try {
+      const response = await fetch('/api/cec/devices')
+      if (response.ok) {
+        const data = await response.json()
+        const tvPowerDevice = data.devices?.find((d: CECDevice) => d.deviceType === 'tv_power')
+        if (tvPowerDevice) {
+          setCecDevice(tvPowerDevice)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading CEC device:', error)
+    }
+  }
+
+  const saveCECInputChannel = async (inputChannel: number) => {
+    setConfigLoading(true)
+    setStatus('Saving CEC configuration...')
+
+    try {
+      const response = await fetch('/api/matrix/config/cec-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cecInputChannel: inputChannel })
+      })
+
+      if (response.ok) {
+        setCecConfig(prev => ({ ...prev, cecInputChannel: inputChannel }))
+        setStatus('✅ CEC configuration saved')
+        // Reload matrix data to get the updated cecInputChannel
+        await loadMatrixData()
+      } else {
+        setStatus('❌ Failed to save CEC configuration')
+      }
+    } catch (error) {
+      console.error('Error saving CEC input:', error)
+      setStatus('❌ Error saving CEC configuration')
+    } finally {
+      setConfigLoading(false)
+      setTimeout(() => setStatus(''), 3000)
     }
   }
 
@@ -273,126 +327,7 @@ export default function CECPowerControl() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* CEC Configuration Panel */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-            <Settings className="mr-2 w-5 h-5" />
-            CEC Configuration
-          </h3>
-          
-          <div className="space-y-4">
-            {/* Enable CEC */}
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-300">Enable CEC Control</label>
-              <button
-                onClick={() => setCecConfig(prev => ({ ...prev, isEnabled: !prev.isEnabled }))}
-                className={`px-3 py-1 rounded text-xs transition-colors ${
-                  cecConfig.isEnabled 
-                    ? 'bg-green-500/30 text-green-300 border border-green-500/50' 
-                    : 'bg-gray-500/30 text-gray-300 border border-gray-500/50'
-                }`}
-              >
-                {cecConfig.isEnabled ? 'Enabled' : 'Disabled'}
-              </button>
-            </div>
-
-            {/* CEC Server Input Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                CEC Server Input
-              </label>
-              <select
-                value={cecConfig.cecInputChannel || ''}
-                onChange={(e) => setCecConfig(prev => ({ 
-                  ...prev, 
-                  cecInputChannel: e.target.value ? parseInt(e.target.value) : null 
-                }))}
-                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
-                disabled={!cecConfig.isEnabled}
-              >
-                <option value="">Select CEC input...</option>
-                {inputs.map((input) => (
-                  <option key={input.id} value={input.channelNumber}>
-                    {getInputIcon(input.inputType)} Input {input.channelNumber}: {input.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">
-                Select the input where your CEC server/controller is connected
-              </p>
-            </div>
-
-            {/* CEC Server IP */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC Server IP
-              </label>
-              <input
-                type="text"
-                value={cecConfig.cecServerIP}
-                onChange={(e) => setCecConfig(prev => ({ ...prev, cecServerIP: e.target.value }))}
-                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
-                placeholder="192.168.1.100"
-                disabled={!cecConfig.isEnabled}
-              />
-            </div>
-
-            {/* CEC Server Port */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                CEC Server Port
-              </label>
-              <input
-                type="number"
-                value={cecConfig.cecPort}
-                onChange={(e) => setCecConfig(prev => ({ ...prev, cecPort: parseInt(e.target.value) || 8080 }))}
-                className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
-                placeholder="8080"
-                disabled={!cecConfig.isEnabled}
-              />
-            </div>
-
-            {/* Power Delays */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Power On Delay (ms)</label>
-                <input
-                  type="number"
-                  value={cecConfig.powerOnDelay}
-                  onChange={(e) => setCecConfig(prev => ({ ...prev, powerOnDelay: parseInt(e.target.value) || 2000 }))}
-                  className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-xs"
-                  disabled={!cecConfig.isEnabled}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Power Off Delay (ms)</label>
-                <input
-                  type="number"
-                  value={cecConfig.powerOffDelay}
-                  onChange={(e) => setCecConfig(prev => ({ ...prev, powerOffDelay: parseInt(e.target.value) || 1000 }))}
-                  className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-xs"
-                  disabled={!cecConfig.isEnabled}
-                />
-              </div>
-            </div>
-
-            {/* Save Configuration */}
-            <button
-              onClick={saveCECConfig}
-              disabled={configLoading}
-              className="w-full mt-4 py-2 bg-blue-500/30 text-blue-300 border border-blue-500/50 rounded hover:bg-blue-500/40 transition-colors text-sm flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {configLoading ? (
-                <RotateCcw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              <span>Save Configuration</span>
-            </button>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* System-Wide Power Control */}
         <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-4 flex items-center">
@@ -428,29 +363,6 @@ export default function CECPowerControl() {
                   <Power className="w-4 h-4" />
                   <span>Power Off</span>
                 </button>
-              </div>
-            </div>
-
-            {/* System Status */}
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-white mb-2">System Status</h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">CEC Input:</span>
-                  <span className="text-white">
-                    {cecConfig.cecInputChannel ? `Input ${cecConfig.cecInputChannel}` : 'Not set'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">CEC Server:</span>
-                  <span className="text-white">{cecConfig.cecServerIP}:{cecConfig.cecPort}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Status:</span>
-                  <span className={cecConfig.isEnabled ? 'text-green-400' : 'text-red-400'}>
-                    {cecConfig.isEnabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
               </div>
             </div>
           </div>

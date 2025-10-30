@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { findMany, findFirst, eq, asc } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db, schema } from '@/db'
+import { eq, asc } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 
@@ -62,10 +62,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check Matrix Outputs (TVs)
-    const outputs = await findMany('matrixOutputs', {
-      where: eq(schema.matrixOutputs.isActive, true),
-      orderBy: asc(schema.matrixOutputs.channelNumber)
-    })
+    const outputs = await db
+      .select()
+      .from(schema.matrixOutputs)
+      .where(eq(schema.matrixOutputs.isActive, true))
+      .orderBy(asc(schema.matrixOutputs.channelNumber))
+      .all()
 
     for (const output of outputs) {
       const device: DeviceStatus = {
@@ -79,9 +81,12 @@ export async function GET(request: NextRequest) {
       }
 
       // Check if output is currently routed
-      const activeMatrix = await findFirst('matrixConfigurations', {
-        where: eq(schema.matrixConfigurations.isActive, true)
-      })
+      const activeMatrix = await db
+        .select()
+        .from(schema.matrixConfigurations)
+        .where(eq(schema.matrixConfigurations.isActive, true))
+        .limit(1)
+        .get()
 
       if (activeMatrix) {
         // TV is online if part of active matrix
@@ -101,67 +106,26 @@ export async function GET(request: NextRequest) {
       if (device.status === 'online') report.overall.devicesOnline++
     }
 
-    // Check DirectV Devices
-    const directvDevices = await findMany('directvDevices', {
-      where: eq(schema.directvDevices.isActive, true)
-    })
-
-    for (const dv of directvDevices) {
-      const device: DeviceStatus = {
-        id: `directv-${dv.id}`,
-        name: dv.name,
-        type: 'cable_box',
-        status: dv.isOnline ? 'online' : 'offline',
-        health: dv.isOnline ? 100 : 0,
-        lastSeen: dv.lastSeen ? new Date(dv.lastSeen) : undefined,
-        issues: [],
-        quickActions: []
-      }
-
-      if (!dv.isOnline) {
-        device.issues.push('Device offline')
-        report.overall.activeIssues++
-      }
-
-      // Check last seen time
-      if (dv.lastSeen) {
-        const minutesSinceLastSeen = (Date.now() - new Date(dv.lastSeen).getTime()) / 1000 / 60
-        if (minutesSinceLastSeen > 60) {
-          device.status = 'degraded'
-          device.health = 50
-          device.issues.push(`Last seen ${Math.round(minutesSinceLastSeen)} minutes ago`)
-        }
-      }
-
-      device.quickActions.push(
-        { label: 'Change Channel', action: 'directv_channel', params: { deviceId: dv.id } },
-        { label: 'Restart', action: 'directv_restart', params: { deviceId: dv.id } }
-      )
-
-      report.categories.cableBoxes.push(device)
-      report.overall.devicesTotal++
-      if (device.status === 'online') report.overall.devicesOnline++
-    }
-
     // Check FireTV Devices
-    const firetvDevices = await findMany('firetvDevices', {
-      where: eq(schema.firetvDevices.isActive, true)
-    })
+    const firetvDevices = await db
+      .select()
+      .from(schema.fireTVDevices)
+      .all()
 
     for (const ftv of firetvDevices) {
       const device: DeviceStatus = {
         id: `firetv-${ftv.id}`,
         name: ftv.name,
         type: 'cable_box',
-        status: ftv.connectionStatus === 'connected' ? 'online' : 'offline',
-        health: ftv.connectionStatus === 'connected' ? 100 : 0,
-        lastSeen: ftv.lastConnected ? new Date(ftv.lastConnected) : undefined,
+        status: ftv.status === 'connected' ? 'online' : 'offline',
+        health: ftv.status === 'connected' ? 100 : 0,
+        lastSeen: ftv.lastSeen ? new Date(ftv.lastSeen) : undefined,
         issues: [],
         quickActions: []
       }
 
-      if (ftv.connectionStatus !== 'connected') {
-        device.issues.push(`Status: ${ftv.connectionStatus}`)
+      if (ftv.status !== 'connected') {
+        device.issues.push(`Status: ${ftv.status}`)
         report.overall.activeIssues++
       }
 
@@ -177,26 +141,27 @@ export async function GET(request: NextRequest) {
 
     // Check Soundtrack Audio Zones
     try {
-      const soundtrackConfig = await findFirst('soundtrackConfigs')
+      const soundtrackConfig = await db
+        .select()
+        .from(schema.soundtrackConfigs)
+        .limit(1)
+        .get()
+
       if (soundtrackConfig?.isActive && soundtrackConfig.apiKey) {
         const api = getSoundtrackAPI(soundtrackConfig.apiKey)
         const zones = await api.listSoundZones()
 
         for (const zone of zones) {
+          // Note: Soundtrack API does not provide currentPlayback data via GraphQL
+          // Zones are marked as online if they exist in the API response
           const device: DeviceStatus = {
             id: `audio-${zone.id}`,
             name: zone.name,
             type: 'audio',
-            status: zone.currentPlayback ? 'online' : 'degraded',
-            health: zone.currentPlayback ? 100 : 70,
+            status: 'online', // Zone exists and is accessible via API
+            health: 100,
             issues: [],
             quickActions: []
-          }
-
-          if (!zone.currentPlayback) {
-            device.issues.push('No playback data available')
-          } else if (!zone.currentPlayback.playing) {
-            device.issues.push('Paused')
           }
 
           device.quickActions.push(
@@ -219,9 +184,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check Matrix Configuration
-    const matrixConfig = await findFirst('matrixConfigurations', {
-      where: eq(schema.matrixConfigurations.isActive, true)
-    })
+    const matrixConfig = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
     if (matrixConfig) {
       const device: DeviceStatus = {
@@ -298,8 +266,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(report)
   } catch (error) {
     logger.error('Error generating system health report:', error)
+    console.error('System health error details:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
+    console.error('Error message:', error instanceof Error ? error.message : String(error))
     return NextResponse.json(
-      { error: 'Failed to generate health report' },
+      {
+        error: 'Failed to generate health report',
+        details: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     )
   }

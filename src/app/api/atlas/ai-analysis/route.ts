@@ -5,17 +5,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findMany, findUnique, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db, schema } from '@/db'
+import { eq, gte, desc, and } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
-
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
   try {
     const { processorId, processorModel } = await request.json()
-    
+
     // Validate required data
     if (!processorId || !processorModel) {
       return NextResponse.json(
@@ -23,42 +22,61 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
+
     // Fetch processor from database
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId },
-      include: {
-        audioZones: true,
-        inputMeters: {
-          orderBy: { timestamp: 'desc' },
-          take: 50 // Last 50 readings
-        }
-      }
-    })
-    
+    const processor = await db
+      .select()
+      .from(schema.audioProcessors)
+      .where(eq(schema.audioProcessors.id, processorId))
+      .limit(1)
+      .get()
+
     if (!processor) {
       return NextResponse.json(
         { error: 'Processor not found' },
         { status: 404 }
       )
     }
-    
+
+    // Fetch audio zones for this processor
+    const audioZones = await db
+      .select()
+      .from(schema.audioZones)
+      .where(eq(schema.audioZones.processorId, processorId))
+      .all()
+
+    // Fetch last 50 input meter readings
+    const inputMeters = await db
+      .select()
+      .from(schema.audioInputMeters)
+      .where(eq(schema.audioInputMeters.processorId, processorId))
+      .orderBy(desc(schema.audioInputMeters.timestamp))
+      .limit(50)
+      .all()
+
+    // Combine processor with related data
+    const processorWithData = {
+      ...processor,
+      audioZones,
+      inputMeters
+    }
+
     // Collect real-time monitoring data
-    const monitoringData = await collectAtlasMonitoringData(processor)
-    
+    const monitoringData = await collectAtlasMonitoringData(processorWithData)
+
     // Perform AI analysis
-    const analysis = await analyzeAtlasData(monitoringData, processor)
-    
+    const analysis = await analyzeAtlasData(monitoringData, processorWithData)
+
     return NextResponse.json({
       success: true,
       analysis,
       timestamp: new Date().toISOString()
     })
-    
+
   } catch (error) {
     logger.error('Atlas AI analysis API error:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to analyze Atlas data',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
@@ -72,27 +90,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
     const hours = parseInt(searchParams.get('hours') || '24')
-    
+
     if (!processorId) {
       return NextResponse.json(
         { error: 'Processor ID is required' },
         { status: 400 }
       )
     }
-    
+
     // Get historical Atlas analysis data from input meters
-    const historicalData = await prisma.audioInputMeter.findMany({
-      where: {
-        processorId,
-        timestamp: {
-          gte: new Date(Date.now() - hours * 60 * 60 * 1000)
-        }
-      },
-      orderBy: { timestamp: 'desc' }
-    })
-    
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+    const historicalData = await db
+      .select()
+      .from(schema.audioInputMeters)
+      .where(
+        and(
+          eq(schema.audioInputMeters.processorId, processorId),
+          gte(schema.audioInputMeters.timestamp, cutoffDate)
+        )
+      )
+      .orderBy(desc(schema.audioInputMeters.timestamp))
+      .all()
+
     const summary = generateHistoricalSummary(historicalData)
-    
+
     return NextResponse.json({
       success: true,
       processorId,
@@ -101,7 +122,7 @@ export async function GET(request: NextRequest) {
       data: historicalData,
       summary
     })
-    
+
   } catch (error) {
     logger.error('Atlas AI history API error:', error)
     return NextResponse.json(
@@ -116,34 +137,38 @@ export async function GET(request: NextRequest) {
  */
 async function collectAtlasMonitoringData(processor: any) {
   const now = new Date()
-  const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000)
-  
+  const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
+
   // Get recent input meter readings
-  const recentMeters = await prisma.audioInputMeter.findMany({
-    where: {
-      processorId: processor.id,
-      timestamp: { gte: fiveMinutesAgo }
-    },
-    orderBy: { timestamp: 'desc' }
-  })
-  
+  const recentMeters = await db
+    .select()
+    .from(schema.audioInputMeters)
+    .where(
+      and(
+        eq(schema.audioInputMeters.processorId, processor.id),
+        gte(schema.audioInputMeters.timestamp, fiveMinutesAgo)
+      )
+    )
+    .orderBy(desc(schema.audioInputMeters.timestamp))
+    .all()
+
   // Calculate input levels from recent meters
   const inputLevels: { [key: number]: number } = {}
   const inputsByNumber = new Map<number, any[]>()
-  
+
   recentMeters.forEach(meter => {
     if (!inputsByNumber.has(meter.inputNumber)) {
       inputsByNumber.set(meter.inputNumber, [])
     }
     inputsByNumber.get(meter.inputNumber)!.push(meter)
   })
-  
+
   // Average the levels for each input
   inputsByNumber.forEach((meters, inputNumber) => {
     const avgLevel = meters.reduce((sum, m) => sum + m.level, 0) / meters.length
     inputLevels[inputNumber] = avgLevel
   })
-  
+
   // Calculate output levels from zones
   const outputLevels: { [key: number]: number } = {}
   processor.audioZones.forEach((zone: any, index: number) => {
@@ -151,17 +176,17 @@ async function collectAtlasMonitoringData(processor: any) {
     const volumeDb = (zone.volume / 100) * -60 + 0 // 0-100 maps to -60dB to 0dB
     outputLevels[index + 1] = zone.muted ? -100 : volumeDb
   })
-  
+
   // Calculate network latency based on last seen
   const lastSeenDate = new Date(processor.lastSeen)
   const networkLatency = Math.min(Math.floor((now.getTime() - lastSeenDate.getTime()) / 1000), 999)
-  
-  // Check for clipping in recent meters
-  const clippingInputs = recentMeters.filter(m => m.clipping).map(m => m.inputNumber)
-  const errorLogs = clippingInputs.length > 0 
+
+  // Check for clipping in recent meters (convert SQLite boolean to JavaScript boolean)
+  const clippingInputs = recentMeters.filter(m => Boolean(m.clipping)).map(m => m.inputNumber)
+  const errorLogs = clippingInputs.length > 0
     ? [`Clipping detected on inputs: ${clippingInputs.join(', ')}`]
     : []
-  
+
   return {
     processorId: processor.id,
     processorModel: processor.model,
@@ -175,7 +200,7 @@ async function collectAtlasMonitoringData(processor: any) {
     sceneRecalls: [],
     lastSeen: processor.lastSeen,
     status: processor.status,
-    zones: processor.zones.length,
+    zones: processor.audioZones?.length || 0,
     activeInputs: Object.keys(inputLevels).length,
     recentMeterCount: recentMeters.length
   }

@@ -19,19 +19,20 @@ import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
-import { 
-  Satellite, 
-  MonitorPlay, 
-  Radio, 
-  Settings, 
-  Brain, 
+import {
+  Satellite,
+  MonitorPlay,
+  Radio,
+  Settings,
+  Brain,
   Zap,
   TrendingUp,
   Target,
   BarChart3,
   Music2,
   Tv,
-  Star
+  Star,
+  Cable
 } from 'lucide-react'
 
 export default function DeviceConfigPage() {
@@ -168,9 +169,16 @@ export default function DeviceConfigPage() {
           </div>
         )}
 
+      {/* Version Indicator */}
+      <div className="flex justify-end mb-2">
+        <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500 text-lg px-4 py-2">
+          ✓ Version 2.0 - 9 Tabs Only (No TV CEC Tab)
+        </Badge>
+      </div>
+
       {/* Device Tabs */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="channel-presets" className="flex items-center gap-2">
             <Star className="w-4 h-4" />
             Channel Presets
@@ -198,6 +206,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
             <Tv className="w-4 h-4" />
             CEC Discovery
+          </TabsTrigger>
+          <TabsTrigger value="cec-cable-boxes" className="flex items-center gap-2">
+            <Cable className="w-4 h-4" />
+            CEC Cable Boxes
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -362,7 +374,7 @@ export default function DeviceConfigPage() {
                 )}
               </CardTitle>
               <CardDescription className="text-blue-200">
-                {aiEnhancementsEnabled 
+                {aiEnhancementsEnabled
                   ? "Automatically detect TV brands with AI-powered brand recognition and optimization recommendations"
                   : "Automatically detect TV brands connected to WolfPack outputs via CEC protocol"
                 }
@@ -370,6 +382,52 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <CECDiscoveryPanel />
+        </TabsContent>
+
+        <TabsContent value="cec-cable-boxes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cable className="w-5 h-5 text-orange-600" />
+                CEC Cable Box Configuration
+              </CardTitle>
+              <CardDescription>
+                Configure Pulse-Eight USB CEC adapters for automated cable box control
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800 mb-3">
+                  <strong>CEC Cable Box Configuration</strong> has its own dedicated admin page with hardware setup wizard, device discovery, and testing tools.
+                </p>
+                <Button
+                  onClick={() => window.location.href = '/admin/cec-cable-boxes'}
+                  className="w-full"
+                >
+                  <Cable className="w-4 h-4 mr-2" />
+                  Open CEC Cable Box Admin
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="font-semibold">Features Available:</h3>
+                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                  <li>Discover connected Pulse-Eight USB CEC adapters</li>
+                  <li>Generate udev rules for persistent device naming</li>
+                  <li>Assign adapters to cable boxes</li>
+                  <li>Test CEC connections to cable boxes</li>
+                  <li>View cable box online/offline status</li>
+                  <li>Configuration guide with SQL examples</li>
+                </ul>
+              </div>
+
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <p className="text-sm text-green-800">
+                  <strong>Bartender Integration:</strong> Once configured, cable boxes will automatically use CEC control when bartenders select cable inputs in the channel guide. No manual CEC toggle needed!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">

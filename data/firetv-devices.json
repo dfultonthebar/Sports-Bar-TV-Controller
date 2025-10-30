@@ -7,10 +7,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 13,
       "id": "firetv_1761677515811_1s39qjm73",
-      "isOnline": false,
+      "isOnline": true,
       "addedAt": "2025-10-28T18:50:50.609Z",
       "updatedAt": "2025-10-28T18:50:50.609Z",
-      "lastSeen": "2025-10-29T19:25:40.760Z"
+      "lastSeen": "2025-10-30T18:32:02.106Z"
     }
   ]
 }

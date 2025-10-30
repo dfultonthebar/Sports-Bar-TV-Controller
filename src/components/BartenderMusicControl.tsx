@@ -4,15 +4,14 @@
 import React, { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { 
-  Music2, 
-  Play, 
-  Pause, 
+import {
+  Music2,
+  Play,
+  Pause,
   RefreshCw,
   AlertCircle,
   Radio,
-  Disc,
-  List
+  Disc
 } from 'lucide-react'
 import Image from 'next/image'
 
@@ -51,12 +50,10 @@ interface NowPlaying {
 
 export default function BartenderMusicControl() {
   const [players, setPlayers] = useState<SoundtrackPlayer[]>([])
-  const [stations, setStations] = useState<SoundtrackStation[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<SoundtrackPlayer | null>(null)
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showStations, setShowStations] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
   // Load data once on mount
@@ -85,16 +82,13 @@ export default function BartenderMusicControl() {
       setError(null)
 
       // Fetch only bartender-visible players
-      const [playersRes, stationsRes] = await Promise.all([
-        fetch('/api/soundtrack/players?bartenderOnly=true'),
-        fetch('/api/soundtrack/stations')
-      ])
+      const playersRes = await fetch('/api/soundtrack/players?bartenderOnly=true')
 
       if (playersRes.ok) {
         const data = await playersRes.json()
         const bartenderPlayers = data.players || []
         setPlayers(bartenderPlayers)
-        
+
         if (bartenderPlayers.length > 0) {
           setSelectedPlayer(bartenderPlayers[0])
           updateNowPlaying(bartenderPlayers[0].id)
@@ -104,11 +98,6 @@ export default function BartenderMusicControl() {
       } else {
         const data = await playersRes.json()
         setError(data.error || 'Failed to load Soundtrack players. Check configuration.')
-      }
-
-      if (stationsRes.ok) {
-        const data = await stationsRes.json()
-        setStations(data.stations || [])
       }
     } catch (err: any) {
       console.error('Failed to load Soundtrack data:', err)
@@ -150,34 +139,6 @@ export default function BartenderMusicControl() {
       }
     } catch (err) {
       console.error('Failed to toggle playback:', err)
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleStationChange = async (stationId: string) => {
-    if (!selectedPlayer || actionLoading) return
-    
-    setActionLoading(true)
-    try {
-      const response = await fetch('/api/soundtrack/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: selectedPlayer.id,
-          stationId: stationId,
-          playing: true
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedPlayer(data.player)
-        setShowStations(false)
-        setTimeout(() => updateNowPlaying(data.player.id), 1000)
-      }
-    } catch (err) {
-      console.error('Failed to change station:', err)
     } finally {
       setActionLoading(false)
     }
@@ -279,7 +240,7 @@ export default function BartenderMusicControl() {
               Now Playing {players.length > 1 && `- ${selectedPlayer.name}`}
             </h3>
             <Badge variant="secondary" className="bg-purple-800/50 text-purple-200">
-              {nowPlaying.station.name}
+              {selectedPlayer?.currentStation?.name || 'Now Playing'}
             </Badge>
           </div>
           
@@ -350,10 +311,10 @@ export default function BartenderMusicControl() {
           </div>
         )}
 
-        {/* Info about playlist control */}
+        {/* Playlist Management Info */}
         <div className="mt-4 p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
           <p className="text-xs text-blue-200">
-            <strong>Note:</strong> Playlists are managed through the Soundtrack Your Brand web app. Use the play/pause button above to control playback.
+            <strong>Note:</strong> To change playlists, visit the <a href="https://business.soundtrackyourbrand.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-100">Soundtrack Your Brand dashboard</a> and select a different station for this zone.
           </p>
         </div>
 

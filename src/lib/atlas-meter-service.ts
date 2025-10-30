@@ -3,11 +3,9 @@
  * Collects and stores real-time audio level data from Atlas processors
  */
 
-import { and, asc, deleteMany, desc, eq, findUnique, or, update, upsert } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db, schema } from '@/db'
+import { eq, and, lt } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
-
-// Using singleton prisma from @/lib/prisma
 
 interface MeterReading {
   inputNumber: number
@@ -62,57 +60,78 @@ export class AtlasMeterService {
   private async collectAndStoreMeterData(processorId: string) {
     try {
       // Fetch processor info
-      const processor = await prisma.audioProcessor.findUnique({
-        where: { id: processorId }
-      })
-      
+      const processor = await db
+        .select()
+        .from(schema.audioProcessors)
+        .where(eq(schema.audioProcessors.id, processorId))
+        .limit(1)
+        .get()
+
       if (!processor) {
         logger.error(`Processor ${processorId} not found`)
         return
       }
-      
+
       // In a real implementation, this would query the actual Atlas hardware
       // For now, we'll generate simulated meter data based on the processor model
       const meterReadings = await this.fetchMeterDataFromAtlas(processor)
-      
+
       // Store meter readings in database
       for (const reading of meterReadings) {
-        await prisma.audioInputMeter.upsert({
-          where: {
-            processorId_inputNumber: {
+        // Check if record exists
+        const existing = await db
+          .select()
+          .from(schema.audioInputMeters)
+          .where(
+            and(
+              eq(schema.audioInputMeters.processorId, processor.id),
+              eq(schema.audioInputMeters.inputNumber, reading.inputNumber)
+            )
+          )
+          .limit(1)
+          .get()
+
+        if (existing) {
+          // Update existing record
+          await db
+            .update(schema.audioInputMeters)
+            .set({
+              level: reading.level,
+              peak: reading.peak,
+              clipping: reading.clipping ? 1 : 0,
+              timestamp: new Date().toISOString()
+            })
+            .where(eq(schema.audioInputMeters.id, existing.id))
+            .run()
+        } else {
+          // Create new record
+          await db
+            .insert(schema.audioInputMeters)
+            .values({
               processorId: processor.id,
-              inputNumber: reading.inputNumber
-            }
-          },
-          update: {
-            level: reading.level,
-            peak: reading.peak,
-            clipping: reading.clipping,
-            timestamp: new Date()
-          },
-          create: {
-            processorId: processor.id,
-            inputNumber: reading.inputNumber,
-            inputName: reading.inputName,
-            level: reading.level,
-            peak: reading.peak,
-            clipping: reading.clipping,
-            timestamp: new Date()
-          }
-        })
-      }
-      
-      // Update processor last seen
-      await prisma.audioProcessor.update({
-        where: { id: processor.id },
-        data: {
-          lastSeen: new Date(),
-          status: 'online'
+              inputNumber: reading.inputNumber,
+              inputName: reading.inputName,
+              level: reading.level,
+              peak: reading.peak,
+              clipping: reading.clipping ? 1 : 0,
+              timestamp: new Date().toISOString()
+            })
+            .run()
         }
-      })
-      
+      }
+
+      // Update processor last seen
+      await db
+        .update(schema.audioProcessors)
+        .set({
+          lastSeen: new Date().toISOString(),
+          status: 'online'
+        })
+        .where(eq(schema.audioProcessors.id, processor.id))
+        .run()
+
       logger.debug(`Stored ${meterReadings.length} meter readings for ${processor.name}`)
-      
+
     } catch (error) {
       logger.error(`Failed to collect meter data for ${processorId}:`, error)
     }
@@ -166,18 +185,16 @@ export class AtlasMeterService {
    * Clean up old meter data
    */
   async cleanupOldData(olderThanHours: number = 24) {
-    const cutoffDate = new Date(Date.now() - olderThanHours * 60 * 60 * 1000)
-    
-    const result = await prisma.audioInputMeter.deleteMany({
-      where: {
-        timestamp: {
-          lt: cutoffDate
-        }
-      }
-    })
-    
-    logger.debug(`Cleaned up ${result.count} old meter readings`)
-    return result.count
+    const cutoffDate = new Date(Date.now() - olderThanHours * 60 * 60 * 1000).toISOString()
+
+    const result = await db
+      .delete(schema.audioInputMeters)
+      .where(lt(schema.audioInputMeters.timestamp, cutoffDate))
+      .run()
+
+    const deletedCount = result.changes || 0
+    logger.debug(`Cleaned up ${deletedCount} old meter readings`)
+    return deletedCount
   }
 }
 

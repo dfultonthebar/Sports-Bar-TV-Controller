@@ -5,7 +5,7 @@ import { createHash } from 'crypto'
 
 // Enhanced log types with more granular tracking
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical'
-export type LogCategory = 'user_interaction' | 'system' | 'api' | 'hardware' | 'configuration' | 'performance' | 'security'
+export type LogCategory = 'user_interaction' | 'system' | 'api' | 'hardware' | 'configuration' | 'performance' | 'security' | 'cec'
 export type DeviceType = 'wolf_pack' | 'directv' | 'ir_device' | 'tv' | 'audio_system' | 'network'
 
 export interface EnhancedLogEntry {
@@ -56,12 +56,14 @@ export class EnhancedLogger {
     all: path.join(this.logsDir, 'all-operations.log'),
     errors: path.join(this.logsDir, 'system-errors.log'),
     userInteractions: path.join(this.logsDir, 'user-interactions.log'),
+    user_interaction: path.join(this.logsDir, 'user-interactions.log'),
     system: path.join(this.logsDir, 'system-events.log'),
     api: path.join(this.logsDir, 'api-calls.log'),
     hardware: path.join(this.logsDir, 'hardware-operations.log'),
     configuration: path.join(this.logsDir, 'configuration-changes.log'),
     performance: path.join(this.logsDir, 'performance-metrics.log'),
     security: path.join(this.logsDir, 'security-events.log'),
+    cec: path.join(this.logsDir, 'cec-operations.log'),
     aiAnalysis: path.join(this.logsDir, 'ai-analysis.log')
   }
 
@@ -411,8 +413,8 @@ export class EnhancedLogger {
   }
 
   // Enhanced analytics
-  async getLogAnalytics(hours: number = 24): Promise<LogAnalytics> {
-    const logs = await this.getRecentLogs(hours)
+  async getLogAnalytics(hours: number = 24, category?: LogCategory): Promise<LogAnalytics> {
+    const logs = await this.getRecentLogs(hours, category)
     const errors = logs.filter(log => log.level === 'error' || log.level === 'critical')
     
     // Performance metrics

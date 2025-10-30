@@ -45,8 +45,15 @@ export default function AtlasAIMonitor({
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
 
   useEffect(() => {
+    // Don't attempt fetch until processorId is a valid UUID (not the fallback value)
+    if (!processorId || processorId === 'atlas-001') {
+      setLoading(true)
+      setError('Waiting for processor configuration...')
+      return
+    }
+
     fetchAtlasAnalysis()
-    
+
     if (autoRefresh) {
       const interval = setInterval(fetchAtlasAnalysis, refreshInterval)
       return () => clearInterval(interval)

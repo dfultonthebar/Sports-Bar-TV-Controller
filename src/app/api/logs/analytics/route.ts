@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const hours = parseInt(searchParams.get('hours') || '24')
     const category = searchParams.get('category') || undefined
 
-    const analytics = await enhancedLogger.getLogAnalytics(hours)
+    const analytics = await enhancedLogger.getLogAnalytics(hours, category)
 
     return NextResponse.json(analytics)
   } catch (error) {

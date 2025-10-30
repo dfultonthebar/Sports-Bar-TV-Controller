@@ -37,6 +37,13 @@ export default function AtlasOutputMeters({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
+    // Don't attempt connection until processorIp is defined
+    if (!processorIp) {
+      setLoading(true)
+      setError('Waiting for processor configuration...')
+      return
+    }
+
     if (autoRefresh) {
       connectWebSocket()
     } else {

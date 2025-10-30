@@ -7,7 +7,36 @@ AI-powered assistant for sports bar AV system management, troubleshooting, and m
 
 ## 🆕 Latest Updates
 
-### TV Position Detection Fix (Current)
+### Audio Control Center & Soundtrack Integration (October 2024)
+**NEW**: Unified audio management system with commercial music streaming
+
+- ✅ **Soundtrack Your Brand Integration** - Commercial music streaming for bars/restaurants
+  - Now playing display with album art
+  - Play/pause control for bartender remote
+  - Zone-specific music management
+  - Direct integration with AtlasIED audio processors
+- ✅ **Audio Control Center** - Single interface for all audio management
+  - Atlas audio processor configuration & monitoring
+  - AI-powered gain control and optimization
+  - Real-time audio level monitoring
+  - Zone-specific audio control
+- ✅ **CEC Cable Box Control** - Enhanced TV control with cable box integration
+  - Direct CEC communication with cable boxes
+  - Channel tuning via HDMI-CEC
+  - Automated power management
+  - Integration with channel presets
+- ✅ **System Health Dashboard** - Real-time monitoring of all subsystems
+  - Soundtrack API status monitoring
+  - Atlas audio processor health checks
+  - Database and service status tracking
+  - Quick action buttons for common tasks
+
+**See**:
+- [Soundtrack Integration Guide](docs/SOUNDTRACK_INTEGRATION_GUIDE.md)
+- [CEC Cable Box Setup](docs/CEC_CABLE_BOX_IMPLEMENTATION.md)
+- [Audio Control Center Guide](docs/ATLAS_CONFIGURATION_SUMMARY.md)
+
+### TV Position Detection Fix
 **Fixed**: TVs are now positioned correctly based on actual layout images using AI vision analysis.
 
 - ✅ Real AI vision integration (OpenAI GPT-4 Vision / Anthropic Claude Vision)
@@ -422,8 +451,10 @@ cp ~/sports_bar.db.backup ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
 ### Device Management
 - **TV Control:** HDMI-CEC power control via Pulse-Eight adapter
 - **IR Control:** Cable boxes, DirecTV, Fire TV via Global Cache
-- **Audio Processing:** AtlasIED Atmosphere zone control
+- **CEC Cable Box Control:** Direct HDMI-CEC communication with cable boxes for channel tuning
+- **Audio Processing:** AtlasIED Atmosphere zone control with AI-powered optimization
 - **Device Discovery:** Automatic detection of HDMI-CEC devices
+- **Unified TV Control:** Intelligent fallback between CEC, IR, and Fire TV control methods
 
 ### Automation & Scheduling
 - **Channel Presets:** Pre-configure channels for quick access
@@ -431,11 +462,21 @@ cp ~/sports_bar.db.backup ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
 - **Bulk Updates:** Update multiple devices at once
 - **Backup/Restore:** Save and restore configurations
 
+### Audio & Music Management
+- **Soundtrack Your Brand:** Commercial music streaming integration
+- **Audio Control Center:** Unified interface for all audio systems
+- **Atlas AI Monitoring:** Real-time audio level analysis and optimization
+- **Zone Control:** Independent volume and routing for multiple audio zones
+- **Now Playing:** Track information and album art display
+- **Bartender Controls:** Simplified music control for staff
+
 ### System Monitoring
+- **System Health Dashboard:** Real-time monitoring of all subsystems
 - **Performance Benchmarking:** Track system performance over time
-- **Health Checks:** Monitor CPU, memory, disk, and network
+- **Health Checks:** Monitor CPU, memory, disk, network, and external APIs
 - **AI Performance:** Measure AI response times
 - **Hardware Specs:** Detailed system information
+- **Service Status:** Database, Soundtrack API, Atlas processors, and more
 
 ---
 

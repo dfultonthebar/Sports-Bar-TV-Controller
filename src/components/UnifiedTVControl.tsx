@@ -64,6 +64,21 @@ interface CommandResult {
   fallbackUsed?: boolean
 }
 
+interface CECDevice {
+  id: string
+  deviceName: string
+  deviceType: string
+  devicePath: string
+  matrixInputId: string | null
+  isActive: boolean
+}
+
+interface MatrixInput {
+  id: string
+  channelNumber: number
+  label: string
+}
+
 export default function UnifiedTVControl() {
   const [devices, setDevices] = useState<TVDevice[]>([])
   const [selectedDevice, setSelectedDevice] = useState<TVDevice | null>(null)
@@ -80,10 +95,17 @@ export default function UnifiedTVControl() {
     timestamp: string
   }>>([])
 
+  // TV CEC Configuration state
+  const [cecDevice, setCecDevice] = useState<CECDevice | null>(null)
+  const [matrixCecInputChannel, setMatrixCecInputChannel] = useState<number | null>(null)
+  const [matrixInputs, setMatrixInputs] = useState<MatrixInput[]>([])
+  const [cecConfigLoading, setCecConfigLoading] = useState(false)
+
   useEffect(() => {
     loadDevices()
     loadBrands()
     checkConnection()
+    loadCECConfiguration()
   }, [])
 
   const loadDevices = async () => {
@@ -92,7 +114,7 @@ export default function UnifiedTVControl() {
       if (response.ok) {
         const data = await response.json()
         const outputs = data.outputs?.filter((o: any) => o.isActive) || []
-        
+
         const tvDevices: TVDevice[] = outputs.map((output: any) => ({
           id: output.id,
           name: output.label || `TV ${output.channelNumber}`,
@@ -104,14 +126,65 @@ export default function UnifiedTVControl() {
           isActive: true,
           status: 'unknown'
         }))
-        
+
         setDevices(tvDevices)
         if (tvDevices.length > 0) {
           setSelectedDevice(tvDevices[0])
         }
+
+        // Load matrix inputs
+        const inputs = data.inputs?.filter((input: any) => input.isActive) || []
+        setMatrixInputs(inputs)
+
+        // Load CEC input channel from matrix config
+        if (data.config) {
+          setMatrixCecInputChannel(data.config.cecInputChannel || null)
+        }
       }
     } catch (error) {
       console.error('Failed to load devices:', error)
+    }
+  }
+
+  const loadCECConfiguration = async () => {
+    try {
+      // Load TV power CEC device
+      const response = await fetch('/api/cec/devices')
+      if (response.ok) {
+        const data = await response.json()
+        const tvPowerDevice = data.devices?.find((d: CECDevice) => d.deviceType === 'tv_power')
+        if (tvPowerDevice) {
+          setCecDevice(tvPowerDevice)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load CEC configuration:', error)
+    }
+  }
+
+  const saveCECConfiguration = async (inputChannelNumber: number) => {
+    setCecConfigLoading(true)
+    setStatus('Saving CEC configuration...')
+
+    try {
+      const response = await fetch('/api/matrix/config/cec-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cecInputChannel: inputChannelNumber })
+      })
+
+      if (response.ok) {
+        setMatrixCecInputChannel(inputChannelNumber)
+        setStatus('✅ CEC configuration saved')
+      } else {
+        setStatus('❌ Failed to save CEC configuration')
+      }
+    } catch (error) {
+      console.error('Error saving CEC configuration:', error)
+      setStatus('❌ Error saving CEC configuration')
+    } finally {
+      setCecConfigLoading(false)
+      setTimeout(() => setStatus(''), 3000)
     }
   }
 
@@ -588,6 +661,77 @@ export default function UnifiedTVControl() {
               >
                 🔇 Mute All
               </button>
+            </div>
+          </div>
+
+          {/* TV CEC Configuration */}
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+            <h3 className="text-lg font-bold text-white mb-3 flex items-center">
+              <Zap className="mr-2 w-5 h-5" />
+              TV CEC Configuration
+            </h3>
+
+            <div className="space-y-3">
+              {/* Pulse-Eight Device */}
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">
+                  Pulse-Eight CEC Adapter
+                </label>
+                <div className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm">
+                  {cecDevice ? (
+                    <div className="flex items-center space-x-2">
+                      <Zap className="w-4 h-4 text-green-400" />
+                      <span>{cecDevice.deviceName}</span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">No CEC device configured</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Pulse-Eight adapter connected to {cecDevice?.devicePath || 'N/A'}
+                </p>
+              </div>
+
+              {/* Wolf Pack Input Port */}
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">
+                  Wolf Pack Input Port
+                </label>
+                <select
+                  value={matrixCecInputChannel || ''}
+                  onChange={(e) => {
+                    const value = e.target.value ? parseInt(e.target.value) : null
+                    if (value) saveCECConfiguration(value)
+                  }}
+                  className="w-full p-2 bg-black/20 border border-gray-500/30 rounded text-white text-sm"
+                  disabled={cecConfigLoading || !cecDevice}
+                >
+                  <option value="">Select input port...</option>
+                  {matrixInputs.map((input) => (
+                    <option key={input.id} value={input.channelNumber}>
+                      Input {input.channelNumber}: {input.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Matrix input where the CEC adapter is connected
+                </p>
+              </div>
+
+              {/* Current Configuration Display */}
+              {matrixCecInputChannel && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                    <div className="text-xs text-green-300">
+                      <div className="font-semibold">CEC Configured</div>
+                      <div className="text-green-400/80">
+                        {cecDevice?.deviceName} on Input {matrixCecInputChannel}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

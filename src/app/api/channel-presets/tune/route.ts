@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { channelNumber, deviceType, deviceIp, presetId } = body
+    const { channelNumber, deviceType, deviceIp, presetId, cableBoxId } = body
 
     // Validate required fields
     if (!channelNumber || !deviceType) {
@@ -50,9 +50,8 @@ export async function POST(request: NextRequest) {
       // Send DirecTV channel change command
       result = await sendDirecTVChannelChange(deviceIp, channelNumber)
     } else if (deviceType === 'cable') {
-      // Cable Box uses IR control
-      // This would integrate with your existing IR control system
-      result = await sendCableBoxChannelChange(channelNumber)
+      // Cable Box uses CEC control via Pulse-Eight adapters
+      result = await sendCableBoxChannelChange(channelNumber, cableBoxId)
     }
 
     if (result.success) {
@@ -157,37 +156,53 @@ async function sendDirecTVChannelChange(deviceIp: string, channelNumber: string)
   }
 }
 
-// Helper function to send Cable Box channel change via IR
-async function sendCableBoxChannelChange(channelNumber: string) {
+// Helper function to send Cable Box channel change via CEC
+async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: string) {
   try {
-    // This would integrate with your existing IR control system
-    // For now, we'll return a placeholder response
-    // You would need to implement the actual IR command sending here
-    
-    // Example integration with Global Cache or similar IR system:
-    // const irCommands = channelNumber.split('').map(digit => ({
-    //   command: digit,
-    //   delay: 250
-    // }))
-    // irCommands.push({ command: 'ENTER', delay: 300 })
-    // 
-    // for (const cmd of irCommands) {
-    //   await sendIRCommand(cmd.command)
-    //   await new Promise(resolve => setTimeout(resolve, cmd.delay))
-    // }
+    const { CableBoxCECService } = await import('@/lib/cable-box-cec-service')
+    const cecService = CableBoxCECService.getInstance()
 
-    logger.debug(`Cable Box channel change to ${channelNumber} - IR control integration needed`)
-    
-    return { 
-      success: true, 
-      message: `Cable Box tuned to channel ${channelNumber}`,
-      note: 'IR control integration required for full functionality'
+    // Get all cable boxes
+    const cableBoxes = await cecService.getCableBoxes()
+
+    if (cableBoxes.length === 0) {
+      logger.warn('No cable boxes configured for CEC control')
+      return {
+        success: false,
+        error: 'No cable boxes configured',
+        details: 'Please configure cable boxes in device settings'
+      }
+    }
+
+    // Use specified cable box or default to first one
+    const targetBox = cableBoxId
+      ? cableBoxes.find(box => box.id === cableBoxId) || cableBoxes[0]
+      : cableBoxes[0]
+
+    logger.debug(`Tuning ${targetBox.name} to channel ${channelNumber} via CEC`)
+
+    // Send channel change command via CEC
+    const result = await cecService.tuneChannel(targetBox.id, channelNumber)
+
+    if (result.success) {
+      return {
+        success: true,
+        message: `${targetBox.name} tuned to channel ${channelNumber} via CEC`,
+        executionTime: result.executionTime,
+        cableBoxName: targetBox.name
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || 'Failed to change channel',
+        details: `CEC command failed for ${targetBox.name}`
+      }
     }
   } catch (error) {
-    logger.error('Cable Box channel change error:', error)
-    return { 
-      success: false, 
-      error: 'Failed to change Cable Box channel',
+    logger.error('Cable Box CEC channel change error:', error)
+    return {
+      success: false,
+      error: 'Failed to change Cable Box channel via CEC',
       details: error instanceof Error ? error.message : 'Unknown error'
     }
   }

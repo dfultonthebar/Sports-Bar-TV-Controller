@@ -3,6 +3,8 @@
 
 import { getBrandConfig, BrandTiming } from './tv-brands-config'
 import { CECCommand, getCECCommandMapping } from './enhanced-cec-commands'
+import { routeMatrix as routeMatrixDirect } from './matrix-control'
+import { powerOn, powerOff, volumeUp, volumeDown, mute, sendCECCommand as sendCECCommandDirect } from './cec-client'
 
 export interface TVDevice {
   id: string
@@ -28,27 +30,15 @@ export interface ControlResult {
 }
 
 export class UnifiedTVControl {
-  private cecServerIP: string
-  private cecServerPort: number
   private cecInputChannel: number
-  private matrixIP: string
-  private matrixPort: number
-  private matrixProtocol: 'TCP' | 'UDP'
+  private cecDeviceNumber: number
 
   constructor(config: {
-    cecServerIP: string
-    cecServerPort: number
     cecInputChannel: number
-    matrixIP: string
-    matrixPort: number
-    matrixProtocol: 'TCP' | 'UDP'
+    cecDeviceNumber?: number
   }) {
-    this.cecServerIP = config.cecServerIP
-    this.cecServerPort = config.cecServerPort
     this.cecInputChannel = config.cecInputChannel
-    this.matrixIP = config.matrixIP
-    this.matrixPort = config.matrixPort
-    this.matrixProtocol = config.matrixProtocol
+    this.cecDeviceNumber = config.cecDeviceNumber || 1  // Default to device 1
   }
 
   /**
@@ -194,40 +184,55 @@ export class UnifiedTVControl {
       // Step 2: Wait for brand-specific delay
       await this.sleep(delay)
 
-      // Step 3: Send CEC command
-      const commandMapping = getCECCommandMapping(command)
-      if (!commandMapping) {
-        return {
-          success: false,
-          method: 'CEC',
-          message: `Unknown CEC command: ${command}`,
-          error: 'Invalid command'
-        }
+      // Step 3: Send CEC command directly via cec-client
+      let cecSuccess = false
+
+      // Map commands to cec-client functions
+      switch (command) {
+        case 'power_on':
+          cecSuccess = await powerOn(0, { deviceNumber: this.cecDeviceNumber })
+          break
+        case 'power_off':
+        case 'standby':
+          cecSuccess = await powerOff(0, { deviceNumber: this.cecDeviceNumber })
+          break
+        case 'volume_up':
+          cecSuccess = await volumeUp(5, { deviceNumber: this.cecDeviceNumber })
+          break
+        case 'volume_down':
+          cecSuccess = await volumeDown(5, { deviceNumber: this.cecDeviceNumber })
+          break
+        case 'mute':
+          cecSuccess = await mute(5, { deviceNumber: this.cecDeviceNumber })
+          break
+        default:
+          // For other commands, use the raw CEC command
+          const commandMapping = getCECCommandMapping(command)
+          if (commandMapping) {
+            cecSuccess = await sendCECCommandDirect(commandMapping.opcode, 0, { deviceNumber: this.cecDeviceNumber })
+          } else {
+            return {
+              success: false,
+              method: 'CEC',
+              message: `Unknown CEC command: ${command}`,
+              error: 'Invalid command'
+            }
+          }
       }
 
-      const response = await fetch(`http://${this.cecServerIP}:${this.cecServerPort}/api/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command: commandMapping.opcode,
-          targets: [`${device.outputNumber}`],
-          broadcast: false
-        })
-      })
-
-      if (response.ok) {
+      if (cecSuccess) {
         return {
           success: true,
           method: 'CEC',
           message: `CEC command ${command} sent successfully to ${device.name}`,
-          details: { command: commandMapping.opcode, delay }
+          details: { command, delay }
         }
       } else {
         return {
           success: false,
           method: 'CEC',
-          message: `CEC command failed: HTTP ${response.status}`,
-          error: response.statusText
+          message: `CEC command ${command} failed`,
+          error: 'cec-client command failed'
         }
       }
     } catch (error) {
@@ -300,20 +305,7 @@ export class UnifiedTVControl {
    * Route matrix input to output
    */
   private async routeMatrix(inputNum: number, outputNum: number): Promise<boolean> {
-    try {
-      const response = await fetch('/api/matrix/route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: inputNum,
-          output: outputNum
-        })
-      })
-      return response.ok
-    } catch (error) {
-      console.error('Matrix routing error:', error)
-      return false
-    }
+    return await routeMatrixDirect(inputNum, outputNum)
   }
 
   /**

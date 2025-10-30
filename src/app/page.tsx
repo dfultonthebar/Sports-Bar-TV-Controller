@@ -110,17 +110,23 @@ export default function Home() {
               <div className="mt-8">
                 <h3 className="text-lg font-semibold text-slate-200 mb-4">⚙️ Configuration & AV Management</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-                  <a 
+                  <a
                     href="/unified-tv-control"
                     className="block p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-lg border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
                   >
                     <h4 className="font-bold text-blue-200 mb-1">⚡ Unified TV Control</h4>
                     <p className="text-blue-100/90 text-sm">CEC + IR with smart fallback</p>
                   </a>
-                  
 
-                  
-                  <a 
+                  <a
+                    href="/cec-monitor"
+                    className="block p-4 bg-gradient-to-br from-cyan-600/40 to-blue-600/40 rounded-lg border-2 border-cyan-400/50 hover:border-cyan-400/70 hover:from-cyan-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
+                  >
+                    <h4 className="font-bold text-cyan-200 mb-1">🔍 CEC Monitor</h4>
+                    <p className="text-cyan-100/90 text-sm">View CEC commands & responses</p>
+                  </a>
+
+                  <a
                     href="/streaming-platforms"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-pink-400/30 hover:bg-sportsBar-600/80 hover:border-pink-400/50 transition-all duration-200"
                   >
@@ -128,23 +134,15 @@ export default function Home() {
                     <p className="text-pink-200/80 text-sm">Manage streaming accounts</p>
                   </a>
                   
-                  <a 
+                  <a
                     href="/matrix-control"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-indigo-400/30 hover:bg-sportsBar-600/80 hover:border-indigo-400/50 transition-all duration-200"
                   >
                     <h4 className="font-medium text-indigo-300 mb-1">📡 Matrix Control</h4>
                     <p className="text-indigo-200/80 text-sm">Video switching & routing</p>
                   </a>
-                  
-                  <a 
-                    href="/cec-control"
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-yellow-400/30 hover:bg-sportsBar-600/80 hover:border-yellow-400/50 transition-all duration-200"
-                  >
-                    <h4 className="font-medium text-yellow-300 mb-1">⚡ CEC TV Control</h4>
-                    <p className="text-yellow-200/80 text-sm">HDMI-CEC TV power & input</p>
-                  </a>
-                  
-                  <a 
+
+                  <a
                     href="/device-config"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-amber-400/30 hover:bg-sportsBar-600/80 hover:border-amber-400/50 transition-all duration-200"
                   >

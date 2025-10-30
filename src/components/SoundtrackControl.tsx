@@ -5,19 +5,17 @@ import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { 
-  Music, 
-  Play, 
-  Pause, 
-  Volume2, 
-  VolumeX, 
+import {
+  Music,
+  Play,
+  Pause,
+  Volume2,
   Radio,
   Disc,
   Music2,
   ChevronUp,
   ChevronDown,
   RefreshCw,
-  Settings,
   AlertCircle
 } from 'lucide-react'
 import Image from 'next/image'
@@ -59,20 +57,22 @@ interface SoundtrackControlProps {
   zoneId?: string
   zoneName?: string
   compact?: boolean
+  showVolumeControls?: boolean
+  bartenderOnly?: boolean
 }
 
-export default function SoundtrackControl({ 
-  zoneId = 'default', 
+export default function SoundtrackControl({
+  zoneId = 'default',
   zoneName = 'Audio Zone',
-  compact = false 
+  compact = false,
+  showVolumeControls = true,
+  bartenderOnly = false
 }: SoundtrackControlProps) {
   const [players, setPlayers] = useState<SoundtrackPlayer[]>([])
-  const [stations, setStations] = useState<SoundtrackStation[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<SoundtrackPlayer | null>(null)
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showStations, setShowStations] = useState(false)
 
   // Load data once on mount
   useEffect(() => {
@@ -99,11 +99,9 @@ export default function SoundtrackControl({
       setLoading(true)
       setError(null)
 
-      // Load players and stations in parallel
-      const [playersRes, stationsRes] = await Promise.all([
-        fetch('/api/soundtrack/players'),
-        fetch('/api/soundtrack/stations')
-      ])
+      // Load players
+      const queryParam = bartenderOnly ? '?bartenderOnly=true' : ''
+      const playersRes = await fetch(`/api/soundtrack/players${queryParam}`)
 
       if (playersRes.ok) {
         const data = await playersRes.json()
@@ -118,11 +116,6 @@ export default function SoundtrackControl({
           setError('Soundtrack Your Brand is not configured. Please configure your API key in the system settings.')
           return
         }
-      }
-
-      if (stationsRes.ok) {
-        const data = await stationsRes.json()
-        setStations(data.stations || [])
       }
     } catch (err: any) {
       console.error('Failed to load Soundtrack data:', err)
@@ -187,31 +180,6 @@ export default function SoundtrackControl({
       }
     } catch (err) {
       console.error('Failed to change volume:', err)
-    }
-  }
-
-  const handleStationChange = async (stationId: string) => {
-    if (!selectedPlayer) return
-    
-    try {
-      const response = await fetch('/api/soundtrack/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: selectedPlayer.id,
-          stationId: stationId,
-          playing: true
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedPlayer(data.player)
-        setShowStations(false)
-        setTimeout(() => updateNowPlaying(data.player.id), 1000)
-      }
-    } catch (err) {
-      console.error('Failed to change station:', err)
     }
   }
 
@@ -283,23 +251,25 @@ export default function SoundtrackControl({
             {selectedPlayer.isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
 
-          <div className="flex items-center space-x-2">
-            <Button 
-              onClick={() => handleVolumeChange(-10)} 
-              size="sm" 
-              variant="outline"
-            >
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-            <span className="text-white font-mono w-8 text-center">{selectedPlayer.volume}</span>
-            <Button 
-              onClick={() => handleVolumeChange(10)} 
-              size="sm" 
-              variant="outline"
-            >
-              <ChevronUp className="w-4 h-4" />
-            </Button>
-          </div>
+          {showVolumeControls && (
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => handleVolumeChange(-10)}
+                size="sm"
+                variant="outline"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </Button>
+              <span className="text-white font-mono w-8 text-center">{selectedPlayer.volume}</span>
+              <Button
+                onClick={() => handleVolumeChange(10)}
+                size="sm"
+                variant="outline"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -339,7 +309,7 @@ export default function SoundtrackControl({
                 <div className="flex items-center space-x-2 mb-1">
                   <Disc className="w-4 h-4 text-purple-400" />
                   <Badge variant="secondary" className="text-xs">
-                    {nowPlaying.station.name}
+                    {selectedPlayer?.currentStation?.name || 'Now Playing'}
                   </Badge>
                 </div>
                 <h3 className="text-white font-semibold truncate">{nowPlaying.track.title}</h3>
@@ -379,75 +349,58 @@ export default function SoundtrackControl({
               )}
             </Button>
 
-            <div className="flex items-center space-x-3">
-              <Button 
-                onClick={() => handleVolumeChange(-10)} 
-                size="sm" 
-                variant="outline"
-              >
-                <ChevronDown className="w-4 h-4" />
-              </Button>
-              <div className="flex items-center space-x-2">
-                <Volume2 className="w-5 h-5 text-slate-500" />
-                <span className="text-white font-mono w-12 text-center text-lg">
-                  {selectedPlayer.volume}
-                </span>
+            {showVolumeControls && (
+              <div className="flex items-center space-x-3">
+                <Button
+                  onClick={() => handleVolumeChange(-10)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+                <div className="flex items-center space-x-2">
+                  <Volume2 className="w-5 h-5 text-slate-500" />
+                  <span className="text-white font-mono w-12 text-center text-lg">
+                    {selectedPlayer.volume}
+                  </span>
+                </div>
+                <Button
+                  onClick={() => handleVolumeChange(10)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </Button>
               </div>
-              <Button 
-                onClick={() => handleVolumeChange(10)} 
-                size="sm" 
-                variant="outline"
-              >
-                <ChevronUp className="w-4 h-4" />
-              </Button>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Station Selection */}
-        <div>
-          <Button
-            onClick={() => setShowStations(!showStations)}
-            variant="outline"
-            className="w-full justify-between"
-          >
-            <div className="flex items-center">
+        {/* Current Station Display */}
+        {selectedPlayer.currentStation && (
+          <div className="bg-gray-700/50 rounded-lg p-4">
+            <div className="flex items-center text-slate-400 text-sm mb-1">
               <Radio className="w-4 h-4 mr-2" />
-              {selectedPlayer.currentStation?.name || 'Select Station'}
+              <span>Current Playlist</span>
             </div>
-            <ChevronDown className={`w-4 h-4 transition-transform ${showStations ? 'rotate-180' : ''}`} />
-          </Button>
+            <div className="text-white font-medium">{selectedPlayer.currentStation.name}</div>
+          </div>
+        )}
 
-          {showStations && (
-            <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
-              {stations.map((station) => (
-                <button
-                  key={station.id}
-                  onClick={() => handleStationChange(station.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                    selectedPlayer.currentStation?.id === station.id
-                      ? 'bg-purple-500/20 border-purple-500 text-white'
-                      : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700 hover:border-gray-500'
-                  }`}
-                >
-                  <div className="font-medium">{station.name}</div>
-                  {station.description && (
-                    <div className="text-xs text-slate-500 mt-1">{station.description}</div>
-                  )}
-                  {(station.genre || station.mood) && (
-                    <div className="flex gap-2 mt-2">
-                      {station.genre && (
-                        <Badge variant="secondary" className="text-xs">{station.genre}</Badge>
-                      )}
-                      {station.mood && (
-                        <Badge variant="outline" className="text-xs">{station.mood}</Badge>
-                      )}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Playlist Management Info */}
+        <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-3">
+          <p className="text-xs text-blue-200">
+            <strong>Playlist Management:</strong> To change playlists, visit the{' '}
+            <a
+              href="https://business.soundtrackyourbrand.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-blue-100"
+            >
+              Soundtrack Your Brand dashboard
+            </a>
+            {' '}and select a different station for this zone.
+          </p>
         </div>
       </CardContent>
     </Card>

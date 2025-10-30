@@ -454,7 +454,7 @@ export const apiKeys = sqliteTable('ApiKey', {
   isActiveIdx: index('ApiKey_isActive_idx').on(table.isActive),
 }))
 
-// CEC Configuration Model
+// CEC Configuration Model (Legacy - for TV power control)
 export const cecConfigurations = sqliteTable('CECConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   isEnabled: integer('isEnabled', { mode: 'boolean' }).notNull().default(false),
@@ -465,6 +465,62 @@ export const cecConfigurations = sqliteTable('CECConfiguration', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
+
+// CEC Device Model (for multiple Pulse-Eight adapters)
+export const cecDevices = sqliteTable('CECDevice', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  devicePath: text('devicePath').notNull().unique(), // e.g., /dev/ttyACM0
+  deviceType: text('deviceType').notNull().default('cable_box'), // 'cable_box', 'tv_power', 'dvr'
+  deviceName: text('deviceName').notNull(), // User-friendly name
+  matrixInputId: text('matrixInputId'), // Link to matrix input if applicable
+  cecAddress: text('cecAddress'), // CEC logical address (0-15)
+  vendorId: text('vendorId'), // USB vendor ID
+  productId: text('productId'), // USB product ID
+  serialNumber: text('serialNumber'), // Adapter serial number
+  firmwareVersion: text('firmwareVersion'), // Adapter firmware version
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  lastSeen: timestamp('lastSeen'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  devicePathIdx: index('CECDevice_devicePath_idx').on(table.devicePath),
+  deviceTypeIdx: index('CECDevice_deviceType_idx').on(table.deviceType),
+  isActiveIdx: index('CECDevice_isActive_idx').on(table.isActive),
+}))
+
+// Cable Box Model (specific to cable box control)
+export const cableBoxes = sqliteTable('CableBox', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(), // e.g., "Cable Box 1"
+  cecDeviceId: text('cecDeviceId').notNull().references(() => cecDevices.id, { onDelete: 'cascade' }),
+  matrixInputId: text('matrixInputId'), // Link to matrix input
+  provider: text('provider').notNull().default('spectrum'), // 'spectrum', 'xfinity', 'cox', etc.
+  model: text('model').notNull().default('spectrum-100h'), // Cable box model
+  lastChannel: text('lastChannel'), // Last tuned channel
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  cecDeviceIdIdx: uniqueIndex('CableBox_cecDeviceId_key').on(table.cecDeviceId),
+  matrixInputIdIdx: index('CableBox_matrixInputId_idx').on(table.matrixInputId),
+}))
+
+// CEC Command Log Model (for debugging and monitoring)
+export const cecCommandLogs = sqliteTable('CECCommandLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  cecDeviceId: text('cecDeviceId').notNull().references(() => cecDevices.id, { onDelete: 'cascade' }),
+  command: text('command').notNull(), // 'tune_channel', 'arrow_up', 'select', etc.
+  cecCode: text('cecCode'), // Raw CEC code (e.g., "tx 40:44:21")
+  params: text('params'), // JSON params (e.g., {"channel": "206"})
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  responseTime: integer('responseTime'), // Execution time in ms
+  errorMessage: text('errorMessage'),
+  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
+}, (table) => ({
+  cecDeviceIdIdx: index('CECCommandLog_cecDeviceId_idx').on(table.cecDeviceId),
+  timestampIdx: index('CECCommandLog_timestamp_idx').on(table.timestamp),
+  commandIdx: index('CECCommandLog_command_idx').on(table.command),
+}))
 
 // QA Generation Job Model
 export const qaGenerationJobs = sqliteTable('QAGenerationJob', {

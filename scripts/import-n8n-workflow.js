@@ -4,8 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-// Read the workflow JSON
-const workflowPath = path.join(__dirname, '../n8n-workflows/ai-training-auto.json');
+// Read the workflow JSON (using simplified version without SQLite dependency)
+const workflowPath = path.join(__dirname, '../n8n-workflows/ai-training-auto-simplified.json');
 const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 
 // Connect to n8n database

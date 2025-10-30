@@ -5,6 +5,8 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { Socket } from 'net'
 import dgram from 'dgram'
+import { routeMatrix } from '@/lib/matrix-control'
+import { powerOn, powerOff, sendCECCommandDetailed, type CECResponse } from '@/lib/cec-client'
 
 
 export async function POST(request: NextRequest) {
@@ -121,23 +123,23 @@ async function controlIndividualTV(
   logger.debug(`Starting individual ${action} for output ${outputNumber}`)
   
   // Step 1: Route CEC input to this specific output
-  const routeSuccess = await routeInputToOutput(
+  const routeSuccess = await routeMatrix(
     cecConfig.cecInputChannel,
-    outputNumber,
-    matrixConfig
+    outputNumber
   )
-  
+
   if (!routeSuccess) {
     throw new Error(`Failed to route CEC input to output ${outputNumber}`)
   }
 
   // Step 2: Wait for switching delay
   await sleep(cecConfig.powerOnDelay || 2000)
-  
-  // Step 3: Send CEC command to this TV
-  const cecSuccess = await sendCECCommand(action, [outputNumber], cecConfig)
-  
-  if (!cecSuccess) {
+
+  // Step 3: Send CEC command to this TV (address 0 = TV) with detailed response
+  const cecCommand = action === 'power_on' ? 'on' : 'standby'
+  const cecResponse: CECResponse = await sendCECCommandDetailed(cecCommand, 0)
+
+  if (!cecResponse.success) {
     throw new Error(`Failed to send CEC ${action} to output ${outputNumber}`)
   }
 
@@ -145,8 +147,10 @@ async function controlIndividualTV(
     output: outputNumber,
     action,
     routeSuccess,
-    cecSuccess,
-    message: `Successfully ${action.replace('_', ' ')} TV on output ${outputNumber}`
+    cecSuccess: cecResponse.success,
+    deviceResponded: cecResponse.deviceResponded,
+    powerStatus: cecResponse.powerStatus,
+    message: `Successfully ${action.replace('_', ' ')} TV on output ${outputNumber}${cecResponse.deviceResponded ? ' (TV acknowledged)' : ' (command sent)'}`
   }
 }
 
@@ -164,34 +168,36 @@ async function controlAllTVs(
   
   // Route CEC input to each output sequentially
   for (const outputNum of outputNumbers) {
-    const routeSuccess = await routeInputToOutput(
+    const routeSuccess = await routeMatrix(
       cecConfig.cecInputChannel,
-      outputNum,
-      matrixConfig
+      outputNum
     )
-    
+
     if (routeSuccess) {
       results.push({ output: outputNum, routed: true })
     } else {
       results.push({ output: outputNum, routed: false, error: 'Route failed' })
     }
-    
+
     // Small delay between routes
     await sleep(500)
   }
   
   // Wait for all routes to settle
   await sleep(cecConfig.powerOnDelay || 2000)
-  
-  // Send CEC command to all TVs
-  const cecSuccess = await sendCECCommand(action, outputNumbers, cecConfig)
-  
+
+  // Send CEC command to all TVs (broadcast to all with address 'all')
+  const cecCommand = action === 'power_on' ? 'on' : 'standby'
+  const cecResponse: CECResponse = await sendCECCommandDetailed(cecCommand, 'all')
+
   return {
     action,
     outputs: outputNumbers,
     routeResults: results,
-    cecSuccess,
-    message: `Batch ${action.replace('_', ' ')} completed for ${outputNumbers.length} TVs`
+    cecSuccess: cecResponse.success,
+    deviceResponded: cecResponse.deviceResponded,
+    powerStatus: cecResponse.powerStatus,
+    message: `Batch ${action.replace('_', ' ')} completed for ${outputNumbers.length} TVs${cecResponse.deviceResponded ? ' (devices acknowledged)' : ' (commands sent)'}`
   }
 }
 

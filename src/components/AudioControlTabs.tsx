@@ -109,8 +109,9 @@ export default function AudioControlTabs() {
                 
                 {/* Atlas Output Meters */}
                 <div className="mt-6">
-                  <AtlasOutputMeters 
+                  <AtlasOutputMeters
                     processorId={activeProcessor?.id || "atlas-001"}
+                    processorIp={activeProcessor?.ipAddress || ""}
                     autoRefresh={true}
                     refreshInterval={1000}
                   />
@@ -144,20 +145,9 @@ export default function AudioControlTabs() {
               {/* Main Configuration */}
               <SoundtrackConfiguration />
               
-              {/* Zone-Specific Controls */}
-              <div className="card p-6">
-                <h3 className="text-lg font-semibold text-slate-100 mb-4">Zone-Specific Soundtrack Control</h3>
-                <div className="space-y-4">
-                  <SoundtrackControl zoneName="Main Audio System" />
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                    <SoundtrackControl zoneId="mainbar" zoneName="Main Bar" compact />
-                    <SoundtrackControl zoneId="pavilion" zoneName="Pavilion" compact />
-                    <SoundtrackControl zoneId="partyroom" zoneName="Party Room" compact />
-                    <SoundtrackControl zoneId="upstairs" zoneName="Upstairs" compact />
-                    <SoundtrackControl zoneId="patio" zoneName="Patio" compact />
-                  </div>
-                </div>
+              {/* Soundtrack Control */}
+              <div className="max-w-4xl">
+                <SoundtrackControl zoneName="Soundtrack Music Control" showVolumeControls={false} bartenderOnly={true} />
               </div>
             </div>
           </div>

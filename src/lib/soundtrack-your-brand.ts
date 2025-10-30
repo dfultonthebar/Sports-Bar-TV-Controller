@@ -387,48 +387,68 @@ export class SoundtrackYourBrandAPI {
           name
           account {
             id
-            name
-          }
-          currentPlayback {
-            station {
-              id
-              name
-            }
-            playing
-            volume
+            businessName
           }
         }
       }
     `
     
     const result = await this.graphql(query, { id: soundZoneId })
-    
+
     if (result.errors) {
       throw new Error(result.errors[0]?.message || 'Failed to fetch sound zone')
     }
-    
-    return result.data.soundZone
+
+    const zone = result.data.soundZone
+    return {
+      ...zone,
+      account: {
+        id: zone.account.id,
+        name: zone.account.businessName
+      },
+      currentPlayback: undefined // Soundtrack API does not provide currentPlayback data
+    }
   }
 
-  async listStations(accountId: string): Promise<SoundtrackStation[]> {
-    const query = `
-      query ListStations($accountId: ID!) {
-        account(id: $accountId) {
-          stations {
-            id
-            name
+  async listStations(accountId?: string): Promise<SoundtrackStation[]> {
+    // Try root-level stations query (similar to nowPlaying)
+    const rootQuery = `
+      query {
+        stations(first: 100) {
+          edges {
+            node {
+              id
+              name
+            }
           }
         }
       }
     `
-    
-    const result = await this.graphql(query, { accountId })
-    
-    if (result.errors) {
-      throw new Error(result.errors[0]?.message || 'Failed to fetch stations')
+
+    let result = await this.graphql(rootQuery)
+
+    if (!result.errors && result.data?.stations) {
+      const stationEdges = result.data.stations.edges || []
+      const stations: SoundtrackStation[] = []
+
+      for (const edge of stationEdges) {
+        const station = edge?.node
+        if (!station || !station.id || !station.name) continue
+
+        stations.push({
+          id: station.id,
+          name: station.name
+        })
+      }
+
+      return stations
     }
-    
-    return result.data?.account?.stations || []
+
+    // If root query fails, return empty array
+    // Soundtrack API may not expose station listing - stations might only be
+    // accessible through manual configuration or the web interface
+    console.log('[Soundtrack] Station listing not available via API')
+    return []
   }
 
   async updateSoundZone(soundZoneId: string, data: {
@@ -489,32 +509,48 @@ export class SoundtrackYourBrandAPI {
 
   async getNowPlaying(soundZoneId: string): Promise<NowPlaying | null> {
     try {
+      // According to Soundtrack API docs, nowPlaying is a root query, not nested in soundZone
       const query = `
         query GetNowPlaying($id: ID!) {
-          soundZone(id: $id) {
-            nowPlaying {
-              track {
-                title
-                artist
-                album
-                images {
-                  url
-                }
+          nowPlaying(soundZone: $id) {
+            track {
+              name
+              artists {
+                name
               }
-              startedAt
+              album {
+                name
+              }
             }
+            startedAt
           }
         }
       `
-      
+
       const result = await this.graphql(query, { id: soundZoneId })
-      
+
       if (result.errors) {
+        console.error('[Soundtrack] getNowPlaying GraphQL errors:', JSON.stringify(result.errors, null, 2))
         return null
       }
-      
-      return result.data?.soundZone || null
+
+      const nowPlaying = result.data?.nowPlaying
+      if (!nowPlaying) {
+        return null
+      }
+
+      // Return just the inner object for the component
+      // Component expects: { track: { title, artist, album }, startedAt }
+      return {
+        track: {
+          title: nowPlaying.track?.name || '',
+          artist: nowPlaying.track?.artists?.map((a: any) => a.name).join(', ') || '',
+          album: nowPlaying.track?.album?.name
+        },
+        startedAt: nowPlaying.startedAt
+      } as any
     } catch (error) {
+      console.error('[Soundtrack] getNowPlaying exception:', error)
       return null
     }
   }

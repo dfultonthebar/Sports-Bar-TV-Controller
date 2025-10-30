@@ -22,15 +22,17 @@ export async function GET() {
       }, { status: 404 })
     }
 
-    // NOTE: The Soundtrack API does not currently provide a way to list all available stations/playlists
-    // via the PublicAPIClient schema. Stations can only be controlled via the soundZone.currentPlayback.station field.
-    // Return empty array for now to prevent UI from hanging.
-    logger.debug('[Soundtrack] Stations listing not supported by API - returning empty array')
+    // Get Soundtrack API instance
+    const api = getSoundtrackAPI(config.apiKey)
+
+    // List all stations (will get stations from all accounts)
+    const stations = await api.listStations()
+
+    logger.debug(`[Soundtrack] Found ${stations.length} stations`)
 
     return NextResponse.json({
       success: true,
-      stations: [],
-      message: 'Station listing not available. Control playback via sound zones.'
+      stations: stations
     })
   } catch (error: any) {
     logger.error('Error fetching Soundtrack stations:', error)

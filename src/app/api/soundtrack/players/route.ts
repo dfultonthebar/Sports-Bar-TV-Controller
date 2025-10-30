@@ -40,26 +40,36 @@ export async function GET(request: NextRequest) {
     const api = getSoundtrackAPI(config.apiKey)
     const liveSoundZones = await api.listSoundZones()
 
-    // Merge database settings with live data
-    const players = liveSoundZones
-      .map((soundZone: any) => {
-        const dbPlayer = dbPlayers.find(p => p.playerId === soundZone.id)
-        if (bartenderOnly && !dbPlayer?.bartenderVisible) {
-          return null
-        }
-        return {
-          id: soundZone.id,
-          name: soundZone.name,
-          account: soundZone.account,
-          currentPlayback: soundZone.currentPlayback,
-          // Extract fields for UI compatibility
-          isPlaying: soundZone.currentPlayback?.playing || false,
-          volume: soundZone.currentPlayback?.volume || 0,
-          currentStation: soundZone.currentPlayback?.station || null,
-          bartenderVisible: dbPlayer?.bartenderVisible || false,
-          displayOrder: dbPlayer?.displayOrder || 0
-        }
-      })
+    // Merge database settings with live data and fetch now playing for each zone
+    const playersPromises = liveSoundZones.map(async (soundZone: any) => {
+      const dbPlayer = dbPlayers.find(p => p.playerId === soundZone.id)
+      if (bartenderOnly && !dbPlayer?.bartenderVisible) {
+        return null
+      }
+
+      // Fetch now playing data for this zone
+      let nowPlayingData = null
+      try {
+        nowPlayingData = await api.getNowPlaying(soundZone.id)
+      } catch (error) {
+        logger.error(`Failed to fetch now playing for zone ${soundZone.id}:`, error)
+      }
+
+      return {
+        id: soundZone.id,
+        name: soundZone.name,
+        account: soundZone.account,
+        nowPlaying: nowPlayingData,
+        // Infer playing status from whether there's a nowPlaying track
+        isPlaying: !!nowPlayingData?.track?.title,
+        volume: 0, // Volume controlled via Atlas, not needed
+        currentStation: null, // Would need separate query
+        bartenderVisible: dbPlayer?.bartenderVisible || false,
+        displayOrder: dbPlayer?.displayOrder || 0
+      }
+    })
+
+    const players = (await Promise.all(playersPromises))
       .filter((p: any) => p !== null)
       .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
 

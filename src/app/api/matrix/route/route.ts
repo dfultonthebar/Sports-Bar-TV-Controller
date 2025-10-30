@@ -1,9 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, or } from 'drizzle-orm'
-import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
-import { randomUUID } from 'crypto'
+import { routeMatrix } from '@/lib/matrix-control'
 
 
 export async function POST(request: NextRequest) {
@@ -18,77 +16,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get active matrix configuration
-    const activeConfig = await db.select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    // Use shared matrix routing logic
+    const success = await routeMatrix(input, output)
 
-    if (!activeConfig) {
-      return NextResponse.json(
-        { error: 'No active matrix configuration found' },
-        { status: 404 }
-      )
-    }
-
-    // Here you would implement the actual Wolf Pack communication
-    // For now, we'll simulate the routing and store it in the database
-    
-    // Store/update the route in the database
-    // First try to find existing route for this output
-    const existingRoute = await db.select()
-      .from(schema.matrixRoutes)
-      .where(eq(schema.matrixRoutes.outputNum, output))
-      .limit(1)
-      .get()
-
-    const now = new Date().toISOString()
-
-    if (existingRoute) {
-      // Update existing route
-      await db.update(schema.matrixRoutes)
-        .set({
-          inputNum: input,
-          isActive: true,
-          updatedAt: now
-        })
-        .where(eq(schema.matrixRoutes.id, existingRoute.id))
-        .run()
-    } else {
-      // Create new route
-      await db.insert(schema.matrixRoutes)
-        .values({
-          id: randomUUID(),
-          inputNum: input,
-          outputNum: output,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        })
-        .run()
-    }
-
-    // Send actual Wolf Pack command using correct format: YXZ.
-    const wolfPackCommand = `${input}X${output}.`
-    const commandSuccess = await sendWolfPackCommand(
-      activeConfig.ipAddress, 
-      activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
-      wolfPackCommand,
-      activeConfig.protocol || 'TCP'
-    )
-
-    if (!commandSuccess) {
-      return NextResponse.json({ 
-        error: `Failed to send Wolf Pack command: ${wolfPackCommand}`,
+    if (!success) {
+      return NextResponse.json({
+        error: `Failed to route input ${input} to output ${output}`,
         success: false
       }, { status: 500 })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: `Successfully routed input ${input} to output ${output}`,
-      command: wolfPackCommand,
+      command: `${input}X${output}.`,
       route: { input, output }
     })
 
@@ -99,126 +40,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-// Wolf Pack TCP/UDP Communication Implementation
-async function sendWolfPackCommand(ipAddress: string, port: number, command: string, protocol: string = 'TCP'): Promise<boolean> {
-  logger.debug(`Sending Wolf Pack command: ${command} to ${ipAddress}:${port} via ${protocol}`)
-  
-  if (protocol.toLowerCase() === 'udp') {
-    return await sendUDPCommand(ipAddress, port, command)
-  } else {
-    return await sendTCPCommand(ipAddress, port, command)
-  }
-}
-
-// TCP Communication with Wolf Pack
-async function sendTCPCommand(ipAddress: string, port: number, command: string): Promise<boolean> {
-  const net = require('net')
-  
-  return new Promise((resolve, reject) => {
-    let responseReceived = false
-    let response = ''
-    
-    const client = net.createConnection({ port, host: ipAddress }, () => {
-      logger.debug(`TCP Connected to Wolf Pack at ${ipAddress}:${port}`)
-      // Add \r\n for proper Telnet/TCP protocol
-      const commandWithLineEnding = command + '\r\n'
-      logger.debug(`Sending command: "${command}" (with \\r\\n)`)
-      client.write(commandWithLineEnding)
-    })
-    
-    client.setTimeout(10000) // 10 second timeout (increased from 5s)
-    
-    client.on('data', (data) => {
-      response += data.toString()
-      logger.debug(`Wolf Pack TCP response: ${response}`)
-      
-      // Check for response completion
-      if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
-        responseReceived = true
-        client.end()
-        
-        // Wolf Pack returns "OK" for success, "ERR" for failure
-        if (response.includes('OK')) {
-          resolve(true)
-        } else {
-          logger.error(`Wolf Pack command failed: ${response}`)
-          resolve(false)
-        }
-      }
-    })
-    
-    client.on('timeout', () => {
-      logger.error(`TCP connection timeout. Response so far: "${response}"`)
-      client.destroy()
-      resolve(false)
-    })
-    
-    client.on('error', (err) => {
-      logger.error('TCP connection error:', err.message)
-      resolve(false)
-    })
-    
-    client.on('close', () => {
-      if (!responseReceived && response.length > 0) {
-        logger.debug(`Connection closed. Response received: "${response}"`)
-        // If we got some response but no explicit OK/ERR, consider it based on content
-        resolve(response.length > 0)
-      }
-    })
-  })
-}
-
-// UDP Communication with Wolf Pack
-async function sendUDPCommand(ipAddress: string, port: number, command: string): Promise<boolean> {
-  const dgram = require('dgram')
-  
-  return new Promise((resolve, reject) => {
-    const client = dgram.createSocket('udp4')
-    
-    // Add \r\n for proper protocol
-    const commandWithLineEnding = command + '\r\n'
-    const message = Buffer.from(commandWithLineEnding)
-    
-    client.send(message, port, ipAddress, (err) => {
-      if (err) {
-        logger.error('UDP send error:', err.message)
-        client.close()
-        resolve(false)
-        return
-      }
-      
-      logger.debug(`UDP command sent to Wolf Pack at ${ipAddress}:${port}: ${command}`)
-    })
-    
-    // Listen for response
-    client.on('message', (data, rinfo) => {
-      const response = data.toString().trim()
-      logger.debug(`Wolf Pack UDP response from ${rinfo.address}:${rinfo.port}: ${response}`)
-      
-      client.close()
-      
-      // Wolf Pack returns "OK" for success, "ERR" for failure
-      if (response.includes('OK')) {
-        resolve(true)
-      } else {
-        logger.error(`Wolf Pack command failed: ${response}`)
-        resolve(false)
-      }
-    })
-    
-    client.on('error', (err) => {
-      logger.error('UDP error:', err.message)
-      client.close()
-      resolve(false)
-    })
-    
-    // Timeout after 5 seconds
-    setTimeout(() => {
-      logger.error('UDP response timeout')
-      client.close()
-      resolve(false)
-    }, 5000)
-  })
 }

@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findFirst, findMany, findUnique, or } from '@/lib/db-helpers'
+import { and, asc, desc, eq, findFirst, findMany, findUnique, inArray, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { UnifiedTVControl, TVDevice } from '@/lib/unified-tv-control'
@@ -28,44 +28,36 @@ export async function POST(request: NextRequest) {
     // Get CEC configuration
     const cecConfig = await findFirst('cecConfigurations')
     if (!cecConfig || !cecConfig.isEnabled) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'CEC is not enabled' 
+      return NextResponse.json({
+        success: false,
+        error: 'CEC is not enabled'
       }, { status: 400 })
     }
 
-    // Get matrix configuration
-    const matrixConfig = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true }
-    })
-    
-    if (!matrixConfig) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No active matrix configuration found' 
-      }, { status: 404 })
+    // Ensure we have a CEC input channel configured
+    if (!cecConfig.cecInputChannel) {
+      return NextResponse.json({
+        success: false,
+        error: 'CEC input channel not configured'
+      }, { status: 400 })
     }
 
-    // Initialize unified control
+    // Initialize unified control with Pulse-Eight USB adapter
     const controller = new UnifiedTVControl({
-      cecServerIP: cecConfig.cecServerIP,
-      cecServerPort: cecConfig.cecPort,
-      cecInputChannel: cecConfig.cecInputChannel || 12,
-      matrixIP: matrixConfig.ipAddress,
-      matrixPort: matrixConfig.udpPort || 4000,
-      matrixProtocol: matrixConfig.protocol as 'TCP' | 'UDP'
+      cecInputChannel: cecConfig.cecInputChannel,
+      cecDeviceNumber: 1  // Pulse-Eight device number (usually 1)
     })
 
     // Handle single device control
     if (deviceId) {
-      const output = await prisma.matrixOutput.findUnique({
-        where: { id: deviceId }
-      })
+      const output = await findUnique('matrixOutputs',
+        eq(schema.matrixOutputs.id, deviceId)
+      )
 
       if (!output) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Device not found' 
+        return NextResponse.json({
+          success: false,
+          error: 'Device not found'
         }, { status: 404 })
       }
 
@@ -93,11 +85,11 @@ export async function POST(request: NextRequest) {
 
     // Handle multiple device control
     if (deviceIds && Array.isArray(deviceIds)) {
-      const outputs = await prisma.matrixOutput.findMany({
-        where: { 
-          id: { in: deviceIds },
-          isActive: true 
-        }
+      const outputs = await findMany('matrixOutputs', {
+        where: and(
+          inArray(schema.matrixOutputs.id, deviceIds),
+          eq(schema.matrixOutputs.isActive, true)
+        )
       })
 
       const tvDevices: TVDevice[] = outputs.map(output => ({
