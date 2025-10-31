@@ -112,7 +112,7 @@ export default function AudioControlTabs() {
                   <AtlasOutputMeters
                     processorId={activeProcessor?.id || "atlas-001"}
                     processorIp={activeProcessor?.ipAddress || ""}
-                    autoRefresh={true}
+                    autoRefresh={false}
                     refreshInterval={1000}
                   />
                 </div>

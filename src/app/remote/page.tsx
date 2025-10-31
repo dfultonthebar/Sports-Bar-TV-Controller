@@ -3,13 +3,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  Tv, 
-  Radio, 
-  Power, 
+import {
+  Tv,
+  Radio,
+  Power,
   VolumeX,
   Volume2,
-  ChevronUp, 
+  ChevronUp,
   ChevronDown,
   RotateCcw,
   Settings,
@@ -22,7 +22,8 @@ import {
   Sliders,
   Speaker,
   Calendar,
-  Music2
+  Music2,
+  Gamepad2
 } from 'lucide-react'
 import Image from 'next/image'
 import CECPowerControl from '@/components/CECPowerControl'
@@ -33,6 +34,7 @@ import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
+import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 
 interface MatrixInput {
   id: string
@@ -153,7 +155,7 @@ export default function BartenderRemotePage() {
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote'>('video')
 
 
 
@@ -631,8 +633,10 @@ export default function BartenderRemotePage() {
         {activeTab === 'power' && <CECPowerControl />}
 
         {activeTab === 'music' && <BartenderMusicControl />}
-        
+
         {activeTab === 'guide' && <EnhancedChannelGuideBartenderRemote />}
+
+        {activeTab === 'remote' && <BartenderRemoteSelector />}
       </div>
 
       {/* Bottom Tab Navigation */}
@@ -685,7 +689,19 @@ export default function BartenderRemotePage() {
             <Calendar className="w-4 h-4" />
             <span className="text-xs font-medium">Guide</span>
           </button>
-          
+
+          <button
+            onClick={() => setActiveTab('remote')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'remote'
+                ? 'bg-orange-500/30 text-orange-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Gamepad2 className="w-4 h-4" />
+            <span className="text-xs font-medium">Remote</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('power')}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${

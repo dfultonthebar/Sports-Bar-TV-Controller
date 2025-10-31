@@ -1,7 +1,7 @@
 {
   "name": "Bar Layout",
-  "imageUrl": "/api/uploads/layouts/a3d33c17-81e6-4511-879f-c20b27ad0404_professional.png",
-  "originalFileUrl": "/api/uploads/layouts/a3d33c17-81e6-4511-879f-c20b27ad0404.png",
+  "imageUrl": "/api/uploads/layouts/273188b2-ecfc-47ab-94a7-05d5d03bd3b0_professional.png",
+  "originalFileUrl": "/api/uploads/layouts/273188b2-ecfc-47ab-94a7-05d5d03bd3b0.png",
   "fileType": "image/png",
   "zones": [
     {
@@ -11,7 +11,7 @@
       "y": 9.63,
       "width": 5.5,
       "height": 5.5,
-      "label": "TV 1",
+      "label": "TV 01",
       "confidence": 0.95
     },
     {
@@ -21,7 +21,7 @@
       "y": 9.63,
       "width": 5.5,
       "height": 5.5,
-      "label": "TV 2",
+      "label": "TV 01",
       "confidence": 0.95
     },
     {
@@ -31,7 +31,7 @@
       "y": 30.7,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 5",
+      "label": "TV 20",
       "confidence": 0.95
     },
     {
@@ -41,7 +41,7 @@
       "y": 27.35,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 3",
+      "label": "TV 14",
       "confidence": 0.95
     },
     {
@@ -51,7 +51,7 @@
       "y": 27.35,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 4",
+      "label": "TV 19",
       "confidence": 0.95
     },
     {
@@ -61,7 +61,7 @@
       "y": 34.02,
       "width": 5.5,
       "height": 12.97,
-      "label": "TV 8",
+      "label": "TV 14",
       "confidence": 0.95
     },
     {
@@ -71,7 +71,7 @@
       "y": 34.02,
       "width": 5.5,
       "height": 12.97,
-      "label": "TV 9",
+      "label": "TV 19",
       "confidence": 0.95
     },
     {
@@ -81,7 +81,7 @@
       "y": 30.22,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 6",
+      "label": "TV 08",
       "confidence": 0.95
     },
     {
@@ -91,7 +91,7 @@
       "y": 30.22,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 7",
+      "label": "TV 108",
       "confidence": 0.95
     },
     {
@@ -101,7 +101,7 @@
       "y": 39.44,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 10",
+      "label": "TV 09",
       "confidence": 0.95
     },
     {
@@ -111,7 +111,7 @@
       "y": 39.44,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 11",
+      "label": "TV 109",
       "confidence": 0.95
     },
     {
@@ -121,7 +121,7 @@
       "y": 48.18,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 12",
+      "label": "TV 15",
       "confidence": 0.95
     },
     {
@@ -131,7 +131,7 @@
       "y": 48.18,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 13",
+      "label": "TV 18",
       "confidence": 0.95
     },
     {
@@ -141,7 +141,7 @@
       "y": 49.76,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 14",
+      "label": "TV 10",
       "confidence": 0.95
     },
     {
@@ -151,7 +151,7 @@
       "y": 49.76,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 15",
+      "label": "TV 10",
       "confidence": 0.95
     },
     {
@@ -161,7 +161,7 @@
       "y": 60.08,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 16",
+      "label": "TV 21",
       "confidence": 0.95
     },
     {
@@ -171,7 +171,7 @@
       "y": 61.56,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 17",
+      "label": "TV 121",
       "confidence": 0.95
     },
     {
@@ -181,7 +181,7 @@
       "y": 63.1,
       "width": 11.53,
       "height": 5.5,
-      "label": "TV 18",
+      "label": "TV 16",
       "confidence": 0.95
     },
     {
@@ -191,7 +191,7 @@
       "y": 71.13,
       "width": 11.53,
       "height": 5.5,
-      "label": "TV 19",
+      "label": "TV 16",
       "confidence": 0.95
     },
     {
@@ -201,7 +201,7 @@
       "y": 83.52,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 20",
+      "label": "TV 23",
       "confidence": 0.95
     },
     {
@@ -211,7 +211,7 @@
       "y": 83.56,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 21",
+      "label": "TV 24",
       "confidence": 0.95
     },
     {
@@ -221,7 +221,7 @@
       "y": 83.52,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 22",
+      "label": "TV 04",
       "confidence": 0.95
     },
     {
@@ -231,7 +231,7 @@
       "y": 83.56,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 23",
+      "label": "TV 03",
       "confidence": 0.95
     },
     {
@@ -241,7 +241,7 @@
       "y": 94.29,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 24",
+      "label": "TV 25",
       "confidence": 0.95
     }
   ]

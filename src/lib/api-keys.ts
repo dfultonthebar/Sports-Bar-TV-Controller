@@ -1,7 +1,8 @@
 
 // Utility functions for managing API keys from the database
 
-import { prisma } from './db'
+import { db, schema } from '@/db'
+import { eq, and } from 'drizzle-orm'
 import { decrypt } from './encryption'
 
 interface ApiKeyData {
@@ -18,12 +19,16 @@ interface ApiKeyData {
  */
 export async function getApiKeysByProvider(provider: string): Promise<ApiKeyData[]> {
   try {
-    const apiKeys = await prisma.apiKey.findMany({
-      where: {
-        provider: provider,
-        isActive: true
-      }
-    })
+    const apiKeys = await db
+      .select()
+      .from(schema.apiKeys)
+      .where(
+        and(
+          eq(schema.apiKeys.provider, provider),
+          eq(schema.apiKeys.isActive, true)
+        )
+      )
+      .all()
 
     // Decrypt the key values
     return apiKeys.map(key => ({
@@ -42,12 +47,17 @@ export async function getApiKeysByProvider(provider: string): Promise<ApiKeyData
  */
 export async function getApiKey(provider: string): Promise<string | null> {
   try {
-    const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        provider: provider,
-        isActive: true
-      }
-    })
+    const apiKey = await db
+      .select()
+      .from(schema.apiKeys)
+      .where(
+        and(
+          eq(schema.apiKeys.provider, provider),
+          eq(schema.apiKeys.isActive, true)
+        )
+      )
+      .limit(1)
+      .get()
 
     if (!apiKey) {
       return null
@@ -65,15 +75,19 @@ export async function getApiKey(provider: string): Promise<string | null> {
  */
 export async function getApiKeysByNames(provider: string, names: string[]): Promise<Record<string, string>> {
   try {
-    const apiKeys = await prisma.apiKey.findMany({
-      where: {
-        provider: provider,
-        isActive: true,
-        name: {
-          in: names
-        }
-      }
-    })
+    const { inArray } = await import('drizzle-orm')
+
+    const apiKeys = await db
+      .select()
+      .from(schema.apiKeys)
+      .where(
+        and(
+          eq(schema.apiKeys.provider, provider),
+          eq(schema.apiKeys.isActive, true),
+          inArray(schema.apiKeys.name, names)
+        )
+      )
+      .all()
 
     const result: Record<string, string> = {}
     apiKeys.forEach(key => {
@@ -181,14 +195,20 @@ export async function getSpectrumBusinessConfig(): Promise<{
  */
 export async function isProviderConfigured(provider: string): Promise<boolean> {
   try {
-    const count = await prisma.apiKey.count({
-      where: {
-        provider: provider,
-        isActive: true
-      }
-    })
-    
-    return count > 0
+    const { count } = await import('drizzle-orm')
+
+    const result = await db
+      .select({ count: count() })
+      .from(schema.apiKeys)
+      .where(
+        and(
+          eq(schema.apiKeys.provider, provider),
+          eq(schema.apiKeys.isActive, true)
+        )
+      )
+      .get()
+
+    return (result?.count ?? 0) > 0
   } catch (error) {
     console.error(`Error checking if provider ${provider} is configured:`, error)
     return false

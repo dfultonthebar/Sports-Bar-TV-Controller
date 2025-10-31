@@ -19,11 +19,11 @@ interface AtlasInputMetersProps {
   refreshInterval?: number
 }
 
-export default function AtlasInputMeters({ 
-  processorId, 
+export default function AtlasInputMeters({
+  processorId,
   processorIp,
-  autoRefresh = true,
-  refreshInterval = 100 // 100ms for smooth meter updates
+  autoRefresh = false,
+  refreshInterval = 1000 // 1000ms for HTTP polling
 }: AtlasInputMetersProps) {
   const [inputMeters, setInputMeters] = useState<InputMeter[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,12 +31,15 @@ export default function AtlasInputMeters({
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (autoRefresh) {
       connectWebSocket()
     } else {
+      // Use HTTP polling instead of WebSocket
       fetchInputMeters()
+      pollingIntervalRef.current = setInterval(fetchInputMeters, refreshInterval)
     }
 
     return () => {
@@ -46,8 +49,11 @@ export default function AtlasInputMeters({
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
     }
-  }, [processorId, processorIp, autoRefresh])
+  }, [processorId, processorIp, autoRefresh, refreshInterval])
 
   const connectWebSocket = () => {
     try {

@@ -174,18 +174,18 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, onC
         {/* Navigation Pad */}
         <div className="bg-slate-800 rounded-lg p-4">
           <div className="grid grid-cols-3 gap-2">
-            {/* Up */}
-            <div className="col-start-2">
+            {/* Up - Full row */}
+            <div className="col-span-3 flex justify-center">
               <Button
                 onClick={() => sendCommand('UP', 'Up')}
                 disabled={loading}
-                className="w-full bg-slate-700 hover:bg-slate-600 text-white p-3"
+                className="bg-slate-700 hover:bg-slate-600 text-white p-3"
               >
                 <ChevronUp className="w-6 h-6" />
               </Button>
             </div>
-            
-            {/* Left, OK, Right */}
+
+            {/* Left, OK, Right - Middle row */}
             <Button
               onClick={() => sendCommand('LEFT', 'Left')}
               disabled={loading}
@@ -208,13 +208,13 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, onC
             >
               <ChevronRight className="w-6 h-6" />
             </Button>
-            
-            {/* Down */}
-            <div className="col-start-2">
+
+            {/* Down - Full row */}
+            <div className="col-span-3 flex justify-center">
               <Button
                 onClick={() => sendCommand('DOWN', 'Down')}
                 disabled={loading}
-                className="w-full bg-slate-700 hover:bg-slate-600 text-white p-3"
+                className="bg-slate-700 hover:bg-slate-600 text-white p-3"
               >
                 <ChevronDown className="w-6 h-6" />
               </Button>

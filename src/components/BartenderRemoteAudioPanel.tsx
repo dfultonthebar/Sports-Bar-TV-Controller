@@ -68,21 +68,21 @@ export default function BartenderRemoteAudioPanel({
             </TabsContent>
 
             <TabsContent value="input-meters" className="mt-4">
-              <AtlasInputMeters 
+              <AtlasInputMeters
                 processorId={processorId}
                 processorIp={processorIp}
-                autoRefresh={true}
-                refreshInterval={100}
+                autoRefresh={false}
+                refreshInterval={1000}
               />
             </TabsContent>
 
             <TabsContent value="output-meters" className="mt-4">
-              <AtlasOutputMeters 
+              <AtlasOutputMeters
                 processorId={processorId}
                 processorIp={processorIp}
                 showGroups={true}
-                autoRefresh={true}
-                refreshInterval={100}
+                autoRefresh={false}
+                refreshInterval={1000}
               />
             </TabsContent>
           </Tabs>

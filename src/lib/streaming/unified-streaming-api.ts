@@ -290,8 +290,36 @@ class UnifiedStreamingAPI {
     switch (appId) {
       case 'espn-plus':
         try {
+          // Get live events
           const liveEvents = await espnApi.getLiveEvents()
           events.push(...liveEvents.map(e => this.convertESPNEvent(e)))
+
+          // Get upcoming events for next 3 days (reduced from 7 to avoid overwhelming the browser)
+          const today = new Date()
+          const leagues = [
+            { sport: 'football', league: 'nfl' },
+            { sport: 'basketball', league: 'nba' },
+            { sport: 'baseball', league: 'mlb' },
+            { sport: 'hockey', league: 'nhl' },
+            { sport: 'soccer', league: 'usa.1' }
+          ]
+
+          // Fetch events day by day to avoid too many simultaneous requests
+          for (let i = 0; i < 3; i++) {
+            const date = new Date(today)
+            date.setDate(date.getDate() + i)
+            const dateStr = date.toISOString().split('T')[0].replace(/-/g, '')
+
+            // Fetch all leagues for this day sequentially
+            for (const { sport, league } of leagues) {
+              try {
+                const scoreboard = await espnApi.getScoreboard(sport, league, { dates: dateStr })
+                events.push(...scoreboard.events.map(e => this.convertESPNEvent(e)))
+              } catch (error) {
+                // Silently continue if a league has no events
+              }
+            }
+          }
         } catch (error) {
           console.error('[UNIFIED API] Error getting ESPN+ events:', error)
         }

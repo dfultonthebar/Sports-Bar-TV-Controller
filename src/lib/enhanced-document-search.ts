@@ -1,5 +1,6 @@
 
-import { prisma } from './db'
+import { db, schema } from '@/db'
+import { isNotNull, or, eq } from 'drizzle-orm'
 
 export interface DocumentSearchResult {
   id: string
@@ -18,18 +19,15 @@ export class EnhancedDocumentSearch {
       const searchTerms = this.generateSearchTerms(keywords)
 
       // Get all documents with content
-      const documents = await prisma.document.findMany({
-        where: {
-          content: {
-            not: null
-          }
-        },
-        select: {
-          id: true,
-          originalName: true,
-          content: true
-        }
-      })
+      const documents = await db
+        .select({
+          id: schema.documents.id,
+          originalName: schema.documents.originalName,
+          content: schema.documents.content
+        })
+        .from(schema.documents)
+        .where(isNotNull(schema.documents.content))
+        .all()
 
       if (!documents || documents.length === 0) {
         return []
@@ -203,14 +201,16 @@ export class EnhancedDocumentSearch {
     try {
       const { extractTextFromFile } = await import('./text-extractor')
       
-      const documents = await prisma.document.findMany({
-        where: {
-          OR: [
-            { content: null },
-            { content: '' }
-          ]
-        }
-      })
+      const documents = await db
+        .select()
+        .from(schema.documents)
+        .where(
+          or(
+            eq(schema.documents.content, null),
+            eq(schema.documents.content, '')
+          )
+        )
+        .all()
 
       let processed = 0
       let errors = 0
@@ -218,12 +218,13 @@ export class EnhancedDocumentSearch {
       for (const doc of documents) {
         try {
           const textResult = await extractTextFromFile(doc.filePath, doc.mimeType)
-          
-          await prisma.document.update({
-            where: { id: doc.id },
-            data: { content: textResult.text }
-          })
-          
+
+          await db
+            .update(schema.documents)
+            .set({ content: textResult.text })
+            .where(eq(schema.documents.id, doc.id))
+            .run()
+
           processed++
         } catch (error) {
           console.error(`Failed to reprocess document ${doc.originalName}:`, error)

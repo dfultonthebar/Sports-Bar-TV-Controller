@@ -133,13 +133,13 @@ export default function RemoteControlPopup({ device, deviceType, onClose }: Remo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm z-0"
         onClick={onClose}
       />
-      
+
       {/* Modal Container */}
-      <div className="relative z-10 max-h-[90vh] overflow-y-auto">
+      <div className="relative z-50 max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -148,7 +148,7 @@ export default function RemoteControlPopup({ device, deviceType, onClose }: Remo
         >
           <X className="w-5 h-5" />
         </button>
-        
+
         {/* Remote Control Content */}
         <div className="relative">
           {renderRemote()}

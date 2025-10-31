@@ -10,7 +10,19 @@
       "isOnline": true,
       "addedAt": "2025-10-28T18:50:50.609Z",
       "updatedAt": "2025-10-28T18:50:50.609Z",
-      "lastSeen": "2025-10-30T18:32:02.106Z"
+      "lastSeen": "2025-10-31T18:08:41.338Z"
+    },
+    {
+      "name": "Amazon 2",
+      "ipAddress": "192.168.5.132",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 14,
+      "id": "firetv_1761854994482_xcyy9hzwk",
+      "isOnline": false,
+      "addedAt": "2025-10-30T20:09:54.537Z",
+      "updatedAt": "2025-10-30T20:09:54.537Z",
+      "lastSeen": "2025-10-31T17:42:00.700Z"
     }
   ]
 }

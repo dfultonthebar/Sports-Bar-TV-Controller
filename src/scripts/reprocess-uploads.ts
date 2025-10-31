@@ -1,7 +1,8 @@
 
 import { promises as fs } from 'fs'
 import path from 'path'
-import { prisma } from '../lib/db'
+import { db, schema } from '../db'
+import { or, eq, count } from 'drizzle-orm'
 import { extractTextFromFile } from '../lib/text-extractor'
 
 async function reprocessUploads() {
@@ -18,14 +19,17 @@ async function reprocessUploads() {
       if (!stat.isFile()) continue
 
       // Check if file is already in database
-      const existingDoc = await prisma.document.findFirst({
-        where: { 
-          OR: [
-            { filename },
-            { filePath }
-          ]
-        }
-      })
+      const existingDoc = await db
+        .select()
+        .from(schema.documents)
+        .where(
+          or(
+            eq(schema.documents.filename, filename),
+            eq(schema.documents.filePath, filePath)
+          )
+        )
+        .limit(1)
+        .get()
 
       if (existingDoc) {
         console.log(`⏭️  Skipping ${filename} - already in database`)
@@ -57,16 +61,18 @@ async function reprocessUploads() {
         }
 
         // Save to database
-        const document = await prisma.document.create({
-          data: {
+        const document = await db
+          .insert(schema.documents)
+          .values({
             filename,
             originalName: filename, // We don't have the original name, use filename
             filePath,
             fileSize: stat.size,
             mimeType,
             content: textContent,
-          },
-        })
+          })
+          .returning()
+          .get()
 
         console.log(`✅ Saved ${filename} to database with ID: ${document.id}`)
       } catch (error) {
@@ -75,7 +81,11 @@ async function reprocessUploads() {
     }
 
     // Show final counts
-    const totalDocs = await prisma.document.count()
+    const result = await db
+      .select({ count: count() })
+      .from(schema.documents)
+      .get()
+    const totalDocs = result?.count ?? 0
     console.log(`🎉 Processing complete! Total documents in database: ${totalDocs}`)
 
   } catch (error) {
