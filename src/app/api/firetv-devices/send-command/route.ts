@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectionManager } from '@/services/firetv-connection-manager'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
 
 // Key code mappings for Fire TV
 const KEY_CODES: Record<string, number> = {
@@ -31,6 +33,15 @@ const KEY_CODES: Record<string, number> = {
   'SEARCH': 84
 }
 
+// Validation schema for FireTV command
+const firetvSendCommandSchema = z.object({
+  deviceId: ValidationSchemas.deviceId,
+  command: z.string().min(1).max(200, 'Command must be less than 200 characters'),
+  appPackage: ValidationSchemas.appId.optional(),
+  ipAddress: ValidationSchemas.ipAddress,
+  port: ValidationSchemas.port.default(5555)
+})
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -38,7 +49,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { deviceId, command, appPackage, ipAddress, port } = await request.json()
+    // Validate request body
+    const validation = await validateRequestBody(request, firetvSendCommandSchema)
+    if (!validation.success) return validation.error
+
+    const { deviceId, command, appPackage, ipAddress, port } = validation.data
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('🎮 [FIRE CUBE] Sending command')
@@ -48,20 +63,6 @@ export async function POST(request: NextRequest) {
     console.log(`   IP: ${ipAddress}:${port}`)
     console.log(`   Timestamp: ${new Date().toISOString()}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
-    if (!ipAddress || !port) {
-      return NextResponse.json(
-        { success: false, message: 'IP address and port are required' },
-        { status: 400 }
-      )
-    }
-    
-    if (!command) {
-      return NextResponse.json(
-        { success: false, message: 'Command is required' },
-        { status: 400 }
-      )
-    }
     
     const ip = ipAddress.trim()
     const devicePort = parseInt(port.toString())

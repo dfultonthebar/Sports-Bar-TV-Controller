@@ -11,8 +11,20 @@ import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
 
 const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
+
+// Validation schema for launching streaming apps
+const launchAppSchema = z.object({
+  deviceId: ValidationSchemas.deviceId,
+  ipAddress: ValidationSchemas.ipAddress,
+  appId: ValidationSchemas.appId,
+  port: ValidationSchemas.port.default(5555),
+  deepLink: ValidationSchemas.deepLink.optional(),
+  activityName: z.string().min(1).max(200).optional()
+})
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
@@ -21,22 +33,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json()
+    // Validate request body
+    const validation = await validateRequestBody(request, launchAppSchema)
+    if (!validation.success) return validation.error
+
     const {
       deviceId,
       ipAddress,
       appId,
-      port = 5555,
+      port,
       deepLink,
       activityName: providedActivityName
-    } = body
-
-    if (!deviceId || !ipAddress || !appId) {
-      return NextResponse.json(
-        { error: 'deviceId, ipAddress, and appId are required' },
-        { status: 400 }
-      )
-    }
+    } = validation.data
 
     console.log(`[API] Launching app ${appId} on device ${deviceId}`)
 

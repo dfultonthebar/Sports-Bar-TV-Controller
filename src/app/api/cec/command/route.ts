@@ -2,6 +2,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cecService } from '@/lib/cec-service'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+
+// Validation schema for CEC commands
+const cecCommandSchema = z.object({
+  action: ValidationSchemas.cecAction,
+  tvAddress: ValidationSchemas.cecAddress.default('0'),
+  params: z.object({
+    inputNumber: ValidationSchemas.inputNumber.optional(),
+    volume: ValidationSchemas.volume.optional(),
+    key: z.string().min(1).max(50).optional(),
+    command: z.string().min(1).max(200).optional()
+  }).optional().default({})
+})
 
 export async function POST(request: NextRequest) {
   // QUICK WIN 3: Apply rate limiting to prevent hardware command flooding
@@ -12,8 +26,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json()
-    const { action, tvAddress = '0', params = {} } = body
+    // Validate request body
+    const validation = await validateRequestBody(request, cecCommandSchema)
+    if (!validation.success) return validation.error
+
+    const { action, tvAddress, params } = validation.data
 
     let result;
 
@@ -21,15 +38,15 @@ export async function POST(request: NextRequest) {
       case 'power_on':
         result = await cecService.powerOn(tvAddress);
         break;
-      
+
       case 'power_off':
         result = await cecService.powerOff(tvAddress);
         break;
-      
+
       case 'toggle_power':
         result = await cecService.togglePower(tvAddress);
         break;
-      
+
       case 'set_input':
         if (!params.inputNumber) {
           return NextResponse.json(
@@ -39,7 +56,7 @@ export async function POST(request: NextRequest) {
         }
         result = await cecService.setInput(params.inputNumber, tvAddress);
         break;
-      
+
       case 'set_volume':
         if (params.volume === undefined) {
           return NextResponse.json(
@@ -49,11 +66,11 @@ export async function POST(request: NextRequest) {
         }
         result = await cecService.setVolume(params.volume, tvAddress);
         break;
-      
+
       case 'mute':
         result = await cecService.mute(tvAddress);
         break;
-      
+
       case 'send_key':
         if (!params.key) {
           return NextResponse.json(
@@ -63,7 +80,7 @@ export async function POST(request: NextRequest) {
         }
         result = await cecService.sendKey(params.key, tvAddress);
         break;
-      
+
       case 'raw':
         if (!params.command) {
           return NextResponse.json(
@@ -73,7 +90,7 @@ export async function POST(request: NextRequest) {
         }
         result = await cecService.sendRawCommand(params.command);
         break;
-      
+
       default:
         return NextResponse.json(
           { success: false, message: `Unknown action: ${action}` },

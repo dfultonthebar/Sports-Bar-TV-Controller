@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
 
 // Enhanced DirecTV command mappings
 // DirecTV SHEF API expects lowercase keys without KEY_ prefix
@@ -194,6 +196,14 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
   }
 }
 
+// Validation schema for DirecTV command
+const directvSendCommandSchema = z.object({
+  deviceId: ValidationSchemas.deviceId,
+  command: z.string().min(1).max(50, 'Command must be less than 50 characters'),
+  ipAddress: ValidationSchemas.ipAddress,
+  port: ValidationSchemas.port.default(8080)
+})
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -201,14 +211,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { deviceId, command, ipAddress, port } = await request.json()
+    // Validate request body
+    const validation = await validateRequestBody(request, directvSendCommandSchema)
+    if (!validation.success) return validation.error
 
-    if (!deviceId || !command || !ipAddress) {
-      return NextResponse.json(
-        { error: 'Missing required parameters: deviceId, command, and ipAddress are required' },
-        { status: 400 }
-      )
-    }
+    const { deviceId, command, ipAddress, port } = validation.data
 
     // Validate and map the command
     const mappedCommand = DIRECTV_COMMANDS[command as keyof typeof DIRECTV_COMMANDS]

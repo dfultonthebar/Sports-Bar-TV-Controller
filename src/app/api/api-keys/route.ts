@@ -5,6 +5,8 @@ import { encrypt, decrypt } from '@/lib/encryption'
 import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
@@ -30,6 +32,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Validation schema for creating API keys
+const createApiKeySchema = z.object({
+  name: ValidationSchemas.apiKeyName,
+  provider: ValidationSchemas.apiKeyProvider,
+  keyValue: ValidationSchemas.apiKeyValue,
+  description: z.string().max(500).optional()
+})
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
   if (!rateLimit.allowed) {
@@ -37,14 +47,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, provider, keyValue, description } = await request.json()
+    // Validate request body
+    const validation = await validateRequestBody(request, createApiKeySchema)
+    if (!validation.success) return validation.error
 
-    if (!name || !provider || !keyValue) {
-      return NextResponse.json(
-        { error: 'Name, provider, and key value are required' }, 
-        { status: 400 }
-      )
-    }
+    const { name, provider, keyValue, description } = validation.data
 
     // Encrypt the API key before storing
     const encryptedKey = encrypt(keyValue)
@@ -62,7 +69,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating API key:', error)
     return NextResponse.json(
-      { error: 'Failed to create API key' }, 
+      { error: 'Failed to create API key' },
       { status: 500 }
     )
   }

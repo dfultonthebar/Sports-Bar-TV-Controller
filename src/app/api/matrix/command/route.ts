@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
+import { z } from 'zod'
+import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+
+// Validation schema for matrix commands
+const matrixCommandSchema = z.object({
+  command: z.string().min(1).max(200, 'Command must be less than 200 characters'),
+  ipAddress: ValidationSchemas.ipAddress,
+  port: ValidationSchemas.port,
+  protocol: ValidationSchemas.protocol.default('TCP')
+})
 
 export async function POST(request: NextRequest) {
   // QUICK WIN 3: Apply rate limiting to prevent hardware command flooding
@@ -12,14 +22,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { command, ipAddress, port, protocol = 'TCP' } = await request.json()
+    // Validate request body
+    const validation = await validateRequestBody(request, matrixCommandSchema)
+    if (!validation.success) return validation.error
 
-    if (!command || !ipAddress || !port) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Command, IP address, and port are required' 
-      })
-    }
+    const { command, ipAddress, port, protocol } = validation.data
 
     // Ensure command ends with period as per Wolf Pack protocol
     const wolfPackCommand = command.endsWith('.') ? command : command + '.'

@@ -69,10 +69,21 @@ export default function QATrainingPage() {
       if (filterSourceType !== 'all') params.append('sourceType', filterSourceType);
 
       const response = await fetch(`/api/ai/qa-entries?${params}`);
-      const data = await response.json();
-      setEntries(data);
+      const result = await response.json();
+
+      // Handle paginated response format {data: [], pagination: {}}
+      if (result && typeof result === 'object' && Array.isArray(result.data)) {
+        setEntries(result.data);
+      } else if (Array.isArray(result)) {
+        // Fallback for direct array response
+        setEntries(result);
+      } else {
+        console.error('Unexpected API response format:', result);
+        setEntries([]);
+      }
     } catch (error) {
       console.error('Error loading entries:', error);
+      setEntries([]);
     } finally {
       setLoading(false);
     }
