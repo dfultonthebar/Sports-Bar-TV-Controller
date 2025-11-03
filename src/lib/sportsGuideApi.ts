@@ -1,11 +1,14 @@
 /**
  * Sports Guide API Client
- * 
+ *
  * Integrates with The Rail Media's Sports Guide API to fetch TV guide data
  * for sports programming across cable, satellite, and streaming services.
- * 
+ *
  * API Documentation: https://guide.thedailyrail.com/api/v1/guide/{configuration_id}
  */
+
+import { createCircuitBreaker } from './circuit-breaker'
+import type { CircuitBreaker } from 'opossum'
 
 export interface SportsGuideListing {
   time: string;
@@ -52,9 +55,45 @@ export class SportsGuideApiError extends Error {
  */
 export class SportsGuideApi {
   private config: SportsGuideApiConfig;
+  private circuitBreaker: CircuitBreaker<[string, RequestInit], Response>;
 
   constructor(config: SportsGuideApiConfig) {
     this.config = config;
+
+    // Create circuit breaker for Sports Guide API calls with empty fallback
+    this.circuitBreaker = createCircuitBreaker(
+      async (url: string, options: RequestInit) => this.fetchWithoutCircuitBreaker(url, options),
+      {
+        name: 'sports-guide-api',
+        timeout: 15000, // 15 seconds for guide data
+        errorThresholdPercentage: 50,
+        resetTimeout: 30000,
+        rollingCountTimeout: 60000,
+        volumeThreshold: 5 // Lower threshold since this is less frequently called
+      },
+      async () => {
+        // Fallback: Return empty guide structure
+        return new Response(JSON.stringify({ listing_groups: [] }), {
+          status: 503,
+          statusText: 'Service Unavailable - Circuit Breaker Open',
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+    )
+  }
+
+  /**
+   * Fetch without circuit breaker protection (used internally by circuit breaker)
+   */
+  private async fetchWithoutCircuitBreaker(url: string, options: RequestInit): Promise<Response> {
+    return fetch(url, options)
+  }
+
+  /**
+   * Fetch with circuit breaker protection
+   */
+  private async fetchWithCircuitBreaker(url: string, options: RequestInit): Promise<Response> {
+    return this.circuitBreaker.fire(url, options)
   }
 
   /**
@@ -62,7 +101,7 @@ export class SportsGuideApi {
    */
   async verifyApiKey(): Promise<{ valid: boolean; message: string }> {
     try {
-      const response = await fetch(
+      const response = await this.fetchWithCircuitBreaker(
         `${this.config.baseUrl}/guide/${this.config.userId}`,
         {
           method: 'GET',
@@ -99,7 +138,7 @@ export class SportsGuideApi {
 
   /**
    * Fetch guide data for the configured user
-   * 
+   *
    * @param startDate - Optional start date (YYYY-MM-DD format)
    * @param endDate - Optional end date (YYYY-MM-DD format)
    */
@@ -109,17 +148,17 @@ export class SportsGuideApi {
   ): Promise<SportsGuideResponse> {
     try {
       let url = `${this.config.baseUrl}/guide/${this.config.userId}`;
-      
+
       // Add date parameters if provided
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
-      
+
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
 
-      const response = await fetch(url, {
+      const response = await this.fetchWithCircuitBreaker(url, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',

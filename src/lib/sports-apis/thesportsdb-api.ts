@@ -8,6 +8,8 @@
  */
 
 import { sportsDBThrottler } from '@/lib/rate-limiting/request-throttler'
+import { createCircuitBreaker } from '@/lib/circuit-breaker'
+import type { CircuitBreaker } from 'opossum'
 
 export interface SportsDBTeam {
   idTeam: string
@@ -138,11 +140,36 @@ export interface SportsDBLeague {
 class SportsDBAPIService {
   private readonly baseUrl = 'https://www.thesportsdb.com/api/v1/json/3'
   private readonly timeout = 10000
+  private circuitBreaker: CircuitBreaker<[string, RequestInit?], Response>
+
+  constructor() {
+    // Create circuit breaker for TheSportsDB API calls with fallback
+    this.circuitBreaker = createCircuitBreaker(
+      async (url: string, options?: RequestInit) => this.fetchWithoutCircuitBreaker(url, options),
+      {
+        name: 'thesportsdb-api',
+        timeout: this.timeout,
+        errorThresholdPercentage: 50,
+        resetTimeout: 30000,
+        rollingCountTimeout: 60000,
+        volumeThreshold: 10
+      },
+      async (url: string) => {
+        // Fallback: Return empty response indicating service unavailable
+        return new Response(JSON.stringify({ events: [], teams: [], leagues: [] }), {
+          status: 503,
+          statusText: 'Service Unavailable - Circuit Breaker Open',
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+    )
+  }
 
   /**
-   * Fetch with timeout, error handling, and request throttling
+   * Fetch with timeout, error handling, and request throttling (without circuit breaker)
+   * Used internally by circuit breaker
    */
-  private async fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+  private async fetchWithoutCircuitBreaker(url: string, options?: RequestInit): Promise<Response> {
     return sportsDBThrottler.execute(async () => {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), this.timeout)
@@ -163,6 +190,13 @@ class SportsDBAPIService {
         throw error
       }
     }, 'sportsdb-api')
+  }
+
+  /**
+   * Fetch with timeout, error handling, request throttling, and circuit breaker protection
+   */
+  private async fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+    return this.circuitBreaker.fire(url, options)
   }
 
   /**
