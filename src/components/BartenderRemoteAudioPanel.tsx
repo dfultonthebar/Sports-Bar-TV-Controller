@@ -30,44 +30,44 @@ export default function BartenderRemoteAudioPanel({
 
       {/* Right Side - Audio Controls */}
       <div className="lg:col-span-2">
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-            <Volume2 className="mr-2 w-5 h-5 text-teal-400" />
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
+          <h3 className="text-xl font-bold mb-6 flex items-center bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
+            <Volume2 className="mr-3 w-6 h-6 text-teal-400" />
             Audio Control
           </h3>
 
           <Tabs defaultValue="groups" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-slate-900/50">
-              <TabsTrigger 
+            <TabsList className="grid w-full grid-cols-3 backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-1">
+              <TabsTrigger
                 value="groups"
-                className="text-xs data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
               >
-                <Users className="w-3 h-3 mr-1" />
+                <Users className="w-4 h-4 mr-2" />
                 Groups
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="input-meters"
-                className="text-xs data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
               >
-                <Activity className="w-3 h-3 mr-1" />
+                <Activity className="w-4 h-4 mr-2" />
                 Input Meters
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="output-meters"
-                className="text-xs data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
               >
-                <Activity className="w-3 h-3 mr-1" />
+                <Activity className="w-4 h-4 mr-2" />
                 Output Meters
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="groups" className="mt-4">
-              <AtlasGroupsControl 
+            <TabsContent value="groups" className="mt-6">
+              <AtlasGroupsControl
                 processorIp={processorIp}
               />
             </TabsContent>
 
-            <TabsContent value="input-meters" className="mt-4">
+            <TabsContent value="input-meters" className="mt-6">
               <AtlasInputMeters
                 processorId={processorId}
                 processorIp={processorIp}
@@ -76,7 +76,7 @@ export default function BartenderRemoteAudioPanel({
               />
             </TabsContent>
 
-            <TabsContent value="output-meters" className="mt-4">
+            <TabsContent value="output-meters" className="mt-6">
               <AtlasOutputMeters
                 processorId={processorId}
                 processorIp={processorIp}

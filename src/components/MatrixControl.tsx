@@ -463,7 +463,7 @@ export default function MatrixControl() {
                       <th className="bg-slate-800 border border-slate-700 p-3 text-slate-200 font-semibold sticky left-0 z-10">
                         Out \ In
                       </th>
-                      {currentConfig.inputs.slice(0, 32).map((input) => (
+                      {currentConfig.inputs.slice(0, 32).filter(input => input.isActive && !input.isCecPort).map((input) => (
                         <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[80px]">
                           <div className="flex flex-col items-center gap-1">
                             <span className="font-bold text-green-400">IN {input.channelNumber}</span>
@@ -476,7 +476,7 @@ export default function MatrixControl() {
                     </tr>
                   </thead>
                   <tbody>
-                    {currentConfig.outputs.slice(0, 32).map((output) => {
+                    {currentConfig.outputs.slice(0, 32).filter(output => output.isActive).map((output) => {
                       const currentInput = currentRoutes.get(output.channelNumber)
 
                       return (
@@ -494,7 +494,7 @@ export default function MatrixControl() {
                               )}
                             </div>
                           </td>
-                          {currentConfig.inputs.slice(0, 32).map((input) => {
+                          {currentConfig.inputs.slice(0, 32).filter(input => input.isActive && !input.isCecPort).map((input) => {
                             const isRouted = currentInput === input.channelNumber
 
                             return (

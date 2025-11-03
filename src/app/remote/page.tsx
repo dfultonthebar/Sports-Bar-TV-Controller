@@ -42,6 +42,7 @@ interface MatrixInput {
   label: string
   inputType: string
   isActive: boolean
+  isCecPort: boolean
 }
 
 interface IRDevice {
@@ -155,7 +156,11 @@ export default function BartenderRemotePage() {
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing'>('video')
+
+  // Routing matrix state
+  const [routingStatus, setRoutingStatus] = useState<string>('')
+  const [loadingRoutes, setLoadingRoutes] = useState(false)
 
 
 
@@ -197,9 +202,9 @@ export default function BartenderRemotePage() {
         const data = await response.json()
         if (data.configs?.length > 0) {
           const activeConfig = data.configs[0]
-          // Use ALL active inputs from Wolf Pack matrix
-          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) => 
-            input.isActive
+          // Use ALL active inputs from Wolf Pack matrix, excluding CEC ports
+          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) =>
+            input.isActive && !input.isCecPort
           ) || []
           
           // Always show matrix inputs if they exist, regardless of connection status
@@ -226,8 +231,8 @@ export default function BartenderRemotePage() {
           }
         } else if (data.config) {
           // Fallback for direct config format
-          const directInputs = data.inputs?.filter((input: MatrixInput) => 
-            input.isActive
+          const directInputs = data.inputs?.filter((input: MatrixInput) =>
+            input.isActive && !input.isCecPort
           ) || []
           
           if (directInputs.length > 0) {
@@ -578,6 +583,53 @@ export default function BartenderRemotePage() {
     }
   }
 
+  const loadCurrentRoutes = async () => {
+    setLoadingRoutes(true)
+    try {
+      const response = await fetch('/api/matrix/routes')
+      if (response.ok) {
+        const data = await response.json()
+        const routeMap = new Map<number, number>()
+        data.routes?.forEach((route: any) => {
+          routeMap.set(route.outputNum, route.inputNum)
+        })
+        setCurrentSources(routeMap)
+      }
+    } catch (error) {
+      console.error('Error loading routes:', error)
+    } finally {
+      setLoadingRoutes(false)
+    }
+  }
+
+  const handleRoutingMatrixClick = async (inputNum: number, outputNum: number) => {
+    setRoutingStatus(`Routing input ${inputNum} to output ${outputNum}...`)
+    setIsRouting(true)
+    try {
+      const response = await fetch('/api/matrix/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: inputNum, output: outputNum })
+      })
+
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        setRoutingStatus(`✓ Successfully routed input ${inputNum} to output ${outputNum}`)
+        await loadCurrentRoutes() // Reload to show updated routing
+      } else {
+        setRoutingStatus(`✗ Failed to route: ${result.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error routing:', error)
+      setRoutingStatus('✗ Error routing signal')
+    } finally {
+      setIsRouting(false)
+      // Clear status after 3 seconds
+      setTimeout(() => setRoutingStatus(''), 3000)
+    }
+  }
+
 
 
   return (
@@ -637,6 +689,120 @@ export default function BartenderRemotePage() {
         {activeTab === 'guide' && <EnhancedChannelGuideBartenderRemote />}
 
         {activeTab === 'remote' && <BartenderRemoteSelector />}
+
+        {activeTab === 'routing' && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <div className="bg-slate-900/90 backdrop-blur rounded-lg shadow-xl p-4 border border-slate-700/50">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
+                  <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
+                </div>
+                <button
+                  onClick={loadCurrentRoutes}
+                  disabled={loadingRoutes}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:bg-slate-600"
+                >
+                  {loadingRoutes ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {routingStatus && (
+                <div className={`p-3 rounded-md mb-4 text-sm font-medium ${
+                  routingStatus.includes('✓') ? 'bg-green-900/40 text-green-300 border border-green-700/50' :
+                  routingStatus.includes('✗') ? 'bg-red-900/40 text-red-300 border border-red-700/50' :
+                  'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                }`}>
+                  {routingStatus}
+                </div>
+              )}
+
+              <div className="overflow-x-auto -mx-4 px-4">
+                <table className="w-full border-collapse min-w-[600px]">
+                  <thead>
+                    <tr>
+                      <th className="bg-slate-800 border border-slate-700 p-2 text-slate-200 font-semibold sticky left-0 z-10 text-xs">
+                        Out \ In
+                      </th>
+                      {inputs.filter(input => input.isActive && !input.isCecPort).map((input) => (
+                        <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[70px]">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-bold text-blue-400">IN {input.channelNumber}</span>
+                            <span className="text-slate-400 text-[9px] truncate max-w-[60px]" title={input.label}>
+                              {input.label}
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matrixConfig?.outputs
+                      ?.filter((output: any) => output.isActive && output.channelNumber <= 32)
+                      .map((output: any) => {
+                        const currentInput = currentSources.get(output.channelNumber)
+
+                        return (
+                          <tr key={output.channelNumber}>
+                            <td className="bg-slate-800 border border-slate-700 p-2 font-semibold text-slate-200 sticky left-0 z-10 min-w-[100px]">
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className="text-blue-400 font-bold text-xs">OUT {output.channelNumber}</span>
+                                <span className="text-slate-300 text-[9px] truncate max-w-[90px]" title={output.label}>
+                                  {output.label}
+                                </span>
+                              </div>
+                            </td>
+                            {inputs.filter(input => input.isActive && !input.isCecPort).map((input) => {
+                              const isRouted = currentInput === input.channelNumber
+
+                              return (
+                                <td
+                                  key={`${output.channelNumber}-${input.channelNumber}`}
+                                  className={`border border-slate-700 p-2 text-center cursor-pointer transition-all active:scale-95 ${
+                                    isRouted
+                                      ? 'bg-green-600 hover:bg-green-700'
+                                      : 'bg-slate-900 hover:bg-blue-700/50 active:bg-blue-600'
+                                  } ${isRouting ? 'pointer-events-none opacity-50' : ''}`}
+                                  onClick={() => handleRoutingMatrixClick(input.channelNumber, output.channelNumber)}
+                                  title={`Route Input ${input.channelNumber} (${input.label}) to Output ${output.channelNumber} (${output.label})`}
+                                >
+                                  {isRouted && (
+                                    <div className="flex items-center justify-center">
+                                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <h4 className="font-semibold text-slate-200 mb-2 text-sm">Legend</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 bg-green-600 rounded flex items-center justify-center flex-shrink-0">
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span className="text-slate-300">Active Route</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 bg-slate-900 border border-slate-700 rounded flex-shrink-0"></div>
+                    <span className="text-slate-300">Available Route</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Tab Navigation */}
@@ -688,6 +854,21 @@ export default function BartenderRemotePage() {
           >
             <Calendar className="w-4 h-4" />
             <span className="text-xs font-medium">Guide</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('routing')
+              loadCurrentRoutes()
+            }}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'routing'
+                ? 'bg-cyan-500/30 text-cyan-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span className="text-xs font-medium">Routing</span>
           </button>
 
           <button

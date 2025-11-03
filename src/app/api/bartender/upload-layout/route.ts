@@ -70,19 +70,14 @@ function createProfessionalLayoutSVG(zones: any[], width: number, height: number
   const colors = {
     background: '#1a1f2e', // Dark professional background
     gridLines: '#2d3748', // Subtle grid lines
-    tvBox: '#2d3748', // TV box background
     tvBorder: '#4299e1', // Professional blue border
-    tvBorderActive: '#48bb78', // Green for active/highlighted
-    labelBg: '#2d3748',
     labelText: '#e2e8f0',
-    numberBadge: '#4299e1',
-    numberText: '#ffffff'
   }
 
   // TV icon SVG path
   const tvIconPath = `M4 6h16v10H4z M7 18h10 M9 16v2 M15 16v2`
 
-  const zoneElements = zones.map((zone, index) => {
+  const zoneElements = zones.map((zone: any) => {
     const x = (zone.x / 100) * width
     const y = (zone.y / 100) * height
     const w = (zone.width / 100) * width
@@ -95,79 +90,30 @@ function createProfessionalLayoutSVG(zones: any[], width: number, height: number
     const iconX = centerX - iconSize / 2
     const iconY = centerY - iconSize / 2
 
-    // Number badge
-    const badgeRadius = 18
-    const badgeX = x + w - badgeRadius - 8
-    const badgeY = y + badgeRadius + 8
-
     return `
       <!-- TV Zone ${zone.outputNumber} -->
       <g id="zone-${zone.outputNumber}">
-        <!-- TV Box with gradient -->
-        <defs>
-          <linearGradient id="grad-${zone.outputNumber}" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" style="stop-color:${colors.tvBox};stop-opacity:0.9" />
-            <stop offset="100%" style="stop-color:${colors.tvBox};stop-opacity:0.7" />
-          </linearGradient>
-          <filter id="shadow-${zone.outputNumber}">
-            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.3"/>
-          </filter>
-        </defs>
-
-        <!-- Main TV rectangle -->
-        <rect
-          x="${x}"
-          y="${y}"
-          width="${w}"
-          height="${h}"
-          fill="url(#grad-${zone.outputNumber})"
-          stroke="${colors.tvBorder}"
-          stroke-width="3"
-          rx="12"
-          filter="url(#shadow-${zone.outputNumber})"
-        />
-
         <!-- TV Icon -->
         <svg x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24">
           <path d="${tvIconPath}"
                 stroke="${colors.tvBorder}"
-                stroke-width="1.5"
-                fill="none"
+                stroke-width="2"
+                fill="white"
+                fill-opacity="0.9"
                 stroke-linecap="round"
-                stroke-linejoin="round"
-                opacity="0.6"/>
+                stroke-linejoin="round"/>
         </svg>
 
-        <!-- Number badge -->
-        <circle
-          cx="${badgeX}"
-          cy="${badgeY}"
-          r="${badgeRadius}"
-          fill="${colors.numberBadge}"
-          stroke="${colors.background}"
-          stroke-width="2"
-        />
+        <!-- Output Number Label -->
         <text
-          x="${badgeX}"
-          y="${badgeY + 6}"
+          x="${centerX}"
+          y="${iconY + iconSize + 20}"
           text-anchor="middle"
           font-family="'Inter', 'SF Pro Display', -apple-system, sans-serif"
           font-size="16"
           font-weight="700"
-          fill="${colors.numberText}"
-        >${zone.outputNumber}</text>
-
-        <!-- Label -->
-        <text
-          x="${centerX}"
-          y="${y + h - 16}"
-          text-anchor="middle"
-          font-family="'Inter', 'SF Pro Display', -apple-system, sans-serif"
-          font-size="${Math.min(w * 0.12, 18)}"
-          font-weight="600"
           fill="${colors.labelText}"
-          opacity="0.9"
-        >${zone.label}</text>
+        >${zone.outputNumber}</text>
       </g>
     `
   }).join('\n')

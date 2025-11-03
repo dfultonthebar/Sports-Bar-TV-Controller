@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Button } from './ui/button'
-import { Cable, Satellite, Smartphone, Tv, CheckCircle, AlertCircle, Gamepad2 } from 'lucide-react'
+import { Cable, Satellite, Smartphone, Tv, CheckCircle, AlertCircle, Gamepad2, Zap, Radio } from 'lucide-react'
 import CableBoxRemote from './remotes/CableBoxRemote'
 import DirecTVRemote from './remotes/DirecTVRemote'
 import FireTVRemote from './remotes/FireTVRemote'
@@ -93,6 +93,7 @@ export default function BartenderRemoteSelector() {
   const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
+  const [hoveredInput, setHoveredInput] = useState<number | null>(null)
 
   useEffect(() => {
     loadAllDevices()
@@ -317,10 +318,19 @@ export default function BartenderRemoteSelector() {
 
   const getInputIcon = (inputType: string) => {
     switch (inputType.toLowerCase()) {
-      case 'cable': return <Cable className="w-4 h-4" />
-      case 'satellite': return <Satellite className="w-4 h-4" />
-      case 'streaming': return <Smartphone className="w-4 h-4" />
-      default: return <Tv className="w-4 h-4" />
+      case 'cable': return <Cable className="w-5 h-5" />
+      case 'satellite': return <Satellite className="w-5 h-5" />
+      case 'streaming': return <Smartphone className="w-5 h-5" />
+      default: return <Tv className="w-5 h-5" />
+    }
+  }
+
+  const getInputGradient = (inputType: string) => {
+    switch (inputType.toLowerCase()) {
+      case 'cable': return 'from-blue-500/20 to-cyan-500/20'
+      case 'satellite': return 'from-purple-500/20 to-pink-500/20'
+      case 'streaming': return 'from-orange-500/20 to-red-500/20'
+      default: return 'from-slate-500/20 to-gray-500/20'
     }
   }
 
@@ -329,75 +339,136 @@ export default function BartenderRemoteSelector() {
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
     const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
 
-    if (direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive) {
-      return <CheckCircle className="w-4 h-4 text-green-500" />
-    }
+    const isOnline = direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive
 
-    return <AlertCircle className="w-4 h-4 text-slate-500" />
+    return isOnline ? (
+      <div className="relative">
+        <CheckCircle className="w-5 h-5 text-green-400" />
+        <span className="absolute inset-0 animate-ping">
+          <CheckCircle className="w-5 h-5 text-green-400 opacity-75" />
+        </span>
+      </div>
+    ) : (
+      <AlertCircle className="w-5 h-5 text-slate-500" />
+    )
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4 pb-20">
-      {/* Header */}
-      <div className="text-center mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2 flex items-center justify-center">
-          <Gamepad2 className="w-8 h-8 mr-2" />
-          Remote Control
-        </h1>
-        <p className="text-sm text-slate-400">Select an input to control its device</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 p-4 pb-20">
+      {/* Animated Background Gradient Orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+      </div>
+
+      {/* Header with Glassmorphism */}
+      <div className="relative text-center mb-8">
+        <div className="inline-block backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl px-8 py-4 shadow-2xl">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 flex items-center justify-center gap-3">
+            <Gamepad2 className="w-8 h-8 text-blue-400 drop-shadow-lg" />
+            Remote Control Center
+          </h1>
+          <p className="text-sm text-slate-300/80">Select an input to control your devices</p>
+        </div>
+
         {commandStatus && (
-          <div className="mt-2 px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-sm">
-            {commandStatus}
+          <div className="mt-4 inline-block backdrop-blur-xl bg-blue-500/20 border border-blue-400/30 rounded-full px-6 py-2 shadow-lg animate-fade-in">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-blue-400 animate-pulse" />
+              <span className="text-blue-300 font-medium">{commandStatus}</span>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
+      <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
-          <div className="bg-slate-800 rounded-lg p-4 h-fit">
-            <h2 className="text-lg font-bold text-white mb-3 flex items-center">
-              <Tv className="mr-2 w-5 h-5" />
-              Select Input
+          <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg">
+                <Tv className="w-5 h-5 text-blue-400" />
+              </div>
+              Select Source
             </h2>
-            <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+            <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 custom-scrollbar">
               {inputs.length > 0 ? (
                 inputs.map((input) => {
                   const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
                   const fireTVDevice = fireTVDevices.find(d => d.inputChannel === input.channelNumber)
                   const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
                   const hasDevice = direcTVDevice || fireTVDevice || irDevice
+                  const isSelected = selectedInput === input.channelNumber
+                  const isHovered = hoveredInput === input.channelNumber
 
                   return (
                     <button
                       key={input.id}
                       onClick={() => handleInputSelection(input.channelNumber)}
+                      onMouseEnter={() => setHoveredInput(input.channelNumber)}
+                      onMouseLeave={() => setHoveredInput(null)}
                       disabled={!hasDevice}
-                      className={`w-full p-3 rounded-lg text-left transition-all ${
-                        selectedInput === input.channelNumber
-                          ? 'bg-blue-500 text-white shadow-lg'
+                      className={`
+                        group relative w-full p-4 rounded-xl text-left transition-all duration-300
+                        ${isSelected
+                          ? 'backdrop-blur-xl bg-gradient-to-r ' + getInputGradient(input.inputType) + ' border-2 border-white/30 shadow-2xl scale-105'
                           : hasDevice
-                          ? 'bg-slate-700 text-gray-300 hover:bg-slate-600 hover:text-white'
-                          : 'bg-slate-900 text-gray-600 cursor-not-allowed'
-                      }`}
+                          ? 'backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-102 hover:shadow-xl'
+                          : 'backdrop-blur-xl bg-white/[0.02] border border-white/5 cursor-not-allowed opacity-50'
+                        }
+                      `}
                     >
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center space-x-2">
+                      {/* Selection Glow Effect */}
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur-xl -z-10 animate-pulse"></div>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        {/* Icon Container with Gradient Background */}
+                        <div className={`
+                          p-3 rounded-lg transition-all duration-300
+                          ${isSelected
+                            ? 'bg-gradient-to-br from-blue-500/30 to-purple-500/30 shadow-lg scale-110'
+                            : 'bg-white/10 group-hover:bg-white/15'
+                          }
+                        `}>
                           {getInputIcon(input.inputType)}
-                          {getDeviceStatusIcon(input.channelNumber)}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium truncate">{input.label}</div>
-                          <div className="text-xs opacity-80 truncate">
-                            Ch {input.channelNumber} • {
-                              direcTVDevice ? 'DirecTV' :
-                              fireTVDevice ? 'Fire TV' :
-                              irDevice ? 'Cable Box' :
-                              'No Device'
-                            }
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-semibold truncate transition-colors ${
+                            isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'
+                          }`}>
+                            {input.label}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              isSelected
+                                ? 'bg-white/20 text-white'
+                                : 'bg-white/10 text-slate-400 group-hover:text-slate-300'
+                            }`}>
+                              Ch {input.channelNumber}
+                            </span>
+                            <span className="text-xs text-slate-400 group-hover:text-slate-300">
+                              {direcTVDevice ? 'DirecTV' :
+                               fireTVDevice ? 'Fire TV' :
+                               irDevice ? 'Cable' :
+                               'No Device'}
+                            </span>
                           </div>
                         </div>
+
+                        {/* Status Indicator */}
+                        <div className="shrink-0">
+                          {getDeviceStatusIcon(input.channelNumber)}
+                        </div>
                       </div>
+
+                      {/* Hover Effect Border */}
+                      {isHovered && !isSelected && hasDevice && (
+                        <div className="absolute inset-0 rounded-xl border-2 border-blue-400/50 pointer-events-none"></div>
+                      )}
                     </button>
                   )
                 })
@@ -497,6 +568,39 @@ export default function BartenderRemoteSelector() {
           </div>
         </div>
       )}
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out;
+        }
+        .scale-102 {
+          transform: scale(1.02);
+        }
+      `}</style>
     </div>
   )
 }

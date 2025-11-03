@@ -12,8 +12,6 @@ import { logger } from '@/lib/logger'
 import { cecService } from '@/lib/cec-service'
 import { autoFetchDocumentation } from '@/lib/tvDocs'
 
-// Using singleton prisma from @/lib/prisma
-
 export interface CECDiscoveryResult {
   outputNumber: number
   label: string
@@ -157,14 +155,12 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
     logger.debug(`[CEC Discovery] CEC adapter initialized successfully: ${initResult.adapters.join(', ')}`)
     
     // Get all active matrix outputs
-    const outputs = await prisma.matrixOutput.findMany({
-      where: {
-        isActive: true,
-        status: 'active'
-      },
-      orderBy: {
-        channelNumber: 'asc'
-      }
+    const outputs = await findMany('matrixOutputs', {
+      where: and(
+        eq(schema.matrixOutputs.isActive, true),
+        eq(schema.matrixOutputs.status, 'active')
+      ),
+      orderBy: asc(schema.matrixOutputs.channelNumber)
     })
     
     logger.debug(`[CEC Discovery] Found ${outputs.length} active matrix outputs to scan`)
@@ -196,14 +192,11 @@ export async function discoverAllTVBrands(): Promise<CECDiscoveryResult[]> {
         
         logger.debug(`[CEC Discovery] Updating database for output ${output.channelNumber}`)
         // Update database with discovered information
-        await prisma.matrixOutput.update({
-          where: { id: output.id },
-          data: {
-            tvBrand: brand,
-            tvModel: model,
-            cecAddress: deviceInfo.physicalAddress,
-            lastDiscovery: new Date()
-          }
+        await update('matrixOutputs', eq(schema.matrixOutputs.id, output.id), {
+          tvBrand: brand,
+          tvModel: model,
+          cecAddress: deviceInfo.physicalAddress,
+          lastDiscovery: new Date()
         })
         
         results.push({
@@ -284,11 +277,11 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
     logger.debug(`[CEC Discovery] CEC adapter initialized: ${initResult.adapters.join(', ')}`)
     
     // Get the specific output
-    const output = await prisma.matrixOutput.findFirst({
-      where: {
-        channelNumber: outputNumber,
-        isActive: true
-      }
+    const output = await findFirst('matrixOutputs', {
+      where: and(
+        eq(schema.matrixOutputs.channelNumber, outputNumber),
+        eq(schema.matrixOutputs.isActive, true)
+      )
     })
     
     if (!output) {
@@ -317,14 +310,11 @@ export async function discoverSingleTV(outputNumber: number): Promise<CECDiscove
       
       logger.debug(`[CEC Discovery] Updating database...`)
       // Update database
-      await prisma.matrixOutput.update({
-        where: { id: output.id },
-        data: {
-          tvBrand: brand,
-          tvModel: model,
-          cecAddress: deviceInfo.physicalAddress,
-          lastDiscovery: new Date()
-        }
+      await update('matrixOutputs', eq(schema.matrixOutputs.id, output.id), {
+        tvBrand: brand,
+        tvModel: model,
+        cecAddress: deviceInfo.physicalAddress,
+        lastDiscovery: new Date()
       })
       
       logger.debug(`[CEC Discovery] ✓ Output ${outputNumber}: Detected ${brand} - ${model}`)

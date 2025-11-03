@@ -90,7 +90,7 @@ class TVLayoutOCR:
             logger.error(f"❌ Failed to initialize EasyOCR: {e}")
             self.reader = None
 
-    def extract_text_from_region(self, image_path: str, bbox: Dict) -> Optional[str]:
+    def extract_text_from_region(self, image_path: str, bbox: Dict) -> Optional[tuple[str, int]]:
         """
         Extract text from a specific region of the image
 
@@ -99,7 +99,8 @@ class TVLayoutOCR:
             bbox: Bounding box {x, y, width, height} in percentages
 
         Returns:
-            Extracted text or None
+            Tuple of (label_string, tv_number) or None
+            Example: ("TV 03", 3) or ("TV 25", 25)
         """
         if not self.reader or not CV2_AVAILABLE:
             return None
@@ -133,19 +134,26 @@ class TVLayoutOCR:
             results = self.reader.readtext(region, detail=0, paragraph=False)
 
             # Filter and clean results
-            text = self._clean_ocr_text(results)
+            result = self._clean_ocr_text(results)
 
-            if text:
-                logger.info(f"Found text near ({x}, {y}): '{text}'")
+            if result:
+                label, number = result
+                logger.info(f"Found text near ({x}, {y}): '{label}' (TV number: {number})")
 
-            return text
+            return result
 
         except Exception as e:
             logger.error(f"Error extracting text: {e}")
             return None
 
-    def _clean_ocr_text(self, results: List[str]) -> Optional[str]:
-        """Clean and filter OCR results to find TV labels"""
+    def _clean_ocr_text(self, results: List[str]) -> Optional[tuple[str, int]]:
+        """
+        Clean and filter OCR results to find TV labels
+
+        Returns:
+            Tuple of (label_string, tv_number) or None
+            Example: ("TV 03", 3) or ("TV 25", 25)
+        """
         import re
 
         for text in results:
@@ -162,7 +170,8 @@ class TVLayoutOCR:
                 match = re.search(pattern, text)
                 if match:
                     number = int(match.group(1))
-                    return f"TV {number:02d}"  # Normalize to "TV 01" format
+                    label = f"TV {number:02d}"  # Normalize to "TV 01" format
+                    return (label, number)
 
         return None
 
@@ -170,12 +179,14 @@ class TVLayoutOCR:
         """
         Process layout image and extract labels for all TV zones
 
+        CRITICAL: Updates both 'label' AND 'outputNumber' based on OCR results
+
         Args:
             image_path: Path to layout image
             zones: List of detected zones with bbox coordinates
 
         Returns:
-            Updated zones with extracted labels
+            Updated zones with extracted labels AND corrected output numbers
         """
         logger.info(f"Processing {len(zones)} zones in {image_path}")
 
@@ -185,19 +196,23 @@ class TVLayoutOCR:
             zone_copy = zone.copy()
 
             # Try to extract label from this zone
-            label = self.extract_text_from_region(image_path, {
+            result = self.extract_text_from_region(image_path, {
                 'x': zone['x'],
                 'y': zone['y'],
                 'width': zone['width'],
                 'height': zone['height']
             })
 
-            if label:
+            if result:
+                label, tv_number = result
                 zone_copy['label'] = label
+                zone_copy['outputNumber'] = tv_number  # ← FIX: Update output number from OCR
+                zone_copy['id'] = f"tv{tv_number}"     # ← FIX: Update ID to match
                 zone_copy['confidence'] = 0.95  # High confidence for OCR-detected labels
+                logger.info(f"Zone {i+1}: OCR found '{label}' → outputNumber={tv_number}")
             else:
-                # Keep original label if OCR didn't find anything
-                logger.info(f"No label found for zone {i+1}, keeping default")
+                # Keep original label/outputNumber if OCR didn't find anything
+                logger.info(f"No label found for zone {i+1}, keeping defaults (outputNumber={zone_copy.get('outputNumber')})")
 
             updated_zones.append(zone_copy)
 

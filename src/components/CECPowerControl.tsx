@@ -311,17 +311,17 @@ export default function CECPowerControl() {
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Status Bar */}
       <div className="flex items-center justify-between">
-        <div className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 ${
-          connectionStatus === 'connected' 
+        <div className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 backdrop-blur-xl transition-all duration-300 ${
+          connectionStatus === 'connected'
             ? 'bg-green-500/20 text-green-400 border border-green-500/30'
             : 'bg-red-500/20 text-red-400 border border-red-500/30'
         }`}>
           {connectionStatus === 'connected' ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
           <span>Matrix: {connectionStatus}</span>
         </div>
-        
+
         {status && (
-          <div className="px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-sm">
+          <div className="px-4 py-2 backdrop-blur-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-sm animate-pulse">
             {status}
           </div>
         )}
@@ -329,39 +329,45 @@ export default function CECPowerControl() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* System-Wide Power Control */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-            <Power className="mr-2 w-5 h-5" />
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
+          <h3 className="text-lg font-bold bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400 bg-clip-text text-transparent mb-4 flex items-center">
+            <Power className="mr-2 w-5 h-5 text-red-400" />
             System Power Control
           </h3>
 
           <div className="space-y-4">
             {/* All TVs Control */}
-            <div className="bg-slate-800 or bg-slate-900/5 rounded-lg p-4">
+            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
-                  <Tv className="w-5 h-5 text-blue-400" />
+                  <Tv className="w-5 h-5 text-yellow-400" />
                   <span className="font-medium text-white">All TVs</span>
                 </div>
-                <span className="text-xs text-slate-500">{outputs.length} active</span>
+                <span className="text-xs backdrop-blur-xl bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full border border-yellow-400/30">{outputs.length} active</span>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={powerOnAll}
                   disabled={loading || !cecConfig.isEnabled || !cecConfig.cecInputChannel}
-                  className="py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                  className="group relative py-2 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-105 transition-all duration-300 shadow-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
                 >
-                  <Power className="w-4 h-4" />
-                  <span>Power On</span>
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10 flex items-center space-x-1 text-green-300 font-medium">
+                    <Power className="w-4 h-4" />
+                    <span>Power On</span>
+                  </div>
                 </button>
                 <button
                   onClick={powerOffAll}
                   disabled={loading || !cecConfig.isEnabled || !cecConfig.cecInputChannel}
-                  className="py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                  className="group relative py-2 backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-105 transition-all duration-300 shadow-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
                 >
-                  <Power className="w-4 h-4" />
-                  <span>Power Off</span>
+                  <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium">
+                    <Power className="w-4 h-4" />
+                    <span>Power Off</span>
+                  </div>
                 </button>
               </div>
             </div>
@@ -369,9 +375,9 @@ export default function CECPowerControl() {
         </div>
 
         {/* Individual TV Control */}
-        <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-6">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center">
-            <Monitor className="mr-2 w-5 h-5" />
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
+          <h3 className="text-lg font-bold bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 bg-clip-text text-transparent mb-4 flex items-center">
+            <Monitor className="mr-2 w-5 h-5 text-yellow-400" />
             Individual TV Control
           </h3>
 
@@ -385,36 +391,42 @@ export default function CECPowerControl() {
             ) : (
               <>
                 {tvStatuses.map((tv) => (
-                  <div key={tv.outputNumber} className="bg-slate-800 or bg-slate-900/5 rounded-lg p-3">
+                  <div key={tv.outputNumber} className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-3 transition-all duration-300 hover:bg-white/10">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         {getTVStatusIcon(tv)}
                         <div>
                           <div className="font-medium text-white text-sm">{tv.label}</div>
-                          <div className="text-xs text-slate-500">Output {tv.outputNumber}</div>
+                          <div className="text-xs text-slate-400">Output {tv.outputNumber}</div>
                         </div>
                       </div>
                       {tv.lastActionTime && (
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs backdrop-blur-xl bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full border border-blue-400/30">
                           {tv.lastActionTime}
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => powerOnIndividual(tv.outputNumber)}
                         disabled={loading || tv.isProcessing || !cecConfig.isEnabled || !cecConfig.cecInputChannel}
-                        className="py-1 bg-green-500/20 text-green-300 border border-green-500/30 rounded hover:bg-green-500/30 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="group relative py-1 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-lg border border-green-400/30 hover:border-green-400/50 hover:scale-105 transition-all duration-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {tv.isProcessing ? 'Processing...' : 'On'}
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                        <div className="relative z-10 text-green-300 font-medium">
+                          {tv.isProcessing ? 'Processing...' : 'On'}
+                        </div>
                       </button>
                       <button
                         onClick={() => powerOffIndividual(tv.outputNumber)}
                         disabled={loading || tv.isProcessing || !cecConfig.isEnabled || !cecConfig.cecInputChannel}
-                        className="py-1 bg-red-500/20 text-red-300 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="group relative py-1 backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-lg border border-red-400/30 hover:border-red-400/50 hover:scale-105 transition-all duration-300 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {tv.isProcessing ? 'Processing...' : 'Off'}
+                        <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                        <div className="relative z-10 text-red-300 font-medium">
+                          {tv.isProcessing ? 'Processing...' : 'Off'}
+                        </div>
                       </button>
                     </div>
                   </div>
@@ -426,9 +438,9 @@ export default function CECPowerControl() {
       </div>
 
       {/* Information Panel */}
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-        <h4 className="text-sm font-semibold text-blue-300 mb-2 flex items-center">
-          <Zap className="mr-2 w-4 h-4" />
+      <div className="backdrop-blur-xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-400/30 rounded-2xl shadow-2xl p-4">
+        <h4 className="text-sm font-semibold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2 flex items-center">
+          <Zap className="mr-2 w-4 h-4 text-blue-400" />
           How CEC Power Control Works
         </h4>
         <div className="text-xs text-blue-200 space-y-1">

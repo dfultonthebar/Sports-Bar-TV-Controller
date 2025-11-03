@@ -16,16 +16,25 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-sports-gradient">
-      <header className="sports-header">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden">
+      {/* Animated Background Gradient Orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+      </div>
+
+      <header className="relative z-10 backdrop-blur-md bg-slate-900/50 border-b border-white/10 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <div className="bg-primary-gradient rounded-xl p-2.5 shadow-lg">
+              <div className="bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl p-2.5 shadow-lg transform transition-transform hover:scale-110">
                 <span className="text-2xl">🏈</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-100">Sports Bar AI Assistant</h1>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  Sports Bar AI Assistant
+                </h1>
                 <p className="text-sm text-slate-300">Professional AV Management System</p>
               </div>
             </div>
@@ -33,59 +42,81 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Main Status Card */}
-        <div className="card mb-8">
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl mb-8 overflow-hidden">
           <div className="p-8 text-center">
-            <h2 className="text-2xl font-bold text-slate-100 mb-4">🚀 Sports Bar AI Assistant</h2>
-            <p className="text-slate-300 mb-6">System is now running successfully!</p>
-            
+            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+              🚀 Sports Bar AI Assistant
+            </h2>
+            <p className="text-slate-300 mb-6 text-lg">System is now running successfully!</p>
+
             <div className="space-y-4">
-              <div className="flex items-center justify-center space-x-2">
-                <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-slate-200">Server Online</span>
+              <div className="flex items-center justify-center space-x-3">
+                <div className="relative">
+                  <div className="w-4 h-4 bg-green-400 rounded-full"></div>
+                  <span className="absolute inset-0 animate-ping">
+                    <div className="w-4 h-4 bg-green-400 rounded-full opacity-75"></div>
+                  </span>
+                </div>
+                <span className="text-slate-200 font-medium">Server Online</span>
               </div>
               
               {/* Main System Controls */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <a
                   href="/system-health"
-                  className="block p-6 bg-gradient-to-br from-green-600/40 to-emerald-600/40 rounded-xl border-2 border-green-400/50 hover:border-green-400/70 hover:from-green-600/50 hover:to-emerald-600/50 transition-all duration-200 shadow-lg"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <h3 className="font-bold text-green-200 mb-2">💚 System Health</h3>
-                  <p className="text-green-100/90 text-sm">Real-time monitoring & quick actions</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-green-200 mb-2 text-lg">💚 System Health</h3>
+                    <p className="text-green-100/90 text-sm">Real-time monitoring & quick actions</p>
+                  </div>
                 </a>
 
                 <a
                   href="/ai-hub"
-                  className="block p-6 bg-gradient-to-br from-purple-600/40 to-blue-600/40 rounded-xl border-2 border-purple-400/50 hover:border-purple-400/70 hover:from-purple-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl border-2 border-purple-400/30 hover:border-purple-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <h3 className="font-bold text-purple-200 mb-2">🤖 AI Hub</h3>
-                  <p className="text-purple-100/90 text-sm">Unified AI management & assistance</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-purple-200 mb-2 text-lg">🤖 AI Hub</h3>
+                    <p className="text-purple-100/90 text-sm">Unified AI management & assistance</p>
+                  </div>
                 </a>
-                
-                <a 
+
+                <a
                   href="/sports-guide"
-                  className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-orange/30 hover:bg-sportsBar-600/80 hover:border-accent-orange/50 transition-all duration-200"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-xl border-2 border-orange-400/30 hover:border-orange-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <h3 className="font-semibold text-orange-300 mb-2">📺 Sports Guide</h3>
-                  <p className="text-orange-200/80 text-sm">Find where to watch sports</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-orange-200 mb-2 text-lg">📺 Sports Guide</h3>
+                    <p className="text-orange-100/90 text-sm">Find where to watch sports</p>
+                  </div>
                 </a>
-                
-                <a 
+
+                <a
                   href="/remote"
-                  className="block p-6 bg-sportsBar-700/80 rounded-xl border border-accent-green/30 hover:bg-sportsBar-600/80 hover:border-accent-green/50 transition-all duration-200"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-teal-500/20 to-green-500/20 rounded-xl border-2 border-teal-400/30 hover:border-teal-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <h3 className="font-semibold text-green-300 mb-2">📱 Remote Control</h3>
-                  <p className="text-green-200/80 text-sm">Control TVs and audio systems</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 to-green-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-teal-200 mb-2 text-lg">📱 Remote Control</h3>
+                    <p className="text-teal-100/90 text-sm">Control TVs and audio systems</p>
+                  </div>
                 </a>
                 
-                <a 
+                <a
                   href="/system-admin"
-                  className="block p-6 bg-sportsBar-700/80 rounded-xl border border-primary-400/30 hover:bg-sportsBar-600/80 hover:border-primary-400/50 transition-all duration-200"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <h3 className="font-semibold text-blue-300 mb-2">⚙️ System Admin</h3>
-                  <p className="text-blue-200/80 text-sm">Logs, backups, sync & tests</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-blue-200 mb-2 text-lg">⚙️ System Admin</h3>
+                    <p className="text-blue-100/90 text-sm">Logs, backups, sync & tests</p>
+                  </div>
                 </a>
               </div>
 
