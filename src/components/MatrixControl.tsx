@@ -26,6 +26,9 @@ interface MatrixOutput {
   powerOn: boolean
   selectedVideoInput?: number
   videoInputLabel?: string
+  tvBrand?: string
+  tvModel?: string
+  cecAddress?: string
 }
 
 interface MatrixConfig {
@@ -41,7 +44,7 @@ interface MatrixConfig {
   outputs: MatrixOutput[]
 }
 
-type TabType = 'inputs' | 'outputs'
+type TabType = 'routing' | 'inputs' | 'outputs'
 
 export default function MatrixControl() {
   const [configs, setConfigs] = useState<MatrixConfig[]>([])
@@ -81,13 +84,32 @@ export default function MatrixControl() {
   const [loading, setLoading] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<string>('')
-  const [activeTab, setActiveTab] = useState<TabType>('inputs')
+  const [activeTab, setActiveTab] = useState<TabType>('routing')
   const [showVideoInputModal, setShowVideoInputModal] = useState(false)
   const [selectedMatrixOutput, setSelectedMatrixOutput] = useState<number | null>(null)
+  const [currentRoutes, setCurrentRoutes] = useState<Map<number, number>>(new Map())
+  const [routingStatus, setRoutingStatus] = useState<string>('')
 
   useEffect(() => {
     loadConfigurations()
+    loadRoutes()
   }, [])
+
+  const loadRoutes = async () => {
+    try {
+      const response = await fetch('/api/matrix/routes')
+      if (response.ok) {
+        const data = await response.json()
+        const routeMap = new Map<number, number>()
+        data.routes?.forEach((route: any) => {
+          routeMap.set(route.outputNum, route.inputNum)
+        })
+        setCurrentRoutes(routeMap)
+      }
+    } catch (error) {
+      console.error('Error loading routes:', error)
+    }
+  }
 
   const loadConfigurations = async () => {
     try {
@@ -250,6 +272,35 @@ export default function MatrixControl() {
     setShowVideoInputModal(true)
   }
 
+  const handleRouteClick = async (inputNum: number, outputNum: number) => {
+    setRoutingStatus(`Routing input ${inputNum} to output ${outputNum}...`)
+    try {
+      const response = await fetch('/api/matrix/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: inputNum, output: outputNum })
+      })
+
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        setRoutingStatus(`✓ Successfully routed input ${inputNum} to output ${outputNum}`)
+        toast.success(result.message)
+        await loadRoutes() // Reload to show updated routing
+      } else {
+        setRoutingStatus(`✗ Failed to route: ${result.error || 'Unknown error'}`)
+        toast.error(result.error || 'Failed to route signal')
+      }
+    } catch (error) {
+      console.error('Error routing:', error)
+      setRoutingStatus('✗ Error routing signal')
+      toast.error('Failed to route signal')
+    }
+
+    // Clear status after 3 seconds
+    setTimeout(() => setRoutingStatus(''), 3000)
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-slate-900 rounded-lg shadow-xl p-6 border border-slate-700">
@@ -346,6 +397,16 @@ export default function MatrixControl() {
         <div className="border-b border-slate-700 mb-6">
           <div className="flex gap-2">
             <button
+              onClick={() => setActiveTab('routing')}
+              className={`px-6 py-3 font-medium transition-colors relative ${
+                activeTab === 'routing'
+                  ? 'text-green-400 border-b-2 border-green-400'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Routing Matrix
+            </button>
+            <button
               onClick={() => setActiveTab('inputs')}
               className={`px-6 py-3 font-medium transition-colors relative ${
                 activeTab === 'inputs'
@@ -370,6 +431,123 @@ export default function MatrixControl() {
 
         {/* Tab Content */}
         <div className="min-h-[600px]">
+          {activeTab === 'routing' && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-100">Matrix Routing</h3>
+                  <p className="text-sm text-slate-400 mt-1">Click a cell to route an input to an output</p>
+                </div>
+                <button
+                  onClick={loadRoutes}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
+                >
+                  Refresh Routes
+                </button>
+              </div>
+
+              {routingStatus && (
+                <div className={`p-3 rounded-md mb-4 ${
+                  routingStatus.includes('✓') ? 'bg-green-900/30 text-green-300' :
+                  routingStatus.includes('✗') ? 'bg-red-900/30 text-red-300' :
+                  'bg-blue-900/30 text-blue-300'
+                }`}>
+                  {routingStatus}
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="bg-slate-800 border border-slate-700 p-3 text-slate-200 font-semibold sticky left-0 z-10">
+                        Out \ In
+                      </th>
+                      {currentConfig.inputs.slice(0, 32).map((input) => (
+                        <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[80px]">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-bold text-green-400">IN {input.channelNumber}</span>
+                            <span className="text-slate-400 text-[10px] truncate max-w-[70px]" title={input.label}>
+                              {input.label}
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentConfig.outputs.slice(0, 32).map((output) => {
+                      const currentInput = currentRoutes.get(output.channelNumber)
+
+                      return (
+                        <tr key={output.channelNumber}>
+                          <td className="bg-slate-800 border border-slate-700 p-2 font-semibold text-slate-200 sticky left-0 z-10 min-w-[120px]">
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="text-indigo-400 font-bold text-sm">OUT {output.channelNumber}</span>
+                              <span className="text-slate-300 text-xs truncate max-w-[110px]" title={output.label}>
+                                {output.label}
+                              </span>
+                              {output.channelNumber <= 32 && output.tvModel && (
+                                <span className="text-blue-400 text-[10px] truncate max-w-[110px]" title={`${output.tvBrand || ''} ${output.tvModel}`.trim()}>
+                                  {output.tvBrand ? `${output.tvBrand} ` : ''}{output.tvModel}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          {currentConfig.inputs.slice(0, 32).map((input) => {
+                            const isRouted = currentInput === input.channelNumber
+
+                            return (
+                              <td
+                                key={`${output.channelNumber}-${input.channelNumber}`}
+                                className={`border border-slate-700 p-1 text-center cursor-pointer transition-all ${
+                                  isRouted
+                                    ? 'bg-green-600 hover:bg-green-700'
+                                    : 'bg-slate-900 hover:bg-slate-700'
+                                }`}
+                                onClick={() => handleRouteClick(input.channelNumber, output.channelNumber)}
+                                title={`Route Input ${input.channelNumber} (${input.label}) to Output ${output.channelNumber} (${output.label})`}
+                              >
+                                {isRouted && (
+                                  <div className="flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-6 p-4 bg-slate-800 rounded-lg border border-slate-700">
+                <h4 className="font-semibold text-slate-200 mb-3">Legend</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span className="text-slate-300">Active Route</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-slate-900 border border-slate-700 rounded"></div>
+                    <span className="text-slate-300">Available Route</span>
+                  </div>
+                  <div className="text-slate-400">
+                    Click any cell to change routing
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'inputs' && (
             <div>
               <h3 className="text-xl font-semibold mb-4 text-slate-100">Input Configuration</h3>
@@ -455,14 +633,21 @@ export default function MatrixControl() {
                   return (
                     <div key={index} className="bg-slate-800 p-4 rounded-md border border-slate-700 hover:border-slate-600 transition-colors">
                       <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
+                          {!isMatrixOutput && output.tvModel && (
+                            <span className="text-xs text-blue-400 mt-0.5" title="TV Model from CEC Discovery">
+                              {output.tvBrand ? `${output.tvBrand} ` : ''}{output.tvModel}
+                            </span>
+                          )}
+                        </div>
                         {true && (
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => updateOutput(index, 'powerOn', !output.powerOn)}
                               className={`p-1.5 rounded transition-colors ${
-                                output.powerOn 
-                                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                output.powerOn
+                                  ? 'bg-green-600 hover:bg-green-700 text-white'
                                   : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
                               }`}
                               title={output.powerOn ? 'Power On' : 'Power Off'}
@@ -499,8 +684,6 @@ export default function MatrixControl() {
                           <option value="720p">720p</option>
                         </select>
                         
-                        {/* Simple outputs (1-4) show only label and resolution */}
-                        
                         {/* Video Input Selection for Matrix Outputs (33-36) */}
                         {isMatrixOutput && (
                           <div className="mt-3 p-3 bg-slate-900 rounded border border-indigo-500/30">
@@ -511,8 +694,8 @@ export default function MatrixControl() {
                               onClick={() => openVideoInputModal(matrixNumber)}
                               className="w-full px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
                             >
-                              {output.videoInputLabel 
-                                ? `Video: ${output.videoInputLabel}` 
+                              {output.videoInputLabel
+                                ? `Video: ${output.videoInputLabel}`
                                 : 'Select Video Input'}
                             </button>
                             {output.videoInputLabel && (
@@ -521,17 +704,6 @@ export default function MatrixControl() {
                               </div>
                             )}
                           </div>
-                        )}
-                        
-                        {/* Audio output field for non-simple, non-matrix outputs */}
-                        {!isSimpleOutput && !isMatrixOutput && index < 4 && (
-                          <input
-                            type="text"
-                            value={output.audioOutput || ''}
-                            onChange={(e) => updateOutput(index, 'audioOutput', e.target.value)}
-                            placeholder="Audio Output"
-                            className="w-full px-3 py-2 text-sm border border-slate-600 rounded bg-slate-900 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
                         )}
                       </div>
                     </div>

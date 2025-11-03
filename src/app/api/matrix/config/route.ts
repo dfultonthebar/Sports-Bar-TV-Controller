@@ -131,11 +131,22 @@ export async function POST(request: NextRequest) {
           .get()
       }
 
+      // Get existing outputs to preserve CEC discovery data
+      const existingOutputs = await tx.select()
+        .from(schema.matrixOutputs)
+        .where(eq(schema.matrixOutputs.configId, savedConfig.id))
+        .all()
+
+      // Create a map of existing outputs by channel number to preserve CEC data
+      const existingOutputMap = new Map(
+        existingOutputs.map(o => [o.channelNumber, o])
+      )
+
       // Clear existing inputs and outputs for this config
       await tx.delete(schema.matrixInputs)
         .where(eq(schema.matrixInputs.configId, savedConfig.id))
         .run()
-      
+
       await tx.delete(schema.matrixOutputs)
         .where(eq(schema.matrixOutputs.configId, savedConfig.id))
         .run()
@@ -162,9 +173,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Save outputs - only fields that exist in actual database
+      // Save outputs - preserve CEC discovery data from existing records
       if (outputs?.length > 0) {
         for (const output of outputs) {
+          const existing = existingOutputMap.get(output.channelNumber)
+
           await tx.insert(schema.matrixOutputs)
             .values({
               id: randomUUID(),
@@ -178,6 +191,11 @@ export async function POST(request: NextRequest) {
               powerOn: output.powerOn || false,
               dailyTurnOn: true,
               dailyTurnOff: true,
+              // Preserve CEC discovery data from existing record, or use new data if provided
+              tvBrand: output.tvBrand || existing?.tvBrand || null,
+              tvModel: output.tvModel || existing?.tvModel || null,
+              cecAddress: output.cecAddress || existing?.cecAddress || null,
+              lastDiscovery: existing?.lastDiscovery || null,
               createdAt: now,
               updatedAt: now
             })
