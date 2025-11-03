@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { direcTVLogger, DirecTVOperation, LogLevel, withTiming } from '@/lib/directv-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface DirecTVInfo {
   model?: string
@@ -282,6 +284,11 @@ async function testDirecTVConnection(ip: string, port: number, deviceId?: string
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { ipAddress, port, deviceId, deviceName } = await request.json()
 

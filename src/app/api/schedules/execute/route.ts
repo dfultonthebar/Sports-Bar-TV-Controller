@@ -4,10 +4,17 @@ import { db } from '@/db'
 import { findMany, inArray } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { scheduleId } = await request.json();
     

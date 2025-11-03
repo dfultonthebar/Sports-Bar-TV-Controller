@@ -1,10 +1,12 @@
 
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
 
@@ -19,7 +21,12 @@ async function loadIRDevices() {
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get Wolf Pack inputs from database
     const wolfPackInputs = await prisma.matrixInput.findMany({

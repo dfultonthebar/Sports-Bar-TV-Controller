@@ -1,15 +1,22 @@
 
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { and, asc, desc, eq, or } from 'drizzle-orm'
 import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { Socket } from 'net'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST - Initialize Wolf Pack connection on app startup
  * This should be called when the application starts
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     logger.debug('Initializing Wolf Pack matrix connection...')
 

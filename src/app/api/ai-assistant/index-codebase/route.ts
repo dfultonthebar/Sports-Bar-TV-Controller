@@ -6,6 +6,8 @@ import { eq, and, sql } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // File extensions to include
@@ -133,6 +135,11 @@ async function scanDirectory(dirPath: string, baseDir: string): Promise<FileInfo
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const startTime = Date.now();
   console.log('='.repeat(80));
   console.log('[AI INDEXING] Starting codebase indexing operation');
@@ -275,7 +282,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('[AI INDEXING] GET request - Fetching index stats');
   try {
     // Get total count and sum of file sizes

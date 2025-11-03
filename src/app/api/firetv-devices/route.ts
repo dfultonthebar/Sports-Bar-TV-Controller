@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
@@ -48,6 +50,11 @@ async function writeDevices(data: { devices: FireTVDevice[] }): Promise<void> {
 
 // GET - List all Fire TV devices
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[FIRETV API] GET request - fetching all devices')
     const data = await readDevices()
@@ -65,6 +72,11 @@ export async function GET(request: NextRequest) {
 
 // POST - Add new Fire TV device
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[FIRETV API] POST request - adding new device')
     const newDevice: FireTVDevice = await request.json()
@@ -93,6 +105,11 @@ export async function POST(request: NextRequest) {
 
 // PUT - Update existing Fire TV device
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[FIRETV API] PUT request - updating device')
     const updatedDevice: FireTVDevice = await request.json()
@@ -128,6 +145,11 @@ export async function PUT(request: NextRequest) {
 
 // DELETE - Remove Fire TV device
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')

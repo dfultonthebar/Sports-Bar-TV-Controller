@@ -4,10 +4,17 @@ import { and, asc, create, deleteMany, deleteRecord, desc, eq, findFirst, findMa
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { getSoundtrackAPI, setSoundtrackAPIToken, clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // GET - Fetch Soundtrack configuration
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const config = await findFirst('soundtrackConfigs')
 
@@ -48,6 +55,11 @@ export async function GET() {
 
 // POST - Create or update Soundtrack configuration
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { apiKey } = body
@@ -196,6 +208,11 @@ export async function POST(request: NextRequest) {
 
 // PATCH - Update player visibility settings
 export async function PATCH(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { playerId, bartenderVisible, displayOrder } = body
@@ -237,7 +254,12 @@ export async function PATCH(request: NextRequest) {
 }
 
 // DELETE - Remove Soundtrack configuration
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Find existing config
     const config = await findFirst('soundtrackConfigs')

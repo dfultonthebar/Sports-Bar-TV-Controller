@@ -6,12 +6,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { CableBoxCECService } from '@/lib/cable-box-cec-service'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/cec/cable-box
  * List all configured cable boxes
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const cecService = CableBoxCECService.getInstance()
     const cableBoxes = await cecService.getCableBoxes()

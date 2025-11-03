@@ -1,11 +1,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import * as cron from 'node-cron'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // This will store our cron job instance
 let schedulerJob: cron.ScheduledTask | null = null
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     return NextResponse.json({
       schedulerRunning: schedulerJob !== null,
@@ -18,6 +25,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action } = await request.json()
     

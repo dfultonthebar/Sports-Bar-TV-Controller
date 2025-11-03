@@ -6,6 +6,8 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irDevices, globalCachePorts, globalCacheDevices, irCommands } from '@/db/schema'
 import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/ir/devices/:id
@@ -15,6 +17,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📋 [IR DEVICES] Fetching device')
@@ -92,6 +99,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('✏️  [IR DEVICES] Updating device')
@@ -198,6 +210,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('🗑️  [IR DEVICES] Deleting device')

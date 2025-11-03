@@ -3,8 +3,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { localAIAnalyzer, AIAnalysisResult } from '@/lib/local-ai-analyzer'
 import { enhancedLogger } from '@/lib/enhanced-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Check AI system status
     const aiStatus = await localAIAnalyzer.getSystemStatus()
@@ -117,6 +124,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { action } = body

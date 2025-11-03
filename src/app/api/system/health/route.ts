@@ -3,6 +3,8 @@ import { db, schema } from '@/db'
 import { eq, asc } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface DeviceStatus {
   id: string
@@ -41,6 +43,11 @@ interface SystemHealthReport {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const report: SystemHealthReport = {
       timestamp: new Date(),

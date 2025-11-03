@@ -7,8 +7,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectionManager } from '@/services/firetv-connection-manager'
 import { healthMonitor } from '@/services/firetv-health-monitor'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('deviceId')
@@ -97,6 +104,11 @@ export async function GET(request: NextRequest) {
  * Force a health check
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[CONNECTION STATUS API] POST request - forcing health check')
     

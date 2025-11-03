@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAutomatedHealthCheckService } from '@/lib/services/automated-health-check'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/system/health-check
  * Run manual health check
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json().catch(() => ({}))
     const checkType = body.checkType || 'manual'
@@ -38,7 +45,12 @@ export async function POST(request: NextRequest) {
  * GET /api/system/health-check
  * Get recent health check history
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { findMany, schema } = await import('@/lib/db-helpers')
 

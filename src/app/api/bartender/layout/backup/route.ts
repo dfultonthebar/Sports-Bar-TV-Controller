@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const LAYOUT_FILE = join(process.cwd(), 'data', 'tv-layout.json')
 const BACKUP_DIR = join(process.cwd(), 'data', 'backups')
@@ -14,7 +16,12 @@ const BACKUP_DIR = join(process.cwd(), 'data', 'backups')
 /**
  * GET - List all backups
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Ensure backup directory exists
     await fs.mkdir(BACKUP_DIR, { recursive: true })
@@ -66,6 +73,11 @@ export async function GET() {
  * POST - Create backup or restore from backup
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action, filename } = await request.json()
 
@@ -159,6 +171,11 @@ export async function POST(request: NextRequest) {
  * DELETE - Delete a backup
  */
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const filename = searchParams.get('filename')

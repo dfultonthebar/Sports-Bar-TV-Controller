@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { update } from '@/lib/db-helpers'
 import { createAuthHeaders, testCredentials, ATLAS_DEFAULT_CREDENTIALS, encryptPassword } from '@/lib/atlas-auth'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * Validates and cleans IP address format
@@ -141,6 +143,11 @@ async function testProcessorConnection(
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/audio-processor/test-connection')
   
   try {

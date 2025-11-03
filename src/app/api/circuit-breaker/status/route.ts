@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { circuitBreakerRegistry, getCircuitBreakerHealth } from '@/lib/circuit-breaker'
 import { enhancedLogger } from '@/lib/enhanced-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +26,11 @@ export const dynamic = 'force-dynamic'
  * Returns comprehensive status information for all circuit breakers
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const requestStart = Date.now()
 
   try {
@@ -96,5 +103,10 @@ export async function GET(request: NextRequest) {
  * Alternative method for getting status (useful for clients that prefer POST)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   return GET(request)
 }

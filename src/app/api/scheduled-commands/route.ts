@@ -3,6 +3,8 @@ import { db } from '@/db'
 import { scheduledCommands, scheduledCommandLogs } from '@/db/schema'
 import { eq, desc, and } from 'drizzle-orm'
 import { withTransaction, transactionHelpers } from '@/lib/db/transaction-wrapper'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +12,11 @@ export const dynamic = 'force-dynamic'
  * GET - List all scheduled commands
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const enabledOnly = searchParams.get('enabled') === 'true'
@@ -40,6 +47,11 @@ export async function GET(request: NextRequest) {
  * POST - Create a new scheduled command
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const {
@@ -114,6 +126,11 @@ export async function POST(request: NextRequest) {
  * PUT - Update a scheduled command
  */
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { id, ...updates } = body
@@ -185,6 +202,11 @@ export async function PUT(request: NextRequest) {
  * DELETE - Delete a scheduled command
  */
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

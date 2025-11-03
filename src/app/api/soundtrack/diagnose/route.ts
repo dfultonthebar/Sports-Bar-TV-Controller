@@ -5,9 +5,16 @@ import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const config = await findFirst('soundtrackConfigs')
     

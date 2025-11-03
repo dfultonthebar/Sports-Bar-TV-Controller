@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
 
@@ -30,7 +32,12 @@ async function saveDirecTVDevices(devices: any[]) {
   await writeFile(DIRECTV_DEVICES_FILE, JSON.stringify({ devices }, null, 2))
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const data = await loadDirecTVDevices()
     return NextResponse.json(data)
@@ -41,6 +48,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const newDevice = await request.json()
     const data = await loadDirecTVDevices()
@@ -71,6 +83,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const updatedDevice = await request.json()
     const data = await loadDirecTVDevices()
@@ -90,6 +107,11 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')

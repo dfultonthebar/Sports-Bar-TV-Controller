@@ -8,6 +8,8 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { todoDocuments, todos } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +18,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const documents = await prisma.todoDocument.findMany({
@@ -41,6 +48,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const formData = await request.formData()
@@ -107,6 +119,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     await params  // Await params even if not used to satisfy Next.js 15
     const { searchParams } = new URL(request.url)

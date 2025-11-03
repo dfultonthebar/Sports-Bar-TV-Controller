@@ -1,5 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // IP Control command mappings for different brands
 const IP_COMMAND_MAPPINGS = {
@@ -164,6 +166,11 @@ async function sendSamsungTVCommand(ip: string, port: number, command: string): 
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { deviceId, command, deviceIpAddress, ipControlPort, brand } = await request.json()
 

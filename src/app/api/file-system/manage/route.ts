@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const readdir = promisify(fs.readdir)
 const stat = promisify(fs.stat)
@@ -13,6 +15,11 @@ const writeFile = promisify(fs.writeFile)
 const readFile = promisify(fs.readFile)
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const directory = searchParams.get('directory') || process.cwd()
@@ -34,6 +41,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action, path: targetPath, content, name } = await request.json()
 

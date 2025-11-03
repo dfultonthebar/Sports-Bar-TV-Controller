@@ -25,6 +25,8 @@ import { db, schema } from '@/db'
 import { sql } from 'drizzle-orm'
 import { existsSync, statSync } from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 

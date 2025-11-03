@@ -11,8 +11,15 @@ import { existsSync } from 'fs'
 import { detectTVZonesFromImage, autoMatchZonesToOutputs } from '@/lib/layout-detector'
 import { db } from '@/db'
 import { matrixOutputs } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const formData = await request.formData()
     const file = formData.get('layout') as File

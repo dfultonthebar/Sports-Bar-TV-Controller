@@ -7,8 +7,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { streamingManager } from '@/services/streaming-service-manager'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { deviceId, ipAddress, port = 5555, forceRefresh = false } = body
@@ -54,6 +61,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Return all available streaming apps in database
     const allApps = streamingManager.getAllApps()

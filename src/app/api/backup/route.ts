@@ -4,12 +4,19 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec);
 
 const BACKUP_DIR = path.join(process.env.HOME || '/home/ubuntu', 'sports-bar-backups');
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // List all backups
     const files = await fs.readdir(BACKUP_DIR);
@@ -49,6 +56,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action, filename } = await request.json();
 

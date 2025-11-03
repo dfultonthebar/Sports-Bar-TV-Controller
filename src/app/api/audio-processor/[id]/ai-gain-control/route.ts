@@ -4,6 +4,8 @@ import { db } from '@/db'
 import { aiGainConfigurations, audioInputMeters, audioProcessors } from '@/db/schema'
 import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface RouteContext {
   params: Promise<{
@@ -16,6 +18,11 @@ export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const params = await context.params
     const processorId = params.id
@@ -65,6 +72,11 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const params = await context.params
     const processorId = params.id
@@ -168,6 +180,11 @@ export async function DELETE(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const params = await context.params
     const processorId = params.id

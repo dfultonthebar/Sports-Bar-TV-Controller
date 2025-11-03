@@ -1,9 +1,11 @@
 
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 /**
@@ -11,7 +13,12 @@ import { clearSoundtrackAPI } from '@/lib/soundtrack-your-brand'
  * Clear the cached Soundtrack token from the database and memory
  * This forces fresh authentication on the next API request
  */
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Find existing config
     const config = await findFirst('soundtrackConfigs')

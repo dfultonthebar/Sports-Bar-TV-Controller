@@ -4,11 +4,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findMany, findFirst, create, updateMany, eq, asc } from '@/lib/db-helpers'
 import { getAtlasClient, releaseAtlasClient } from '@/lib/atlas-client-manager'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
@@ -36,6 +43,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const data = await request.json()
     const { processorId, inputNumber, parameterName, inputName, warningThreshold, dangerThreshold } = data

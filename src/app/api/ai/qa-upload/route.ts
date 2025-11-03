@@ -1,8 +1,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processUploadedFile } from '@/lib/services/qa-uploader';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;

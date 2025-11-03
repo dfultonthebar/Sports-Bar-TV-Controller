@@ -10,6 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +41,11 @@ function logError(message: string, error?: any) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const requestId = Math.random().toString(36).substring(7)
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
   
@@ -234,6 +241,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const requestId = Math.random().toString(36).substring(7)
   logInfo(`========== GET REQUEST [${requestId}] - Returning help info ==========`)
   

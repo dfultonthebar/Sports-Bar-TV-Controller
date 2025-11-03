@@ -1,5 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Enhanced DirecTV command mappings
 // DirecTV SHEF API expects lowercase keys without KEY_ prefix
@@ -193,6 +195,11 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { deviceId, command, ipAddress, port } = await request.json()
 

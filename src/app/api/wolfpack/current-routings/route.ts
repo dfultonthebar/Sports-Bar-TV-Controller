@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     logger.api.request('GET', '/api/wolfpack/current-routings')
 

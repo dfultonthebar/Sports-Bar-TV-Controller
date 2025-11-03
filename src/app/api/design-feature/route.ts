@@ -1,8 +1,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { EnhancedAIClient, FeatureDesignRequest } from '@/lib/enhanced-ai-client'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const designRequest: FeatureDesignRequest = await request.json()
 

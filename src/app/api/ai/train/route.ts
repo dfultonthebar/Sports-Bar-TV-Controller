@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { db } from '@/db';
 import { schema } from '@/db';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * API endpoint for generating Q&As from documentation
@@ -16,6 +18,11 @@ interface QAGenerationRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body: QAGenerationRequest = await request.json();
     const { filePath, content, category } = body;
@@ -79,6 +86,11 @@ export async function POST(request: NextRequest) {
  * Called after Claude Code generates the Q&As
  */
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { qas } = await request.json();
 
@@ -127,7 +139,12 @@ export async function PUT(request: NextRequest) {
 /**
  * Get training status and stats
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const totalQAs = await db
       .select()

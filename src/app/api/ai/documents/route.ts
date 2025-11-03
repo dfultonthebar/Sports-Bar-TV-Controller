@@ -4,6 +4,8 @@ import { trainingDocuments } from '@/db/schema'
 import { eq, desc, and, or, like } from 'drizzle-orm'
 import { unlink } from 'fs/promises'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +13,11 @@ export const dynamic = 'force-dynamic'
  * GET - List all training documents
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const activeOnly = searchParams.get('active') !== 'false'
@@ -77,6 +84,11 @@ export async function GET(request: NextRequest) {
  * PUT - Update a training document
  */
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { id, title, description, category, tags, isActive } = body
@@ -134,6 +146,11 @@ export async function PUT(request: NextRequest) {
  * DELETE - Delete a training document
  */
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
@@ -202,6 +219,11 @@ export async function DELETE(request: NextRequest) {
  * POST - View/track document access
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { id, action } = body

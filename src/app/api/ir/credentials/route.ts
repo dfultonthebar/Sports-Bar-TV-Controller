@@ -8,6 +8,8 @@ import { logDatabaseOperation } from '@/lib/database-logger'
 import crypto from 'crypto'
 import { irDatabaseCredentials } from '@/db/schema'
 import { findFirst, create, updateMany } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {
@@ -39,7 +41,12 @@ function decrypt(hash: string): string {
  * GET /api/ir/credentials
  * Get current credentials status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📋 [IR CREDENTIALS] Fetching credentials status')
   console.log('   Timestamp:', new Date().toISOString())
@@ -87,6 +94,11 @@ export async function GET() {
  * Save or update credentials
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('💾 [IR CREDENTIALS] Saving credentials')
   console.log('   Timestamp:', new Date().toISOString())

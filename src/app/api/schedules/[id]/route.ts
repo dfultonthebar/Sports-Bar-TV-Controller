@@ -4,6 +4,8 @@ import { db } from '@/db'
 import { update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // GET - Get single schedule
@@ -11,6 +13,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, id)).limit(1).get();
@@ -37,6 +44,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const body = await request.json();
@@ -78,6 +90,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     await db.delete(schema.schedules).where(eq(schema.schedules.id, id)).returning().get();

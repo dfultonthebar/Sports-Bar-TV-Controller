@@ -6,6 +6,8 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { getAvailableInputs } from '@/lib/atlas-models-config'
 import { audioProcessors } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/audio-processor/inputs
@@ -15,6 +17,11 @@ import { audioProcessors } from '@/db/schema'
  * - processorId: The ID of the audio processor
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')

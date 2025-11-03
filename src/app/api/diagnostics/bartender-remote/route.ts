@@ -1,11 +1,18 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { findMany, eq } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import fs from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     logger.api.request('GET', '/api/diagnostics/bartender-remote', {})
     

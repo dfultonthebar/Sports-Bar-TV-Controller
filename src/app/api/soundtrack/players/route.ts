@@ -4,10 +4,17 @@ import { and, asc, desc, eq, findFirst, findMany, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // GET - Fetch players (optionally filtered for bartender view)
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const bartenderOnly = searchParams.get('bartenderOnly') === 'true'
@@ -85,6 +92,11 @@ export async function GET(request: NextRequest) {
 
 // PATCH - Control a player (play/pause, change station, volume)
 export async function PATCH(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { playerId, playing, stationId, volume } = body

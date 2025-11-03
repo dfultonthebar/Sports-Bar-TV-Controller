@@ -3,11 +3,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findUnique, deleteRecord, eq } from '@/lib/db-helpers'
 import { deleteFile } from '@/lib/file-utils'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
 
@@ -43,6 +50,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
 

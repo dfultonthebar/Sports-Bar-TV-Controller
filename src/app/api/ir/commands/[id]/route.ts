@@ -3,6 +3,8 @@ import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { deleteRecord } from '@/lib/db-helpers'
 import { irCommands } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * DELETE /api/ir/commands/[id]
@@ -12,6 +14,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const { id: commandId } = await params
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

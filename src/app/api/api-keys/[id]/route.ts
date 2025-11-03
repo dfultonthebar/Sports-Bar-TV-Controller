@@ -3,11 +3,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { update, deleteRecord, eq } from '@/lib/db-helpers'
 import { encrypt } from '@/lib/encryption'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const { name, provider, keyValue, description, isActive } = await request.json()
@@ -42,6 +49,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     await deleteRecord('apiKeys', eq(schema.apiKeys.id, id))

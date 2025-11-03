@@ -11,6 +11,8 @@ import { schema } from '@/db'
 import fs from 'fs/promises';
 import path from 'path';
 import { parsePaginationParams, paginateArray } from '@/lib/pagination';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // System error logger
 async function logSystemError(error: any, context: string) {
@@ -35,6 +37,11 @@ async function logSystemError(error: any, context: string) {
 
 // GET - List all Q&A entries or search
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('[AI QA] GET request - Fetching Q&A entries');
   try {
     const { searchParams } = new URL(request.url);
@@ -156,6 +163,11 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new Q&A entry
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('='.repeat(80));
   console.log('[AI QA] POST request - Creating new Q&A entry');
   console.log('[AI QA] Timestamp:', new Date().toISOString());
@@ -226,6 +238,11 @@ export async function POST(request: NextRequest) {
 
 // PUT - Update Q&A entry
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json();
     const { id, question, answer, category, tags, isActive } = body;
@@ -267,6 +284,11 @@ export async function PUT(request: NextRequest) {
 
 // DELETE - Delete Q&A entry
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

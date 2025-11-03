@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { discoverAllTVBrands, discoverSingleTV } from '@/lib/services/cec-discovery-service'
 import { findMany, eq, asc } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/cec/discovery
@@ -22,6 +24,11 @@ import { schema } from '@/db'
  * - results: Array of discovery results
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json().catch(() => ({}))
     const { outputNumber } = body
@@ -65,7 +72,12 @@ export async function POST(request: NextRequest) {
  * 
  * Get last discovery results from database
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const outputs = await findMany('matrixOutputs', {
       where: eq(schema.matrixOutputs.isActive, true),

@@ -21,6 +21,8 @@ import { schema, db } from '@/db'
 import * as net from 'net'
 import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface RouteContext {
   params: Promise<{
@@ -33,6 +35,11 @@ export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Await params for Next.js 15+ compatibility
     const params = await context.params
@@ -84,6 +91,11 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   // Declare processorId outside try block so it's accessible in catch
   let processorId = 'unknown'
   let requestBody: any = {}

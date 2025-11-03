@@ -1,12 +1,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getUsageStatistics } from '@/services/presetReorderService'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/channel-presets/statistics
  * Get usage statistics for channel presets
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const stats = await getUsageStatistics()
 

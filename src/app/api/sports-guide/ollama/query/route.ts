@@ -7,6 +7,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { 
   queryOllamaWithContext, 
   analyzeSportsGuideLogs,
@@ -17,6 +19,11 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { query, action, includeRecentLogs, userPreferences } = body
@@ -67,6 +74,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('[Ollama-Query] GET request - Testing Ollama connection...')
   const result = await testOllamaConnection()
   return NextResponse.json(result)

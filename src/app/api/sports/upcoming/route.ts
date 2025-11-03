@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findMany, gte, lte, asc, and, eq, schema } from '@/lib/db-helpers'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/sports/upcoming
@@ -12,6 +14,11 @@ import { logger } from '@/lib/logger'
  * - league: filter by specific league
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '7')

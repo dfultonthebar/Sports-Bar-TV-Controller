@@ -9,8 +9,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq, sql } from 'drizzle-orm'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get overall statistics
     const overallStats = await db

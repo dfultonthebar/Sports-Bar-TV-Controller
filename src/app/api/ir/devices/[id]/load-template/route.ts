@@ -4,11 +4,18 @@ import { irCommands, irDevices } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import fs from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id: deviceId } = await params
     const body = await request.json()

@@ -3,6 +3,8 @@ import { globalCachePorts, globalCacheDevices } from '@/db/schema'
 import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { findFirst, update } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * PUT /api/globalcache/ports/[id]
@@ -12,6 +14,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -55,6 +62,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const port = await findFirst('globalCachePorts', {

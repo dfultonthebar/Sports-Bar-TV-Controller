@@ -4,12 +4,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get timezone configuration
     const config = await prisma.sportsGuideConfiguration.findFirst({

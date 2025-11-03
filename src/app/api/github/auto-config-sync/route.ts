@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { EnhancedLogger } from '@/lib/enhanced-logger'
 import fs from 'fs/promises'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const logger = new EnhancedLogger()
 
@@ -32,7 +34,12 @@ const DEFAULT_CONFIG: AutoSyncConfig = {
   lastSync: new Date().toISOString()
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     let config = DEFAULT_CONFIG
     
@@ -53,6 +60,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const updates = await request.json()
     

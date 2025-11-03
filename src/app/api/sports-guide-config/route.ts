@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findMany, findFirst, create, createMany, deleteMany, upsert, eq, desc } from "@/lib/db-helpers"
 import { schema } from "@/db"
 import { logger } from "@/lib/logger"
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -38,7 +40,12 @@ export interface SportsGuideConfigRequest {
   }[]
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('GET', '/api/sports-guide-config')
   
   try {
@@ -120,6 +127,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/sports-guide-config')
   
   try {

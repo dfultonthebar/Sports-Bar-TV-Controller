@@ -5,6 +5,8 @@ import dgram from 'dgram'
 import { and, asc, desc, eq, or } from 'drizzle-orm'
 import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Global connection state
 let connectionState = {
@@ -18,7 +20,12 @@ let connectionState = {
 /**
  * GET - Get current connection status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     return NextResponse.json({
       success: true,
@@ -42,6 +49,11 @@ export async function GET() {
  * POST - Establish or refresh persistent connection
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json().catch(() => ({}))
     const action = body.action || 'connect'

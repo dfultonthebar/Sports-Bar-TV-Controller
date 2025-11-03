@@ -6,6 +6,8 @@ import { existsSync } from 'fs'
 import { pollRealDirecTVSubscriptions, pollRealFireTVSubscriptions, Subscription as RealSubscription } from '@/lib/real-device-subscriptions'
 import { cacheService, CacheKeys, CacheTTL } from '@/lib/cache-service'
 import { direcTVLogger, DirecTVOperation, LogLevel } from '@/lib/directv-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -65,6 +67,11 @@ async function loadDeviceList(type: 'firetv' | 'directv') {
  */
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { deviceId, deviceType, force = false } = body

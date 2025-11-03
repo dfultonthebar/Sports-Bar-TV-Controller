@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 /**
@@ -10,6 +12,11 @@ import { logger } from '@/lib/logger'
  * Update usage tracking for a preset when it's clicked
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { presetId } = body

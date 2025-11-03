@@ -4,8 +4,15 @@ import { db } from '@/db'
 import { wolfpackMatrixRoutings, wolfpackMatrixStates } from '@/db/schema'
 import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get all Matrix routing configurations
     const routings = await prisma.wolfpackMatrixRouting.findMany({
@@ -35,6 +42,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { matrixOutputNumber, atlasInputLabel } = await request.json()
 

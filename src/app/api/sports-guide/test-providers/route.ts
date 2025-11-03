@@ -2,10 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { espnAPI } from '@/lib/sports-apis/espn-api'
 import { sportsDBAPI } from '@/lib/sports-apis/thesportsdb-api'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const today = new Date().toISOString().split('T')[0]
     const testResults = {
@@ -132,6 +139,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { leagues = ['nfl', 'nba', 'premier'], date } = body

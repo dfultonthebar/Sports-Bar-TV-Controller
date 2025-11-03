@@ -1,5 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -108,6 +110,11 @@ const LEAGUES: League[] = [
 ]
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')

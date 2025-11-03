@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const writeFile = promisify(fs.writeFile)
 const chmod = promisify(fs.chmod)
@@ -17,6 +19,11 @@ interface WriteScriptRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { scriptName, content, scriptType, directory = 'scripts', makeExecutable = true }: WriteScriptRequest = await request.json()
 

@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { globalCacheAPI, searchSpectrumModels, SPECTRUM_CABLE_BOX_MODELS } from '@/lib/global-cache-api'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -102,6 +104,11 @@ const ENHANCED_CODESETS = {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const brand = searchParams.get('brand')
@@ -192,6 +199,11 @@ export async function GET(request: NextRequest) {
 // Additional API endpoints for model details and IR codes
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { modelId, action } = body

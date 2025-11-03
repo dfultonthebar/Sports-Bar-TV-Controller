@@ -5,11 +5,18 @@ import { schema } from '@/db'
 // Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
 import { todos } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
 // GET /api/todos - List all TODOs with optional filters
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -59,6 +66,11 @@ export async function GET(request: NextRequest) {
 
 // POST /api/todos - Create new TODO
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { title, description, priority, status, category, tags } = body

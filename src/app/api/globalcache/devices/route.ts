@@ -4,12 +4,19 @@ import { eq, desc, asc } from 'drizzle-orm'
 import { findMany, create } from '@/lib/db-helpers'
 import net from 'net'
 import { globalCacheDevices, globalCachePorts } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/globalcache/devices
  * List all Global Cache devices
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Fetch all Global Cache devices
     const devices = await findMany('globalCacheDevices', {
@@ -45,6 +52,11 @@ export async function GET() {
  * Add a new Global Cache device
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { name, ipAddress, port = 4998, model } = body

@@ -3,12 +3,19 @@ import { db, schema } from '@/db'
 import { eq, and } from 'drizzle-orm'
 import { create } from '@/lib/db-helpers'
 import { irCommands } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/ir/commands
  * Create a new IR command
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('➕ [IR COMMANDS] Creating new IR command')
   console.log('   Timestamp:', new Date().toISOString())

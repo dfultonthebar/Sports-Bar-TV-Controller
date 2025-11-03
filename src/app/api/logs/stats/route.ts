@@ -2,8 +2,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { enhancedLogger } from '@/lib/enhanced-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get recent logs for analysis
     const recentLogs = await enhancedLogger.getRecentLogs(24) // Last 24 hours

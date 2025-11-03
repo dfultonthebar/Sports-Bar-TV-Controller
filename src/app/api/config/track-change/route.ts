@@ -1,8 +1,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { configChangeTracker } from '@/lib/config-change-tracker'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { type, file, changes, action = 'modified' } = await request.json()
     
@@ -35,6 +42,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const url = new URL(request.url)
     const type = url.searchParams.get('type')

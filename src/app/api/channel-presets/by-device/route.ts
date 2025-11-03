@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 /**
@@ -12,6 +14,11 @@ import { logger } from '@/lib/logger'
  * Fetch presets for a specific device type, ordered by usage or alphabetically
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const deviceType = searchParams.get('deviceType')

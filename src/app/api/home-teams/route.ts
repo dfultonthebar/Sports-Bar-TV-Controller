@@ -4,10 +4,17 @@ import { schema } from '@/db';
 import { desc, asc, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { findMany, create } from '@/lib/db-helpers';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // GET - List all home teams
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('GET', '/api/home-teams');
   
   try {
@@ -32,6 +39,11 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new home team
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/home-teams');
   
   try {

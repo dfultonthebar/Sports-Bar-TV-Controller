@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsScheduleSyncService } from '@/lib/services/sports-schedule-sync'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/sports/sync
  * Manually trigger sports schedule sync
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     logger.info('[Sports Sync API] Manual sync triggered')
 
@@ -34,7 +41,12 @@ export async function POST(request: NextRequest) {
  * GET /api/sports/sync
  * Get last sync status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { findMany, desc, schema } = await import('@/lib/db-helpers')
 

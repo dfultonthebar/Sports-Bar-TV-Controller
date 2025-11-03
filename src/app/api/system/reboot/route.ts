@@ -1,10 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('🔌 System reboot requested')
     

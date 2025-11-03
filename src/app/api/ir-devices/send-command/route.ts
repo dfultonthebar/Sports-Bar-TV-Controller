@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
 
@@ -78,6 +80,11 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { deviceId, command, iTachAddress } = await request.json()
 

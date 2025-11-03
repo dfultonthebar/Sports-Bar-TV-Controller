@@ -5,6 +5,8 @@ import { eq, and, gte, lte, asc } from 'drizzle-orm'
 import { findFirst, findMany, update, create } from '@/lib/db-helpers'
 import { logger } from '@/lib/logger'
 import { routeWolfpackToMatrix } from '@/services/wolfpackMatrixService'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * Matrix Video Input Selection API
@@ -13,6 +15,11 @@ import { routeWolfpackToMatrix } from '@/services/wolfpackMatrixService'
  */
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/matrix/video-input-selection')
   
   try {
@@ -181,6 +188,11 @@ export async function POST(request: NextRequest) {
  * GET endpoint to retrieve current video input selections for matrix outputs
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('GET', '/api/matrix/video-input-selection')
   
   try {

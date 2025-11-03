@@ -2,6 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { connectionManager } from '@/services/firetv-connection-manager'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Key code mappings for Fire TV
 const KEY_CODES: Record<string, number> = {
@@ -30,6 +32,11 @@ const KEY_CODES: Record<string, number> = {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { deviceId, command, appPackage, ipAddress, port } = await request.json()
     

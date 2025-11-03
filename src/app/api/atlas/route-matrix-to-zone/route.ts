@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * Atlas Matrix-to-Zone Routing API
@@ -11,6 +13,11 @@ import { logger } from '@/lib/logger'
  */
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { matrixInputNumber, zoneNumbers, processorId } = await request.json()
 
@@ -129,6 +136,11 @@ export async function POST(request: NextRequest) {
  * GET endpoint to retrieve current Matrix-to-Zone routing state
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')

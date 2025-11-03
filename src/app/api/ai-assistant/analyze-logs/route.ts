@@ -2,10 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhancedLogger } from '@/lib/enhanced-logger';
 import { searchKnowledgeBase, buildContextFromDocs } from '@/lib/ai-knowledge';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json();
     const { 

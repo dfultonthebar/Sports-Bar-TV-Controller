@@ -4,13 +4,20 @@ import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // Force dynamic rendering - don't pre-render during build
 export const dynamic = 'force-dynamic'
 
 // GET - Fetch available stations/playlists
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get API key from config
     const config = await findFirst('soundtrackConfigs')

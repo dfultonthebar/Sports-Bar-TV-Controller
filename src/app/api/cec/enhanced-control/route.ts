@@ -5,9 +5,16 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { CECCommand, getCECCommandMapping } from '@/lib/enhanced-cec-commands'
 import { getBrandConfig } from '@/lib/tv-brands-config'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { command, outputNumber, parameters } = await request.json()
     
@@ -136,7 +143,12 @@ export async function POST(request: NextRequest) {
 }
 
 // GET endpoint to list all available CEC commands
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { getCECCommandsByCategory } = await import('@/lib/enhanced-cec-commands')
     const commands = getCECCommandsByCategory()

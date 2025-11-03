@@ -4,12 +4,19 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 // Converted to Drizzle ORM
 import net from 'net'
 import { globalCacheDevices } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/globalcache/learn
  * Start IR learning on a Global Cache device
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { deviceId } = body
@@ -80,6 +87,11 @@ export async function POST(request: NextRequest) {
  * Stop IR learning on a Global Cache device
  */
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { deviceId } = body

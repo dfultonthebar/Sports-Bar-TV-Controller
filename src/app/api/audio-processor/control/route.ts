@@ -5,6 +5,8 @@ import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface ControlCommand {
   action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
@@ -18,6 +20,11 @@ interface ControlCommand {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { processorId, command }: { processorId: string, command: ControlCommand } = await request.json()
 

@@ -2,11 +2,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { liveSportsService } from '@/lib/sports-apis/live-sports-service'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
 // This endpoint handles the scheduled 7-day sports guide updates with timezone support
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const timezone = 'America/New_York'
     
@@ -83,6 +90,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const now = new Date()
     const midnight = new Date(now)

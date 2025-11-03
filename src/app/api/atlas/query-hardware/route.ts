@@ -5,6 +5,8 @@ import { db } from '@/db'
 import { audioZones, audioGroups, audioProcessors } from '@/db/schema'
 import fs from 'fs/promises'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
@@ -17,6 +19,11 @@ const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
  * - testOnly: If true, only test connection without saving (optional)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { processorId, testOnly } = await request.json()
 
@@ -447,6 +454,11 @@ export async function POST(request: NextRequest) {
  * Check if hardware configuration exists and when it was last queried
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')

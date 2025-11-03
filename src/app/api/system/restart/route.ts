@@ -1,7 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { spawn } from 'child_process'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('🔄 Software restart requested')
     

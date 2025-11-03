@@ -220,7 +220,7 @@ export const rateLimiter = new RateLimiterService()
 export const RateLimitConfigs = {
   // Default rate limit for general API endpoints
   DEFAULT: {
-    maxRequests: 10,
+    maxRequests: 30,
     windowMs: 60 * 1000, // 1 minute
     identifier: 'default'
   },
@@ -232,7 +232,7 @@ export const RateLimitConfigs = {
     identifier: 'ai'
   },
 
-  // More permissive for sports data
+  // More permissive for sports data (legacy, use SPORTS_DATA for new endpoints)
   SPORTS: {
     maxRequests: 20,
     windowMs: 60 * 1000, // 1 minute
@@ -246,7 +246,7 @@ export const RateLimitConfigs = {
     identifier: 'expensive'
   },
 
-  // QUICK WIN 3: Hardware control endpoints (matrix, CEC, FireTV)
+  // Hardware control endpoints (matrix, CEC, FireTV, audio processor, atlas)
   // Limit to 60 requests per minute to prevent hardware flooding
   HARDWARE: {
     maxRequests: 60,
@@ -254,11 +254,81 @@ export const RateLimitConfigs = {
     identifier: 'hardware'
   },
 
-  // QUICK WIN 3: Authentication endpoints
+  // Authentication endpoints
   // Strict limit to prevent brute force attacks
   AUTH: {
     maxRequests: 10,
     windowMs: 60 * 1000, // 1 minute
     identifier: 'auth'
+  },
+
+  // Sports data and TV guide APIs (ESPN, TheSportsDB, channel guides)
+  SPORTS_DATA: {
+    maxRequests: 30,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'sports-data'
+  },
+
+  // Database write operations and logging
+  DATABASE_WRITE: {
+    maxRequests: 30,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'database-write'
+  },
+
+  // Database read operations
+  DATABASE_READ: {
+    maxRequests: 60,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'database-read'
+  },
+
+  // File system operations and uploads
+  FILE_OPS: {
+    maxRequests: 20,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'file-ops'
+  },
+
+  // Git operations and GitHub integration
+  GIT: {
+    maxRequests: 10,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'git'
+  },
+
+  // External API calls (web search, soundtrack, streaming services)
+  EXTERNAL: {
+    maxRequests: 20,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'external'
+  },
+
+  // Scheduling and automation endpoints
+  SCHEDULER: {
+    maxRequests: 30,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'scheduler'
+  },
+
+  // System health and management endpoints
+  SYSTEM: {
+    maxRequests: 100,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'system'
+  },
+
+  // Webhook endpoints for external integrations
+  WEBHOOK: {
+    maxRequests: 100,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'webhook'
+  },
+
+  // Testing and diagnostics endpoints
+  TESTING: {
+    maxRequests: 50,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'testing'
   }
 } as const

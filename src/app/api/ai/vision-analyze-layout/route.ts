@@ -3,6 +3,8 @@ import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * AI Vision Layout Analysis API
@@ -33,6 +35,11 @@ interface VisionAnalysisResult {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { imageUrl, imagePath } = await request.json()
     

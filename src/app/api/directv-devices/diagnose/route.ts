@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface DiagnosticResult {
   test: string
@@ -204,6 +206,11 @@ async function runDiagnostics(ip: string, port: number): Promise<DiagnosticResul
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { ipAddress, port } = await request.json()
 

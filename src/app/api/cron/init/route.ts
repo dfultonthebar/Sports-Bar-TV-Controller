@@ -1,12 +1,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { initializePresetCronJob } from '@/services/presetCronService'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/cron/init
  * Initialize all cron jobs (called on app startup)
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Initialize the preset reordering cron job
     initializePresetCronJob()

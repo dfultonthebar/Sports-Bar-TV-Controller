@@ -3,12 +3,19 @@ import { db, schema } from '@/db'
 import { eq, and } from 'drizzle-orm'
 import { irCommands, irDevices, globalCacheDevices } from '@/db/schema'
 import net from 'net'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/ir/commands/send
  * Send an IR command via Global Cache device
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📤 [IR SEND] Sending IR command')
   console.log('   Timestamp:', new Date().toISOString())

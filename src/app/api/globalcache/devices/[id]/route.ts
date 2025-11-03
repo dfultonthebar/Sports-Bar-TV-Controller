@@ -3,6 +3,8 @@ import { globalCacheDevices, globalCachePorts } from '@/db/schema'
 import { db, schema } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/globalcache/devices/[id]
@@ -12,6 +14,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const device = await findFirst('globalCacheDevices', {
@@ -57,6 +64,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     await deleteRecord('globalCacheDevices', eq(schema.globalCacheDevices.id, id))
@@ -83,6 +95,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const body = await request.json()

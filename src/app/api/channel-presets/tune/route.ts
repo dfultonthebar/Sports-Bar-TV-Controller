@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { channelNumber, deviceType, deviceIp, presetId, cableBoxId } = body

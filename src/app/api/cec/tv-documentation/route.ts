@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllTVDocumentation } from '@/lib/tvDocs'
 import { listDownloadedManuals } from '@/lib/tvDocs/downloadManual'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/cec/tv-documentation
@@ -20,6 +22,11 @@ import { listDownloadedManuals } from '@/lib/tvDocs/downloadManual'
  * - totalQAPairs: Total number of Q&A pairs generated
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[TV Documentation API] Fetching all TV documentation')
     

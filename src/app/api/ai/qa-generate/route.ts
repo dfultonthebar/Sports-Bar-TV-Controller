@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateQAsFromRepository, getQAGenerationStatus } from '@/lib/services/qa-generator';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json();
     const { sourceType, sourcePaths, categories, maxQAsPerFile, model, forceRegenerate } = body;
@@ -35,6 +42,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get('jobId');

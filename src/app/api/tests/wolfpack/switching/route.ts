@@ -3,6 +3,8 @@ import { db } from '@/db'
 import { matrixConfigurations, matrixInputs, matrixOutputs, testLogs } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import * as net from 'net'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // TCP command with timeout
 async function sendTCPCommand(
@@ -60,6 +62,11 @@ async function sendTCPCommand(
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const startTime = Date.now()
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

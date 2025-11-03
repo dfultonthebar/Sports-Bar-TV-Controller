@@ -3,9 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, or } from 'drizzle-orm'
 import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get the active matrix configuration
     const activeConfig = await db.select()
@@ -57,6 +64,11 @@ export async function GET() {
 
 // Update an output's daily turn-on/off settings
 export async function PUT(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { outputId, dailyTurnOn, dailyTurnOff } = body

@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findMany, findFirst, create, eq, and, asc, desc } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // GET /api/channel-presets - Get all presets (optionally filtered by deviceType)
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('GET', '/api/channel-presets')
   
   try {
@@ -45,6 +52,11 @@ export async function GET(request: NextRequest) {
 
 // POST /api/channel-presets - Create a new preset
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/channel-presets')
   
   try {

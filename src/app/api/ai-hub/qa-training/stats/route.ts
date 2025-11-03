@@ -2,12 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { count, findMany, eq, sql } from '@/lib/db-helpers';
 import { schema } from '@/db';
 import { db } from '@/lib/db-helpers';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/ai-hub/qa-training/stats
  * Returns comprehensive statistics for Q&A training dashboard
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('[QA Stats] Fetching Q&A training statistics...');
 

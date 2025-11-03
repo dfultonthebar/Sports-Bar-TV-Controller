@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execPromise = promisify(exec)
 
@@ -9,7 +11,12 @@ export const dynamic = 'force-dynamic'
 /**
  * Get recent CEC command logs from PM2
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get last 500 lines from pm2 logs and filter for CEC-related entries
     const { stdout } = await execPromise(

@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -116,6 +118,11 @@ async function authenticateWithPlatform(platformId: string, username: string, pa
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { platformId, username, password, rememberMe } = await request.json()
 
@@ -191,6 +198,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { platformId } = await request.json()
 

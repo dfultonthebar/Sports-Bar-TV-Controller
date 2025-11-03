@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { commandScheduler } from '@/lib/services/command-scheduler'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,6 +9,11 @@ export const dynamic = 'force-dynamic'
  * POST - Manage scheduler (start, stop, trigger)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { action, commandId } = body
@@ -57,7 +64,12 @@ export async function POST(request: NextRequest) {
 /**
  * GET - Get scheduler status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Note: You'll need to add a getStatus method to the scheduler
     // For now, return a basic status

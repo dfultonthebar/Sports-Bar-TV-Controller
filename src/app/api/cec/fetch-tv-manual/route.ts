@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchTVManual } from '@/lib/tvDocs'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/cec/fetch-tv-manual
@@ -29,6 +31,11 @@ import { fetchTVManual } from '@/lib/tvDocs'
  * - error: Error message if failed
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { manufacturer, model, forceRefetch = false } = body

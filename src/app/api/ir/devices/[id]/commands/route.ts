@@ -3,6 +3,8 @@ import { db, schema } from '@/db'
 import { eq, and, asc } from 'drizzle-orm'
 import { findMany } from '@/lib/db-helpers'
 import { irCommands } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/ir/devices/[id]/commands
@@ -12,6 +14,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const { id: deviceId } = await params
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

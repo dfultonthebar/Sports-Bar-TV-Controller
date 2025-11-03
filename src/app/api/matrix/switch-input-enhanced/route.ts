@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { enhancedLogger } from '@/lib/enhanced-logger'
 import * as net from 'net'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface MatrixSwitchRequest {
   input: number
@@ -10,6 +12,11 @@ interface MatrixSwitchRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const startTime = Date.now()
   const requestId = request.headers.get('x-request-id') || 'unknown'
   
@@ -259,6 +266,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     await enhancedLogger.info(
       'api',

@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { EnhancedLogger } from '@/lib/enhanced-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 const logger = new EnhancedLogger()
@@ -15,6 +17,11 @@ interface ConfigChange {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { commitMessage, configChanges, autoCommit = true }: { 
       commitMessage?: string
@@ -147,7 +154,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const projectPath = '/home/ubuntu/Sports-Bar-TV-Controller'
     process.chdir(projectPath)

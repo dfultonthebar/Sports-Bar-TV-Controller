@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 
@@ -15,6 +17,11 @@ const execAsync = promisify(exec)
  * }
  */
 export async function POST(req: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.TESTING)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await req.json()
     const { suite = 'all', safeMode = true } = body
@@ -131,7 +138,12 @@ export async function POST(req: NextRequest) {
  * GET /api/tests/run
  * Get available test suites
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.TESTING)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   return NextResponse.json({
     suites: [
       { id: 'api', name: 'API Tests', description: 'Test all API endpoints', safe: true },

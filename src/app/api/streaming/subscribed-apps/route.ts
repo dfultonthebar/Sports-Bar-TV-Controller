@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { STREAMING_APPS_DATABASE } from '@/lib/streaming/streaming-apps-database'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
     const config = JSON.parse(data)
@@ -30,6 +37,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const updates = await request.json()
     const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')

@@ -1,10 +1,17 @@
 export const dynamic = 'force-dynamic';
 
 
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { TV_BRAND_CONFIGS, getAllBrands, getBrandConfig } from '@/lib/tv-brands-config'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: Request) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const brand = searchParams.get('brand')

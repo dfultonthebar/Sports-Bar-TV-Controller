@@ -4,6 +4,8 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
 import fs from 'fs'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 
@@ -16,6 +18,11 @@ interface ExecuteRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 }: ExecuteRequest = await request.json()
 

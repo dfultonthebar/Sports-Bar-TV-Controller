@@ -3,8 +3,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import WolfpackMatrixAIAnalyzer from '@/lib/wolfpack-ai-analyzer'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { matrixData } = await request.json()
     
@@ -55,7 +62,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   return NextResponse.json({
     service: 'Wolfpack Matrix AI Analysis',
     version: '1.0.0',

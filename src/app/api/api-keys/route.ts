@@ -3,8 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findMany, create, desc, eq } from '@/lib/db-helpers'
 import { encrypt, decrypt } from '@/lib/encryption'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const apiKeysList = await findMany('apiKeys', {
       orderBy: desc(schema.apiKeys.createdAt)
@@ -24,6 +31,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { name, provider, keyValue, description } = await request.json()
 

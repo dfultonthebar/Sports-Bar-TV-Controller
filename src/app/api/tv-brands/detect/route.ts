@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import {
   detectBrandFromOSD,
   getCachedBrandDetection,
@@ -17,6 +19,11 @@ export const dynamic = 'force-dynamic'
  * Opcode 0x46 (Give OSD Name)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { cecAddress, forceRefresh } = body
@@ -115,6 +122,11 @@ export async function POST(request: NextRequest) {
  * Get cached brand detection
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const cecAddress = searchParams.get('cecAddress')

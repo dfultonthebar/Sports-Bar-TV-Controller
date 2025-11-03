@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { aiGainService } from '@/lib/ai-gain-service'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface RouteContext {
   params: Promise<{
@@ -13,6 +15,11 @@ export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const params = await context.params
     const processorId = params.id

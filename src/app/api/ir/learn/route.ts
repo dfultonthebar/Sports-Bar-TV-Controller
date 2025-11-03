@@ -4,12 +4,19 @@ import { eq, and } from 'drizzle-orm'
 import { update } from '@/lib/db-helpers'
 import { globalCacheDevices, irDevices, irCommands } from '@/db/schema'
 import net from 'net'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/ir/learn
  * Start IR learning session for a specific command
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('🎓 [IR LEARN API] Starting IR learning session')
   console.log('   Timestamp:', new Date().toISOString())

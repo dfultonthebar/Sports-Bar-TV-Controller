@@ -4,8 +4,15 @@ import { create, findMany, desc } from '@/lib/db-helpers'
 import { saveFile, generateUniqueFilename } from '@/lib/file-utils'
 import { extractTextFromFile } from '@/lib/text-extractor'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('📁 Upload request received')
   
   try {
@@ -92,7 +99,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const documentsList = await findMany('documents', {
       orderBy: desc(schema.documents.uploadedAt)

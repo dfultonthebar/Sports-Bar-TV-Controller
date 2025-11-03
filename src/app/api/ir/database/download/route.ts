@@ -7,6 +7,8 @@ import { irDatabaseService } from '@/lib/services/ir-database'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irCommands, irDatabaseCredentials, irDevices } from '@/db/schema'
 import { findFirst, create, update } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/ir/database/download
@@ -14,6 +16,11 @@ import { findFirst, create, update } from '@/lib/db-helpers'
  * Body: { deviceId, codesetId, functions: [{functionName, category}] }
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('⬇️  [IR DATABASE API] Downloading IR codes')
   console.log('   Timestamp:', new Date().toISOString())

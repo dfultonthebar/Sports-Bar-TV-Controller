@@ -7,8 +7,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { unifiedStreamingApi } from '@/lib/streaming/unified-streaming-api'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get('type') || 'all' // all, live, today, upcoming

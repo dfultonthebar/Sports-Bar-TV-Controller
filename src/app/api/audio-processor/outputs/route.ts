@@ -6,6 +6,8 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { getAvailableOutputs } from '@/lib/atlas-models-config'
 import { audioProcessors } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/audio-processor/outputs
@@ -16,6 +18,11 @@ import { audioProcessors } from '@/db/schema'
  * - includeGroups: Whether to detect and include zone groups (default: true)
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')

@@ -10,6 +10,8 @@ import sharp from 'sharp'
 import { detectTVZonesFromImage, autoMatchZonesToOutputs } from '@/lib/layout-detector'
 import { db } from '@/db'
 import { matrixOutputs } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const execAsync = promisify(exec)
 
@@ -188,6 +190,11 @@ async function validateImage(filepath: string): Promise<boolean> {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     console.log('Upload layout API called')
     const formData = await request.formData()

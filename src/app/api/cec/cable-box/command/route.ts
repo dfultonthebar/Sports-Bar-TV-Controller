@@ -8,8 +8,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CableBoxCECService } from '@/lib/cable-box-cec-service'
 import { SPECTRUM_COMMANDS } from '@/lib/cec-commands'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { cableBoxId, command, userControlCode } = body
@@ -102,7 +109,12 @@ export async function POST(request: NextRequest) {
  * GET /api/cec/cable-box/command
  * Get list of available commands
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   return NextResponse.json({
     success: true,
     commands: Object.keys(SPECTRUM_COMMANDS),

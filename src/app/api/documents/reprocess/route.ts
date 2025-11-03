@@ -2,10 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { operationLogger } from '@/lib/operation-logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     await operationLogger.logOperation({
       type: 'error', // Using existing type system
@@ -44,7 +51,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Check current document status
     const { prisma } = await import('@/lib/db')

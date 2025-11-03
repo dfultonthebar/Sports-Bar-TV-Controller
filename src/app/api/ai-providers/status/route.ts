@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findMany, findUnique, desc, eq } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Get all AI API keys from the database (these represent AI providers)
     const apiKeys = await findMany('apiKeys', {
@@ -59,6 +66,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { action, providerId } = body

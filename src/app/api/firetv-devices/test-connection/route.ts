@@ -3,8 +3,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { connectionManager } from '@/services/firetv-connection-manager'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { deviceId, ipAddress, port } = await request.json()
     

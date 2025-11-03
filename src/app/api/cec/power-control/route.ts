@@ -7,9 +7,16 @@ import { Socket } from 'net'
 import dgram from 'dgram'
 import { routeMatrix } from '@/lib/matrix-control'
 import { powerOn, powerOff, sendCECCommandDetailed, type CECResponse } from '@/lib/cec-client'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action, outputNumbers, individual = false } = await request.json()
     

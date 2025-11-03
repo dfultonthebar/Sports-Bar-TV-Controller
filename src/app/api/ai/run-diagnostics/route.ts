@@ -4,6 +4,8 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import fs from 'fs/promises'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 interface DiagnosticCheck {
@@ -16,6 +18,11 @@ interface DiagnosticCheck {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { 
@@ -363,6 +370,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   // GET endpoint for quick health check
   try {
     const { searchParams } = new URL(request.url)

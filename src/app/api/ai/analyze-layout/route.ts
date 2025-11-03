@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 /**
@@ -57,6 +59,11 @@ interface LayoutAnalysis {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { layoutDescription, matrixOutputs, availableOutputs, imageUrl, availableInputs } = await request.json()
     

@@ -6,6 +6,8 @@ import { db } from '@/db'
 // Converted to Drizzle ORM
 import * as net from 'net'
 import { matrixConfigurations, testLogs } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // TCP connection test with timeout
 async function testTCPConnection(
@@ -71,6 +73,11 @@ async function testTCPConnection(
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const startTime = Date.now()
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

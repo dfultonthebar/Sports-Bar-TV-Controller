@@ -3,11 +3,18 @@ import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { queryAtlasHardwareConfiguration as queryAtlasHardware } from '@/lib/atlas-hardware-query'
 import { audioProcessors } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { id } = await params
     const processorId = id

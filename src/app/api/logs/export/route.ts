@@ -5,11 +5,18 @@ import type { LogAnalytics } from '@/lib/enhanced-logger'
 import type { AIAnalysisResult } from '@/lib/local-ai-analyzer'
 import { localAIAnalyzer } from '@/lib/local-ai-analyzer'
 import { parsePaginationParams, paginateArray } from '@/lib/pagination'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const hours = parseInt(searchParams.get('hours') || '24')

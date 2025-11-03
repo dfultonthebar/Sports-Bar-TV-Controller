@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cacheManager, getCacheStats, getCacheTypeStats, exportCacheState, CacheType } from '@/lib/cache-manager'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -9,6 +11,11 @@ export const dynamic = 'force-dynamic'
  * Get cache statistics and performance metrics
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get('type') as CacheType | null
@@ -64,6 +71,11 @@ export async function GET(request: NextRequest) {
  * Clear cache or update configuration
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const body = await request.json()
     const { action, type, config } = body

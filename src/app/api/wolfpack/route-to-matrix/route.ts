@@ -5,8 +5,15 @@ import { eq, and } from 'drizzle-orm'
 import { routeWolfpackToMatrix } from '@/services/wolfpackMatrixService'
 import { logger } from '@/lib/logger'
 import { upsert, create } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     logger.api.request('POST', '/api/wolfpack/route-to-matrix')
     

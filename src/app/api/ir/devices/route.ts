@@ -6,12 +6,19 @@ import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { logDatabaseOperation } from '@/lib/database-logger'
 import { irDevices, globalCachePorts, globalCacheDevices, irCommands } from '@/db/schema'
 import { findMany, create } from '@/lib/db-helpers'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * GET /api/ir/devices
  * List all IR devices
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📋 [IR DEVICES] Fetching all IR devices')
   console.log('   Timestamp:', new Date().toISOString())
@@ -75,6 +82,11 @@ export async function GET() {
  * Create a new IR device
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('➕ [IR DEVICES] Creating new IR device')
   console.log('   Timestamp:', new Date().toISOString())

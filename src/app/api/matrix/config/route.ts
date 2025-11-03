@@ -3,8 +3,15 @@ import { and, asc, desc, eq, or } from 'drizzle-orm'
 import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     // Find active configuration
     const config = await db.select()
@@ -50,6 +57,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { config, inputs, outputs } = await request.json()
 

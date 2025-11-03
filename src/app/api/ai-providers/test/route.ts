@@ -1,5 +1,7 @@
 
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 interface ServiceStatus {
   name: string
@@ -9,7 +11,12 @@ interface ServiceStatus {
   responseTime?: number
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   const services: ServiceStatus[] = []
   
   // Test local services

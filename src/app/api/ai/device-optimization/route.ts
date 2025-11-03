@@ -5,6 +5,8 @@ import { eq, desc } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
 
@@ -14,6 +16,11 @@ const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
  * Analyzes all devices and applies AI recommendations
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const { action } = await request.json()
 

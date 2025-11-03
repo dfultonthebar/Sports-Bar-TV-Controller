@@ -1,12 +1,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { reorderAllPresets } from '@/services/presetReorderService'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 /**
  * POST /api/channel-presets/reorder
  * Manually trigger preset reordering based on usage
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     await reorderAllPresets()
 

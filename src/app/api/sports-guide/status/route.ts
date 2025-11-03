@@ -6,8 +6,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   try {
     const apiKey = process.env.SPORTS_GUIDE_API_KEY;
     const userId = process.env.SPORTS_GUIDE_USER_ID;

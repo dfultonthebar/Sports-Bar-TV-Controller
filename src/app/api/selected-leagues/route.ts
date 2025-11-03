@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findMany, or, updateMany, upsert, create, update, transaction, db, count } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
 // Configure route segment to be dynamic
@@ -12,6 +14,11 @@ export const dynamic = 'force-dynamic'
  * Retrieves all selected leagues from the database
  */
 export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('GET', '/api/selected-leagues')
   
   try {
@@ -43,6 +50,11 @@ export async function GET(request: NextRequest) {
  * Body: { leagueIds: string[] }
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('POST', '/api/selected-leagues')
   
   try {
@@ -98,6 +110,11 @@ export async function POST(request: NextRequest) {
  * Clears all selected leagues
  */
 export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
   logger.api.request('DELETE', '/api/selected-leagues')
 
   try {
