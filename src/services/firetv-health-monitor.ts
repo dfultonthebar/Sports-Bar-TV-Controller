@@ -8,8 +8,10 @@
 import { connectionManager, FireTVDevice } from './firetv-connection-manager'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { getFireTVConfig, calculateBackoffDelay } from '@/config/firetv-config'
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
+const config = getFireTVConfig()
 
 export interface HealthCheckResult {
   deviceId: string
@@ -27,14 +29,12 @@ export interface HealthCheckResult {
 class FireTVHealthMonitor {
   private static instance: FireTVHealthMonitor
   private monitorInterval: NodeJS.Timeout | null = null
-  private readonly HEALTH_CHECK_INTERVAL = 60000 // Check every 60 seconds
-  private readonly MAX_RECONNECT_ATTEMPTS = 5
-  private readonly RECONNECT_BACKOFF_BASE = 2000 // Start with 2 seconds
-  private readonly RECONNECT_BACKOFF_MAX = 60000 // Max 60 seconds between attempts
-  
+
   private healthStatus: Map<string, HealthCheckResult> = new Map()
   private reconnectAttempts: Map<string, number> = new Map()
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map()
+  private downSince: Map<string, Date> = new Map() // Track when device went down
+  private alertsSent: Set<string> = new Set() // Track which devices we've alerted for
   private isMonitoring: boolean = false
 
   private constructor() {
@@ -60,7 +60,18 @@ class FireTVHealthMonitor {
       return
     }
 
+    if (!config.healthCheck.enabled) {
+      console.log('[HEALTH MONITOR] Health monitoring is disabled in configuration')
+      return
+    }
+
     console.log('[HEALTH MONITOR] Starting health monitoring...')
+    console.log(`[HEALTH MONITOR] Configuration:`)
+    console.log(`  - Check interval: ${config.healthCheck.interval / 1000}s`)
+    console.log(`  - Max reconnect attempts: ${config.reconnection.maxAttempts}`)
+    console.log(`  - Backoff strategy: ${config.reconnection.backoffStrategy}`)
+    console.log(`  - Alert threshold: ${config.alerts.downTimeThreshold / 1000}s`)
+
     this.isMonitoring = true
 
     // Initialize connection manager
@@ -72,9 +83,9 @@ class FireTVHealthMonitor {
     // Start periodic health checks
     this.monitorInterval = setInterval(async () => {
       await this.performHealthCheck()
-    }, this.HEALTH_CHECK_INTERVAL)
+    }, config.healthCheck.interval)
 
-    console.log(`[HEALTH MONITOR] Health monitoring started (interval: ${this.HEALTH_CHECK_INTERVAL / 1000}s)`)
+    console.log(`[HEALTH MONITOR] Health monitoring started`)
   }
 
   /**
@@ -103,26 +114,39 @@ class FireTVHealthMonitor {
    */
   private async performHealthCheck(): Promise<void> {
     try {
-      console.log('[HEALTH MONITOR] ========================================')
-      console.log('[HEALTH MONITOR] Performing health check...')
-      console.log('[HEALTH MONITOR] Timestamp:', new Date().toISOString())
-      
+      if (config.logging.logHealthChecks) {
+        console.log('[HEALTH MONITOR] ========================================')
+        console.log('[HEALTH MONITOR] Performing health check...')
+        console.log('[HEALTH MONITOR] Timestamp:', new Date().toISOString())
+      }
+
       const devices = await this.loadDevices()
-      
+
       if (devices.length === 0) {
-        console.log('[HEALTH MONITOR] No devices registered')
+        if (config.logging.logHealthChecks) {
+          console.log('[HEALTH MONITOR] No devices registered')
+        }
         return
       }
 
-      console.log(`[HEALTH MONITOR] Checking ${devices.length} devices`)
+      if (config.logging.logHealthChecks) {
+        console.log(`[HEALTH MONITOR] Checking ${devices.length} devices`)
+      }
 
       // Check each device
       for (const device of devices) {
         await this.checkDeviceHealth(device)
       }
 
-      console.log('[HEALTH MONITOR] Health check complete')
-      console.log('[HEALTH MONITOR] ========================================')
+      // Check for devices down longer than threshold
+      if (config.alerts.enabled) {
+        this.checkDownTimeAlerts()
+      }
+
+      if (config.logging.logHealthChecks) {
+        console.log('[HEALTH MONITOR] Health check complete')
+        console.log('[HEALTH MONITOR] ========================================')
+      }
     } catch (error) {
       console.error('[HEALTH MONITOR] Error during health check:', error)
     }
@@ -133,34 +157,43 @@ class FireTVHealthMonitor {
    */
   private async checkDeviceHealth(device: FireTVDevice): Promise<void> {
     const deviceAddress = `${device.ipAddress}:${device.port}`
-    
+
     try {
-      console.log(`[HEALTH MONITOR] Checking device: ${device.name} (${deviceAddress})`)
-      
+      if (config.logging.logHealthChecks) {
+        console.log(`[HEALTH MONITOR] Checking device: ${device.name} (${deviceAddress})`)
+      }
+
       // Get connection status from connection manager
       const connectionStatus = connectionManager.getConnectionStatus(device.id)
-      
+
       if (!connectionStatus) {
         // No connection exists - try to create one
-        console.log(`[HEALTH MONITOR] No connection found for ${device.name}, creating...`)
-        
+        if (config.logging.logHealthChecks) {
+          console.log(`[HEALTH MONITOR] No connection found for ${device.name}, creating...`)
+        }
+
         try {
           await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port)
-          
+
           // Connection created successfully
           this.updateHealthStatus(device, true)
           this.resetReconnectAttempts(device.id)
-          
+          this.clearDownTime(device.id)
+
           console.log(`[HEALTH MONITOR] ✅ ${device.name} is HEALTHY (newly connected)`)
         } catch (error: any) {
           // Connection failed
           this.updateHealthStatus(device, false, error.message)
+          this.trackDownTime(device.id)
+
           console.log(`[HEALTH MONITOR] ❌ ${device.name} is UNHEALTHY (connection failed)`)
-          
+
           // Schedule reconnection with backoff
-          this.scheduleReconnection(device)
+          if (config.reconnection.enabled) {
+            this.scheduleReconnection(device)
+          }
         }
-        
+
         return
       }
 
@@ -170,33 +203,41 @@ class FireTVHealthMonitor {
         try {
           const client = connectionStatus.client
           await client.executeShellCommand('echo healthcheck')
-          
+
           // Connection is healthy
           this.updateHealthStatus(device, true)
           this.resetReconnectAttempts(device.id)
-          
-          console.log(`[HEALTH MONITOR] ✅ ${device.name} is HEALTHY`)
+          this.clearDownTime(device.id)
+
+          if (config.logging.logHealthChecks) {
+            console.log(`[HEALTH MONITOR] ✅ ${device.name} is HEALTHY`)
+          }
         } catch (error: any) {
           // Connection appears broken
           console.log(`[HEALTH MONITOR] ❌ ${device.name} connection is broken (${error.message})`)
           this.updateHealthStatus(device, false, error.message)
-          
+          this.trackDownTime(device.id)
+
           // Schedule reconnection
-          this.scheduleReconnection(device)
+          if (config.reconnection.enabled) {
+            this.scheduleReconnection(device)
+          }
         }
       } else {
         // Connection is not in connected state
         console.log(`[HEALTH MONITOR] ⚠️ ${device.name} status: ${connectionStatus.status}`)
         this.updateHealthStatus(device, false, `Status: ${connectionStatus.status}`)
-        
+        this.trackDownTime(device.id)
+
         // Schedule reconnection if in error state
-        if (connectionStatus.status === 'error') {
+        if (connectionStatus.status === 'error' && config.reconnection.enabled) {
           this.scheduleReconnection(device)
         }
       }
     } catch (error: any) {
       console.error(`[HEALTH MONITOR] Error checking ${device.name}:`, error.message)
       this.updateHealthStatus(device, false, error.message)
+      this.trackDownTime(device.id)
     }
   }
 
@@ -205,9 +246,9 @@ class FireTVHealthMonitor {
    */
   private scheduleReconnection(device: FireTVDevice): void {
     const attempts = this.reconnectAttempts.get(device.id) || 0
-    
-    if (attempts >= this.MAX_RECONNECT_ATTEMPTS) {
-      console.log(`[HEALTH MONITOR] Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached for ${device.name}`)
+
+    if (attempts >= config.reconnection.maxAttempts) {
+      console.log(`[HEALTH MONITOR] Max reconnection attempts (${config.reconnection.maxAttempts}) reached for ${device.name}`)
       console.log(`[HEALTH MONITOR] Device ${device.name} marked as offline - will retry on next health check cycle`)
       return
     }
@@ -218,13 +259,12 @@ class FireTVHealthMonitor {
       clearTimeout(existingTimer)
     }
 
-    // Calculate backoff delay using exponential backoff
-    const backoffDelay = Math.min(
-      this.RECONNECT_BACKOFF_BASE * Math.pow(2, attempts),
-      this.RECONNECT_BACKOFF_MAX
-    )
+    // Calculate backoff delay using configured strategy
+    const backoffDelay = calculateBackoffDelay(attempts, config.reconnection)
 
-    console.log(`[HEALTH MONITOR] Scheduling reconnection for ${device.name} in ${backoffDelay / 1000}s (attempt ${attempts + 1}/${this.MAX_RECONNECT_ATTEMPTS})`)
+    if (config.logging.logReconnections) {
+      console.log(`[HEALTH MONITOR] Scheduling reconnection for ${device.name} in ${backoffDelay / 1000}s (attempt ${attempts + 1}/${config.reconnection.maxAttempts})`)
+    }
 
     // Schedule reconnection
     const timer = setTimeout(async () => {
@@ -240,24 +280,31 @@ class FireTVHealthMonitor {
    */
   private async attemptReconnection(device: FireTVDevice): Promise<void> {
     const attempts = this.reconnectAttempts.get(device.id) || 0
-    
-    console.log(`[HEALTH MONITOR] Attempting reconnection for ${device.name} (attempt ${attempts}/${this.MAX_RECONNECT_ATTEMPTS})`)
+
+    if (config.logging.logReconnections) {
+      console.log(`[HEALTH MONITOR] Attempting reconnection for ${device.name} (attempt ${attempts}/${config.reconnection.maxAttempts})`)
+    }
 
     try {
       await connectionManager.reconnect(device.id)
-      
+
       // Reconnection successful
       console.log(`[HEALTH MONITOR] ✅ Reconnection successful for ${device.name}`)
       this.updateHealthStatus(device, true)
-      this.resetReconnectAttempts(device.id)
-      
+
+      if (config.reconnection.resetOnSuccess) {
+        this.resetReconnectAttempts(device.id)
+      }
+
+      this.clearDownTime(device.id)
+
     } catch (error: any) {
       console.error(`[HEALTH MONITOR] ❌ Reconnection failed for ${device.name}:`, error.message)
       this.updateHealthStatus(device, false, error.message)
-      
+
       // Schedule another attempt if we haven't exceeded max attempts
       const currentAttempts = this.reconnectAttempts.get(device.id) || 0
-      if (currentAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+      if (currentAttempts < config.reconnection.maxAttempts) {
         this.scheduleReconnection(device)
       }
     }
@@ -331,6 +378,53 @@ class FireTVHealthMonitor {
   }
 
   /**
+   * Track when a device went down
+   */
+  private trackDownTime(deviceId: string): void {
+    if (!this.downSince.has(deviceId)) {
+      this.downSince.set(deviceId, new Date())
+      console.log(`[HEALTH MONITOR] Device ${deviceId} marked as down at ${new Date().toISOString()}`)
+    }
+  }
+
+  /**
+   * Clear down time tracking for a device
+   */
+  private clearDownTime(deviceId: string): void {
+    if (this.downSince.has(deviceId)) {
+      const downTime = Date.now() - this.downSince.get(deviceId)!.getTime()
+      console.log(`[HEALTH MONITOR] Device ${deviceId} recovered after ${Math.floor(downTime / 1000)}s downtime`)
+      this.downSince.delete(deviceId)
+      this.alertsSent.delete(deviceId)
+    }
+  }
+
+  /**
+   * Check for devices that have been down longer than threshold and alert
+   */
+  private checkDownTimeAlerts(): void {
+    const now = Date.now()
+
+    for (const [deviceId, downSince] of this.downSince.entries()) {
+      const downTime = now - downSince.getTime()
+
+      // Check if device has been down longer than threshold
+      if (downTime > config.alerts.downTimeThreshold && !this.alertsSent.has(deviceId)) {
+        const health = this.healthStatus.get(deviceId)
+        const deviceName = health?.deviceName || deviceId
+
+        console.error(`[HEALTH MONITOR] 🚨 ALERT: Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
+        console.error(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
+
+        // Mark alert as sent
+        this.alertsSent.add(deviceId)
+
+        // In the future, this could send notifications via email, Slack, etc.
+      }
+    }
+  }
+
+  /**
    * Get monitoring statistics
    */
   public getStatistics(): {
@@ -338,15 +432,17 @@ class FireTVHealthMonitor {
     healthyDevices: number
     unhealthyDevices: number
     reconnectingDevices: number
+    devicesDown: number
     isMonitoring: boolean
   } {
     const statuses = Array.from(this.healthStatus.values())
-    
+
     return {
       totalDevices: statuses.length,
       healthyDevices: statuses.filter(s => s.isHealthy).length,
       unhealthyDevices: statuses.filter(s => !s.isHealthy).length,
       reconnectingDevices: statuses.filter(s => s.reconnectAttempts > 0).length,
+      devicesDown: this.downSince.size,
       isMonitoring: this.isMonitoring
     }
   }
@@ -357,12 +453,12 @@ export const healthMonitor = FireTVHealthMonitor.getInstance()
 
 // Auto-start monitoring when module is loaded (in server environment)
 if (typeof window === 'undefined') {
-  // We're on the server - start monitoring after a short delay
+  // We're on the server - start monitoring after configured delay
   setTimeout(() => {
     healthMonitor.start().catch(error => {
       console.error('[HEALTH MONITOR] Failed to start:', error)
     })
-  }, 5000) // Wait 5 seconds after server starts
+  }, config.healthCheck.startupDelay)
 }
 
 // Cleanup on process termination

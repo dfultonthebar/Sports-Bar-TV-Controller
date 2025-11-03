@@ -254,3 +254,144 @@ export const getRecommendedMethod = (brand: string): 'CEC' | 'IR' | 'HYBRID' => 
   const config = getBrandConfig(brand)
   return config.preferredControlMethod
 }
+
+// OSD Name to Brand Mapping (CEC opcode 0x46 responses)
+export interface OSDNameMapping {
+  osdPatterns: RegExp[]
+  brand: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export const OSD_NAME_MAPPINGS: OSDNameMapping[] = [
+  // Sony - BRAVIA branding
+  { osdPatterns: [/^BRAVIA/i, /^Sony\s+BRAVIA/i, /^KD-\d+/i, /^XBR-/i], brand: 'Sony', confidence: 'high' },
+
+  // Samsung - Various model patterns
+  { osdPatterns: [/^SAMSUNG/i, /^Samsung\s+/i, /^UN\d+/i, /^QN\d+/i, /^The\s+Frame/i, /^The\s+Serif/i], brand: 'Samsung', confidence: 'high' },
+
+  // LG - WebOS and model patterns
+  { osdPatterns: [/^LG\s+/i, /^\[LG\]/i, /^OLED\d+/i, /^webOS\s+TV/i, /^\d+LG/i], brand: 'LG', confidence: 'high' },
+
+  // TCL - Roku TV branding
+  { osdPatterns: [/^TCL/i, /^TCL\s+Roku/i, /^\d+S\d+/i], brand: 'TCL', confidence: 'high' },
+
+  // Vizio - SmartCast branding
+  { osdPatterns: [/^VIZIO/i, /^SmartCast/i, /^[DEPV]\d+-/i], brand: 'Vizio', confidence: 'high' },
+
+  // Sharp - Aquos branding
+  { osdPatterns: [/^Sharp/i, /^AQUOS/i, /^LC-\d+/i], brand: 'Sharp', confidence: 'high' },
+
+  // Panasonic - VIERA branding
+  { osdPatterns: [/^Panasonic/i, /^VIERA/i, /^TX-\d+/i, /^TH-\d+/i], brand: 'Panasonic', confidence: 'high' },
+
+  // Philips - Android TV branding
+  { osdPatterns: [/^Philips/i, /^PHL\s+/i, /^\d+PFL/i], brand: 'Philips', confidence: 'high' },
+
+  // Toshiba - Fire TV branding
+  { osdPatterns: [/^Toshiba/i, /^REGZA/i, /^\d+LF\d+/i], brand: 'Toshiba', confidence: 'high' },
+
+  // Hisense
+  { osdPatterns: [/^Hisense/i, /^\d+H\d+/i], brand: 'Hisense', confidence: 'high' },
+
+  // Insignia - Best Buy house brand
+  { osdPatterns: [/^Insignia/i, /^NS-\d+/i], brand: 'Insignia', confidence: 'high' },
+
+  // Element
+  { osdPatterns: [/^Element/i, /^ELEFW\d+/i], brand: 'Element', confidence: 'high' },
+
+  // Westinghouse
+  { osdPatterns: [/^Westinghouse/i, /^WD\d+/i], brand: 'Westinghouse', confidence: 'high' },
+]
+
+export interface BrandDetectionResult {
+  brand: string
+  confidence: 'high' | 'medium' | 'low'
+  osdName: string
+  config: BrandTiming
+}
+
+/**
+ * Detect TV brand from CEC OSD name
+ */
+export const detectBrandFromOSD = (osdName: string): BrandDetectionResult | null => {
+  if (!osdName || osdName.trim() === '') {
+    return null
+  }
+
+  const trimmedOSD = osdName.trim()
+
+  // Try to match against known OSD patterns
+  for (const mapping of OSD_NAME_MAPPINGS) {
+    for (const pattern of mapping.osdPatterns) {
+      if (pattern.test(trimmedOSD)) {
+        return {
+          brand: mapping.brand,
+          confidence: mapping.confidence,
+          osdName: trimmedOSD,
+          config: getBrandConfig(mapping.brand),
+        }
+      }
+    }
+  }
+
+  // If no match found, return Generic with low confidence
+  return {
+    brand: 'Generic',
+    confidence: 'low',
+    osdName: trimmedOSD,
+    config: getBrandConfig('Generic'),
+  }
+}
+
+/**
+ * Cache for detected brands (keyed by CEC address)
+ */
+interface BrandCache {
+  [cecAddress: string]: {
+    detection: BrandDetectionResult
+    detectedAt: Date
+    expiresAt: Date
+  }
+}
+
+const brandCache: BrandCache = {}
+const CACHE_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+/**
+ * Get cached brand detection or null if expired/not found
+ */
+export const getCachedBrandDetection = (cecAddress: string): BrandDetectionResult | null => {
+  const cached = brandCache[cecAddress]
+  if (!cached) {
+    return null
+  }
+
+  if (new Date() > cached.expiresAt) {
+    delete brandCache[cecAddress]
+    return null
+  }
+
+  return cached.detection
+}
+
+/**
+ * Cache a brand detection result
+ */
+export const cacheBrandDetection = (cecAddress: string, detection: BrandDetectionResult): void => {
+  brandCache[cecAddress] = {
+    detection,
+    detectedAt: new Date(),
+    expiresAt: new Date(Date.now() + CACHE_DURATION_MS),
+  }
+}
+
+/**
+ * Clear brand detection cache for a specific address or all
+ */
+export const clearBrandCache = (cecAddress?: string): void => {
+  if (cecAddress) {
+    delete brandCache[cecAddress]
+  } else {
+    Object.keys(brandCache).forEach(key => delete brandCache[key])
+  }
+}

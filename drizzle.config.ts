@@ -6,6 +6,7 @@ export default {
   out: './drizzle',
   dialect: 'sqlite',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'file:./prisma/data/sports_bar.db'
+    // Production database is at /home/ubuntu/sports-bar-data/production.db
+    url: process.env.DATABASE_URL || 'file:/home/ubuntu/sports-bar-data/production.db'
   }
 } satisfies Config

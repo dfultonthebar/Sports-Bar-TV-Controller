@@ -18,7 +18,8 @@ import {
   Pause,
   Volume2,
   Power,
-  Settings
+  Settings,
+  TestTube
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -205,6 +206,15 @@ export default function SystemHealthPage() {
                 />
                 <span>Auto-refresh</span>
               </label>
+
+              <Link
+                href="/admin/tests"
+                className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors text-white text-sm font-medium"
+                title="Run Integration Tests"
+              >
+                <TestTube className="w-4 h-4" />
+                <span>Run Tests</span>
+              </Link>
 
               <button
                 onClick={loadHealthReport}

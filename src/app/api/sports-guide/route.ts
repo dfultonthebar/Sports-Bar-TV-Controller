@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi, SportsGuideApiError } from '@/lib/sportsGuideApi'
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -60,10 +61,20 @@ function logDebug(message: string, data?: any) {
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7)
   const requestStart = Date.now()
-  
+
   logInfo(`========== NEW SPORTS GUIDE REQUEST [${requestId}] ==========`)
   logInfo(`Request received at ${new Date().toISOString()}`)
-  
+
+  // Apply rate limiting (20 requests per minute for sports endpoints)
+  const rateLimitCheck = await withRateLimit(request, 'SPORTS')
+
+  if (!rateLimitCheck.allowed) {
+    logInfo(`Rate limit exceeded for request [${requestId}]`)
+    return rateLimitCheck.response!
+  }
+
+  logInfo(`Rate limit check passed: ${rateLimitCheck.result.remaining} requests remaining`)
+
   try {
     // Parse request body (optional)
     let body: any = {}
@@ -194,7 +205,9 @@ export async function POST(request: NextRequest) {
       totalListings: response.summary.totalListings
     })
 
-    return NextResponse.json(response)
+    // Add rate limit headers to response
+    const jsonResponse = NextResponse.json(response)
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
 
   } catch (error) {
     const requestDuration = Date.now() - requestStart

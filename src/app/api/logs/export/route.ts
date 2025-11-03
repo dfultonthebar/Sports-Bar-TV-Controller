@@ -4,6 +4,7 @@ import { enhancedLogger } from '@/lib/enhanced-logger'
 import type { LogAnalytics } from '@/lib/enhanced-logger'
 import type { AIAnalysisResult } from '@/lib/local-ai-analyzer'
 import { localAIAnalyzer } from '@/lib/local-ai-analyzer'
+import { parsePaginationParams, paginateArray } from '@/lib/pagination'
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
@@ -15,12 +16,15 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category') || undefined
     const level = searchParams.get('level') || undefined
     const format = searchParams.get('format') || 'json'
-    const maxEntries = parseInt(searchParams.get('maxEntries') || '1000')
     const includeAnalytics = searchParams.get('includeAnalytics') === 'true'
     const includeAIInsights = searchParams.get('includeAIInsights') === 'true'
     const search = searchParams.get('search') || ''
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
+
+    // Parse pagination parameters
+    const paginationParams = parsePaginationParams(searchParams)
+    const { page, limit } = paginationParams
 
     // Get logs based on filters
     let logs = await enhancedLogger.getRecentLogs(
@@ -32,7 +36,7 @@ export async function GET(request: NextRequest) {
     // Apply search filter
     if (search) {
       const searchLower = search.toLowerCase()
-      logs = logs.filter(log => 
+      logs = logs.filter(log =>
         log.message.toLowerCase().includes(searchLower) ||
         log.action.toLowerCase().includes(searchLower) ||
         log.source.toLowerCase().includes(searchLower) ||
@@ -48,8 +52,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Limit results
-    const exportLogs = logs.slice(0, maxEntries)
+    // Apply pagination
+    const paginatedResult = paginateArray(logs, page, limit)
+    const exportLogs = paginatedResult.data
 
     // Generate analytics if requested
     let analytics: LogAnalytics | null = null
@@ -92,7 +97,6 @@ export async function GET(request: NextRequest) {
         hoursIncluded: hours,
         totalEntries: exportLogs.length,
         totalAvailable: logs.length,
-        maxEntries,
         search,
         format,
         systemVersion: process.env.npm_package_version || '1.0.0',
@@ -104,6 +108,7 @@ export async function GET(request: NextRequest) {
           includeAIInsights
         }
       },
+      pagination: paginatedResult.pagination,
       ...(analytics && { analytics }),
       ...(aiInsights && { aiInsights }),
       logs: exportLogs
@@ -144,15 +149,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       filename,
       content,
+      pagination: paginatedResult.pagination,
       summary: {
         totalLogs: exportLogs.length,
         totalAvailable: logs.length,
         exportTime: new Date().toISOString(),
         format,
         ...(analytics && { errorRate: analytics.errorRate }),
-        ...(aiInsights && !('error' in aiInsights) && { 
+        ...(aiInsights && !('error' in aiInsights) && {
           aiSeverity: aiInsights.severity,
-          aiConfidence: aiInsights.confidence 
+          aiConfidence: aiInsights.confidence
         })
       }
     })

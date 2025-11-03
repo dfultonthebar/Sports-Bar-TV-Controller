@@ -8,8 +8,10 @@
 import { ADBClient } from '@/lib/firecube/adb-client'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { getFireTVConfig } from '@/config/firetv-config'
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
+const config = getFireTVConfig()
 
 export interface FireTVDevice {
   id: string
@@ -39,6 +41,16 @@ export interface ConnectionInfo {
   connectionAttempts: number
   lastError?: string
   status: 'connected' | 'connecting' | 'disconnected' | 'error'
+  commandQueue: QueuedCommand[]
+}
+
+export interface QueuedCommand {
+  id: string
+  command: () => Promise<any>
+  resolve: (value: any) => void
+  reject: (error: any) => void
+  timestamp: Date
+  retries: number
 }
 
 /**
@@ -47,11 +59,10 @@ export interface ConnectionInfo {
 class FireTVConnectionManager {
   private static instance: FireTVConnectionManager
   private connections: Map<string, ConnectionInfo> = new Map()
-  private readonly CONNECTION_TIMEOUT = 30 * 60 * 1000 // 30 minutes
-  private readonly KEEP_ALIVE_INTERVAL = 30000 // 30 seconds
-  private readonly CONNECTION_TIMEOUT_CHECK_INTERVAL = 60000 // Check every minute
   private cleanupInterval: NodeJS.Timeout | null = null
   private initialized: boolean = false
+  private readonly MAX_QUEUED_COMMANDS = 50 // Max commands to queue per device
+  private readonly COMMAND_QUEUE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
 
   private constructor() {
     console.log('[CONNECTION MANAGER] Initializing Fire TV Connection Manager')
@@ -117,10 +128,10 @@ class FireTVConnectionManager {
 
     // Create new connection
     console.log(`[CONNECTION MANAGER] Creating new connection for ${deviceAddress}`)
-    
+
     const client = new ADBClient(ipAddress, port, {
-      keepAliveInterval: this.KEEP_ALIVE_INTERVAL,
-      connectionTimeout: 5000
+      keepAliveInterval: config.connection.keepAliveInterval,
+      connectionTimeout: config.connection.connectionTimeout
     })
 
     // Store connection info
@@ -130,7 +141,8 @@ class FireTVConnectionManager {
       client,
       lastActivity: new Date(),
       connectionAttempts: 0,
-      status: 'connecting'
+      status: 'connecting',
+      commandQueue: []
     }
 
     this.connections.set(deviceId, connectionInfo)
@@ -143,10 +155,15 @@ class FireTVConnectionManager {
         connectionInfo.status = 'connected'
         connectionInfo.connectionAttempts = 0
         console.log(`[CONNECTION MANAGER] Successfully connected to ${deviceAddress}`)
-        
+
         // Update device status in database
         await this.updateDeviceStatus(deviceId, true)
-        
+
+        // Process any queued commands
+        this.processQueuedCommands(deviceId).catch(error => {
+          console.error(`[CONNECTION MANAGER] Error processing queued commands:`, error)
+        })
+
         return client
       } else {
         connectionInfo.status = 'error'
@@ -245,13 +262,119 @@ class FireTVConnectionManager {
   }
 
   /**
+   * Execute a command with automatic queueing during disconnection
+   */
+  public async executeCommand<T>(
+    deviceId: string,
+    command: () => Promise<T>,
+    options: { allowQueue?: boolean } = {}
+  ): Promise<T> {
+    const connection = this.connections.get(deviceId)
+
+    if (!connection) {
+      throw new Error(`No connection found for device ${deviceId}`)
+    }
+
+    // If connected, execute immediately
+    if (connection.status === 'connected') {
+      try {
+        const result = await command()
+        connection.lastActivity = new Date()
+        return result
+      } catch (error) {
+        // Connection may have broken - mark as error
+        connection.status = 'error'
+        throw error
+      }
+    }
+
+    // If not connected and queueing is disabled, throw error
+    if (!options.allowQueue) {
+      throw new Error(`Device ${deviceId} is not connected (status: ${connection.status})`)
+    }
+
+    // Queue the command
+    return new Promise<T>((resolve, reject) => {
+      // Check queue size
+      if (connection.commandQueue.length >= this.MAX_QUEUED_COMMANDS) {
+        reject(new Error('Command queue is full'))
+        return
+      }
+
+      const queuedCommand: QueuedCommand = {
+        id: `cmd_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        command: command as () => Promise<any>,
+        resolve,
+        reject,
+        timestamp: new Date(),
+        retries: 0
+      }
+
+      connection.commandQueue.push(queuedCommand)
+      console.log(`[CONNECTION MANAGER] Command queued for ${connection.deviceAddress} (${connection.commandQueue.length} in queue)`)
+
+      // Set timeout for queued command
+      setTimeout(() => {
+        const index = connection.commandQueue.findIndex(c => c.id === queuedCommand.id)
+        if (index !== -1) {
+          connection.commandQueue.splice(index, 1)
+          reject(new Error('Command timeout - device did not reconnect in time'))
+        }
+      }, this.COMMAND_QUEUE_TIMEOUT)
+    })
+  }
+
+  /**
+   * Process queued commands for a device (called after reconnection)
+   */
+  private async processQueuedCommands(deviceId: string): Promise<void> {
+    const connection = this.connections.get(deviceId)
+
+    if (!connection || connection.status !== 'connected') {
+      return
+    }
+
+    const queue = connection.commandQueue
+    if (queue.length === 0) {
+      return
+    }
+
+    console.log(`[CONNECTION MANAGER] Processing ${queue.length} queued commands for ${connection.deviceAddress}`)
+
+    // Process commands one by one
+    while (queue.length > 0) {
+      const queuedCommand = queue.shift()!
+
+      try {
+        const result = await queuedCommand.command()
+        queuedCommand.resolve(result)
+        console.log(`[CONNECTION MANAGER] Queued command executed successfully`)
+      } catch (error: any) {
+        console.error(`[CONNECTION MANAGER] Queued command failed:`, error.message)
+        queuedCommand.reject(error)
+
+        // If connection broke while processing queue, stop
+        if (connection.status !== 'connected') {
+          console.log(`[CONNECTION MANAGER] Connection lost while processing queue, stopping`)
+          break
+        }
+      }
+
+      // Small delay between commands
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    console.log(`[CONNECTION MANAGER] Finished processing queued commands`)
+  }
+
+  /**
    * Start cleanup timer to remove stale connections
    */
   private startCleanupTimer(): void {
     this.cleanupInterval = setInterval(() => {
       this.cleanupStaleConnections()
-    }, this.CONNECTION_TIMEOUT_CHECK_INTERVAL)
-    
+    }, config.lifecycle.cleanupInterval)
+
     console.log('[CONNECTION MANAGER] Cleanup timer started')
   }
 
@@ -264,8 +387,8 @@ class FireTVConnectionManager {
 
     for (const [deviceId, connection] of this.connections.entries()) {
       const inactiveTime = now.getTime() - connection.lastActivity.getTime()
-      
-      if (inactiveTime > this.CONNECTION_TIMEOUT) {
+
+      if (inactiveTime > config.lifecycle.inactivityTimeout) {
         console.log(`[CONNECTION MANAGER] Connection ${connection.deviceAddress} inactive for ${Math.floor(inactiveTime / 1000 / 60)} minutes`)
         staleConnections.push(deviceId)
       }
@@ -273,6 +396,15 @@ class FireTVConnectionManager {
 
     // Cleanup stale connections
     for (const deviceId of staleConnections) {
+      // Reject any queued commands first
+      const connection = this.connections.get(deviceId)
+      if (connection) {
+        for (const cmd of connection.commandQueue) {
+          cmd.reject(new Error('Connection closed due to inactivity'))
+        }
+        connection.commandQueue = []
+      }
+
       await this.disconnect(deviceId)
     }
 

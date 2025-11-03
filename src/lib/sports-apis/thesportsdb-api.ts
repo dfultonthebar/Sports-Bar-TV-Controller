@@ -3,7 +3,11 @@
  * The Sports DB API Integration Service
  * Free access to sports data without API keys
  * Documentation: https://www.thesportsdb.com/api.php
+ *
+ * Updated with request throttling and rate limiting
  */
+
+import { sportsDBThrottler } from '@/lib/rate-limiting/request-throttler'
 
 export interface SportsDBTeam {
   idTeam: string
@@ -136,27 +140,29 @@ class SportsDBAPIService {
   private readonly timeout = 10000
 
   /**
-   * Fetch with timeout and error handling
+   * Fetch with timeout, error handling, and request throttling
    */
   private async fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    return sportsDBThrottler.execute(async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Sports-Bar-AI-Assistant/1.0',
-          ...options?.headers,
-        }
-      })
-      clearTimeout(timeoutId)
-      return response
-    } catch (error) {
-      clearTimeout(timeoutId)
-      throw error
-    }
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Sports-Bar-AI-Assistant/1.0',
+            ...options?.headers,
+          }
+        })
+        clearTimeout(timeoutId)
+        return response
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    }, 'sportsdb-api')
   }
 
   /**
@@ -330,15 +336,21 @@ class SportsDBAPIService {
             allEvents.push({ league, events })
           }
         })
-        
-        // Rate limiting - small delay between requests
-        await new Promise(resolve => setTimeout(resolve, 200))
+
+        // No manual delay needed - throttler handles this
       } catch (error) {
         console.error(`Error fetching soccer events for date ${date}:`, error)
       }
     }
 
     return allEvents
+  }
+
+  /**
+   * Get throttler metrics for monitoring
+   */
+  getMetrics() {
+    return sportsDBThrottler.getMetrics('sportsdb-api')
   }
 }
 

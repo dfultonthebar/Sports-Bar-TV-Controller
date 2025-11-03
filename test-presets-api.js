@@ -1,6 +1,7 @@
 // Quick test to verify channel presets are accessible
 const sqlite3 = require('sqlite3');
-const db = new sqlite3.Database('./prisma/data/sports_bar.db');
+// Production database is at /home/ubuntu/sports-bar-data/production.db
+const db = new sqlite3.Database(process.env.DATABASE_URL?.replace('file:', '') || '/home/ubuntu/sports-bar-data/production.db');
 
 console.log('Testing Channel Presets API Data...\n');
 

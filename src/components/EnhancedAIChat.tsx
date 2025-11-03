@@ -39,7 +39,10 @@ export default function EnhancedAIChat() {
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('chat')
+  const [streamingEnabled, setStreamingEnabled] = useState(true)
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Script Generation State
   const [scriptRequest, setScriptRequest] = useState<ScriptRequest>({
@@ -92,23 +95,107 @@ export default function EnhancedAIChat() {
     }
 
     setMessages(prev => [...prev, userMessage])
+    const userInputText = inputText
     setInputText('')
     setIsLoading(true)
+    setCurrentStreamingMessage('')
+
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController()
 
     try {
-      const response = await fetch('/api/enhanced-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: inputText,
-          sessionId: sessionId,
-          chatType: 'general'
-        }),
-      })
+      if (streamingEnabled) {
+        // Streaming mode
+        const response = await fetch('/api/ai/enhanced-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userInputText,
+            stream: true,
+            useKnowledge: true,
+            useCodebase: true
+          }),
+          signal: abortControllerRef.current.signal
+        })
 
-      if (response.ok) {
+        if (!response.ok) {
+          if (response.status === 429) {
+            const errorData = await response.json()
+            throw new Error(`Rate limit exceeded. ${errorData.message || 'Please try again later.'}`)
+          }
+          throw new Error('Failed to get response')
+        }
+
+        // Read streaming response
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('No response body')
+        }
+
+        const decoder = new TextDecoder()
+        let streamedText = ''
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+
+                if (data.type === 'token') {
+                  streamedText += data.content
+                  setCurrentStreamingMessage(streamedText)
+                } else if (data.type === 'done') {
+                  // Finalize the message
+                  const aiResponse: Message = {
+                    id: messages.length + 2,
+                    text: streamedText,
+                    sender: 'ai',
+                    timestamp: new Date(),
+                    type: 'general'
+                  }
+                  setMessages(prev => [...prev, aiResponse])
+                  setCurrentStreamingMessage('')
+                } else if (data.type === 'error') {
+                  throw new Error(data.error)
+                }
+              } catch (e) {
+                console.error('Error parsing SSE:', e)
+              }
+            }
+          }
+        }
+      } else {
+        // Non-streaming mode
+        const response = await fetch('/api/ai/enhanced-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userInputText,
+            stream: false,
+            useKnowledge: true,
+            useCodebase: true
+          }),
+          signal: abortControllerRef.current.signal
+        })
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            const errorData = await response.json()
+            throw new Error(`Rate limit exceeded. ${errorData.message || 'Please try again later.'}`)
+          }
+          throw new Error('Failed to get response')
+        }
+
         const data = await response.json()
-        
+
         const aiResponse: Message = {
           id: messages.length + 2,
           text: data.response,
@@ -118,25 +205,38 @@ export default function EnhancedAIChat() {
         }
 
         setMessages(prev => [...prev, aiResponse])
-        
+
         if (data.sessionId) {
           setSessionId(data.sessionId)
         }
-      } else {
-        throw new Error('Failed to get response')
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Request cancelled')
+        return
+      }
+
       console.error('Chat error:', error)
       const errorMessage: Message = {
         id: messages.length + 2,
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: `Sorry, I encountered an error: ${error.message || 'Please try again.'}`,
         sender: 'ai',
         timestamp: new Date(),
         type: 'general'
       }
       setMessages(prev => [...prev, errorMessage])
+      setCurrentStreamingMessage('')
     } finally {
       setIsLoading(false)
+      abortControllerRef.current = null
+    }
+  }
+
+  const cancelRequest = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setIsLoading(false)
+      setCurrentStreamingMessage('')
     }
   }
 
@@ -269,6 +369,23 @@ export default function EnhancedAIChat() {
         <TabsContent value="chat" className="space-y-4">
           <Card>
             <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Streaming Mode:</label>
+                  <Button
+                    variant={streamingEnabled ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStreamingEnabled(!streamingEnabled)}
+                    disabled={isLoading}
+                  >
+                    {streamingEnabled ? 'ON' : 'OFF'}
+                  </Button>
+                  <span className="text-xs text-gray-500">
+                    {streamingEnabled ? 'Responses stream in real-time' : 'Wait for complete responses'}
+                  </span>
+                </div>
+              </div>
+
               <div className="h-96 overflow-y-auto mb-4 space-y-4 border rounded p-4 bg-slate-800 or bg-slate-900">
                 {messages.map((message) => (
                   <div
@@ -284,7 +401,7 @@ export default function EnhancedAIChat() {
                     >
                       <div className="flex items-center gap-2 mb-1">
                         {message.type && (
-                          <Badge variant={message.type === 'script' ? 'destructive' : 
+                          <Badge variant={message.type === 'script' ? 'destructive' :
                                         message.type === 'feature' ? 'secondary' : 'default'}>
                             {message.type}
                           </Badge>
@@ -308,8 +425,20 @@ export default function EnhancedAIChat() {
                     </div>
                   </div>
                 ))}
-                
-                {isLoading && (
+
+                {currentStreamingMessage && (
+                  <div className="flex justify-start">
+                    <div className="bg-slate-800 or bg-slate-900 text-slate-100 px-4 py-2 rounded-lg border">
+                      <p className="text-sm whitespace-pre-wrap">{currentStreamingMessage}</p>
+                      <div className="mt-2 flex items-center space-x-2">
+                        <div className="animate-pulse h-2 w-2 bg-blue-600 rounded-full"></div>
+                        <span className="text-xs opacity-70">Streaming...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isLoading && !currentStreamingMessage && (
                   <div className="flex justify-start">
                     <div className="bg-slate-800 or bg-slate-900 text-slate-100 px-4 py-2 rounded-lg border">
                       <div className="flex items-center space-x-2">
@@ -319,10 +448,10 @@ export default function EnhancedAIChat() {
                     </div>
                   </div>
                 )}
-                
+
                 <div ref={messagesEndRef} />
               </div>
-              
+
               <div className="flex space-x-2">
                 <Textarea
                   value={inputText}
@@ -332,13 +461,23 @@ export default function EnhancedAIChat() {
                   className="flex-1 min-h-[80px]"
                   disabled={isLoading}
                 />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputText.trim()}
-                  className="h-[80px]"
-                >
-                  Send
-                </Button>
+                {isLoading ? (
+                  <Button
+                    onClick={cancelRequest}
+                    variant="destructive"
+                    className="h-[80px]"
+                  >
+                    Cancel
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={!inputText.trim()}
+                    className="h-[80px]"
+                  >
+                    Send
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

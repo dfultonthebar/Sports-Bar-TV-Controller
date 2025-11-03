@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { buildEnhancedContext } from '@/lib/ai-knowledge-enhanced';
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware';
+import { ollamaThrottler } from '@/lib/rate-limiting/request-throttler';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
@@ -9,36 +11,44 @@ export const maxDuration = 120; // 120 seconds
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (5 requests per minute for AI endpoints)
+  const rateLimitCheck = await withRateLimit(request, 'AI');
+
+  if (!rateLimitCheck.allowed) {
+    return rateLimitCheck.response!;
+  }
+
   try {
     const body = await request.json();
-    const { 
-      message, 
-      model = 'llama3.2:3b', 
+    const {
+      message,
+      model = 'llama3.2:3b',
       useKnowledge = true,
       useCodebase = true,
       stream = true
     } = body;
-    
+
     if (!message) {
       return NextResponse.json(
         { error: 'Message is required' },
         { status: 400 }
       );
     }
-    
+
     // If streaming is requested, use streaming response
     if (stream) {
-      return handleStreamingResponse(message, model, useKnowledge, useCodebase);
+      return handleStreamingResponse(message, model, useKnowledge, useCodebase, rateLimitCheck.result);
     }
-    
+
     // Otherwise, use non-streaming response (for backward compatibility)
-    return handleNonStreamingResponse(message, model, useKnowledge, useCodebase);
-    
+    const response = await handleNonStreamingResponse(message, model, useKnowledge, useCodebase);
+    return addRateLimitHeaders(response, rateLimitCheck.result);
+
   } catch (error) {
     console.error('Error in enhanced chat:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to process chat request';
     return NextResponse.json(
-      { 
+      {
         error: errorMessage,
         details: error instanceof Error ? error.stack : undefined
       },
@@ -51,27 +61,28 @@ async function handleStreamingResponse(
   message: string,
   model: string,
   useKnowledge: boolean,
-  useCodebase: boolean
+  useCodebase: boolean,
+  rateLimitResult: any
 ) {
   const encoder = new TextEncoder();
-  
+
   // Create a TransformStream for streaming
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
-  
+
   // Start processing in background
   (async () => {
     try {
       let fullPrompt = message;
       let usedContext = false;
       let contextError: string | null = null;
-      
+
       // Send initial status
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
-        type: 'status', 
-        message: 'Building context...' 
+      await writer.write(encoder.encode(`data: ${JSON.stringify({
+        type: 'status',
+        message: 'Building context...'
       })}\n\n`));
-      
+
       // Add enhanced context (documentation + codebase) if enabled
       if (useKnowledge || useCodebase) {
         try {
@@ -80,7 +91,7 @@ async function handleStreamingResponse(
             useCodebase,
             useKnowledge
           );
-          
+
           if (context) {
             fullPrompt = context + '\nUser Question: ' + message;
             usedContext = true;
@@ -91,67 +102,74 @@ async function handleStreamingResponse(
           // Continue without context rather than failing completely
         }
       }
-      
+
       // Send context status
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
-        type: 'context', 
+      await writer.write(encoder.encode(`data: ${JSON.stringify({
+        type: 'context',
         usedContext,
-        contextError 
+        contextError
       })}\n\n`));
-      
+
       // Send generating status
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
-        type: 'status', 
-        message: 'Generating response...' 
+      await writer.write(encoder.encode(`data: ${JSON.stringify({
+        type: 'status',
+        message: 'Generating response...'
       })}\n\n`));
-      
-      // Call Ollama API with streaming
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+
+      // Call Ollama API with streaming through throttler
+      const response = await ollamaThrottler.execute(
+        async () => {
+          const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              prompt: fullPrompt,
+              stream: true
+            })
+          });
+
+          if (!res.ok) {
+            throw new Error(`Ollama API error: ${res.statusText}`);
+          }
+
+          return res;
         },
-        body: JSON.stringify({
-          model,
-          prompt: fullPrompt,
-          stream: true
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.statusText}`);
-      }
-      
+        'ollama-streaming'
+      );
+
       // Stream the response
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('No response body');
       }
-      
+
       const decoder = new TextDecoder();
       let buffer = '';
-      
+
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
-        
+
         for (const line of lines) {
           if (line.trim()) {
             try {
               const data = JSON.parse(line);
               if (data.response) {
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ 
-                  type: 'token', 
-                  content: data.response 
+                await writer.write(encoder.encode(`data: ${JSON.stringify({
+                  type: 'token',
+                  content: data.response
                 })}\n\n`));
               }
               if (data.done) {
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+                await writer.write(encoder.encode(`data: ${JSON.stringify({
                   type: 'done',
                   model: data.model,
                   usedContext,
@@ -166,24 +184,32 @@ async function handleStreamingResponse(
           }
         }
       }
-      
+
     } catch (error) {
       console.error('Streaming error:', error);
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ 
-        type: 'error', 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      await writer.write(encoder.encode(`data: ${JSON.stringify({
+        type: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
       })}\n\n`));
     } finally {
-      await writer.close();
+      try {
+        await writer.close();
+      } catch (e) {
+        // Writer may already be closed
+        console.error('Error closing writer:', e);
+      }
     }
   })();
-  
-  // Return streaming response with proper headers
+
+  // Return streaming response with proper headers including rate limit info
   return new Response(stream.readable, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+      'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+      'X-RateLimit-Reset': rateLimitResult.resetTime.toString(),
     },
   });
 }
@@ -218,34 +244,44 @@ async function handleNonStreamingResponse(
     }
   }
   
-  // Call Ollama API with extended timeout
+  // Call Ollama API with extended timeout through throttler
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
-    
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const data = await ollamaThrottler.execute(
+      async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
+
+        try {
+          const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              prompt: fullPrompt,
+              stream: false
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Ollama API error:', response.status, errorText);
+            throw new Error(`Ollama API error: ${response.statusText}`);
+          }
+
+          return await response.json();
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
+        }
       },
-      body: JSON.stringify({
-        model,
-        prompt: fullPrompt,
-        stream: false
-      }),
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Ollama API error:', response.status, errorText);
-      throw new Error(`Ollama API error: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
+      'ollama-non-streaming'
+    );
+
     return NextResponse.json({
       response: data.response,
       model: data.model,

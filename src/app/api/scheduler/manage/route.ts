@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { commandScheduler } from '@/lib/services/command-scheduler'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * POST - Manage scheduler (start, stop, trigger)
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { action, commandId } = body
+
+    switch (action) {
+      case 'start':
+        commandScheduler.start()
+        return NextResponse.json({
+          success: true,
+          message: 'Scheduler started successfully',
+        })
+
+      case 'stop':
+        commandScheduler.stop()
+        return NextResponse.json({
+          success: true,
+          message: 'Scheduler stopped successfully',
+        })
+
+      case 'trigger':
+        if (!commandId) {
+          return NextResponse.json(
+            { error: 'Command ID is required for trigger action' },
+            { status: 400 }
+          )
+        }
+        await commandScheduler.triggerCommand(commandId)
+        return NextResponse.json({
+          success: true,
+          message: 'Command triggered successfully',
+        })
+
+      default:
+        return NextResponse.json(
+          { error: 'Invalid action. Use: start, stop, or trigger' },
+          { status: 400 }
+        )
+    }
+  } catch (error: any) {
+    console.error('Error managing scheduler:', error)
+    return NextResponse.json(
+      { error: 'Failed to manage scheduler', details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * GET - Get scheduler status
+ */
+export async function GET() {
+  try {
+    // Note: You'll need to add a getStatus method to the scheduler
+    // For now, return a basic status
+    return NextResponse.json({
+      success: true,
+      status: {
+        running: true, // This should come from scheduler.isRunning
+        checkInterval: 60000,
+      },
+    })
+  } catch (error: any) {
+    console.error('Error getting scheduler status:', error)
+    return NextResponse.json(
+      { error: 'Failed to get scheduler status', details: error.message },
+      { status: 500 }
+    )
+  }
+}

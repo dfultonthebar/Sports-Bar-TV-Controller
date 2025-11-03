@@ -10,6 +10,7 @@ import { create } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import fs from 'fs/promises';
 import path from 'path';
+import { parsePaginationParams, paginateArray } from '@/lib/pagination';
 
 // System error logger
 async function logSystemError(error: any, context: string) {
@@ -65,18 +66,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Parse pagination parameters
+    const paginationParams = parsePaginationParams(searchParams);
+    const { page, limit } = paginationParams;
+
     // Search Q&As
     if (query) {
       try {
         const results = await searchQAEntries(query);
         // Ensure results is always an array
         const safeResults = Array.isArray(results) ? results : [];
-        return NextResponse.json(safeResults);
+
+        // Apply pagination to search results
+        const paginatedResults = paginateArray(safeResults, page, limit);
+
+        return NextResponse.json({
+          data: paginatedResults.data,
+          pagination: paginatedResults.pagination
+        });
       } catch (searchError) {
         console.error('Error searching Q&A entries:', searchError);
         await logSystemError(searchError, `GET /api/ai/qa-entries?query=${query}`);
-        // Return empty array on search error
-        return NextResponse.json([]);
+        // Return empty paginated response on search error
+        return NextResponse.json({
+          data: [],
+          pagination: {
+            total: 0,
+            page: 1,
+            limit,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPreviousPage: false
+          }
+        });
       }
     }
 
@@ -88,23 +110,40 @@ export async function GET(request: NextRequest) {
     try {
       console.log('[AI QA] Fetching all Q&A entries with filters:', filters);
       const result = await getAllQAEntries(filters);
-      console.log('[AI QA] Query result:', { 
-        hasEntries: !!result?.entries, 
+      console.log('[AI QA] Query result:', {
+        hasEntries: !!result?.entries,
         count: result?.entries?.length || 0,
-        total: result?.total 
+        total: result?.total
       });
-      
+
       // getAllQAEntries returns {entries, total, limit, offset}
       const safeEntries = Array.isArray(result?.entries) ? result.entries : [];
-      console.log('[AI QA] Returning', safeEntries.length, 'entries');
-      return NextResponse.json(safeEntries);
+
+      // Apply pagination
+      const paginatedResults = paginateArray(safeEntries, page, limit);
+
+      console.log('[AI QA] Returning', paginatedResults.data.length, 'entries (page', page, 'of', paginatedResults.pagination.totalPages, ')');
+
+      return NextResponse.json({
+        data: paginatedResults.data,
+        pagination: paginatedResults.pagination
+      });
     } catch (dbError) {
       console.error('[AI QA] ✗ Error fetching Q&A entries from database:', dbError);
       await logSystemError(dbError, `GET /api/ai/qa-entries with filters: ${JSON.stringify(filters)}`);
-      
-      // Return empty array instead of error to prevent frontend crashes
-      // This allows the UI to render with no data rather than showing an error
-      return NextResponse.json([]);
+
+      // Return empty paginated response instead of error to prevent frontend crashes
+      return NextResponse.json({
+        data: [],
+        pagination: {
+          total: 0,
+          page: 1,
+          limit,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false
+        }
+      });
     }
   } catch (error) {
     console.error('Unexpected error in Q&A entries GET handler:', error);

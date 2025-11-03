@@ -126,15 +126,30 @@ export class ADBClient {
   async disconnect(): Promise<void> {
     try {
       this.stopKeepAlive()
-      
+
       console.log(`[ADB CLIENT] Disconnecting from ${this.deviceAddress}...`)
-      const disconnectCommand = `adb disconnect ${this.deviceAddress}`
-      await execAsync(disconnectCommand)
+
+      try {
+        const disconnectCommand = `adb disconnect ${this.deviceAddress}`
+        const { stdout, stderr } = await execAsync(disconnectCommand, { timeout: 5000 })
+
+        // Log output but don't fail on errors
+        if (stdout) console.log(`[ADB CLIENT] Disconnect stdout: ${stdout.trim()}`)
+        if (stderr) console.log(`[ADB CLIENT] Disconnect stderr: ${stderr.trim()}`)
+
+      } catch (disconnectError: any) {
+        // Don't throw on disconnect errors - device might already be disconnected
+        console.log(`[ADB CLIENT] Disconnect command failed (device may already be disconnected): ${disconnectError.message}`)
+      }
+
+      // Always mark as disconnected regardless of command result
       this.isConnected = false
       console.log(`[ADB CLIENT] Disconnected from ${this.deviceAddress}`)
+
     } catch (error) {
       console.error(`[ADB CLIENT] Disconnect error:`, error)
-      throw error
+      // Still mark as disconnected even if there's an error
+      this.isConnected = false
     }
   }
 

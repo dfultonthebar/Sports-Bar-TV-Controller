@@ -2,7 +2,12 @@
 /**
  * ESPN API Integration Service
  * Free access to live sports data without API keys
+ *
+ * Updated with request throttling, rate limiting, and intelligent caching
  */
+
+import { espnThrottler } from '@/lib/rate-limiting/request-throttler'
+import { cacheManager } from '../cache-manager'
 
 export interface ESPNGame {
   id: string
@@ -117,48 +122,59 @@ class ESPNAPIService {
   private readonly timeout = 10000
 
   /**
-   * Fetch with timeout and error handling
+   * Fetch with timeout, error handling, and request throttling
    */
   private async fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    return espnThrottler.execute(async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Sports-Bar-AI-Assistant/1.0',
-          ...options?.headers,
-        }
-      })
-      clearTimeout(timeoutId)
-      return response
-    } catch (error) {
-      clearTimeout(timeoutId)
-      throw error
-    }
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Sports-Bar-AI-Assistant/1.0',
+            ...options?.headers,
+          }
+        })
+        clearTimeout(timeoutId)
+        return response
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    }, 'espn-api')
   }
 
   /**
    * Get NFL games for a specific date or date range
    */
   async getNFLGames(date?: string): Promise<ESPNGame[]> {
-    try {
-      const dateParam = date ? `?dates=${date.replace(/-/g, '')}` : ''
-      const url = `${this.baseUrl}/football/nfl/scoreboard${dateParam}`
-      
-      const response = await this.fetchWithTimeout(url)
-      if (!response.ok) {
-        throw new Error(`ESPN API error: ${response.status}`)
+    const cacheKey = `nfl-${date || 'today'}`
+
+    // Try cache first
+    return await cacheManager.getOrSet(
+      'sports-data',
+      cacheKey,
+      async () => {
+        try {
+          const dateParam = date ? `?dates=${date.replace(/-/g, '')}` : ''
+          const url = `${this.baseUrl}/football/nfl/scoreboard${dateParam}`
+
+          const response = await this.fetchWithTimeout(url)
+          if (!response.ok) {
+            throw new Error(`ESPN API error: ${response.status}`)
+          }
+
+          const data: ESPNScheduleResponse = await response.json()
+          return data.events || []
+        } catch (error) {
+          console.error('Error fetching NFL games from ESPN:', error)
+          return []
+        }
       }
-      
-      const data: ESPNScheduleResponse = await response.json()
-      return data.events || []
-    } catch (error) {
-      console.error('Error fetching NFL games from ESPN:', error)
-      return []
-    }
+    )
   }
 
   /**
@@ -333,15 +349,21 @@ class ESPNAPIService {
             allGames.push({ league, games })
           }
         })
-        
-        // Rate limiting - small delay between requests
-        await new Promise(resolve => setTimeout(resolve, 100))
+
+        // No manual delay needed - throttler handles this
       } catch (error) {
         console.error(`Error fetching games for date ${date}:`, error)
       }
     }
 
     return allGames
+  }
+
+  /**
+   * Get throttler metrics for monitoring
+   */
+  getMetrics() {
+    return espnThrottler.getMetrics('espn-api')
   }
 }
 

@@ -183,7 +183,8 @@ async function checkPM2Status(): Promise<any> {
  */
 async function checkDatabaseHealth(): Promise<any> {
   try {
-    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './prisma/data/sports_bar.db'
+    // Production database is at /home/ubuntu/sports-bar-data/production.db
+    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || '/home/ubuntu/sports-bar-data/production.db'
     const absolutePath = path.resolve(dbPath)
 
     if (!existsSync(absolutePath)) {
@@ -291,29 +292,72 @@ async function checkCECStatus(): Promise<any> {
  */
 async function checkFireTVStatus(): Promise<any> {
   try {
-    const firetvPath = path.resolve(process.cwd(), 'data/firetv-devices.json')
+    // Import health monitor dynamically to avoid circular dependencies
+    const { healthMonitor } = await import('@/services/firetv-health-monitor')
+    const { connectionManager } = await import('@/services/firetv-connection-manager')
 
-    if (!existsSync(firetvPath)) {
-      return {
-        status: 'unknown',
-        reason: 'FireTV devices file not found'
-      }
+    const stats = healthMonitor.getStatistics()
+    const allConnections = connectionManager.getAllConnectionStatuses()
+
+    // Determine overall status
+    let status: 'healthy' | 'degraded' | 'unknown' = 'unknown'
+
+    if (stats.totalDevices === 0) {
+      status = 'unknown'
+    } else if (stats.healthyDevices === stats.totalDevices) {
+      status = 'healthy'
+    } else if (stats.healthyDevices > 0) {
+      status = 'degraded'
+    } else {
+      status = 'degraded'
     }
 
-    const fs = require('fs')
-    const firetvData = JSON.parse(fs.readFileSync(firetvPath, 'utf-8'))
-    const devices = firetvData.devices || []
-    const onlineDevices = devices.filter((d: any) => d.isOnline).length
+    // Get connection details
+    const connectionDetails = Array.from(allConnections.entries()).map(([deviceId, conn]) => ({
+      deviceId,
+      status: conn.status,
+      queuedCommands: conn.commandQueue.length,
+      lastActivity: conn.lastActivity.toISOString()
+    }))
 
     return {
-      status: devices.length > 0 ? 'healthy' : 'unknown',
-      devices: devices.length,
-      devicesOnline: onlineDevices
+      status,
+      devices: stats.totalDevices,
+      devicesOnline: stats.healthyDevices,
+      devicesOffline: stats.unhealthyDevices,
+      devicesReconnecting: stats.reconnectingDevices,
+      devicesDown: stats.devicesDown,
+      monitoringActive: stats.isMonitoring,
+      connections: connectionDetails
     }
   } catch (error: any) {
-    return {
-      status: 'unknown',
-      reason: error.message || 'Unable to check FireTV status'
+    // Fallback to file-based check if health monitor not available
+    try {
+      const firetvPath = path.resolve(process.cwd(), 'data/firetv-devices.json')
+
+      if (!existsSync(firetvPath)) {
+        return {
+          status: 'unknown',
+          reason: 'FireTV devices file not found'
+        }
+      }
+
+      const fs = require('fs')
+      const firetvData = JSON.parse(fs.readFileSync(firetvPath, 'utf-8'))
+      const devices = firetvData.devices || []
+      const onlineDevices = devices.filter((d: any) => d.isOnline).length
+
+      return {
+        status: devices.length > 0 ? 'healthy' : 'unknown',
+        devices: devices.length,
+        devicesOnline: onlineDevices,
+        reason: 'Health monitor not available - using fallback'
+      }
+    } catch (fallbackError: any) {
+      return {
+        status: 'unknown',
+        reason: error.message || 'Unable to check FireTV status'
+      }
     }
   }
 }

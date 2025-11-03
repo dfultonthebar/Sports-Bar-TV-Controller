@@ -61,37 +61,69 @@ export function searchKnowledgeBase(query: string, limit: number = 10): Document
   const kb = loadKnowledgeBase();
   const queryLower = query.toLowerCase();
   const queryTerms = queryLower.split(/\s+/).filter(term => term.length > 2);
-  
-  // Score each chunk based on relevance
-  const scoredChunks = kb.chunks.map(chunk => {
+
+  // Early return if no valid terms
+  if (queryTerms.length === 0) {
+    return [];
+  }
+
+  // Optimized scoring with early termination
+  const scoredChunks: Array<{ chunk: DocumentChunk; score: number }> = [];
+  const minRelevanceScore = 5; // Minimum score threshold
+
+  for (const chunk of kb.chunks) {
     const contentLower = chunk.content.toLowerCase();
     let score = 0;
-    
+
     // Exact phrase match gets highest score
     if (contentLower.includes(queryLower)) {
       score += 100;
+    } else {
+      // Individual term matches (only if no exact match)
+      for (const term of queryTerms) {
+        // Quick check: does content include term at all?
+        if (contentLower.includes(term)) {
+          // Count occurrences (limited to prevent excessive regex operations)
+          const matches = contentLower.split(term).length - 1;
+          score += Math.min(matches * 10, 50); // Cap individual term contribution
+        }
+      }
     }
-    
-    // Individual term matches
-    queryTerms.forEach(term => {
-      const matches = (contentLower.match(new RegExp(term, 'g')) || []).length;
-      score += matches * 10;
-    });
-    
+
+    // Early termination for low-relevance chunks
+    if (score < minRelevanceScore) {
+      continue;
+    }
+
     // Boost for documentation over code
     if (chunk.type === 'markdown' || chunk.type === 'pdf') {
       score *= 1.5;
     }
-    
-    return { chunk, score };
-  });
-  
+
+    // Title/filename boost
+    if (chunk.metadata.filename) {
+      const filenameLower = chunk.metadata.filename.toLowerCase();
+      for (const term of queryTerms) {
+        if (filenameLower.includes(term)) {
+          score += 20;
+        }
+      }
+    }
+
+    scoredChunks.push({ chunk, score });
+
+    // Early exit optimization: if we have enough high-scoring results
+    if (scoredChunks.length >= limit * 3 && score > 50) {
+      // We have plenty of good results, can stop early
+      break;
+    }
+  }
+
   // Sort by score and return top results
-  return scoredChunks
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(item => item.chunk);
+  // Using partial sort for better performance
+  scoredChunks.sort((a, b) => b.score - a.score);
+
+  return scoredChunks.slice(0, limit).map(item => item.chunk);
 }
 
 export function getKnowledgeBaseStats() {

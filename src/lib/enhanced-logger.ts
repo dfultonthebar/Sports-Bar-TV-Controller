@@ -2,6 +2,7 @@
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { createHash } from 'crypto'
+import { jobQueue } from './job-queue'
 
 // Enhanced log types with more granular tracking
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical'
@@ -279,18 +280,25 @@ export class EnhancedLogger {
   }
 
   private async triggerAIAnalysis(logEntry: EnhancedLogEntry) {
+    // Use background job queue to prevent blocking
+    // AI analysis is now asynchronous and won't slow down logging
     try {
-      const analysis = await this.analyzeLogEntry(logEntry)
-      const analysisLog = {
-        timestamp: new Date().toISOString(),
-        logId: logEntry.id,
-        analysis,
-        recommendations: this.generateRecommendations(logEntry, analysis)
-      }
-      
-      await fs.appendFile(this.logFiles.aiAnalysis, JSON.stringify(analysisLog) + '\n')
+      jobQueue.addJob(
+        'ai-log-analysis',
+        { logEntry },
+        {
+          priority: logEntry.level === 'critical' ? 'high' : 'normal',
+          maxAttempts: 2,
+          metadata: {
+            logId: logEntry.id,
+            category: logEntry.category,
+            level: logEntry.level
+          }
+        }
+      )
     } catch (error) {
-      console.error('Failed to perform AI analysis:', error)
+      // Silently fail - AI analysis is not critical to logging
+      console.error('Failed to queue AI analysis:', error)
     }
   }
 

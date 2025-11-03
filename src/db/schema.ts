@@ -420,21 +420,74 @@ export const qaEntries = sqliteTable('QAEntry', {
   sourceFileIdx: index('QAEntry_sourceFile_idx').on(table.sourceFile),
 }))
 
-// Training Document Model
+// Training Document Model (Enhanced)
 export const trainingDocuments = sqliteTable('TrainingDocument', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: text('title').notNull(),
   content: text('content').notNull(),
   fileType: text('fileType').notNull(),
   fileName: text('fileName').notNull(),
+  filePath: text('filePath').notNull(), // Full path to file
   fileSize: integer('fileSize').notNull(),
   category: text('category'),
+  tags: text('tags'), // JSON array of tags
+  description: text('description'), // User-provided description
+  metadata: text('metadata'), // JSON metadata
+  processedAt: timestamp('processedAt'), // When document was processed for AI
+  viewCount: integer('viewCount').notNull().default(0),
+  lastViewed: timestamp('lastViewed'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
   fileTypeIdx: index('TrainingDocument_fileType_idx').on(table.fileType),
   isActiveIdx: index('TrainingDocument_isActive_idx').on(table.isActive),
+  categoryIdx: index('TrainingDocument_category_idx').on(table.category),
+}))
+
+// Scheduled Command Sequence Model
+export const scheduledCommands = sqliteTable('ScheduledCommand', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+  commandType: text('commandType').notNull(), // 'tv_power', 'cec', 'matrix', 'custom'
+  targetType: text('targetType').notNull(), // 'all', 'specific', 'group'
+  targets: text('targets').notNull(), // JSON array of target IDs
+  commandSequence: text('commandSequence').notNull(), // JSON array of commands
+  scheduleType: text('scheduleType').notNull(), // 'once', 'daily', 'weekly', 'monthly', 'cron'
+  scheduleData: text('scheduleData').notNull(), // JSON schedule configuration
+  timezone: text('timezone').notNull().default('America/New_York'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  lastExecuted: timestamp('lastExecuted'),
+  nextExecution: timestamp('nextExecution'),
+  executionCount: integer('executionCount').notNull().default(0),
+  failureCount: integer('failureCount').notNull().default(0),
+  createdBy: text('createdBy'), // User who created it
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  commandTypeIdx: index('ScheduledCommand_commandType_idx').on(table.commandType),
+  scheduleTypeIdx: index('ScheduledCommand_scheduleType_idx').on(table.scheduleType),
+  enabledIdx: index('ScheduledCommand_enabled_idx').on(table.enabled),
+  nextExecutionIdx: index('ScheduledCommand_nextExecution_idx').on(table.nextExecution),
+}))
+
+// Scheduled Command Execution Log Model
+export const scheduledCommandLogs = sqliteTable('ScheduledCommandLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  scheduledCommandId: text('scheduledCommandId').notNull().references(() => scheduledCommands.id, { onDelete: 'cascade' }),
+  executedAt: timestamp('executedAt').notNull().default(timestampNow()),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  commandsSent: integer('commandsSent').notNull().default(0),
+  commandsFailed: integer('commandsFailed').notNull().default(0),
+  executionTime: integer('executionTime'), // Milliseconds
+  errorMessage: text('errorMessage'),
+  details: text('details'), // JSON execution details
+  targetResults: text('targetResults'), // JSON results per target
+}, (table) => ({
+  scheduledCommandIdIdx: index('ScheduledCommandLog_scheduledCommandId_idx').on(table.scheduledCommandId),
+  executedAtIdx: index('ScheduledCommandLog_executedAt_idx').on(table.executedAt),
+  successIdx: index('ScheduledCommandLog_success_idx').on(table.success),
 }))
 
 // API Key Model
@@ -1021,4 +1074,29 @@ export const sportsEventSyncLogs = sqliteTable('SportsEventSyncLog', {
 }, (table) => ({
   syncedAtIdx: index('SportsEventSyncLog_syncedAt_idx').on(table.syncedAt),
   leagueIdx: index('SportsEventSyncLog_league_idx').on(table.league),
+}))
+
+// Security Validation Log Model - Track security validation events
+export const securityValidationLogs = sqliteTable('SecurityValidationLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  validationType: text('validationType').notNull(), // 'file_system', 'code_execution', 'bash_command', 'resource_limit'
+  operationType: text('operationType'), // e.g., 'read', 'write', 'execute', 'delete'
+  allowed: integer('allowed', { mode: 'boolean' }).notNull(),
+  blockedReason: text('blockedReason'), // Reason if blocked
+  blockedPatterns: text('blockedPatterns'), // JSON array of matched patterns
+  requestPath: text('requestPath'), // File path or command that was validated
+  requestContent: text('requestContent'), // Sanitized content of the request
+  sanitizedInput: text('sanitizedInput'), // JSON of sanitized input if allowed
+  severity: text('severity').notNull().default('info'), // 'info', 'warning', 'critical'
+  ipAddress: text('ipAddress'), // IP address of requester if available
+  userId: text('userId'), // User ID if available
+  sessionId: text('sessionId'), // Session ID if available
+  metadata: text('metadata'), // Additional JSON metadata
+  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
+}, (table) => ({
+  validationTypeIdx: index('SecurityValidationLog_validationType_idx').on(table.validationType),
+  allowedIdx: index('SecurityValidationLog_allowed_idx').on(table.allowed),
+  severityIdx: index('SecurityValidationLog_severity_idx').on(table.severity),
+  timestampIdx: index('SecurityValidationLog_timestamp_idx').on(table.timestamp),
+  userIdIdx: index('SecurityValidationLog_userId_idx').on(table.userId),
 }))
