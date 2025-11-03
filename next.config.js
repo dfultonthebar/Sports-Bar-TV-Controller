@@ -9,6 +9,9 @@ const nextConfig = {
     // Temporarily ignore ESLint errors during build
     ignoreDuringBuilds: true,
   },
+  // Fix lockfile detection warning by explicitly setting the root directory
+  output: 'standalone',
+  outputFileTracingRoot: require('path').join(__dirname),
   images: {
     remotePatterns: [
       {
