@@ -3,7 +3,7 @@
  * Comprehensive test suite for database transaction functionality
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals'
 import {
   withTransaction,
   batchTransaction,
