@@ -36,6 +36,7 @@ import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 
+import { logger } from '@/lib/logger'
 interface MatrixInput {
   id: string
   channelNumber: number
@@ -259,7 +260,7 @@ export default function BartenderRemotePage() {
         }
       }
     } catch (error) {
-      console.error('Error fetching matrix data:', error)
+      logger.error('Error fetching matrix data:', error)
     }
   }
 
@@ -281,7 +282,7 @@ export default function BartenderRemotePage() {
         }
       }
     } catch (error) {
-      console.error('Error loading audio processor:', error)
+      logger.error('Error loading audio processor:', error)
     }
   }
 
@@ -295,7 +296,7 @@ export default function BartenderRemotePage() {
         }
       }
     } catch (error) {
-      console.error('Error loading TV layout:', error)
+      logger.error('Error loading TV layout:', error)
     }
   }
 
@@ -305,7 +306,7 @@ export default function BartenderRemotePage() {
       const data = await response.json()
       setIRDevices(data.devices || [])
     } catch (error) {
-      console.error('Error loading IR devices:', error)
+      logger.error('Error loading IR devices:', error)
     }
   }
 
@@ -322,7 +323,7 @@ export default function BartenderRemotePage() {
         setDirectvDevices(devices)
       }
     } catch (error) {
-      console.error('Error loading DirecTV devices:', error)
+      logger.error('Error loading DirecTV devices:', error)
     }
   }
 
@@ -338,7 +339,7 @@ export default function BartenderRemotePage() {
         setFiretvDevices(devices)
       }
     } catch (error) {
-      console.error('Error loading Fire TV devices:', error)
+      logger.error('Error loading Fire TV devices:', error)
     }
   }
 
@@ -359,7 +360,7 @@ export default function BartenderRemotePage() {
 
   const establishPersistentConnection = async () => {
     try {
-      console.log('Establishing persistent Wolf Pack connection...')
+      logger.info('Establishing persistent Wolf Pack connection...')
       const response = await fetch('/api/matrix/connection-manager', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -368,14 +369,14 @@ export default function BartenderRemotePage() {
       const result = await response.json()
       if (result.success && result.connected) {
         setConnectionStatus('connected')
-        console.log('✓ Wolf Pack connection established')
+        logger.info('✓ Wolf Pack connection established')
       } else {
         setConnectionStatus('disconnected')
-        console.log('✗ Failed to establish Wolf Pack connection:', result.error)
+        logger.info('✗ Failed to establish Wolf Pack connection:', result.error)
       }
     } catch (error) {
       setConnectionStatus('disconnected')
-      console.error('Error establishing connection:', error)
+      logger.error('Error establishing connection:', error)
     }
   }
 
@@ -443,7 +444,7 @@ export default function BartenderRemotePage() {
         setCommandStatus('❌ Failed to route signal')
       }
     } catch (error) {
-      console.error('Error routing signal:', error)
+      logger.error('Error routing signal:', error)
       setCommandStatus('❌ Error routing signal')
     } finally {
       setIsRouting(false)
@@ -472,7 +473,7 @@ export default function BartenderRemotePage() {
         })
       }
     } catch (error) {
-      console.error('Error updating label:', error)
+      logger.error('Error updating label:', error)
     }
   }
 
@@ -566,7 +567,7 @@ export default function BartenderRemotePage() {
         setCommandStatus(`✗ Failed: ${result.error}`)
       }
     } catch (error) {
-      console.error('Error sending command:', error)
+      logger.error('Error sending command:', error)
       setCommandStatus(`✗ Error sending ${command}`)
     } finally {
       setLoading(false)
@@ -596,7 +597,7 @@ export default function BartenderRemotePage() {
         setCurrentSources(routeMap)
       }
     } catch (error) {
-      console.error('Error loading routes:', error)
+      logger.error('Error loading routes:', error)
     } finally {
       setLoadingRoutes(false)
     }
@@ -621,7 +622,7 @@ export default function BartenderRemotePage() {
         setRoutingStatus(`✗ Failed to route: ${result.error || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error routing:', error)
+      logger.error('Error routing:', error)
       setRoutingStatus('✗ Error routing signal')
     } finally {
       setIsRouting(false)

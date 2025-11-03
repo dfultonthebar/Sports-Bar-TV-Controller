@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { findMany, create, update, deleteRecord } from '@/lib/db-helpers'
 import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 import { encryptPassword, decryptPassword } from '@/lib/atlas-auth'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 // Helper function to get input/output counts from model config
 function getModelCounts(model: string) {
@@ -23,6 +25,15 @@ function getModelCounts(model: string) {
 }
 
 export async function GET() {
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   logger.api.request('GET', '/api/audio-processor')
   
   try {
@@ -55,6 +66,15 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   logger.api.request('POST', '/api/audio-processor')
   
   try {
@@ -115,6 +135,15 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   logger.api.request('PUT', '/api/audio-processor')
   
   try {

@@ -6,6 +6,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
@@ -13,6 +16,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.gitCommitPush)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { message } = await request.json()
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
       output: pushOutput.trim()
     })
   } catch (error: any) {
-    console.error('Git commit/push error:', error)
+    logger.error('Git commit/push error:', error)
     
     let errorMessage = 'Failed to commit and push changes'
     if (error.stderr && error.stderr.includes('nothing to commit')) {

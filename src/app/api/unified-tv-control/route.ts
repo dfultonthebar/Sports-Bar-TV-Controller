@@ -5,9 +5,16 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { UnifiedTVControl, TVDevice } from '@/lib/unified-tv-control'
 import { CECCommand } from '@/lib/enhanced-cec-commands'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 export async function POST(request: NextRequest) {
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { 
       deviceId, 

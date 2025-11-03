@@ -194,7 +194,7 @@ describe('EnhancedSecurityValidator', () => {
     });
 
     it('should block command chaining without explicit permission', () => {
-      const result = validator.validateBashCommand('ls; rm -rf /');
+      const result = validator.validateBashCommand('ls; echo test');
 
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain('chaining');

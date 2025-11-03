@@ -1,0 +1,85 @@
+/**
+ * Layout Detection API
+ *
+ * Re-run auto-detection on an existing layout image
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { join } from 'path'
+import { detectTVZonesFromImage, autoMatchZonesToOutputs } from '@/lib/layout-detector'
+import { db } from '@/db'
+import { matrixOutputs } from '@/db/schema'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+
+import { logger } from '@/lib/logger'
+export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
+  try {
+    const { imageUrl } = await request.json()
+
+    if (!imageUrl) {
+      return NextResponse.json(
+        { error: 'imageUrl is required' },
+        { status: 400 }
+      )
+    }
+
+    // Convert URL to file path
+    const filename = imageUrl.split('/').pop()
+    const filepath = join(process.cwd(), 'public', 'uploads', 'layouts', filename!)
+
+    logger.info(`[Layout Detection] Processing: ${filepath}`)
+
+    // Detect zones
+    const detectionResult = await detectTVZonesFromImage(filepath)
+
+    if (detectionResult.zones.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'No TV zones detected in image',
+        errors: detectionResult.errors
+      })
+    }
+
+    // Get WolfPack outputs for auto-matching
+    const outputs = await db.select().from(matrixOutputs)
+
+    // Auto-match detected zones to outputs
+    const zones = autoMatchZonesToOutputs(
+      detectionResult.zones,
+      outputs.map(o => ({
+        channelNumber: o.channelNumber,
+        label: o.label
+      }))
+    )
+
+    logger.info(`[Layout Detection] Detected ${zones.length} zones`)
+
+    return NextResponse.json({
+      success: true,
+      zones,
+      detection: {
+        detectionsCount: detectionResult.detectionsCount,
+        zonesExtracted: zones.length,
+        imageWidth: detectionResult.imageWidth,
+        imageHeight: detectionResult.imageHeight,
+        errors: detectionResult.errors
+      }
+    })
+  } catch (error) {
+    logger.error('[Layout Detection] Error:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to detect zones',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}

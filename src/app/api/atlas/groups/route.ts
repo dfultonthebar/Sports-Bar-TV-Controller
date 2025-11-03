@@ -3,11 +3,24 @@ import { AtlasTCPClient } from '@/lib/atlasClient'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -34,28 +47,28 @@ export async function GET(request: NextRequest) {
     for (let i = 0; i < 8; i++) {
       const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
         client.getParameter(`GroupName_${i}`, 'str').catch((err) => {
-          console.error(`Error getting GroupName_${i}:`, err)
+          logger.error(`Error getting GroupName_${i}:`, err)
           return { success: false }
         }),
         client.getParameter(`GroupActive_${i}`, 'val').catch((err) => {
-          console.error(`Error getting GroupActive_${i}:`, err)
+          logger.error(`Error getting GroupActive_${i}:`, err)
           return { success: false }
         }),
         client.getParameter(`GroupSource_${i}`, 'val').catch((err) => {
-          console.error(`Error getting GroupSource_${i}:`, err)
+          logger.error(`Error getting GroupSource_${i}:`, err)
           return { success: false }
         }),
         client.getParameter(`GroupGain_${i}`, 'val').catch((err) => {
-          console.error(`Error getting GroupGain_${i}:`, err)
+          logger.error(`Error getting GroupGain_${i}:`, err)
           return { success: false }
         }),
         client.getParameter(`GroupMute_${i}`, 'val').catch((err) => {
-          console.error(`Error getting GroupMute_${i}:`, err)
+          logger.error(`Error getting GroupMute_${i}:`, err)
           return { success: false }
         })
       ])
 
-      console.log(`Group ${i} results:`, {
+      logger.info(`Group ${i} results:`, {
         nameResult,
         activeResult,
         sourceResult,
@@ -73,7 +86,7 @@ export async function GET(request: NextRequest) {
       const gain = (gainResult.success && gainResult.data?.value !== undefined) ? gainResult.data.value : -10
       const muted = (muteResult.success && muteResult.data?.value === 1)
 
-      console.log(`Group ${i} extracted values:`, { name, isActive, source, gain, muted })
+      logger.info(`Group ${i} extracted values:`, { name, isActive, source, gain, muted })
 
       groups.push({
         index: i,
@@ -98,7 +111,7 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('Error fetching groups:', error)
+    logger.error('Error fetching groups:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -114,6 +127,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -172,7 +195,7 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('Error controlling group:', error)
+    logger.error('Error controlling group:', error)
     return NextResponse.json(
       { 
         success: false, 

@@ -10,17 +10,30 @@ import { healthMonitor } from '@/services/firetv-health-monitor'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('deviceId')
     
-    console.log('[CONNECTION STATUS API] GET request')
+    logger.info('[CONNECTION STATUS API] GET request')
     
     if (deviceId) {
       // Get status for specific device
@@ -91,7 +104,7 @@ export async function GET(request: NextRequest) {
       })
     }
   } catch (error: any) {
-    console.error('[CONNECTION STATUS API] Error:', error)
+    logger.error('[CONNECTION STATUS API] Error:', error)
     return NextResponse.json({
       success: false,
       message: 'Failed to get connection status',
@@ -109,8 +122,18 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
-    console.log('[CONNECTION STATUS API] POST request - forcing health check')
+    logger.info('[CONNECTION STATUS API] POST request - forcing health check')
     
     await healthMonitor.forceHealthCheck()
     
@@ -119,7 +142,7 @@ export async function POST(request: NextRequest) {
       message: 'Health check initiated'
     })
   } catch (error: any) {
-    console.error('[CONNECTION STATUS API] Error:', error)
+    logger.error('[CONNECTION STATUS API] Error:', error)
     return NextResponse.json({
       success: false,
       message: 'Failed to initiate health check',

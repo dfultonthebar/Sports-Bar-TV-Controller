@@ -6,25 +6,34 @@ import { connectionManager } from '@/services/firetv-connection-manager'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { deviceId, ipAddress, port } = await request.json()
     
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🔍 [FIRE CUBE] Testing connection')
-    console.log(`   Device ID: ${deviceId}`)
-    console.log(`   IP: ${ipAddress}`)
-    console.log(`   Port: ${port}`)
-    console.log(`   Timestamp: ${new Date().toISOString()}`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('🔍 [FIRE CUBE] Testing connection')
+    logger.info(`   Device ID: ${deviceId}`)
+    logger.info(`   IP: ${ipAddress}`)
+    logger.info(`   Port: ${port}`)
+    logger.info(`   Timestamp: ${new Date().toISOString()}`)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     if (!ipAddress || !port) {
-      console.log('[FIRE CUBE] ❌ Missing required fields')
+      logger.info('[FIRE CUBE] ❌ Missing required fields')
       return NextResponse.json(
         { 
           success: false, 
@@ -43,8 +52,8 @@ export async function POST(request: NextRequest) {
     // Test connection by getting device info
     const deviceInfo = await adbClient.getDeviceInfo()
     
-    console.log('[FIRE CUBE] ✅ Connection successful!')
-    console.log('[FIRE CUBE] Device Info:', deviceInfo)
+    logger.info('[FIRE CUBE] ✅ Connection successful!')
+    logger.info('[FIRE CUBE] Device Info:', deviceInfo)
     
     // Get connection status
     const connectionStatus = connectionManager.getConnectionStatus(deviceId)
@@ -65,7 +74,7 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error: any) {
-    console.error('[FIRE CUBE] ❌ Connection error:', error)
+    logger.error('[FIRE CUBE] ❌ Connection error:', error)
     
     let errorMessage = 'Connection test failed'
     const suggestions: string[] = []

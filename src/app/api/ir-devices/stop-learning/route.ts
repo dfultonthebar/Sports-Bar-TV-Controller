@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const { iTachAddress = '192.168.1.100' } = await request.json().catch(() => ({}))
@@ -25,13 +28,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }, 3000)
 
       socket.connect(4998, iTachAddress, () => {
-        console.log(`Connected to iTach to stop learning at ${iTachAddress}:4998`)
+        logger.info(`Connected to iTach to stop learning at ${iTachAddress}:4998`)
         socket.write('stop_IRL\r')
       })
 
       socket.on('data', (data: Buffer) => {
         const response = data.toString().trim()
-        console.log('Stop learning response:', response)
+        logger.info('Stop learning response:', response)
         
         if (response.includes('IR Learner Disabled') && !isResolved) {
           isResolved = true
@@ -46,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
 
       socket.on('error', (err: Error) => {
-        console.error('Stop learning connection error:', err)
+        logger.error('Stop learning connection error:', err)
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     })
 
   } catch (error) {
-    console.error('Error stopping IR learning:', error)
+    logger.error('Error stopping IR learning:', error)
     return NextResponse.json({ 
       success: false, 
       message: `Stop learning failed: ${error}` 

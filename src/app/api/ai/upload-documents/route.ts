@@ -6,11 +6,20 @@ import { existsSync } from 'fs';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.documentUpload)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const formData = await request.formData();
@@ -64,7 +73,7 @@ export async function POST(request: NextRequest) {
         await writeFile(filePath, buffer);
         uploadedFiles.push(fileName);
       } catch (error) {
-        console.error(`Error uploading ${file.name}:`, error);
+        logger.error(`Error uploading ${file.name}:`, error);
         errors.push(`${file.name}: Upload failed`);
       }
     }
@@ -77,7 +86,7 @@ export async function POST(request: NextRequest) {
       message: `Successfully uploaded ${uploadedFiles.length} file(s)${errors.length > 0 ? ` with ${errors.length} error(s)` : ''}`
     });
   } catch (error) {
-    console.error('Error in upload-documents API:', error);
+    logger.error('Error in upload-documents API:', error);
     return NextResponse.json(
       { error: 'Failed to upload documents' },
       { status: 500 }

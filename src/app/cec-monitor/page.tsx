@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 
+import { logger } from '@/lib/logger'
 interface LogEntry {
   timestamp: string
   level: string
@@ -25,7 +26,7 @@ export default function CECMonitor() {
         setLastUpdate(new Date().toLocaleTimeString())
       }
     } catch (error) {
-      console.error('Failed to fetch CEC logs:', error)
+      logger.error('Failed to fetch CEC logs:', error)
     } finally {
       setLoading(false)
     }

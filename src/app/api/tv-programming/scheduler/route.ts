@@ -4,6 +4,9 @@ import * as cron from 'node-cron'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // This will store our cron job instance
 let schedulerJob: cron.ScheduledTask | null = null
 
@@ -30,6 +33,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { action } = await request.json()
     
@@ -42,7 +51,7 @@ export async function POST(request: NextRequest) {
       // Create new scheduler - runs daily at 12:00 AM
       schedulerJob = cron.schedule('0 0 * * *', async () => {
         try {
-          console.log('Running daily TV programming update...')
+          logger.info('Running daily TV programming update...')
           
           // Call our programming update endpoint
           const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/tv-programming`, {
@@ -52,12 +61,12 @@ export async function POST(request: NextRequest) {
           
           if (response.ok) {
             const data = await response.json()
-            console.log('TV programming updated successfully:', data.message)
+            logger.info('TV programming updated successfully:', data.message)
           } else {
-            console.error('Failed to update TV programming')
+            logger.error('Failed to update TV programming')
           }
         } catch (error) {
-          console.error('Error in TV programming scheduler:', error)
+          logger.error('Error in TV programming scheduler:', error)
         }
       })
       
@@ -107,7 +116,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
-    console.error('Error in TV programming scheduler:', error)
+    logger.error('Error in TV programming scheduler:', error)
     return NextResponse.json({ error: 'Scheduler operation failed' }, { status: 500 })
   }
 }

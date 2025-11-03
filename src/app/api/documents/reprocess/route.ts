@@ -5,6 +5,9 @@ import { operationLogger } from '@/lib/operation-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
@@ -12,6 +15,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     await operationLogger.logOperation({
@@ -43,7 +52,7 @@ export async function POST(request: NextRequest) {
       details: { error: error instanceof Error ? error.message : error }
     })
 
-    console.error('Document reprocessing error:', error)
+    logger.error('Document reprocessing error:', error)
     return NextResponse.json(
       { error: 'Failed to reprocess documents' },
       { status: 500 }
@@ -78,7 +87,7 @@ export async function GET(request: NextRequest) {
       reprocessNeeded: docsWithoutContent > 0
     })
   } catch (error) {
-    console.error('Error checking document status:', error)
+    logger.error('Error checking document status:', error)
     return NextResponse.json(
       { error: 'Failed to check document status' },
       { status: 500 }

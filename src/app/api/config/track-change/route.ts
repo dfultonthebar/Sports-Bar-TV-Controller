@@ -3,12 +3,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { configChangeTracker } from '@/lib/config-change-tracker'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { type, file, changes, action = 'modified' } = await request.json()
@@ -46,6 +58,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const url = new URL(request.url)

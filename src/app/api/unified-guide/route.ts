@@ -7,6 +7,9 @@ import { existsSync } from 'fs'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 const UNIFIED_GUIDE_FILE = join(process.cwd(), 'data', 'unified-guide.json')
@@ -48,6 +51,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { deviceList, timeRange, includeCache } = await request.json()
 
@@ -55,7 +68,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Device list is required' }, { status: 400 })
     }
 
-    console.log(`📺 Fetching unified guide data from ${deviceList.length} devices`)
+    logger.info(`📺 Fetching unified guide data from ${deviceList.length} devices`)
 
     const startTime = timeRange?.start || new Date().toISOString()
     const endTime = timeRange?.end || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
@@ -79,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch guide data from each device
     for (const device of deviceList) {
-      console.log(`🔍 Fetching guide data for ${device.type} device: ${device.name}`)
+      logger.info(`🔍 Fetching guide data for ${device.type} device: ${device.name}`)
       
       try {
         let deviceGuideData: any = null
@@ -171,7 +184,7 @@ export async function POST(request: NextRequest) {
         }
 
       } catch (deviceError) {
-        console.error(`❌ Error fetching from ${device.name}:`, deviceError.message)
+        logger.error(`❌ Error fetching from ${device.name}:`, deviceError.message)
         unifiedData.summary.failedFetches++
         
         unifiedData.devices[device.id] = {
@@ -203,7 +216,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('❌ Error in unified guide API:', error)
+    logger.error('❌ Error in unified guide API:', error)
     return NextResponse.json(
       { error: 'Failed to fetch unified guide data', details: error.message },
       { status: 500 }
@@ -216,6 +229,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -283,7 +306,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('❌ Error in unified guide GET:', error)
+    logger.error('❌ Error in unified guide GET:', error)
     return NextResponse.json(
       { error: 'API error' },
       { status: 500 }

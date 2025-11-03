@@ -11,6 +11,9 @@ import { findFirst, create, updateMany } from '@/lib/db-helpers'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {
   const algorithm = 'aes-256-ctr'
@@ -47,19 +50,19 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR CREDENTIALS] Fetching credentials status')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR CREDENTIALS] Fetching credentials status')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const credentials = await db.select().from(irDatabaseCredentials).where(eq(irDatabaseCredentials.isActive, true)).limit(1).get()
 
     if (credentials) {
-      console.log('✅ [IR CREDENTIALS] Credentials found')
-      console.log('   Email:', credentials.email)
-      console.log('   Has API Key:', !!credentials.apiKey)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [IR CREDENTIALS] Credentials found')
+      logger.info('   Email:', credentials.email)
+      logger.info('   Has API Key:', !!credentials.apiKey)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json({
         success: true,
@@ -70,8 +73,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log('ℹ️  [IR CREDENTIALS] No credentials found')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('ℹ️  [IR CREDENTIALS] No credentials found')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: true,
@@ -79,8 +82,8 @@ export async function GET(request: NextRequest) {
       isLoggedIn: false
     })
   } catch (error: any) {
-    console.error('❌ [IR CREDENTIALS] Error:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR CREDENTIALS] Error:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json(
       { success: false, error: error.message },
@@ -99,18 +102,24 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('💾 [IR CREDENTIALS] Saving credentials')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('💾 [IR CREDENTIALS] Saving credentials')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
     const { email, password } = body
 
     if (!email || !password) {
-      console.log('❌ [IR CREDENTIALS] Email and password required')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR CREDENTIALS] Email and password required')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Email and password are required' },
@@ -118,15 +127,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('   Email:', email)
+    logger.info('   Email:', email)
 
     // Try to login to verify credentials
     const loginResult = await irDatabaseService.login(email, password)
 
     if (loginResult.Status !== 'success' || !loginResult.Account?.ApiKey) {
-      console.log('❌ [IR CREDENTIALS] Login failed')
-      console.log('   Message:', loginResult.Message)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR CREDENTIALS] Login failed')
+      logger.info('   Message:', loginResult.Message)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: loginResult.Message || 'Login failed' },
@@ -152,8 +161,8 @@ export async function POST(request: NextRequest) {
       lastLogin: new Date().toISOString()
     })
 
-    console.log('✅ [IR CREDENTIALS] Credentials saved successfully')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR CREDENTIALS] Credentials saved successfully')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_CREDENTIALS', 'save', {
       email
@@ -165,8 +174,8 @@ export async function POST(request: NextRequest) {
       email: credentials.email
     })
   } catch (error: any) {
-    console.error('❌ [IR CREDENTIALS] Error:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR CREDENTIALS] Error:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_CREDENTIALS', 'save_error', {
       error: error.message

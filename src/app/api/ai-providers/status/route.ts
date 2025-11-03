@@ -5,6 +5,9 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
   if (!rateLimit.allowed) {
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching AI provider status:', error)
+    logger.error('Error fetching AI provider status:', error)
     
     // Return a fallback response if database query fails
     return NextResponse.json({
@@ -71,6 +74,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { action, providerId } = body
@@ -87,7 +96,7 @@ export async function POST(request: NextRequest) {
         )
     }
   } catch (error) {
-    console.error('Error handling AI provider action:', error)
+    logger.error('Error handling AI provider action:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to handle action' },
       { status: 500 }
@@ -125,7 +134,7 @@ async function testProvider(providerId: string) {
     })
 
   } catch (error) {
-    console.error('Error testing provider:', error)
+    logger.error('Error testing provider:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to test provider' },
       { status: 500 }
@@ -151,7 +160,7 @@ async function refreshProviderStatus() {
     })
 
   } catch (error) {
-    console.error('Error refreshing provider status:', error)
+    logger.error('Error refreshing provider status:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to refresh status' },
       { status: 500 }

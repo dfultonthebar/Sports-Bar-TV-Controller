@@ -6,6 +6,9 @@ import { logDatabaseOperation } from '@/lib/database-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/database/functions?codesetId=xxx
  * Get available functions for a codeset
@@ -16,18 +19,24 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR DATABASE API] Fetching functions')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR DATABASE API] Fetching functions')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const { searchParams } = new URL(request.url)
     const codesetId = searchParams.get('codesetId')
 
     if (!codesetId) {
-      console.log('❌ [IR DATABASE API] Codeset ID is required')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DATABASE API] Codeset ID is required')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Codeset ID is required' },
@@ -35,13 +44,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log('   Codeset ID:', codesetId)
+    logger.info('   Codeset ID:', codesetId)
 
     const functions = await irDatabaseService.getFunctions(codesetId)
 
-    console.log('✅ [IR DATABASE API] Functions fetched successfully')
-    console.log('   Count:', functions.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DATABASE API] Functions fetched successfully')
+    logger.info('   Count:', functions.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_functions', {
       codesetId,
@@ -50,8 +59,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, functions })
   } catch (error: any) {
-    console.error('❌ [IR DATABASE API] Error fetching functions:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DATABASE API] Error fetching functions:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_functions_error', {
       error: error.message

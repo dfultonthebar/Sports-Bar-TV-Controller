@@ -6,6 +6,9 @@ import { logDatabaseOperation } from '@/lib/database-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/database/types?brand=xxx
  * Get device types for a brand, or all types if no brand specified
@@ -16,22 +19,28 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR DATABASE API] Fetching types')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR DATABASE API] Fetching types')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const { searchParams } = new URL(request.url)
     const brand = searchParams.get('brand')
 
     if (brand) {
-      console.log('   Brand:', brand)
+      logger.info('   Brand:', brand)
       const types = await irDatabaseService.getBrandTypes(brand)
       
-      console.log('✅ [IR DATABASE API] Brand types fetched successfully')
-      console.log('   Count:', types.length)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [IR DATABASE API] Brand types fetched successfully')
+      logger.info('   Count:', types.length)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       logDatabaseOperation('IR_DATABASE_API', 'get_brand_types', {
         brand,
@@ -42,9 +51,9 @@ export async function GET(request: NextRequest) {
     } else {
       const types = await irDatabaseService.getTypes()
       
-      console.log('✅ [IR DATABASE API] Types fetched successfully')
-      console.log('   Count:', types.length)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [IR DATABASE API] Types fetched successfully')
+      logger.info('   Count:', types.length)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       logDatabaseOperation('IR_DATABASE_API', 'get_types', {
         count: types.length
@@ -53,8 +62,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, types })
     }
   } catch (error: any) {
-    console.error('❌ [IR DATABASE API] Error fetching types:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DATABASE API] Error fetching types:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_types_error', {
       error: error.message

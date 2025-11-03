@@ -4,6 +4,9 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'layouts')
 
 export async function GET(
@@ -14,6 +17,13 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { filename } = await params
@@ -67,7 +77,7 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error('Error serving uploaded file:', error)
+    logger.error('Error serving uploaded file:', error)
     return new NextResponse('Internal server error', { status: 500 })
   }
 }

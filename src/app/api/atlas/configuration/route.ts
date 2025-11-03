@@ -6,6 +6,9 @@ import { AtlasTCPClient } from '@/lib/atlasClient'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -22,6 +25,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -51,7 +64,7 @@ export async function GET(request: NextRequest) {
           value: result?.data?.str || result?.data?.val || null
         })
       } catch (error) {
-        console.error('Error fetching Atlas parameter:', error)
+        logger.error('Error fetching Atlas parameter:', error)
         return NextResponse.json({
           success: false,
           error: error instanceof Error ? error.message : 'Failed to fetch parameter'
@@ -90,7 +103,7 @@ export async function GET(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error('Error fetching Atlas configuration:', error)
+    logger.error('Error fetching Atlas configuration:', error)
     return NextResponse.json({ 
       error: 'Failed to fetch configuration',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -103,6 +116,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { processorId, inputs, outputs, scenes, messages } = await request.json()
@@ -135,7 +158,7 @@ export async function POST(request: NextRequest) {
       savedAt: config.lastUpdated
     })
   } catch (error) {
-    console.error('Error saving Atlas configuration:', error)
+    logger.error('Error saving Atlas configuration:', error)
     return NextResponse.json({ 
       error: 'Failed to save configuration',
       details: error instanceof Error ? error.message : 'Unknown error'

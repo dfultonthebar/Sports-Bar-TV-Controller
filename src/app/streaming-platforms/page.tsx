@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+import { logger } from '@/lib/logger'
 interface StreamingPlatform {
   id: string
   name: string
@@ -132,7 +133,7 @@ export default function StreamingPlatformsPage() {
         updatePlatformsWithAuth(result.credentials || [])
       }
     } catch (error) {
-      console.error('Error loading streaming credentials:', error)
+      logger.error('Error loading streaming credentials:', error)
     }
   }
 
@@ -162,7 +163,7 @@ export default function StreamingPlatformsPage() {
         })))
       }
     } catch (error) {
-      console.error('Error updating auth status:', error)
+      logger.error('Error updating auth status:', error)
     }
   }
 
@@ -192,7 +193,7 @@ export default function StreamingPlatformsPage() {
         alert(`Authentication failed: ${result.error}`)
       }
     } catch (error) {
-      console.error('Error during authentication:', error)
+      logger.error('Error during authentication:', error)
       alert('Authentication error occurred')
     } finally {
       setIsLoading(false)
@@ -215,7 +216,7 @@ export default function StreamingPlatformsPage() {
         alert(`Logout failed: ${result.error}`)
       }
     } catch (error) {
-      console.error('Error during logout:', error)
+      logger.error('Error during logout:', error)
     }
   }
 

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 interface DiagnosticResult {
   test: string
   status: 'pass' | 'fail' | 'warning'
@@ -211,6 +214,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { ipAddress, port } = await request.json()
 
@@ -223,7 +232,7 @@ export async function POST(request: NextRequest) {
 
     const targetPort = port || 8080
 
-    console.log(`Running DirecTV diagnostics for ${ipAddress}:${targetPort}`)
+    logger.info(`Running DirecTV diagnostics for ${ipAddress}:${targetPort}`)
 
     const results = await runDiagnostics(ipAddress, targetPort)
 
@@ -271,7 +280,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('DirecTV Diagnostics Error:', error)
+    logger.error('DirecTV Diagnostics Error:', error)
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to run diagnostics',

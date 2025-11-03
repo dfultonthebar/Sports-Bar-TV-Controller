@@ -9,6 +9,9 @@ import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/devices/:id
  * Get a specific IR device
@@ -22,12 +25,23 @@ export async function GET(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   const { id } = await params
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR DEVICES] Fetching device')
-  console.log('   ID:', id)
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR DEVICES] Fetching device')
+  logger.info('   ID:', id)
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const device = await findFirst('irDevices', {
@@ -35,8 +49,8 @@ export async function GET(
     })
 
     if (!device) {
-      console.log('❌ [IR DEVICES] Device not found')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DEVICES] Device not found')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Device not found' },
@@ -64,10 +78,10 @@ export async function GET(
       commands
     }
 
-    console.log('✅ [IR DEVICES] Device fetched successfully')
-    console.log('   Name:', device.name)
-    console.log('   Commands count:', commands.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DEVICES] Device fetched successfully')
+    logger.info('   Name:', device.name)
+    logger.info('   Commands count:', commands.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'get', {
       deviceId: device.id,
@@ -76,8 +90,8 @@ export async function GET(
 
     return NextResponse.json({ success: true, device: deviceWithRelations })
   } catch (error: any) {
-    console.error('❌ [IR DEVICES] Error fetching device:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DEVICES] Error fetching device:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'get_error', {
       deviceId: id,
@@ -104,12 +118,23 @@ export async function PUT(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   const { id } = await params
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('✏️  [IR DEVICES] Updating device')
-  console.log('   ID:', id)
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('✏️  [IR DEVICES] Updating device')
+  logger.info('   ID:', id)
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
@@ -127,10 +152,10 @@ export async function PUT(
       status
     } = body
 
-    console.log('   Update fields:')
-    console.log('     Name:', name)
-    console.log('     Global Cache Device:', globalCacheDeviceId)
-    console.log('     Global Cache Port:', globalCachePortNumber)
+    logger.info('   Update fields:')
+    logger.info('     Name:', name)
+    logger.info('     Global Cache Device:', globalCacheDeviceId)
+    logger.info('     Global Cache Port:', globalCachePortNumber)
 
     // Build update data object
     const updateData: any = {}
@@ -174,11 +199,11 @@ export async function PUT(
       commands
     }
 
-    console.log('✅ [IR DEVICES] Device updated successfully')
-    console.log('   Name:', device.name)
-    console.log('   Global Cache Device:', device.globalCacheDeviceId || 'Not assigned')
-    console.log('   Global Cache Port:', device.globalCachePortNumber || 'Not assigned')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DEVICES] Device updated successfully')
+    logger.info('   Name:', device.name)
+    logger.info('   Global Cache Device:', device.globalCacheDeviceId || 'Not assigned')
+    logger.info('   Global Cache Port:', device.globalCachePortNumber || 'Not assigned')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'update', {
       deviceId: device.id,
@@ -187,8 +212,8 @@ export async function PUT(
 
     return NextResponse.json({ success: true, device: deviceWithRelations })
   } catch (error: any) {
-    console.error('❌ [IR DEVICES] Error updating device:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DEVICES] Error updating device:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'update_error', {
       deviceId: id,
@@ -215,18 +240,29 @@ export async function DELETE(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   const { id } = await params
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🗑️  [IR DEVICES] Deleting device')
-  console.log('   ID:', id)
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('🗑️  [IR DEVICES] Deleting device')
+  logger.info('   ID:', id)
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     await deleteRecord('irDevices', eq(schema.irDevices.id, id))
 
-    console.log('✅ [IR DEVICES] Device deleted successfully')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DEVICES] Device deleted successfully')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'delete', {
       deviceId: id
@@ -234,8 +270,8 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('❌ [IR DEVICES] Error deleting device:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DEVICES] Error deleting device:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'delete_error', {
       deviceId: id,

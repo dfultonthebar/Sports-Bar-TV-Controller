@@ -7,6 +7,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 /**
@@ -17,6 +20,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -72,7 +85,7 @@ export async function GET(request: NextRequest) {
       offset,
     })
   } catch (error: any) {
-    console.error('Error fetching training documents:', error)
+    logger.error('Error fetching training documents:', error)
     return NextResponse.json(
       { error: 'Failed to fetch training documents', details: error.message },
       { status: 500 }
@@ -88,6 +101,16 @@ export async function PUT(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -134,7 +157,7 @@ export async function PUT(request: NextRequest) {
       message: 'Document updated successfully',
     })
   } catch (error: any) {
-    console.error('Error updating document:', error)
+    logger.error('Error updating document:', error)
     return NextResponse.json(
       { error: 'Failed to update document', details: error.message },
       { status: 500 }
@@ -183,7 +206,7 @@ export async function DELETE(request: NextRequest) {
           await unlink(document.filePath)
         }
       } catch (fileError) {
-        console.error('Error deleting file:', fileError)
+        logger.error('Error deleting file:', fileError)
         // Continue with database deletion even if file deletion fails
       }
 
@@ -207,7 +230,7 @@ export async function DELETE(request: NextRequest) {
       })
     }
   } catch (error: any) {
-    console.error('Error deleting document:', error)
+    logger.error('Error deleting document:', error)
     return NextResponse.json(
       { error: 'Failed to delete document', details: error.message },
       { status: 500 }
@@ -223,6 +246,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -268,7 +301,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   } catch (error: any) {
-    console.error('Error in document action:', error)
+    logger.error('Error in document action:', error)
     return NextResponse.json(
       { error: 'Failed to process document action', details: error.message },
       { status: 500 }

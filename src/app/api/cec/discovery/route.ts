@@ -12,6 +12,9 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/cec/discovery
  * 
@@ -28,6 +31,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json().catch(() => ({}))
@@ -56,7 +65,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error: any) {
-    console.error('[CEC Discovery API] Error:', error)
+    logger.error('[CEC Discovery API] Error:', error)
     return NextResponse.json(
       {
         success: false,
@@ -97,7 +106,7 @@ export async function GET(request: NextRequest) {
       }))
     })
   } catch (error: any) {
-    console.error('[CEC Discovery API] Error fetching results:', error)
+    logger.error('[CEC Discovery API] Error fetching results:', error)
     return NextResponse.json(
       {
         success: false,

@@ -7,6 +7,9 @@ import fs from 'fs'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const execAsync = promisify(exec)
 
 interface ExecuteRequest {
@@ -22,6 +25,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.scriptExecution)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 }: ExecuteRequest = await request.json()
@@ -62,7 +71,7 @@ export async function POST(request: NextRequest) {
       execCommand = command!
     }
 
-    console.log(`Executing: ${execCommand} in ${cwd}`)
+    logger.info(`Executing: ${execCommand} in ${cwd}`)
 
     const { stdout, stderr } = await execAsync(execCommand, { 
       cwd,
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('Execution error:', error)
+    logger.error('Execution error:', error)
     
     return NextResponse.json({
       success: false,

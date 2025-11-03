@@ -6,12 +6,25 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // GET - List all API keys
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const apiKeysList = await findMany('apiKeys', {
@@ -23,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: safeApiKeys })
   } catch (error) {
-    console.error('Error fetching API keys:', error)
+    logger.error('Error fetching API keys:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch API keys' },
       { status: 500 }
@@ -37,6 +50,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { name, provider, keyValue, description } = await request.json()
@@ -69,7 +92,7 @@ export async function POST(request: NextRequest) {
       data: safeApiKey,
     })
   } catch (error) {
-    console.error('Error creating API key:', error)
+    logger.error('Error creating API key:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to create API key' },
       { status: 500 }
@@ -83,6 +106,16 @@ export async function PUT(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { id, name, provider, keyValue, description, isActive } = await request.json()
@@ -113,7 +146,7 @@ export async function PUT(request: NextRequest) {
       data: safeApiKey,
     })
   } catch (error) {
-    console.error('Error updating API key:', error)
+    logger.error('Error updating API key:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update API key' },
       { status: 500 }
@@ -146,7 +179,7 @@ export async function DELETE(request: NextRequest) {
       message: 'API key deleted successfully',
     })
   } catch (error) {
-    console.error('Error deleting API key:', error)
+    logger.error('Error deleting API key:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to delete API key' },
       { status: 500 }

@@ -5,6 +5,9 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * Layout Storage API - Enhanced to support background images
  * 
@@ -58,6 +61,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { layout } = await request.json()
     
@@ -66,7 +75,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error saving layout:', error)
+    logger.error('Error saving layout:', error)
     return NextResponse.json(
       { error: 'Failed to save layout' },
       { status: 500 }

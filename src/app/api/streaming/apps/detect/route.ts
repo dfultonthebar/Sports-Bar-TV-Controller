@@ -10,11 +10,20 @@ import { streamingManager } from '@/services/streaming-service-manager'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()
@@ -27,7 +36,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[API] Detecting streaming apps on device ${deviceId}`)
+    logger.info(`[API] Detecting streaming apps on device ${deviceId}`)
 
     const installedApps = await streamingManager.getInstalledApps(
       deviceId,
@@ -47,7 +56,7 @@ export async function POST(request: NextRequest) {
       apps: installedApps
     })
   } catch (error: any) {
-    console.error('[API] Error detecting streaming apps:', error)
+    logger.error('[API] Error detecting streaming apps:', error)
     
     return NextResponse.json(
       { 
@@ -81,7 +90,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('[API] Error getting streaming apps:', error)
+    logger.error('[API] Error getting streaming apps:', error)
     
     return NextResponse.json(
       { 

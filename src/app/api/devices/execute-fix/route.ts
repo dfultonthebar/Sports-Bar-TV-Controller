@@ -3,16 +3,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { actionId, deviceId } = await request.json()
 
-    console.log(`Executing fix: ${actionId} for device: ${deviceId}`)
+    logger.info(`Executing fix: ${actionId} for device: ${deviceId}`)
 
     // Mock automated fix execution
     const fixResults = {
@@ -78,7 +87,7 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString()
         }
       })
-    }).catch(err => console.error('Logging error:', err))
+    }).catch(err => logger.error('Logging error:', err))
 
     return NextResponse.json({
       success: result.success,
@@ -91,7 +100,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Execute fix error:', error)
+    logger.error('Execute fix error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to execute fix' },
       { status: 500 }

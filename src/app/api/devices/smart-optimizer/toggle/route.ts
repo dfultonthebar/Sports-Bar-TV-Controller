@@ -3,17 +3,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { id, isActive } = await request.json()
 
     // Log the optimization rule toggle
-    console.log(`Optimization rule ${id} ${isActive ? 'activated' : 'deactivated'}`)
+    logger.info(`Optimization rule ${id} ${isActive ? 'activated' : 'deactivated'}`)
 
     // In a real implementation, this would:
     // 1. Update the database with the new state
@@ -29,7 +38,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Toggle optimization error:', error)
+    logger.error('Toggle optimization error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to toggle optimization rule' },
       { status: 500 }

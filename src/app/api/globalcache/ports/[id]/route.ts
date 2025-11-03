@@ -6,6 +6,9 @@ import { findFirst, update } from '@/lib/db-helpers'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * PUT /api/globalcache/ports/[id]
  * Update a Global Cache port assignment
@@ -18,6 +21,17 @@ export async function PUT(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -39,14 +53,14 @@ export async function PUT(
       )
     }
 
-    console.log(`Global Cache port updated: Port ${port.portNumber} assigned to ${assignedTo || 'none'}`)
+    logger.info(`Global Cache port updated: Port ${port.portNumber} assigned to ${assignedTo || 'none'}`)
 
     return NextResponse.json({
       success: true,
       port
     })
   } catch (error) {
-    console.error('Error updating port:', error)
+    logger.error('Error updating port:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update port' },
       { status: 500 }
@@ -66,6 +80,17 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -95,7 +120,7 @@ export async function GET(
       port: portWithDevice
     })
   } catch (error) {
-    console.error('Error fetching port:', error)
+    logger.error('Error fetching port:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch port' },
       { status: 500 }

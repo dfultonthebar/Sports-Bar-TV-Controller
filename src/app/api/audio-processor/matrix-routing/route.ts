@@ -7,6 +7,9 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching Matrix routing state:', error)
+    logger.error('Error fetching Matrix routing state:', error)
     return NextResponse.json(
       { error: 'Failed to fetch Matrix routing state' },
       { status: 500 }
@@ -46,6 +49,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { matrixOutputNumber, atlasInputLabel } = await request.json()
@@ -77,7 +86,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error updating Matrix routing configuration:', error)
+    logger.error('Error updating Matrix routing configuration:', error)
     return NextResponse.json(
       { error: 'Failed to update Matrix routing configuration' },
       { status: 500 }

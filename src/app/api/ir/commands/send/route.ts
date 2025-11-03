@@ -6,6 +6,9 @@ import net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/ir/commands/send
  * Send an IR command via Global Cache device
@@ -16,25 +19,31 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📤 [IR SEND] Sending IR command')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📤 [IR SEND] Sending IR command')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
     const { deviceId, commandId } = body
 
     if (!deviceId || !commandId) {
-      console.log('❌ [IR SEND] Missing required fields')
+      logger.info('❌ [IR SEND] Missing required fields')
       return NextResponse.json(
         { success: false, error: 'Device ID and Command ID are required' },
         { status: 400 }
       )
     }
 
-    console.log('   Device ID:', deviceId)
-    console.log('   Command ID:', commandId)
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Command ID:', commandId)
 
     // Get the command
     const command = await db.select()
@@ -44,15 +53,15 @@ export async function POST(request: NextRequest) {
       .get()
 
     if (!command) {
-      console.log('❌ [IR SEND] Command not found')
+      logger.info('❌ [IR SEND] Command not found')
       return NextResponse.json(
         { success: false, error: 'Command not found' },
         { status: 404 }
       )
     }
 
-    console.log('   Function Name:', command.functionName)
-    console.log('   IR Code length:', command.irCode.length)
+    logger.info('   Function Name:', command.functionName)
+    logger.info('   IR Code length:', command.irCode.length)
 
     // Get the IR device
     const device = await db.select()
@@ -62,7 +71,7 @@ export async function POST(request: NextRequest) {
       .get()
 
     if (!device) {
-      console.log('❌ [IR SEND] Device not found')
+      logger.info('❌ [IR SEND] Device not found')
       return NextResponse.json(
         { success: false, error: 'Device not found' },
         { status: 404 }
@@ -70,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!device.globalCacheDeviceId) {
-      console.log('❌ [IR SEND] Device not configured with Global Cache')
+      logger.info('❌ [IR SEND] Device not configured with Global Cache')
       return NextResponse.json(
         { success: false, error: 'Device is not configured with a Global Cache device' },
         { status: 400 }
@@ -85,17 +94,17 @@ export async function POST(request: NextRequest) {
       .get()
 
     if (!globalCacheDevice) {
-      console.log('❌ [IR SEND] Global Cache device not found')
+      logger.info('❌ [IR SEND] Global Cache device not found')
       return NextResponse.json(
         { success: false, error: 'Global Cache device not found' },
         { status: 404 }
       )
     }
 
-    console.log('📡 [IR SEND] Global Cache device found')
-    console.log('   Name:', globalCacheDevice.name)
-    console.log('   IP:', globalCacheDevice.ipAddress)
-    console.log('   Port:', globalCacheDevice.port)
+    logger.info('📡 [IR SEND] Global Cache device found')
+    logger.info('   Name:', globalCacheDevice.name)
+    logger.info('   IP:', globalCacheDevice.ipAddress)
+    logger.info('   Port:', globalCacheDevice.port)
 
     // Send the IR command
     const result = await sendIRCommand(
@@ -105,17 +114,17 @@ export async function POST(request: NextRequest) {
     )
 
     if (result.success) {
-      console.log('✅ [IR SEND] Command sent successfully')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [IR SEND] Command sent successfully')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json({
         success: true,
         message: 'Command sent successfully'
       })
     } else {
-      console.log('❌ [IR SEND] Failed to send command')
-      console.log('   Error:', result.error)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR SEND] Failed to send command')
+      logger.info('   Error:', result.error)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json(
         { success: false, error: result.error },
@@ -123,8 +132,8 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('❌ [IR SEND] Error sending command:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR SEND] Error sending command:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json(
       { 
@@ -152,14 +161,14 @@ async function sendIRCommand(
     const client = new net.Socket()
     let resolved = false
 
-    console.log('🔌 [IR SEND] Connecting to Global Cache device...')
-    console.log('   Address:', `${ipAddress}:${port}`)
+    logger.info('🔌 [IR SEND] Connecting to Global Cache device...')
+    logger.info('   Address:', `${ipAddress}:${port}`)
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
         resolved = true
         client.destroy()
-        console.log('⏱️  [IR SEND] Connection timeout')
+        logger.info('⏱️  [IR SEND] Connection timeout')
         resolve({
           success: false,
           error: 'Connection timeout'
@@ -168,8 +177,8 @@ async function sendIRCommand(
     }, timeout)
 
     client.on('connect', () => {
-      console.log('✅ [IR SEND] Connected to Global Cache device')
-      console.log('📤 [IR SEND] Sending IR command:', irCode.substring(0, 50) + '...')
+      logger.info('✅ [IR SEND] Connected to Global Cache device')
+      logger.info('📤 [IR SEND] Sending IR command:', irCode.substring(0, 50) + '...')
       
       // Send the IR command
       client.write(irCode + '\r')
@@ -177,7 +186,7 @@ async function sendIRCommand(
 
     client.on('data', (data) => {
       const response = data.toString()
-      console.log('📥 [IR SEND] Received response:', response.trim())
+      logger.info('📥 [IR SEND] Received response:', response.trim())
 
       // Check for successful completion
       if (response.includes('completeir') || response.includes('busyIR')) {
@@ -185,7 +194,7 @@ async function sendIRCommand(
           resolved = true
           clearTimeout(timeoutId)
           client.destroy()
-          console.log('✅ [IR SEND] Command sent successfully')
+          logger.info('✅ [IR SEND] Command sent successfully')
           resolve({
             success: true
           })
@@ -198,7 +207,7 @@ async function sendIRCommand(
           resolved = true
           clearTimeout(timeoutId)
           client.destroy()
-          console.log('❌ [IR SEND] Error response:', response.trim())
+          logger.info('❌ [IR SEND] Error response:', response.trim())
           resolve({
             success: false,
             error: 'Global Cache returned an error: ' + response.trim()
@@ -211,7 +220,7 @@ async function sendIRCommand(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [IR SEND] Socket error:', error.message)
+        logger.error('❌ [IR SEND] Socket error:', error.message)
         resolve({
           success: false,
           error: `Connection error: ${error.message}`
@@ -223,7 +232,7 @@ async function sendIRCommand(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.log('🔌 [IR SEND] Connection closed')
+        logger.info('🔌 [IR SEND] Connection closed')
         resolve({
           success: true
         })
@@ -236,7 +245,7 @@ async function sendIRCommand(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [IR SEND] Connection failed:', error)
+        logger.error('❌ [IR SEND] Connection failed:', error)
         resolve({
           success: false,
           error: error instanceof Error ? error.message : 'Connection failed'

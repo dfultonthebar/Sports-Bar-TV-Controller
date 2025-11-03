@@ -8,12 +8,21 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { scheduleId } = await request.json();
@@ -59,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ result });
   } catch (error: any) {
-    console.error('Error executing schedule:', error);
+    logger.error('Error executing schedule:', error);
     return NextResponse.json(
       { error: 'Failed to execute schedule', details: error.message },
       { status: 500 }
@@ -225,7 +234,7 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
     // This would be more complex logic based on your needs
 
   } catch (error) {
-    console.error('Error finding games:', error);
+    logger.error('Error finding games:', error);
   }
 
   return result;
@@ -245,5 +254,5 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date) 
 async function changeChannel(inputId: string, channel: string) {
   // TODO: Implement channel changing based on input device type
   // This would send IR commands via Global Cache or control DirecTV, Fire TV, etc.
-  console.log(`Changing input ${inputId} to channel ${channel}`);
+  logger.info(`Changing input ${inputId} to channel ${channel}`);
 }

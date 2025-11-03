@@ -12,11 +12,20 @@ import { eq, desc, and, gte, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -66,7 +75,7 @@ export async function GET(request: NextRequest) {
       count: logs.length,
     })
   } catch (error: any) {
-    console.error('[API] Error fetching command logs:', error)
+    logger.error('[API] Error fetching command logs:', error)
     return NextResponse.json(
       {
         success: false,

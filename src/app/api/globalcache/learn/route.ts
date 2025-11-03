@@ -7,6 +7,9 @@ import { globalCacheDevices } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/globalcache/learn
  * Start IR learning on a Global Cache device
@@ -17,20 +20,26 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { deviceId } = body
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🎓 [GLOBAL CACHE] Starting IR learning')
-    console.log('   Device ID:', deviceId)
-    console.log('   Timestamp:', new Date().toISOString())
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('🎓 [GLOBAL CACHE] Starting IR learning')
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Validate required fields
     if (!deviceId) {
-      console.log('❌ [GLOBAL CACHE] Error: Device ID is required')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Error: Device ID is required')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       return NextResponse.json(
         { success: false, error: 'Device ID is required' },
         { status: 400 }
@@ -41,37 +50,37 @@ export async function POST(request: NextRequest) {
     const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
 
     if (!device) {
-      console.log('❌ [GLOBAL CACHE] Error: Device not found')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Error: Device not found')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       return NextResponse.json(
         { success: false, error: 'Device not found' },
         { status: 404 }
       )
     }
 
-    console.log('📡 [GLOBAL CACHE] Device found')
-    console.log('   Name:', device.name)
-    console.log('   IP:', device.ipAddress)
-    console.log('   Port:', device.port)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('📡 [GLOBAL CACHE] Device found')
+    logger.info('   Name:', device.name)
+    logger.info('   IP:', device.ipAddress)
+    logger.info('   Port:', device.port)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Start learning session
     const result = await startLearningSession(device.ipAddress, device.port)
 
     if (result.success) {
-      console.log('✅ [GLOBAL CACHE] Learning session started successfully')
-      console.log('   Status:', result.status)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [GLOBAL CACHE] Learning session started successfully')
+      logger.info('   Status:', result.status)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     } else {
-      console.log('❌ [GLOBAL CACHE] Failed to start learning session')
-      console.log('   Error:', result.error)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Failed to start learning session')
+      logger.info('   Error:', result.error)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('❌ [GLOBAL CACHE] Error in learning API:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [GLOBAL CACHE] Error in learning API:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.json(
       { 
         success: false, 
@@ -96,16 +105,16 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json()
     const { deviceId } = body
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🛑 [GLOBAL CACHE] Stopping IR learning')
-    console.log('   Device ID:', deviceId)
-    console.log('   Timestamp:', new Date().toISOString())
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('🛑 [GLOBAL CACHE] Stopping IR learning')
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Validate required fields
     if (!deviceId) {
-      console.log('❌ [GLOBAL CACHE] Error: Device ID is required')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Error: Device ID is required')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       return NextResponse.json(
         { success: false, error: 'Device ID is required' },
         { status: 400 }
@@ -116,37 +125,37 @@ export async function DELETE(request: NextRequest) {
     const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
 
     if (!device) {
-      console.log('❌ [GLOBAL CACHE] Error: Device not found')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Error: Device not found')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       return NextResponse.json(
         { success: false, error: 'Device not found' },
         { status: 404 }
       )
     }
 
-    console.log('📡 [GLOBAL CACHE] Device found')
-    console.log('   Name:', device.name)
-    console.log('   IP:', device.ipAddress)
-    console.log('   Port:', device.port)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('📡 [GLOBAL CACHE] Device found')
+    logger.info('   Name:', device.name)
+    logger.info('   IP:', device.ipAddress)
+    logger.info('   Port:', device.port)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Stop learning session
     const result = await stopLearningSession(device.ipAddress, device.port)
 
     if (result.success) {
-      console.log('✅ [GLOBAL CACHE] Learning session stopped successfully')
-      console.log('   Status:', result.status)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [GLOBAL CACHE] Learning session stopped successfully')
+      logger.info('   Status:', result.status)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     } else {
-      console.log('❌ [GLOBAL CACHE] Failed to stop learning session')
-      console.log('   Error:', result.error)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [GLOBAL CACHE] Failed to stop learning session')
+      logger.info('   Error:', result.error)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('❌ [GLOBAL CACHE] Error stopping learning:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [GLOBAL CACHE] Error stopping learning:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     return NextResponse.json(
       { 
         success: false, 
@@ -176,14 +185,14 @@ async function startLearningSession(
     let resolved = false
     let learningEnabled = false
 
-    console.log('🔌 [GLOBAL CACHE] Connecting to device...')
-    console.log('   Address:', `${ipAddress}:${port}`)
+    logger.info('🔌 [GLOBAL CACHE] Connecting to device...')
+    logger.info('   Address:', `${ipAddress}:${port}`)
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
         resolved = true
         client.destroy()
-        console.log('⏱️  [GLOBAL CACHE] Learning session timeout')
+        logger.info('⏱️  [GLOBAL CACHE] Learning session timeout')
         resolve({
           success: false,
           error: 'Learning session timeout - no IR code received within 60 seconds'
@@ -192,8 +201,8 @@ async function startLearningSession(
     }, timeout)
 
     client.on('connect', () => {
-      console.log('✅ [GLOBAL CACHE] Connected to device')
-      console.log('📤 [GLOBAL CACHE] Sending get_IRL command')
+      logger.info('✅ [GLOBAL CACHE] Connected to device')
+      logger.info('📤 [GLOBAL CACHE] Sending get_IRL command')
       
       // Send get_IRL command to enable learning mode
       client.write('get_IRL\r')
@@ -203,13 +212,13 @@ async function startLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      console.log('📥 [GLOBAL CACHE] Received data:', response.trim())
+      logger.info('📥 [GLOBAL CACHE] Received data:', response.trim())
 
       // Check for "IR Learner Enabled" response
       if (response.includes('IR Learner Enabled')) {
         learningEnabled = true
-        console.log('✅ [GLOBAL CACHE] IR Learner enabled - waiting for IR code...')
-        console.log('👉 [GLOBAL CACHE] Point your remote at the Global Cache device and press a button')
+        logger.info('✅ [GLOBAL CACHE] IR Learner enabled - waiting for IR code...')
+        logger.info('👉 [GLOBAL CACHE] Point your remote at the Global Cache device and press a button')
         return
       }
 
@@ -219,7 +228,7 @@ async function startLearningSession(
           resolved = true
           clearTimeout(timeoutId)
           client.destroy()
-          console.log('❌ [GLOBAL CACHE] IR Learner unavailable (device may be configured for LED lighting)')
+          logger.info('❌ [GLOBAL CACHE] IR Learner unavailable (device may be configured for LED lighting)')
           resolve({
             success: false,
             error: 'IR Learner unavailable - device may be configured for LED lighting'
@@ -240,9 +249,9 @@ async function startLearningSession(
           
           if (irCodeLine) {
             const learnedCode = irCodeLine.trim()
-            console.log('🎉 [GLOBAL CACHE] IR code learned successfully!')
-            console.log('   Code length:', learnedCode.length, 'characters')
-            console.log('   Code preview:', learnedCode.substring(0, 100) + '...')
+            logger.info('🎉 [GLOBAL CACHE] IR code learned successfully!')
+            logger.info('   Code length:', learnedCode.length, 'characters')
+            logger.info('   Code preview:', learnedCode.substring(0, 100) + '...')
             
             // Automatically stop learning
             client.write('stop_IRL\r')
@@ -266,7 +275,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [GLOBAL CACHE] Socket error:', error.message)
+        logger.error('❌ [GLOBAL CACHE] Socket error:', error.message)
         resolve({
           success: false,
           error: `Connection error: ${error.message}`
@@ -278,7 +287,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.log('🔌 [GLOBAL CACHE] Connection closed')
+        logger.info('🔌 [GLOBAL CACHE] Connection closed')
         
         if (learningEnabled) {
           resolve({
@@ -300,7 +309,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [GLOBAL CACHE] Connection failed:', error)
+        logger.error('❌ [GLOBAL CACHE] Connection failed:', error)
         resolve({
           success: false,
           error: error instanceof Error ? error.message : 'Connection failed'
@@ -327,13 +336,13 @@ async function stopLearningSession(
     let dataBuffer = ''
     let resolved = false
 
-    console.log('🔌 [GLOBAL CACHE] Connecting to device to stop learning...')
+    logger.info('🔌 [GLOBAL CACHE] Connecting to device to stop learning...')
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
         resolved = true
         client.destroy()
-        console.log('⏱️  [GLOBAL CACHE] Stop learning timeout')
+        logger.info('⏱️  [GLOBAL CACHE] Stop learning timeout')
         resolve({
           success: false,
           error: 'Connection timeout'
@@ -342,8 +351,8 @@ async function stopLearningSession(
     }, timeout)
 
     client.on('connect', () => {
-      console.log('✅ [GLOBAL CACHE] Connected to device')
-      console.log('📤 [GLOBAL CACHE] Sending stop_IRL command')
+      logger.info('✅ [GLOBAL CACHE] Connected to device')
+      logger.info('📤 [GLOBAL CACHE] Sending stop_IRL command')
       
       // Send stop_IRL command to disable learning mode
       client.write('stop_IRL\r')
@@ -353,14 +362,14 @@ async function stopLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      console.log('📥 [GLOBAL CACHE] Received data:', response.trim())
+      logger.info('📥 [GLOBAL CACHE] Received data:', response.trim())
 
       // Check for "IR Learner Disabled" response
       if (response.includes('IR Learner Disabled')) {
         if (!resolved) {
           resolved = true
           clearTimeout(timeoutId)
-          console.log('✅ [GLOBAL CACHE] IR Learner disabled successfully')
+          logger.info('✅ [GLOBAL CACHE] IR Learner disabled successfully')
           
           // Close connection
           setTimeout(() => {
@@ -379,7 +388,7 @@ async function stopLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [GLOBAL CACHE] Socket error:', error.message)
+        logger.error('❌ [GLOBAL CACHE] Socket error:', error.message)
         resolve({
           success: false,
           error: `Connection error: ${error.message}`
@@ -391,7 +400,7 @@ async function stopLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.log('🔌 [GLOBAL CACHE] Connection closed')
+        logger.info('🔌 [GLOBAL CACHE] Connection closed')
         resolve({
           success: true,
           status: 'Connection closed (learning likely stopped)'
@@ -405,7 +414,7 @@ async function stopLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [GLOBAL CACHE] Connection failed:', error)
+        logger.error('❌ [GLOBAL CACHE] Connection failed:', error)
         resolve({
           success: false,
           error: error instanceof Error ? error.message : 'Connection failed'

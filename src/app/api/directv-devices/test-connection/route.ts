@@ -4,6 +4,9 @@ import { direcTVLogger, DirecTVOperation, LogLevel, withTiming } from '@/lib/dir
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 interface DirecTVInfo {
   model?: string
   version?: string
@@ -277,7 +280,7 @@ async function testDirecTVConnection(ip: string, port: number, deviceId?: string
       }
     })
     
-    console.error('DirecTV connection test error:', error)
+    logger.error('DirecTV connection test error:', error)
     
     return { connected: false, error: errorMessage }
   }
@@ -288,6 +291,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { ipAddress, port, deviceId, deviceName } = await request.json()
@@ -323,7 +332,7 @@ export async function POST(request: NextRequest) {
       }
     })
     
-    console.log(`Testing DirecTV connection to ${ipAddress}:${targetPort}`)
+    logger.info(`Testing DirecTV connection to ${ipAddress}:${targetPort}`)
     
     const result = await testDirecTVConnection(ipAddress, targetPort, deviceId, deviceName)
     
@@ -358,7 +367,7 @@ export async function POST(request: NextRequest) {
       } : undefined
     })
     
-    console.error('DirecTV Connection Test API Error:', error)
+    logger.error('DirecTV Connection Test API Error:', error)
     return NextResponse.json(
       { 
         connected: false,

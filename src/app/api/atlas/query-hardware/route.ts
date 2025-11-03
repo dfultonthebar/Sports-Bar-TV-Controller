@@ -8,6 +8,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 /**
@@ -23,6 +26,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { processorId, testOnly } = await request.json()
@@ -52,8 +65,8 @@ export async function POST(request: NextRequest) {
     const username = processor.username || undefined
     const password = processor.password || undefined
 
-    console.log(`[Query Hardware] Querying Atlas processor at ${ipAddress}`)
-    console.log(`[Query Hardware] HTTP Port: ${httpPort}, TCP Port: ${tcpPort}`)
+    logger.info(`[Query Hardware] Querying Atlas processor at ${ipAddress}`)
+    logger.info(`[Query Hardware] HTTP Port: ${httpPort}, TCP Port: ${tcpPort}`)
 
     // If testOnly, just test connection
     if (testOnly) {
@@ -81,7 +94,7 @@ export async function POST(request: NextRequest) {
         password     // HTTP basic auth
       )
     } catch (error) {
-      console.error('[Query Hardware] Failed to query hardware:', error)
+      logger.error('[Query Hardware] Failed to query hardware:', error)
       return NextResponse.json({
         success: false,
         error: 'Failed to query Atlas hardware',
@@ -252,7 +265,7 @@ export async function POST(request: NextRequest) {
             if (data.pct !== undefined) return Math.round(data.pct)
             
             // If we can't extract a primitive, return default
-            console.warn(`[Query Hardware] Cannot extract primitive from object for zone ${zone.index}:`, JSON.stringify(data))
+            logger.warn(`[Query Hardware] Cannot extract primitive from object for zone ${zone.index}:`, JSON.stringify(data))
             return defaultValue
           }
           
@@ -287,7 +300,7 @@ export async function POST(request: NextRequest) {
                                typeof zoneSource === 'string' ? zoneSource :
                                null
         
-        console.log(`[Query Hardware] Zone ${zone.index} sanitized values:`, {
+        logger.info(`[Query Hardware] Zone ${zone.index} sanitized values:`, {
           name: sanitizedName,
           volume: sanitizedVolume,
           muted: sanitizedMuted,
@@ -340,9 +353,9 @@ export async function POST(request: NextRequest) {
             .run()
         }
         
-        console.log(`[Query Hardware] Successfully saved zone ${zone.index}: ${sanitizedName}`)
+        logger.info(`[Query Hardware] Successfully saved zone ${zone.index}: ${sanitizedName}`)
       } catch (zoneError) {
-        console.error(`[Query Hardware] Error upserting zone ${zone.index}:`, zoneError)
+        logger.error(`[Query Hardware] Error upserting zone ${zone.index}:`, zoneError)
         // Continue with other zones even if one fails
       }
     }
@@ -359,7 +372,7 @@ export async function POST(request: NextRequest) {
                            typeof group.currentSource === 'string' ? group.currentSource :
                            null
         
-        console.log(`[Query Hardware] Group ${group.index} sanitized values:`, {
+        logger.info(`[Query Hardware] Group ${group.index} sanitized values:`, {
           name: groupName,
           isActive: groupIsActive,
           gain: groupGain,
@@ -414,14 +427,14 @@ export async function POST(request: NextRequest) {
             .run()
         }
         
-        console.log(`[Query Hardware] Successfully saved group ${group.index}: ${groupName} (Active: ${groupIsActive})`)
+        logger.info(`[Query Hardware] Successfully saved group ${group.index}: ${groupName} (Active: ${groupIsActive})`)
       } catch (groupError) {
-        console.error(`[Query Hardware] Error upserting group ${group.index}:`, groupError)
+        logger.error(`[Query Hardware] Error upserting group ${group.index}:`, groupError)
         // Continue with other groups even if one fails
       }
     }
 
-    console.log(`[Query Hardware] Successfully saved configuration for processor ${processorId}`)
+    logger.info(`[Query Hardware] Successfully saved configuration for processor ${processorId}`)
 
     return NextResponse.json({
       success: true,
@@ -440,7 +453,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Query Hardware] Error:', error)
+    logger.error('[Query Hardware] Error:', error)
     return NextResponse.json({
       success: false,
       error: 'Failed to query hardware configuration',
@@ -458,6 +471,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -490,7 +513,7 @@ export async function GET(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('[Query Hardware] GET Error:', error)
+    logger.error('[Query Hardware] GET Error:', error)
     return NextResponse.json({
       success: false,
       error: 'Failed to check hardware configuration',

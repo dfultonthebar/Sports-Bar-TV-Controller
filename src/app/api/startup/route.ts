@@ -4,6 +4,9 @@ import { runStartupTasks } from '@/lib/startup-init'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST - Run startup initialization tasks
  * This endpoint should be called when the application starts
@@ -14,8 +17,14 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
-    console.log('Running startup initialization...')
+    logger.info('Running startup initialization...')
     await runStartupTasks()
     
     return NextResponse.json({
@@ -23,7 +32,7 @@ export async function POST(request: NextRequest) {
       message: 'Startup tasks completed successfully'
     })
   } catch (error) {
-    console.error('Error during startup:', error)
+    logger.error('Error during startup:', error)
     return NextResponse.json({
       success: false,
       error: String(error)

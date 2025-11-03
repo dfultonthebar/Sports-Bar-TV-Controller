@@ -9,6 +9,9 @@ import { findMany, create } from '@/lib/db-helpers'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/devices
  * List all IR devices
@@ -19,10 +22,10 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR DEVICES] Fetching all IR devices')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR DEVICES] Fetching all IR devices')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     // Fetch all IR devices
@@ -53,9 +56,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    console.log('✅ [IR DEVICES] Fetched successfully')
-    console.log('   Count:', devicesWithRelations.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DEVICES] Fetched successfully')
+    logger.info('   Count:', devicesWithRelations.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'list', {
       count: devicesWithRelations.length
@@ -63,8 +66,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, devices: devicesWithRelations })
   } catch (error: any) {
-    console.error('❌ [IR DEVICES] Error fetching devices:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DEVICES] Error fetching devices:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'list_error', {
       error: error.message
@@ -87,10 +90,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('➕ [IR DEVICES] Creating new IR device')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('➕ [IR DEVICES] Creating new IR device')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
@@ -108,8 +117,8 @@ export async function POST(request: NextRequest) {
     } = body
 
     if (!name || !deviceType || !brand) {
-      console.log('❌ [IR DEVICES] Missing required fields')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DEVICES] Missing required fields')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Name, device type, and brand are required' },
@@ -117,12 +126,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('   Name:', name)
-    console.log('   Type:', deviceType)
-    console.log('   Brand:', brand)
-    console.log('   Model:', model || 'N/A')
-    console.log('   Global Cache Device:', globalCacheDeviceId || 'Not assigned')
-    console.log('   Global Cache Port:', globalCachePortNumber || 'Not assigned')
+    logger.info('   Name:', name)
+    logger.info('   Type:', deviceType)
+    logger.info('   Brand:', brand)
+    logger.info('   Model:', model || 'N/A')
+    logger.info('   Global Cache Device:', globalCacheDeviceId || 'Not assigned')
+    logger.info('   Global Cache Port:', globalCachePortNumber || 'Not assigned')
 
     const device = await create('irDevices', {
       name,
@@ -150,9 +159,9 @@ export async function POST(request: NextRequest) {
       commands
     }
 
-    console.log('✅ [IR DEVICES] Device created successfully')
-    console.log('   ID:', device.id)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DEVICES] Device created successfully')
+    logger.info('   ID:', device.id)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'create', {
       deviceId: device.id,
@@ -166,8 +175,8 @@ export async function POST(request: NextRequest) {
       device: deviceWithRelations
     })
   } catch (error: any) {
-    console.error('❌ [IR DEVICES] Error creating device:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DEVICES] Error creating device:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'create_error', {
       error: error.message

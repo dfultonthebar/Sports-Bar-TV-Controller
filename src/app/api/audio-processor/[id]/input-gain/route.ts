@@ -23,6 +23,8 @@ import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 interface RouteContext {
   params: Promise<{
@@ -39,6 +41,17 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     // Await params for Next.js 15+ compatibility
@@ -95,6 +108,17 @@ export async function POST(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   // Declare processorId outside try block so it's accessible in catch
   let processorId = 'unknown'

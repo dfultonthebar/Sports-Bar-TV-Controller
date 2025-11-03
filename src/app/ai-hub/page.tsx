@@ -13,6 +13,7 @@ import AITeachingInterface from '@/components/AITeachingInterface'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 
+import { logger } from '@/lib/logger'
 interface IndexStats {
   totalFiles: number
   indexed: number
@@ -92,7 +93,7 @@ export default function AIHubPage() {
         }
       }
     } catch (error) {
-      console.error('Error loading codebase stats:', error)
+      logger.error('Error loading codebase stats:', error)
     }
   }
 
@@ -172,7 +173,7 @@ export default function AIHubPage() {
         }])
       }
     } catch (error) {
-      console.error('Chat error:', error)
+      logger.error('Chat error:', error)
       setChatHistory(prev => [...prev, { 
         role: 'assistant', 
         content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error')
@@ -190,7 +191,7 @@ export default function AIHubPage() {
         setProvidersStatus(data)
       }
     } catch (error) {
-      console.error('Error testing AI providers:', error)
+      logger.error('Error testing AI providers:', error)
     } finally {
       setIsLoadingProviders(false)
       setIsRefreshing(false)

@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Upload, Scan, Save, RefreshCw, Download, Trash2, Move, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+import { logger } from '@/lib/logger'
 interface Zone {
   id: string
   outputNumber: number
@@ -68,7 +69,7 @@ export default function LayoutEditorPage() {
         }
       }
     } catch (error) {
-      console.error('Error loading layout:', error)
+      logger.error('Error loading layout:', error)
     }
   }
 

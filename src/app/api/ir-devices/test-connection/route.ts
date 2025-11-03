@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url)
   const iTachAddress = searchParams.get('address') || '192.168.1.100'
@@ -23,13 +26,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }, 3000)
 
       socket.connect(4998, iTachAddress, () => {
-        console.log(`Connected to iTach at ${iTachAddress}:4998`)
+        logger.info(`Connected to iTach at ${iTachAddress}:4998`)
         socket.write('getversion\r')
       })
 
       socket.on('data', (data) => {
         const response = data.toString().trim()
-        console.log('iTach version response:', response)
+        logger.info('iTach version response:', response)
         
         if (!isResolved) {
           isResolved = true
@@ -44,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })
 
       socket.on('error', (err) => {
-        console.error('iTach connection error:', err)
+        logger.error('iTach connection error:', err)
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     })
 
   } catch (error) {
-    console.error('Error testing iTach connection:', error)
+    logger.error('Error testing iTach connection:', error)
     return NextResponse.json({ 
       connected: false, 
       message: `Test failed: ${error}` 

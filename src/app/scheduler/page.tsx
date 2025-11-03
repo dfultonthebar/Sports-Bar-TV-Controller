@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Play, Edit, Trash2, Clock, Tv, Calendar, AlertCircle, CheckCircle2, Target, Zap } from 'lucide-react';
 
+import { logger } from '@/lib/logger'
 interface Schedule {
   id: string;
   name: string;
@@ -120,7 +121,7 @@ export default function SchedulerPage() {
         });
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      logger.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -193,7 +194,7 @@ export default function SchedulerPage() {
         loadData();
       }
     } catch (error) {
-      console.error('Error saving schedule:', error);
+      logger.error('Error saving schedule:', error);
     }
   };
 
@@ -209,7 +210,7 @@ export default function SchedulerPage() {
         loadData();
       }
     } catch (error) {
-      console.error('Error deleting schedule:', error);
+      logger.error('Error deleting schedule:', error);
     }
   };
 
@@ -231,7 +232,7 @@ export default function SchedulerPage() {
       
       loadData();
     } catch (error) {
-      console.error('Error executing schedule:', error);
+      logger.error('Error executing schedule:', error);
       alert('Failed to execute schedule');
     }
   };

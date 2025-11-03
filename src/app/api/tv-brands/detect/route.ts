@@ -3,7 +3,10 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { logger } from '@/lib/logger'
 import {
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
   detectBrandFromOSD,
   getCachedBrandDetection,
   cacheBrandDetection,
@@ -23,6 +26,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -79,7 +92,7 @@ export async function POST(request: NextRequest) {
         }, { status: 500 })
       }
     } catch (execError: any) {
-      console.error('CEC command error:', execError)
+      logger.error('CEC command error:', execError)
       return NextResponse.json({
         success: false,
         error: 'Failed to execute CEC command',
@@ -107,7 +120,7 @@ export async function POST(request: NextRequest) {
       detection,
     })
   } catch (error: any) {
-    console.error('Error in TV brand detection:', error)
+    logger.error('Error in TV brand detection:', error)
     return NextResponse.json(
       {
         error: 'Failed to detect TV brand',
@@ -126,6 +139,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -154,7 +177,7 @@ export async function GET(request: NextRequest) {
       detection: cached,
     })
   } catch (error: any) {
-    console.error('Error getting cached brand detection:', error)
+    logger.error('Error getting cached brand detection:', error)
     return NextResponse.json(
       {
         error: 'Failed to get cached detection',

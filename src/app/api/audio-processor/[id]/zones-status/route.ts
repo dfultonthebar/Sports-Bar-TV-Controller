@@ -6,6 +6,9 @@ import { audioProcessors } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,6 +17,13 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -135,7 +145,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error fetching zones status:', error)
+    logger.error('Error fetching zones status:', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch zones status',

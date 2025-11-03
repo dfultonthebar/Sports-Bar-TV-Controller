@@ -6,6 +6,9 @@ import { withTransaction, transactionHelpers } from '@/lib/db/transaction-wrappe
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 /**
@@ -16,6 +19,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -35,7 +48,7 @@ export async function GET(request: NextRequest) {
       total: commands.length,
     })
   } catch (error: any) {
-    console.error('Error fetching scheduled commands:', error)
+    logger.error('Error fetching scheduled commands:', error)
     return NextResponse.json(
       { error: 'Failed to fetch scheduled commands', details: error.message },
       { status: 500 }
@@ -51,6 +64,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -114,7 +137,7 @@ export async function POST(request: NextRequest) {
       message: `Scheduled command "${name}" created successfully`,
     })
   } catch (error: any) {
-    console.error('Error creating scheduled command:', error)
+    logger.error('Error creating scheduled command:', error)
     return NextResponse.json(
       { error: 'Failed to create scheduled command', details: error.message },
       { status: 500 }
@@ -130,6 +153,16 @@ export async function PUT(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -190,7 +223,7 @@ export async function PUT(request: NextRequest) {
       message: 'Scheduled command updated successfully',
     })
   } catch (error: any) {
-    console.error('Error updating scheduled command:', error)
+    logger.error('Error updating scheduled command:', error)
     return NextResponse.json(
       { error: 'Failed to update scheduled command', details: error.message },
       { status: 500 }
@@ -225,7 +258,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Scheduled command deleted successfully',
     })
   } catch (error: any) {
-    console.error('Error deleting scheduled command:', error)
+    logger.error('Error deleting scheduled command:', error)
     return NextResponse.json(
       { error: 'Failed to delete scheduled command', details: error.message },
       { status: 500 }

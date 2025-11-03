@@ -6,6 +6,9 @@ import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { cacheManager } from '@/lib/cache-manager'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 // GET - Fetch players (optionally filtered for bartender view)
@@ -15,18 +18,42 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     const bartenderOnly = searchParams.get('bartenderOnly') === 'true'
 
     // Get configuration with CACHED API key from database
     const config = await findFirst('soundtrackConfigs')
-    
+
     if (!config) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Soundtrack not configured' 
+      return NextResponse.json({
+        success: false,
+        error: 'Soundtrack not configured'
       }, { status: 404 })
+    }
+
+    // Cache key based on config and bartenderOnly filter
+    const cacheKey = `players:${config.id}:bartender:${bartenderOnly}`
+
+    // Try to get from cache first (2 minute TTL)
+    const cached = cacheManager.get('soundtrack-data', cacheKey)
+    if (cached) {
+      logger.debug(`[Soundtrack] Returning ${cached.length} players from cache`)
+      return NextResponse.json({
+        success: true,
+        players: cached,
+        fromCache: true
+      })
     }
 
     // Get player settings from database
@@ -80,12 +107,20 @@ export async function GET(request: NextRequest) {
       .filter((p: any) => p !== null)
       .sort((a: any, b: any) => a.displayOrder - b.displayOrder)
 
-    return NextResponse.json({ success: true, players })
+    // Cache the players data for 2 minutes
+    cacheManager.set('soundtrack-data', cacheKey, players)
+    logger.debug(`[Soundtrack] Cached ${players.length} players`)
+
+    return NextResponse.json({
+      success: true,
+      players,
+      fromCache: false
+    })
   } catch (error: any) {
     logger.error('Error fetching Soundtrack players:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
+    return NextResponse.json({
+      success: false,
+      error: error.message
     }, { status: 500 })
   }
 }
@@ -96,6 +131,16 @@ export async function PATCH(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -119,14 +164,18 @@ export async function PATCH(request: NextRequest) {
 
     // Use cached token - no authentication needed
     const api = getSoundtrackAPI(config.apiKey)
-    
+
     // Update the sound zone with the provided parameters
     const updatedData: any = {}
     if (playing !== undefined) updatedData.playing = playing
     if (stationId) updatedData.stationId = stationId
     if (volume !== undefined) updatedData.volume = volume
-    
+
     const soundZone = await api.updateSoundZone(playerId, updatedData)
+
+    // Invalidate players cache since state changed
+    cacheManager.clearType('soundtrack-data')
+    logger.debug('[Soundtrack] Cleared soundtrack cache after player update')
 
     return NextResponse.json({
       success: true,
@@ -142,9 +191,9 @@ export async function PATCH(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error('Error controlling Soundtrack player:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
+    return NextResponse.json({
+      success: false,
+      error: error.message
     }, { status: 500 })
   }
 }

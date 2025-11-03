@@ -7,6 +7,9 @@ import net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/ir/learn
  * Start IR learning session for a specific command
@@ -17,27 +20,33 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🎓 [IR LEARN API] Starting IR learning session')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('🎓 [IR LEARN API] Starting IR learning session')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
     const { deviceId, globalCacheDeviceId, commandId, functionName } = body
 
     if (!deviceId || !globalCacheDeviceId || !commandId || !functionName) {
-      console.log('❌ [IR LEARN API] Missing required fields')
+      logger.info('❌ [IR LEARN API] Missing required fields')
       return NextResponse.json(
         { success: false, error: 'Device ID, Global Cache Device ID, Command ID, and Function Name are required' },
         { status: 400 }
       )
     }
 
-    console.log('   Device ID:', deviceId)
-    console.log('   Global Cache Device ID:', globalCacheDeviceId)
-    console.log('   Command ID:', commandId)
-    console.log('   Function Name:', functionName)
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Global Cache Device ID:', globalCacheDeviceId)
+    logger.info('   Command ID:', commandId)
+    logger.info('   Function Name:', functionName)
 
     // Get Global Cache device
     const globalCacheDevice = await db.select()
@@ -47,17 +56,17 @@ export async function POST(request: NextRequest) {
       .get()
 
     if (!globalCacheDevice) {
-      console.log('❌ [IR LEARN API] Global Cache device not found')
+      logger.info('❌ [IR LEARN API] Global Cache device not found')
       return NextResponse.json(
         { success: false, error: 'Global Cache device not found' },
         { status: 404 }
       )
     }
 
-    console.log('📡 [IR LEARN API] Global Cache device found')
-    console.log('   Name:', globalCacheDevice.name)
-    console.log('   IP:', globalCacheDevice.ipAddress)
-    console.log('   Port:', globalCacheDevice.port)
+    logger.info('📡 [IR LEARN API] Global Cache device found')
+    logger.info('   Name:', globalCacheDevice.name)
+    logger.info('   IP:', globalCacheDevice.ipAddress)
+    logger.info('   Port:', globalCacheDevice.port)
 
     // Start learning session
     const result = await startLearningSession(
@@ -66,8 +75,8 @@ export async function POST(request: NextRequest) {
     )
 
     if (result.success && result.learnedCode) {
-      console.log('✅ [IR LEARN API] IR code learned successfully')
-      console.log('   Code length:', result.learnedCode.length)
+      logger.info('✅ [IR LEARN API] IR code learned successfully')
+      logger.info('   Code length:', result.learnedCode.length)
 
       // Update the command with the learned IR code
       const updatedCommand = await update(
@@ -79,8 +88,8 @@ export async function POST(request: NextRequest) {
         }
       )
 
-      console.log('✅ [IR LEARN API] Command updated with learned code')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [IR LEARN API] Command updated with learned code')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json({
         success: true,
@@ -89,9 +98,9 @@ export async function POST(request: NextRequest) {
         command: updatedCommand
       })
     } else {
-      console.log('❌ [IR LEARN API] Failed to learn IR code')
-      console.log('   Error:', result.error)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR LEARN API] Failed to learn IR code')
+      logger.info('   Error:', result.error)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json(
         { success: false, error: result.error || 'Failed to learn IR code' },
@@ -99,8 +108,8 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('❌ [IR LEARN API] Error in learning API:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR LEARN API] Error in learning API:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     return NextResponse.json(
       { 
@@ -131,14 +140,14 @@ async function startLearningSession(
     let resolved = false
     let learningEnabled = false
 
-    console.log('🔌 [IR LEARN] Connecting to Global Cache device...')
-    console.log('   Address:', `${ipAddress}:${port}`)
+    logger.info('🔌 [IR LEARN] Connecting to Global Cache device...')
+    logger.info('   Address:', `${ipAddress}:${port}`)
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
         resolved = true
         client.destroy()
-        console.log('⏱️  [IR LEARN] Learning session timeout')
+        logger.info('⏱️  [IR LEARN] Learning session timeout')
         resolve({
           success: false,
           error: 'Learning timeout - no IR code received within 60 seconds. Please try again and press the remote button within 60 seconds.'
@@ -147,8 +156,8 @@ async function startLearningSession(
     }, timeout)
 
     client.on('connect', () => {
-      console.log('✅ [IR LEARN] Connected to Global Cache device')
-      console.log('📤 [IR LEARN] Sending get_IRL command')
+      logger.info('✅ [IR LEARN] Connected to Global Cache device')
+      logger.info('📤 [IR LEARN] Sending get_IRL command')
       
       // Send get_IRL command to enable learning mode
       client.write('get_IRL\r')
@@ -158,13 +167,13 @@ async function startLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      console.log('📥 [IR LEARN] Received data:', response.trim())
+      logger.info('📥 [IR LEARN] Received data:', response.trim())
 
       // Check for "IR Learner Enabled" response
       if (response.includes('IR Learner Enabled')) {
         learningEnabled = true
-        console.log('✅ [IR LEARN] IR Learner enabled - waiting for IR code...')
-        console.log('👉 [IR LEARN] Point your remote at the Global Cache device and press a button')
+        logger.info('✅ [IR LEARN] IR Learner enabled - waiting for IR code...')
+        logger.info('👉 [IR LEARN] Point your remote at the Global Cache device and press a button')
         return
       }
 
@@ -174,7 +183,7 @@ async function startLearningSession(
           resolved = true
           clearTimeout(timeoutId)
           client.destroy()
-          console.log('❌ [IR LEARN] IR Learner unavailable')
+          logger.info('❌ [IR LEARN] IR Learner unavailable')
           resolve({
             success: false,
             error: 'IR Learner unavailable - device may be configured for LED lighting or another mode'
@@ -195,9 +204,9 @@ async function startLearningSession(
           
           if (irCodeLine) {
             const learnedCode = irCodeLine.trim()
-            console.log('🎉 [IR LEARN] IR code learned successfully!')
-            console.log('   Code length:', learnedCode.length, 'characters')
-            console.log('   Code preview:', learnedCode.substring(0, 100) + '...')
+            logger.info('🎉 [IR LEARN] IR code learned successfully!')
+            logger.info('   Code length:', learnedCode.length, 'characters')
+            logger.info('   Code preview:', learnedCode.substring(0, 100) + '...')
             
             // Automatically stop learning
             client.write('stop_IRL\r')
@@ -221,7 +230,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [IR LEARN] Socket error:', error.message)
+        logger.error('❌ [IR LEARN] Socket error:', error.message)
         resolve({
           success: false,
           error: `Connection error: ${error.message}`
@@ -233,7 +242,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.log('🔌 [IR LEARN] Connection closed')
+        logger.info('🔌 [IR LEARN] Connection closed')
         
         if (learningEnabled) {
           resolve({
@@ -255,7 +264,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error('❌ [IR LEARN] Connection failed:', error)
+        logger.error('❌ [IR LEARN] Connection failed:', error)
         resolve({
           success: false,
           error: error instanceof Error ? error.message : 'Connection failed'

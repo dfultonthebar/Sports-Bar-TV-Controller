@@ -3,16 +3,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { alertId, deviceId } = await request.json()
 
-    console.log(`Auto-resolving alert ${alertId} for device ${deviceId}`)
+    logger.info(`Auto-resolving alert ${alertId} for device ${deviceId}`)
 
     // In a real implementation, this would:
     // 1. Identify the specific issue
@@ -48,7 +57,7 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString()
           }
         })
-      }).catch(err => console.error('Logging error:', err))
+      }).catch(err => logger.error('Logging error:', err))
 
       return NextResponse.json({
         success: true,
@@ -68,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Alert resolution error:', error)
+    logger.error('Alert resolution error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to resolve alert' },
       { status: 500 }

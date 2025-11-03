@@ -4,6 +4,9 @@ import { aiGainService } from '@/lib/ai-gain-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 interface RouteContext {
   params: Promise<{
     id: string
@@ -19,6 +22,17 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const params = await context.params
@@ -48,7 +62,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error fetching adjustment history:', error)
+    logger.error('Error fetching adjustment history:', error)
     return NextResponse.json(
       { error: 'Failed to fetch adjustment history' },
       { status: 500 }

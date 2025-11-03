@@ -9,7 +9,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { logger } from '@/lib/logger'
 import { 
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
   queryOllamaWithContext, 
   analyzeSportsGuideLogs,
   getSportsGuideRecommendations,
@@ -24,26 +27,32 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { query, action, includeRecentLogs, userPreferences } = body
 
-    console.log(`[Ollama-Query] Request received - Action: ${action || 'query'}`)
+    logger.info(`[Ollama-Query] Request received - Action: ${action || 'query'}`)
 
     // Handle different actions
     switch (action) {
       case 'analyze-logs':
-        console.log('[Ollama-Query] Analyzing sports guide logs...')
+        logger.info('[Ollama-Query] Analyzing sports guide logs...')
         const analysisResult = await analyzeSportsGuideLogs()
         return NextResponse.json(analysisResult)
 
       case 'get-recommendations':
-        console.log('[Ollama-Query] Getting sports guide recommendations...')
+        logger.info('[Ollama-Query] Getting sports guide recommendations...')
         const recommendations = await getSportsGuideRecommendations(userPreferences)
         return NextResponse.json(recommendations)
 
       case 'test-connection':
-        console.log('[Ollama-Query] Testing Ollama connection...')
+        logger.info('[Ollama-Query] Testing Ollama connection...')
         const connectionTest = await testOllamaConnection()
         return NextResponse.json(connectionTest)
 
@@ -56,13 +65,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        console.log(`[Ollama-Query] Querying Ollama: "${query}"`)
+        logger.info(`[Ollama-Query] Querying Ollama: "${query}"`)
         const result = await queryOllamaWithContext(query, includeRecentLogs !== false)
         return NextResponse.json(result)
     }
 
   } catch (error) {
-    console.error('[Ollama-Query] Error:', error)
+    logger.error('[Ollama-Query] Error:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -79,7 +88,7 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('[Ollama-Query] GET request - Testing Ollama connection...')
+  logger.info('[Ollama-Query] GET request - Testing Ollama connection...')
   const result = await testOllamaConnection()
   return NextResponse.json(result)
 }

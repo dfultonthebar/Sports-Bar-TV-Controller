@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Upload, Sparkles, Trash2, Edit2, Save, X, BarChart3, RefreshCw } from 'lucide-react';
 
+import { logger } from '@/lib/logger'
 interface QAEntry {
   id: string;
   question: string;
@@ -78,11 +79,11 @@ export default function QATrainingPage() {
         // Fallback for direct array response
         setEntries(result);
       } else {
-        console.error('Unexpected API response format:', result);
+        logger.error('Unexpected API response format:', result);
         setEntries([]);
       }
     } catch (error) {
-      console.error('Error loading entries:', error);
+      logger.error('Error loading entries:', error);
       setEntries([]);
     } finally {
       setLoading(false);
@@ -104,7 +105,7 @@ export default function QATrainingPage() {
       
       setStatistics(validatedData);
     } catch (error) {
-      console.error('Error loading statistics:', error);
+      logger.error('Error loading statistics:', error);
       setStatistics({
         total: 0,
         active: 0,
@@ -134,7 +135,7 @@ export default function QATrainingPage() {
         startJobPolling(data.jobId);
       }
     } catch (error) {
-      console.error('Error generating Q&As:', error);
+      logger.error('Error generating Q&As:', error);
       alert('Failed to start Q&A generation');
     } finally {
       setGenerateLoading(false);
@@ -155,7 +156,7 @@ export default function QATrainingPage() {
           loadStatistics();
         }
       } catch (error) {
-        console.error('Error polling job status:', error);
+        logger.error('Error polling job status:', error);
       }
     }, 2000);
 
@@ -186,7 +187,7 @@ export default function QATrainingPage() {
         alert(`Upload completed with errors:\n${result.errors.join('\n')}`);
       }
     } catch (error) {
-      console.error('Error uploading file:', error);
+      logger.error('Error uploading file:', error);
       alert('Failed to upload file');
     } finally {
       setUploadLoading(false);
@@ -221,7 +222,7 @@ export default function QATrainingPage() {
         setEditingId(null);
       }
     } catch (error) {
-      console.error('Error updating entry:', error);
+      logger.error('Error updating entry:', error);
     }
   };
 
@@ -238,7 +239,7 @@ export default function QATrainingPage() {
         loadStatistics();
       }
     } catch (error) {
-      console.error('Error deleting entry:', error);
+      logger.error('Error deleting entry:', error);
     }
   };
 

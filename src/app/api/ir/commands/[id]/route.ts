@@ -6,6 +6,9 @@ import { irCommands } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * DELETE /api/ir/commands/[id]
  * Delete an IR command
@@ -19,27 +22,34 @@ export async function DELETE(
     return rateLimit.response
   }
 
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   const { id: commandId } = await params
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🗑️  [IR COMMANDS] Deleting IR command')
-  console.log('   Command ID:', commandId)
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('🗑️  [IR COMMANDS] Deleting IR command')
+  logger.info('   Command ID:', commandId)
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     await deleteRecord('irCommands', eq(schema.irCommands.id, commandId))
 
-    console.log('✅ [IR COMMANDS] Command deleted successfully')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR COMMANDS] Command deleted successfully')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: true,
       message: 'Command deleted successfully'
     })
   } catch (error) {
-    console.error('❌ [IR COMMANDS] Error deleting command:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR COMMANDS] Error deleting command:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json(
       { 

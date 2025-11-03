@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+import { logger } from '@/lib/logger'
 interface DeviceStatus {
   id: string
   name: string
@@ -84,7 +85,7 @@ export default function SystemHealthPage() {
         setLastUpdate(new Date())
       }
     } catch (error) {
-      console.error('Error loading health report:', error)
+      logger.error('Error loading health report:', error)
     } finally {
       setLoading(false)
     }
@@ -115,13 +116,13 @@ export default function SystemHealthPage() {
           break
 
         default:
-          console.log('Action not implemented:', action, params)
+          logger.info('Action not implemented:', action, params)
       }
 
       // Refresh after action
       setTimeout(loadHealthReport, 1000)
     } catch (error) {
-      console.error('Error executing action:', error)
+      logger.error('Error executing action:', error)
     } finally {
       setExecuting(null)
     }

@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +118,12 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
@@ -140,7 +149,7 @@ export async function GET(request: NextRequest) {
       total: filteredLeagues.length
     })
   } catch (error) {
-    console.error('Error fetching leagues:', error)
+    logger.error('Error fetching leagues:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch leagues' },
       { status: 500 }

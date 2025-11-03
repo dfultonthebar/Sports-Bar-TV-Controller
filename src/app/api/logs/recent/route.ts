@@ -4,6 +4,9 @@ import { enhancedLogger } from '@/lib/enhanced-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +15,12 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -35,7 +44,7 @@ export async function GET(request: NextRequest) {
       limited: logs.length > limit
     })
   } catch (error) {
-    console.error('Failed to get recent logs:', error)
+    logger.error('Failed to get recent logs:', error)
     
     await enhancedLogger.error(
       'api',

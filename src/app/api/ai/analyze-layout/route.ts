@@ -5,6 +5,8 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 /**
@@ -64,6 +66,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { layoutDescription, matrixOutputs, availableOutputs, imageUrl, availableInputs } = await request.json()
     
@@ -97,7 +105,7 @@ export async function POST(request: NextRequest) {
             logger.debug('AI Analysis - Vision detected', tvLocations.length, 'TVs with accurate positions')
           }
         } else {
-          console.warn('AI Analysis - Vision API failed, falling back to description parsing')
+          logger.warn('AI Analysis - Vision API failed, falling back to description parsing')
         }
       } catch (visionError) {
         logger.error('AI Analysis - Vision API error:', visionError)
@@ -457,7 +465,7 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
     logger.debug(`Using ${availableOutputNumbers.length} actual Wolfpack output numbers:`, availableOutputNumbers)
   } else {
     // Fallback: generate output numbers if no active outputs configured
-    console.warn('No active Wolfpack outputs found - generating fallback output numbers')
+    logger.warn('No active Wolfpack outputs found - generating fallback output numbers')
     const maxOutputs = Math.max(matrixOutputs, locations.length)
     availableOutputNumbers = Array.from({ length: maxOutputs }, (_, i) => i + 1)
     logger.debug(`Generated ${availableOutputNumbers.length} fallback output numbers for ${locations.length} TV locations`)
@@ -467,7 +475,7 @@ function generateOutputMappings(locations: TVLocation[], matrixOutputs: number =
   const locationsToProcess = locations.slice(0, availableOutputNumbers.length)
   
   if (locations.length > availableOutputNumbers.length) {
-    console.warn(`Warning: ${locations.length} TVs detected but only ${availableOutputNumbers.length} Wolfpack outputs available. Mapping first ${availableOutputNumbers.length} TVs only.`)
+    logger.warn(`Warning: ${locations.length} TVs detected but only ${availableOutputNumbers.length} Wolfpack outputs available. Mapping first ${availableOutputNumbers.length} TVs only.`)
   }
   
   logger.debug(`Processing ${locationsToProcess.length} TV locations with ${availableOutputNumbers.length} available Wolfpack outputs`)

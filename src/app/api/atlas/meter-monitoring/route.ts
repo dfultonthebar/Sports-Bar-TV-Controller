@@ -8,6 +8,9 @@ import { atlasMeterService } from '@/lib/atlas-meter-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
@@ -15,6 +18,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { action, processorId, intervalMs } = await request.json()
@@ -51,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
     
   } catch (error) {
-    console.error('Atlas meter monitoring API error:', error)
+    logger.error('Atlas meter monitoring API error:', error)
     return NextResponse.json(
       { 
         error: 'Failed to control meter monitoring',
@@ -67,6 +80,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -90,7 +113,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Atlas meter monitoring API error:', error)
+    logger.error('Atlas meter monitoring API error:', error)
     return NextResponse.json(
       { error: 'Failed to process request' },
       { status: 500 }

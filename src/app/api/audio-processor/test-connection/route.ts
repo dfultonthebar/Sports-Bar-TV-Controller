@@ -6,6 +6,8 @@ import { update } from '@/lib/db-helpers'
 import { createAuthHeaders, testCredentials, ATLAS_DEFAULT_CREDENTIALS, encryptPassword } from '@/lib/atlas-auth'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 /**
  * Validates and cleans IP address format
@@ -52,7 +54,7 @@ function sanitizeProcessorId(processorId: any): string | null {
   // Basic UUID format validation (loose check)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(trimmed)) {
-    console.warn(`Invalid processorId format: ${trimmed}`)
+    logger.warn(`Invalid processorId format: ${trimmed}`)
     return null
   }
   
@@ -148,6 +150,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   logger.api.request('POST', '/api/audio-processor/test-connection')
   
   try {
@@ -165,7 +173,7 @@ export async function POST(request: NextRequest) {
     try {
       cleanedIp = cleanIpAddress(ipAddress)
       if (cleanedIp !== ipAddress) {
-        console.log(`Cleaned IP address from "${ipAddress}" to "${cleanedIp}"`)
+        logger.info(`Cleaned IP address from "${ipAddress}" to "${cleanedIp}"`)
       }
     } catch (error: any) {
       return NextResponse.json({
@@ -179,11 +187,11 @@ export async function POST(request: NextRequest) {
     // Sanitize processorId
     const sanitizedProcessorId = sanitizeProcessorId(processorId)
 
-    console.log(`Testing connection to AtlasIED Atmosphere at ${cleanedIp}:${port || 80}`)
+    logger.info(`Testing connection to AtlasIED Atmosphere at ${cleanedIp}:${port || 80}`)
 
     // If auto-detect credentials is enabled, try common credential combinations
     if (autoDetectCredentials && (!username || !password)) {
-      console.log('Auto-detecting credentials...')
+      logger.info('Auto-detecting credentials...')
       
       const credentialsList = [
         { username: ATLAS_DEFAULT_CREDENTIALS.username, password: ATLAS_DEFAULT_CREDENTIALS.password },
@@ -213,7 +221,7 @@ export async function POST(request: NextRequest) {
               }
             )
           } catch (dbError) {
-            console.error('Failed to update processor in database:', dbError)
+            logger.error('Failed to update processor in database:', dbError)
             // Continue with response even if DB update fails
           }
         }
@@ -262,7 +270,7 @@ export async function POST(request: NextRequest) {
             updateData
           )
         } catch (dbError) {
-          console.error('Failed to update processor in database:', dbError)
+          logger.error('Failed to update processor in database:', dbError)
           // Continue with response even if DB update fails
         }
       }
@@ -310,7 +318,7 @@ export async function POST(request: NextRequest) {
             }
           )
         } catch (dbError) {
-          console.error('Failed to update processor status in database:', dbError)
+          logger.error('Failed to update processor status in database:', dbError)
           // Continue with response even if DB update fails
         }
       }

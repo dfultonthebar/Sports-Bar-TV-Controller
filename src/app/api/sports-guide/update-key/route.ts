@@ -13,11 +13,20 @@ import { SportsGuideApi } from '@/lib/sportsGuideApi';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json();
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
       requiresRestart: true,
     });
   } catch (error) {
-    console.error('Error updating Sports Guide API key:', error);
+    logger.error('Error updating Sports Guide API key:', error);
     return NextResponse.json(
       {
         success: false,

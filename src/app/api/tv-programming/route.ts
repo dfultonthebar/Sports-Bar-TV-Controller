@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // TV Programming API - NO MOCK DATA
@@ -19,13 +22,23 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const url = new URL(request.url)
     const channelNumber = url.searchParams.get('channel')
     const days = parseInt(url.searchParams.get('days') || '7')
     
-    console.log('⚠️ TV Programming API: No real data source configured')
-    console.log('ℹ️ Please configure Gracenote, TMS, or Spectrum Business API for EPG data')
+    logger.info('⚠️ TV Programming API: No real data source configured')
+    logger.info('ℹ️ Please configure Gracenote, TMS, or Spectrum Business API for EPG data')
     
     return NextResponse.json({
       success: false,
@@ -47,7 +60,7 @@ export async function GET(request: NextRequest) {
       requestedDays: days
     })
   } catch (error) {
-    console.error('Error in TV programming API:', error)
+    logger.error('Error in TV programming API:', error)
     return NextResponse.json({ 
       success: false,
       error: 'TV Programming API error' 
@@ -61,8 +74,18 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
-    console.log('⚠️ TV Programming Update: No real data source configured')
+    logger.info('⚠️ TV Programming Update: No real data source configured')
     
     return NextResponse.json({
       success: false,
@@ -71,7 +94,7 @@ export async function POST(request: NextRequest) {
       recommendation: 'Configure Gracenote EPG, TMS, or Spectrum Business API for automated updates'
     })
   } catch (error) {
-    console.error('Error updating TV programming:', error)
+    logger.error('Error updating TV programming:', error)
     return NextResponse.json({ 
       success: false,
       error: 'Failed to update programming' 

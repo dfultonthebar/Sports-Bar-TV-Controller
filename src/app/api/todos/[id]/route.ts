@@ -9,6 +9,9 @@ import { todos } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // GET /api/todos/:id - Get single TODO
@@ -20,6 +23,17 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -42,7 +56,7 @@ export async function GET(
       data: todo
     })
   } catch (error) {
-    console.error('Error fetching todo:', error)
+    logger.error('Error fetching todo:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch todo' },
       { status: 500 }
@@ -59,6 +73,17 @@ export async function PUT(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -88,7 +113,7 @@ export async function PUT(
 
     // Sync to GitHub in background
     syncTodosToGitHub(`chore: Update TODO - ${todo.title}`).catch(err => {
-      console.error('GitHub sync failed:', err)
+      logger.error('GitHub sync failed:', err)
     })
 
     return NextResponse.json({
@@ -96,7 +121,7 @@ export async function PUT(
       data: todo
     })
   } catch (error) {
-    console.error('Error updating todo:', error)
+    logger.error('Error updating todo:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update todo' },
       { status: 500 }
@@ -114,6 +139,17 @@ export async function DELETE(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   try {
     const { id } = await params
     // Get TODO title before deleting
@@ -127,7 +163,7 @@ export async function DELETE(
     // Sync to GitHub in background
     if (todo) {
       syncTodosToGitHub(`chore: Delete TODO - ${todo.title}`).catch(err => {
-        console.error('GitHub sync failed:', err)
+        logger.error('GitHub sync failed:', err)
       })
     }
 
@@ -136,7 +172,7 @@ export async function DELETE(
       message: 'Todo deleted successfully'
     })
   } catch (error) {
-    console.error('Error deleting todo:', error)
+    logger.error('Error deleting todo:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to delete todo' },
       { status: 500 }

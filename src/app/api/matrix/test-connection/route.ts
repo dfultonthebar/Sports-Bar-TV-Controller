@@ -6,6 +6,8 @@ import { db, schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 export async function GET(request: NextRequest) {
@@ -128,6 +130,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { ipAddress, port, protocol = 'TCP' } = await request.json()

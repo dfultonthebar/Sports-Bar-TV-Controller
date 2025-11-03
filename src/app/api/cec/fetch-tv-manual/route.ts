@@ -10,6 +10,9 @@ import { fetchTVManual } from '@/lib/tvDocs'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/cec/fetch-tv-manual
  * 
@@ -36,6 +39,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { manufacturer, model, forceRefetch = false } = body
@@ -50,7 +59,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    console.log(`[Fetch TV Manual API] Fetching manual for ${manufacturer} ${model}`)
+    logger.info(`[Fetch TV Manual API] Fetching manual for ${manufacturer} ${model}`)
     
     const result = await fetchTVManual({
       manufacturer,
@@ -83,7 +92,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error: any) {
-    console.error('[Fetch TV Manual API] Error:', error)
+    logger.error('[Fetch TV Manual API] Error:', error)
     return NextResponse.json(
       {
         success: false,

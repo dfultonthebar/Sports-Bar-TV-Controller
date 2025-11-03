@@ -10,11 +10,20 @@ import { getSportsGuideApi } from '@/lib/sportsGuideApi';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -65,7 +74,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching Sports Guide channels:', error);
+    logger.error('Error fetching Sports Guide channels:', error);
     return NextResponse.json(
       {
         success: false,

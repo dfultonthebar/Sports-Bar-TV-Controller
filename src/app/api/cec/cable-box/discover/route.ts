@@ -10,14 +10,23 @@ import { CableBoxCECService } from '@/lib/cable-box-cec-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
-    console.log('[API] Discovering CEC adapters...')
+    logger.info('[API] Discovering CEC adapters...')
 
     const cecService = CableBoxCECService.getInstance()
     const adapters = await cecService.discoverAdapters()
@@ -29,7 +38,7 @@ export async function POST(request: NextRequest) {
       message: `Found ${adapters.length} CEC adapter(s)`,
     })
   } catch (error: any) {
-    console.error('[API] Error discovering adapters:', error)
+    logger.error('[API] Error discovering adapters:', error)
     return NextResponse.json(
       {
         success: false,

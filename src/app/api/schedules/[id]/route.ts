@@ -8,6 +8,9 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // GET - Get single schedule
 export async function GET(
   request: NextRequest,
@@ -17,6 +20,17 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -31,7 +45,7 @@ export async function GET(
 
     return NextResponse.json({ schedule });
   } catch (error: any) {
-    console.error('Error fetching schedule:', error);
+    logger.error('Error fetching schedule:', error);
     return NextResponse.json(
       { error: 'Failed to fetch schedule', details: error.message },
       { status: 500 }
@@ -48,6 +62,17 @@ export async function PUT(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -77,7 +102,7 @@ export async function PUT(
 
     return NextResponse.json({ schedule });
   } catch (error: any) {
-    console.error('Error updating schedule:', error);
+    logger.error('Error updating schedule:', error);
     return NextResponse.json(
       { error: 'Failed to update schedule', details: error.message },
       { status: 500 }
@@ -95,13 +120,24 @@ export async function DELETE(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   try {
     const { id } = await params
     await db.delete(schema.schedules).where(eq(schema.schedules.id, id)).returning().get();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error deleting schedule:', error);
+    logger.error('Error deleting schedule:', error);
     return NextResponse.json(
       { error: 'Failed to delete schedule', details: error.message },
       { status: 500 }

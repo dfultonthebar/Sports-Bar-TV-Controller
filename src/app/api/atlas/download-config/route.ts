@@ -4,6 +4,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 export async function POST(request: NextRequest) {
@@ -12,6 +15,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { processorId, ipAddress } = await request.json()
 
@@ -19,7 +28,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Processor ID and IP address are required' }, { status: 400 })
     }
 
-    console.log(`Downloading configuration from Atlas processor at ${ipAddress}`)
+    logger.info(`Downloading configuration from Atlas processor at ${ipAddress}`)
 
     // CRITICAL FIX: Read from saved configuration file instead of generating random data
     // The previous implementation was generating random configuration which wiped user settings!
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
       const configData = await fs.readFile(configPath, 'utf-8')
       const savedConfig = JSON.parse(configData)
       
-      console.log('Configuration loaded from saved file:', {
+      logger.info('Configuration loaded from saved file:', {
         processorId,
         inputsCount: savedConfig.inputs?.length || 0,
         outputsCount: savedConfig.outputs?.length || 0,
@@ -50,7 +59,7 @@ export async function POST(request: NextRequest) {
     } catch (fileError) {
       // If no saved configuration exists, return empty configuration
       // DO NOT generate random data!
-      console.log('No saved configuration found, returning empty configuration')
+      logger.info('No saved configuration found, returning empty configuration')
       
       return NextResponse.json({ 
         success: true, 
@@ -65,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error downloading configuration:', error)
+    logger.error('Error downloading configuration:', error)
     return NextResponse.json({ 
       error: 'Failed to download configuration',
       details: error instanceof Error ? error.message : 'Unknown error'

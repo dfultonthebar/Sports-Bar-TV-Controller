@@ -4,11 +4,20 @@ import { SoundtrackYourBrandAPI } from '@/lib/soundtrack-your-brand'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { apiKey } = await request.json()
@@ -21,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Test connection - this validates the token ONCE before saving
-    console.log('[Soundtrack] Testing API token...')
+    logger.info('[Soundtrack] Testing API token...')
     const api = new SoundtrackYourBrandAPI(apiKey)
     const testResult = await api.testConnection()
 
@@ -47,7 +56,7 @@ export async function POST(request: NextRequest) {
         accountCount: account.accounts?.length || 0
       }
     } catch (error: any) {
-      console.log('Could not fetch detailed account info:', error.message)
+      logger.info('Could not fetch detailed account info:', error.message)
       // Don't fail - we still got a successful connection test
     }
 
@@ -58,7 +67,7 @@ export async function POST(request: NextRequest) {
       accountInfo: accountInfo
     })
   } catch (error: any) {
-    console.error('Error testing Soundtrack connection:', error)
+    logger.error('Error testing Soundtrack connection:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Connection test failed' },
       { status: 500 }

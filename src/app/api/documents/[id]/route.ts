@@ -6,6 +6,9 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,6 +17,13 @@ export async function DELETE(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -29,7 +39,7 @@ export async function DELETE(
     try {
       await deleteFile(document.filePath)
     } catch (error) {
-      console.error('Error deleting physical file:', error)
+      logger.error('Error deleting physical file:', error)
       // Continue with database deletion even if file deletion fails
     }
 
@@ -38,7 +48,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Document deleted successfully' })
   } catch (error) {
-    console.error('Delete document error:', error)
+    logger.error('Delete document error:', error)
     return NextResponse.json(
       { error: 'Failed to delete document' }, 
       { status: 500 }
@@ -55,6 +65,13 @@ export async function GET(
     return rateLimit.response
   }
 
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   try {
     const { id } = await params
 
@@ -66,7 +83,7 @@ export async function GET(
 
     return NextResponse.json({ document })
   } catch (error) {
-    console.error('Get document error:', error)
+    logger.error('Get document error:', error)
     return NextResponse.json(
       { error: 'Failed to get document' }, 
       { status: 500 }

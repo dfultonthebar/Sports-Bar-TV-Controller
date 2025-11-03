@@ -5,6 +5,8 @@ import { schema } from "@/db"
 import { logger } from "@/lib/logger"
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -131,6 +133,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   logger.api.request('POST', '/api/sports-guide-config')
   

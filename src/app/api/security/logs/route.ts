@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecurityLogs, getSecurityLogStats } from '@/lib/ai-tools/security/security-logger';
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic';
 
 /**
@@ -24,6 +27,11 @@ export const dynamic = 'force-dynamic';
  * - stats: If 'true', return statistics instead of logs
  */
 export async function GET(request: NextRequest) {
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const statsOnly = searchParams.get('stats') === 'true';
@@ -90,7 +98,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error retrieving security logs:', error);
+    logger.error('Error retrieving security logs:', error);
     return NextResponse.json(
       {
         success: false,

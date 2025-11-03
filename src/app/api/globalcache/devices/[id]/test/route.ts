@@ -7,6 +7,9 @@ import { globalCacheDevices } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/globalcache/devices/[id]/test
  * Test connection to a Global Cache device
@@ -20,6 +23,17 @@ export async function POST(
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   try {
     const { id } = await params
     const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, id)).limit(1).get()
@@ -31,7 +45,7 @@ export async function POST(
       )
     }
 
-    console.log(`Testing connection to ${device.name} (${device.ipAddress}:${device.port})...`)
+    logger.info(`Testing connection to ${device.name} (${device.ipAddress}:${device.port})...`)
 
     const result = await testDeviceConnection(device.ipAddress, device.port)
 
@@ -41,9 +55,9 @@ export async function POST(
         lastSeen: result.online ? new Date().toISOString() : device.lastSeen
       }).where(eq(globalCacheDevices.id, id)).returning().get()
 
-    console.log(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
+    logger.info(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
     if (result.deviceInfo) {
-      console.log(`Device info: ${result.deviceInfo}`)
+      logger.info(`Device info: ${result.deviceInfo}`)
     }
 
     return NextResponse.json({
@@ -53,7 +67,7 @@ export async function POST(
       error: result.error
     })
   } catch (error) {
-    console.error('Error testing device connection:', error)
+    logger.error('Error testing device connection:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to test connection' },
       { status: 500 }
@@ -86,7 +100,7 @@ async function testDeviceConnection(
     }, timeout)
 
     client.on('connect', () => {
-      console.log(`Connected to ${ipAddress}:${port}`)
+      logger.info(`Connected to ${ipAddress}:${port}`)
       // Send getdevices command to get device info
       client.write('getdevices\r\n')
     })
@@ -110,7 +124,7 @@ async function testDeviceConnection(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error(`Connection error to ${ipAddress}:${port}:`, error.message)
+        logger.error(`Connection error to ${ipAddress}:${port}:`, error.message)
         resolve({
           online: false,
           error: error.message

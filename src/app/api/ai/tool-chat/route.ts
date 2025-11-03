@@ -7,7 +7,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildEnhancedContext } from '@/lib/ai-knowledge-enhanced';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { logger } from '@/lib/logger'
 import {
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
   executeTool,
   getAvailableTools,
   createDefaultContext,
@@ -47,6 +50,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json();
     const {
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
           contextPrompt = context + '\n\n';
         }
       } catch (error) {
-        console.error('Error building context:', error);
+        logger.error('Error building context:', error);
       }
     }
 
@@ -190,7 +199,7 @@ Guidelines:
     });
 
   } catch (error) {
-    console.error('Error in tool chat:', error);
+    logger.error('Error in tool chat:', error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to process chat request',
@@ -237,7 +246,7 @@ async function callOllama(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Ollama API error:', response.status, errorText);
+      logger.error('Ollama API error:', response.status, errorText);
       return {
         success: false,
         error: `Ollama error: ${response.statusText}`,
@@ -318,7 +327,7 @@ function parseToolCalls(response: string): ToolCall[] {
         parameters,
       });
     } catch (error) {
-      console.error('Failed to parse tool call:', error);
+      logger.error('Failed to parse tool call:', error);
     }
   }
 

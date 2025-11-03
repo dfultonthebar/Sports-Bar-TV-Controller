@@ -6,6 +6,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 const CREDENTIALS_FILE = path.join(process.cwd(), 'data', 'streaming-credentials.json')
@@ -30,7 +33,7 @@ function loadCredentials(): StreamingCredential[] {
     }
     return []
   } catch (error) {
-    console.error('Error loading credentials:', error)
+    logger.error('Error loading credentials:', error)
     return []
   }
 }
@@ -75,7 +78,7 @@ async function checkPlatformStatus(platformId: string, credential: StreamingCred
         return 'not-connected'
     }
   } catch (error) {
-    console.error(`Error checking status for ${platformId}:`, error)
+    logger.error(`Error checking status for ${platformId}:`, error)
     return 'not-connected'
   }
 }
@@ -87,7 +90,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log('🔍 Checking streaming platform statuses...')
+    logger.info('🔍 Checking streaming platform statuses...')
     
     const credentials = loadCredentials()
     const statuses: Record<string, 'connected' | 'expired' | 'not-connected'> = {}
@@ -114,7 +117,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('📊 Platform statuses:', statuses)
+    logger.info('📊 Platform statuses:', statuses)
 
     return NextResponse.json({
       success: true,
@@ -122,7 +125,7 @@ export async function GET(request: NextRequest) {
       lastChecked: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Error checking platform statuses:', error)
+    logger.error('Error checking platform statuses:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to check platform statuses' },
       { status: 500 }
@@ -136,6 +139,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { platformId } = await request.json()
 
@@ -146,7 +155,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`🔍 Checking status for specific platform: ${platformId}`)
+    logger.info(`🔍 Checking status for specific platform: ${platformId}`)
 
     const credentials = loadCredentials()
     const credential = credentials.find(c => c.platformId === platformId)
@@ -171,7 +180,7 @@ export async function POST(request: NextRequest) {
     try {
       fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(updatedCredentials, null, 2))
     } catch (error) {
-      console.error('Error updating credential status:', error)
+      logger.error('Error updating credential status:', error)
     }
 
     return NextResponse.json({
@@ -180,7 +189,7 @@ export async function POST(request: NextRequest) {
       lastChecked: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Error checking single platform status:', error)
+    logger.error('Error checking single platform status:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to check platform status' },
       { status: 500 }

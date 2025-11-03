@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/cards'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { logger } from '@/lib/logger'
 import {
   Usb,
   Cable,
@@ -69,7 +70,7 @@ export default function CECCableBoxAdminPage() {
     try {
       await Promise.all([fetchCableBoxes(), fetchCECDevices()])
     } catch (error) {
-      console.error('Error fetching data:', error)
+      logger.error('Error fetching data:', error)
     } finally {
       setLoading(false)
     }
@@ -83,7 +84,7 @@ export default function CECCableBoxAdminPage() {
         setCableBoxes(data.cableBoxes)
       }
     } catch (error) {
-      console.error('Error fetching cable boxes:', error)
+      logger.error('Error fetching cable boxes:', error)
     }
   }
 
@@ -105,7 +106,7 @@ export default function CECCableBoxAdminPage() {
       })
       setCECDevices(Array.from(uniqueDevices.values()))
     } catch (error) {
-      console.error('Error processing CEC devices:', error)
+      logger.error('Error processing CEC devices:', error)
     }
   }
 

@@ -7,6 +7,9 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
 
@@ -15,6 +18,21 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -34,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ inputMeters })
   } catch (error) {
-    console.error('Error fetching input meters:', error)
+    logger.error('Error fetching input meters:', error)
     return NextResponse.json(
       { error: 'Failed to fetch input meters' },
       { status: 500 }
@@ -47,6 +65,21 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const data = await request.json()
@@ -86,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ inputMeter })
   } catch (error) {
-    console.error('Error creating input meter:', error)
+    logger.error('Error creating input meter:', error)
     return NextResponse.json(
       { error: 'Failed to create input meter' },
       { status: 500 }
@@ -98,7 +131,7 @@ export async function POST(request: NextRequest) {
 async function startInputLevelMonitoring(processor: any, inputMeter: any) {
   const serverKey = `${processor.ipAddress}:${processor.port}`
   
-  console.log(`Starting input level monitoring for ${inputMeter.parameterName} on ${processor.ipAddress}`)
+  logger.info(`Starting input level monitoring for ${inputMeter.parameterName} on ${processor.ipAddress}`)
   
   try {
     // Get the centralized Atlas client (this manages the UDP socket on port 3131)
@@ -126,10 +159,10 @@ async function startInputLevelMonitoring(processor: any, inputMeter: any) {
     }
     activeSubscriptions.get(serverKey)?.add(inputMeter.parameterName)
     
-    console.log(`Successfully subscribed to ${inputMeter.parameterName}`)
+    logger.info(`Successfully subscribed to ${inputMeter.parameterName}`)
     
   } catch (error) {
-    console.error('Error setting up input level monitoring:', error)
+    logger.error('Error setting up input level monitoring:', error)
     throw error
   }
 }
@@ -158,10 +191,10 @@ async function handleMeterUpdate(processorId: string, params: any) {
       lastUpdate: new Date()
     })
     
-    console.log(`Updated ${paramName}: ${levelValue}dB`)
+    logger.info(`Updated ${paramName}: ${levelValue}dB`)
     
   } catch (error) {
-    console.error('Error handling meter update:', error)
+    logger.error('Error handling meter update:', error)
   }
 }
 

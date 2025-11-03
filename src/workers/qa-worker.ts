@@ -15,6 +15,7 @@ import { db } from '@/db';
 import { schema } from '@/db';
 import { processQAGenerationJob } from '@/lib/services/qa-generator-processor';
 
+import { logger } from '@/lib/logger'
 const POLL_INTERVAL = 5000; // Check for new jobs every 5 seconds
 
 async function processNextJob(): Promise<boolean> {
@@ -33,7 +34,7 @@ async function processNextJob(): Promise<boolean> {
     }
 
     const job = pendingJobs[0];
-    console.log(`[QA Worker] 📦 Processing job ${job.id}`);
+    logger.info(`[QA Worker] 📦 Processing job ${job.id}`);
 
     // Process the job
     const options = {
@@ -43,19 +44,19 @@ async function processNextJob(): Promise<boolean> {
 
     await processQAGenerationJob(job.id, options);
 
-    console.log(`[QA Worker] ✓ Job ${job.id} completed successfully`);
+    logger.info(`[QA Worker] ✓ Job ${job.id} completed successfully`);
     return true;
   } catch (error) {
-    console.error('[QA Worker] ✗ Error processing job:', error);
+    logger.error('[QA Worker] ✗ Error processing job:', error);
     return false;
   }
 }
 
 async function workerLoop() {
-  console.log('[QA Worker] 🚀 Starting Q&A Generation Worker');
-  console.log(`[QA Worker] Database: ${process.env.DATABASE_URL}`);
-  console.log(`[QA Worker] Polling interval: ${POLL_INTERVAL}ms`);
-  console.log('[QA Worker] Waiting for pending jobs...\n');
+  logger.info('[QA Worker] 🚀 Starting Q&A Generation Worker');
+  logger.info(`[QA Worker] Database: ${process.env.DATABASE_URL}`);
+  logger.info(`[QA Worker] Polling interval: ${POLL_INTERVAL}ms`);
+  logger.info('[QA Worker] Waiting for pending jobs...\n');
 
   while (true) {
     try {
@@ -67,7 +68,7 @@ async function workerLoop() {
       }
       // If a job was processed, immediately check for the next one
     } catch (error) {
-      console.error('[QA Worker] Worker loop error:', error);
+      logger.error('[QA Worker] Worker loop error:', error);
       // Wait a bit before retrying after an error
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL * 2));
     }
@@ -76,17 +77,17 @@ async function workerLoop() {
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('\n[QA Worker] Received SIGTERM, shutting down gracefully...');
+  logger.info('\n[QA Worker] Received SIGTERM, shutting down gracefully...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('\n[QA Worker] Received SIGINT, shutting down gracefully...');
+  logger.info('\n[QA Worker] Received SIGINT, shutting down gracefully...');
   process.exit(0);
 });
 
 // Start the worker
 workerLoop().catch(error => {
-  console.error('[QA Worker] Fatal error:', error);
+  logger.error('[QA Worker] Fatal error:', error);
   process.exit(1);
 });

@@ -6,6 +6,9 @@ import { logDatabaseOperation } from '@/lib/database-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/database/models?brand=xxx&type=xxx
  * Get models for a specific brand and device type
@@ -16,10 +19,16 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR DATABASE API] Fetching models')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR DATABASE API] Fetching models')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const { searchParams } = new URL(request.url)
@@ -27,8 +36,8 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type')
 
     if (!brand || !type) {
-      console.log('❌ [IR DATABASE API] Brand and type are required')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DATABASE API] Brand and type are required')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Brand and type are required' },
@@ -36,14 +45,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log('   Brand:', brand)
-    console.log('   Type:', type)
+    logger.info('   Brand:', brand)
+    logger.info('   Type:', type)
 
     const models = await irDatabaseService.getModels(brand, type)
 
-    console.log('✅ [IR DATABASE API] Models fetched successfully')
-    console.log('   Count:', models.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DATABASE API] Models fetched successfully')
+    logger.info('   Count:', models.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_models', {
       brand,
@@ -53,8 +62,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, models })
   } catch (error: any) {
-    console.error('❌ [IR DATABASE API] Error fetching models:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DATABASE API] Error fetching models:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_models_error', {
       error: error.message

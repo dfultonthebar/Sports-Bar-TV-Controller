@@ -9,6 +9,9 @@ import { audioProcessors } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/audio-processor/inputs
  * Fetch available inputs for an Atlas audio processor
@@ -21,6 +24,17 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -86,7 +100,7 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        console.log(`Merged ${mergedInputs.length} inputs (${configData.inputs.length} custom, ${inputs.length} total)`)
+        logger.info(`Merged ${mergedInputs.length} inputs (${configData.inputs.length} custom, ${inputs.length} total)`)
 
         return NextResponse.json({
           success: true,
@@ -96,7 +110,7 @@ export async function GET(request: NextRequest) {
         })
       }
     } catch (configError) {
-      console.log('No custom input configuration found, using model defaults')
+      logger.info('No custom input configuration found, using model defaults')
     }
 
     // Return model default inputs
@@ -117,7 +131,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching audio processor inputs:', error)
+    logger.error('Error fetching audio processor inputs:', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch inputs',

@@ -9,6 +9,8 @@ import { routeMatrix } from '@/lib/matrix-control'
 import { powerOn, powerOff, sendCECCommandDetailed, type CECResponse } from '@/lib/cec-client'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 export async function POST(request: NextRequest) {
@@ -16,6 +18,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.cecPowerControl)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { action, outputNumbers, individual = false } = await request.json()

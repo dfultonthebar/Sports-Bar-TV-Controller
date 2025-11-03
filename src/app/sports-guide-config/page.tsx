@@ -26,6 +26,7 @@ import {
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+import { logger } from '@/lib/logger'
 interface Provider {
   id?: string
   name: string
@@ -152,7 +153,7 @@ export default function SportsGuideConfigPage() {
         setMatrixInputs(result.data.matrixInputs || [])
       }
     } catch (error) {
-      console.error('Error loading configuration:', error)
+      logger.error('Error loading configuration:', error)
       setSaveMessage({ type: 'error', text: 'Failed to load configuration' })
     } finally {
       setIsLoading(false)
@@ -183,7 +184,7 @@ export default function SportsGuideConfigPage() {
         setSaveMessage({ type: 'error', text: result.error || 'Failed to save configuration' })
       }
     } catch (error) {
-      console.error('Error saving configuration:', error)
+      logger.error('Error saving configuration:', error)
       setSaveMessage({ type: 'error', text: 'Failed to save configuration' })
     } finally {
       setIsSaving(false)

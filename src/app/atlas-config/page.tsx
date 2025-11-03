@@ -10,6 +10,7 @@ import AtlasAIMonitor from '@/components/AtlasAIMonitor'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 
+import { logger } from '@/lib/logger'
 export default function AtlasConfigPage() {
   const [processors, setProcessors] = useState<any[]>([])
   const [selectedProcessor, setSelectedProcessor] = useState<any>(null)
@@ -31,7 +32,7 @@ export default function AtlasConfigPage() {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch processors:', error)
+      logger.error('Failed to fetch processors:', error)
     } finally {
       setLoading(false)
     }

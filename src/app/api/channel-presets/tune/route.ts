@@ -5,6 +5,8 @@ import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 
 // POST /api/channel-presets/tune - Send channel change command
@@ -13,6 +15,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.channelTune)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()

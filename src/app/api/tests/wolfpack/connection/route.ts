@@ -9,6 +9,9 @@ import { matrixConfigurations, testLogs } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // TCP connection test with timeout
 async function testTCPConnection(
   ipAddress: string,
@@ -18,18 +21,18 @@ async function testTCPConnection(
   const startTime = Date.now()
   
   return new Promise((resolve) => {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🎛️ [WOLFPACK CONNECTION TEST] Starting TCP connection test')
-    console.log('Target:', `${ipAddress}:${port}`)
-    console.log('Timeout:', `${timeoutMs}ms`)
-    console.log('Timestamp:', new Date().toISOString())
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('🎛️ [WOLFPACK CONNECTION TEST] Starting TCP connection test')
+    logger.info('Target:', `${ipAddress}:${port}`)
+    logger.info('Timeout:', `${timeoutMs}ms`)
+    logger.info('Timestamp:', new Date().toISOString())
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     const client = net.createConnection({ port, host: ipAddress }, () => {
       const duration = Date.now() - startTime
-      console.log('✅ [WOLFPACK CONNECTION TEST] TCP connection established')
-      console.log('Duration:', `${duration}ms`)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('✅ [WOLFPACK CONNECTION TEST] TCP connection established')
+      logger.info('Duration:', `${duration}ms`)
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.end()
       resolve({ 
@@ -43,9 +46,9 @@ async function testTCPConnection(
     
     client.on('timeout', () => {
       const duration = Date.now() - startTime
-      console.error('❌ [WOLFPACK CONNECTION TEST] Connection timeout')
-      console.error('Duration:', `${duration}ms`)
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK CONNECTION TEST] Connection timeout')
+      logger.error('Duration:', `${duration}ms`)
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.destroy()
       resolve({ 
@@ -57,10 +60,10 @@ async function testTCPConnection(
     
     client.on('error', (err) => {
       const duration = Date.now() - startTime
-      console.error('❌ [WOLFPACK CONNECTION TEST] Connection error')
-      console.error('Error:', err.message)
-      console.error('Duration:', `${duration}ms`)
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK CONNECTION TEST] Connection error')
+      logger.error('Error:', err.message)
+      logger.error('Duration:', `${duration}ms`)
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.destroy()
       resolve({ 
@@ -78,22 +81,28 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   const startTime = Date.now()
   
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🎛️ [WOLFPACK CONNECTION TEST] API endpoint called')
-  console.log('Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('🎛️ [WOLFPACK CONNECTION TEST] API endpoint called')
+  logger.info('Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   
   try {
-    console.log('📂 [WOLFPACK CONNECTION TEST] Loading matrix configuration from database...')
+    logger.info('📂 [WOLFPACK CONNECTION TEST] Loading matrix configuration from database...')
     
     // Get the active matrix configuration
     const matrixConfig = await db.select().from(matrixConfigurations).where(eq(matrixConfigurations.isActive, true)).limit(1).get()
 
     if (!matrixConfig) {
-      console.error('❌ [WOLFPACK CONNECTION TEST] No active matrix configuration found')
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK CONNECTION TEST] No active matrix configuration found')
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       const duration = Date.now() - startTime
       const errorLog = await db.insert(testLogs).values({
@@ -116,31 +125,31 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    console.log('✅ [WOLFPACK CONNECTION TEST] Configuration loaded')
-    console.log('Configuration ID:', matrixConfig.id)
-    console.log('Name:', matrixConfig.name)
-    console.log('IP Address:', matrixConfig.ipAddress)
-    console.log('TCP Port:', matrixConfig.tcpPort)
-    console.log('Protocol:', matrixConfig.protocol)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK CONNECTION TEST] Configuration loaded')
+    logger.info('Configuration ID:', matrixConfig.id)
+    logger.info('Name:', matrixConfig.name)
+    logger.info('IP Address:', matrixConfig.ipAddress)
+    logger.info('TCP Port:', matrixConfig.tcpPort)
+    logger.info('Protocol:', matrixConfig.protocol)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const ipAddress = matrixConfig.ipAddress
     const port = matrixConfig.tcpPort || 5000
 
-    console.log('🔌 [WOLFPACK CONNECTION TEST] Testing TCP connection...')
+    logger.info('🔌 [WOLFPACK CONNECTION TEST] Testing TCP connection...')
     
     // Test TCP connection to Wolf Pack matrix
     const connectionResult = await testTCPConnection(ipAddress, port, 5000)
 
     const duration = Date.now() - startTime
 
-    console.log('📊 [WOLFPACK CONNECTION TEST] Test completed')
-    console.log('Success:', connectionResult.success)
-    console.log('Total Duration:', `${duration}ms`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('📊 [WOLFPACK CONNECTION TEST] Test completed')
+    logger.info('Success:', connectionResult.success)
+    logger.info('Total Duration:', `${duration}ms`)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Log the test result to database
-    console.log('💾 [WOLFPACK CONNECTION TEST] Saving test result to database...')
+    logger.info('💾 [WOLFPACK CONNECTION TEST] Saving test result to database...')
 
     const testLogResults = await db
       .insert(testLogs)
@@ -167,9 +176,9 @@ export async function POST(request: NextRequest) {
 
     const testLog = testLogResults[0]
 
-    console.log('✅ [WOLFPACK CONNECTION TEST] Test result saved')
-    console.log('Test Log ID:', testLog.id)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK CONNECTION TEST] Test result saved')
+    logger.info('Test Log ID:', testLog.id)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: connectionResult.success,
@@ -186,12 +195,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - startTime
     
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.error('❌ [WOLFPACK CONNECTION TEST] Unexpected error occurred')
-    console.error('Error:', error instanceof Error ? error.message : 'Unknown error')
-    console.error('Stack:', error instanceof Error ? error.stack : 'N/A')
-    console.error('Duration:', `${duration}ms`)
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [WOLFPACK CONNECTION TEST] Unexpected error occurred')
+    logger.error('Error:', error instanceof Error ? error.message : 'Unknown error')
+    logger.error('Stack:', error instanceof Error ? error.stack : 'N/A')
+    logger.error('Duration:', `${duration}ms`)
+    logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {
       const errorLogResults = await db
@@ -223,9 +232,9 @@ export async function POST(request: NextRequest) {
         duration
       }, { status: 500 })
     } catch (logError) {
-      console.error('❌ [WOLFPACK CONNECTION TEST] Failed to log error to database')
-      console.error('Log Error:', logError)
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK CONNECTION TEST] Failed to log error to database')
+      logger.error('Log Error:', logError)
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json({
         success: false,

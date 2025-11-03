@@ -7,6 +7,8 @@ import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 interface ControlCommand {
   action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
@@ -24,6 +26,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.audioControl)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { processorId, command }: { processorId: string, command: ControlCommand } = await request.json()
@@ -173,7 +181,7 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
  * @param parameterName Optional Atlas parameter name (e.g., "ZoneOutput1Gain_0")
  */
 async function setZoneOutputVolume(processor: any, zone: number, outputIndex: number, volume: number, parameterName?: string): Promise<any> {
-  console.log(`[Control API] Setting zone ${zone} output ${outputIndex} volume to ${volume}% on ${processor.ipAddress}`)
+  logger.info(`[Control API] Setting zone ${zone} output ${outputIndex} volume to ${volume}% on ${processor.ipAddress}`)
   
   // Zone numbers are 1-based in UI, 0-based in Atlas protocol
   const zoneIndex = zone - 1
@@ -196,7 +204,7 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
     atlasParamName = paramPatterns[0]
   }
   
-  console.log(`[Control API] Using parameter: ${atlasParamName}`)
+  logger.info(`[Control API] Using parameter: ${atlasParamName}`)
   
   // Send command to Atlas processor
   const result = await executeAtlasCommand(
@@ -215,7 +223,7 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
   )
 
   if (!result.success) {
-    console.error('[Control API] Failed to set output volume:', result.error)
+    logger.error('[Control API] Failed to set output volume:', result.error)
     throw new Error(result.error || 'Failed to set output volume')
   }
   

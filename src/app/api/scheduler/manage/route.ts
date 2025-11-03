@@ -3,6 +3,9 @@ import { commandScheduler } from '@/lib/services/command-scheduler'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 /**
@@ -13,6 +16,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()
@@ -53,7 +62,7 @@ export async function POST(request: NextRequest) {
         )
     }
   } catch (error: any) {
-    console.error('Error managing scheduler:', error)
+    logger.error('Error managing scheduler:', error)
     return NextResponse.json(
       { error: 'Failed to manage scheduler', details: error.message },
       { status: 500 }
@@ -81,7 +90,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: any) {
-    console.error('Error getting scheduler status:', error)
+    logger.error('Error getting scheduler status:', error)
     return NextResponse.json(
       { error: 'Failed to get scheduler status', details: error.message },
       { status: 500 }

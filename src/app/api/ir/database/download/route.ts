@@ -10,6 +10,9 @@ import { findFirst, create, update } from '@/lib/db-helpers'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/ir/database/download
  * Download IR codes for a device
@@ -21,18 +24,24 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('⬇️  [IR DATABASE API] Downloading IR codes')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('⬇️  [IR DATABASE API] Downloading IR codes')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
     const { deviceId, codesetId, functions } = body
 
     if (!deviceId || !codesetId || !functions || !Array.isArray(functions)) {
-      console.log('❌ [IR DATABASE API] Invalid request body')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DATABASE API] Invalid request body')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'Device ID, codeset ID, and functions array are required' },
@@ -40,16 +49,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('   Device ID:', deviceId)
-    console.log('   Codeset ID:', codesetId)
-    console.log('   Functions count:', functions.length)
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Codeset ID:', codesetId)
+    logger.info('   Functions count:', functions.length)
 
     // Get active credentials
     const credentials = await db.select().from(irDatabaseCredentials).where(eq(irDatabaseCredentials.isActive, true)).limit(1).get()
 
     if (!credentials || !credentials.apiKey) {
-      console.log('❌ [IR DATABASE API] No active credentials found')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.info('❌ [IR DATABASE API] No active credentials found')
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(
         { success: false, error: 'No active IR database credentials. Please login first.' },
@@ -63,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Download each function
     for (const func of functions) {
       try {
-        console.log(`\n📥 Downloading: ${func.functionName}`)
+        logger.info(`\n📥 Downloading: ${func.functionName}`)
         
         const code = await irDatabaseService.downloadCode(
           codesetId,
@@ -77,8 +86,8 @@ export async function POST(request: NextRequest) {
           throw new Error('Invalid IR code received: Code1 field is missing or undefined')
         }
 
-        console.log(`   ✓ Code1 received: ${code.Code1.substring(0, 50)}...`)
-        console.log(`   ✓ HexCode1: ${code.HexCode1 ? 'Yes' : 'No'}`)
+        logger.info(`   ✓ Code1 received: ${code.Code1.substring(0, 50)}...`)
+        logger.info(`   ✓ HexCode1: ${code.HexCode1 ? 'Yes' : 'No'}`)
 
         // Check if command already exists
         const existingCommand = await db.select()
@@ -108,7 +117,7 @@ export async function POST(request: NextRequest) {
             }
           )
           downloadedCommands.push(updated)
-          console.log(`✅ Updated command: ${func.functionName}`)
+          logger.info(`✅ Updated command: ${func.functionName}`)
         } else {
           // Create new command
           const created = await create('irCommands', {
@@ -120,14 +129,14 @@ export async function POST(request: NextRequest) {
             category: func.category
           })
           downloadedCommands.push(created)
-          console.log(`✅ Created command: ${func.functionName}`)
+          logger.info(`✅ Created command: ${func.functionName}`)
         }
       } catch (error: any) {
-        console.error(`❌ Error downloading ${func.functionName}:`)
-        console.error(`   Error type: ${error.constructor.name}`)
-        console.error(`   Error message: ${error.message}`)
+        logger.error(`❌ Error downloading ${func.functionName}:`)
+        logger.error(`   Error type: ${error.constructor.name}`)
+        logger.error(`   Error message: ${error.message}`)
         if (error.stack) {
-          console.error(`   Stack trace: ${error.stack.split('\n').slice(0, 3).join('\n')}`)
+          logger.error(`   Stack trace: ${error.stack.split('\n').slice(0, 3).join('\n')}`)
         }
         
         errors.push({
@@ -140,10 +149,10 @@ export async function POST(request: NextRequest) {
     // Update device with codeset ID
     await update('irDevices', eq(schema.irDevices.id, deviceId), { irCodeSetId: codesetId })
 
-    console.log('✅ [IR DATABASE API] Download complete')
-    console.log('   Success:', downloadedCommands.length)
-    console.log('   Errors:', errors.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR DATABASE API] Download complete')
+    logger.info('   Success:', downloadedCommands.length)
+    logger.info('   Errors:', errors.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'download_codes', {
       deviceId,
@@ -159,8 +168,8 @@ export async function POST(request: NextRequest) {
       errors
     })
   } catch (error: any) {
-    console.error('❌ [IR DATABASE API] Error downloading codes:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR DATABASE API] Error downloading codes:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'download_codes_error', {
       error: error.message

@@ -33,6 +33,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 
+import { logger } from '@/lib/logger'
 interface Backup {
   filename: string
   size: number
@@ -131,7 +132,7 @@ export default function SystemAdminPage() {
         setBackupMessage({ type: 'error', text: data.error || 'Failed to load backups' })
       }
     } catch (error) {
-      console.error('Error loading backups:', error)
+      logger.error('Error loading backups:', error)
       setBackupMessage({ type: 'error', text: 'Failed to load backups' })
     } finally {
       setLoadingBackups(false)
@@ -158,7 +159,7 @@ export default function SystemAdminPage() {
         setBackupMessage({ type: 'error', text: data.error || 'Failed to create backup' })
       }
     } catch (error) {
-      console.error('Error creating backup:', error)
+      logger.error('Error creating backup:', error)
       setBackupMessage({ type: 'error', text: 'Failed to create backup' })
     } finally {
       setProcessing(false)
@@ -192,7 +193,7 @@ export default function SystemAdminPage() {
         setBackupMessage({ type: 'error', text: data.error || 'Failed to restore backup' })
       }
     } catch (error) {
-      console.error('Error restoring backup:', error)
+      logger.error('Error restoring backup:', error)
       setBackupMessage({ type: 'error', text: 'Failed to restore backup' })
     } finally {
       setProcessing(false)
@@ -223,7 +224,7 @@ export default function SystemAdminPage() {
         setBackupMessage({ type: 'error', text: data.error || 'Failed to delete backup' })
       }
     } catch (error) {
-      console.error('Error deleting backup:', error)
+      logger.error('Error deleting backup:', error)
       setBackupMessage({ type: 'error', text: 'Failed to delete backup' })
     } finally {
       setProcessing(false)
@@ -240,7 +241,7 @@ export default function SystemAdminPage() {
         setLogs(data.logs)
       }
     } catch (error) {
-      console.error('Error loading logs:', error)
+      logger.error('Error loading logs:', error)
     } finally {
       setIsLoadingLogs(false)
     }
@@ -304,7 +305,7 @@ export default function SystemAdminPage() {
         alert(data.message)
       }
     } catch (error) {
-      console.error('Error clearing logs:', error)
+      logger.error('Error clearing logs:', error)
       alert('Failed to clear logs')
     }
   }
@@ -1039,7 +1040,7 @@ export default function SystemAdminPage() {
                           setTodoRefreshTrigger(prev => prev + 1)
                         }
                       } catch (error) {
-                        console.error('Error deleting todo:', error)
+                        logger.error('Error deleting todo:', error)
                         alert('Failed to delete TODO')
                       }
                     }

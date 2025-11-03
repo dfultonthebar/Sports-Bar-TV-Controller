@@ -14,11 +14,20 @@ import { matrixOutputs } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.layoutUpload)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const formData = await request.formData()
@@ -49,7 +58,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes)
     await writeFile(filepath, buffer)
 
-    console.log(`[Layout Upload] Saved: ${filepath}`)
+    logger.info(`[Layout Upload] Saved: ${filepath}`)
 
     const imageUrl = `/uploads/layouts/${filename}`
     let zones: any[] = []
@@ -57,12 +66,12 @@ export async function POST(request: NextRequest) {
 
     // Auto-detect TV zones if requested
     if (autoDetect) {
-      console.log('[Layout Upload] Starting auto-detection...')
-      console.log('[Layout Upload] Image path:', filepath)
+      logger.info('[Layout Upload] Starting auto-detection...')
+      logger.info('[Layout Upload] Image path:', filepath)
 
       detectionResult = await detectTVZonesFromImage(filepath)
 
-      console.log('[Layout Upload] Detection result:', {
+      logger.info('[Layout Upload] Detection result:', {
         zonesFound: detectionResult.zones.length,
         detectionsCount: detectionResult.detectionsCount,
         errors: detectionResult.errors
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
         // Get WolfPack outputs for auto-matching
         const outputs = await db.select().from(matrixOutputs)
 
-        console.log(`[Layout Upload] Found ${outputs.length} matrix outputs for matching`)
+        logger.info(`[Layout Upload] Found ${outputs.length} matrix outputs for matching`)
 
         if (outputs.length > 0) {
           // Auto-match detected zones to outputs
@@ -83,15 +92,15 @@ export async function POST(request: NextRequest) {
               label: o.label
             }))
           )
-          console.log(`[Layout Upload] Auto-matched ${zones.length} TV zones`)
+          logger.info(`[Layout Upload] Auto-matched ${zones.length} TV zones`)
         } else {
           // No outputs to match against, just use detected zones
           zones = detectionResult.zones
-          console.log(`[Layout Upload] No outputs to match, using ${zones.length} detected zones as-is`)
+          logger.info(`[Layout Upload] No outputs to match, using ${zones.length} detected zones as-is`)
         }
       } else {
-        console.warn('[Layout Upload] No zones detected')
-        console.warn('[Layout Upload] Detection errors:', detectionResult.errors)
+        logger.warn('[Layout Upload] No zones detected')
+        logger.warn('[Layout Upload] Detection errors:', detectionResult.errors)
       }
     }
 
@@ -113,7 +122,7 @@ export async function POST(request: NextRequest) {
       } : null
     })
   } catch (error) {
-    console.error('[Layout Upload] Error:', error)
+    logger.error('[Layout Upload] Error:', error)
     return NextResponse.json(
       {
         error: 'Failed to process layout',

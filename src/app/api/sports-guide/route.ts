@@ -20,31 +20,34 @@ import { getSportsGuideApi, SportsGuideApiError } from '@/lib/sportsGuideApi'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 import { cacheManager } from '@/lib/cache-manager'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
 // MAXIMUM VERBOSITY LOGGING
 function logInfo(message: string, data?: any) {
   const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] [Sports-Guide-API] INFO: ${message}`)
+  logger.info(`[${timestamp}] [Sports-Guide-API] INFO: ${message}`)
   if (data) {
-    console.log(`[${timestamp}] [Sports-Guide-API] DATA:`, JSON.stringify(data, null, 2))
+    logger.info(`[${timestamp}] [Sports-Guide-API] DATA:`, JSON.stringify(data, null, 2))
   }
 }
 
 function logError(message: string, error?: any) {
   const timestamp = new Date().toISOString()
-  console.error(`[${timestamp}] [Sports-Guide-API] ERROR: ${message}`)
+  logger.error(`[${timestamp}] [Sports-Guide-API] ERROR: ${message}`)
   if (error) {
-    console.error(`[${timestamp}] [Sports-Guide-API] ERROR-DETAILS:`, error)
+    logger.error(`[${timestamp}] [Sports-Guide-API] ERROR-DETAILS:`, error)
   }
 }
 
 function logDebug(message: string, data?: any) {
   const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] [Sports-Guide-API] DEBUG: ${message}`)
+  logger.info(`[${timestamp}] [Sports-Guide-API] DEBUG: ${message}`)
   if (data) {
-    console.log(`[${timestamp}] [Sports-Guide-API] DEBUG-DATA:`, JSON.stringify(data, null, 2))
+    logger.info(`[${timestamp}] [Sports-Guide-API] DEBUG-DATA:`, JSON.stringify(data, null, 2))
   }
 }
 
@@ -70,7 +73,13 @@ export async function POST(request: NextRequest) {
   const rateLimitCheck = await withRateLimit(request, 'SPORTS')
 
   if (!rateLimitCheck.allowed) {
-    logInfo(`Rate limit exceeded for request [${requestId}]`)
+    logInfo(`Rate limit exceeded for request [${requestId}]
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+`)
     return rateLimitCheck.response!
   }
 

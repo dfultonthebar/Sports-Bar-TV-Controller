@@ -8,6 +8,9 @@ import { parsePaginationParams, paginateArray } from '@/lib/pagination'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +19,12 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -80,7 +89,7 @@ export async function GET(request: NextRequest) {
           totalEntries: logs.length
         })
       } catch (error) {
-        console.error('AI analysis failed:', error)
+        logger.error('AI analysis failed:', error)
         aiInsights = {
           error: 'AI analysis failed',
           message: 'Basic log export completed without AI insights'
@@ -170,7 +179,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Failed to export logs:', error)
+    logger.error('Failed to export logs:', error)
     
     await enhancedLogger.error(
       'api',

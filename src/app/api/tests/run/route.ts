@@ -4,6 +4,9 @@ import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const execAsync = promisify(exec)
 
 /**
@@ -21,6 +24,12 @@ export async function POST(req: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await req.json()
@@ -107,7 +116,7 @@ export async function POST(req: NextRequest) {
         testResults = JSON.parse(resultsContent)
       }
     } catch (error) {
-      console.error('Error reading test results:', error)
+      logger.error('Error reading test results:', error)
     }
 
     // Parse results
@@ -126,7 +135,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(results, { status: success ? 200 : 500 })
 
   } catch (error: any) {
-    console.error('Error executing tests:', error)
+    logger.error('Error executing tests:', error)
     return NextResponse.json({
       success: false,
       error: error.message

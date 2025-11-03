@@ -8,6 +8,9 @@ import { todos } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // GET /api/todos - List all TODOs with optional filters
@@ -16,6 +19,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -56,7 +69,7 @@ export async function GET(request: NextRequest) {
       data: todosWithDocuments
     })
   } catch (error) {
-    console.error('Error fetching todos:', error)
+    logger.error('Error fetching todos:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch todos' },
       { status: 500 }
@@ -70,6 +83,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -100,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     // Sync to GitHub in background (don't wait for it)
     syncTodosToGitHub(`chore: Add TODO - ${title}`).catch(err => {
-      console.error('GitHub sync failed:', err)
+      logger.error('GitHub sync failed:', err)
     })
 
     return NextResponse.json({
@@ -108,7 +131,7 @@ export async function POST(request: NextRequest) {
       data: todoWithDocuments
     })
   } catch (error) {
-    console.error('Error creating todo:', error)
+    logger.error('Error creating todo:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to create todo' },
       { status: 500 }

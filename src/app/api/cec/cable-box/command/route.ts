@@ -11,11 +11,20 @@ import { SPECTRUM_COMMANDS } from '@/lib/cec-commands'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()
@@ -69,7 +78,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[API] Sending command '${command}' to cable box ${cableBoxId}`)
+    logger.info(`[API] Sending command '${command}' to cable box ${cableBoxId}`)
 
     const result = await cecService.sendNavigationCommand(
       cableBoxId,
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error: any) {
-    console.error('[API] Error sending cable box command:', error)
+    logger.error('[API] Error sending cable box command:', error)
     return NextResponse.json(
       {
         success: false,

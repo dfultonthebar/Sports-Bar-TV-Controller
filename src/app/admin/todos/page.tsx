@@ -10,6 +10,7 @@ import TodoDetails from '@/components/TodoDetails'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
+import { logger } from '@/lib/logger'
 type View = 'list' | 'form' | 'details'
 
 export default function TodosPage() {
@@ -58,7 +59,7 @@ export default function TodosPage() {
           setRefreshTrigger(prev => prev + 1)
         }
       } catch (error) {
-        console.error('Error deleting todo:', error)
+        logger.error('Error deleting todo:', error)
         alert('Failed to delete TODO')
       }
     }

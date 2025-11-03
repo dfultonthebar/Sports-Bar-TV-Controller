@@ -3,17 +3,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { deviceId, channel, reason } = await request.json()
 
     // Log the AI-driven channel change for analytics
-    console.log(`AI Channel Change: Device ${deviceId} -> Channel ${channel}. Reason: ${reason}`)
+    logger.info(`AI Channel Change: Device ${deviceId} -> Channel ${channel}. Reason: ${reason}`)
 
     // In a real implementation, this would:
     // 1. Send the actual channel change command to the DirecTV receiver
@@ -39,7 +48,7 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString()
           }
         })
-      }).catch(err => console.error('Logging error:', err))
+      }).catch(err => logger.error('Logging error:', err))
 
       return NextResponse.json({
         success: true,
@@ -59,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Smart channel change error:', error)
+    logger.error('Smart channel change error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to change channel' },
       { status: 500 }

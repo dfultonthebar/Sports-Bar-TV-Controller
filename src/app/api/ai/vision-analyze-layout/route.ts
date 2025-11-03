@@ -6,6 +6,9 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * AI Vision Layout Analysis API
  * 
@@ -40,10 +43,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { imageUrl, imagePath } = await request.json()
     
-    console.log('Vision Analysis - Input:', { imageUrl, imagePath })
+    logger.info('Vision Analysis - Input:', { imageUrl, imagePath })
     
     if (!imageUrl && !imagePath) {
       return NextResponse.json(
@@ -56,30 +65,30 @@ export async function POST(request: NextRequest) {
     let result: VisionAnalysisResult | null = null
     
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your-openai-api-key') {
-      console.log('Attempting OpenAI Vision analysis...')
+      logger.info('Attempting OpenAI Vision analysis...')
       result = await analyzeWithOpenAI(imageUrl, imagePath)
     }
     
     // Fallback to Anthropic Claude Vision
     if (!result && process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your-anthropic-api-key') {
-      console.log('Attempting Anthropic Vision analysis...')
+      logger.info('Attempting Anthropic Vision analysis...')
       result = await analyzeWithAnthropic(imageUrl, imagePath)
     }
     
     // Fallback to basic detection if no API keys configured
     if (!result) {
-      console.log('No AI API keys configured, using fallback detection')
+      logger.info('No AI API keys configured, using fallback detection')
       result = await fallbackAnalysis(imageUrl, imagePath)
     }
     
-    console.log('Vision Analysis - Result:', { 
+    logger.info('Vision Analysis - Result:', { 
       totalTVs: result.totalTVs, 
       method: result.analysisMethod 
     })
     
     return NextResponse.json({ analysis: result })
   } catch (error) {
-    console.error('Error in vision analysis:', error)
+    logger.error('Error in vision analysis:', error)
     return NextResponse.json(
       { error: 'Failed to analyze image' },
       { status: 500 }
@@ -168,14 +177,14 @@ Important:
     
     const content = response.choices[0]?.message?.content
     if (!content) {
-      console.error('OpenAI returned no content')
+      logger.error('OpenAI returned no content')
       return null
     }
     
     // Parse JSON response
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      console.error('Could not extract JSON from OpenAI response')
+      logger.error('Could not extract JSON from OpenAI response')
       return null
     }
     
@@ -189,7 +198,7 @@ Important:
       analysisMethod: 'openai'
     }
   } catch (error) {
-    console.error('OpenAI Vision analysis failed:', error)
+    logger.error('OpenAI Vision analysis failed:', error)
     return null
   }
 }
@@ -290,14 +299,14 @@ Important:
     
     const content = message.content[0]
     if (content.type !== 'text') {
-      console.error('Anthropic returned non-text content')
+      logger.error('Anthropic returned non-text content')
       return null
     }
     
     // Parse JSON response
     const jsonMatch = content.text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      console.error('Could not extract JSON from Anthropic response')
+      logger.error('Could not extract JSON from Anthropic response')
       return null
     }
     
@@ -311,13 +320,13 @@ Important:
       analysisMethod: 'anthropic'
     }
   } catch (error) {
-    console.error('Anthropic Vision analysis failed:', error)
+    logger.error('Anthropic Vision analysis failed:', error)
     return null
   }
 }
 
 async function fallbackAnalysis(imageUrl?: string, imagePath?: string): Promise<VisionAnalysisResult> {
-  console.warn('Using fallback analysis - no AI vision available')
+  logger.warn('Using fallback analysis - no AI vision available')
   
   // Return a basic grid layout as fallback
   // This maintains backward compatibility but warns the user

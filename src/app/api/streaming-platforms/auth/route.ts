@@ -6,6 +6,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 const CREDENTIALS_FILE = path.join(process.cwd(), 'data', 'streaming-credentials.json')
@@ -48,7 +51,7 @@ function loadCredentials(): StreamingCredential[] {
     }
     return []
   } catch (error) {
-    console.error('Error loading credentials:', error)
+    logger.error('Error loading credentials:', error)
     return []
   }
 }
@@ -60,7 +63,7 @@ function saveCredentials(credentials: StreamingCredential[]): boolean {
     fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(credentials, null, 2))
     return true
   } catch (error) {
-    console.error('Error saving credentials:', error)
+    logger.error('Error saving credentials:', error)
     return false
   }
 }
@@ -68,7 +71,7 @@ function saveCredentials(credentials: StreamingCredential[]): boolean {
 // Mock authentication function (in production, integrate with actual APIs)
 async function authenticateWithPlatform(platformId: string, username: string, password: string): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log(`🔐 Authenticating with ${platformId} for user: ${username}`)
+    logger.info(`🔐 Authenticating with ${platformId} for user: ${username}`)
     
     // Mock authentication logic
     // In production, this would make actual API calls to each platform
@@ -112,7 +115,7 @@ async function authenticateWithPlatform(platformId: string, username: string, pa
         return { success: false, error: 'Unsupported platform' }
     }
   } catch (error) {
-    console.error('Authentication error:', error)
+    logger.error('Authentication error:', error)
     return { success: false, error: 'Authentication service error' }
   }
 }
@@ -122,6 +125,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { platformId, username, password, rememberMe } = await request.json()
@@ -133,7 +142,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`🔐 Processing authentication for ${platformId}`)
+    logger.info(`🔐 Processing authentication for ${platformId}`)
 
     // Attempt authentication with the platform
     const authResult = await authenticateWithPlatform(platformId, username, password)
@@ -167,7 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (saveCredentials(credentials)) {
-      console.log(`✅ Successfully authenticated and saved credentials for ${platformId}`)
+      logger.info(`✅ Successfully authenticated and saved credentials for ${platformId}`)
       
       return NextResponse.json({
         success: true,
@@ -189,7 +198,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('Error in authentication:', error)
+    logger.error('Error in authentication:', error)
     return NextResponse.json(
       { success: false, error: 'Authentication service error' },
       { status: 500 }
@@ -213,13 +222,13 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    console.log(`🔓 Logging out from ${platformId}`)
+    logger.info(`🔓 Logging out from ${platformId}`)
 
     const credentials = loadCredentials()
     const filteredCredentials = credentials.filter(c => c.platformId !== platformId)
 
     if (saveCredentials(filteredCredentials)) {
-      console.log(`✅ Successfully logged out from ${platformId}`)
+      logger.info(`✅ Successfully logged out from ${platformId}`)
       
       return NextResponse.json({
         success: true,
@@ -232,7 +241,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('Error during logout:', error)
+    logger.error('Error during logout:', error)
     return NextResponse.json(
       { success: false, error: 'Logout service error' },
       { status: 500 }

@@ -19,6 +19,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 
+import { logger } from '@/lib/logger'
 interface DiagnosticResult {
   category: string
   status: 'healthy' | 'warning' | 'error'
@@ -170,7 +171,7 @@ export default function AIDiagnosticsPage() {
       })
       setLastRefresh(new Date())
     } catch (error) {
-      console.error('Error running diagnostics:', error)
+      logger.error('Error running diagnostics:', error)
       setSystemHealth({
         overall: 'error',
         score: 0,

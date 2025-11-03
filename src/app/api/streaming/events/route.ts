@@ -10,11 +10,20 @@ import { unifiedStreamingApi } from '@/lib/streaming/unified-streaming-api'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -28,7 +37,7 @@ export async function GET(request: NextRequest) {
     const ipAddress = searchParams.get('ipAddress') || undefined
     const port = parseInt(searchParams.get('port') || '5555')
 
-    console.log(`[API] Getting ${type} events${sport ? ` for ${sport}` : ''}`)
+    logger.info(`[API] Getting ${type} events${sport ? ` for ${sport}` : ''}`)
 
     let events
 
@@ -87,7 +96,7 @@ export async function GET(request: NextRequest) {
       events
     })
   } catch (error: any) {
-    console.error('[API] Error getting events:', error)
+    logger.error('[API] Error getting events:', error)
     
     return NextResponse.json(
       { 

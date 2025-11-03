@@ -4,6 +4,9 @@ import { buildEnhancedContext } from '@/lib/ai-knowledge-enhanced';
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware';
 import { ollamaThrottler } from '@/lib/rate-limiting/request-throttler';
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
 // Configure route to allow longer execution time for AI responses
@@ -17,6 +20,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimitCheck.allowed) {
     return rateLimitCheck.response!;
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json();
@@ -45,7 +54,7 @@ export async function POST(request: NextRequest) {
     return addRateLimitHeaders(response, rateLimitCheck.result);
 
   } catch (error) {
-    console.error('Error in enhanced chat:', error);
+    logger.error('Error in enhanced chat:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to process chat request';
     return NextResponse.json(
       {
@@ -97,7 +106,7 @@ async function handleStreamingResponse(
             usedContext = true;
           }
         } catch (error) {
-          console.error('Error building context:', error);
+          logger.error('Error building context:', error);
           contextError = error instanceof Error ? error.message : 'Unknown error';
           // Continue without context rather than failing completely
         }
@@ -179,14 +188,14 @@ async function handleStreamingResponse(
                 })}\n\n`));
               }
             } catch (e) {
-              console.error('Error parsing Ollama response:', e);
+              logger.error('Error parsing Ollama response:', e);
             }
           }
         }
       }
 
     } catch (error) {
-      console.error('Streaming error:', error);
+      logger.error('Streaming error:', error);
       await writer.write(encoder.encode(`data: ${JSON.stringify({
         type: 'error',
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -196,7 +205,7 @@ async function handleStreamingResponse(
         await writer.close();
       } catch (e) {
         // Writer may already be closed
-        console.error('Error closing writer:', e);
+        logger.error('Error closing writer:', e);
       }
     }
   })();
@@ -238,7 +247,7 @@ async function handleNonStreamingResponse(
         usedContext = true;
       }
     } catch (error) {
-      console.error('Error building context:', error);
+      logger.error('Error building context:', error);
       contextError = error instanceof Error ? error.message : 'Unknown error';
       // Continue without context rather than failing completely
     }
@@ -269,7 +278,7 @@ async function handleNonStreamingResponse(
 
           if (!response.ok) {
             const errorText = await response.text();
-            console.error('Ollama API error:', response.status, errorText);
+            logger.error('Ollama API error:', response.status, errorText);
             throw new Error(`Ollama API error: ${response.statusText}`);
           }
 
@@ -293,7 +302,7 @@ async function handleNonStreamingResponse(
   } catch (fetchError: any) {
     // Check if it's a timeout error
     if (fetchError.name === 'AbortError') {
-      console.error('Ollama request timed out:', fetchError);
+      logger.error('Ollama request timed out:', fetchError);
       return NextResponse.json(
         { 
           error: 'Request timed out',
@@ -307,7 +316,7 @@ async function handleNonStreamingResponse(
     
     // Check if it's a connection error to Ollama
     if (fetchError.cause?.code === 'ECONNREFUSED' || fetchError.message?.includes('ECONNREFUSED')) {
-      console.error('Ollama service is not running:', fetchError);
+      logger.error('Ollama service is not running:', fetchError);
       return NextResponse.json(
         { 
           error: 'Ollama AI service is not running',
@@ -321,7 +330,7 @@ async function handleNonStreamingResponse(
     
     // Check for headers timeout error
     if (fetchError.cause?.code === 'UND_ERR_HEADERS_TIMEOUT' || fetchError.message?.includes('HeadersTimeoutError')) {
-      console.error('Headers timeout error:', fetchError);
+      logger.error('Headers timeout error:', fetchError);
       return NextResponse.json(
         { 
           error: 'Connection timeout',

@@ -6,6 +6,9 @@ import { irCommands } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/ir/devices/[id]/commands
  * Get all commands for a specific IR device
@@ -19,13 +22,20 @@ export async function GET(
     return rateLimit.response
   }
 
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
+
   const { id: deviceId } = await params
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('📋 [IR COMMANDS] Fetching commands for device')
-  console.log('   Device ID:', deviceId)
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('📋 [IR COMMANDS] Fetching commands for device')
+  logger.info('   Device ID:', deviceId)
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const commands = await findMany('irCommands', {
@@ -33,17 +43,17 @@ export async function GET(
       orderBy: asc(schema.irCommands.functionName)
     })
 
-    console.log('✅ [IR COMMANDS] Commands fetched successfully')
-    console.log('   Count:', commands.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR COMMANDS] Commands fetched successfully')
+    logger.info('   Count:', commands.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: true,
       commands
     })
   } catch (error) {
-    console.error('❌ [IR COMMANDS] Error fetching commands:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR COMMANDS] Error fetching commands:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json(
       { 

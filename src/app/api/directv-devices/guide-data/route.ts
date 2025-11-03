@@ -3,6 +3,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { logger } from '@/lib/logger'
+import { cacheManager } from '@/lib/cache-manager'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +17,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { deviceId, ipAddress, port, startTime, endTime, channelList } = await request.json()
 
@@ -20,11 +34,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Device ID and IP address are required' }, { status: 400 })
     }
 
-    console.log(`🎭 Fetching DirecTV guide data from ${ipAddress}:${port || 8080}`)
-
     // Format timestamps for DirecTV API
     const start = startTime ? new Date(startTime).toISOString() : new Date().toISOString()
     const end = endTime ? new Date(endTime).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+
+    // Cache key based on device and time range (rounded to hour to improve hit rate)
+    const startHour = new Date(start).setMinutes(0, 0, 0)
+    const endHour = new Date(end).setMinutes(0, 0, 0)
+    const cacheKey = `guide:${deviceId}:${ipAddress}:${startHour}:${endHour}`
+
+    // Try to get from cache first (5 minutes TTL for guide data)
+    const cached = cacheManager.get('device-config', cacheKey)
+    if (cached) {
+      logger.info(`🎭 Returning cached DirecTV guide data for ${deviceId}`)
+      return NextResponse.json({
+        ...cached,
+        fromCache: true
+      })
+    }
+
+    logger.info(`🎭 Fetching DirecTV guide data from ${ipAddress}:${port || 8080}`)
 
     let guideData: any[] = []
 
@@ -42,7 +71,7 @@ export async function POST(request: NextRequest) {
       if (channelResponse.ok) {
         const channelData = await channelResponse.json()
         channels = channelData.channels || []
-        console.log(`📺 Found ${channels.length} channels from DirecTV receiver`)
+        logger.info(`📺 Found ${channels.length} channels from DirecTV receiver`)
       } else {
         // Fallback channel list for guide polling
         channels = channelList || [
@@ -97,7 +126,7 @@ export async function POST(request: NextRequest) {
             }
           }
         } catch (channelError) {
-          console.warn(`⚠️ Failed to get guide data for channel ${channelInfo.channel}:`, channelError.message)
+          logger.warn(`⚠️ Failed to get guide data for channel ${channelInfo.channel}:`, channelError.message)
           continue
         }
       }
@@ -131,12 +160,12 @@ export async function POST(request: NextRequest) {
             }
           }
         } catch (currentError) {
-          console.warn('⚠️ Failed to get current program info:', currentError.message)
+          logger.warn('⚠️ Failed to get current program info:', currentError.message)
         }
       }
 
     } catch (fetchError) {
-      console.error('❌ Error fetching from DirecTV API:', fetchError)
+      logger.error('❌ Error fetching from DirecTV API:', fetchError)
       
       return NextResponse.json({
         success: false,
@@ -156,20 +185,29 @@ export async function POST(request: NextRequest) {
       }, { status: 503 })
     }
 
-    return NextResponse.json({
+    const response = {
       success: true,
       deviceId,
       deviceType: 'directv',
       programCount: guideData.length,
       fetchedAt: new Date().toISOString(),
       timeRange: { start, end },
-      programs: guideData.sort((a, b) => 
+      programs: guideData.sort((a, b) =>
         new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
       )
+    }
+
+    // Cache the guide data for 5 minutes
+    cacheManager.set('device-config', cacheKey, response)
+    logger.info(`🎭 Cached DirecTV guide data with ${guideData.length} programs`)
+
+    return NextResponse.json({
+      ...response,
+      fromCache: false
     })
 
   } catch (error) {
-    console.error('❌ Error in DirecTV guide data API:', error)
+    logger.error('❌ Error in DirecTV guide data API:', error)
     return NextResponse.json(
       { error: 'Failed to fetch DirecTV guide data', details: error.message },
       { status: 500 }
@@ -182,6 +220,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -219,7 +267,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('❌ Error in DirecTV guide data GET:', error)
+    logger.error('❌ Error in DirecTV guide data GET:', error)
     return NextResponse.json(
       { error: 'API error' },
       { status: 500 }

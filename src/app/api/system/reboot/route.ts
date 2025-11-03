@@ -4,6 +4,9 @@ import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
@@ -12,12 +15,18 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.object({ confirm: z.literal(true) }))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
-    console.log('🔌 System reboot requested')
+    logger.info('🔌 System reboot requested')
     
     // Schedule reboot after a short delay to allow response to be sent
     setTimeout(async () => {
-      console.log('🔌 Initiating system reboot...')
+      logger.info('🔌 Initiating system reboot...')
       
       try {
         // Attempt to reboot the system
@@ -25,12 +34,12 @@ export async function POST(request: NextRequest) {
         // Add to /etc/sudoers: username ALL=(ALL) NOPASSWD: /sbin/reboot
         await execAsync('sudo reboot')
       } catch (error) {
-        console.error('Failed to execute reboot command:', error)
+        logger.error('Failed to execute reboot command:', error)
         // If sudo reboot fails, try alternative methods
         try {
           await execAsync('sudo shutdown -r now')
         } catch (altError) {
-          console.error('Alternative reboot method also failed:', altError)
+          logger.error('Alternative reboot method also failed:', altError)
         }
       }
     }, 1000)
@@ -41,7 +50,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Error initiating reboot:', error)
+    logger.error('Error initiating reboot:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to initiate reboot: ' + error,

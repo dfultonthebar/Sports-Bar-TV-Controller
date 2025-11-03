@@ -5,6 +5,9 @@ import { liveSportsService } from '@/lib/sports-apis/live-sports-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // This endpoint handles the scheduled 7-day sports guide updates with timezone support
@@ -13,6 +16,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const timezone = 'America/New_York'
@@ -28,8 +37,8 @@ export async function POST(request: NextRequest) {
       'premier', 'champions', 'la-liga', 'serie-a', 'bundesliga'
     ]
 
-    console.log(`🏆 Starting scheduled sports guide update for ${allLeagues.length} leagues`)
-    console.log(`📅 Date range: ${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`)
+    logger.info(`🏆 Starting scheduled sports guide update for ${allLeagues.length} leagues`)
+    logger.info(`📅 Date range: ${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`)
 
     // Call the live sports service directly
     const liveData = await liveSportsService.getLiveGames(
@@ -39,7 +48,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Log the successful update with timezone-adjusted time
-    console.log(`🏆 Scheduled Sports Guide Update Completed:`, {
+    logger.info(`🏆 Scheduled Sports Guide Update Completed:`, {
       timestamp: localNow.toISOString(),
       timezone: timezone,
       totalGames: liveData.totalGames,
@@ -76,7 +85,7 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('❌ Scheduled sports guide update failed:', error)
+    logger.error('❌ Scheduled sports guide update failed:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -136,7 +145,7 @@ export async function GET(request: NextRequest) {
       apiStatus: 'Ready for live data integration'
     })
   } catch (error) {
-    console.error('Error getting scheduled update info:', error)
+    logger.error('Error getting scheduled update info:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to get schedule info' },
       { status: 500 }

@@ -4,11 +4,20 @@ import { EnhancedAIClient, FeatureDesignRequest } from '@/lib/enhanced-ai-client
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const designRequest: FeatureDesignRequest = await request.json()
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ design: result.content })
   } catch (error) {
-    console.error('Feature design API error:', error)
+    logger.error('Feature design API error:', error)
     return NextResponse.json({ 
       error: 'Failed to design feature' 
     }, { status: 500 })

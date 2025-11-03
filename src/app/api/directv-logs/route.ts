@@ -6,9 +6,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { direcTVLogger } from '@/lib/directv-logger'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Error retrieving DirecTV logs:', error)
+    logger.error('Error retrieving DirecTV logs:', error)
     return NextResponse.json(
       {
         success: false,

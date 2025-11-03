@@ -8,6 +8,9 @@ import { todos } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // POST /api/todos/:id/complete - Mark TODO as complete with validation
@@ -19,6 +22,17 @@ export async function POST(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -49,7 +63,7 @@ export async function POST(
 
     // Sync to GitHub in background
     syncTodosToGitHub(`chore: Complete TODO - ${todo.title}`).catch(err => {
-      console.error('GitHub sync failed:', err)
+      logger.error('GitHub sync failed:', err)
     })
 
     return NextResponse.json({
@@ -58,7 +72,7 @@ export async function POST(
       message: 'Todo marked as complete'
     })
   } catch (error) {
-    console.error('Error completing todo:', error)
+    logger.error('Error completing todo:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to complete todo' },
       { status: 500 }

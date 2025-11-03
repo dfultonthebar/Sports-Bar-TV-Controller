@@ -6,6 +6,9 @@ import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const writeFile = promisify(fs.writeFile)
 const chmod = promisify(fs.chmod)
 const mkdir = promisify(fs.mkdir)
@@ -23,6 +26,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.scriptExecution)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { scriptName, content, scriptType, directory = 'scripts', makeExecutable = true }: WriteScriptRequest = await request.json()
@@ -77,7 +86,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Script write error:', error)
+    logger.error('Script write error:', error)
     return NextResponse.json({
       error: 'Failed to write script to file system'
     }, { status: 500 })

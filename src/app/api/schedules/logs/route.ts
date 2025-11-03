@@ -6,12 +6,21 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // GET - Get schedule execution logs
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url);
@@ -26,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ logs });
   } catch (error: any) {
-    console.error('Error fetching schedule logs:', error);
+    logger.error('Error fetching schedule logs:', error);
     return NextResponse.json(
       { error: 'Failed to fetch logs', details: error.message },
       { status: 500 }

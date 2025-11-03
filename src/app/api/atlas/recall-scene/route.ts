@@ -5,6 +5,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 export async function POST(request: NextRequest) {
@@ -12,6 +15,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { processorId, sceneId } = await request.json()
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = `http://${processor.ipAddress}`
     
-    console.log(`Recalling scene ${sceneId} (${scene.name}) on processor ${processor.name} at ${baseUrl}`)
+    logger.info(`Recalling scene ${sceneId} (${scene.name}) on processor ${processor.name} at ${baseUrl}`)
 
     // Recall scene on the Atlas processor
     try {
@@ -66,12 +75,12 @@ export async function POST(request: NextRequest) {
       // })
       
       // For now, simulate the scene recall process
-      console.log(`Scene recall initiated - ${scene.name}`)
-      console.log(`Recall time: ${scene.recall_time}s`)
+      logger.info(`Scene recall initiated - ${scene.name}`)
+      logger.info(`Recall time: ${scene.recall_time}s`)
       
       // Simulate applying input settings
       for (const inputSetting of scene.inputs || []) {
-        console.log(`Setting input ${inputSetting.id}: gain=${inputSetting.gainDb}dB, muted=${inputSetting.muted}`)
+        logger.info(`Setting input ${inputSetting.id}: gain=${inputSetting.gainDb}dB, muted=${inputSetting.muted}`)
         // In real implementation:
         // await fetch(`${baseUrl}/api/input/${inputSetting.id}/gain`, {
         //   method: 'POST',
@@ -83,7 +92,7 @@ export async function POST(request: NextRequest) {
       
       // Simulate applying output settings
       for (const outputSetting of scene.outputs || []) {
-        console.log(`Setting output ${outputSetting.id}: level=${outputSetting.levelDb}dB, muted=${outputSetting.muted}`)
+        logger.info(`Setting output ${outputSetting.id}: level=${outputSetting.levelDb}dB, muted=${outputSetting.muted}`)
         // In real implementation:
         // await fetch(`${baseUrl}/api/output/${outputSetting.id}/level`, {
         //   method: 'POST',
@@ -106,7 +115,7 @@ export async function POST(request: NextRequest) {
         status: 'success'
       }
 
-      console.log('Scene recall completed:', recallLog)
+      logger.info('Scene recall completed:', recallLog)
 
       // Save recall log to file
       try {
@@ -116,7 +125,7 @@ export async function POST(request: NextRequest) {
         const logPath = path.join(logsDir, `recall_${Date.now()}.json`)
         await fs.writeFile(logPath, JSON.stringify(recallLog, null, 2))
       } catch (logError) {
-        console.warn('Failed to save recall log:', logError)
+        logger.warn('Failed to save recall log:', logError)
       }
 
       return NextResponse.json({ 
@@ -131,7 +140,7 @@ export async function POST(request: NextRequest) {
       })
 
     } catch (error) {
-      console.error('Error communicating with Atlas processor:', error)
+      logger.error('Error communicating with Atlas processor:', error)
       return NextResponse.json({ 
         error: 'Failed to communicate with processor for scene recall',
         details: error instanceof Error ? error.message : 'Communication error'
@@ -139,7 +148,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error recalling scene:', error)
+    logger.error('Error recalling scene:', error)
     return NextResponse.json({ 
       error: 'Failed to recall scene',
       details: error instanceof Error ? error.message : 'Unknown error'

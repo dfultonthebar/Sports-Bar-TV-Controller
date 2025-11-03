@@ -375,6 +375,289 @@ export const scheduledCommandCreateSchema = z.object({
 })
 
 // ============================================================================
+// HARDWARE CONTROL SCHEMAS
+// ============================================================================
+
+/**
+ * CEC power control schema
+ */
+export const cecPowerControlSchema = z.object({
+  action: z.enum(['on', 'off', 'toggle']),
+  tvAddress: cecAddressSchema.optional().default('0'),
+  delay: z.number().int().min(0).max(10000).optional()
+})
+
+/**
+ * Channel tuning schema
+ */
+export const channelTuneSchema = z.object({
+  deviceId: deviceIdSchema.optional(),
+  channel: channelNumberSchema,
+  immediate: z.boolean().optional().default(true)
+})
+
+/**
+ * Matrix routing command schema
+ */
+export const matrixRoutingSchema = z.object({
+  input: z.union([z.number().int().min(1).max(32), deviceIdSchema]),
+  output: z.union([z.number().int().min(1).max(32), deviceIdSchema]),
+  immediate: z.boolean().optional().default(true)
+})
+
+/**
+ * IR command send schema
+ */
+export const irCommandSendSchema = z.object({
+  deviceId: deviceIdSchema,
+  command: nonEmptyStringSchema.max(100),
+  repeat: z.number().int().min(1).max(10).optional().default(1),
+  delay: z.number().int().min(0).max(5000).optional().default(0)
+})
+
+/**
+ * Audio control schema
+ */
+export const audioControlSchema = z.object({
+  action: z.enum(['volume', 'mute', 'unmute', 'source']),
+  volume: volumeSchema.optional(),
+  source: deviceIdSchema.optional(),
+  zone: z.string().min(1).max(50).optional()
+})
+
+// ============================================================================
+// FILE UPLOAD & DATA IMPORT SCHEMAS
+// ============================================================================
+
+/**
+ * Document upload schema
+ */
+export const documentUploadSchema = z.object({
+  title: nonEmptyStringSchema.max(200),
+  content: nonEmptyStringSchema.max(1000000),
+  type: z.enum(['manual', 'guide', 'reference', 'other']).optional().default('other'),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional()
+})
+
+/**
+ * Layout upload schema
+ */
+export const layoutUploadSchema = z.object({
+  name: nonEmptyStringSchema.max(100),
+  data: z.record(z.unknown()),
+  description: optionalNonEmptyStringSchema.max(500)
+})
+
+/**
+ * Configuration upload schema
+ */
+export const configUploadSchema = z.object({
+  config: z.record(z.unknown()),
+  overwrite: z.boolean().optional().default(false),
+  backup: z.boolean().optional().default(true)
+})
+
+/**
+ * QA entry upload schema
+ */
+export const qaEntrySchema = z.object({
+  question: nonEmptyStringSchema.max(500),
+  answer: nonEmptyStringSchema.max(5000),
+  category: z.string().min(1).max(100).optional(),
+  tags: z.array(z.string().min(1).max(50)).max(10).optional()
+})
+
+// ============================================================================
+// SYSTEM OPERATION SCHEMAS
+// ============================================================================
+
+/**
+ * Git operation schema
+ */
+export const gitCommitPushSchema = z.object({
+  message: nonEmptyStringSchema.max(500),
+  files: z.array(nonEmptyStringSchema).optional(),
+  push: z.boolean().optional().default(true),
+  branch: optionalNonEmptyStringSchema.max(100)
+})
+
+/**
+ * Script execution schema
+ */
+export const scriptExecutionSchema = z.object({
+  script: nonEmptyStringSchema.max(10000),
+  args: z.array(z.string()).max(50).optional(),
+  timeout: z.number().int().min(1000).max(300000).optional().default(30000),
+  cwd: optionalNonEmptyStringSchema.max(500)
+})
+
+/**
+ * System restart schema
+ */
+export const systemRestartSchema = z.object({
+  confirm: z.literal(true, { errorMap: () => ({ message: 'Must confirm system restart' }) }),
+  delay: z.number().int().min(0).max(300).optional().default(0),
+  reason: optionalNonEmptyStringSchema.max(200)
+})
+
+// ============================================================================
+// STREAMING & MEDIA SCHEMAS
+// ============================================================================
+
+/**
+ * Streaming app launch schema
+ */
+export const streamingAppLaunchSchema = z.object({
+  deviceId: deviceIdSchema,
+  appId: appIdSchema.or(nonEmptyStringSchema.max(100)),
+  deepLink: deepLinkSchema.optional(),
+  wait: z.boolean().optional().default(false)
+})
+
+/**
+ * Streaming credentials schema
+ */
+export const streamingCredentialsSchema = z.object({
+  provider: z.enum(['netflix', 'hulu', 'prime', 'espn', 'youtube', 'other']),
+  username: nonEmptyStringSchema.max(200),
+  password: nonEmptyStringSchema.min(8).max(200),
+  additionalData: z.record(z.unknown()).optional()
+})
+
+// ============================================================================
+// QUERY & SEARCH SCHEMAS
+// ============================================================================
+
+/**
+ * Generic pagination query schema
+ */
+export const paginationQuerySchema = z.object({
+  limit: paginationLimitSchema,
+  offset: paginationOffsetSchema,
+  sortBy: optionalNonEmptyStringSchema.max(50),
+  sortOrder: sortOrderSchema.optional().default('asc')
+})
+
+/**
+ * Date range query schema
+ */
+export const dateRangeQuerySchema = z.object({
+  startDate: dateStringSchema.or(isoDateSchema),
+  endDate: dateStringSchema.or(isoDateSchema),
+  timezone: timezoneSchema.optional()
+})
+
+/**
+ * Search query schema
+ */
+export const searchQuerySchema = z.object({
+  query: nonEmptyStringSchema.max(500),
+  filters: z.record(z.unknown()).optional(),
+  limit: paginationLimitSchema.optional()
+})
+
+/**
+ * Log query schema
+ */
+export const logQuerySchema = z.object({
+  level: z.enum(['error', 'warn', 'info', 'debug']).optional(),
+  startDate: dateStringSchema.or(isoDateSchema).optional(),
+  endDate: dateStringSchema.or(isoDateSchema).optional(),
+  limit: paginationLimitSchema.optional(),
+  offset: paginationOffsetSchema.optional(),
+  component: optionalNonEmptyStringSchema.max(100)
+})
+
+// ============================================================================
+// CONFIGURATION SCHEMAS
+// ============================================================================
+
+/**
+ * Device configuration schema
+ */
+export const deviceConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  autoConnect: z.boolean().optional(),
+  timeout: z.number().int().min(1000).max(60000).optional(),
+  retryAttempts: z.number().int().min(0).max(10).optional(),
+  settings: z.record(z.unknown()).optional()
+})
+
+/**
+ * Schedule configuration schema
+ */
+export const scheduleConfigSchema = z.object({
+  enabled: z.boolean(),
+  scheduleType: scheduleTypeSchema,
+  time: timeStringSchema.optional(),
+  days: z.array(dayOfWeekSchema).optional(),
+  timezone: timezoneSchema.optional(),
+  action: nonEmptyStringSchema.max(100)
+})
+
+/**
+ * Audio processor configuration schema
+ */
+export const audioProcessorConfigSchema = z.object({
+  ipAddress: ipAddressSchema,
+  port: portSchema.optional().default(23),
+  zones: z.array(z.object({
+    id: nonEmptyStringSchema.max(50),
+    name: nonEmptyStringSchema.max(100),
+    defaultVolume: volumeSchema.optional()
+  })).optional()
+})
+
+// ============================================================================
+// AI & ANALYSIS SCHEMAS
+// ============================================================================
+
+/**
+ * AI chat/query schema
+ */
+export const aiQuerySchema = z.object({
+  query: nonEmptyStringSchema.max(2000),
+  context: z.record(z.unknown()).optional(),
+  model: z.enum(['gpt-4', 'gpt-3.5-turbo', 'claude', 'ollama']).optional(),
+  maxTokens: z.number().int().min(100).max(4000).optional()
+})
+
+/**
+ * AI analysis request schema
+ */
+export const aiAnalysisSchema = z.object({
+  type: z.enum(['device', 'logs', 'performance', 'layout', 'optimization']),
+  data: z.record(z.unknown()).optional(),
+  options: z.object({
+    detailed: z.boolean().optional(),
+    suggestions: z.boolean().optional()
+  }).optional()
+})
+
+// ============================================================================
+// DIAGNOSTICS & TESTING SCHEMAS
+// ============================================================================
+
+/**
+ * Connection test schema
+ */
+export const connectionTestSchema = z.object({
+  deviceId: deviceIdSchema.optional(),
+  ipAddress: ipAddressSchema.optional(),
+  port: portSchema.optional(),
+  protocol: protocolSchema.optional().default('TCP'),
+  timeout: z.number().int().min(1000).max(30000).optional().default(5000)
+})
+
+/**
+ * Diagnostic run schema
+ */
+export const diagnosticRunSchema = z.object({
+  components: z.array(z.enum(['network', 'devices', 'database', 'filesystem', 'all'])).optional(),
+  verbose: z.boolean().optional().default(false)
+})
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -440,5 +723,46 @@ export const ValidationSchemas = {
   deviceCreate: deviceCreateSchema,
   deviceUpdate: deviceUpdateSchema,
   commandExecution: commandExecutionSchema,
-  scheduledCommandCreate: scheduledCommandCreateSchema
+  scheduledCommandCreate: scheduledCommandCreateSchema,
+
+  // Hardware Control
+  cecPowerControl: cecPowerControlSchema,
+  channelTune: channelTuneSchema,
+  matrixRouting: matrixRoutingSchema,
+  irCommandSend: irCommandSendSchema,
+  audioControl: audioControlSchema,
+
+  // File Upload & Data Import
+  documentUpload: documentUploadSchema,
+  layoutUpload: layoutUploadSchema,
+  configUpload: configUploadSchema,
+  qaEntry: qaEntrySchema,
+
+  // System Operations
+  gitCommitPush: gitCommitPushSchema,
+  scriptExecution: scriptExecutionSchema,
+  systemRestart: systemRestartSchema,
+
+  // Streaming & Media
+  streamingAppLaunch: streamingAppLaunchSchema,
+  streamingCredentials: streamingCredentialsSchema,
+
+  // Query & Search
+  paginationQuery: paginationQuerySchema,
+  dateRangeQuery: dateRangeQuerySchema,
+  searchQuery: searchQuerySchema,
+  logQuery: logQuerySchema,
+
+  // Configuration
+  deviceConfig: deviceConfigSchema,
+  scheduleConfig: scheduleConfigSchema,
+  audioProcessorConfig: audioProcessorConfigSchema,
+
+  // AI & Analysis
+  aiQuery: aiQuerySchema,
+  aiAnalysis: aiAnalysisSchema,
+
+  // Diagnostics & Testing
+  connectionTest: connectionTestSchema,
+  diagnosticRun: diagnosticRunSchema
 }

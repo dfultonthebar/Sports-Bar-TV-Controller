@@ -4,6 +4,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -21,6 +24,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.configUpload)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { processorId, ipAddress, inputs, outputs, scenes } = await request.json()
 
@@ -28,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Processor ID and IP address are required' }, { status: 400 })
     }
 
-    console.log(`Uploading configuration to Atlas processor at ${ipAddress}`)
+    logger.info(`Uploading configuration to Atlas processor at ${ipAddress}`)
 
     // CRITICAL FIX: Save configuration to file BEFORE attempting to upload to processor
     // This ensures we don't lose the configuration even if the processor upload fails
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
     const backupPath = path.join(CONFIG_DIR, `${processorId}_backup_${Date.now()}.json`)
     await fs.writeFile(backupPath, JSON.stringify(config, null, 2))
     
-    console.log('Configuration saved to file system:', {
+    logger.info('Configuration saved to file system:', {
       mainFile: configPath,
       backupFile: backupPath,
       inputsCount: inputs?.length || 0,
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error uploading configuration:', error)
+    logger.error('Error uploading configuration:', error)
     return NextResponse.json({ 
       error: 'Failed to upload configuration',
       details: error instanceof Error ? error.message : 'Unknown error'

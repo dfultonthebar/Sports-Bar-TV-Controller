@@ -4,6 +4,9 @@ import { operationLogger } from '@/lib/operation-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
@@ -11,6 +14,12 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -36,7 +45,7 @@ export async function GET(request: NextRequest) {
       recommendations: insights.recommendations
     })
   } catch (error) {
-    console.error('Error in AI log analysis:', error)
+    logger.error('Error in AI log analysis:', error)
     return NextResponse.json(
       { error: 'Failed to analyze logs' },
       { status: 500 }

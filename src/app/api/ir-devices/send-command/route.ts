@@ -5,6 +5,9 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
 
 // Common IR codes for testing (these would normally come from Global Cache IR Database)
@@ -45,12 +48,12 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
     }, 5000)
 
     socket.connect(4998, iTachAddress, () => {
-      console.log(`Connected to iTach at ${iTachAddress}:4998`)
+      logger.info(`Connected to iTach at ${iTachAddress}:4998`)
       socket.write(command + '\r')
     })
 
     socket.on('data', (data) => {
-      console.log('iTach response:', data.toString())
+      logger.info('iTach response:', data.toString())
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
@@ -60,7 +63,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
     })
 
     socket.on('error', (err) => {
-      console.error('iTach connection error:', err)
+      logger.error('iTach connection error:', err)
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
@@ -69,7 +72,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
     })
 
     socket.on('close', () => {
-      console.log('iTach connection closed')
+      logger.info('iTach connection closed')
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
@@ -84,6 +87,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { deviceId, command, iTachAddress } = await request.json()
@@ -121,14 +130,14 @@ export async function POST(request: NextRequest) {
         irCode
       })
     } catch (error) {
-      console.error('Failed to send IR command:', error)
+      logger.error('Failed to send IR command:', error)
       return NextResponse.json({ 
         error: `Failed to communicate with iTach: ${error}` 
       }, { status: 500 })
     }
 
   } catch (error) {
-    console.error('Error sending IR command:', error)
+    logger.error('Error sending IR command:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

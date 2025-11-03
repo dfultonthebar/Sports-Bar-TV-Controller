@@ -7,6 +7,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,6 +18,17 @@ export async function POST(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id: deviceId } = await params
@@ -92,13 +106,13 @@ export async function POST(
       commandsCreated.push(command[0])
     }
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('📋 [IR TEMPLATE] Commands loaded from template')
-    console.log('   Template:', template.name)
-    console.log('   Device ID:', deviceId)
-    console.log('   Commands added:', commandsCreated.length)
-    console.log('   Commands skipped:', commandsToAdd.length - newCommands.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('📋 [IR TEMPLATE] Commands loaded from template')
+    logger.info('   Template:', template.name)
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Commands added:', commandsCreated.length)
+    logger.info('   Commands skipped:', commandsToAdd.length - newCommands.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: true,
@@ -109,7 +123,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error loading commands from template:', error)
+    logger.error('Error loading commands from template:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to load commands from template' },
       { status: 500 }

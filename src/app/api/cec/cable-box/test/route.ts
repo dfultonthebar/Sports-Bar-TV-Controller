@@ -10,11 +10,20 @@ import { CableBoxCECService } from '@/lib/cable-box-cec-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[API] Testing connection to cable box ${cableBoxId}`)
+    logger.info(`[API] Testing connection to cable box ${cableBoxId}`)
 
     const cecService = CableBoxCECService.getInstance()
     const result = await cecService.testConnection(cableBoxId)
@@ -54,7 +63,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error: any) {
-    console.error('[API] Error testing cable box:', error)
+    logger.error('[API] Error testing cable box:', error)
     return NextResponse.json(
       {
         success: false,

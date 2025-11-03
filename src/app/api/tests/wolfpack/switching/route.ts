@@ -6,6 +6,9 @@ import * as net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // TCP command with timeout
 async function sendTCPCommand(
   ipAddress: string,
@@ -67,16 +70,22 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   const startTime = Date.now()
   
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('🎛️ [WOLFPACK COMPREHENSIVE TEST] Starting')
-  console.log('Testing all active input/output combinations')
-  console.log('Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('🎛️ [WOLFPACK COMPREHENSIVE TEST] Starting')
+  logger.info('Testing all active input/output combinations')
+  logger.info('Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   
   try {
-    console.log('📂 [WOLFPACK] Loading configuration from database...')
+    logger.info('📂 [WOLFPACK] Loading configuration from database...')
     
     // Get the active matrix configuration
     const matrixConfigResults = await db
@@ -88,8 +97,8 @@ export async function POST(request: NextRequest) {
     const matrixConfig = matrixConfigResults[0]
 
     if (!matrixConfig) {
-      console.error('❌ [WOLFPACK] No active matrix configuration found')
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK] No active matrix configuration found')
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       const duration = Date.now() - startTime
       const errorLogResults = await db
@@ -136,21 +145,21 @@ export async function POST(request: NextRequest) {
       ))
       .orderBy(matrixOutputs.channelNumber)
 
-    console.log('✅ [WOLFPACK] Configuration loaded')
-    console.log('Configuration ID:', matrixConfig.id)
-    console.log('Name:', matrixConfig.name)
-    console.log('IP Address:', matrixConfig.ipAddress)
-    console.log('TCP Port:', matrixConfig.tcpPort)
-    console.log('Protocol:', matrixConfig.protocol)
-    console.log('Active Inputs:', inputs.length)
-    console.log('Active Outputs:', outputs.length)
-    console.log('Total Tests:', inputs.length * outputs.length)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK] Configuration loaded')
+    logger.info('Configuration ID:', matrixConfig.id)
+    logger.info('Name:', matrixConfig.name)
+    logger.info('IP Address:', matrixConfig.ipAddress)
+    logger.info('TCP Port:', matrixConfig.tcpPort)
+    logger.info('Protocol:', matrixConfig.protocol)
+    logger.info('Active Inputs:', inputs.length)
+    logger.info('Active Outputs:', outputs.length)
+    logger.info('Total Tests:', inputs.length * outputs.length)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const ipAddress = matrixConfig.ipAddress
     const port = matrixConfig.tcpPort || 5000
 
-    console.log('💾 [WOLFPACK] Creating test start log...')
+    logger.info('💾 [WOLFPACK] Creating test start log...')
     
     // Log test start
     const testStartLogResults = await db
@@ -179,14 +188,14 @@ export async function POST(request: NextRequest) {
     
     const testStartLog = testStartLogResults[0]
     
-    console.log('✅ [WOLFPACK] Test start log created')
-    console.log('Test Log ID:', testStartLog.id)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK] Test start log created')
+    logger.info('Test Log ID:', testStartLog.id)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Test all combinations
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🔄 [WOLFPACK] Starting comprehensive test')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('🔄 [WOLFPACK] Starting comprehensive test')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const testResults = []
     let passedTests = 0
@@ -199,12 +208,12 @@ export async function POST(request: NextRequest) {
         testNumber++
         const testStart = Date.now()
         
-        console.log(`🧪 [WOLFPACK] Test ${testNumber}/${totalTests}: Input ${input.channelNumber} (${input.label}) → Output ${output.channelNumber} (${output.label})`)
+        logger.info(`🧪 [WOLFPACK] Test ${testNumber}/${totalTests}: Input ${input.channelNumber} (${input.label}) → Output ${output.channelNumber} (${output.label})`)
 
         try {
           // Build command - Wolfpack format: {input}X{output}.
           const command = `${input.channelNumber}X${output.channelNumber}.`
-          console.log(`   Command: ${command}`)
+          logger.info(`   Command: ${command}`)
 
           // Send command via TCP with 10 second timeout
           const switchResult = await sendTCPCommand(ipAddress, port, command, 10000)
@@ -212,8 +221,8 @@ export async function POST(request: NextRequest) {
           const duration = Date.now() - testStart
 
           if (switchResult.success) {
-            console.log(`   ✅ Success (${duration}ms)`)
-            console.log(`   Response: ${switchResult.response || 'N/A'}`)
+            logger.info(`   ✅ Success (${duration}ms)`)
+            logger.info(`   Response: ${switchResult.response || 'N/A'}`)
             passedTests++
             
             // Log individual successful test
@@ -255,8 +264,8 @@ export async function POST(request: NextRequest) {
               testLogId: testLog.id
             })
           } else {
-            console.log(`   ❌ Failed (${duration}ms)`)
-            console.log(`   Error: ${switchResult.error || 'Unknown error'}`)
+            logger.info(`   ❌ Failed (${duration}ms)`)
+            logger.info(`   Error: ${switchResult.error || 'Unknown error'}`)
             failedTests++
             
             // Log individual failed test
@@ -306,7 +315,7 @@ export async function POST(request: NextRequest) {
           const duration = Date.now() - testStart
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           
-          console.log(`   ❌ Exception: ${errorMessage} (${duration}ms)`)
+          logger.info(`   ❌ Exception: ${errorMessage} (${duration}ms)`)
           failedTests++
           
           // Log individual error test
@@ -355,17 +364,17 @@ export async function POST(request: NextRequest) {
     const totalDuration = Date.now() - startTime
     const successRate = totalTests > 0 ? ((passedTests / totalTests) * 100).toFixed(1) : '0.0'
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('✅ [WOLFPACK COMPREHENSIVE TEST] Complete')
-    console.log('   Total Tests:', totalTests)
-    console.log('   Passed:', passedTests)
-    console.log('   Failed:', failedTests)
-    console.log('   Success Rate:', `${successRate}%`)
-    console.log('   Total Duration:', `${totalDuration}ms`)
-    console.log('   Average per Test:', `${(totalDuration / totalTests).toFixed(0)}ms`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK COMPREHENSIVE TEST] Complete')
+    logger.info('   Total Tests:', totalTests)
+    logger.info('   Passed:', passedTests)
+    logger.info('   Failed:', failedTests)
+    logger.info('   Success Rate:', `${successRate}%`)
+    logger.info('   Total Duration:', `${totalDuration}ms`)
+    logger.info('   Average per Test:', `${(totalDuration / totalTests).toFixed(0)}ms`)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-    console.log('💾 [WOLFPACK] Saving test completion log...')
+    logger.info('💾 [WOLFPACK] Saving test completion log...')
     
     // Log test completion
     const testCompleteLogResults = await db
@@ -395,9 +404,9 @@ export async function POST(request: NextRequest) {
     
     const testCompleteLog = testCompleteLogResults[0]
 
-    console.log('✅ [WOLFPACK] Test completion log saved')
-    console.log('Test Log ID:', testCompleteLog.id)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [WOLFPACK] Test completion log saved')
+    logger.info('Test Log ID:', testCompleteLog.id)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: failedTests === 0,
@@ -416,12 +425,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - startTime
     
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.error('❌ [WOLFPACK COMPREHENSIVE TEST] Unexpected error')
-    console.error('Error:', error instanceof Error ? error.message : 'Unknown error')
-    console.error('Stack:', error instanceof Error ? error.stack : 'N/A')
-    console.error('Duration:', `${duration}ms`)
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [WOLFPACK COMPREHENSIVE TEST] Unexpected error')
+    logger.error('Error:', error instanceof Error ? error.message : 'Unknown error')
+    logger.error('Stack:', error instanceof Error ? error.stack : 'N/A')
+    logger.error('Duration:', `${duration}ms`)
+    logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {
       const errorLogResults = await db
@@ -453,9 +462,9 @@ export async function POST(request: NextRequest) {
         duration
       }, { status: 500 })
     } catch (logError) {
-      console.error('❌ [WOLFPACK] Failed to log error to database')
-      console.error('Log Error:', logError)
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      logger.error('❌ [WOLFPACK] Failed to log error to database')
+      logger.error('Log Error:', logError)
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json({
         success: false,

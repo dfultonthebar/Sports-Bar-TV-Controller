@@ -5,50 +5,58 @@ import { findUnique, findMany, create, update, like, or as orOp } from '@/lib/db
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
-  console.log('[ENHANCED-CHAT] POST request received')
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('[ENHANCED-CHAT] POST request received')
   try {
-    console.log('[ENHANCED-CHAT] Parsing request body...')
+    logger.info('[ENHANCED-CHAT] Parsing request body...')
     const { message, sessionId, chatType = 'general', context } = await request.json()
-    console.log('[ENHANCED-CHAT] Request parsed:', { message: message?.substring(0, 50), sessionId, chatType })
+    logger.info('[ENHANCED-CHAT] Request parsed:', { message: message?.substring(0, 50), sessionId, chatType })
 
     if (!message) {
-      console.log('[ENHANCED-CHAT] No message provided')
+      logger.info('[ENHANCED-CHAT] No message provided')
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
     // Initialize enhanced AI client
-    console.log('[ENHANCED-CHAT] Initializing EnhancedAIClient...')
+    logger.info('[ENHANCED-CHAT] Initializing EnhancedAIClient...')
     const enhancedAI = new EnhancedAIClient()
 
     // Search for relevant documents based on the message
-    console.log('[ENHANCED-CHAT] Searching for relevant documents...')
+    logger.info('[ENHANCED-CHAT] Searching for relevant documents...')
     const relevantDocs = await searchRelevantDocuments(message)
-    console.log('[ENHANCED-CHAT] Found documents:', relevantDocs.length)
+    logger.info('[ENHANCED-CHAT] Found documents:', relevantDocs.length)
     const documentContext = relevantDocs.map(doc => 
       `Document: ${doc.originalName}\nContent: ${doc.content?.substring(0, 1500)}...`
     ).join('\n\n')
 
     // Combine context from documents and user-provided context
-    console.log('[ENHANCED-CHAT] Building full context...')
+    logger.info('[ENHANCED-CHAT] Building full context...')
     const fullContext = [documentContext, context].filter(Boolean).join('\n\n')
 
     // Get or create chat session
-    console.log('[ENHANCED-CHAT] Getting chat session...')
+    logger.info('[ENHANCED-CHAT] Getting chat session...')
     let session
     if (sessionId) {
       session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
-      console.log('[ENHANCED-CHAT] Session found:', !!session)
+      logger.info('[ENHANCED-CHAT] Session found:', !!session)
     }
 
     const messages = session ? JSON.parse(session.messages || '[]') : []
     messages.push({ role: 'user', content: message })
-    console.log('[ENHANCED-CHAT] Message count:', messages.length)
+    logger.info('[ENHANCED-CHAT] Message count:', messages.length)
 
     // Get enhanced AI response
-    console.log('[ENHANCED-CHAT] Calling enhancedAI.enhancedChat...')
+    logger.info('[ENHANCED-CHAT] Calling enhancedAI.enhancedChat...')
     const aiResponse = await enhancedAI.enhancedChat(messages, fullContext)
-    console.log('[ENHANCED-CHAT] AI response received:', aiResponse.error ? 'ERROR' : 'SUCCESS')
+    logger.info('[ENHANCED-CHAT] AI response received:', aiResponse.error ? 'ERROR' : 'SUCCESS')
 
     if (aiResponse.error) {
       return NextResponse.json({
@@ -80,7 +88,7 @@ export async function POST(request: NextRequest) {
       })),
     })
   } catch (error) {
-    console.error('Enhanced chat error:', error)
+    logger.error('Enhanced chat error:', error)
     return NextResponse.json(
       { error: 'Failed to process enhanced chat message' }, 
       { status: 500 }
@@ -131,7 +139,7 @@ async function searchRelevantDocuments(query: string) {
       .slice(0, 5)
 
   } catch (error) {
-    console.error('Document search error:', error)
+    logger.error('Document search error:', error)
     return []
   }
 }

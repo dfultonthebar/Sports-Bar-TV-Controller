@@ -11,6 +11,9 @@ import { todoDocuments, todos } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 // GET /api/todos/:id/documents - Get documents for TODO
@@ -22,6 +25,21 @@ export async function GET(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -35,7 +53,7 @@ export async function GET(
       data: documents
     })
   } catch (error) {
-    console.error('Error fetching documents:', error)
+    logger.error('Error fetching documents:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch documents' },
       { status: 500 }
@@ -52,6 +70,21 @@ export async function POST(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const { id } = await params
@@ -106,7 +139,7 @@ export async function POST(
       data: document
     })
   } catch (error) {
-    console.error('Error uploading document:', error)
+    logger.error('Error uploading document:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to upload document' },
       { status: 500 }
@@ -123,6 +156,21 @@ export async function DELETE(
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     await params  // Await params even if not used to satisfy Next.js 15
@@ -143,7 +191,7 @@ export async function DELETE(
       message: 'Document deleted successfully'
     })
   } catch (error) {
-    console.error('Error deleting document:', error)
+    logger.error('Error deleting document:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to delete document' },
       { status: 500 }

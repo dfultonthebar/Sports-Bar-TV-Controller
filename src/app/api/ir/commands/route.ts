@@ -6,6 +6,9 @@ import { irCommands } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * POST /api/ir/commands
  * Create a new IR command
@@ -16,26 +19,32 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('➕ [IR COMMANDS] Creating new IR command')
-  console.log('   Timestamp:', new Date().toISOString())
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  logger.info('➕ [IR COMMANDS] Creating new IR command')
+  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const body = await request.json()
     const { deviceId, functionName, irCode, hexCode, category, description } = body
 
     if (!deviceId || !functionName || !irCode) {
-      console.log('❌ [IR COMMANDS] Missing required fields')
+      logger.info('❌ [IR COMMANDS] Missing required fields')
       return NextResponse.json(
         { success: false, error: 'Device ID, function name, and IR code are required' },
         { status: 400 }
       )
     }
 
-    console.log('   Device ID:', deviceId)
-    console.log('   Function Name:', functionName)
-    console.log('   Category:', category || 'N/A')
+    logger.info('   Device ID:', deviceId)
+    logger.info('   Function Name:', functionName)
+    logger.info('   Category:', category || 'N/A')
 
     // Check if command with this function name already exists for this device
     const existingCommand = await db.select()
@@ -50,7 +59,7 @@ export async function POST(request: NextRequest) {
       .get()
 
     if (existingCommand) {
-      console.log('❌ [IR COMMANDS] Command already exists')
+      logger.info('❌ [IR COMMANDS] Command already exists')
       return NextResponse.json(
         { success: false, error: 'A command with this name already exists for this device' },
         { status: 409 }
@@ -66,17 +75,17 @@ export async function POST(request: NextRequest) {
       description: description || null
     })
 
-    console.log('✅ [IR COMMANDS] Command created successfully')
-    console.log('   ID:', command.id)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.info('✅ [IR COMMANDS] Command created successfully')
+    logger.info('   ID:', command.id)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
       success: true,
       command
     })
   } catch (error) {
-    console.error('❌ [IR COMMANDS] Error creating command:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    logger.error('❌ [IR COMMANDS] Error creating command:', error)
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json(
       { 

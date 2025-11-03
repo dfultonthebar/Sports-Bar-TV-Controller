@@ -13,6 +13,9 @@ import { matrixOutputs } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const execAsync = promisify(exec)
 
 /**
@@ -28,7 +31,7 @@ async function createEnhancedLayoutImage(
   imageHeight: number
 ): Promise<string> {
   try {
-    console.log('[Enhanced Image] Creating professional layout with', zones.length, 'zones')
+    logger.info('[Enhanced Image] Creating professional layout with', zones.length, 'zones')
 
     // Target size for tablets (larger for better visibility)
     const TARGET_WIDTH = 1920
@@ -55,11 +58,11 @@ async function createEnhancedLayoutImage(
       .png({ quality: 95 })
       .toFile(outputFilename)
 
-    console.log('[Enhanced Image] Created professional layout:', outputFilename)
+    logger.info('[Enhanced Image] Created professional layout:', outputFilename)
 
     return outputFilename
   } catch (error) {
-    console.error('[Enhanced Image] Error creating professional image:', error)
+    logger.error('[Enhanced Image] Error creating professional image:', error)
     return originalImagePath // Fallback to original
   }
 }
@@ -184,7 +187,7 @@ async function validateImage(filepath: string): Promise<boolean> {
     // Check if we got valid image metadata
     return !!(metadata.width && metadata.height && metadata.format);
   } catch (error) {
-    console.error('Image validation failed:', error);
+    logger.error('Image validation failed:', error);
     return false;
   }
 }
@@ -195,15 +198,21 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
-    console.log('Upload layout API called')
+    logger.info('Upload layout API called')
     const formData = await request.formData()
     const file = formData.get('file') as File
     
-    console.log('File received:', file ? file.name : 'No file')
+    logger.info('File received:', file ? file.name : 'No file')
     
     if (!file) {
-      console.log('No file provided in request')
+      logger.info('No file provided in request')
       return NextResponse.json(
         { error: 'No file uploaded' },
         { status: 400 }
@@ -238,7 +247,7 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await fs.writeFile(filepath, buffer)
-    console.log('File saved to:', filepath)
+    logger.info('File saved to:', filepath)
 
     let imageUrl = `/api/uploads/layouts/${filename}`
     let convertedImageUrl: string | null = null
@@ -246,7 +255,7 @@ export async function POST(request: NextRequest) {
     // Convert PDF to image if needed
     if (file.type === 'application/pdf') {
       try {
-        console.log('Converting PDF to image...')
+        logger.info('Converting PDF to image...')
         
         // Create a temporary PDF file for pdftoppm
         const tempPdfPath = join(UPLOAD_DIR, `temp_${filename}`)
@@ -257,11 +266,11 @@ export async function POST(request: NextRequest) {
         const outputPrefix = join(UPLOAD_DIR, `${filename.replace(/\.pdf$/, '')}_page`)
         const command = `pdftoppm -png -f 1 -l 1 -r 300 "${tempPdfPath}" "${outputPrefix}"`
         
-        console.log('Running command:', command)
+        logger.info('Running command:', command)
         await execAsync(command)
         
         // Clean up temp PDF file
-        await fs.unlink(tempPdfPath).catch(err => console.log('Cleanup error:', err))
+        await fs.unlink(tempPdfPath).catch(err => logger.info('Cleanup error:', err))
         
         // Find the generated PNG file
         const generatedFiles = await fs.readdir(UPLOAD_DIR)
@@ -290,33 +299,33 @@ export async function POST(request: NextRequest) {
           // NEW: Validate the converted image
           const isValidImage = await validateImage(optimizedPath);
           if (!isValidImage) {
-            console.error('Converted image validation failed');
+            logger.error('Converted image validation failed');
             // Clean up invalid file
-            await fs.unlink(optimizedPath).catch(err => console.log('Cleanup error:', err));
+            await fs.unlink(optimizedPath).catch(err => logger.info('Cleanup error:', err));
             throw new Error('PDF conversion produced invalid image');
           }
           
           // Clean up the original generated file
-          await fs.unlink(imagePath).catch(err => console.log('Cleanup error:', err))
+          await fs.unlink(imagePath).catch(err => logger.info('Cleanup error:', err))
           
           convertedImageUrl = `/api/uploads/layouts/${optimizedFilename}`
-          console.log('PDF converted to image:', convertedImageUrl)
+          logger.info('PDF converted to image:', convertedImageUrl)
         } else {
-          console.warn('No PNG file generated from PDF conversion');
+          logger.warn('No PNG file generated from PDF conversion');
         }
       } catch (error: any) {
-        console.error('Error converting PDF to image:', error)
-        console.error('Command output:', error.stdout || 'No stdout')
-        console.error('Command stderr:', error.stderr || 'No stderr')
+        logger.error('Error converting PDF to image:', error)
+        logger.error('Command output:', error.stdout || 'No stdout')
+        logger.error('Command stderr:', error.stderr || 'No stderr')
         // Continue with PDF - conversion failed but we can still analyze
       }
     } else {
       // NEW: For direct image uploads, validate the image
       const isValidImage = await validateImage(filepath);
       if (!isValidImage) {
-        console.error('Uploaded image validation failed');
+        logger.error('Uploaded image validation failed');
         // Clean up invalid file
-        await fs.unlink(filepath).catch(err => console.log('Cleanup error:', err));
+        await fs.unlink(filepath).catch(err => logger.info('Cleanup error:', err));
         return NextResponse.json(
           { error: 'Invalid image file. The file may be corrupted or not a valid image format.' },
           { status: 400 }
@@ -324,19 +333,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('Returning imageUrl:', imageUrl, 'convertedImageUrl:', convertedImageUrl)
+    logger.info('Returning imageUrl:', imageUrl, 'convertedImageUrl:', convertedImageUrl)
 
     // Auto-detect TV zones from the uploaded/converted image
     let zones: any[] = []
     let detectionResult: any = null
     const imageToAnalyze = convertedImageUrl ? join(UPLOAD_DIR, convertedImageUrl.split('/').pop()!) : filepath
 
-    console.log('[Upload Layout] Starting auto-detection on:', imageToAnalyze)
+    logger.info('[Upload Layout] Starting auto-detection on:', imageToAnalyze)
 
     try {
       detectionResult = await detectTVZonesFromImage(imageToAnalyze)
 
-      console.log('[Upload Layout] Detection result:', {
+      logger.info('[Upload Layout] Detection result:', {
         zonesFound: detectionResult.zones.length,
         errors: detectionResult.errors
       })
@@ -344,7 +353,7 @@ export async function POST(request: NextRequest) {
       if (detectionResult.zones.length > 0) {
         // Get WolfPack outputs for auto-matching
         const outputs = await db.select().from(matrixOutputs)
-        console.log(`[Upload Layout] Found ${outputs.length} matrix outputs for matching`)
+        logger.info(`[Upload Layout] Found ${outputs.length} matrix outputs for matching`)
 
         if (outputs.length > 0) {
           zones = autoMatchZonesToOutputs(
@@ -354,15 +363,15 @@ export async function POST(request: NextRequest) {
               label: o.label
             }))
           )
-          console.log(`[Upload Layout] Auto-matched ${zones.length} TV zones`)
+          logger.info(`[Upload Layout] Auto-matched ${zones.length} TV zones`)
         } else {
           zones = detectionResult.zones
-          console.log(`[Upload Layout] Using ${zones.length} detected zones as-is`)
+          logger.info(`[Upload Layout] Using ${zones.length} detected zones as-is`)
         }
 
         // Run OCR to extract TV labels from zones
         try {
-          console.log('[Upload Layout] Running OCR to extract TV labels...')
+          logger.info('[Upload Layout] Running OCR to extract TV labels...')
           const zonesJson = JSON.stringify(zones)
           const ocrCommand = `python3 "${join(process.cwd(), 'services', 'ocr-service.py')}" "${imageToAnalyze}" '${zonesJson}'`
 
@@ -375,15 +384,15 @@ export async function POST(request: NextRequest) {
 
           if (ocrResult.success && ocrResult.zones) {
             zones = ocrResult.zones
-            console.log(`[Upload Layout] OCR completed using ${ocrResult.device}. Extracted labels from ${zones.length} zones`)
+            logger.info(`[Upload Layout] OCR completed using ${ocrResult.device}. Extracted labels from ${zones.length} zones`)
             if (ocrResult.tpu_available) {
-              console.log('[Upload Layout] ✓ Coral TPU acceleration used')
+              logger.info('[Upload Layout] ✓ Coral TPU acceleration used')
             }
           } else {
-            console.log('[Upload Layout] OCR processing failed:', ocrResult.error || 'Unknown error')
+            logger.info('[Upload Layout] OCR processing failed:', ocrResult.error || 'Unknown error')
           }
         } catch (ocrError: any) {
-          console.error('[Upload Layout] OCR error:', ocrError.message || ocrError)
+          logger.error('[Upload Layout] OCR error:', ocrError.message || ocrError)
           // Continue with existing zones if OCR fails
         }
 
@@ -399,14 +408,14 @@ export async function POST(request: NextRequest) {
           // Update the URL to use the enhanced image
           const enhancedFilename = enhancedImagePath.split('/').pop()!
           convertedImageUrl = `/api/uploads/layouts/${enhancedFilename}`
-          console.log(`[Upload Layout] Created enhanced image: ${convertedImageUrl}`)
+          logger.info(`[Upload Layout] Created enhanced image: ${convertedImageUrl}`)
         } catch (enhanceError) {
-          console.error('[Upload Layout] Enhancement error:', enhanceError)
+          logger.error('[Upload Layout] Enhancement error:', enhanceError)
           // Continue with original image if enhancement fails
         }
       }
     } catch (detectError) {
-      console.error('[Upload Layout] Detection error:', detectError)
+      logger.error('[Upload Layout] Detection error:', detectError)
     }
 
     // For PDF layouts, return the TV location description
@@ -451,7 +460,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
       } : null
     })
   } catch (error) {
-    console.error('Error uploading file:', error)
+    logger.error('Error uploading file:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to upload file' },
       { status: 500 }

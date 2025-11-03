@@ -10,6 +10,9 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const LAYOUT_FILE = join(process.cwd(), 'data', 'tv-layout.json')
 const BACKUP_DIR = join(process.cwd(), 'data', 'backups')
 
@@ -21,6 +24,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     // Ensure backup directory exists
@@ -57,7 +70,7 @@ export async function GET(request: NextRequest) {
       currentLayout: LAYOUT_FILE
     })
   } catch (error) {
-    console.error('[Backup API] Error listing backups:', error)
+    logger.error('[Backup API] Error listing backups:', error)
     return NextResponse.json(
       {
         success: false,
@@ -78,6 +91,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { action, filename } = await request.json()
 
@@ -96,7 +119,7 @@ export async function POST(request: NextRequest) {
       // Write backup
       await fs.writeFile(backupPath, JSON.stringify(layout, null, 2), 'utf-8')
 
-      console.log(`[Backup API] Created backup: ${backupPath}`)
+      logger.info(`[Backup API] Created backup: ${backupPath}`)
 
       return NextResponse.json({
         success: true,
@@ -140,7 +163,7 @@ export async function POST(request: NextRequest) {
 
       const restoredLayout = JSON.parse(backupData)
 
-      console.log(`[Backup API] Restored from backup: ${backupPath}`)
+      logger.info(`[Backup API] Restored from backup: ${backupPath}`)
 
       return NextResponse.json({
         success: true,
@@ -155,7 +178,7 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    console.error('[Backup API] Error:', error)
+    logger.error('[Backup API] Error:', error)
     return NextResponse.json(
       {
         success: false,
@@ -202,14 +225,14 @@ export async function DELETE(request: NextRequest) {
     // Delete backup
     await fs.unlink(backupPath)
 
-    console.log(`[Backup API] Deleted backup: ${backupPath}`)
+    logger.info(`[Backup API] Deleted backup: ${backupPath}`)
 
     return NextResponse.json({
       success: true,
       message: 'Backup deleted successfully'
     })
   } catch (error) {
-    console.error('[Backup API] Error deleting backup:', error)
+    logger.error('[Backup API] Error deleting backup:', error)
     return NextResponse.json(
       {
         success: false,

@@ -5,12 +5,13 @@ import { db, schema } from '../db'
 import { or, eq, count } from 'drizzle-orm'
 import { extractTextFromFile } from '../lib/text-extractor'
 
+import { logger } from '@/lib/logger'
 async function reprocessUploads() {
   const uploadsDir = path.join(process.cwd(), 'uploads')
   
   try {
     const files = await fs.readdir(uploadsDir)
-    console.log(`Found ${files.length} files in uploads directory`)
+    logger.info(`Found ${files.length} files in uploads directory`)
 
     for (const filename of files) {
       const filePath = path.join(uploadsDir, filename)
@@ -32,11 +33,11 @@ async function reprocessUploads() {
         .get()
 
       if (existingDoc) {
-        console.log(`⏭️  Skipping ${filename} - already in database`)
+        logger.info(`⏭️  Skipping ${filename} - already in database`)
         continue
       }
 
-      console.log(`🔄 Processing ${filename}`)
+      logger.info(`🔄 Processing ${filename}`)
 
       try {
         // Extract text content
@@ -44,9 +45,9 @@ async function reprocessUploads() {
         try {
           const textExtractionResult = await extractTextFromFile(filePath)
           textContent = textExtractionResult.text
-          console.log(`✅ Text extracted: ${textContent.length} characters`)
+          logger.info(`✅ Text extracted: ${textContent.length} characters`)
         } catch (textError) {
-          console.error(`⚠️ Text extraction failed for ${filename}:`, textError)
+          logger.error(`⚠️ Text extraction failed for ${filename}:`, textError)
         }
 
         // Determine MIME type based on extension
@@ -74,9 +75,9 @@ async function reprocessUploads() {
           .returning()
           .get()
 
-        console.log(`✅ Saved ${filename} to database with ID: ${document.id}`)
+        logger.info(`✅ Saved ${filename} to database with ID: ${document.id}`)
       } catch (error) {
-        console.error(`❌ Error processing ${filename}:`, error)
+        logger.error(`❌ Error processing ${filename}:`, error)
       }
     }
 
@@ -86,19 +87,19 @@ async function reprocessUploads() {
       .from(schema.documents)
       .get()
     const totalDocs = result?.count ?? 0
-    console.log(`🎉 Processing complete! Total documents in database: ${totalDocs}`)
+    logger.info(`🎉 Processing complete! Total documents in database: ${totalDocs}`)
 
   } catch (error) {
-    console.error('Error reprocessing uploads:', error)
+    logger.error('Error reprocessing uploads:', error)
   }
 }
 
 reprocessUploads()
   .then(() => {
-    console.log('Reprocessing complete')
+    logger.info('Reprocessing complete')
     process.exit(0)
   })
   .catch(error => {
-    console.error('Reprocessing failed:', error)
+    logger.error('Reprocessing failed:', error)
     process.exit(1)
   })

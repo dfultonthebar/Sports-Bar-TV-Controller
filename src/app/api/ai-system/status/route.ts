@@ -6,6 +6,9 @@ import { enhancedLogger } from '@/lib/enhanced-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
   if (!rateLimit.allowed) {
@@ -46,7 +49,7 @@ export async function GET(request: NextRequest) {
           test: true
         })
       } catch (error) {
-        console.error('Test analysis failed:', error)
+        logger.error('Test analysis failed:', error)
       }
     }
 
@@ -89,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('Failed to check AI system status:', error)
+    logger.error('Failed to check AI system status:', error)
     
     await enhancedLogger.error(
       'api',
@@ -129,6 +132,12 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { action } = body
@@ -145,7 +154,7 @@ export async function POST(request: NextRequest) {
         )
     }
   } catch (error) {
-    console.error('Failed to handle AI system action:', error)
+    logger.error('Failed to handle AI system action:', error)
     
     return NextResponse.json(
       { error: 'Failed to handle AI system action' },
@@ -232,7 +241,7 @@ async function handleTestAnalysis() {
       }
     })
   } catch (error) {
-    console.error('Test analysis failed:', error)
+    logger.error('Test analysis failed:', error)
     
     return NextResponse.json({
       success: false,
@@ -266,7 +275,7 @@ async function handleReinitialize() {
       timestamp: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Failed to reinitialize AI system:', error)
+    logger.error('Failed to reinitialize AI system:', error)
     
     return NextResponse.json({
       success: false,

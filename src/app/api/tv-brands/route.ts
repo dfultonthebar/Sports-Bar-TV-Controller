@@ -6,11 +6,20 @@ import { TV_BRAND_CONFIGS, getAllBrands, getBrandConfig } from '@/lib/tv-brands-
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: Request) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const { searchParams } = new URL(request.url)
@@ -35,7 +44,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Error fetching TV brands:', error)
+    logger.error('Error fetching TV brands:', error)
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to fetch TV brands' 

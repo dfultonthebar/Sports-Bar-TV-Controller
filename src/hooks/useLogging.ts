@@ -5,6 +5,7 @@
 import { useCallback, useRef } from 'react'
 import { enhancedLogger } from '@/lib/enhanced-logger'
 
+import { logger } from '@/lib/logger'
 export interface LoggingHookOptions {
   component?: string
   sessionId?: string
@@ -32,7 +33,7 @@ export function useLogging(component?: string, options?: LoggingHookOptions) {
         sessionId.current
       )
     } catch (error) {
-      console.error('Failed to log user action:', error)
+      logger.error('Failed to log user action:', error)
     }
   }, [component, options])
 
@@ -74,7 +75,7 @@ export function useLogging(component?: string, options?: LoggingHookOptions) {
         section
       })
     } catch (error) {
-      console.error('Failed to log configuration change:', error)
+      logger.error('Failed to log configuration change:', error)
     }
   }, [component, options?.userId, logUserAction])
 
@@ -111,7 +112,7 @@ export function useLogging(component?: string, options?: LoggingHookOptions) {
         details
       })
     } catch (error) {
-      console.error('Failed to log device interaction:', error)
+      logger.error('Failed to log device interaction:', error)
     }
   }, [component, logUserAction])
 
@@ -164,7 +165,7 @@ export function useLogging(component?: string, options?: LoggingHookOptions) {
         ...metadata
       })
     } catch (error) {
-      console.error('Failed to log performance metric:', error)
+      logger.error('Failed to log performance metric:', error)
     }
 
     return duration
@@ -189,7 +190,7 @@ export function useLogging(component?: string, options?: LoggingHookOptions) {
         error.stack
       )
     } catch (logError) {
-      console.error('Failed to log error:', logError)
+      logger.error('Failed to log error:', logError)
     }
   }, [component])
 

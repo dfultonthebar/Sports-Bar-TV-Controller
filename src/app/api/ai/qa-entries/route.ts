@@ -14,6 +14,9 @@ import { parsePaginationParams, paginateArray } from '@/lib/pagination';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // System error logger
 async function logSystemError(error: any, context: string) {
   try {
@@ -31,7 +34,7 @@ async function logSystemError(error: any, context: string) {
     
     await fs.appendFile(logFile, logEntry);
   } catch (logError) {
-    console.error('Failed to write to system-errors.log:', logError);
+    logger.error('Failed to write to system-errors.log:', logError);
   }
 }
 
@@ -42,7 +45,17 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('[AI QA] GET request - Fetching Q&A entries');
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
+  logger.info('[AI QA] GET request - Fetching Q&A entries');
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
@@ -50,17 +63,17 @@ export async function GET(request: NextRequest) {
     const sourceType = searchParams.get('sourceType');
     const stats = searchParams.get('stats');
 
-    console.log('[AI QA] Query parameters:', { query, category, sourceType, stats });
+    logger.info('[AI QA] Query parameters:', { query, category, sourceType, stats });
 
     // Return statistics
     if (stats === 'true') {
-      console.log('[AI QA] Fetching statistics...');
+      logger.info('[AI QA] Fetching statistics...');
       try {
         const statistics = await getQAStatistics();
-        console.log('[AI QA] ✓ Statistics retrieved:', statistics);
+        logger.info('[AI QA] ✓ Statistics retrieved:', statistics);
         return NextResponse.json(statistics);
       } catch (statsError) {
-        console.error('[AI QA] ✗ Error fetching Q&A statistics:', statsError);
+        logger.error('[AI QA] ✗ Error fetching Q&A statistics:', statsError);
         await logSystemError(statsError, 'GET /api/ai/qa-entries?stats=true');
         // Return default statistics structure on error
         return NextResponse.json({
@@ -92,7 +105,7 @@ export async function GET(request: NextRequest) {
           pagination: paginatedResults.pagination
         });
       } catch (searchError) {
-        console.error('Error searching Q&A entries:', searchError);
+        logger.error('Error searching Q&A entries:', searchError);
         await logSystemError(searchError, `GET /api/ai/qa-entries?query=${query}`);
         // Return empty paginated response on search error
         return NextResponse.json({
@@ -115,9 +128,9 @@ export async function GET(request: NextRequest) {
     if (sourceType && sourceType !== 'all') filters.sourceType = sourceType;
 
     try {
-      console.log('[AI QA] Fetching all Q&A entries with filters:', filters);
+      logger.info('[AI QA] Fetching all Q&A entries with filters:', filters);
       const result = await getAllQAEntries(filters);
-      console.log('[AI QA] Query result:', {
+      logger.info('[AI QA] Query result:', {
         hasEntries: !!result?.entries,
         count: result?.entries?.length || 0,
         total: result?.total
@@ -129,14 +142,14 @@ export async function GET(request: NextRequest) {
       // Apply pagination
       const paginatedResults = paginateArray(safeEntries, page, limit);
 
-      console.log('[AI QA] Returning', paginatedResults.data.length, 'entries (page', page, 'of', paginatedResults.pagination.totalPages, ')');
+      logger.info('[AI QA] Returning', paginatedResults.data.length, 'entries (page', page, 'of', paginatedResults.pagination.totalPages, ')');
 
       return NextResponse.json({
         data: paginatedResults.data,
         pagination: paginatedResults.pagination
       });
     } catch (dbError) {
-      console.error('[AI QA] ✗ Error fetching Q&A entries from database:', dbError);
+      logger.error('[AI QA] ✗ Error fetching Q&A entries from database:', dbError);
       await logSystemError(dbError, `GET /api/ai/qa-entries with filters: ${JSON.stringify(filters)}`);
 
       // Return empty paginated response instead of error to prevent frontend crashes
@@ -153,7 +166,7 @@ export async function GET(request: NextRequest) {
       });
     }
   } catch (error) {
-    console.error('Unexpected error in Q&A entries GET handler:', error);
+    logger.error('Unexpected error in Q&A entries GET handler:', error);
     await logSystemError(error, 'GET /api/ai/qa-entries - Unexpected error');
     
     // Always return an array structure to prevent frontend "e.map is not a function" errors
@@ -168,15 +181,25 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('='.repeat(80));
-  console.log('[AI QA] POST request - Creating new Q&A entry');
-  console.log('[AI QA] Timestamp:', new Date().toISOString());
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
+  logger.info('='.repeat(80));
+  logger.info('[AI QA] POST request - Creating new Q&A entry');
+  logger.info('[AI QA] Timestamp:', new Date().toISOString());
   
   try {
     const body = await request.json();
     const { question, answer, category, tags } = body;
 
-    console.log('[AI QA] Request body:', {
+    logger.info('[AI QA] Request body:', {
       hasQuestion: !!question,
       hasAnswer: !!answer,
       category: category || 'general',
@@ -184,7 +207,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!question || !answer) {
-      console.error('[AI QA] ✗ Validation failed - Missing required fields');
+      logger.error('[AI QA] ✗ Validation failed - Missing required fields');
       return NextResponse.json(
         { error: 'Question and answer are required' },
         { status: 400 }
@@ -192,7 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      console.log('[AI QA] Attempting to create Q&A entry in database...');
+      logger.info('[AI QA] Attempting to create Q&A entry in database...');
       const entry = await create('qaEntries', {
         question,
         answer,
@@ -202,18 +225,18 @@ export async function POST(request: NextRequest) {
         confidence: 1.0,
       });
 
-      console.log('[AI QA] ✓ Q&A entry created successfully');
-      console.log('[AI QA] Entry ID:', entry.id);
-      console.log('[AI QA] Entry category:', entry.category);
-      console.log('='.repeat(80));
+      logger.info('[AI QA] ✓ Q&A entry created successfully');
+      logger.info('[AI QA] Entry ID:', entry.id);
+      logger.info('[AI QA] Entry category:', entry.category);
+      logger.info('='.repeat(80));
 
       return NextResponse.json(entry);
     } catch (dbError) {
-      console.error('[AI QA] ✗ Database error creating Q&A entry:', dbError);
-      console.error('[AI QA] Error type:', dbError instanceof Error ? dbError.constructor.name : typeof dbError);
-      console.error('[AI QA] Error message:', dbError instanceof Error ? dbError.message : String(dbError));
-      console.error('[AI QA] Error stack:', dbError instanceof Error ? dbError.stack : 'No stack trace');
-      console.log('='.repeat(80));
+      logger.error('[AI QA] ✗ Database error creating Q&A entry:', dbError);
+      logger.error('[AI QA] Error type:', dbError instanceof Error ? dbError.constructor.name : typeof dbError);
+      logger.error('[AI QA] Error message:', dbError instanceof Error ? dbError.message : String(dbError));
+      logger.error('[AI QA] Error stack:', dbError instanceof Error ? dbError.stack : 'No stack trace');
+      logger.info('='.repeat(80));
       
       await logSystemError(dbError, `POST /api/ai/qa-entries - Database error`);
       return NextResponse.json(
@@ -222,11 +245,11 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('[AI QA] ✗ Unexpected error creating Q&A entry:', error);
-    console.error('[AI QA] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    console.error('[AI QA] Error message:', error instanceof Error ? error.message : String(error));
-    console.error('[AI QA] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.log('='.repeat(80));
+    logger.error('[AI QA] ✗ Unexpected error creating Q&A entry:', error);
+    logger.error('[AI QA] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    logger.error('[AI QA] Error message:', error instanceof Error ? error.message : String(error));
+    logger.error('[AI QA] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    logger.info('='.repeat(80));
     
     await logSystemError(error, 'POST /api/ai/qa-entries - Unexpected error');
     return NextResponse.json(
@@ -242,6 +265,16 @@ export async function PUT(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json();
@@ -265,7 +298,7 @@ export async function PUT(request: NextRequest) {
       const entry = await updateQAEntry(id, updateData);
       return NextResponse.json(entry);
     } catch (dbError) {
-      console.error('Database error updating Q&A entry:', dbError);
+      logger.error('Database error updating Q&A entry:', dbError);
       await logSystemError(dbError, `PUT /api/ai/qa-entries - Database error for ID: ${id}`);
       return NextResponse.json(
         { error: 'Database error: Failed to update Q&A entry' },
@@ -273,7 +306,7 @@ export async function PUT(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('Error updating Q&A entry:', error);
+    logger.error('Error updating Q&A entry:', error);
     await logSystemError(error, 'PUT /api/ai/qa-entries - Unexpected error');
     return NextResponse.json(
       { error: 'Failed to update Q&A entry' },
@@ -304,7 +337,7 @@ export async function DELETE(request: NextRequest) {
       await deleteQAEntry(id);
       return NextResponse.json({ success: true });
     } catch (dbError) {
-      console.error('Database error deleting Q&A entry:', dbError);
+      logger.error('Database error deleting Q&A entry:', dbError);
       await logSystemError(dbError, `DELETE /api/ai/qa-entries - Database error for ID: ${id}`);
       return NextResponse.json(
         { error: 'Database error: Failed to delete Q&A entry' },
@@ -312,7 +345,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('Error deleting Q&A entry:', error);
+    logger.error('Error deleting Q&A entry:', error);
     await logSystemError(error, 'DELETE /api/ai/qa-entries - Unexpected error');
     return NextResponse.json(
       { error: 'Failed to delete Q&A entry' },

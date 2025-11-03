@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 let learningSocket: any = null
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -33,13 +36,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }, 5000)
 
       learningSocket.connect(4998, iTachAddress, () => {
-        console.log(`Connected to iTach for learning at ${iTachAddress}:4998`)
+        logger.info(`Connected to iTach for learning at ${iTachAddress}:4998`)
         learningSocket.write('get_IRL\r')
       })
 
       learningSocket.on('data', (data: Buffer) => {
         const response = data.toString().trim()
-        console.log('Learning response:', response)
+        logger.info('Learning response:', response)
         
         if (response.includes('IR Learner Enabled') && !isResolved) {
           isResolved = true
@@ -59,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }, { status: 400 }))
         } else if (response.startsWith('sendir,') && !isResolved) {
           // Captured IR code
-          console.log('Learned IR code:', response)
+          logger.info('Learned IR code:', response)
           resolve(NextResponse.json({ 
             success: true, 
             message: 'IR code learned successfully!',
@@ -69,7 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
 
       learningSocket.on('error', (err: Error) => {
-        console.error('Learning connection error:', err)
+        logger.error('Learning connection error:', err)
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
 
       learningSocket.on('close', () => {
-        console.log('Learning connection closed')
+        logger.info('Learning connection closed')
         learningSocket = null
         if (!isResolved) {
           isResolved = true
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     })
 
   } catch (error) {
-    console.error('Error starting IR learning:', error)
+    logger.error('Error starting IR learning:', error)
     return NextResponse.json({ 
       success: false, 
       message: `Learning start failed: ${error}` 

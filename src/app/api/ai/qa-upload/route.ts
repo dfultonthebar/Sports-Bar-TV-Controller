@@ -4,11 +4,20 @@ import { processUploadedFile } from '@/lib/services/qa-uploader';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.qaEntry)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const formData = await request.formData();
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error uploading Q&A file:', error);
+    logger.error('Error uploading Q&A file:', error);
     return NextResponse.json(
       { error: 'Failed to upload Q&A file', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

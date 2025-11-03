@@ -3,11 +3,20 @@ import { AtlasTCPClient } from '@/lib/atlasClient'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -83,7 +92,7 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('Error fetching input meters:', error)
+    logger.error('Error fetching input meters:', error)
     return NextResponse.json(
       { 
         success: false, 

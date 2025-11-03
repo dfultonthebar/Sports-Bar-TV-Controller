@@ -3,12 +3,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
 const SUBSCRIPTIONS_FILE = join(process.cwd(), 'data', 'device-subscriptions.json')
 
 export async function GET(request: NextRequest) {
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const url = new URL(request.url || 'http://localhost/api/device-subscriptions')
     const deviceId = url.searchParams.get('deviceId')
@@ -34,7 +42,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error loading subscription data:', error)
+    logger.error('Error loading subscription data:', error)
     return NextResponse.json({
       success: true,
       devices: [] as any[]

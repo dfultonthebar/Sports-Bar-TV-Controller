@@ -12,11 +12,20 @@ import { matrixOutputs } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { imageUrl } = await request.json()
@@ -32,7 +41,7 @@ export async function POST(request: NextRequest) {
     const filename = imageUrl.split('/').pop()
     const filepath = join(process.cwd(), 'public', 'uploads', 'layouts', filename!)
 
-    console.log(`[Layout Detection] Processing: ${filepath}`)
+    logger.info(`[Layout Detection] Processing: ${filepath}`)
 
     // Detect zones
     const detectionResult = await detectTVZonesFromImage(filepath)
@@ -57,7 +66,7 @@ export async function POST(request: NextRequest) {
       }))
     )
 
-    console.log(`[Layout Detection] Detected ${zones.length} zones`)
+    logger.info(`[Layout Detection] Detected ${zones.length} zones`)
 
     return NextResponse.json({
       success: true,
@@ -71,7 +80,7 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('[Layout Detection] Error:', error)
+    logger.error('[Layout Detection] Error:', error)
     return NextResponse.json(
       {
         success: false,

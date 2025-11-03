@@ -7,6 +7,9 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
 interface FireTVDevice {
@@ -34,7 +37,7 @@ async function readDevices(): Promise<{ devices: FireTVDevice[] }> {
     const data = await fs.readFile(DATA_FILE, 'utf-8')
     return JSON.parse(data)
   } catch (error) {
-    console.error('Error reading devices file:', error)
+    logger.error('Error reading devices file:', error)
     return { devices: [] }
   }
 }
@@ -43,7 +46,7 @@ async function writeDevices(data: { devices: FireTVDevice[] }): Promise<void> {
   try {
     await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
   } catch (error) {
-    console.error('Error writing devices file:', error)
+    logger.error('Error writing devices file:', error)
     throw error
   }
 }
@@ -55,14 +58,24 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
-    console.log('[FIRETV API] GET request - fetching all devices')
+    logger.info('[FIRETV API] GET request - fetching all devices')
     const data = await readDevices()
     
-    console.log(`[FIRETV API] Found ${data.devices.length} devices`)
+    logger.info(`[FIRETV API] Found ${data.devices.length} devices`)
     return NextResponse.json(data)
   } catch (error: any) {
-    console.error('[FIRETV API] GET error:', error)
+    logger.error('[FIRETV API] GET error:', error)
     return NextResponse.json(
       { error: 'Failed to load devices', details: error.message },
       { status: 500 }
@@ -77,8 +90,18 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
-    console.log('[FIRETV API] POST request - adding new device')
+    logger.info('[FIRETV API] POST request - adding new device')
     const newDevice: FireTVDevice = await request.json()
     
     const data = await readDevices()
@@ -92,10 +115,10 @@ export async function POST(request: NextRequest) {
     
     await writeDevices(data)
     
-    console.log(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
+    logger.info(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
     return NextResponse.json({ success: true, device: newDevice })
   } catch (error: any) {
-    console.error('[FIRETV API] POST error:', error)
+    logger.error('[FIRETV API] POST error:', error)
     return NextResponse.json(
       { error: 'Failed to add device', details: error.message },
       { status: 500 }
@@ -110,8 +133,18 @@ export async function PUT(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
-    console.log('[FIRETV API] PUT request - updating device')
+    logger.info('[FIRETV API] PUT request - updating device')
     const updatedDevice: FireTVDevice = await request.json()
     
     const data = await readDevices()
@@ -132,10 +165,10 @@ export async function PUT(request: NextRequest) {
     
     await writeDevices(data)
     
-    console.log(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
+    logger.info(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
     return NextResponse.json({ success: true, device: updatedDevice })
   } catch (error: any) {
-    console.error('[FIRETV API] PUT error:', error)
+    logger.error('[FIRETV API] PUT error:', error)
     return NextResponse.json(
       { error: 'Failed to update device', details: error.message },
       { status: 500 }
@@ -154,7 +187,7 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
     
-    console.log(`[FIRETV API] DELETE request - removing device: ${deviceId}`)
+    logger.info(`[FIRETV API] DELETE request - removing device: ${deviceId}`)
     
     if (!deviceId) {
       return NextResponse.json(
@@ -178,10 +211,10 @@ export async function DELETE(request: NextRequest) {
     
     await writeDevices(data)
     
-    console.log(`[FIRETV API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
+    logger.info(`[FIRETV API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
     return NextResponse.json({ success: true, message: 'Device deleted successfully' })
   } catch (error: any) {
-    console.error('[FIRETV API] DELETE error:', error)
+    logger.error('[FIRETV API] DELETE error:', error)
     return NextResponse.json(
       { error: 'Failed to delete device', details: error.message },
       { status: 500 }

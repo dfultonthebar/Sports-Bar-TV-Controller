@@ -19,6 +19,7 @@ import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
+import { logger } from '@/lib/logger'
 import {
   Satellite,
   MonitorPlay,
@@ -81,7 +82,7 @@ export default function DeviceConfigPage() {
       // Auto-dismiss after 5 seconds
       setTimeout(() => setAiActionResult(null), 5000)
     } catch (error) {
-      console.error('AI Action failed:', error)
+      logger.error('AI Action failed:', error)
       setAiActionResult({
         action,
         data: { success: false, error: 'Action failed' }

@@ -5,6 +5,9 @@ import { sportsDBAPI } from '@/lib/sports-apis/thesportsdb-api'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
@@ -27,10 +30,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('🧪 Testing live sports API providers...')
+    logger.info('🧪 Testing live sports API providers...')
 
     // Test ESPN API
-    console.log('🔄 Testing ESPN API...')
+    logger.info('🔄 Testing ESPN API...')
     try {
       const espnTestStart = Date.now()
       const nflGames = await espnAPI.getNFLGames(today)
@@ -56,10 +59,10 @@ export async function GET(request: NextRequest) {
       testResults.summary.workingProviders++
       testResults.summary.totalGamesFound += espnTotalGames
       
-      console.log(`✅ ESPN API: ${espnTotalGames} games found in ${espnTestEnd - espnTestStart}ms`)
+      logger.info(`✅ ESPN API: ${espnTotalGames} games found in ${espnTestEnd - espnTestStart}ms`)
       
     } catch (error) {
-      console.error('❌ ESPN API test failed:', error)
+      logger.error('❌ ESPN API test failed:', error)
       testResults.providers.espn = {
         status: 'failed',
         responseTime: null,
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Test TheSportsDB API
-    console.log('🔄 Testing TheSportsDB API...')
+    logger.info('🔄 Testing TheSportsDB API...')
     try {
       const sportsDbTestStart = Date.now()
       const premierLeagueEvents = await sportsDBAPI.getPremierLeagueEvents(today)
@@ -98,10 +101,10 @@ export async function GET(request: NextRequest) {
       testResults.summary.workingProviders++
       testResults.summary.totalGamesFound += sportsDbTotalEvents
       
-      console.log(`✅ TheSportsDB API: ${sportsDbTotalEvents} events found in ${sportsDbTestEnd - sportsDbTestStart}ms`)
+      logger.info(`✅ TheSportsDB API: ${sportsDbTotalEvents} events found in ${sportsDbTestEnd - sportsDbTestStart}ms`)
       
     } catch (error) {
-      console.error('❌ TheSportsDB API test failed:', error)
+      logger.error('❌ TheSportsDB API test failed:', error)
       testResults.providers.thesportsdb = {
         status: 'failed',
         responseTime: null,
@@ -115,7 +118,7 @@ export async function GET(request: NextRequest) {
 
     const overallStatus = testResults.summary.workingProviders > 0 ? 'operational' : 'degraded'
     
-    console.log(`🏁 API Test Complete: ${testResults.summary.workingProviders}/${testResults.summary.totalProviders} providers working`)
+    logger.info(`🏁 API Test Complete: ${testResults.summary.workingProviders}/${testResults.summary.totalProviders} providers working`)
     
     return NextResponse.json({
       success: true,
@@ -125,7 +128,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('❌ Error testing sports API providers:', error)
+    logger.error('❌ Error testing sports API providers:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -144,13 +147,19 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const body = await request.json()
     const { leagues = ['nfl', 'nba', 'premier'], date } = body
     
     const testDate = date || new Date().toISOString().split('T')[0]
     
-    console.log(`🧪 Testing specific leagues: ${leagues.join(', ')} for date: ${testDate}`)
+    logger.info(`🧪 Testing specific leagues: ${leagues.join(', ')} for date: ${testDate}`)
     
     const results: any = {
       timestamp: new Date().toISOString(),
@@ -211,7 +220,7 @@ export async function POST(request: NextRequest) {
           error: null
         }
         
-        console.log(`✅ ${league.toUpperCase()}: ${games} games found via ${source}`)
+        logger.info(`✅ ${league.toUpperCase()}: ${games} games found via ${source}`)
         
       } catch (error) {
         results.results[league] = {
@@ -221,7 +230,7 @@ export async function POST(request: NextRequest) {
           error: error instanceof Error ? error.message : 'Unknown error'
         }
         
-        console.error(`❌ ${league.toUpperCase()}: Failed -`, error)
+        logger.error(`❌ ${league.toUpperCase()}: Failed -`, error)
       }
     }
     
@@ -236,7 +245,7 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('❌ Error in targeted API test:', error)
+    logger.error('❌ Error in targeted API test:', error)
     return NextResponse.json(
       { 
         success: false, 

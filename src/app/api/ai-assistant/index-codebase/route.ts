@@ -10,6 +10,9 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // File extensions to include
 const INCLUDED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.prisma'];
 
@@ -108,7 +111,7 @@ async function scanDirectory(dirPath: string, baseDir: string): Promise<FileInfo
             
             // Skip very large files (> 1MB)
             if (stats.size > 1024 * 1024) {
-              console.log(`Skipping large file: ${relativePath}`);
+              logger.info(`Skipping large file: ${relativePath}`);
               continue;
             }
             
@@ -122,13 +125,13 @@ async function scanDirectory(dirPath: string, baseDir: string): Promise<FileInfo
               hash: calculateHash(content)
             });
           } catch (error) {
-            console.error(`Error reading file ${relativePath}:`, error);
+            logger.error(`Error reading file ${relativePath}:`, error);
           }
         }
       }
     }
   } catch (error) {
-    console.error(`Error scanning directory ${dirPath}:`, error);
+    logger.error(`Error scanning directory ${dirPath}:`, error);
   }
   
   return files;
@@ -140,30 +143,36 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   const startTime = Date.now();
-  console.log('='.repeat(80));
-  console.log('[AI INDEXING] Starting codebase indexing operation');
-  console.log('[AI INDEXING] Timestamp:', new Date().toISOString());
+  logger.info('='.repeat(80));
+  logger.info('[AI INDEXING] Starting codebase indexing operation');
+  logger.info('[AI INDEXING] Timestamp:', new Date().toISOString());
   
   try {
     const projectRoot = process.cwd();
     
-    console.log('[AI INDEXING] Project root:', projectRoot);
-    console.log('[AI INDEXING] Included extensions:', INCLUDED_EXTENSIONS.join(', '));
-    console.log('[AI INDEXING] Excluded directories:', EXCLUDED_DIRS.join(', '));
+    logger.info('[AI INDEXING] Project root:', projectRoot);
+    logger.info('[AI INDEXING] Included extensions:', INCLUDED_EXTENSIONS.join(', '));
+    logger.info('[AI INDEXING] Excluded directories:', EXCLUDED_DIRS.join(', '));
     
     // Scan the project directory
-    console.log('[AI INDEXING] Beginning directory scan...');
+    logger.info('[AI INDEXING] Beginning directory scan...');
     const files = await scanDirectory(projectRoot, projectRoot);
     
-    console.log(`[AI INDEXING] ✓ Directory scan complete - Found ${files.length} files to index`);
+    logger.info(`[AI INDEXING] ✓ Directory scan complete - Found ${files.length} files to index`);
     
     let indexed = 0;
     let updated = 0;
     let skipped = 0;
     
     // Process each file
-    console.log('[AI INDEXING] Processing files in database...');
+    logger.info('[AI INDEXING] Processing files in database...');
     let processedCount = 0;
     for (const file of files) {
       try {
@@ -188,7 +197,7 @@ export async function POST(request: NextRequest) {
               .where(eq(indexedFiles.id, existing[0].id));
             updated++;
             if (updated % 10 === 0) {
-              console.log(`[AI INDEXING] Progress: Updated ${updated} files so far...`);
+              logger.info(`[AI INDEXING] Progress: Updated ${updated} files so far...`);
             }
           } else {
             skipped++;
@@ -215,18 +224,18 @@ export async function POST(request: NextRequest) {
           });
           indexed++;
           if (indexed % 10 === 0) {
-            console.log(`[AI INDEXING] Progress: Indexed ${indexed} new files so far...`);
+            logger.info(`[AI INDEXING] Progress: Indexed ${indexed} new files so far...`);
           }
         }
         processedCount++;
       } catch (error) {
-        console.error(`[AI INDEXING] ✗ Error indexing file ${file.path}:`, error);
+        logger.error(`[AI INDEXING] ✗ Error indexing file ${file.path}:`, error);
       }
     }
-    console.log(`[AI INDEXING] ✓ File processing complete - ${processedCount}/${files.length} files processed`);
+    logger.info(`[AI INDEXING] ✓ File processing complete - ${processedCount}/${files.length} files processed`);
     
     // Mark files that no longer exist as inactive
-    console.log('[AI INDEXING] Checking for deleted files...');
+    logger.info('[AI INDEXING] Checking for deleted files...');
     const allIndexedFiles = await db.select()
       .from(indexedFiles)
       .where(eq(indexedFiles.isActive, true));
@@ -244,10 +253,10 @@ export async function POST(request: NextRequest) {
     }
     
     const duration = Date.now() - startTime;
-    console.log('[AI INDEXING] ✓ Indexing complete!');
-    console.log('[AI INDEXING] Stats:', { indexed, updated, skipped, deactivated });
-    console.log('[AI INDEXING] Duration:', `${(duration / 1000).toFixed(2)}s`);
-    console.log('='.repeat(80));
+    logger.info('[AI INDEXING] ✓ Indexing complete!');
+    logger.info('[AI INDEXING] Stats:', { indexed, updated, skipped, deactivated });
+    logger.info('[AI INDEXING] Duration:', `${(duration / 1000).toFixed(2)}s`);
+    logger.info('='.repeat(80));
     
     return NextResponse.json({
       success: true,
@@ -263,12 +272,12 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('[AI INDEXING] ✗ FATAL ERROR during indexing:', error);
-    console.error('[AI INDEXING] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    console.error('[AI INDEXING] Error message:', error instanceof Error ? error.message : String(error));
-    console.error('[AI INDEXING] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('[AI INDEXING] Duration before error:', `${(duration / 1000).toFixed(2)}s`);
-    console.log('='.repeat(80));
+    logger.error('[AI INDEXING] ✗ FATAL ERROR during indexing:', error);
+    logger.error('[AI INDEXING] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    logger.error('[AI INDEXING] Error message:', error instanceof Error ? error.message : String(error));
+    logger.error('[AI INDEXING] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    logger.error('[AI INDEXING] Duration before error:', `${(duration / 1000).toFixed(2)}s`);
+    logger.info('='.repeat(80));
     
     return NextResponse.json(
       { 
@@ -288,7 +297,7 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-  console.log('[AI INDEXING] GET request - Fetching index stats');
+  logger.info('[AI INDEXING] GET request - Fetching index stats');
   try {
     // Get total count and sum of file sizes
     const countResult = await db.select({
@@ -319,7 +328,7 @@ export async function GET(request: NextRequest) {
     .orderBy(sql`${indexedFiles.lastIndexed} DESC`)
     .limit(1);
     
-    console.log('[AI INDEXING] Stats retrieved:', {
+    logger.info('[AI INDEXING] Stats retrieved:', {
       totalFiles,
       totalSize: `${((totalSize || 0) / 1024).toFixed(2)} KB`,
       typeCount: filesByTypeResult.length,
@@ -340,8 +349,8 @@ export async function GET(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('[AI INDEXING] ✗ Error getting index stats:', error);
-    console.error('[AI INDEXING] Error details:', error instanceof Error ? error.message : String(error));
+    logger.error('[AI INDEXING] ✗ Error getting index stats:', error);
+    logger.error('[AI INDEXING] Error details:', error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { 
         success: false,

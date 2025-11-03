@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 
+import { logger } from '@/lib/logger'
 export default function Error({
   error,
   reset,
@@ -11,7 +12,7 @@ export default function Error({
 }) {
   useEffect(() => {
     // Log the error to console for debugging
-    console.error('Application error:', error)
+    logger.error('Application error:', error)
   }, [error])
 
   return (

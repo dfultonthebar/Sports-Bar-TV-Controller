@@ -7,60 +7,69 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
-  console.log('📁 Upload request received')
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
+  logger.info('📁 Upload request received')
   
   try {
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
 
-    console.log(`📄 Processing ${files.length} files`)
+    logger.info(`📄 Processing ${files.length} files`)
 
     if (!files || files.length === 0) {
-      console.log('❌ No files provided')
+      logger.info('❌ No files provided')
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
     const uploadedFiles: any[] = []
 
     for (const file of files) {
-      console.log(`🔄 Processing file: ${file.name} (${file.size} bytes)`)
+      logger.info(`🔄 Processing file: ${file.name} (${file.size} bytes)`)
       
       if (file.size === 0) {
-        console.log(`⚠️ Skipping empty file: ${file.name}`)
+        logger.info(`⚠️ Skipping empty file: ${file.name}`)
         continue
       }
 
       try {
         // Convert file to buffer
-        console.log(`📥 Converting ${file.name} to buffer`)
+        logger.info(`📥 Converting ${file.name} to buffer`)
         const buffer = Buffer.from(await file.arrayBuffer())
         
         // Generate unique filename and save
-        console.log(`💾 Saving ${file.name}`)
+        logger.info(`💾 Saving ${file.name}`)
         const uniqueFilename = generateUniqueFilename(file.name)
         const filePath = await saveFile(buffer, uniqueFilename)
-        console.log(`✅ File saved to: ${filePath}`)
+        logger.info(`✅ File saved to: ${filePath}`)
         
         // Extract text content for AI processing
-        console.log(`🔍 Extracting text from ${file.name}`)
+        logger.info(`🔍 Extracting text from ${file.name}`)
         let textContent = ''
         try {
           const textExtractionResult = await extractTextFromFile(filePath, file.type)
           textContent = textExtractionResult.text
-          console.log(`✅ Text extracted: ${textContent.length} characters`)
+          logger.info(`✅ Text extracted: ${textContent.length} characters`)
         } catch (textError) {
-          console.error(`⚠️ Text extraction failed for ${file.name}:`, textError)
+          logger.error(`⚠️ Text extraction failed for ${file.name}:`, textError)
           // Continue with empty content rather than failing the upload
         }
 
         // Save to database
-        console.log(`💿 Saving ${file.name} to database`)
+        logger.info(`💿 Saving ${file.name} to database`)
         const document = await create('documents', {
           filename: uniqueFilename,
           originalName: file.name,
@@ -69,7 +78,7 @@ export async function POST(request: NextRequest) {
           mimeType: file.type,
           content: textContent,
         })
-        console.log(`✅ Document saved with ID: ${document.id}`)
+        logger.info(`✅ Document saved with ID: ${document.id}`)
 
         uploadedFiles.push({
           id: document.id,
@@ -80,18 +89,18 @@ export async function POST(request: NextRequest) {
           uploadedAt: document.uploadedAt,
         })
       } catch (fileError) {
-        console.error(`❌ Error processing file ${file.name}:`, fileError)
+        logger.error(`❌ Error processing file ${file.name}:`, fileError)
         // Continue with other files rather than failing the entire upload
       }
     }
 
-    console.log(`✅ Upload completed: ${uploadedFiles.length} files processed`)
+    logger.info(`✅ Upload completed: ${uploadedFiles.length} files processed`)
     return NextResponse.json({ 
       message: 'Files uploaded successfully', 
       files: uploadedFiles 
     })
   } catch (error) {
-    console.error('❌ Upload error:', error)
+    logger.error('❌ Upload error:', error)
     return NextResponse.json(
       { error: 'Failed to upload files: ' + (error instanceof Error ? error.message : 'Unknown error') }, 
       { status: 500 }
@@ -122,7 +131,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ documents })
   } catch (error) {
-    console.error('Error fetching documents:', error)
+    logger.error('Error fetching documents:', error)
     return NextResponse.json(
       { error: 'Failed to fetch documents' }, 
       { status: 500 }

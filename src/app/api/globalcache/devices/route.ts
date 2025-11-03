@@ -7,6 +7,9 @@ import { globalCacheDevices, globalCachePorts } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 /**
  * GET /api/globalcache/devices
  * List all Global Cache devices
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
       devices: devicesWithPorts
     })
   } catch (error) {
-    console.error('Error fetching Global Cache devices:', error)
+    logger.error('Error fetching Global Cache devices:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch devices' },
       { status: 500 }
@@ -56,6 +59,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const body = await request.json()
@@ -93,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Test connection to device
-    console.log(`Testing connection to ${ipAddress}:${port}...`)
+    logger.info(`Testing connection to ${ipAddress}:${port}...`)
     const connectionTest = await testDeviceConnection(ipAddress, port)
     
     // Create device in database
@@ -123,8 +132,8 @@ export async function POST(request: NextRequest) {
       ports
     }
 
-    console.log(`Global Cache device added: ${device.name} (${device.ipAddress})`)
-    console.log(`Connection status: ${device.status}`)
+    logger.info(`Global Cache device added: ${device.name} (${device.ipAddress})`)
+    logger.info(`Connection status: ${device.status}`)
 
     return NextResponse.json({
       success: true,
@@ -132,7 +141,7 @@ export async function POST(request: NextRequest) {
       connectionTest
     })
   } catch (error) {
-    console.error('Error adding Global Cache device:', error)
+    logger.error('Error adding Global Cache device:', error)
     return NextResponse.json(
       { 
         success: false, 
@@ -168,7 +177,7 @@ async function testDeviceConnection(
     }, timeout)
 
     client.on('connect', () => {
-      console.log(`Connected to ${ipAddress}:${port}`)
+      logger.info(`Connected to ${ipAddress}:${port}`)
       // Send getdevices command to get device info
       client.write('getdevices\r\n')
     })
@@ -192,7 +201,7 @@ async function testDeviceConnection(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        console.error(`Connection error to ${ipAddress}:${port}:`, error.message)
+        logger.error(`Connection error to ${ipAddress}:${port}:`, error.message)
         resolve({ 
           online: false, 
           error: error.message 

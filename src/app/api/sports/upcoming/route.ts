@@ -3,6 +3,9 @@ import { findMany, gte, lte, asc, and, eq, schema } from '@/lib/db-helpers'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { cacheManager } from '@/lib/cache-manager'
 
 /**
  * GET /api/sports/upcoming
@@ -19,11 +22,30 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '7')
     const importance = searchParams.get('importance')
     const league = searchParams.get('league')
+
+    // Cache key based on query parameters
+    const cacheKey = `upcoming:days:${days}:importance:${importance || 'all'}:league:${league || 'all'}`
+
+    // Try to get from cache first (5 minute TTL)
+    const cached = cacheManager.get('sports-data', cacheKey)
+    if (cached) {
+      logger.debug(`[Sports] Returning ${cached.total} upcoming events from cache`)
+      return NextResponse.json({
+        ...cached,
+        fromCache: true
+      })
+    }
 
     const now = new Date()
     const futureDate = new Date()
@@ -60,11 +82,20 @@ export async function GET(request: NextRequest) {
       return acc
     }, {})
 
-    return NextResponse.json({
+    const response = {
       success: true,
       total: events.length,
       events,
       eventsByDay
+    }
+
+    // Cache for 5 minutes
+    cacheManager.set('sports-data', cacheKey, response)
+    logger.debug(`[Sports] Cached ${events.length} upcoming events`)
+
+    return NextResponse.json({
+      ...response,
+      fromCache: false
     })
   } catch (error) {
     logger.error('[Upcoming Sports API] Error:', error)

@@ -3,17 +3,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const suggestion = await request.json()
 
     // Log the suggestion implementation
-    console.log(`Implementing AI suggestion: ${suggestion.title}`)
+    logger.info(`Implementing AI suggestion: ${suggestion.title}`)
 
     // In a real implementation, this would:
     // 1. Create new optimization rules based on the suggestion
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Implement suggestion error:', error)
+    logger.error('Implement suggestion error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to implement suggestion' },
       { status: 500 }

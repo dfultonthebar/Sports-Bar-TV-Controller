@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { getSoundtrackAPI } from '@/lib/soundtrack-your-brand'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 
 interface DeviceStatus {
   id: string
@@ -47,6 +49,13 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Path parameter validation
+  const resolvedParams = await params
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  if (!paramsValidation.success) return paramsValidation.error
+
 
   try {
     const report: SystemHealthReport = {
@@ -273,9 +282,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(report)
   } catch (error) {
     logger.error('Error generating system health report:', error)
-    console.error('System health error details:', error)
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
-    console.error('Error message:', error instanceof Error ? error.message : String(error))
+    logger.error('System health error details:', error)
+    logger.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
+    logger.error('Error message:', error instanceof Error ? error.message : String(error))
     return NextResponse.json(
       {
         error: 'Failed to generate health report',

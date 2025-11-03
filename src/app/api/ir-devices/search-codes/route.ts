@@ -4,6 +4,9 @@ import { globalCacheAPI, searchSpectrumModels, SPECTRUM_CABLE_BOX_MODELS } from 
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +112,16 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const { searchParams } = new URL(request.url)
     const brand = searchParams.get('brand')
@@ -134,7 +147,7 @@ export async function GET(request: NextRequest) {
         codesets = await globalCacheAPI.searchModels(brand, type)
         message = `Found ${codesets.length} Spectrum cable box models from Global Cache Database`
       } catch (error) {
-        console.log('Global Cache API not available, using enhanced local database')
+        logger.info('Global Cache API not available, using enhanced local database')
         // Fallback to enhanced local database - return ALL Spectrum models
         codesets = []
         const spectrumManufacturers = ['Charter Spectrum', 'Samsung', 'Cisco', 'Arris', 'Motorola', 'Pace']
@@ -170,7 +183,7 @@ export async function GET(request: NextRequest) {
           codesets.push(...newResults)
         }
       } catch (error) {
-        console.log('Global Cache API not available for', brand)
+        logger.info('Global Cache API not available for', brand)
       }
 
       message = `Found ${codesets.length} codesets for ${brand} ${type}`
@@ -187,7 +200,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error searching codesets:', error)
+    logger.error('Error searching codesets:', error)
     return NextResponse.json({ 
       error: 'Failed to search codesets',
       codesets: [] as any[],
@@ -203,6 +216,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const body = await request.json()
@@ -233,7 +256,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
-    console.error('Error in POST handler:', error)
+    logger.error('Error in POST handler:', error)
     return NextResponse.json({ 
       error: 'Failed to process request'
     }, { status: 500 })

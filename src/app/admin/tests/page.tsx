@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+import { logger } from '@/lib/logger'
 interface TestSuite {
   id: string
   name: string
@@ -59,7 +60,7 @@ export default function AdminTestsPage() {
         setSuites(data.suites || [])
       }
     } catch (error) {
-      console.error('Error loading test suites:', error)
+      logger.error('Error loading test suites:', error)
     } finally {
       setLoading(false)
     }

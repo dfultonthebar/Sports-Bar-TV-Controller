@@ -9,6 +9,9 @@ import path from 'path';
 import { encrypt, decrypt, encryptToString, decryptFromString } from '@/lib/security/encryption';
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware';
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 export const dynamic = 'force-dynamic';
 
 const CREDENTIALS_FILE = path.join(process.cwd(), 'data', 'streaming-credentials.json');
@@ -43,7 +46,7 @@ function loadCredentials(): StreamingCredential[] {
     }
     return [];
   } catch (error) {
-    console.error('Error loading credentials:', error);
+    logger.error('Error loading credentials:', error);
     return [];
   }
 }
@@ -55,7 +58,7 @@ function saveCredentials(credentials: StreamingCredential[]): boolean {
     fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(credentials, null, 2));
     return true;
   } catch (error) {
-    console.error('Error saving credentials:', error);
+    logger.error('Error saving credentials:', error);
     return false;
   }
 }
@@ -79,7 +82,7 @@ function decryptPassword(credential: StreamingCredential): string {
     // Plain text (should not happen in production)
     return credential.passwordHash;
   } catch (error) {
-    console.error('Error decrypting password:', error);
+    logger.error('Error decrypting password:', error);
     throw new Error('Failed to decrypt password');
   }
 }
@@ -116,7 +119,7 @@ export async function GET(request: NextRequest) {
       credentials: safeCredentials,
     });
   } catch (error) {
-    console.error('Error getting credentials:', error);
+    logger.error('Error getting credentials:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to load credentials' },
       { status: 500 }
@@ -135,6 +138,12 @@ export async function POST(request: NextRequest) {
   if (!rateLimitCheck.allowed) {
     return rateLimitCheck.response!
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
+  if (!bodyValidation.success) return bodyValidation.error
+
 
   try {
     const { platformId, username, password, rememberMe } = await request.json();
@@ -203,7 +212,7 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
     }
   } catch (error) {
-    console.error('Error saving credentials:', error);
+    logger.error('Error saving credentials:', error);
     const jsonResponse = NextResponse.json(
       {
         success: false,
@@ -246,7 +255,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('Error removing credentials:', error);
+    logger.error('Error removing credentials:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to remove credentials' },
       { status: 500 }
@@ -260,6 +269,11 @@ export async function DELETE(request: NextRequest) {
  * Used for testing and migration
  */
 export async function PUT(request: NextRequest) {
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
+  if (!bodyValidation.success) return bodyValidation.error
+
+
   try {
     const { platformId } = await request.json();
 
@@ -300,7 +314,7 @@ export async function PUT(request: NextRequest) {
       });
     }
   } catch (error) {
-    console.error('Error verifying credentials:', error);
+    logger.error('Error verifying credentials:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to verify credentials' },
       { status: 500 }

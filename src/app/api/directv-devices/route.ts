@@ -6,6 +6,9 @@ import { existsSync } from 'fs'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
 const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
 
 // Ensure data directory exists
@@ -38,11 +41,21 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
+
   try {
     const data = await loadDirecTVDevices()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error loading DirecTV devices:', error)
+    logger.error('Error loading DirecTV devices:', error)
     return NextResponse.json({ error: 'Failed to load DirecTV devices' }, { status: 500 })
   }
 }
@@ -52,6 +65,16 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const newDevice = await request.json()
@@ -77,7 +100,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ message: 'DirecTV device added successfully', device })
   } catch (error) {
-    console.error('Error adding DirecTV device:', error)
+    logger.error('Error adding DirecTV device:', error)
     return NextResponse.json({ error: 'Failed to add DirecTV device' }, { status: 500 })
   }
 }
@@ -87,6 +110,16 @@ export async function PUT(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (!bodyValidation.success) return bodyValidation.error
+
+  // Query parameter validation
+  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  if (!queryValidation.success) return queryValidation.error
+
 
   try {
     const updatedDevice = await request.json()
@@ -101,7 +134,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'DirecTV device not found' }, { status: 404 })
     }
   } catch (error) {
-    console.error('Error updating DirecTV device:', error)
+    logger.error('Error updating DirecTV device:', error)
     return NextResponse.json({ error: 'Failed to update DirecTV device' }, { status: 500 })
   }
 }
@@ -131,7 +164,7 @@ export async function DELETE(request: NextRequest) {
     await saveDirecTVDevices(data.devices)
     return NextResponse.json({ message: 'DirecTV device deleted successfully' })
   } catch (error) {
-    console.error('Error deleting DirecTV device:', error)
+    logger.error('Error deleting DirecTV device:', error)
     return NextResponse.json({ error: 'Failed to delete DirecTV device' }, { status: 500 })
   }
 }
