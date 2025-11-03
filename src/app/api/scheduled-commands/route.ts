@@ -64,14 +64,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use transaction to create command with audit log
-    const newCommand = await transactionHelpers.createWithAudit(
-      async (tx) => {
-        // Calculate next execution time
-        const nextExecution = calculateNextExecution(scheduleType, scheduleData, timezone || 'America/New_York')
+    // Calculate next execution time BEFORE transaction (async-safe)
+    const nextExecution = calculateNextExecution(scheduleType, scheduleData, timezone || 'America/New_York')
 
-        // Create the scheduled command
-        const [command] = await tx.insert(scheduledCommands).values({
+    // Use synchronous transaction to create command with audit log
+    const newCommand = transactionHelpers.createWithAudit(
+      (tx) => {
+        // Create the scheduled command (SYNCHRONOUS)
+        const [command] = tx.insert(scheduledCommands).values({
           name,
           description,
           commandType,
@@ -125,29 +125,29 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Use transaction to update command with audit log
-    const updatedCommand = await transactionHelpers.updateWithAudit(
-      async (tx) => {
-        // Prepare updates
-        const updateData: any = {
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        }
+    // Prepare updates BEFORE transaction (async-safe)
+    const updateData: any = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }
 
-        // Serialize JSON fields
-        if (updates.targets) updateData.targets = JSON.stringify(updates.targets)
-        if (updates.commandSequence) updateData.commandSequence = JSON.stringify(updates.commandSequence)
-        if (updates.scheduleData) {
-          updateData.scheduleData = JSON.stringify(updates.scheduleData)
-          // Recalculate next execution if schedule changed
-          updateData.nextExecution = calculateNextExecution(
-            updates.scheduleType || 'daily',
-            updates.scheduleData,
-            updates.timezone || 'America/New_York'
-          )
-        }
+    // Serialize JSON fields
+    if (updates.targets) updateData.targets = JSON.stringify(updates.targets)
+    if (updates.commandSequence) updateData.commandSequence = JSON.stringify(updates.commandSequence)
+    if (updates.scheduleData) {
+      updateData.scheduleData = JSON.stringify(updates.scheduleData)
+      // Recalculate next execution if schedule changed
+      updateData.nextExecution = calculateNextExecution(
+        updates.scheduleType || 'daily',
+        updates.scheduleData,
+        updates.timezone || 'America/New_York'
+      )
+    }
 
-        const [command] = await tx
+    // Use synchronous transaction to update command with audit log
+    const updatedCommand = transactionHelpers.updateWithAudit(
+      (tx) => {
+        const [command] = tx
           .update(scheduledCommands)
           .set(updateData)
           .where(eq(scheduledCommands.id, id))

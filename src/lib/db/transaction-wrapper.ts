@@ -1,6 +1,9 @@
 /**
- * Database Transaction Wrapper
+ * Database Transaction Wrapper - SYNCHRONOUS VERSION
  * Provides comprehensive transaction support with automatic rollback, retry logic, and logging
+ *
+ * IMPORTANT: This wrapper is designed for Drizzle ORM with better-sqlite3, which requires
+ * SYNCHRONOUS transaction callbacks. Do NOT use async/await inside transaction functions.
  *
  * Features:
  * - Automatic rollback on error
@@ -8,7 +11,11 @@
  * - Performance metrics tracking
  * - Comprehensive logging
  * - Type-safe transaction context
- * - Nested transaction support (via savepoints in SQLite)
+ *
+ * WHY SYNCHRONOUS?
+ * better-sqlite3 is a synchronous library. Starting in v11.10, it throws an error if you
+ * try to use async callbacks in transactions. Drizzle's better-sqlite3 adapter does NOT
+ * await transaction callbacks, so using async/await inside transactions doesn't work.
  */
 
 import { db } from '@/db'
@@ -33,26 +40,15 @@ export interface TransactionOptions {
 
   /**
    * Transaction isolation level (SQLite supports DEFERRED, IMMEDIATE, EXCLUSIVE)
+   * Note: This is primarily for documentation - better-sqlite3 doesn't support setting this per-transaction
    * @default 'IMMEDIATE'
    */
   isolationLevel?: 'DEFERRED' | 'IMMEDIATE' | 'EXCLUSIVE'
 
   /**
-   * Transaction timeout in milliseconds
-   * @default 30000
-   */
-  timeout?: number
-
-  /**
    * Custom transaction name for logging
    */
   name?: string
-
-  /**
-   * Whether to use savepoint for nested transactions
-   * @default false
-   */
-  useSavepoint?: boolean
 }
 
 /**
@@ -91,46 +87,56 @@ function isTransientError(error: any): boolean {
     'busy',
     'sqlite_busy',
     'sqlite_locked',
-    'cannot start a transaction within a transaction' // For nested transaction handling
   ]
 
   return transientErrors.some(msg => message.includes(msg))
 }
 
 /**
- * Sleep helper for retry delays
+ * Sleep helper for retry delays - SYNCHRONOUS
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+function sleepSync(ms: number): void {
+  const start = Date.now()
+  while (Date.now() - start < ms) {
+    // Busy wait - not ideal but necessary for synchronous retries
+    // In practice, SQLite lock waits are usually < 100ms
+  }
 }
 
 /**
  * Execute operation within a transaction with automatic rollback and retry
  *
- * @param operation - Function to execute within transaction context
+ * IMPORTANT: The operation function MUST be synchronous. Do NOT use async/await.
+ *
+ * @param operation - SYNCHRONOUS function to execute within transaction context
  * @param options - Transaction options
- * @returns Promise resolving to operation result
+ * @returns Result of operation
  *
  * @example
  * ```typescript
- * const result = await withTransaction(async (tx) => {
- *   const user = await tx.insert(users).values({ name: 'John' }).returning().get()
- *   await tx.insert(userLogs).values({ userId: user.id, action: 'created' })
+ * // CORRECT - Synchronous transaction
+ * const result = withTransaction((tx) => {
+ *   const user = tx.insert(users).values({ name: 'John' }).returning().get()
+ *   tx.insert(userLogs).values({ userId: user.id, action: 'created' }).run()
  *   return user
  * }, { name: 'create-user', maxRetries: 3 })
+ *
+ * // WRONG - Do NOT use async/await
+ * const result = withTransaction(async (tx) => {  // ❌ WRONG
+ *   const user = await tx.insert(users).values({ name: 'John' }).returning().get()  // ❌ WRONG
+ *   return user
+ * })
  * ```
  */
-export async function withTransaction<T>(
-  operation: (tx: BetterSQLite3Database<typeof import('@/db/schema')>) => Promise<T>,
+export function withTransaction<T>(
+  operation: (tx: BetterSQLite3Database<typeof import('@/db/schema')>) => T,
   options: TransactionOptions = {}
-): Promise<T> {
+): T {
   const {
     maxRetries = 3,
     retryDelay = 100,
     isolationLevel = 'IMMEDIATE',
-    timeout = 30000,
     name = 'anonymous',
-    useSavepoint = false
   } = options
 
   const stats: TransactionStats = {
@@ -153,7 +159,7 @@ export async function withTransaction<T>(
 
       // Exponential backoff
       const delay = retryDelay * Math.pow(2, attempt - 1)
-      await sleep(delay)
+      sleepSync(delay)
     }
 
     try {
@@ -161,19 +167,25 @@ export async function withTransaction<T>(
         name,
         isolationLevel,
         attempt: attempt + 1,
-        useSavepoint
       })
 
-      // Set up timeout
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Transaction timeout')), timeout)
-      })
+      // Execute SYNCHRONOUS transaction
+      // Note: db.transaction() in Drizzle's better-sqlite3 adapter does NOT await the callback
+      const result = db.transaction((tx) => {
+        try {
+          const operationResult = operation(tx as any)
 
-      // Execute transaction with timeout
-      const result = await Promise.race([
-        db.transaction(operation as any),
-        timeoutPromise
-      ])
+          // Check if operation incorrectly returned a Promise
+          if (operationResult instanceof Promise) {
+            throw new Error('Transaction function cannot return a promise. Remove async/await from transaction callback.')
+          }
+
+          return operationResult
+        } catch (error: any) {
+          // Error in operation - will trigger automatic rollback
+          throw error
+        }
+      })
 
       // Success!
       stats.endTime = Date.now()
@@ -184,6 +196,9 @@ export async function withTransaction<T>(
         duration: stats.duration,
         retries: stats.retries
       })
+
+      // Record metrics
+      TransactionMonitor.record(name, stats.duration, stats.retries, true)
 
       return result as T
 
@@ -214,6 +229,9 @@ export async function withTransaction<T>(
           retries: stats.retries
         })
 
+        // Record metrics
+        TransactionMonitor.record(name, stats.duration, stats.retries, false)
+
         throw lastError
       }
     }
@@ -227,29 +245,29 @@ export async function withTransaction<T>(
  * Execute multiple operations in a single transaction
  * Returns array of results in the same order as operations
  *
- * @param operations - Array of functions to execute
+ * @param operations - Array of SYNCHRONOUS functions to execute
  * @param options - Transaction options
- * @returns Promise resolving to array of results
+ * @returns Array of results
  *
  * @example
  * ```typescript
- * const [user, log, notification] = await batchTransaction([
+ * const [user, log, notification] = batchTransaction([
  *   (tx) => tx.insert(users).values({ name: 'John' }).returning().get(),
  *   (tx) => tx.insert(logs).values({ action: 'user_created' }).returning().get(),
  *   (tx) => tx.insert(notifications).values({ message: 'Welcome!' }).returning().get()
  * ], { name: 'create-user-batch' })
  * ```
  */
-export async function batchTransaction<T extends any[]>(
-  operations: Array<(tx: BetterSQLite3Database<typeof import('@/db/schema')>) => Promise<any>>,
+export function batchTransaction<T extends any[]>(
+  operations: Array<(tx: BetterSQLite3Database<typeof import('@/db/schema')>) => any>,
   options: TransactionOptions = {}
-): Promise<T> {
-  return withTransaction(async (tx) => {
+): T {
+  return withTransaction((tx) => {
     const results: any[] = []
 
     for (let i = 0; i < operations.length; i++) {
       try {
-        const result = await operations[i](tx)
+        const result = operations[i](tx)
         results.push(result)
       } catch (error) {
         logger.error(`Batch transaction operation ${i + 1}/${operations.length} failed:`, error)
@@ -268,33 +286,35 @@ export async function batchTransaction<T extends any[]>(
  * Execute operation with optimistic locking
  * Checks version before update to detect concurrent modifications
  *
- * @param operation - Function that receives current version and returns updated data
+ * @param operation - SYNCHRONOUS function that receives current version and returns updated data
  * @param options - Transaction options
- * @returns Promise resolving to operation result
+ * @returns Result of operation
  *
  * @example
  * ```typescript
- * await withOptimisticLock(async (tx, currentVersion) => {
- *   await tx.update(config)
+ * withOptimisticLock((tx, currentVersion) => {
+ *   return tx.update(config)
  *     .set({ value: 'new', version: currentVersion + 1 })
  *     .where(and(
  *       eq(config.id, id),
  *       eq(config.version, currentVersion)
  *     ))
+ *     .returning()
+ *     .get()
  * }, { name: 'update-config-with-lock' })
  * ```
  */
-export async function withOptimisticLock<T>(
+export function withOptimisticLock<T>(
   operation: (
     tx: BetterSQLite3Database<typeof import('@/db/schema')>,
     version: number
-  ) => Promise<T>,
+  ) => T,
   options: TransactionOptions = {}
-): Promise<T> {
-  return withTransaction(async (tx) => {
+): T {
+  return withTransaction((tx) => {
     // Note: Version checking must be implemented in the operation function
     // This wrapper provides the transaction context
-    const result = await operation(tx, 0) // Version will be passed by caller
+    const result = operation(tx, 0) // Version will be passed by caller
     return result
   }, {
     ...options,
@@ -308,26 +328,33 @@ export async function withOptimisticLock<T>(
 export const transactionHelpers = {
   /**
    * Create record with audit log in single transaction
+   *
+   * NOTE: The createOp function MUST be synchronous
    */
-  async createWithAudit<T>(
-    createOp: (tx: any) => Promise<T>,
+  createWithAudit<T>(
+    createOp: (tx: any) => T,
     auditData: { action: string; details?: any; userId?: string },
     options?: TransactionOptions
-  ): Promise<T> {
-    return withTransaction(async (tx) => {
+  ): T {
+    return withTransaction((tx) => {
       // Create the record
-      const result = await createOp(tx)
+      const result = createOp(tx)
 
-      // Log the action (import schema dynamically to avoid circular deps)
-      const { schema } = await import('@/db')
-      await tx.insert(schema.auditLogs || schema.configChangeTracking).values({
-        action: auditData.action,
-        details: JSON.stringify({ result, ...auditData.details }),
-        userId: auditData.userId || 'system',
-        timestamp: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
+      // Log the action
+      // Note: We need to import schema synchronously
+      const { schema } = require('@/db')
+      const auditTable = schema.auditLogs || schema.configChangeTracking
+
+      if (auditTable) {
+        tx.insert(auditTable).values({
+          action: auditData.action,
+          details: JSON.stringify({ result, ...auditData.details }),
+          userId: auditData.userId || 'system',
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }).run()
+      }
 
       return result
     }, { ...options, name: options?.name || 'create-with-audit' })
@@ -335,26 +362,32 @@ export const transactionHelpers = {
 
   /**
    * Update record with audit log in single transaction
+   *
+   * NOTE: The updateOp function MUST be synchronous
    */
-  async updateWithAudit<T>(
-    updateOp: (tx: any) => Promise<T>,
+  updateWithAudit<T>(
+    updateOp: (tx: any) => T,
     auditData: { action: string; details?: any; userId?: string },
     options?: TransactionOptions
-  ): Promise<T> {
-    return withTransaction(async (tx) => {
+  ): T {
+    return withTransaction((tx) => {
       // Update the record
-      const result = await updateOp(tx)
+      const result = updateOp(tx)
 
       // Log the change
-      const { schema } = await import('@/db')
-      await tx.insert(schema.auditLogs || schema.configChangeTracking).values({
-        action: auditData.action,
-        details: JSON.stringify({ result, ...auditData.details }),
-        userId: auditData.userId || 'system',
-        timestamp: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
+      const { schema } = require('@/db')
+      const auditTable = schema.auditLogs || schema.configChangeTracking
+
+      if (auditTable) {
+        tx.insert(auditTable).values({
+          action: auditData.action,
+          details: JSON.stringify({ result, ...auditData.details }),
+          userId: auditData.userId || 'system',
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }).run()
+      }
 
       return result
     }, { ...options, name: options?.name || 'update-with-audit' })
@@ -362,26 +395,32 @@ export const transactionHelpers = {
 
   /**
    * Delete record with audit log in single transaction
+   *
+   * NOTE: The deleteOp function MUST be synchronous
    */
-  async deleteWithAudit<T>(
-    deleteOp: (tx: any) => Promise<T>,
+  deleteWithAudit<T>(
+    deleteOp: (tx: any) => T,
     auditData: { action: string; details?: any; userId?: string },
     options?: TransactionOptions
-  ): Promise<T> {
-    return withTransaction(async (tx) => {
+  ): T {
+    return withTransaction((tx) => {
       // Delete the record
-      const result = await deleteOp(tx)
+      const result = deleteOp(tx)
 
       // Log the deletion
-      const { schema } = await import('@/db')
-      await tx.insert(schema.auditLogs || schema.configChangeTracking).values({
-        action: auditData.action,
-        details: JSON.stringify({ result, ...auditData.details }),
-        userId: auditData.userId || 'system',
-        timestamp: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
+      const { schema } = require('@/db')
+      const auditTable = schema.auditLogs || schema.configChangeTracking
+
+      if (auditTable) {
+        tx.insert(auditTable).values({
+          action: auditData.action,
+          details: JSON.stringify({ result, ...auditData.details }),
+          userId: auditData.userId || 'system',
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }).run()
+      }
 
       return result
     }, { ...options, name: options?.name || 'delete-with-audit' })

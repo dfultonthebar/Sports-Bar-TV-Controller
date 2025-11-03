@@ -31,26 +31,27 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
       return false
     }
 
-    // Use transaction to ensure atomicity between hardware command and database update
-    return await withTransaction(async (tx) => {
+    // IMPORTANT: Hardware commands must happen OUTSIDE the transaction because they are async.
+    // Step 1: Send the Wolf Pack command first (async operation)
+    const wolfPackCommand = `${inputNum}X${outputNum}.`
+    const commandSuccess = await sendWolfPackCommand(
+      activeConfig.ipAddress,
+      activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
+      wolfPackCommand,
+      activeConfig.protocol || 'TCP'
+    )
+
+    if (!commandSuccess) {
+      logger.error(`Failed to send Wolf Pack command: ${wolfPackCommand}`)
+      return false
+    }
+
+    // Step 2: Update database in synchronous transaction (hardware command succeeded)
+    const result = withTransaction((tx) => {
       const now = new Date().toISOString()
 
-      // First, send the Wolf Pack command
-      const wolfPackCommand = `${inputNum}X${outputNum}.`
-      const commandSuccess = await sendWolfPackCommand(
-        activeConfig.ipAddress,
-        activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
-        wolfPackCommand,
-        activeConfig.protocol || 'TCP'
-      )
-
-      if (!commandSuccess) {
-        // Command failed - rollback transaction
-        throw new Error(`Failed to send Wolf Pack command: ${wolfPackCommand}`)
-      }
-
-      // Command succeeded - update/create the route in database
-      const existingRoute = await tx.select()
+      // Check if route already exists
+      const existingRoute = tx.select()
         .from(schema.matrixRoutes)
         .where(eq(schema.matrixRoutes.outputNum, outputNum))
         .limit(1)
@@ -58,7 +59,7 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
 
       if (existingRoute) {
         // Update existing route
-        await tx.update(schema.matrixRoutes)
+        tx.update(schema.matrixRoutes)
           .set({
             inputNum: inputNum,
             isActive: true,
@@ -68,7 +69,7 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
           .run()
       } else {
         // Create new route
-        await tx.insert(schema.matrixRoutes)
+        tx.insert(schema.matrixRoutes)
           .values({
             id: randomUUID(),
             inputNum: inputNum,
@@ -84,8 +85,10 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
       return true
     }, {
       name: `matrix-route-${inputNum}-to-${outputNum}`,
-      maxRetries: 2 // Hardware commands shouldn't retry too many times
+      maxRetries: 2
     })
+
+    return result
 
   } catch (error) {
     logger.error('Error routing signal:', error)

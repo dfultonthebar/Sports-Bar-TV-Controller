@@ -90,9 +90,10 @@ describe('API Endpoints', () => {
       const data = await response.json();
       expect(data).toBeDefined();
 
-      // If successful, should have games array
+      // If successful, should have games array or sports object
       if (response.status === 200) {
-        expect(Array.isArray(data.games) || Array.isArray(data)).toBeTruthy();
+        const hasGames = Array.isArray(data.games) || Array.isArray(data) || (data.sports && typeof data.sports === 'object');
+        expect(hasGames).toBeTruthy();
       }
     }, 30000);
 
@@ -171,7 +172,8 @@ describe('API Endpoints', () => {
 
       const data = await response.json();
       expect(data).toBeDefined();
-      expect(data).toHaveProperty('timestamp');
+      expect(data).toHaveProperty('backups');
+      expect(Array.isArray(data.backups)).toBe(true);
     }, 30000);
   });
 

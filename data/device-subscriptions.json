@@ -11,11 +11,11 @@
           "type": "premium",
           "status": "active",
           "provider": "DIRECTV",
-          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 206 | Kings @ Sharks",
+          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 5 | The Price Is Right",
           "packageName": "Software v0xf3e | API v1.12"
         }
       ],
-      "lastPolled": "2025-10-29T04:10:51.088Z",
+      "lastPolled": "2025-11-03T16:37:23.933Z",
       "pollStatus": "success"
     },
     {

@@ -283,7 +283,8 @@ describe('Hardware Connectivity', () => {
         return;
       }
 
-      const isReachable = await pingDevice('192.168.5.254');
+      // Use TEST-NET-1 reserved IP (RFC 5737) that is guaranteed to be unreachable
+      const isReachable = await pingDevice('192.0.2.1');
       expect(isReachable).toBe(false);
       console.log('Unreachable host handled correctly');
     }, 10000);

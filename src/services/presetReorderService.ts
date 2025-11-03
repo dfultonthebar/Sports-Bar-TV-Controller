@@ -12,10 +12,10 @@ export async function reorderAllPresets() {
   try {
     logger.debug('[Preset Reorder] Starting preset reordering based on usage...')
 
-    // Use transaction to ensure all updates succeed or roll back
-    return await withTransaction(async (tx) => {
-      // Get all active presets grouped by device type
-      const cablePresets = await tx.select()
+    // Use SYNCHRONOUS transaction to ensure all updates succeed or roll back
+    return withTransaction((tx) => {
+      // Get all active presets grouped by device type (SYNCHRONOUS)
+      const cablePresets = tx.select()
         .from(schema.channelPresets)
         .where(and(
           eq(schema.channelPresets.deviceType, 'cable'),
@@ -24,7 +24,7 @@ export async function reorderAllPresets() {
         .orderBy(desc(schema.channelPresets.usageCount), asc(schema.channelPresets.name))
         .all()
 
-      const directvPresets = await tx.select()
+      const directvPresets = tx.select()
         .from(schema.channelPresets)
         .where(and(
           eq(schema.channelPresets.deviceType, 'directv'),
@@ -33,17 +33,17 @@ export async function reorderAllPresets() {
         .orderBy(desc(schema.channelPresets.usageCount), asc(schema.channelPresets.name))
         .all()
 
-      // Update order field for cable presets
+      // Update order field for cable presets (SYNCHRONOUS)
       for (let i = 0; i < cablePresets.length; i++) {
-        await tx.update(schema.channelPresets)
+        tx.update(schema.channelPresets)
           .set({ order: i, updatedAt: new Date().toISOString() })
           .where(eq(schema.channelPresets.id, cablePresets[i].id))
           .run()
       }
 
-      // Update order field for directv presets
+      // Update order field for directv presets (SYNCHRONOUS)
       for (let i = 0; i < directvPresets.length; i++) {
-        await tx.update(schema.channelPresets)
+        tx.update(schema.channelPresets)
           .set({ order: i, updatedAt: new Date().toISOString() })
           .where(eq(schema.channelPresets.id, directvPresets[i].id))
           .run()
