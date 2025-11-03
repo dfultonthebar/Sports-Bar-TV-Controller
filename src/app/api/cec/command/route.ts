@@ -1,11 +1,19 @@
 
-import { NextResponse } from 'next/server';
-import { cecService } from '@/lib/cec-service';
+import { NextRequest, NextResponse } from 'next/server'
+import { cecService } from '@/lib/cec-service'
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // QUICK WIN 3: Apply rate limiting to prevent hardware command flooding
+  const rateLimitCheck = await withRateLimit(request, 'HARDWARE')
+
+  if (!rateLimitCheck.allowed) {
+    return rateLimitCheck.response!
+  }
+
   try {
-    const body = await request.json();
-    const { action, tvAddress = '0', params = {} } = body;
+    const body = await request.json()
+    const { action, tvAddress = '0', params = {} } = body
 
     let result;
 
@@ -73,11 +81,13 @@ export async function POST(request: Request) {
         );
     }
 
-    return NextResponse.json(result);
+    const jsonResponse = NextResponse.json(result)
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
   } catch (error: any) {
-    return NextResponse.json(
+    const jsonResponse = NextResponse.json(
       { success: false, message: error.message },
       { status: 500 }
-    );
+    )
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
   }
 }

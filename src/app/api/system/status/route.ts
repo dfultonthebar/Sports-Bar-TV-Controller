@@ -76,9 +76,10 @@ export async function GET(request: NextRequest) {
 
 async function getDocumentStatus() {
   try {
-    const totalDocs = (await db.select().from(schema.documents).all()).length
+    // QUICK WIN 4: Use count instead of loading all documents
+    const totalDocs = await count('documents')
     const docsWithContent = await count('documents', ne(schema.documents.content, null))
-    
+
     return {
       totalDocuments: totalDocs,
       documentsWithContent: docsWithContent,
@@ -101,11 +102,11 @@ async function getDatabaseHealth() {
     // Test database connectivity
     await executeRaw('SELECT 1')
 
-    // Get table counts
-    const documentCount = (await db.select().from(schema.documents).all()).length
-    const sessionCount = (await db.select().from(schema.chatSessions).all()).length
-    const keyCount = (await db.select().from(schema.apiKeys).all()).length
-    
+    // QUICK WIN 4: Use count instead of loading all records
+    const documentCount = await count('documents')
+    const sessionCount = await count('chatSessions')
+    const keyCount = await count('apiKeys')
+
     return {
       status: 'healthy',
       connectivity: true,

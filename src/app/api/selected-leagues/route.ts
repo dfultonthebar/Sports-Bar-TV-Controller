@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findMany, or, updateMany, upsert, create, update, transaction, db } from '@/lib/db-helpers'
+import { and, asc, desc, eq, findMany, or, updateMany, upsert, create, update, transaction, db, count } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 
@@ -61,13 +61,11 @@ export async function POST(request: NextRequest) {
 
     // Start a transaction to ensure data consistency
     await transaction(async (tx) => {
-      // First, mark all existing leagues as inactive
-      const allLeagues = await tx.select().from(schema.selectedLeagues).all()
-      for (const league of allLeagues) {
-        await tx.update(schema.selectedLeagues)
-          .set({ isActive: false, updatedAt: new Date().toISOString() })
-          .where(eq(schema.selectedLeagues.id, league.id))
-      }
+      // QUICK WIN 4: Batch update instead of loading all records
+      // First, mark all existing leagues as inactive using a batch update
+      await tx.update(schema.selectedLeagues)
+        .set({ isActive: false, updatedAt: new Date().toISOString() })
+        .where(eq(schema.selectedLeagues.isActive, true))
 
       // Then, upsert the selected leagues
       for (const leagueId of leagueIds) {
@@ -101,18 +99,19 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   logger.api.request('DELETE', '/api/selected-leagues')
-  
-  try {
-    // Get all leagues and mark them as inactive
-    const allLeagues = await findMany('selectedLeagues', {})
-    
-    for (const league of allLeagues) {
-      await update('selectedLeagues', eq(schema.selectedLeagues.id, league.id), {
-        isActive: false
-      })
-    }
 
-    logger.api.response('DELETE', '/api/selected-leagues', 200, { cleared: allLeagues.length })
+  try {
+    // QUICK WIN 4: Batch update instead of loading and updating individually
+    // Get count before update for logging
+    const activeCount = await count('selectedLeagues', eq(schema.selectedLeagues.isActive, true))
+
+    // Mark all leagues as inactive using a batch update
+    await updateMany('selectedLeagues', {
+      isActive: false,
+      updatedAt: new Date().toISOString()
+    })
+
+    logger.api.response('DELETE', '/api/selected-leagues', 200, { cleared: activeCount })
     return NextResponse.json({
       success: true,
       message: 'All selected leagues cleared'

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { encrypt, decrypt, encryptToString, decryptFromString } from '@/lib/security/encryption';
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +129,13 @@ export async function GET(request: NextRequest) {
  * Add or update streaming platform credentials
  */
 export async function POST(request: NextRequest) {
+  // QUICK WIN 3: Apply rate limiting to authentication endpoint
+  const rateLimitCheck = await withRateLimit(request, 'AUTH')
+
+  if (!rateLimitCheck.allowed) {
+    return rateLimitCheck.response!
+  }
+
   try {
     const { platformId, username, password, rememberMe } = await request.json();
 
@@ -174,7 +182,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (saveCredentials(credentials)) {
-      return NextResponse.json({
+      const jsonResponse = NextResponse.json({
         success: true,
         credential: {
           id: newCredential.id,
@@ -185,23 +193,26 @@ export async function POST(request: NextRequest) {
           lastUpdated: newCredential.lastUpdated,
           status: newCredential.status,
         },
-      });
+      })
+      return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
     } else {
-      return NextResponse.json(
+      const jsonResponse = NextResponse.json(
         { success: false, error: 'Failed to save credentials' },
         { status: 500 }
-      );
+      )
+      return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
     }
   } catch (error) {
     console.error('Error saving credentials:', error);
-    return NextResponse.json(
+    const jsonResponse = NextResponse.json(
       {
         success: false,
         error: 'Failed to save credentials',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
-    );
+    )
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
   }
 }
 

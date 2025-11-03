@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi, SportsGuideApiError } from '@/lib/sportsGuideApi'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
+import { cacheManager } from '@/lib/cache-manager'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -119,58 +120,78 @@ export async function POST(request: NextRequest) {
     const api = getSportsGuideApi()
     logInfo(`✓ The Rail Media API client initialized`)
 
-    // Fetch ALL guide data
-    logInfo(`---------- FETCHING SPORTS GUIDE DATA ----------`)
-    logInfo(`Requesting ${days} days of ALL sports from The Rail Media API`)
-    
-    const fetchStart = Date.now()
+    // QUICK WIN 2: Check cache first before fetching
+    logInfo(`---------- CHECKING CACHE ----------`)
+    const cacheKey = `guide-${days}-days`
+    const cached = cacheManager.get('sports-data', cacheKey)
+
     let guide
-    
-    try {
-      guide = await api.fetchDateRangeGuide(days)
-      const fetchDuration = Date.now() - fetchStart
-      
-      logInfo(`✓ Successfully fetched guide data in ${fetchDuration}ms`)
-      logInfo(`---------- API RESPONSE SUMMARY ----------`)
-      logDebug(`Full API response structure:`, {
-        hasListingGroups: !!guide.listing_groups,
-        listingGroupsCount: guide.listing_groups?.length || 0,
-        listingGroupTitles: guide.listing_groups?.map((g: any) => g.group_title) || [],
-        totalListings: guide.listing_groups?.reduce((sum: number, g: any) => sum + (g.listings?.length || 0), 0) || 0
-      })
+    let fromCache = false
 
-      // Log first listing group as sample
-      if (guide.listing_groups && guide.listing_groups.length > 0) {
-        logDebug(`Sample listing group (first):`, {
-          title: guide.listing_groups[0].group_title,
-          listingsCount: guide.listing_groups[0].listings?.length || 0,
-          firstListing: guide.listing_groups[0].listings?.[0] || null
-        })
-      }
+    if (cached) {
+      logInfo(`✓ Cache HIT - Returning cached data (key: ${cacheKey})`)
+      guide = cached
+      fromCache = true
+    } else {
+      logInfo(`✗ Cache MISS - Fetching fresh data from API (key: ${cacheKey})`)
 
-    } catch (apiError) {
-      const fetchDuration = Date.now() - fetchStart
-      logError(`✗ API request failed after ${fetchDuration}ms`, apiError)
-      
-      if (apiError instanceof SportsGuideApiError) {
-        logError(`The Rail API Error Details:`, {
-          message: apiError.message,
-          statusCode: apiError.statusCode,
-          response: apiError.response
+      // Fetch ALL guide data
+      logInfo(`---------- FETCHING SPORTS GUIDE DATA ----------`)
+      logInfo(`Requesting ${days} days of ALL sports from The Rail Media API`)
+
+      const fetchStart = Date.now()
+
+      try {
+        guide = await api.fetchDateRangeGuide(days)
+        const fetchDuration = Date.now() - fetchStart
+
+        logInfo(`✓ Successfully fetched guide data in ${fetchDuration}ms`)
+
+        // QUICK WIN 2: Cache the response for 5 minutes
+        cacheManager.set('sports-data', cacheKey, guide, 5 * 60 * 1000)
+        logInfo(`✓ Cached response with 5-minute TTL`)
+
+        logInfo(`---------- API RESPONSE SUMMARY ----------`)
+        logDebug(`Full API response structure:`, {
+          hasListingGroups: !!guide.listing_groups,
+          listingGroupsCount: guide.listing_groups?.length || 0,
+          listingGroupTitles: guide.listing_groups?.map((g: any) => g.group_title) || [],
+          totalListings: guide.listing_groups?.reduce((sum: number, g: any) => sum + (g.listings?.length || 0), 0) || 0
         })
-        
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: `The Rail Media API error: ${apiError.message}`,
+
+        // Log first listing group as sample
+        if (guide.listing_groups && guide.listing_groups.length > 0) {
+          logDebug(`Sample listing group (first):`, {
+            title: guide.listing_groups[0].group_title,
+            listingsCount: guide.listing_groups[0].listings?.length || 0,
+            firstListing: guide.listing_groups[0].listings?.[0] || null
+          })
+        }
+
+      } catch (apiError) {
+        const fetchDuration = Date.now() - fetchStart
+        logError(`✗ API request failed after ${fetchDuration}ms`, apiError)
+
+        if (apiError instanceof SportsGuideApiError) {
+          logError(`The Rail API Error Details:`, {
+            message: apiError.message,
             statusCode: apiError.statusCode,
-            requestId,
-            timestamp: new Date().toISOString()
-          },
-          { status: apiError.statusCode || 500 }
-        )
+            response: apiError.response
+          })
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: `The Rail Media API error: ${apiError.message}`,
+              statusCode: apiError.statusCode,
+              requestId,
+              timestamp: new Date().toISOString()
+            },
+            { status: apiError.statusCode || 500 }
+          )
+        }
+        throw apiError
       }
-      throw apiError
     }
 
     // Return raw data - no filtering, no transformation
@@ -184,6 +205,7 @@ export async function POST(request: NextRequest) {
       requestId,
       timestamp: new Date().toISOString(),
       durationMs: requestDuration,
+      fromCache, // QUICK WIN 2: Indicate if response came from cache
       dataSource: 'The Rail Media API',
       apiProvider: {
         name: 'The Rail Media',

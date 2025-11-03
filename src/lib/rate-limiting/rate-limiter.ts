@@ -244,5 +244,21 @@ export const RateLimitConfigs = {
     maxRequests: 2,
     windowMs: 60 * 1000, // 1 minute
     identifier: 'expensive'
+  },
+
+  // QUICK WIN 3: Hardware control endpoints (matrix, CEC, FireTV)
+  // Limit to 60 requests per minute to prevent hardware flooding
+  HARDWARE: {
+    maxRequests: 60,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'hardware'
+  },
+
+  // QUICK WIN 3: Authentication endpoints
+  // Strict limit to prevent brute force attacks
+  AUTH: {
+    maxRequests: 10,
+    windowMs: 60 * 1000, // 1 minute
+    identifier: 'auth'
   }
 } as const

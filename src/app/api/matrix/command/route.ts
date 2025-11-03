@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Socket } from 'net'
 import dgram from 'dgram'
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 
 export async function POST(request: NextRequest) {
+  // QUICK WIN 3: Apply rate limiting to prevent hardware command flooding
+  const rateLimitCheck = await withRateLimit(request, 'HARDWARE')
+
+  if (!rateLimitCheck.allowed) {
+    return rateLimitCheck.response!
+  }
+
   try {
     const { command, ipAddress, port, protocol = 'TCP' } = await request.json()
 
@@ -52,20 +60,22 @@ export async function POST(request: NextRequest) {
       try {
         const response = await sendTcpCommand()
         const isSuccess = response.includes('OK')
-        
-        return NextResponse.json({ 
+
+        const jsonResponse = NextResponse.json({
           success: isSuccess,
           response,
           command: wolfPackCommand,
           message: isSuccess ? 'Command executed successfully' : 'Command failed',
           timestamp: new Date().toISOString()
         })
+        return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
       } catch (error) {
-        return NextResponse.json({ 
-          success: false, 
+        const jsonResponse = NextResponse.json({
+          success: false,
           error: `TCP command failed: ${error}`,
           command: wolfPackCommand
         })
+        return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
       }
     } else {
       // Send UDP command
@@ -87,19 +97,21 @@ export async function POST(request: NextRequest) {
       }
 
       const success = await sendUdpCommand()
-      
-      return NextResponse.json({ 
+
+      const jsonResponse = NextResponse.json({
         success,
         command: wolfPackCommand,
         message: success ? 'UDP command sent successfully' : 'UDP command failed',
         timestamp: new Date().toISOString()
       })
+      return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
     }
   } catch (error) {
     console.error('Error sending matrix command:', error)
-    return NextResponse.json({ 
-      success: false, 
+    const jsonResponse = NextResponse.json({
+      success: false,
       error: 'Failed to send command: ' + error
     }, { status: 500 })
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
   }
 }
