@@ -8,10 +8,10 @@ import { logger } from '@/lib/logger'
 // PUT /api/channel-presets/[id] - Update a preset
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     const { name, channelNumber, deviceType, order, isActive } = body
 
@@ -70,10 +70,10 @@ export async function PUT(
 // DELETE /api/channel-presets/[id] - Delete a preset
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
     // Check if preset exists
     const existingPreset = await findFirst('channelPresets', {

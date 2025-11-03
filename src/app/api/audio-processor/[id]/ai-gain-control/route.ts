@@ -169,7 +169,8 @@ export async function DELETE(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
     const { searchParams } = new URL(request.url)
     const inputNumber = parseInt(searchParams.get('inputNumber') || '')
 

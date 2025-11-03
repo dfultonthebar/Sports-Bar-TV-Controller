@@ -11,25 +11,26 @@ export const dynamic = 'force-dynamic'
 // POST /api/todos/:id/complete - Mark TODO as complete with validation
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { productionTested, mergedToMain } = body
 
     // Validate completion criteria
     if (!productionTested || !mergedToMain) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Cannot mark as complete. Must confirm: 1) Tested on production server, 2) Merged to main branch' 
+        {
+          success: false,
+          error: 'Cannot mark as complete. Must confirm: 1) Tested on production server, 2) Merged to main branch'
         },
         { status: 400 }
       )
     }
 
     const todo = await prisma.todo.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: 'COMPLETE',
         completedAt: new Date()

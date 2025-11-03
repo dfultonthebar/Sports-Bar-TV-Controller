@@ -15,7 +15,7 @@ async function fixCableBoxPaths() {
     const cecDevices = await db.select().from(schema.cecDevices).all()
     console.log(`Found ${cecDevices.length} CEC devices:`)
     cecDevices.forEach(dev => {
-      console.log(`  - ${dev.id}: ${dev.name} (${dev.devicePath}) [${dev.deviceType}]`)
+      console.log(`  - ${dev.id}: ${dev.deviceName} (${dev.devicePath}) [${dev.deviceType}]`)
     })
 
     // Get all cable boxes
@@ -33,11 +33,10 @@ async function fixCableBoxPaths() {
       console.log('Creating new CEC device for /dev/ttyACM0...')
 
       const newDevice = await db.insert(schema.cecDevices).values({
-        name: 'Pulse-Eight USB CEC Adapter',
+        deviceName: 'Pulse-Eight USB CEC Adapter',
         devicePath: '/dev/ttyACM0',
         deviceType: 'cable_box',
-        isActive: true,
-        description: 'Main Pulse-Eight USB-CEC Adapter for cable box control'
+        isActive: true
       }).returning().get()
 
       console.log(`✅ Created new CEC device: ${newDevice.id}`)

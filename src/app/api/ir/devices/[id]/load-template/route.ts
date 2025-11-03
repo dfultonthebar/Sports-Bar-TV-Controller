@@ -7,10 +7,10 @@ import path from 'path'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const deviceId = params.id
+    const { id: deviceId } = await params
     const body = await request.json()
     const { templateId, selectedCommands } = body
 

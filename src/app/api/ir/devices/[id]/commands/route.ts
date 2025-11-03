@@ -10,9 +10,9 @@ import { irCommands } from '@/db/schema'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const deviceId = params.id
+  const { id: deviceId } = await params
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📋 [IR COMMANDS] Fetching commands for device')

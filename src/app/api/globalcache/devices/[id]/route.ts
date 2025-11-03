@@ -10,11 +10,12 @@ import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const device = await findFirst('globalCacheDevices', {
-      where: eq(schema.globalCacheDevices.id, params.id)
+      where: eq(schema.globalCacheDevices.id, id)
     })
 
     if (!device) {
@@ -26,7 +27,7 @@ export async function GET(
 
     // Fetch ports for this device
     const ports = await findMany('globalCachePorts', {
-      where: eq(schema.globalCachePorts.deviceId, params.id),
+      where: eq(schema.globalCachePorts.deviceId, id),
       orderBy: asc(schema.globalCachePorts.portNumber)
     })
 
@@ -54,12 +55,13 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteRecord('globalCacheDevices', eq(schema.globalCacheDevices.id, params.id))
+    const { id } = await params
+    await deleteRecord('globalCacheDevices', eq(schema.globalCacheDevices.id, id))
 
-    console.log(`Global Cache device deleted: ${params.id}`)
+    console.log(`Global Cache device deleted: ${id}`)
 
     return NextResponse.json({
       success: true
@@ -79,9 +81,10 @@ export async function DELETE(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { name, ipAddress, port, model } = body
 
@@ -91,7 +94,7 @@ export async function PUT(
     if (port !== undefined) updateData.port = port
     if (model !== undefined) updateData.model = model
 
-    const device = await update('globalCacheDevices', eq(schema.globalCacheDevices.id, params.id), updateData)
+    const device = await update('globalCacheDevices', eq(schema.globalCacheDevices.id, id), updateData)
 
     if (!device) {
       return NextResponse.json(
@@ -102,7 +105,7 @@ export async function PUT(
 
     // Fetch ports for this device
     const ports = await findMany('globalCachePorts', {
-      where: eq(schema.globalCachePorts.deviceId, params.id),
+      where: eq(schema.globalCachePorts.deviceId, id),
       orderBy: asc(schema.globalCachePorts.portNumber)
     })
 

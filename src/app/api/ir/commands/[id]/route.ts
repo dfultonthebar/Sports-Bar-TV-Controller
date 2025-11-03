@@ -10,9 +10,9 @@ import { irCommands } from '@/db/schema'
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const commandId = params.id
+  const { id: commandId } = await params
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('🗑️  [IR COMMANDS] Deleting IR command')

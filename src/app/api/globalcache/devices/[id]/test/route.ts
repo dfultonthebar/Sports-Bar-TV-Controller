@@ -11,10 +11,11 @@ import { globalCacheDevices } from '@/db/schema'
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, params.id)).limit(1).get()
+    const { id } = await params
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, id)).limit(1).get()
 
     if (!device) {
       return NextResponse.json(
@@ -31,7 +32,7 @@ export async function POST(
     await db.update(globalCacheDevices).set({
         status: result.online ? 'online' : 'offline',
         lastSeen: result.online ? new Date().toISOString() : device.lastSeen
-      }).where(eq(globalCacheDevices.id, params.id)).returning().get()
+      }).where(eq(globalCacheDevices.id, id)).returning().get()
 
     console.log(`Connection test result: ${result.online ? 'ONLINE' : 'OFFLINE'}`)
     if (result.deviceInfo) {

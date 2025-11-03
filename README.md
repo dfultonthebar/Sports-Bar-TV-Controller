@@ -435,6 +435,8 @@ cp ~/sports_bar.db.backup ~/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
 
 ## 🎯 **Key Features**
 
+For complete API documentation, see **[API Reference Guide](./docs/API_REFERENCE.md)**.
+
 ### AI-Powered Assistant
 - **Natural Language Chat:** Ask questions about your AV system
 - **Troubleshooting:** Get instant help with technical issues
@@ -665,6 +667,8 @@ npm run build:kb
 
 ## 📖 **Additional Documentation**
 
+- **[API_REFERENCE.md](./docs/API_REFERENCE.md)** - Complete API endpoint documentation
+- **[HARDWARE_CONFIGURATION.md](./docs/HARDWARE_CONFIGURATION.md)** - Hardware setup and configuration guide
 - **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
 - **[NUC_DEPLOYMENT.md](./NUC_DEPLOYMENT.md)** - Intel NUC-specific deployment guide
 - **[UPDATE_PROCESS.md](./UPDATE_PROCESS.md)** - Detailed update procedures

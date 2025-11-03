@@ -12,11 +12,12 @@ export const dynamic = 'force-dynamic'
 // GET /api/todos/:id - Get single TODO
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const todo = await prisma.todo.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         documents: true
       }
@@ -45,9 +46,10 @@ export async function GET(
 // PUT /api/todos/:id - Update TODO
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { title, description, priority, status, category, tags } = body
 
@@ -65,7 +67,7 @@ export async function PUT(
     if (tags !== undefined) updateData.tags = JSON.stringify(tags)
 
     const todo = await prisma.todo.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         documents: true
@@ -93,16 +95,17 @@ export async function PUT(
 // DELETE /api/todos/:id - Delete TODO
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     // Get TODO title before deleting
     const todo = await prisma.todo.findUnique({
-      where: { id: params.id },
+      where: { id },
       select: { title: true }
     })
 
-    await db.delete(todos).where(eq(todos.id, params.id)).returning().get()
+    await db.delete(todos).where(eq(todos.id, id)).returning().get()
 
     // Sync to GitHub in background
     if (todo) {

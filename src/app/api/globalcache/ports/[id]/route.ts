@@ -10,9 +10,10 @@ import { findFirst, update } from '@/lib/db-helpers'
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { assignedTo, assignedDeviceId, irCodeSet, enabled } = body
 
@@ -22,7 +23,7 @@ export async function PUT(
     if (irCodeSet !== undefined) updateData.irCodeSet = irCodeSet || null
     if (enabled !== undefined) updateData.enabled = enabled
 
-    const port = await update('globalCachePorts', eq(schema.globalCachePorts.id, params.id), updateData)
+    const port = await update('globalCachePorts', eq(schema.globalCachePorts.id, id), updateData)
 
     if (!port) {
       return NextResponse.json(
@@ -52,11 +53,12 @@ export async function PUT(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const port = await findFirst('globalCachePorts', {
-      where: eq(schema.globalCachePorts.id, params.id)
+      where: eq(schema.globalCachePorts.id, id)
     })
 
     if (!port) {

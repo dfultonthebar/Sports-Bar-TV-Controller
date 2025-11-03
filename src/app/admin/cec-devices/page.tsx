@@ -43,6 +43,7 @@ interface CableBox {
   lastChannel?: string
   isOnline: boolean
   matrixInputId?: string
+  devicePath?: string  // From joined cecDevice
 }
 
 interface CommandLog {

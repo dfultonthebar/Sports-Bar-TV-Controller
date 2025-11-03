@@ -40,7 +40,8 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const processorId = context.params.id
+    const params = await context.params
+    const processorId = params.id
     const { action } = await request.json()
 
     if (!action || !['start', 'stop'].includes(action)) {

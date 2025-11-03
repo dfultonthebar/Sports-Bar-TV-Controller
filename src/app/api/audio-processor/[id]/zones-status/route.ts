@@ -6,10 +6,11 @@ import { audioProcessors } from '@/db/schema'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const processorId = params.id
+    const { id } = await params
+    const processorId = id
 
     // Fetch processor from database
     const processor = await db.select().from(audioProcessors).where(eq(audioProcessors.id, processorId)).limit(1).get()

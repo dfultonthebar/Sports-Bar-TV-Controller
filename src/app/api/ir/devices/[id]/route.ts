@@ -13,17 +13,18 @@ import { findFirst, findMany, update, deleteRecord } from '@/lib/db-helpers'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('📋 [IR DEVICES] Fetching device')
-  console.log('   ID:', params.id)
+  console.log('   ID:', id)
   console.log('   Timestamp:', new Date().toISOString())
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const device = await findFirst('irDevices', {
-      where: eq(schema.irDevices.id, params.id)
+      where: eq(schema.irDevices.id, id)
     })
 
     if (!device) {
@@ -72,7 +73,7 @@ export async function GET(
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'get_error', {
-      deviceId: params.id,
+      deviceId: id,
       error: error.message
     })
 
@@ -89,11 +90,12 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('✏️  [IR DEVICES] Updating device')
-  console.log('   ID:', params.id)
+  console.log('   ID:', id)
   console.log('   Timestamp:', new Date().toISOString())
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
@@ -132,7 +134,7 @@ export async function PUT(
     if (description !== undefined) updateData.description = description
     if (status !== undefined) updateData.status = status
 
-    const device = await update('irDevices', eq(schema.irDevices.id, params.id), updateData)
+    const device = await update('irDevices', eq(schema.irDevices.id, id), updateData)
 
     if (!device) {
       return NextResponse.json(
@@ -177,7 +179,7 @@ export async function PUT(
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'update_error', {
-      deviceId: params.id,
+      deviceId: id,
       error: error.message
     })
 
@@ -194,22 +196,23 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('🗑️  [IR DEVICES] Deleting device')
-  console.log('   ID:', params.id)
+  console.log('   ID:', id)
   console.log('   Timestamp:', new Date().toISOString())
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    await deleteRecord('irDevices', eq(schema.irDevices.id, params.id))
+    await deleteRecord('irDevices', eq(schema.irDevices.id, id))
 
     console.log('✅ [IR DEVICES] Device deleted successfully')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'delete', {
-      deviceId: params.id
+      deviceId: id
     })
 
     return NextResponse.json({ success: true })
@@ -218,7 +221,7 @@ export async function DELETE(
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DEVICES', 'delete_error', {
-      deviceId: params.id,
+      deviceId: id,
       error: error.message
     })
 

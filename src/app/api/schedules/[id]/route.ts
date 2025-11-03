@@ -9,10 +9,11 @@ import { eq } from 'drizzle-orm'
 // GET - Get single schedule
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, params.id)).limit(1).get();
+    const { id } = await params
+    const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, id)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
@@ -34,9 +35,10 @@ export async function GET(
 // PUT - Update schedule
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json();
     
     const updateData: any = {};
@@ -59,7 +61,7 @@ export async function PUT(
     if (body.executionOrder !== undefined) updateData.executionOrder = body.executionOrder;
     if (body.delayBetweenCommands !== undefined) updateData.delayBetweenCommands = body.delayBetweenCommands;
 
-    const schedule = await update('schedules', eq(schema.schedules.id, params.id), updateData);
+    const schedule = await update('schedules', eq(schema.schedules.id, id), updateData);
 
     return NextResponse.json({ schedule });
   } catch (error: any) {
@@ -74,10 +76,11 @@ export async function PUT(
 // DELETE - Delete schedule
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await db.delete(schema.schedules).where(eq(schema.schedules.id, params.id)).returning().get();
+    const { id } = await params
+    await db.delete(schema.schedules).where(eq(schema.schedules.id, id)).returning().get();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

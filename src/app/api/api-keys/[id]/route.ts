@@ -6,9 +6,10 @@ import { schema } from '@/db'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const { name, provider, keyValue, description, isActive } = await request.json()
 
     const updateData: any = {
@@ -23,7 +24,7 @@ export async function PUT(
       updateData.keyValue = encrypt(keyValue)
     }
 
-    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, params.id), updateData)
+    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, id), updateData)
 
     // Return without the actual key value
     const { keyValue: _, ...safeApiKey } = apiKey
@@ -39,10 +40,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteRecord('apiKeys', eq(schema.apiKeys.id, params.id))
+    const { id } = await params
+    await deleteRecord('apiKeys', eq(schema.apiKeys.id, id))
 
     return NextResponse.json({ message: 'API key deleted successfully' })
   } catch (error) {

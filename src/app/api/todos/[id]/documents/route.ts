@@ -14,11 +14,12 @@ export const dynamic = 'force-dynamic'
 // GET /api/todos/:id/documents - Get documents for TODO
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const documents = await prisma.todoDocument.findMany({
-      where: { todoId: params.id },
+      where: { todoId: id },
       orderBy: { uploadedAt: 'desc' }
     })
 
@@ -38,12 +39,13 @@ export async function GET(
 // POST /api/todos/:id/documents - Upload document to TODO
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const formData = await request.formData()
     const file = formData.get('file') as File
-    
+
     if (!file) {
       return NextResponse.json(
         { success: false, error: 'No file provided' },
@@ -52,7 +54,7 @@ export async function POST(
     }
 
     // Verify todo exists
-    const todo = await db.select().from(todos).where(eq(todos.id, params.id)).limit(1).get()
+    const todo = await db.select().from(todos).where(eq(todos.id, id)).limit(1).get()
 
     if (!todo) {
       return NextResponse.json(
@@ -80,7 +82,7 @@ export async function POST(
 
     // Save document record to database
     const document = await db.insert(todoDocuments).values({
-        todoId: params.id,
+        todoId: id,
         filename: file.name,
         filepath: publicPath,
         filesize: file.size,
@@ -103,9 +105,10 @@ export async function POST(
 // DELETE /api/todos/:id/documents - Delete document
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await params  // Await params even if not used to satisfy Next.js 15
     const { searchParams } = new URL(request.url)
     const documentId = searchParams.get('documentId')
 
