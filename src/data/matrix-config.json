@@ -1,5 +1,5 @@
 {
-  "wolfpack_ip": "192.168.1.100",
+  "wolfpack_ip": "192.168.5.100",
   "wolfpack_port": 23,
   "inputs": {
     "1": {
