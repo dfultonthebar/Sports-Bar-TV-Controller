@@ -6,6 +6,7 @@ import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from './logger'
 import { randomUUID } from 'crypto'
+import { withTransaction } from './db/transaction-wrapper'
 
 /**
  * Route matrix input to output
@@ -30,55 +31,61 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
       return false
     }
 
-    // Store/update the route in the database
-    const existingRoute = await db.select()
-      .from(schema.matrixRoutes)
-      .where(eq(schema.matrixRoutes.outputNum, outputNum))
-      .limit(1)
-      .get()
+    // Use transaction to ensure atomicity between hardware command and database update
+    return await withTransaction(async (tx) => {
+      const now = new Date().toISOString()
 
-    const now = new Date().toISOString()
+      // First, send the Wolf Pack command
+      const wolfPackCommand = `${inputNum}X${outputNum}.`
+      const commandSuccess = await sendWolfPackCommand(
+        activeConfig.ipAddress,
+        activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
+        wolfPackCommand,
+        activeConfig.protocol || 'TCP'
+      )
 
-    if (existingRoute) {
-      // Update existing route
-      await db.update(schema.matrixRoutes)
-        .set({
-          inputNum: inputNum,
-          isActive: true,
-          updatedAt: now
-        })
-        .where(eq(schema.matrixRoutes.id, existingRoute.id))
-        .run()
-    } else {
-      // Create new route
-      await db.insert(schema.matrixRoutes)
-        .values({
-          id: randomUUID(),
-          inputNum: inputNum,
-          outputNum: outputNum,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        })
-        .run()
-    }
+      if (!commandSuccess) {
+        // Command failed - rollback transaction
+        throw new Error(`Failed to send Wolf Pack command: ${wolfPackCommand}`)
+      }
 
-    // Send actual Wolf Pack command using correct format: YXZ.
-    const wolfPackCommand = `${inputNum}X${outputNum}.`
-    const commandSuccess = await sendWolfPackCommand(
-      activeConfig.ipAddress,
-      activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
-      wolfPackCommand,
-      activeConfig.protocol || 'TCP'
-    )
+      // Command succeeded - update/create the route in database
+      const existingRoute = await tx.select()
+        .from(schema.matrixRoutes)
+        .where(eq(schema.matrixRoutes.outputNum, outputNum))
+        .limit(1)
+        .get()
 
-    if (!commandSuccess) {
-      logger.error(`Failed to send Wolf Pack command: ${wolfPackCommand}`)
-      return false
-    }
+      if (existingRoute) {
+        // Update existing route
+        await tx.update(schema.matrixRoutes)
+          .set({
+            inputNum: inputNum,
+            isActive: true,
+            updatedAt: now
+          })
+          .where(eq(schema.matrixRoutes.id, existingRoute.id))
+          .run()
+      } else {
+        // Create new route
+        await tx.insert(schema.matrixRoutes)
+          .values({
+            id: randomUUID(),
+            inputNum: inputNum,
+            outputNum: outputNum,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now
+          })
+          .run()
+      }
 
-    logger.info(`Successfully routed input ${inputNum} to output ${outputNum}`)
-    return true
+      logger.info(`Successfully routed input ${inputNum} to output ${outputNum}`)
+      return true
+    }, {
+      name: `matrix-route-${inputNum}-to-${outputNum}`,
+      maxRetries: 2 // Hardware commands shouldn't retry too many times
+    })
 
   } catch (error) {
     logger.error('Error routing signal:', error)

@@ -2,6 +2,7 @@
 import { and, asc, desc, eq, findMany, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
+import { withTransaction } from '@/lib/db/transaction-wrapper'
 
 /**
  * Reorder all presets based on usage count
@@ -11,50 +12,54 @@ export async function reorderAllPresets() {
   try {
     logger.debug('[Preset Reorder] Starting preset reordering based on usage...')
 
-    // Get all active presets grouped by device type
-    const cablePresets = await findMany('channelPresets', {
-      where: and(
-        eq(schema.channelPresets.deviceType, 'cable'),
-        eq(schema.channelPresets.isActive, true)
-      ),
-      orderBy: [
-        desc(schema.channelPresets.usageCount),
-        asc(schema.channelPresets.name)
-      ]
+    // Use transaction to ensure all updates succeed or roll back
+    return await withTransaction(async (tx) => {
+      // Get all active presets grouped by device type
+      const cablePresets = await tx.select()
+        .from(schema.channelPresets)
+        .where(and(
+          eq(schema.channelPresets.deviceType, 'cable'),
+          eq(schema.channelPresets.isActive, true)
+        ))
+        .orderBy(desc(schema.channelPresets.usageCount), asc(schema.channelPresets.name))
+        .all()
+
+      const directvPresets = await tx.select()
+        .from(schema.channelPresets)
+        .where(and(
+          eq(schema.channelPresets.deviceType, 'directv'),
+          eq(schema.channelPresets.isActive, true)
+        ))
+        .orderBy(desc(schema.channelPresets.usageCount), asc(schema.channelPresets.name))
+        .all()
+
+      // Update order field for cable presets
+      for (let i = 0; i < cablePresets.length; i++) {
+        await tx.update(schema.channelPresets)
+          .set({ order: i, updatedAt: new Date().toISOString() })
+          .where(eq(schema.channelPresets.id, cablePresets[i].id))
+          .run()
+      }
+
+      // Update order field for directv presets
+      for (let i = 0; i < directvPresets.length; i++) {
+        await tx.update(schema.channelPresets)
+          .set({ order: i, updatedAt: new Date().toISOString() })
+          .where(eq(schema.channelPresets.id, directvPresets[i].id))
+          .run()
+      }
+
+      logger.debug(`[Preset Reorder] Successfully reordered ${cablePresets.length} cable presets and ${directvPresets.length} DirecTV presets`)
+
+      return {
+        success: true,
+        cablePresetsReordered: cablePresets.length,
+        directvPresetsReordered: directvPresets.length
+      }
+    }, {
+      name: 'reorder-all-presets',
+      maxRetries: 3
     })
-
-    const directvPresets = await findMany('channelPresets', {
-      where: and(
-        eq(schema.channelPresets.deviceType, 'directv'),
-        eq(schema.channelPresets.isActive, true)
-      ),
-      orderBy: [
-        desc(schema.channelPresets.usageCount),
-        asc(schema.channelPresets.name)
-      ]
-    })
-
-    // Update order field for cable presets
-    for (let i = 0; i < cablePresets.length; i++) {
-      await update('channelPresets', cablePresets[i].id, {
-        order: i
-      })
-    }
-
-    // Update order field for directv presets
-    for (let i = 0; i < directvPresets.length; i++) {
-      await update('channelPresets', directvPresets[i].id, {
-        order: i
-      })
-    }
-
-    logger.debug(`[Preset Reorder] Successfully reordered ${cablePresets.length} cable presets and ${directvPresets.length} DirecTV presets`)
-
-    return {
-      success: true,
-      cablePresetsReordered: cablePresets.length,
-      directvPresetsReordered: directvPresets.length
-    }
   } catch (error) {
     logger.error('[Preset Reorder] Error reordering presets:', error)
     throw error

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { scheduledCommands, scheduledCommandLogs } from '@/db/schema'
 import { eq, desc, and } from 'drizzle-orm'
+import { withTransaction, transactionHelpers } from '@/lib/db/transaction-wrapper'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,24 +64,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate next execution time
-    const nextExecution = calculateNextExecution(scheduleType, scheduleData, timezone || 'America/New_York')
+    // Use transaction to create command with audit log
+    const newCommand = await transactionHelpers.createWithAudit(
+      async (tx) => {
+        // Calculate next execution time
+        const nextExecution = calculateNextExecution(scheduleType, scheduleData, timezone || 'America/New_York')
 
-    // Create the scheduled command
-    const [newCommand] = await db.insert(scheduledCommands).values({
-      name,
-      description,
-      commandType,
-      targetType,
-      targets: JSON.stringify(targets),
-      commandSequence: JSON.stringify(commandSequence),
-      scheduleType,
-      scheduleData: JSON.stringify(scheduleData),
-      timezone: timezone || 'America/New_York',
-      enabled: enabled !== undefined ? enabled : true,
-      nextExecution,
-      createdBy,
-    }).returning()
+        // Create the scheduled command
+        const [command] = await tx.insert(scheduledCommands).values({
+          name,
+          description,
+          commandType,
+          targetType,
+          targets: JSON.stringify(targets),
+          commandSequence: JSON.stringify(commandSequence),
+          scheduleType,
+          scheduleData: JSON.stringify(scheduleData),
+          timezone: timezone || 'America/New_York',
+          enabled: enabled !== undefined ? enabled : true,
+          nextExecution,
+          createdBy,
+        }).returning()
+
+        return command
+      },
+      {
+        action: 'scheduled_command_created',
+        details: { name, commandType, targetType, scheduleType },
+        userId: createdBy || 'system'
+      },
+      { name: 'create-scheduled-command' }
+    )
 
     return NextResponse.json({
       success: true,
@@ -111,37 +125,47 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Prepare updates
-    const updateData: any = {
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    }
+    // Use transaction to update command with audit log
+    const updatedCommand = await transactionHelpers.updateWithAudit(
+      async (tx) => {
+        // Prepare updates
+        const updateData: any = {
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        }
 
-    // Serialize JSON fields
-    if (updates.targets) updateData.targets = JSON.stringify(updates.targets)
-    if (updates.commandSequence) updateData.commandSequence = JSON.stringify(updates.commandSequence)
-    if (updates.scheduleData) {
-      updateData.scheduleData = JSON.stringify(updates.scheduleData)
-      // Recalculate next execution if schedule changed
-      updateData.nextExecution = calculateNextExecution(
-        updates.scheduleType || 'daily',
-        updates.scheduleData,
-        updates.timezone || 'America/New_York'
-      )
-    }
+        // Serialize JSON fields
+        if (updates.targets) updateData.targets = JSON.stringify(updates.targets)
+        if (updates.commandSequence) updateData.commandSequence = JSON.stringify(updates.commandSequence)
+        if (updates.scheduleData) {
+          updateData.scheduleData = JSON.stringify(updates.scheduleData)
+          // Recalculate next execution if schedule changed
+          updateData.nextExecution = calculateNextExecution(
+            updates.scheduleType || 'daily',
+            updates.scheduleData,
+            updates.timezone || 'America/New_York'
+          )
+        }
 
-    const [updatedCommand] = await db
-      .update(scheduledCommands)
-      .set(updateData)
-      .where(eq(scheduledCommands.id, id))
-      .returning()
+        const [command] = await tx
+          .update(scheduledCommands)
+          .set(updateData)
+          .where(eq(scheduledCommands.id, id))
+          .returning()
 
-    if (!updatedCommand) {
-      return NextResponse.json(
-        { error: 'Scheduled command not found' },
-        { status: 404 }
-      )
-    }
+        if (!command) {
+          throw new Error('Scheduled command not found')
+        }
+
+        return command
+      },
+      {
+        action: 'scheduled_command_updated',
+        details: { id, updates },
+        userId: 'system'
+      },
+      { name: 'update-scheduled-command' }
+    )
 
     return NextResponse.json({
       success: true,
