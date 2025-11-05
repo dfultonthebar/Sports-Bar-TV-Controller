@@ -231,8 +231,14 @@ async function processStreamingChat(
       logger.info('[STREAMING] No sessionId provided')
     }
 
-    const messages: ChatMessage[] = session ? JSON.parse(session.messages || '[]') : []
-    
+    let messages: ChatMessage[] = []
+    try {
+      messages = session ? JSON.parse(session.messages || '[]') : []
+    } catch (error) {
+      logger.error('[Chat] Failed to parse session messages:', error)
+      messages = []
+    }
+
     // Enhanced system message with AI tools support
     const systemMessage: ChatMessage = {
       role: 'system',
@@ -454,8 +460,14 @@ async function handleNonStreamingChat(
     session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
   }
 
-  const messages: ChatMessage[] = session ? JSON.parse(session.messages || '[]') : []
-  
+  let messages: ChatMessage[] = []
+  try {
+    messages = session ? JSON.parse(session.messages || '[]') : []
+  } catch (error) {
+    logger.error('[Chat] Failed to parse session messages (non-streaming):', error)
+    messages = []
+  }
+
   const systemMessage: ChatMessage = {
     role: 'system',
     content: `You are a Sports Bar AI Assistant with access to documentation and tools.

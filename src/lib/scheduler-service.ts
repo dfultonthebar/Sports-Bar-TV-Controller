@@ -28,6 +28,11 @@ class SchedulerService {
     logger.debug('Starting scheduler service...');
     this.isRunning = true;
 
+    // Clear existing interval if any to prevent memory leaks
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+
     // Check every minute for schedules to execute
     this.intervalId = setInterval(() => {
       this.checkAndExecuteSchedules();

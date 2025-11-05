@@ -144,7 +144,16 @@ function formatBytes(bytes: number): string {
 async function checkPM2Status(): Promise<any> {
   try {
     const { stdout } = await execAsync('pm2 jlist', { timeout: 5000 })
-    const processes = JSON.parse(stdout)
+    let processes
+    try {
+      processes = JSON.parse(stdout)
+    } catch (parseError) {
+      logger.error('[Health] Failed to parse PM2 output:', parseError)
+      return {
+        status: 'degraded',
+        error: 'Failed to parse PM2 output'
+      }
+    }
 
     if (!Array.isArray(processes) || processes.length === 0) {
       return {

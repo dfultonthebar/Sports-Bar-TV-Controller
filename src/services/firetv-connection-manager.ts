@@ -372,6 +372,11 @@ class FireTVConnectionManager {
    * Start cleanup timer to remove stale connections
    */
   private startCleanupTimer(): void {
+    // Clear existing interval if any to prevent memory leaks
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval)
+    }
+
     this.cleanupInterval = setInterval(() => {
       this.cleanupStaleConnections()
     }, config.lifecycle.cleanupInterval)

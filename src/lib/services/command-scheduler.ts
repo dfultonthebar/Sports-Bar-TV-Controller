@@ -39,6 +39,11 @@ class CommandScheduler {
     logger.info('Starting command scheduler...')
     this.isRunning = true
 
+    // Clear existing interval if any to prevent memory leaks
+    if (this.intervalId) {
+      clearInterval(this.intervalId)
+    }
+
     // Run immediately on start
     this.checkAndExecute()
 

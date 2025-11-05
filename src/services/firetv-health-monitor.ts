@@ -81,6 +81,11 @@ class FireTVHealthMonitor {
     // Perform initial health check
     await this.performHealthCheck()
 
+    // Clear existing interval if any to prevent memory leaks
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval)
+    }
+
     // Start periodic health checks
     this.monitorInterval = setInterval(async () => {
       await this.performHealthCheck()
