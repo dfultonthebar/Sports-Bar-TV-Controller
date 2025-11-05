@@ -20,11 +20,12 @@ AI-powered assistant for sports bar AV system management, troubleshooting, and m
   - AI-powered gain control and optimization
   - Real-time audio level monitoring
   - Zone-specific audio control
-- ✅ **CEC Cable Box Control** - Enhanced TV control with cable box integration
-  - Direct CEC communication with cable boxes
-  - Channel tuning via HDMI-CEC
-  - Automated power management
+- ✅ **Cable Box Control** - IR-based cable box control system
+  - IR learning system for any cable box remote
+  - Network-controlled IR distribution (Global Cache iTach)
+  - 95%+ command reliability
   - Integration with channel presets
+  - **Note:** CEC disabled on Spectrum cable boxes - see migration guide below
 - ✅ **System Health Dashboard** - Real-time monitoring of all subsystems
   - Soundtrack API status monitoring
   - Atlas audio processor health checks
@@ -33,7 +34,8 @@ AI-powered assistant for sports bar AV system management, troubleshooting, and m
 
 **See**:
 - [Soundtrack Integration Guide](docs/SOUNDTRACK_INTEGRATION_GUIDE.md)
-- [CEC Cable Box Setup](docs/CEC_CABLE_BOX_IMPLEMENTATION.md)
+- [IR Cable Box Control Guide](docs/IR_CABLE_BOX_CONTROL.md)
+- [CEC to IR Migration Guide](docs/CEC_TO_IR_MIGRATION_GUIDE.md) - **For Spectrum users**
 - [Audio Control Center Guide](docs/ATLAS_CONFIGURATION_SUMMARY.md)
 
 ### TV Position Detection Fix
@@ -93,6 +95,11 @@ curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controll
 - **Audio Processors:** AtlasIED Atmosphere (AZM4/AZM8)
 - **CEC Control:** Pulse-Eight USB CEC Adapter for TV power control
 - **TVs:** Any HDMI-CEC capable displays
+
+**Important for Spectrum Cable Boxes:**
+- ⚠️ CEC is permanently disabled on Spectrum cable boxes
+- ✅ Use IR control instead (Global Cache iTach + IR emitters)
+- 📖 See [CEC to IR Migration Guide](docs/CEC_TO_IR_MIGRATION_GUIDE.md) for complete setup
 
 ---
 
@@ -452,11 +459,12 @@ For complete API documentation, see **[API Reference Guide](./docs/API_REFERENCE
 
 ### Device Management
 - **TV Control:** HDMI-CEC power control via Pulse-Eight adapter
-- **IR Control:** Cable boxes, DirecTV, Fire TV via Global Cache
-- **CEC Cable Box Control:** Direct HDMI-CEC communication with cable boxes for channel tuning
+- **IR Control:** Cable boxes, DirecTV, Fire TV via Global Cache iTach IP2IR
+- **Cable Box Control:** IR learning system for universal cable box compatibility (95%+ reliability)
 - **Audio Processing:** AtlasIED Atmosphere zone control with AI-powered optimization
 - **Device Discovery:** Automatic detection of HDMI-CEC devices
 - **Unified TV Control:** Intelligent fallback between CEC, IR, and Fire TV control methods
+- **Note:** Spectrum cable boxes require IR (CEC permanently disabled by provider)
 
 ### Automation & Scheduling
 - **Channel Presets:** Pre-configure channels for quick access
@@ -667,6 +675,7 @@ npm run build:kb
 
 ## 📖 **Additional Documentation**
 
+### General Documentation
 - **[API_REFERENCE.md](./docs/API_REFERENCE.md)** - Complete API endpoint documentation
 - **[HARDWARE_CONFIGURATION.md](./docs/HARDWARE_CONFIGURATION.md)** - Hardware setup and configuration guide
 - **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
@@ -674,6 +683,15 @@ npm run build:kb
 - **[UPDATE_PROCESS.md](./UPDATE_PROCESS.md)** - Detailed update procedures
 - **[BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)** - Backup and restore procedures
 - **[ai-assistant/README.md](./ai-assistant/README.md)** - AI Code Assistant documentation
+
+### Cable Box Control Documentation
+- **[CEC_TO_IR_MIGRATION_GUIDE.md](./docs/CEC_TO_IR_MIGRATION_GUIDE.md)** - Complete migration guide (Spectrum users)
+- **[CEC_DEPRECATION_FAQ.md](./docs/CEC_DEPRECATION_FAQ.md)** - Frequently asked questions
+- **[IR_VS_CEC_COMPARISON.md](./docs/IR_VS_CEC_COMPARISON.md)** - Detailed technical comparison
+- **[IR_MIGRATION_QUICK_CARD.md](./docs/IR_MIGRATION_QUICK_CARD.md)** - One-page quick reference
+- **[IR_CABLE_BOX_CONTROL.md](./docs/IR_CABLE_BOX_CONTROL.md)** - IR implementation guide
+- **[IR_LEARNING_QUICK_START.md](./docs/IR_LEARNING_QUICK_START.md)** - 60-minute learning guide
+- **[IR_EMITTER_PLACEMENT_GUIDE.md](./docs/IR_EMITTER_PLACEMENT_GUIDE.md)** - Emitter positioning help
 
 ---
 

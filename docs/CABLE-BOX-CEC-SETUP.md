@@ -1,5 +1,17 @@
 # Cable Box CEC Setup Guide
 
+> **⚠️ DEPRECATED - November 4, 2025**
+>
+> **DO NOT FOLLOW THIS GUIDE - CEC cable box control has been REMOVED.**
+>
+> **Why:** Spectrum/Charter cable boxes have CEC disabled in firmware. This hardware limitation makes CEC control impossible.
+>
+> **Instead:** Use the IR learning system. See `/docs/CEC_DEPRECATION_NOTICE.md` for migration information.
+>
+> ---
+>
+> **This document is kept for historical reference only.**
+
 ## Overview
 
 This system uses **Pulse-Eight USB-CEC adapters** to control cable boxes via HDMI-CEC protocol. Each cable box requires its own dedicated Pulse-Eight adapter.

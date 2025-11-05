@@ -21,7 +21,7 @@ export async function GET(
 
   // Path parameter validation
   const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const paramsValidation = validatePathParams(resolvedParams, z.object({ filename: z.string().min(1) }))
   if (!paramsValidation.success) return paramsValidation.error
 
 

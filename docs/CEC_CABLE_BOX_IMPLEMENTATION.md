@@ -1,7 +1,19 @@
 # CEC Cable Box Control - Implementation Complete
 
-**Status:** ✅ Phase 1-4 Complete, Ready for Hardware Testing
-**Date:** October 29, 2025
+> **⚠️ DEPRECATED - November 4, 2025**
+>
+> **This functionality has been REMOVED from the system.**
+>
+> Spectrum/Charter cable boxes do not support CEC control in their firmware. All CEC cable box code has been removed.
+>
+> **Use IR control instead.** See `/docs/CEC_DEPRECATION_NOTICE.md` for migration details.
+>
+> ---
+>
+> **This document is kept for historical reference only.**
+
+**Status:** ❌ DEPRECATED - Implementation Removed
+**Date:** October 29, 2025 (Deprecated November 4, 2025)
 **System:** Sports Bar TV Controller with Pulse-Eight USB CEC Adapters
 
 ---

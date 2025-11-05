@@ -58,11 +58,6 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
@@ -95,14 +90,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
     logger.info('[FIRETV API] POST request - adding new device')
-    const newDevice: FireTVDevice = await request.json()
+    const newDevice: FireTVDevice = bodyValidation.data
     
     const data = await readDevices()
     
@@ -138,14 +129,10 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
     logger.info('[FIRETV API] PUT request - updating device')
-    const updatedDevice: FireTVDevice = await request.json()
+    const updatedDevice: FireTVDevice = bodyValidation.data
     
     const data = await readDevices()
     const deviceIndex = data.devices.findIndex(d => d.id === updatedDevice.id)

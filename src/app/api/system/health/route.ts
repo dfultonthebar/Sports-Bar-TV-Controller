@@ -50,13 +50,6 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
-
-
   try {
     const report: SystemHealthReport = {
       timestamp: new Date(),

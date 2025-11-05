@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
 
 
   logger.api.request('POST', '/api/home-teams');
-  
+
   try {
-    const body = await request.json();
+    const body = bodyValidation.data;
     logger.debug('Creating home team', { data: body });
     
     const team = await create('homeTeams', {

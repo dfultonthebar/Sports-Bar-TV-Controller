@@ -44,10 +44,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { manufacturer, model, forceRefetch = false } = bodyValidation.data
 
   try {
-    const body = await request.json()
-    const { manufacturer, model, forceRefetch = false } = body
     
     if (!manufacturer || !model) {
       return NextResponse.json(

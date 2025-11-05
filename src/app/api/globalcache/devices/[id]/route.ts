@@ -129,6 +129,7 @@ export async function PUT(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Path parameter validation
   const resolvedParams = await params
@@ -138,7 +139,6 @@ export async function PUT(
 
   try {
     const { id } = await params
-    const body = await request.json()
     const { name, ipAddress, port, model } = body
 
     const updateData: any = {}

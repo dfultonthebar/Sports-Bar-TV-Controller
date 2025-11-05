@@ -22,10 +22,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Use the validated data from bodyValidation (don't call request.json() again!)
+  const { command, outputNumber, parameters } = bodyValidation.data
 
   try {
-    const { command, outputNumber, parameters } = await request.json()
-    
     if (!command) {
       return NextResponse.json({ 
         success: false, 

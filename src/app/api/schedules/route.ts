@@ -55,9 +55,9 @@ export async function POST(request: NextRequest) {
 
 
   logger.api.request('POST', '/api/schedules');
-  
+
   try {
-    const body = await request.json();
+    const body = bodyValidation.data;
     logger.debug('Creating schedule with data', { data: body });
     
     const schedule = await create('schedules', {

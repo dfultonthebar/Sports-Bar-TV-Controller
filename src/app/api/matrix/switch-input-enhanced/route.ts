@@ -24,13 +24,13 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-
   const startTime = Date.now()
   const requestId = request.headers.get('x-request-id') || 'unknown'
-  
+
+  // Security: use validated data
+  const { input, output = 1, userId } = bodyValidation.data as MatrixSwitchRequest
+
   try {
-    const body: MatrixSwitchRequest = await request.json()
-    const { input, output = 1, userId } = body
 
     // Log the request
     await enhancedLogger.info(

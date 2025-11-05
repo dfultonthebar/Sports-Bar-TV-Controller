@@ -61,10 +61,11 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const body = bodyValidation.data
+  const action = (body as any).action || 'connect'
 
   try {
-    const body = await request.json().catch(() => ({}))
-    const action = body.action || 'connect'
 
     if (action === 'disconnect') {
       // Disconnect and cleanup

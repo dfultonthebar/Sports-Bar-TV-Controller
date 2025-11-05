@@ -2,7 +2,8 @@
 module.exports = {
   apps: [{
     name: 'sports-bar-tv-controller',
-    script: '.next/standalone/server.js',
+    script: 'node_modules/next/dist/bin/next',
+    args: 'start',
     cwd: '/home/ubuntu/Sports-Bar-TV-Controller',
     instances: 1,
     autorestart: true,

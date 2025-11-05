@@ -25,15 +25,6 @@ function getModelCounts(model: string) {
 }
 
 export async function GET() {
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
-
   logger.api.request('GET', '/api/audio-processor')
   
   try {
@@ -70,16 +61,11 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   logger.api.request('POST', '/api/audio-processor')
-  
+
   try {
-    const data = await request.json()
-    const { name, model, ipAddress, port, zones, description, username, password } = data
+    const { name, model, ipAddress, port, zones, description, username, password } = bodyValidation.data
 
     if (!name || !model || !ipAddress) {
       logger.api.response('POST', '/api/audio-processor', 400, { error: 'Missing required fields' })
@@ -139,17 +125,13 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   logger.api.request('PUT', '/api/audio-processor')
-  
+
   try {
-    const data = await request.json()
+    const data = bodyValidation.data
     const { searchParams } = new URL(request.url)
-    
+
     // Accept ID from either request body or query parameter
     const id = data.id || searchParams.get('id')
     const { name, model, ipAddress, port, zones, description, username, password } = data

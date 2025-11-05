@@ -3,6 +3,8 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth/middleware'
+import { logAuditAction } from '@/lib/auth/audit'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
@@ -10,6 +12,13 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
+  // Authentication check (ADMIN level required)
+  const authResult = await requireAuth(request, 'ADMIN', {
+    auditAction: 'SYSTEM_REBOOT',
+    auditResource: 'system',
+  })
+  if (!authResult.allowed) return authResult.response!
+
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
   if (!rateLimit.allowed) {
     return rateLimit.response

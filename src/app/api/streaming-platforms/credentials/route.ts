@@ -145,8 +145,11 @@ export async function POST(request: NextRequest) {
   if (!bodyValidation.success) return bodyValidation.error
 
 
+  // Security: use validated data
+  const { platformId, username, password, rememberMe } = bodyValidation.data
+
   try {
-    const { platformId, username, password, rememberMe } = await request.json();
+    ;
 
     if (!platformId || !username || !password) {
       return NextResponse.json(
@@ -274,8 +277,11 @@ export async function PUT(request: NextRequest) {
   if (!bodyValidation.success) return bodyValidation.error
 
 
+  // Security: use validated data
+  const { platformId } = bodyValidation.data
+
   try {
-    const { platformId } = await request.json();
+    ;
 
     if (!platformId) {
       return NextResponse.json(

@@ -136,9 +136,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { ipAddress, port, protocol = 'TCP' } = bodyValidation.data
 
   try {
-    const { ipAddress, port, protocol = 'TCP' } = await request.json()
 
     if (!ipAddress || !port) {
       return NextResponse.json({ 

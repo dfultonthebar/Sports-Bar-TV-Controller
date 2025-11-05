@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -36,7 +37,6 @@ export async function POST(request: NextRequest) {
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const body = await request.json()
     const { deviceId, codesetId, functions } = body
 
     if (!deviceId || !codesetId || !functions || !Array.isArray(functions)) {

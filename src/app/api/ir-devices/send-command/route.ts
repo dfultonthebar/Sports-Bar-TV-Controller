@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { deviceId, command, iTachAddress } = await request.json()
+    const { deviceId, command, iTachAddress, isRawCode } = bodyValidation.data
 
     if (!deviceId || !command || !iTachAddress) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
@@ -104,35 +104,45 @@ export async function POST(request: NextRequest) {
     // Load device information
     const data = await loadDevices()
     const device = data.devices.find((d: any) => d.id === deviceId)
-    
+
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    // Get IR code for the command
-    let irCode = COMMON_IR_CODES[command]
-    
-    if (!irCode) {
-      return NextResponse.json({ error: `IR code not found for command: ${command}` }, { status: 404 })
+    let irCode: string
+
+    // Check if this is a raw IR code or a command name
+    if (isRawCode || command.startsWith('sendir,') || command.startsWith('completeir,')) {
+      // This is already a raw IR code
+      irCode = command
+      logger.info(`Sending raw IR code to ${device.name}`)
+    } else {
+      // Look up the command in common codes
+      irCode = COMMON_IR_CODES[command]
+
+      if (!irCode) {
+        return NextResponse.json({ error: `IR code not found for command: ${command}` }, { status: 404 })
+      }
+      logger.info(`Sending command '${command}' to ${device.name}`)
     }
 
-    // Modify the IR code to use the correct connector (1:1, 1:2, or 1:3)
-    // For simplicity, we'll use connector 1:1 for all devices
-    // In a real implementation, you might map devices to specific connectors
-    
+    // Modify the IR code to use the correct connector if needed
+    // For learned codes, they already have the correct module:port
+    // For common codes, we might need to adjust
+
     try {
       await sendITachCommand(iTachAddress, irCode)
-      
-      return NextResponse.json({ 
-        message: `Successfully sent ${command} to ${device.name}`,
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully sent ${isRawCode ? 'IR code' : command} to ${device.name}`,
         device: device.name,
-        command,
-        irCode
+        command: isRawCode ? 'raw_ir_code' : command,
       })
     } catch (error) {
       logger.error('Failed to send IR command:', error)
-      return NextResponse.json({ 
-        error: `Failed to communicate with iTach: ${error}` 
+      return NextResponse.json({
+        error: `Failed to communicate with iTach: ${error}`
       }, { status: 500 })
     }
 

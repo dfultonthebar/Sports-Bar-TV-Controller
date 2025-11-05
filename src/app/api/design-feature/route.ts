@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const designRequest: FeatureDesignRequest = await request.json()
+    const designRequest: FeatureDesignRequest = bodyValidation.data
 
     if (!designRequest.featureName || !designRequest.description || !designRequest.requirements) {
       return NextResponse.json({ 

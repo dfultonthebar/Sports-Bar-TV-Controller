@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
@@ -141,9 +142,7 @@ export async function PATCH(request: NextRequest) {
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
 
-
   try {
-    const body = await request.json()
     const { playerId, playing, stationId, volume } = body
 
     if (!playerId) {

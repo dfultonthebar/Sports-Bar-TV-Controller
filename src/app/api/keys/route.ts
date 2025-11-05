@@ -17,15 +17,6 @@ export async function GET(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
-
   try {
     const apiKeysList = await findMany('apiKeys', {
       orderBy: desc(schema.apiKeys.createdAt)
@@ -56,13 +47,9 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const { name, provider, keyValue, description } = await request.json()
+    const { name, provider, keyValue, description } = bodyValidation.data
 
     if (!name || !provider || !keyValue) {
       return NextResponse.json(
@@ -112,13 +99,9 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const { id, name, provider, keyValue, description, isActive } = await request.json()
+    const { id, name, provider, keyValue, description, isActive } = bodyValidation.data
 
     if (!id) {
       return NextResponse.json(

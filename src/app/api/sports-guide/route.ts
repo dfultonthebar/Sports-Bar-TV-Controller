@@ -73,23 +73,19 @@ export async function POST(request: NextRequest) {
   const rateLimitCheck = await withRateLimit(request, 'SPORTS')
 
   if (!rateLimitCheck.allowed) {
-    logInfo(`Rate limit exceeded for request [${requestId}]
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
-`)
+    logInfo(`Rate limit exceeded for request [${requestId}]`)
     return rateLimitCheck.response!
   }
 
   logInfo(`Rate limit check passed: ${rateLimitCheck.result.remaining} requests remaining`)
 
   try {
-    // Parse request body (optional)
+    // Parse request body (optional) - Input validation
     let body: any = {}
     try {
-      body = await request.json()
+      const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+      if (!bodyValidation.success) return bodyValidation.error
+      body = bodyValidation.data
       logDebug(`Request body received:`, body)
     } catch (e) {
       logInfo(`No request body provided - using defaults`)

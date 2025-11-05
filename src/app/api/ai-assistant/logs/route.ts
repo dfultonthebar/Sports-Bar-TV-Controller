@@ -95,14 +95,13 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
-  if (!queryValidation.success) return queryValidation.error
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.logQuery)
+  if (!bodyValidation.success) return bodyValidation.error
 
 
   try {
-    const body = await request.json();
-    const { action, hours = 24, category } = body;
+    const { action, hours = 24, category } = bodyValidation.data;
     
     if (action === 'export') {
       // Export logs for download

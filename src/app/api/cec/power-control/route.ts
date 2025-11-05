@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.cecPowerControl)
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Use the validated data from bodyValidation (don't call request.json() again!)
+  const { action, outputNumbers, individual = false } = bodyValidation.data
 
   try {
-    const { action, outputNumbers, individual = false } = await request.json()
-    
     if (!action || !['power_on', 'power_off'].includes(action)) {
       return NextResponse.json({ 
         success: false, 

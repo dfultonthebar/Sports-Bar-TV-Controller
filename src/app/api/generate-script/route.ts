@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const scriptRequest: ScriptGenerationRequest = await request.json()
+    const scriptRequest: ScriptGenerationRequest = bodyValidation.data
 
     if (!scriptRequest.description || !scriptRequest.scriptType) {
       return NextResponse.json({ 

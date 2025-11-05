@@ -21,9 +21,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { processorId, sceneId } = bodyValidation.data
 
   try {
-    const { processorId, sceneId } = await request.json()
 
     if (!processorId || !sceneId) {
       return NextResponse.json({ error: 'Processor ID and Scene ID are required' }, { status: 400 })

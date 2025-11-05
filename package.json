@@ -35,7 +35,16 @@
     "verify-ai": "tsx scripts/verify-ai-system.ts",
     "setup:ai": "node ai-assistant/setup.js",
     "setup:ai:bash": "bash ai-assistant/setup.sh",
-    "check:ai": "node ai-assistant/check-dependencies.js"
+    "check:ai": "node ai-assistant/check-dependencies.js",
+    "rag:scan": "tsx scripts/scan-docs.ts",
+    "rag:scan:clear": "tsx scripts/scan-docs.ts --clear",
+    "rag:test": "tsx scripts/test-rag.ts",
+    "memory:snapshot": "tsx scripts/memory-bank.ts snapshot",
+    "memory:restore": "tsx scripts/memory-bank.ts restore",
+    "memory:watch": "tsx scripts/memory-bank.ts watch",
+    "memory:stop": "tsx scripts/memory-bank.ts stop",
+    "memory:list": "tsx scripts/memory-bank.ts list",
+    "memory:stats": "tsx scripts/memory-bank.ts stats"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
@@ -80,6 +89,7 @@
     "axios": "^1.12.2",
     "bcryptjs": "2.4.3",
     "cheerio": "^1.1.2",
+    "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",

@@ -173,7 +173,7 @@ export default function DeviceConfigPage() {
       {/* Version Indicator */}
       <div className="flex justify-end mb-2">
         <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500 text-lg px-4 py-2">
-          ✓ Version 2.0 - 9 Tabs Only (No TV CEC Tab)
+          ✓ Version 2.1 - IR Learning Added (CEC Cable Boxes Removed)
         </Badge>
       </div>
 
@@ -208,9 +208,9 @@ export default function DeviceConfigPage() {
             <Tv className="w-4 h-4" />
             CEC Discovery
           </TabsTrigger>
-          <TabsTrigger value="cec-cable-boxes" className="flex items-center gap-2">
-            <Cable className="w-4 h-4" />
-            CEC Cable Boxes
+          <TabsTrigger value="ir-learning" className="flex items-center gap-2">
+            <Radio className="w-4 h-4" />
+            IR Learning
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -385,48 +385,66 @@ export default function DeviceConfigPage() {
           <CECDiscoveryPanel />
         </TabsContent>
 
-        <TabsContent value="cec-cable-boxes" className="space-y-4">
-          <Card>
+        <TabsContent value="ir-learning" className="space-y-4">
+          <Card className="bg-[#1e3a5f]">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Cable className="w-5 h-5 text-orange-600" />
-                CEC Cable Box Configuration
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Radio className="w-5 h-5 text-green-400" />
+                IR Learning Interface
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
               </CardTitle>
-              <CardDescription>
-                Configure Pulse-Eight USB CEC adapters for automated cable box control
+              <CardDescription className="text-blue-200">
+                {aiEnhancementsEnabled
+                  ? "Learn IR codes from physical remotes with AI-powered signal optimization and automatic validation"
+                  : "Learn IR codes from physical remotes using iTach IP2IR hardware"
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800 mb-3">
-                  <strong>CEC Cable Box Configuration</strong> has its own dedicated admin page with hardware setup wizard, device discovery, and testing tools.
+              <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+                <p className="text-sm text-blue-200 mb-3">
+                  <strong>IR Learning Interface</strong> allows you to capture infrared codes from any physical remote control (cable box, TV, etc.) and store them in the database for later use.
                 </p>
                 <Button
-                  onClick={() => window.location.href = '/admin/cec-cable-boxes'}
-                  className="w-full"
+                  onClick={() => window.location.href = '/ir-learning'}
+                  className="w-full bg-green-600 hover:bg-green-700"
                 >
-                  <Cable className="w-4 h-4 mr-2" />
-                  Open CEC Cable Box Admin
+                  <Radio className="w-4 h-4 mr-2" />
+                  Open IR Learning Interface
                 </Button>
               </div>
 
               <div className="space-y-2">
-                <h3 className="font-semibold">Features Available:</h3>
-                <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                  <li>Discover connected Pulse-Eight USB CEC adapters</li>
-                  <li>Generate udev rules for persistent device naming</li>
-                  <li>Assign adapters to cable boxes</li>
-                  <li>Test CEC connections to cable boxes</li>
-                  <li>View cable box online/offline status</li>
-                  <li>Configuration guide with SQL examples</li>
+                <h3 className="font-semibold text-white">Features Available:</h3>
+                <ul className="list-disc list-inside text-sm space-y-1 text-blue-200">
+                  <li>27-button learning grid (Power, Digits 0-9, Navigation, Channel, DVR)</li>
+                  <li>Learn codes from Spectrum cable box remotes</li>
+                  <li>Test learned codes immediately</li>
+                  <li>Export/Import IR code libraries</li>
+                  <li>Save codes to database for device control</li>
+                  <li>iTach IP2IR hardware integration</li>
+                  <li>Visual progress tracking (X/27 buttons learned)</li>
                 </ul>
               </div>
 
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-green-800">
-                  <strong>Bartender Integration:</strong> Once configured, cable boxes will automatically use CEC control when bartenders select cable inputs in the channel guide. No manual CEC toggle needed!
+              <div className="p-4 bg-green-900/30 rounded-lg border border-green-500/30">
+                <p className="text-sm text-green-200">
+                  <strong>Hardware Required:</strong> Global Cache iTach IP2IR device (default: 192.168.1.100) with IR receiver connected to learn codes, and IR emitters to test/send commands.
                 </p>
               </div>
+
+              {aiEnhancementsEnabled && (
+                <div className="p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
+                  <p className="text-sm text-purple-200">
+                    <strong>AI Enhancements:</strong> Signal quality analysis, automatic duplicate detection, optimal timing recommendations, and predictive IR code validation.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

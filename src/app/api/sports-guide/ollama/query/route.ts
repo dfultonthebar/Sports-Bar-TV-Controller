@@ -10,10 +10,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
-import { 
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
-  queryOllamaWithContext, 
+import {
+  queryOllamaWithContext,
   analyzeSportsGuideLogs,
   getSportsGuideRecommendations,
   testOllamaConnection
@@ -31,10 +31,9 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
-
+  const body = bodyValidation.data
 
   try {
-    const body = await request.json()
     const { query, action, includeRecentLogs, userPreferences } = body
 
     logger.info(`[Ollama-Query] Request received - Action: ${action || 'query'}`)

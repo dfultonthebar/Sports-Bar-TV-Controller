@@ -21,8 +21,11 @@ export async function POST(request: NextRequest) {
   if (!bodyValidation.success) return bodyValidation.error
 
 
+  // Security: use validated data
+  const { deviceId, ipAddress, port } = bodyValidation.data
+
   try {
-    const { deviceId, ipAddress, port } = await request.json()
+    
     
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🔍 [FIRE CUBE] Testing connection')

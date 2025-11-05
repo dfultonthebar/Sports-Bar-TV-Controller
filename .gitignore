@@ -107,3 +107,8 @@ next/
 *.tar.gz
 !**/backups/*.tar.gz
 .env.backup*
+
+# Memory Bank snapshots
+/memory-bank/*
+!/memory-bank/.gitkeep
+rag-data/

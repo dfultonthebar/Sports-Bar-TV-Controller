@@ -79,10 +79,9 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
-
+  const body = bodyValidation.data
 
   try {
-    const body = await request.json()
     const { deviceId, deviceType, force = false } = body
 
     await direcTVLogger.log({

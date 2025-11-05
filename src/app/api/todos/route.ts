@@ -21,10 +21,6 @@ export async function GET(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
@@ -89,14 +85,9 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const body = await request.json()
-    const { title, description, priority, status, category, tags } = body
+    const { title, description, priority, status, category, tags } = bodyValidation.data
 
     if (!title) {
       return NextResponse.json(

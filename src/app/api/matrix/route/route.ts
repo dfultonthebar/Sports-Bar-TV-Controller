@@ -19,9 +19,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.matrixRouting)
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { input, output } = bodyValidation.data
 
   try {
-    const { input, output } = await request.json()
 
     // Validate input parameters
     if (!input || !output || input < 1 || output < 1 || input > 32 || output > 32) {

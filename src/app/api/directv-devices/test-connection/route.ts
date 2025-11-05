@@ -298,8 +298,11 @@ export async function POST(request: NextRequest) {
   if (!bodyValidation.success) return bodyValidation.error
 
 
+  // Security: use validated data
+  const { ipAddress, port, deviceId, deviceName } = bodyValidation.data
+
   try {
-    const { ipAddress, port, deviceId, deviceName } = await request.json()
+    
 
     if (!ipAddress) {
       await direcTVLogger.log({

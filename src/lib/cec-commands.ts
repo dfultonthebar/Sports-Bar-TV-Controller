@@ -1,9 +1,11 @@
 /**
- * CEC Command Mappings for Cable Boxes
+ * CEC Command Mappings for TV Power Control
  *
- * This file contains CEC user control codes for controlling cable boxes
- * via HDMI-CEC. These codes are standardized in CEC specification 13.13
- * and work with most cable boxes including Spectrum 100-H.
+ * This file contains CEC user control codes for controlling TVs
+ * via HDMI-CEC. These codes are standardized in CEC specification 13.13.
+ *
+ * NOTE: Cable box CEC control has been deprecated as Spectrum/Charter
+ * disables CEC in their firmware. Use IR control for cable boxes instead.
  */
 
 export interface CECCommand {
@@ -114,36 +116,13 @@ export function buildChannelSequence(channel: string): string[] {
   return commands
 }
 
-// Spectrum 100-H specific command helpers
-export const SPECTRUM_COMMANDS = {
-  // Most used commands for Spectrum cable boxes
-  onDemand: () => buildCECCommand(CEC_USER_CONTROL_CODES.DATA),
-  guide: () => buildCECCommand(CEC_USER_CONTROL_CODES.GUIDE),
-  info: () => buildCECCommand(CEC_USER_CONTROL_CODES.INFO),
-  lastChannel: () => buildCECCommand(CEC_USER_CONTROL_CODES.PREVIOUS_CHANNEL),
-  menu: () => buildCECCommand(CEC_USER_CONTROL_CODES.ROOT_MENU),
-  exit: () => buildCECCommand(CEC_USER_CONTROL_CODES.EXIT),
-
-  // Navigation
-  up: () => buildCECCommand(CEC_USER_CONTROL_CODES.UP),
-  down: () => buildCECCommand(CEC_USER_CONTROL_CODES.DOWN),
-  left: () => buildCECCommand(CEC_USER_CONTROL_CODES.LEFT),
-  right: () => buildCECCommand(CEC_USER_CONTROL_CODES.RIGHT),
-  select: () => buildCECCommand(CEC_USER_CONTROL_CODES.SELECT),
-
-  // Channel control
-  channelUp: () => buildCECCommand(CEC_USER_CONTROL_CODES.CHANNEL_UP),
-  channelDown: () => buildCECCommand(CEC_USER_CONTROL_CODES.CHANNEL_DOWN),
-
-  // Tune to specific channel
-  tuneChannel: (channel: string) => buildChannelSequence(channel),
-
-  // DVR controls (if box supports)
-  play: () => buildCECCommand(CEC_USER_CONTROL_CODES.PLAY),
-  pause: () => buildCECCommand(CEC_USER_CONTROL_CODES.PAUSE),
-  rewind: () => buildCECCommand(CEC_USER_CONTROL_CODES.REWIND),
-  fastForward: () => buildCECCommand(CEC_USER_CONTROL_CODES.FAST_FORWARD),
-  record: () => buildCECCommand(CEC_USER_CONTROL_CODES.RECORD),
+// TV Power Control Commands
+// DEPRECATED: SPECTRUM_COMMANDS removed - use IR control for cable boxes
+// Only TV power control commands are supported via CEC
+export const TV_POWER_COMMANDS = {
+  powerOn: () => buildCECCommand(CEC_USER_CONTROL_CODES.POWER),
+  powerOff: () => buildCECCommand(CEC_USER_CONTROL_CODES.POWER),
+  powerToggle: () => buildCECCommand(CEC_USER_CONTROL_CODES.POWER),
 }
 
 // Command execution delays (milliseconds between commands)

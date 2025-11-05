@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
@@ -117,7 +118,6 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const body = await request.json()
     const { logs, context } = body
 
     if (!logs || !Array.isArray(logs)) {

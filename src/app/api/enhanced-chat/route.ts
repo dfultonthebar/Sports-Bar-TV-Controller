@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   logger.info('[ENHANCED-CHAT] POST request received')
   try {
     logger.info('[ENHANCED-CHAT] Parsing request body...')
-    const { message, sessionId, chatType = 'general', context } = await request.json()
+    const { message, sessionId, chatType = 'general', context } = bodyValidation.data
     logger.info('[ENHANCED-CHAT] Request parsed:', { message: message?.substring(0, 50), sessionId, chatType })
 
     if (!message) {

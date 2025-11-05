@@ -16,14 +16,14 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { 
-      deviceId, 
-      deviceIds, 
-      command, 
-      forceMethod, 
+    const {
+      deviceId,
+      deviceIds,
+      command,
+      forceMethod,
       sequential,
-      delayBetween 
-    } = await request.json()
+      delayBetween
+    } = bodyValidation.data
     
     if (!command) {
       return NextResponse.json({ 

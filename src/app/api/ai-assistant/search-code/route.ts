@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { query, fileTypes, maxResults = 10 } = await request.json();
+    const { query, fileTypes, maxResults = 10 } = bodyValidation.data;
     
     if (!query) {
       return NextResponse.json(

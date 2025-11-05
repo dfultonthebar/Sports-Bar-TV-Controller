@@ -25,10 +25,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { cecInputChannel } = bodyValidation.data
 
   try {
-    const body = await request.json()
-    const { cecInputChannel } = body
 
     if (typeof cecInputChannel !== 'number') {
       return NextResponse.json(

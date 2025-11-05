@@ -20,19 +20,19 @@ const execAsync = promisify(exec)
  * }
  */
 export async function POST(req: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.TESTING)
+  const rateLimit = await withRateLimit(req, RateLimitConfigs.TESTING)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(req, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
 
   try {
-    const body = await req.json()
     const { suite = 'all', safeMode = true } = body
 
     // Build test command
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute tests
-    const testCommand = `npx jest --config=jest.config.integration.js --testPathPattern="${testPattern}" --json --outputFile=/tmp/test-results.json`
+    const testCommand = `npx jest --config=jest.config.integration.js --testPathPatterns="${testPattern}" --json --outputFile=/tmp/test-results.json`
 
     const startTime = Date.now()
     let stdout = ''

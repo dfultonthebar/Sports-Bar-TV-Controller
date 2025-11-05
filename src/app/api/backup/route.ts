@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { action, filename } = await request.json();
+    const { action, filename } = bodyValidation.data;
 
     if (action === 'create') {
       // Create a new backup

@@ -507,7 +507,9 @@ export const apiKeys = sqliteTable('ApiKey', {
   isActiveIdx: index('ApiKey_isActive_idx').on(table.isActive),
 }))
 
-// CEC Configuration Model (Legacy - for TV power control)
+// CEC Configuration Model
+// NOTE: Only used for TV power control via CEC
+// Cable box CEC control has been deprecated - use IR control instead
 export const cecConfigurations = sqliteTable('CECConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   isEnabled: integer('isEnabled', { mode: 'boolean' }).notNull().default(false),
@@ -519,11 +521,14 @@ export const cecConfigurations = sqliteTable('CECConfiguration', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
 
-// CEC Device Model (for multiple Pulse-Eight adapters)
+// CEC Device Model
+// NOTE: Only used for TV power control via CEC adapters
+// DEPRECATED: Cable box CEC control (deviceType='cable_box') - use IR control instead
+// Valid deviceType values: 'tv_power' (others deprecated)
 export const cecDevices = sqliteTable('CECDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   devicePath: text('devicePath').notNull().unique(), // e.g., /dev/ttyACM0
-  deviceType: text('deviceType').notNull().default('cable_box'), // 'cable_box', 'tv_power', 'dvr'
+  deviceType: text('deviceType').notNull().default('tv_power'), // 'tv_power' (cable_box deprecated)
   deviceName: text('deviceName').notNull(), // User-friendly name
   matrixInputId: text('matrixInputId'), // Link to matrix input if applicable
   cecAddress: text('cecAddress'), // CEC logical address (0-15)
@@ -541,11 +546,14 @@ export const cecDevices = sqliteTable('CECDevice', {
   isActiveIdx: index('CECDevice_isActive_idx').on(table.isActive),
 }))
 
-// Cable Box Model (specific to cable box control)
+// Cable Box Model
+// DEPRECATED: This table is no longer used for CEC control
+// Cable boxes should now be configured as IR devices in the irDevices table
+// Keeping this table for historical data and potential migration
 export const cableBoxes = sqliteTable('CableBox', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(), // e.g., "Cable Box 1"
-  cecDeviceId: text('cecDeviceId').notNull().references(() => cecDevices.id, { onDelete: 'cascade' }),
+  cecDeviceId: text('cecDeviceId'), // DEPRECATED: Foreign key removed, nullable for legacy data
   matrixInputId: text('matrixInputId'), // Link to matrix input
   provider: text('provider').notNull().default('spectrum'), // 'spectrum', 'xfinity', 'cox', etc.
   model: text('model').notNull().default('spectrum-100h'), // Cable box model
@@ -554,17 +562,18 @@ export const cableBoxes = sqliteTable('CableBox', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
-  cecDeviceIdIdx: uniqueIndex('CableBox_cecDeviceId_key').on(table.cecDeviceId),
   matrixInputIdIdx: index('CableBox_matrixInputId_idx').on(table.matrixInputId),
 }))
 
-// CEC Command Log Model (for debugging and monitoring)
+// CEC Command Log Model
+// NOTE: Only logs TV power control commands now
+// Historical cable box command logs are preserved for reference
 export const cecCommandLogs = sqliteTable('CECCommandLog', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   cecDeviceId: text('cecDeviceId').notNull().references(() => cecDevices.id, { onDelete: 'cascade' }),
-  command: text('command').notNull(), // 'tune_channel', 'arrow_up', 'select', etc.
-  cecCode: text('cecCode'), // Raw CEC code (e.g., "tx 40:44:21")
-  params: text('params'), // JSON params (e.g., {"channel": "206"})
+  command: text('command').notNull(), // TV power commands: 'power_on', 'power_off', 'power_toggle'
+  cecCode: text('cecCode'), // Raw CEC code (e.g., "tx 40:44:40" for power)
+  params: text('params'), // JSON params
   success: integer('success', { mode: 'boolean' }).notNull(),
   responseTime: integer('responseTime'), // Execution time in ms
   errorMessage: text('errorMessage'),
@@ -656,6 +665,7 @@ export const irDevices = sqliteTable('IRDevice', {
   matrixInput: integer('matrixInput'),
   matrixInputLabel: text('matrixInputLabel'),
   irCodeSetId: text('irCodeSetId'),
+  irCodes: text('irCodes'), // JSON object of learned IR codes {command: irCode}
   globalCacheDeviceId: text('globalCacheDeviceId'),
   globalCachePortNumber: integer('globalCachePortNumber'),
   description: text('description'),
@@ -1099,4 +1109,111 @@ export const securityValidationLogs = sqliteTable('SecurityValidationLog', {
   severityIdx: index('SecurityValidationLog_severity_idx').on(table.severity),
   timestampIdx: index('SecurityValidationLog_timestamp_idx').on(table.timestamp),
   userIdIdx: index('SecurityValidationLog_userId_idx').on(table.userId),
+}))
+
+// ============================================================================
+// AUTHENTICATION & AUTHORIZATION MODELS
+// ============================================================================
+
+// Location Model - For multi-location future support
+export const locations = sqliteTable('Location', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(), // e.g., "Main Street Bar"
+  description: text('description'),
+  address: text('address'),
+  city: text('city'),
+  state: text('state'),
+  zipCode: text('zipCode'),
+  timezone: text('timezone').notNull().default('America/New_York'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  metadata: text('metadata'), // JSON for future extensibility
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  isActiveIdx: index('Location_isActive_idx').on(table.isActive),
+}))
+
+// Auth PIN Model - Simple PIN-based authentication
+export const authPins = sqliteTable('AuthPin', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('locationId').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'STAFF' or 'ADMIN'
+  pinHash: text('pinHash').notNull(), // bcrypt hashed PIN
+  description: text('description'), // e.g., "Bartender PIN", "Manager PIN"
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  expiresAt: timestamp('expiresAt'), // Optional expiration
+  createdBy: text('createdBy'), // Session ID of who created it
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  locationIdIdx: index('AuthPin_locationId_idx').on(table.locationId),
+  roleIdx: index('AuthPin_role_idx').on(table.role),
+  isActiveIdx: index('AuthPin_isActive_idx').on(table.isActive),
+}))
+
+// Session Model - Track active sessions
+export const sessions = sqliteTable('Session', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('locationId').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'STAFF' or 'ADMIN'
+  ipAddress: text('ipAddress').notNull(),
+  userAgent: text('userAgent'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  expiresAt: timestamp('expiresAt').notNull(),
+  lastActivity: timestamp('lastActivity').notNull().default(timestampNow()),
+}, (table) => ({
+  locationIdIdx: index('Session_locationId_idx').on(table.locationId),
+  isActiveIdx: index('Session_isActive_idx').on(table.isActive),
+  expiresAtIdx: index('Session_expiresAt_idx').on(table.expiresAt),
+  lastActivityIdx: index('Session_lastActivity_idx').on(table.lastActivity),
+}))
+
+// API Key Model - For webhooks and automation
+export const authApiKeys = sqliteTable('AuthApiKey', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('locationId').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), // e.g., "N8N Webhook", "Scheduler"
+  keyHash: text('keyHash').notNull(), // bcrypt hashed API key
+  permissions: text('permissions').notNull(), // JSON array of allowed endpoint patterns
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  expiresAt: timestamp('expiresAt'), // Optional expiration
+  lastUsed: timestamp('lastUsed'),
+  usageCount: integer('usageCount').notNull().default(0),
+  createdBy: text('createdBy'), // Session ID of who created it
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  locationIdIdx: index('AuthApiKey_locationId_idx').on(table.locationId),
+  isActiveIdx: index('AuthApiKey_isActive_idx').on(table.isActive),
+  lastUsedIdx: index('AuthApiKey_lastUsed_idx').on(table.lastUsed),
+}))
+
+// Audit Log Model - Track administrative actions
+export const auditLogs = sqliteTable('AuditLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('locationId').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  sessionId: text('sessionId').references(() => sessions.id, { onDelete: 'set null' }),
+  apiKeyId: text('apiKeyId').references(() => authApiKeys.id, { onDelete: 'set null' }),
+  action: text('action').notNull(), // e.g., 'SYSTEM_REBOOT', 'DELETE_PRESET', 'PIN_CREATED'
+  resource: text('resource').notNull(), // e.g., 'system', 'preset', 'auth_pin'
+  resourceId: text('resourceId'), // ID of the affected resource
+  endpoint: text('endpoint').notNull(), // API endpoint called
+  method: text('method').notNull(), // HTTP method (GET, POST, DELETE, etc.)
+  ipAddress: text('ipAddress').notNull(),
+  userAgent: text('userAgent'),
+  requestData: text('requestData'), // JSON of sanitized request data
+  responseStatus: integer('responseStatus'), // HTTP response code
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  metadata: text('metadata'), // Additional JSON metadata
+  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
+}, (table) => ({
+  locationIdIdx: index('AuditLog_locationId_idx').on(table.locationId),
+  sessionIdIdx: index('AuditLog_sessionId_idx').on(table.sessionId),
+  apiKeyIdIdx: index('AuditLog_apiKeyId_idx').on(table.apiKeyId),
+  actionIdx: index('AuditLog_action_idx').on(table.action),
+  resourceIdx: index('AuditLog_resource_idx').on(table.resource),
+  timestampIdx: index('AuditLog_timestamp_idx').on(table.timestamp),
+  successIdx: index('AuditLog_success_idx').on(table.success),
 }))

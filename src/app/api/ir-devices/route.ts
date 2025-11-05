@@ -1,40 +1,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { readFile, writeFile } from 'fs/promises'
-import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
-const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
-
-// Ensure data directory exists
-async function ensureDataDir() {
-  const { mkdir } = await import('fs/promises')
-  const { existsSync } = await import('fs')
-  const dataDir = join(process.cwd(), 'data')
-  
-  if (!existsSync(dataDir)) {
-    await mkdir(dataDir, { recursive: true })
-  }
-}
-
-async function loadDevices() {
-  try {
-    await ensureDataDir()
-    const data = await readFile(IR_DEVICES_FILE, 'utf8')
-    return JSON.parse(data)
-  } catch (error) {
-    return { devices: [] as any[] }
-  }
-}
-
-async function saveDevices(devices: any[]) {
-  await ensureDataDir()
-  await writeFile(IR_DEVICES_FILE, JSON.stringify({ devices }, null, 2))
-}
+import { validateRequestBody, validateQueryParams } from '@/lib/validation'
+import { db } from '@/db'
+import { irDevices } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -42,19 +15,30 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
 
-
   try {
-    const data = await loadDevices()
-    return NextResponse.json(data)
+    const { searchParams } = new URL(request.url)
+    const deviceId = searchParams.get('id')
+
+    if (deviceId) {
+      // Get specific device
+      const device = await db.query.irDevices.findFirst({
+        where: eq(irDevices.id, deviceId),
+      })
+
+      if (!device) {
+        return NextResponse.json({ error: 'Device not found' }, { status: 404 })
+      }
+
+      return NextResponse.json({ devices: [device] })
+    } else {
+      // Get all devices
+      const devices = await db.query.irDevices.findMany()
+      return NextResponse.json({ devices })
+    }
   } catch (error) {
     logger.error('Error loading devices:', error)
     return NextResponse.json({ error: 'Failed to load devices' }, { status: 500 })
@@ -67,24 +51,44 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
+  // Input validation schema
+  const deviceSchema = z.object({
+    name: z.string(),
+    deviceType: z.string(),
+    brand: z.string(),
+    model: z.string().optional(),
+    matrixInput: z.number().optional(),
+    matrixInputLabel: z.string().optional(),
+    irCodeSetId: z.string().optional(),
+    irCodes: z.string().optional(),
+    globalCacheDeviceId: z.string().optional(),
+    globalCachePortNumber: z.number().optional(),
+    description: z.string().optional(),
+    status: z.string().optional(),
+  })
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, deviceSchema)
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
-
   try {
-    const newDevice = await request.json()
-    const data = await loadDevices()
-    
-    data.devices.push(newDevice)
-    await saveDevices(data.devices)
-    
-    return NextResponse.json({ message: 'Device added successfully', device: newDevice })
+    const newDevice = bodyValidation.data
+
+    const [created] = await db.insert(irDevices).values({
+      name: newDevice.name,
+      deviceType: newDevice.deviceType,
+      brand: newDevice.brand,
+      model: newDevice.model,
+      matrixInput: newDevice.matrixInput,
+      matrixInputLabel: newDevice.matrixInputLabel,
+      irCodeSetId: newDevice.irCodeSetId,
+      irCodes: newDevice.irCodes,
+      globalCacheDeviceId: newDevice.globalCacheDeviceId,
+      globalCachePortNumber: newDevice.globalCachePortNumber,
+      description: newDevice.description,
+      status: newDevice.status || 'active',
+    }).returning()
+
+    return NextResponse.json({ message: 'Device added successfully', device: created })
   } catch (error) {
     logger.error('Error adding device:', error)
     return NextResponse.json({ error: 'Failed to add device' }, { status: 500 })
@@ -97,28 +101,48 @@ export async function PUT(request: NextRequest) {
     return rateLimit.response
   }
 
+  // Input validation schema
+  const updateSchema = z.object({
+    id: z.string(),
+    name: z.string().optional(),
+    deviceType: z.string().optional(),
+    brand: z.string().optional(),
+    model: z.string().optional(),
+    matrixInput: z.number().optional(),
+    matrixInputLabel: z.string().optional(),
+    irCodeSetId: z.string().optional(),
+    irCodes: z.string().optional(),
+    globalCacheDeviceId: z.string().optional(),
+    globalCachePortNumber: z.number().optional(),
+    description: z.string().optional(),
+    status: z.string().optional(),
+  })
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, updateSchema)
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
-
   try {
-    const updatedDevice = await request.json()
-    const data = await loadDevices()
-    
-    const index = data.devices.findIndex((d: any) => d.id === updatedDevice.id)
-    if (index >= 0) {
-      data.devices[index] = updatedDevice
-      await saveDevices(data.devices)
-      return NextResponse.json({ message: 'Device updated successfully' })
-    } else {
+    const { id, ...updateData } = bodyValidation.data
+
+    // Check if device exists
+    const existing = await db.query.irDevices.findFirst({
+      where: eq(irDevices.id, id),
+    })
+
+    if (!existing) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
+
+    // Update device
+    await db
+      .update(irDevices)
+      .set({
+        ...updateData,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(irDevices.id, id))
+
+    return NextResponse.json({ message: 'Device updated successfully' })
   } catch (error) {
     logger.error('Error updating device:', error)
     return NextResponse.json({ error: 'Failed to update device' }, { status: 500 })
@@ -134,15 +158,23 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
-    
+
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID required' }, { status: 400 })
     }
-    
-    const data = await loadDevices()
-    data.devices = data.devices.filter((d: any) => d.id !== deviceId)
-    await saveDevices(data.devices)
-    
+
+    // Check if device exists
+    const existing = await db.query.irDevices.findFirst({
+      where: eq(irDevices.id, deviceId),
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Device not found' }, { status: 404 })
+    }
+
+    // Delete device
+    await db.delete(irDevices).where(eq(irDevices.id, deviceId))
+
     return NextResponse.json({ message: 'Device deleted successfully' })
   } catch (error) {
     logger.error('Error deleting device:', error)

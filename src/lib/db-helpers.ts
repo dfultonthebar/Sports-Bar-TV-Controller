@@ -10,9 +10,8 @@ import { logger } from './logger'
 // Re-export operators for convenience
 export { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, sql }
 
-// Re-export schema and insert for external usage
+// Re-export schema for external usage
 export { schema }
-export { insert } from 'drizzle-orm'
 
 // Type for table names
 type TableName = keyof typeof schema

@@ -13,7 +13,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   // Fix lockfile detection warning by explicitly setting the root directory
-  output: 'standalone',
+  // output: 'standalone',  // Temporarily disabled due to build issues
   outputFileTracingRoot: require('path').join(__dirname),
   images: {
     remotePatterns: [

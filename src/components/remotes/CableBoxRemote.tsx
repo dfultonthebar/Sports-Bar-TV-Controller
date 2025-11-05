@@ -32,37 +32,68 @@ import {
 interface CableBoxRemoteProps {
   deviceId: string
   deviceName: string
-  iTachAddress: string
+  iTachAddress?: string  // Optional - only for IR cable boxes
+  irCodes?: Record<string, string>  // Learned IR codes
   onClose?: () => void
 }
 
-export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, onClose }: CableBoxRemoteProps) {
+export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irCodes, onClose }: CableBoxRemoteProps) {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
   const [lastCommand, setLastCommand] = useState<string>('')
   const [channelInput, setChannelInput] = useState<string>('')
 
+  // Check if device has learned IR codes
+  const hasIRCodes = irCodes && Object.keys(irCodes).length > 0
+
   const sendCommand = async (command: string, displayName?: string) => {
     setLoading(true)
     setLastCommand(displayName || command)
-    
+
     try {
-      const response = await fetch('/api/ir-devices/send-command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId,
-          command,
-          iTachAddress
+      // Use IR control only (CEC not supported for Spectrum cable boxes)
+      const irCommand = mapCommandToIR(command)
+      const hasLearnedCode = hasIRCodes && irCodes[irCommand]
+
+      if (hasLearnedCode && iTachAddress) {
+        // Use learned IR code
+        const response = await fetch('/api/ir-devices/send-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId,
+            command: irCodes[irCommand], // Send the actual IR code
+            iTachAddress,
+            isRawCode: true // Flag to indicate this is a raw IR code, not a command name
+          })
         })
-      })
 
-      const data = await response.json()
+        const data = await response.json()
 
-      if (response.ok) {
-        setStatus({ type: 'success', message: `${displayName || command} sent` })
+        if (response.ok || data.success) {
+          setStatus({ type: 'success', message: `${displayName || command} sent` })
+        } else {
+          setStatus({ type: 'error', message: data.error || 'Command failed' })
+        }
       } else {
-        setStatus({ type: 'error', message: data.error || 'Command failed' })
+        // Use generic IR endpoint (with pre-programmed codes)
+        const response = await fetch('/api/ir-devices/send-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId,
+            command,
+            iTachAddress
+          })
+        })
+
+        const data = await response.json()
+
+        if (response.ok || data.success) {
+          setStatus({ type: 'success', message: `${displayName || command} sent` })
+        } else {
+          setStatus({ type: 'error', message: data.error || 'Command failed' })
+        }
       }
     } catch (error) {
       setStatus({ type: 'error', message: 'Failed to send command' })
@@ -72,12 +103,55 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, onC
     }
   }
 
+  // Map remote button commands to IR learning command names
+  const mapCommandToIR = (command: string): string => {
+    const mapping: Record<string, string> = {
+      'POWER': 'power',
+      'UP': 'arrow_up',
+      'DOWN': 'arrow_down',
+      'LEFT': 'arrow_left',
+      'RIGHT': 'arrow_right',
+      'OK': 'select',
+      'MENU': 'menu',
+      'GUIDE': 'guide',
+      'INFO': 'info',
+      'EXIT': 'exit',
+      'BACK': 'exit',
+      'LAST': 'last',
+      'CH_UP': 'channel_up',
+      'CH_DOWN': 'channel_down',
+      'VOL_UP': 'volume_up',
+      'VOL_DOWN': 'volume_down',
+      'MUTE': 'mute',
+      'PLAY': 'play',
+      'PAUSE': 'pause',
+      'REWIND': 'rewind',
+      'FAST_FORWARD': 'fast_forward',
+      'RECORD': 'record',
+      'STOP': 'stop',
+      '0': 'digit_0',
+      '1': 'digit_1',
+      '2': 'digit_2',
+      '3': 'digit_3',
+      '4': 'digit_4',
+      '5': 'digit_5',
+      '6': 'digit_6',
+      '7': 'digit_7',
+      '8': 'digit_8',
+      '9': 'digit_9',
+    }
+    return mapping[command] || command.toLowerCase()
+  }
+
   const handleNumberClick = async (number: string) => {
-    setChannelInput(prev => prev + number)
+    const newChannelInput = channelInput + number
+    setChannelInput(newChannelInput)
+
+    // For IR devices, send each digit immediately
     await sendCommand(number, `Number ${number}`)
-    
-    // Auto-submit after 4 digits or wait for manual entry
-    if (channelInput.length + 1 >= 3) {
+
+    // Auto-submit after 3 digits for IR
+    if (newChannelInput.length >= 3) {
       setTimeout(() => {
         if (channelInput.length + 1 >= 3) {
           sendCommand('OK', 'Enter')
@@ -89,6 +163,7 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, onC
 
   const handleChannelEnter = () => {
     if (channelInput) {
+      // Send Enter command for IR devices
       sendCommand('OK', 'Enter')
       setChannelInput('')
     }

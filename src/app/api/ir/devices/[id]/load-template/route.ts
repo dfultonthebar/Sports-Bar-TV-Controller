@@ -23,6 +23,7 @@ export async function POST(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Path parameter validation
   const resolvedParams = await params
@@ -32,7 +33,6 @@ export async function POST(
 
   try {
     const { id: deviceId } = await params
-    const body = await request.json()
     const { templateId, selectedCommands } = body
 
     // Verify device exists

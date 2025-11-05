@@ -32,9 +32,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.audioControl)
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { processorId, command } = bodyValidation.data as { processorId: string, command: ControlCommand }
 
   try {
-    const { processorId, command }: { processorId: string, command: ControlCommand } = await request.json()
 
     logger.api.request('POST', '/api/audio-processor/control', { processorId, command })
 

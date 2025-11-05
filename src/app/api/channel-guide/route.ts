@@ -54,18 +54,12 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
-
 
   const requestId = Math.random().toString(36).substring(7)
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
-  
+
   try {
-    const body: DeviceGuideRequest = await request.json()
-    const { inputNumber, deviceType, deviceId, startTime, endTime } = body
+    const { inputNumber, deviceType, deviceId, startTime, endTime } = bodyValidation.data
 
     logInfo(`Request params:`, {
       inputNumber,
@@ -259,16 +253,6 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
-
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
-  // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
 
 
   const requestId = Math.random().toString(36).substring(7)

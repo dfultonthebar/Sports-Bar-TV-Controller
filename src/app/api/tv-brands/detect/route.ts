@@ -4,9 +4,9 @@ import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
-import {
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import {
   detectBrandFromOSD,
   getCachedBrandDetection,
   cacheBrandDetection,
@@ -31,14 +31,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
 
-
   try {
-    const body = await request.json()
     const { cecAddress, forceRefresh } = body
 
     if (!cecAddress) {

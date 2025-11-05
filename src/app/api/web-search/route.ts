@@ -37,8 +37,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const body = await request.json()
-    const { query, numResults = 5 } = body
+    const { query, numResults = 5 } = bodyValidation.data
     
     if (!query) {
       return NextResponse.json(

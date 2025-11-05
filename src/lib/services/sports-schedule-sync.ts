@@ -1,5 +1,5 @@
-import { findMany, findFirst, insert, update, eq } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { findMany, findFirst, update, eq } from '@/lib/db-helpers'
+import { schema, db } from '@/db'
 import { logger } from '@/lib/logger'
 
 /**
@@ -139,7 +139,7 @@ export class SportsScheduleSyncService {
         logger.debug(`[Sports Sync] No upcoming events for ${teamName}`)
 
         // Log the sync
-        await insert('sportsEventSyncLogs', {
+        await db.insert(schema.sportsEventSyncLogs).values({
           id: crypto.randomUUID(),
           league,
           teamName,
@@ -212,7 +212,7 @@ export class SportsScheduleSyncService {
           eventsUpdated++
         } else {
           // Insert new event
-          await insert('sportsEvents', {
+          await db.insert(schema.sportsEvents).values({
             id: crypto.randomUUID(),
             ...eventData,
             createdAt: new Date().toISOString()
@@ -222,7 +222,7 @@ export class SportsScheduleSyncService {
       }
 
       // Log the sync
-      await insert('sportsEventSyncLogs', {
+      await db.insert(schema.sportsEventSyncLogs).values({
         id: crypto.randomUUID(),
         league,
         teamName,
@@ -246,7 +246,7 @@ export class SportsScheduleSyncService {
       logger.error(`[Sports Sync] Error syncing ${teamName}:`, error)
 
       // Log failed sync
-      await insert('sportsEventSyncLogs', {
+      await db.insert(schema.sportsEventSyncLogs).values({
         id: crypto.randomUUID(),
         league,
         teamName,

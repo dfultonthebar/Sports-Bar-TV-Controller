@@ -18,20 +18,42 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, ValidationSchemas.channelTune)
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
 
   try {
-    const body = await request.json()
-    const { channelNumber, deviceType, deviceIp, presetId, cableBoxId } = body
+    const body = bodyValidation.data
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId } = body
+
+    // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
+    if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
+      const { findFirst } = await import('@/lib/db-helpers')
+      const preset = await findFirst('channelPresets', {
+        where: eq(schema.channelPresets.id, presetId)
+      })
+
+      if (!preset) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Preset not found'
+          },
+          { status: 404 }
+        )
+      }
+
+      // Extract channel and device info from preset
+      channelNumber = preset.channelNumber
+      deviceType = preset.deviceType
+    }
 
     // Validate required fields
     if (!channelNumber || !deviceType) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Missing required fields: channelNumber, deviceType' 
+        {
+          success: false,
+          error: 'Missing required fields: channelNumber, deviceType (or presetId)'
         },
         { status: 400 }
       )
@@ -65,20 +87,20 @@ export async function POST(request: NextRequest) {
       // Send DirecTV channel change command
       result = await sendDirecTVChannelChange(deviceIp, channelNumber)
     } else if (deviceType === 'cable') {
-      // Cable Box uses CEC control via Pulse-Eight adapters
+      // Cable Box uses IR control via Global Cache
       result = await sendCableBoxChannelChange(channelNumber, cableBoxId)
     }
 
     if (result.success) {
-      // Track usage if presetId is provided
-      if (presetId) {
+      // Track usage if presetId is provided (but not for manual entries)
+      if (presetId && presetId !== 'manual') {
         try {
           // Get current preset to increment usage count
           const { findFirst } = await import('@/lib/db-helpers')
           const currentPreset = await findFirst('channelPresets', {
             where: eq(schema.channelPresets.id, presetId)
           })
-          
+
           if (currentPreset) {
             await update('channelPresets', presetId, {
               usageCount: currentPreset.usageCount + 1,
@@ -171,53 +193,83 @@ async function sendDirecTVChannelChange(deviceIp: string, channelNumber: string)
   }
 }
 
-// Helper function to send Cable Box channel change via CEC
+// Helper function to send Cable Box channel change via IR
 async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: string) {
   try {
-    const { CableBoxCECService } = await import('@/lib/cable-box-cec-service')
-    const cecService = CableBoxCECService.getInstance()
+    const { db } = await import('@/db')
+    const { eq } = await import('drizzle-orm')
 
-    // Get all cable boxes
-    const cableBoxes = await cecService.getCableBoxes()
+    // Get all IR cable box devices
+    const irDevices = await db
+      .select()
+      .from(schema.irDevices)
+      .where(eq(schema.irDevices.deviceType, 'cable_box'))
+      .execute()
 
-    if (cableBoxes.length === 0) {
-      logger.warn('No cable boxes configured for CEC control')
+    if (irDevices.length === 0) {
+      logger.warn('No cable boxes configured for IR control')
       return {
         success: false,
         error: 'No cable boxes configured',
-        details: 'Please configure cable boxes in device settings'
+        details: 'Please configure cable boxes as IR devices in admin panel'
       }
     }
 
     // Use specified cable box or default to first one
-    const targetBox = cableBoxId
-      ? cableBoxes.find(box => box.id === cableBoxId) || cableBoxes[0]
-      : cableBoxes[0]
+    const targetDevice = cableBoxId
+      ? irDevices.find(device => device.id === cableBoxId) || irDevices[0]
+      : irDevices[0]
 
-    logger.debug(`Tuning ${targetBox.name} to channel ${channelNumber} via CEC`)
+    logger.debug(`Tuning ${targetDevice.name} to channel ${channelNumber} via IR`)
 
-    // Send channel change command via CEC
-    const result = await cecService.tuneChannel(targetBox.id, channelNumber)
+    // Send each digit via IR, then send ENTER
+    const digits = channelNumber.split('')
 
-    if (result.success) {
-      return {
-        success: true,
-        message: `${targetBox.name} tuned to channel ${channelNumber} via CEC`,
-        executionTime: result.executionTime,
-        cableBoxName: targetBox.name
+    for (const digit of digits) {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/ir-devices/send-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: targetDevice.id,
+          command: digit,
+          iTachAddress: targetDevice.globalCacheDeviceId
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to send digit ${digit}`)
       }
-    } else {
-      return {
-        success: false,
-        error: result.error || 'Failed to change channel',
-        details: `CEC command failed for ${targetBox.name}`
-      }
+
+      // Small delay between digits
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+
+    // Send ENTER to confirm channel
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const enterResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/ir-devices/send-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: targetDevice.id,
+        command: 'OK',
+        iTachAddress: targetDevice.globalCacheDeviceId
+      })
+    })
+
+    if (!enterResponse.ok) {
+      throw new Error('Failed to send ENTER command')
+    }
+
+    return {
+      success: true,
+      message: `${targetDevice.name} tuned to channel ${channelNumber} via IR`,
+      cableBoxName: targetDevice.name
     }
   } catch (error) {
-    logger.error('Cable Box CEC channel change error:', error)
+    logger.error('Cable Box IR channel change error:', error)
     return {
       success: false,
-      error: 'Failed to change Cable Box channel via CEC',
+      error: 'Failed to change Cable Box channel via IR',
       details: error instanceof Error ? error.message : 'Unknown error'
     }
   }

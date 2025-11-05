@@ -1,0 +1,3460 @@
+{
+  "timestamp": "2025-11-04T23:40:11.758Z",
+  "summary": {
+    "total": 382,
+    "passed": 382,
+    "failed": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0
+  },
+  "results": [
+    {
+      "endpoint": "/api/web-search",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/web-search/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/upload",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/upload/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/upload",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/upload/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/unified-tv-control",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/unified-tv-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/unified-guide",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/unified-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/unified-guide",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/unified-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-programming",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-programming/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-programming",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-programming/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-brands",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-brands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/test-env",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/test-env/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/startup",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/startup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/startup",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/startup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide-config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide-config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/selected-leagues",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/selected-leagues/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/selected-leagues",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/selected-leagues/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/selected-leagues",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/selected-leagues/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduled-commands",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduled-commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduled-commands",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduled-commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduled-commands",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduled-commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduled-commands",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduled-commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix-display",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix-display/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix-config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/leagues",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/leagues/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/keys",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/keys",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/keys",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/keys",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/home-teams",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/home-teams/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/home-teams",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/home-teams/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/health",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/health/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/generate-script",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/generate-script/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/enhanced-chat",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/enhanced-chat/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-logs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/device-subscriptions",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/device-subscriptions/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/design-feature",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/design-feature/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/chat/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-guide",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-guide",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-guide/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/backup",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/backup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/backup",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/backup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/audio-processor/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/audio-processor/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/api-keys",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/api-keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/api-keys",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/api-keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/wolfpack/route-to-matrix",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/wolfpack/route-to-matrix/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/wolfpack/inputs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/wolfpack/inputs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/wolfpack/current-routings",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/wolfpack/current-routings/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/wolfpack/ai-analysis",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/wolfpack/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/wolfpack/ai-analysis",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/wolfpack/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-programming/scheduler",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-programming/scheduler/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-programming/scheduler",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-programming/scheduler/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/unified",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/unified/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/unified",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/unified/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/spectrum-business",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/spectrum-business/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/spectrum-business",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/spectrum-business/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/gracenote",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/gracenote/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-guide/gracenote",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-guide/gracenote/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-brands/detect",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-brands/detect/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tv-brands/detect",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tv-brands/detect/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/run",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/run/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/run",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/run/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/logs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/logs",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/restart",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/restart/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/reboot",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/reboot/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/health-check",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/health-check/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/health-check",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/health-check/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/system/health",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/system/health/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/credentials",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/credentials",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/credentials",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "✓ Uses bodyValidation.data correctly",
+        "📁 src/app/api/streaming-platforms/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/credentials",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/auth",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/auth/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming-platforms/auth",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming-platforms/auth/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/subscribed-apps",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/subscribed-apps/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/subscribed-apps",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/subscribed-apps/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/launch",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/launch/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/events",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/events/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/verify-key",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/verify-key/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/update-key",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/update-key/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/test-providers",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/test-providers/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/test-providers",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/test-providers/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/scheduled",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/scheduled/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/scheduled",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/scheduled/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/current-time",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/current-time/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/channels",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/channels/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports/upcoming",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports/upcoming/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports/sync",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports/sync/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports/sync",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports/sync/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/test",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/test/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/stations",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/stations/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/players",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/players/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/players",
+      "method": "PATCH",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/players/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/now-playing",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/now-playing/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/diagnose",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/diagnose/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/config",
+      "method": "PATCH",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/config",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/cache",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/cache/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/soundtrack/account",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/soundtrack/account/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules/logs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules/execute",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/execute/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/schedules/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/schedules/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/security/logs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/security/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduler/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduler/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduler/status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduler/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduler/manage",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduler/manage/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/scheduler/manage",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/scheduler/manage/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/rag/stats",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/rag/stats/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/rag/rebuild",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/rag/rebuild/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/rag/query",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/rag/query/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/rag/query",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "INFO: Has request.json() but no validation",
+        "📁 src/app/api/rag/query/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/rag/docs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/rag/docs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/n8n/webhook",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/n8n/webhook/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/n8n/webhook",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/n8n/webhook/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/stop-watching",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/stop-watching/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/start-watching",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/start-watching/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/snapshot",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/snapshot/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/history",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/history/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/current",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/current/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/video-input-selection",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/video-input-selection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/video-input-selection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/video-input-selection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/test-connection",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/test-connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/switch-input-enhanced",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/switch-input-enhanced/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/switch-input-enhanced",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/switch-input-enhanced/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/routes",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/routes/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/route",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/route/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/outputs-schedule",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/outputs-schedule/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/outputs-schedule",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/outputs-schedule/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/initialize-connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/initialize-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/connection-manager",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/connection-manager/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/connection-manager",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/connection-manager/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/user-action",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/user-action/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/stats",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/stats/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/recent",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/recent/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/preview",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/preview/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/performance",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/performance/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/operations",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/operations/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/operations",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/operations/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/export",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/export/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/error",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/error/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/device-interaction",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/device-interaction/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/config-tracking",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/config-tracking/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/config-tracking",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/config-tracking/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/config-change",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/config-change/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/channel-guide-tracking",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/channel-guide-tracking/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/channel-guide-tracking",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/channel-guide-tracking/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/analytics",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/analytics/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/ai-analysis",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/logs/ai-analysis",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/logs/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/test-connection",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/stop-learning",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "INFO: Has request.json() but no validation",
+        "📁 src/app/api/ir-devices/stop-learning/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/start-learning",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "INFO: Has request.json() but no validation",
+        "📁 src/app/api/ir-devices/start-learning/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/send-ip-command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/send-ip-command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/send-command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/send-command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/search-codes",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/search-codes/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/search-codes",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/search-codes/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/model-codes",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/model-codes/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/model-codes",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/model-codes/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/learn",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/learn",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir-devices/learn",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir-devices/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/templates",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/templates/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/learn",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/credentials",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/credentials",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/credentials/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/commands",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/learn",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/learn",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/learn/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/github/push-config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/github/push-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/github/push-config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/github/push-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/github/auto-config-sync",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/github/auto-config-sync/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/github/auto-config-sync",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/github/auto-config-sync/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/git/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/git/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/git/pull",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/git/pull/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/git/commit-push",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/git/commit-push/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices/test-connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices/send-command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/send-command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices/guide-data",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/guide-data/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/file-system/write-script",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/file-system/write-script/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/file-system/manage",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/file-system/manage/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/file-system/manage",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/file-system/manage/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices/connection-status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/connection-status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/firetv-devices/connection-status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/firetv-devices/connection-status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/file-system/execute",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/file-system/execute/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/documents/reprocess",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/documents/reprocess/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/documents/reprocess",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/documents/reprocess/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/documents/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/documents/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/documents/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/documents/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/test-connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/smart-channel-change",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/smart-channel-change/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/send-command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/send-command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/resolve-alert",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/resolve-alert/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/guide-data",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/guide-data/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/guide-data",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/guide-data/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/diagnose",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/diagnose/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/directv-devices/ai-insights",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/directv-devices/ai-insights/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/diagnostics/device-mapping",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/diagnostics/device-mapping/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/diagnostics/bartender-remote",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/diagnostics/bartender-remote/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/smart-optimizer",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/smart-optimizer/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/intelligent-diagnostics",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/intelligent-diagnostics/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/execute-fix",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/execute-fix/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/ai-analysis",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/device-subscriptions/poll",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/device-subscriptions/poll/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cron/init",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cron/init/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/config/track-change",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/config/track-change/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/config/track-change",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/config/track-change/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/circuit-breaker/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/circuit-breaker/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/circuit-breaker/status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/circuit-breaker/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/update-usage",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/update-usage/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/tune",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/tune/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/statistics",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/statistics/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/reorder",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/reorder/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/by-device",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/by-device/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/channel-presets/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/channel-presets/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/tv-documentation",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/tv-documentation/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/scan",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/scan/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/power-control",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/power-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/initialize",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/initialize/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/initialize",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/initialize/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/monitor",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/monitor/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/fetch-tv-manual",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/fetch-tv-manual/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/enhanced-control",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/enhanced-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/enhanced-control",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/enhanced-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/discovery",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/discovery/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/discovery",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/discovery/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/devices",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/devices/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/config",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/command",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/command/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cache/stats",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cache/stats/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cache/stats",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cache/stats/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/upload-layout",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/upload-layout/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/session",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/session/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/session",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/session/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/pins",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/pins/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/pins",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/pins/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/pins",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/pins/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/logout",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/logout/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/login",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/login/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/audit-log",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/audit-log/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/api-keys",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/api-keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/api-keys",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/api-keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/auth/api-keys",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/auth/api-keys/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/zones",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/zones/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/zones",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/zones/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/test-connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/test-connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/outputs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/outputs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/meter-status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/meter-status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/meter-status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/meter-status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/matrix-routing",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/matrix-routing/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/matrix-routing",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/matrix-routing/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/inputs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/inputs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/control",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/input-levels",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/input-levels/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/input-levels",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/input-levels/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/sources",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/sources/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/upload-config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/upload-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/route-matrix-to-zone",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/route-matrix-to-zone/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/route-matrix-to-zone",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/route-matrix-to-zone/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/recall-scene",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/recall-scene/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/query-hardware",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/query-hardware/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/query-hardware",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/query-hardware/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/output-meters",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/output-meters/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/meter-monitoring",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/meter-monitoring/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/meter-monitoring",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/meter-monitoring/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/input-meters",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/input-meters/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/groups",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/groups/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/groups",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/groups/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/download-config",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/download-config/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/configuration",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/configuration/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/configuration",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/configuration/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/ai-analysis",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/atlas/ai-analysis",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/atlas/ai-analysis/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/api-keys/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/api-keys/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/api-keys/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/api-keys/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-system/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-system/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-system/status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-system/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-providers/test",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-providers/test/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-providers/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-providers/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-providers/status",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-providers/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/search-code",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/search-code/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/logs",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/logs",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/index-codebase",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/index-codebase/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/index-codebase",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/index-codebase/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-assistant/analyze-logs",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-assistant/analyze-logs/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/uploads/layouts/[filename]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/uploads/layouts/[filename]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]/documents",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/documents/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]/documents",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/documents/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]/documents",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/documents/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/todos/[id]/complete",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/todos/[id]/complete/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/wolfpack/switching",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/wolfpack/switching/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/tests/wolfpack/connection",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/tests/wolfpack/connection/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/apps/detect",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/apps/detect/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/streaming/apps/detect",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/streaming/apps/detect/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/ollama/query",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/ollama/query/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/sports-guide/ollama/query",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/sports-guide/ollama/query/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/memory-bank/restore/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/memory-bank/restore/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/matrix/config/cec-input",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/matrix/config/cec-input/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/database/types",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/database/types/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/database/models",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/database/models/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/database/functions",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/database/functions/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/database/download",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/database/download/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/database/brands",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/database/brands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/commands/send",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/commands/send/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/commands/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/commands/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/ports/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/ports/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/ports/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/ports/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices/[id]",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices/[id]",
+      "method": "PUT",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices/[id]",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/[id]/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/smart-optimizer/toggle",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/smart-optimizer/toggle/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/devices/smart-optimizer/implement",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/devices/smart-optimizer/implement/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/cec/discovery/status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/cec/discovery/status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout/upload",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/upload/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout/detect",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/detect/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout/backup",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/backup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout/backup",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/backup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/bartender/layout/backup",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/bartender/layout/backup/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/zones-status",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/zones-status/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/ai-monitoring",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/ai-monitoring/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/ai-monitoring",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/ai-monitoring/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/input-gain",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/input-gain/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/input-gain",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/input-gain/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/ai-gain-control",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/ai-gain-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/ai-gain-control",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/ai-gain-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/ai-gain-control",
+      "method": "DELETE",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/ai-gain-control/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/audio-processor/[id]/adjustment-history",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/audio-processor/[id]/adjustment-history/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ai-hub/qa-training/stats",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ai-hub/qa-training/stats/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices/[id]/load-template",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/[id]/load-template/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/ir/devices/[id]/commands",
+      "method": "GET",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/ir/devices/[id]/commands/route.ts"
+      ],
+      "category": "OK"
+    },
+    {
+      "endpoint": "/api/globalcache/devices/[id]/test",
+      "method": "POST",
+      "status": "PASS",
+      "issues": [
+        "📁 src/app/api/globalcache/devices/[id]/test/route.ts"
+      ],
+      "category": "OK"
+    }
+  ]
+}

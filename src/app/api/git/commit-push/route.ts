@@ -23,8 +23,11 @@ export async function POST(request: NextRequest) {
   if (!bodyValidation.success) return bodyValidation.error
 
 
+  // Security: use validated data
+  const { message } = bodyValidation.data
+
   try {
-    const { message } = await request.json()
+    
     
     if (!message || !message.trim()) {
       return NextResponse.json(

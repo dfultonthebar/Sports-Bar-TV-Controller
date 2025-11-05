@@ -16,11 +16,6 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
@@ -74,16 +69,11 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   logger.api.request('POST', '/api/channel-presets')
-  
+
   try {
-    const body = await request.json()
-    const { name, channelNumber, deviceType, order } = body
+    const { name, channelNumber, deviceType, order } = bodyValidation.data
 
     logger.debug('Creating channel preset', { name, channelNumber, deviceType, order })
 

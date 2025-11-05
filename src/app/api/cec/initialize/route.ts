@@ -12,12 +12,7 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
-
+  // No request body needed for initialization
   try {
     const result = await cecService.initialize();
     

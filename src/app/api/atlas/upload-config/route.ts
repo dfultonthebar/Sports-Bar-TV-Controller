@@ -29,9 +29,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.configUpload)
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { processorId, ipAddress, inputs, outputs, scenes } = bodyValidation.data
 
   try {
-    const { processorId, ipAddress, inputs, outputs, scenes } = await request.json()
 
     if (!processorId || !ipAddress) {
       return NextResponse.json({ error: 'Processor ID and IP address are required' }, { status: 400 })

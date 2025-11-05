@@ -21,10 +21,6 @@ export async function GET(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
@@ -70,13 +66,8 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const body = await request.json()
     const {
       name,
       description,
@@ -89,7 +80,7 @@ export async function POST(request: NextRequest) {
       timezone,
       enabled,
       createdBy,
-    } = body
+    } = bodyValidation.data
 
     // Validate required fields
     if (!name || !commandType || !targetType || !targets || !commandSequence || !scheduleType || !scheduleData) {
@@ -159,14 +150,9 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const body = await request.json()
-    const { id, ...updates } = body
+    const { id, ...updates } = bodyValidation.data
 
     if (!id) {
       return NextResponse.json(

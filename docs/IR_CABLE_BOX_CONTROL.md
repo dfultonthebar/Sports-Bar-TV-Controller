@@ -1405,6 +1405,155 @@ IR control via network-controlled distribution provides a reliable, cost-effecti
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** October 29, 2025
+---
+
+## IR Learning System (NEW)
+
+### Overview
+
+The Sports Bar TV Controller now includes a comprehensive IR learning system that allows you to capture IR codes directly from your Spectrum remote control using the Global Cache iTach IP2IR.
+
+### Quick Start
+
+1. **Navigate to IR Learning Page**
+   ```
+   http://your-server:3001/ir-learning
+   ```
+
+2. **Select Device**
+   - Choose the cable box you want to program
+   - Verify iTach IP address (default: 192.168.1.100)
+   - Select IR port (1-3)
+
+3. **Learn Buttons**
+   - Click "Learn" for any button
+   - Point Spectrum remote at iTach IR sensor
+   - Press the corresponding button on the remote
+   - Wait for "Captured!" confirmation
+   - Click "Test" to verify the code works
+
+4. **Save Codes**
+   - Learn all required buttons
+   - Click "Save All Codes" to persist to database
+   - Export codes for backup/sharing
+
+### Supported Buttons
+
+The IR learning system supports all standard Spectrum cable box buttons:
+
+**Power**
+- Power on/off
+
+**Numbers**
+- Digits 0-9
+
+**Navigation**
+- Up, Down, Left, Right
+- Select/OK
+
+**Functions**
+- Guide, Menu, Info, Exit, Last
+
+**Channel Control**
+- Channel Up/Down
+
+**DVR Control**
+- Play, Pause, Rewind, Fast Forward
+- Record, Stop
+
+**Volume (Optional)**
+- Volume Up/Down, Mute
+
+### Import/Export Codes
+
+**Export Codes:**
+- Click "Export" button to download JSON file
+- File contains all learned IR codes
+- Use for backup or sharing between devices
+
+**Import Codes:**
+- Click "Import" button
+- Select previously exported JSON file
+- All codes will be loaded into the selected device
+
+### Testing Learned Codes
+
+After learning each button:
+
+1. Click the "Test" button (test tube icon)
+2. The system will send the learned IR code back to the cable box
+3. Verify the cable box responds correctly
+4. If the code doesn't work:
+   - Re-learn the button
+   - Check IR emitter placement
+   - Verify iTach connection
+
+### IR Learning Best Practices
+
+**Optimal Learning Environment:**
+- Avoid bright lights (fluorescent, direct sunlight)
+- Position remote 6-12 inches from iTach sensor
+- Point remote directly at iTach
+- Press button firmly and hold for 1 second
+- Wait for confirmation before releasing
+
+**Troubleshooting Learning Issues:**
+
+1. **"Timeout waiting for button press"**
+   - Press button more firmly
+   - Hold button longer (1-2 seconds)
+   - Move remote closer to iTach
+   - Check iTach LED is flashing (learning mode)
+
+2. **"IR Learner unavailable"**
+   - iTach may be in LED mode (not IR mode)
+   - Reboot iTach device
+   - Verify network connection
+   - Try different IR port
+
+3. **Learned code doesn't work**
+   - Re-learn the button
+   - Try learning from different distance
+   - Verify IR emitter is properly positioned
+   - Check cable box model matches
+
+### Automatic IR Code Selection
+
+The CableBoxRemote component now automatically uses learned IR codes:
+
+**Priority Order:**
+1. **Learned IR codes** (highest priority)
+   - Uses codes captured via IR learning system
+   - Most reliable for your specific remote
+2. **Pre-programmed IR codes** (fallback)
+   - Uses generic Spectrum codes if available
+3. **CEC control** (fallback)
+   - Uses CEC if IR codes not available
+
+This ensures maximum compatibility and reliability across different Spectrum cable box models.
+
+### Database Storage
+
+Learned IR codes are stored in the `IRDevice` table:
+
+```sql
+-- IR codes stored as JSON in irCodes field
+{
+  "power": "sendir,1:1,1,38000,1,1,342,171,...",
+  "channel_up": "sendir,1:1,1,38000,1,1,342,171,...",
+  "digit_0": "sendir,1:1,1,38000,1,1,342,171,...",
+  ...
+}
+```
+
+### Related Documentation
+
+- **IR Emitter Placement Guide:** `/docs/IR_EMITTER_PLACEMENT_GUIDE.md`
+- **API Documentation:** `/docs/API_REFERENCE.md`
+- **Cable Box Setup:** See "Installation Procedure" section above
+
+---
+
+**Document Version:** 2.0
+**Last Updated:** November 4, 2025
 **Author:** Sports Bar TV Controller Development Team

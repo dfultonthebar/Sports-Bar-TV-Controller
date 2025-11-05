@@ -445,7 +445,7 @@ export const documentUploadSchema = z.object({
 export const layoutUploadSchema = z.object({
   name: nonEmptyStringSchema.max(100),
   data: z.record(z.unknown()),
-  description: optionalNonEmptyStringSchema.max(500)
+  description: z.string().min(1).max(500).optional()
 })
 
 /**
@@ -478,7 +478,7 @@ export const gitCommitPushSchema = z.object({
   message: nonEmptyStringSchema.max(500),
   files: z.array(nonEmptyStringSchema).optional(),
   push: z.boolean().optional().default(true),
-  branch: optionalNonEmptyStringSchema.max(100)
+  branch: z.string().min(1).max(100).optional()
 })
 
 /**
@@ -488,7 +488,7 @@ export const scriptExecutionSchema = z.object({
   script: nonEmptyStringSchema.max(10000),
   args: z.array(z.string()).max(50).optional(),
   timeout: z.number().int().min(1000).max(300000).optional().default(30000),
-  cwd: optionalNonEmptyStringSchema.max(500)
+  cwd: z.string().min(1).max(500).optional()
 })
 
 /**
@@ -497,7 +497,7 @@ export const scriptExecutionSchema = z.object({
 export const systemRestartSchema = z.object({
   confirm: z.literal(true, { errorMap: () => ({ message: 'Must confirm system restart' }) }),
   delay: z.number().int().min(0).max(300).optional().default(0),
-  reason: optionalNonEmptyStringSchema.max(200)
+  reason: z.string().min(1).max(200).optional()
 })
 
 // ============================================================================
@@ -534,7 +534,7 @@ export const streamingCredentialsSchema = z.object({
 export const paginationQuerySchema = z.object({
   limit: paginationLimitSchema,
   offset: paginationOffsetSchema,
-  sortBy: optionalNonEmptyStringSchema.max(50),
+  sortBy: z.string().min(1).max(50).optional(),
   sortOrder: sortOrderSchema.optional().default('asc')
 })
 
@@ -565,7 +565,7 @@ export const logQuerySchema = z.object({
   endDate: dateStringSchema.or(isoDateSchema).optional(),
   limit: paginationLimitSchema.optional(),
   offset: paginationOffsetSchema.optional(),
-  component: optionalNonEmptyStringSchema.max(100)
+  component: z.string().min(1).max(100).optional()
 })
 
 // ============================================================================

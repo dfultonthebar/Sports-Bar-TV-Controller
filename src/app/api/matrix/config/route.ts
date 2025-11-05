@@ -69,9 +69,10 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { config, inputs, outputs } = bodyValidation.data
 
   try {
-    const { config, inputs, outputs } = await request.json()
 
     // Validate required fields
     if (!config.name || !config.ipAddress) {

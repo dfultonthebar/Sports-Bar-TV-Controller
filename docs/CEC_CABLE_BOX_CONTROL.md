@@ -1,7 +1,19 @@
 # CEC Cable Box Control via Pulse-Eight Adapters
 
-**Status:** Future Implementation Plan
-**Created:** October 29, 2025
+> **⚠️ DEPRECATED - November 4, 2025**
+>
+> **DO NOT IMPLEMENT - CEC cable box control is NOT POSSIBLE with Spectrum equipment.**
+>
+> After extensive testing, it was confirmed that Spectrum/Charter disables CEC in their cable box firmware.
+>
+> **Use IR control instead.** See `/docs/CEC_DEPRECATION_NOTICE.md` for details.
+>
+> ---
+>
+> **This document is kept for historical reference only.**
+
+**Status:** ❌ DEPRECATED - Not Implemented (Hardware Limitation Discovered)
+**Created:** October 29, 2025 (Deprecated November 4, 2025)
 **System Compatibility:** Wolfpack Matrix with Pulse-Eight USB-CEC Adapters
 
 ---

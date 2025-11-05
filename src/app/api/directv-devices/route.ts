@@ -41,11 +41,6 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
@@ -71,13 +66,9 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const newDevice = await request.json()
+    const newDevice = bodyValidation.data
     const data = await loadDirecTVDevices()
     
     // Validate required fields
@@ -116,13 +107,9 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
-
 
   try {
-    const updatedDevice = await request.json()
+    const updatedDevice = bodyValidation.data
     const data = await loadDirecTVDevices()
     
     const index = data.devices.findIndex((d: any) => d.id === updatedDevice.id)

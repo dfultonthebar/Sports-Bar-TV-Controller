@@ -31,11 +31,12 @@ export async function POST(request: NextRequest) {
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
 
-
   logger.api.request('POST', '/api/matrix/video-input-selection')
-  
+
+  // Security: use validated data
+  const { matrixOutputNumber, videoInputNumber, videoInputLabel } = bodyValidation.data
+
   try {
-    const { matrixOutputNumber, videoInputNumber, videoInputLabel } = await request.json()
 
     // Validate input parameters
     if (!matrixOutputNumber || !videoInputNumber) {
@@ -206,14 +207,9 @@ export async function GET(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (!queryValidation.success) return queryValidation.error
-
 
   logger.api.request('GET', '/api/matrix/video-input-selection')
   

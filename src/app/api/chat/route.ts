@@ -11,9 +11,9 @@ import { findUnique, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
-import {
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import {
   executeTool,
   getAvailableTools,
   createDefaultContext,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   logger.info('[CHAT API] POST request received')
   try {
     logger.info('[CHAT API] Parsing request body...')
-    const { message, sessionId, enableTools = true, stream = true } = await request.json()
+    const { message, sessionId, enableTools = true, stream = true } = bodyValidation.data
     logger.info('[CHAT API] Request parsed:', { message: message?.substring(0, 50), sessionId, enableTools, stream })
 
     if (!message) {

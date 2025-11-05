@@ -25,6 +25,7 @@ export async function GET(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Path parameter validation
   const resolvedParams = await params
@@ -73,10 +74,8 @@ export async function PUT(
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
   if (!paramsValidation.success) return paramsValidation.error
 
-
   try {
-    const { id } = await params
-    const body = await request.json();
+    const { id } = await params;
     
     const updateData: any = {};
     

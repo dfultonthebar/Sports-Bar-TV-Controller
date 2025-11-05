@@ -76,10 +76,10 @@ export async function PUT(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (!bodyValidation.success) return bodyValidation.error
 
+  // Security: use validated data
+  const { outputId, dailyTurnOn, dailyTurnOff } = bodyValidation.data
 
   try {
-    const body = await request.json()
-    const { outputId, dailyTurnOn, dailyTurnOff } = body
 
     if (!outputId) {
       return NextResponse.json({

@@ -64,10 +64,9 @@ export async function POST(request: NextRequest) {
 
 
   logger.api.request('POST', '/api/selected-leagues')
-  
+
   try {
-    const body = await request.json()
-    const { leagueIds } = body
+    const { leagueIds } = bodyValidation.data
 
     logger.debug('Saving selected leagues', { leagueIds })
 
