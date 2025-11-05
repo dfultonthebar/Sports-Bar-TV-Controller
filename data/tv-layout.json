@@ -1,7 +1,7 @@
 {
   "name": "Bar Layout",
-  "imageUrl": "/api/uploads/layouts/273188b2-ecfc-47ab-94a7-05d5d03bd3b0_professional.png",
-  "originalFileUrl": "/api/uploads/layouts/273188b2-ecfc-47ab-94a7-05d5d03bd3b0.png",
+  "imageUrl": "/api/uploads/layouts/9a722794-a23c-4796-b075-16148e6fe233_professional.png",
+  "originalFileUrl": "/api/uploads/layouts/9a722794-a23c-4796-b075-16148e6fe233.png",
   "fileType": "image/png",
   "zones": [
     {
@@ -11,7 +11,7 @@
       "y": 9.63,
       "width": 5.5,
       "height": 5.5,
-      "label": "TV 01",
+      "label": "TV 1",
       "confidence": 0.95
     },
     {
@@ -21,67 +21,67 @@
       "y": 9.63,
       "width": 5.5,
       "height": 5.5,
-      "label": "TV 02",
+      "label": "TV 2",
       "confidence": 0.95
     },
     {
-      "id": "tv20",
-      "outputNumber": 20,
+      "id": "tv5",
+      "outputNumber": 5,
       "x": 18.45,
       "y": 30.7,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 20",
+      "label": "TV 5",
       "confidence": 0.95
     },
     {
-      "id": "tv14",
-      "outputNumber": 14,
+      "id": "tv3",
+      "outputNumber": 3,
       "x": 43.78,
       "y": 27.35,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 14",
+      "label": "TV 3",
       "confidence": 0.95
     },
     {
-      "id": "tv19",
-      "outputNumber": 19,
+      "id": "tv4",
+      "outputNumber": 4,
       "x": 61.98,
       "y": 27.35,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 19",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv13",
-      "outputNumber": 13,
-      "x": 36.81,
-      "y": 34.02,
-      "width": 5.5,
-      "height": 12.97,
-      "label": "TV 13",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv11",
-      "outputNumber": 11,
-      "x": 68.83,
-      "y": 34.02,
-      "width": 5.5,
-      "height": 12.97,
-      "label": "TV 11",
+      "label": "TV 4",
       "confidence": 0.95
     },
     {
       "id": "tv8",
       "outputNumber": 8,
+      "x": 36.81,
+      "y": 34.02,
+      "width": 5.5,
+      "height": 12.97,
+      "label": "TV 8",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv9",
+      "outputNumber": 9,
+      "x": 68.83,
+      "y": 34.02,
+      "width": 5.5,
+      "height": 12.97,
+      "label": "TV 9",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv6",
+      "outputNumber": 6,
       "x": 77.21,
       "y": 30.22,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 08",
+      "label": "TV 6",
       "confidence": 0.95
     },
     {
@@ -91,74 +91,124 @@
       "y": 30.22,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 07",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv9",
-      "outputNumber": 9,
-      "x": 77.21,
-      "y": 39.44,
-      "width": 5.5,
-      "height": 5.75,
-      "label": "TV 09",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv6",
-      "outputNumber": 6,
-      "x": 84.59,
-      "y": 39.44,
-      "width": 5.5,
-      "height": 5.75,
-      "label": "TV 06",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv15",
-      "outputNumber": 15,
-      "x": 43.78,
-      "y": 48.18,
-      "width": 5.5,
-      "height": 5.71,
-      "label": "TV 15",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv18",
-      "outputNumber": 18,
-      "x": 61.98,
-      "y": 48.18,
-      "width": 5.5,
-      "height": 5.71,
-      "label": "TV 18",
+      "label": "TV 7",
       "confidence": 0.95
     },
     {
       "id": "tv10",
       "outputNumber": 10,
       "x": 77.21,
-      "y": 49.76,
+      "y": 39.44,
       "width": 5.5,
       "height": 5.75,
       "label": "TV 10",
       "confidence": 0.95
     },
     {
-      "id": "tv5",
-      "outputNumber": 5,
+      "id": "tv11",
+      "outputNumber": 11,
+      "x": 84.59,
+      "y": 39.44,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 11",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv12",
+      "outputNumber": 12,
+      "x": 43.78,
+      "y": 48.18,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 12",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv13",
+      "outputNumber": 13,
+      "x": 61.98,
+      "y": 48.18,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 13",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv14",
+      "outputNumber": 14,
+      "x": 77.21,
+      "y": 49.76,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 14",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv15",
+      "outputNumber": 15,
       "x": 84.59,
       "y": 49.76,
       "width": 5.5,
       "height": 5.75,
-      "label": "TV 05",
+      "label": "TV 15",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv16",
+      "outputNumber": 16,
+      "x": 22.17,
+      "y": 60.08,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 16",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv17",
+      "outputNumber": 17,
+      "x": 29.84,
+      "y": 61.56,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 17",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv18",
+      "outputNumber": 18,
+      "x": 50.36,
+      "y": 63.1,
+      "width": 11.53,
+      "height": 5.5,
+      "label": "TV 18",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv19",
+      "outputNumber": 19,
+      "x": 50.36,
+      "y": 71.13,
+      "width": 11.53,
+      "height": 5.5,
+      "label": "TV 19",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv20",
+      "outputNumber": 20,
+      "x": 1.79,
+      "y": 83.52,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 20",
       "confidence": 0.95
     },
     {
       "id": "tv21",
       "outputNumber": 21,
-      "x": 22.17,
-      "y": 60.08,
+      "x": 21.58,
+      "y": 83.56,
       "width": 5.5,
       "height": 5.71,
       "label": "TV 21",
@@ -167,91 +217,31 @@
     {
       "id": "tv22",
       "outputNumber": 22,
-      "x": 29.84,
-      "y": 61.56,
+      "x": 77.84,
+      "y": 83.52,
       "width": 5.5,
-      "height": 5.71,
+      "height": 5.75,
       "label": "TV 22",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv17",
-      "outputNumber": 17,
-      "x": 56.0,
-      "y": 55.5,
-      "width": 5.5,
-      "height": 5.71,
-      "label": "TV 17",
-      "confidence": 0.90
-    },
-    {
-      "id": "tv16",
-      "outputNumber": 16,
-      "x": 50.36,
-      "y": 63.1,
-      "width": 11.53,
-      "height": 5.5,
-      "label": "TV 16",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv12",
-      "outputNumber": 12,
-      "x": 50.36,
-      "y": 71.13,
-      "width": 11.53,
-      "height": 5.5,
-      "label": "TV 12",
       "confidence": 0.95
     },
     {
       "id": "tv23",
       "outputNumber": 23,
-      "x": 1.79,
-      "y": 83.52,
+      "x": 92.88,
+      "y": 83.56,
       "width": 5.5,
-      "height": 5.75,
+      "height": 5.71,
       "label": "TV 23",
       "confidence": 0.95
     },
     {
       "id": "tv24",
       "outputNumber": 24,
-      "x": 21.58,
-      "y": 83.56,
-      "width": 5.5,
-      "height": 5.71,
-      "label": "TV 24",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv4",
-      "outputNumber": 4,
-      "x": 77.84,
-      "y": 83.52,
-      "width": 5.5,
-      "height": 5.75,
-      "label": "TV 04",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv3",
-      "outputNumber": 3,
-      "x": 92.88,
-      "y": 83.56,
-      "width": 5.5,
-      "height": 5.71,
-      "label": "TV 03",
-      "confidence": 0.95
-    },
-    {
-      "id": "tv25",
-      "outputNumber": 25,
       "x": 28.3,
       "y": 94.29,
       "width": 5.5,
       "height": 5.71,
-      "label": "TV 25",
+      "label": "TV 24",
       "confidence": 0.95
     }
   ]

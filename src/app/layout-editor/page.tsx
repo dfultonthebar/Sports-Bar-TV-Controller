@@ -47,7 +47,8 @@ export default function LayoutEditorPage() {
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [editMode, setEditMode] = useState<'select' | 'draw' | 'move'>('select')
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null)
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
+  const [dragStart, setDragStart] = useState<{ x: number; y: number; zoneId: string; originalX: number; originalY: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -238,6 +239,48 @@ export default function LayoutEditorPage() {
     })
   }
 
+  const handleZoneMouseDown = (e: React.MouseEvent, zone: Zone) => {
+    if (editMode !== 'move') return
+    e.stopPropagation()
+
+    if (!imageRef.current) return
+    const rect = imageRef.current.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+
+    setDragStart({
+      x,
+      y,
+      zoneId: zone.id,
+      originalX: zone.x,
+      originalY: zone.y
+    })
+    setIsDragging(true)
+    setSelectedZone(zone.id)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !dragStart || !imageRef.current) return
+
+    const rect = imageRef.current.getBoundingClientRect()
+    const currentX = ((e.clientX - rect.left) / rect.width) * 100
+    const currentY = ((e.clientY - rect.top) / rect.height) * 100
+
+    const deltaX = currentX - dragStart.x
+    const deltaY = currentY - dragStart.y
+
+    // Update zone position
+    handleZoneUpdate(dragStart.zoneId, {
+      x: Math.max(0, Math.min(95, dragStart.originalX + deltaX)),
+      y: Math.max(0, Math.min(95, dragStart.originalY + deltaY))
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+    setDragStart(null)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-6">
       <div className="max-w-7xl mx-auto">
@@ -345,11 +388,26 @@ export default function LayoutEditorPage() {
                 >
                   Draw New Zone
                 </button>
+
+                <button
+                  onClick={() => setEditMode('move')}
+                  className={`w-full px-3 py-2 rounded transition-all ${
+                    editMode === 'move' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  <Move className="w-4 h-4 inline mr-2" />
+                  Move Zones
+                </button>
               </div>
 
               {editMode === 'draw' && (
                 <p className="text-xs text-slate-400 mt-2">
                   Click two points on the canvas to draw a rectangle
+                </p>
+              )}
+              {editMode === 'move' && (
+                <p className="text-xs text-slate-400 mt-2">
+                  Click and drag any zone to reposition it
                 </p>
               )}
             </div>
@@ -380,7 +438,12 @@ export default function LayoutEditorPage() {
               <div
                 ref={canvasRef}
                 onClick={handleCanvasClick}
-                className="relative w-full bg-slate-900 rounded border border-slate-700 overflow-hidden cursor-crosshair"
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                className={`relative w-full bg-slate-900 rounded border border-slate-700 overflow-hidden ${
+                  editMode === 'draw' ? 'cursor-crosshair' : editMode === 'move' ? 'cursor-move' : 'cursor-default'
+                }`}
                 style={{ minHeight: '600px' }}
               >
                 {previewUrl ? (
@@ -402,22 +465,29 @@ export default function LayoutEditorPage() {
                             setSelectedZone(zone.id)
                           }
                         }}
+                        onMouseDown={(e) => handleZoneMouseDown(e, zone)}
                         className={`absolute border-2 transition-all ${
                           selectedZone === zone.id
                             ? 'border-blue-500 bg-blue-500/20'
                             : 'border-green-500 bg-green-500/10 hover:bg-green-500/20'
-                        }`}
+                        } ${isDragging && dragStart?.zoneId === zone.id ? 'opacity-70' : ''}`}
                         style={{
                           left: `${zone.x}%`,
                           top: `${zone.y}%`,
                           width: `${zone.width}%`,
                           height: `${zone.height}%`,
-                          cursor: editMode === 'select' ? 'pointer' : 'crosshair'
+                          cursor: editMode === 'select' ? 'pointer' : editMode === 'move' ? 'move' : 'crosshair',
+                          userSelect: 'none'
                         }}
                       >
                         <div className="absolute top-0 left-0 bg-green-600 text-white text-xs px-1 rounded-br">
                           {zone.label}
                         </div>
+                        {editMode === 'move' && selectedZone === zone.id && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <Move className="w-6 h-6 text-white drop-shadow-lg" />
+                          </div>
+                        )}
                       </div>
                     ))}
 
