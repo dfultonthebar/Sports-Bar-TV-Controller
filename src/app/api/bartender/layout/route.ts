@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { layout } = await request.json()
+    const { layout } = bodyValidation.data
     
     await ensureDataDir()
     await fs.writeFile(LAYOUT_FILE, JSON.stringify(layout, null, 2))

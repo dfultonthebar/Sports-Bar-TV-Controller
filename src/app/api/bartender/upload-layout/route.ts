@@ -198,11 +198,8 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-
+  // Note: No JSON validation for FormData requests
+  // FormData is validated by checking the file field below
 
   try {
     logger.info('Upload layout API called')
