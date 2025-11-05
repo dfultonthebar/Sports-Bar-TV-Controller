@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  Settings, 
-  FileText, 
-  HardDrive, 
-  GitBranch, 
+import {
+  Settings,
+  FileText,
+  HardDrive,
+  GitBranch,
   Activity,
   ArrowLeft,
   Download,
@@ -19,7 +19,8 @@ import {
   Filter,
   XCircle,
   Power,
-  ListTodo
+  ListTodo,
+  LayoutGrid
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -390,10 +391,14 @@ export default function SystemAdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="power" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-7 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
+            </TabsTrigger>
+            <TabsTrigger value="layout" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <LayoutGrid className="w-4 h-4 mr-2" />
+              Layout
             </TabsTrigger>
             <TabsTrigger value="logs" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <FileText className="w-4 h-4 mr-2" />
@@ -420,6 +425,66 @@ export default function SystemAdminPage() {
           {/* Power Controls Tab */}
           <TabsContent value="power" className="space-y-6">
             <SystemControlPanel />
+          </TabsContent>
+
+          {/* Layout Editor Tab */}
+          <TabsContent value="layout" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5" />
+                  TV Layout Editor
+                </CardTitle>
+                <CardDescription>
+                  Upload, edit, and configure your bar's TV floor plan layout
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-6 bg-slate-800 rounded-lg border border-slate-700">
+                  <h3 className="text-lg font-semibold text-white mb-3">Layout Management</h3>
+                  <p className="text-slate-300 mb-4">
+                    Access the full-featured Layout Editor to upload your bar's floor plan, automatically detect TV positions using AI, and manually adjust zones with drag-and-drop.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="p-4 bg-slate-700/50 rounded-lg">
+                      <h4 className="font-medium text-green-300 mb-2">✨ Features</h4>
+                      <ul className="text-sm text-slate-300 space-y-1">
+                        <li>• Upload floor plan images (PNG, JPG, PDF)</li>
+                        <li>• AI-powered TV detection</li>
+                        <li>• Drag & drop positioning</li>
+                        <li>• Draw custom zones</li>
+                        <li>• Edit labels and outputs</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 bg-slate-700/50 rounded-lg">
+                      <h4 className="font-medium text-blue-300 mb-2">📊 Current Status</h4>
+                      <ul className="text-sm text-slate-300 space-y-1">
+                        <li>• 24 TVs configured</li>
+                        <li>• All zones positioned</li>
+                        <li>• Wolf Pack outputs mapped</li>
+                        <li>• Layout active on /remote</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <Link
+                    href="/layout-editor"
+                    className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    <LayoutGrid className="w-4 h-4 mr-2" />
+                    Open Layout Editor
+                  </Link>
+
+                  <div className="mt-4 pt-4 border-t border-slate-700">
+                    <p className="text-xs text-slate-400">
+                      💡 <strong>Tip:</strong> After editing, your layout appears immediately on the /remote page's Video tab
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Logs Tab */}
