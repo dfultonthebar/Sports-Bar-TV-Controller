@@ -44,7 +44,15 @@
     "memory:watch": "tsx scripts/memory-bank.ts watch",
     "memory:stop": "tsx scripts/memory-bank.ts stop",
     "memory:list": "tsx scripts/memory-bank.ts list",
-    "memory:stats": "tsx scripts/memory-bank.ts stats"
+    "memory:stats": "tsx scripts/memory-bank.ts stats",
+    "type-check": "./scripts/type-check.sh",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx,js,jsx,json}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,js,jsx,json}'",
+    "test:vitest": "./scripts/run-tests.sh",
+    "test:vitest:coverage": "./scripts/run-tests.sh --coverage",
+    "quality-check": "./scripts/quality-check.sh",
+    "pre-commit": "./scripts/pre-commit.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
@@ -56,6 +64,8 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^4.0.7",
+    "@vitest/ui": "^4.0.7",
     "autoprefixer": "^10.4.21",
     "better-sqlite3": "^11.10.0",
     "drizzle-kit": "^0.31.5",
@@ -70,7 +80,8 @@
     "tailwindcss": "^3.4.18",
     "ts-jest": "^29.4.5",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.7"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
