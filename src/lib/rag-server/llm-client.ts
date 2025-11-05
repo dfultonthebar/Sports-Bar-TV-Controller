@@ -52,15 +52,18 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const duration = Date.now() - startTime;
 
     logger.debug('Generated embedding', {
-      model: RAGConfig.embeddingModel,
-      textLength: text.length,
-      embeddingDim: data.embedding?.length || 0,
-      duration,
+      data: {
+        model: RAGConfig.embeddingModel,
+        textLength: text.length,
+        embeddingDim: data.embedding?.length || 0,
+        duration,
+      }
     });
 
     return data.embedding || [];
   } catch (error) {
-    logger.error('Error generating embedding', { error, text: text.substring(0, 100) });
+    logger.error('Error generating embedding', { data: { error, text: text.substring(0, 100) }
+      });
     throw error;
   }
 }
@@ -144,13 +147,15 @@ Answer:`;
     answer = cleanupResponse(answer);
 
     logger.info('LLM query completed', {
-      model: RAGConfig.llmModel,
-      complexity,
-      maxTokens,
-      queryLength: query.length,
-      contextLength: context.length,
-      answerLength: answer.length,
-      duration,
+      data: {
+        model: RAGConfig.llmModel,
+        complexity,
+        maxTokens,
+        queryLength: query.length,
+        contextLength: context.length,
+        answerLength: answer.length,
+        duration,
+      }
     });
 
     return {
@@ -160,7 +165,8 @@ Answer:`;
       duration,
     };
   } catch (error) {
-    logger.error('Error querying LLM', { error, query: query.substring(0, 100) });
+    logger.error('Error querying LLM', { data: { error, query: query.substring(0, 100) }
+      });
     throw error;
   }
 }
@@ -287,10 +293,12 @@ export async function testOllamaConnection(): Promise<boolean> {
     const hasEmbedding = models.some((m: any) => m.name.includes(RAGConfig.embeddingModel));
 
     if (!hasLLM) {
-      logger.warn('LLM model not found in Ollama', { model: RAGConfig.llmModel });
+      logger.warn('LLM model not found in Ollama', { data: { model: RAGConfig.llmModel }
+        });
     }
     if (!hasEmbedding) {
-      logger.warn('Embedding model not found in Ollama', { model: RAGConfig.embeddingModel });
+      logger.warn('Embedding model not found in Ollama', { data: { model: RAGConfig.embeddingModel }
+        });
     }
 
     return hasLLM && hasEmbedding;

@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -67,11 +67,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { config, inputs, outputs } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { config, inputs, outputs } = data
   try {
 
     // Validate required fields

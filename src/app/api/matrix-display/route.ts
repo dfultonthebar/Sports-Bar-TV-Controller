@@ -6,7 +6,7 @@ import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 /**
@@ -49,7 +49,7 @@ interface MatrixDisplayResponse {
 export async function GET(request: NextRequest) {
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

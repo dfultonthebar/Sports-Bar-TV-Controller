@@ -16,7 +16,7 @@ import { jobTracker } from '@/lib/services/job-tracker'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/cec/discovery
  *
@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
       async: z.boolean().optional()
     })
   )
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const body = bodyValidation.data
+  const { data: body } = bodyValidation
   const { outputNumber, async: asyncMode } = body
 
   try {

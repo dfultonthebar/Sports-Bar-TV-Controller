@@ -12,7 +12,7 @@ import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import {
   executeTool,
   getAvailableTools,
@@ -53,14 +53,15 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini' // OPTIMIZED: Faste
 export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   logger.info('[CHAT API] POST request received')
   try {
     logger.info('[CHAT API] Parsing request body...')
-    const { message, sessionId, enableTools = true, stream = true } = bodyValidation.data
-    logger.info('[CHAT API] Request parsed:', { message: message?.substring(0, 50), sessionId, enableTools, stream })
+    const { data } = bodyValidation
+    const { message, sessionId, enableTools = true, stream = true } = data
+    logger.info('[CHAT API] Request parsed:', { data: { message: message?.substring(0, 50), sessionId, enableTools, stream } })
 
     if (!message) {
       logger.info('[CHAT API] No message provided')
@@ -161,12 +162,12 @@ async function processStreamingChat(
     await sendSSE({ type: 'status', message: 'Searching documentation...' })
     logger.info('[STREAMING] Calling documentSearch.searchDocuments...')
     const relevantDocs = await documentSearch.searchDocuments(message, 5)
-    logger.info('[STREAMING] Document search completed, found:', relevantDocs.length)
+    logger.info('[STREAMING] Document search completed', { data: { found: relevantDocs.length } })
     
     // Get recent operation logs for context
     logger.info('[STREAMING] Getting recent operations...')
     const recentOperations = await operationLogger.getRecentOperations(24)
-    logger.info('[STREAMING] Recent operations retrieved:', recentOperations.length)
+    logger.info('[STREAMING] Recent operations retrieved:', { data: recentOperations.length })
     logger.info('[STREAMING] Getting operation summary...')
     const operationSummary = await operationLogger.getOperationSummary(24)
     logger.info('[STREAMING] Operation summary retrieved')
@@ -217,7 +218,7 @@ async function processStreamingChat(
     // Get available AI tools
     logger.info('[STREAMING] Getting available tools...')
     const availableTools = enableTools ? getAvailableTools() : []
-    logger.info('[STREAMING] Available tools:', availableTools.length)
+    logger.info('[STREAMING] Available tools:', { data: availableTools.length })
     const toolsPrompt = enableTools ? buildToolsPrompt(availableTools) : ''
     logger.info('[STREAMING] Tools prompt built')
 
@@ -226,7 +227,7 @@ async function processStreamingChat(
     let session
     if (sessionId) {
       session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
-      logger.info('[STREAMING] Session found:', !!session)
+      logger.info('[STREAMING] Session found:', { data: !!session })
     } else {
       logger.info('[STREAMING] No sessionId provided')
     }
@@ -299,9 +300,9 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
     logger.info('[STREAMING] Sending status: Generating response...')
     await sendSSE({ type: 'status', message: 'Generating response...' })
     
-    logger.info('[STREAMING] Calling Ollama API at:', OLLAMA_BASE_URL)
-    logger.info('[STREAMING] Using model:', OLLAMA_MODEL)
-    logger.info('[STREAMING] Message count:', [systemMessage, ...messages].length)
+    logger.info('[STREAMING] Calling Ollama API at:', { data: OLLAMA_BASE_URL })
+    logger.info('[STREAMING] Using model:', { data: OLLAMA_MODEL })
+    logger.info('[STREAMING] Message count:', { data: [systemMessage, ...messages].length })
     
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
@@ -317,7 +318,7 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
       }),
     })
 
-    logger.info('[STREAMING] Ollama response status:', response.status)
+    logger.info('[STREAMING] Ollama response status:', { data: response.status })
     if (!response.ok) {
       throw new Error(`Ollama API error: ${response.status}`)
     }

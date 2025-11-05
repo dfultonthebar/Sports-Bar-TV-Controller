@@ -78,8 +78,8 @@ export class IRDatabaseService {
   async login(email: string, password: string): Promise<IRDBAccountResponse> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🔐 [IR DATABASE] Attempting login')
-    logger.info('   Email:', email)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Email:', { data: email })
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -97,14 +97,14 @@ export class IRDatabaseService {
       const data: IRDBAccountResponse = await response.json()
       
       logger.info('📥 [IR DATABASE] Login response:')
-      logger.info('   Status:', data.Status)
-      logger.info('   Success:', data.Status === 'success')
+      logger.info('   Status:', { data: data.Status })
+      logger.info('   Success:', { data: data.Status === 'success' })
       
       if (data.Status === 'success' && data.Account?.ApiKey) {
         logger.info('✅ [IR DATABASE] Login successful')
-        logger.info('   API Key:', data.Account.ApiKey.substring(0, 8) + '...')
+        logger.info('   API Key:', { data: data.Account.ApiKey.substring(0, 8) + '...' })
       } else {
-        logger.info('❌ [IR DATABASE] Login failed:', data.Message)
+        logger.info('❌ [IR DATABASE] Login failed:', { data: data.Message })
       }
       
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -139,7 +139,7 @@ export class IRDatabaseService {
   async logout(apiKey: string): Promise<IRDBAccountResponse> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🔓 [IR DATABASE] Logging out')
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -175,7 +175,7 @@ export class IRDatabaseService {
   async getBrands(): Promise<IRDBBrand[]> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR DATABASE] Fetching brands')
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -183,7 +183,7 @@ export class IRDatabaseService {
       const data: IRDBBrand[] = await response.json()
       
       logger.info('✅ [IR DATABASE] Brands fetched successfully')
-      logger.info('   Count:', data.length)
+      logger.info('   Count:', { data: data.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'get_brands', {
@@ -209,7 +209,7 @@ export class IRDatabaseService {
   async getTypes(): Promise<IRDBType[]> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR DATABASE] Fetching device types')
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -217,7 +217,7 @@ export class IRDatabaseService {
       const data: IRDBType[] = await response.json()
       
       logger.info('✅ [IR DATABASE] Types fetched successfully')
-      logger.info('   Count:', data.length)
+      logger.info('   Count:', { data: data.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'get_types', {
@@ -245,8 +245,8 @@ export class IRDatabaseService {
     
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR DATABASE] Fetching types for brand')
-    logger.info('   Brand:', brand)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Brand:', { data: brand })
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -254,7 +254,7 @@ export class IRDatabaseService {
       const data: IRDBBrandType[] = await response.json()
       
       logger.info('✅ [IR DATABASE] Brand types fetched successfully')
-      logger.info('   Count:', data.length)
+      logger.info('   Count:', { data: data.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'get_brand_types', {
@@ -285,9 +285,9 @@ export class IRDatabaseService {
     
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR DATABASE] Fetching models')
-    logger.info('   Brand:', brand)
-    logger.info('   Type:', type)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Brand:', { data: brand })
+    logger.info('   Type:', { data: type })
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -297,7 +297,7 @@ export class IRDatabaseService {
       const data: IRDBModel[] = await response.json()
       
       logger.info('✅ [IR DATABASE] Models fetched successfully')
-      logger.info('   Count:', data.length)
+      logger.info('   Count:', { data: data.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'get_models', {
@@ -327,8 +327,8 @@ export class IRDatabaseService {
   async getFunctions(codesetId: string): Promise<IRDBFunction[]> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR DATABASE] Fetching functions')
-    logger.info('   Codeset ID:', codesetId)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Codeset ID:', { data: codesetId })
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -338,7 +338,7 @@ export class IRDatabaseService {
       const data: IRDBFunction[] = await response.json()
       
       logger.info('✅ [IR DATABASE] Functions fetched successfully')
-      logger.info('   Count:', data.length)
+      logger.info('   Count:', { data: data.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'get_functions', {
@@ -373,15 +373,15 @@ export class IRDatabaseService {
     
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('⬇️  [IR DATABASE] Downloading IR code')
-    logger.info('   Codeset ID:', codesetId)
-    logger.info('   Function:', functionName)
+    logger.info('   Codeset ID:', { data: codesetId })
+    logger.info('   Function:', { data: functionName })
     logger.info('   Format:', format)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
       const url = `${IR_DATABASE_BASE_URL}/api/codesets/${codesetId}/functions/${encodedFunction}/codes?apikey=${apiKey}&output=direct&format=${format}`
-      logger.info('   API URL:', url)
+      logger.info('   API URL:', { data: url })
       
       const response = await fetch(url)
       
@@ -393,9 +393,9 @@ export class IRDatabaseService {
       
       // Log raw API response for debugging
       logger.info('📥 [IR DATABASE] Raw API Response:')
-      logger.info('   Response type:', typeof data)
-      logger.info('   Response keys:', Object.keys(data || {}))
-      logger.info('   Has Code1:', 'Code1' in (data || {}))
+      logger.info('   Response type:', { data: typeof data })
+      logger.info('   Response keys:', { data: Object.keys(data || {}) })
+      logger.info('   Has Code1:', { data: 'Code1' in (data || {}) })
       logger.info('   Code1 value:', data?.Code1)
       
       // Check if this is a CodeResponse (error) instead of a Code (success)
@@ -434,7 +434,7 @@ export class IRDatabaseService {
       // Validate that we have the required Code1 field
       if (!data.Code1) {
         logger.info('❌ [IR DATABASE] Missing Code1 field in response')
-        logger.info('   Response data:', JSON.stringify(data, null, 2))
+        logger.info('   Response data:', { data: JSON.stringify(data, null, 2) })
         logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         
         logDatabaseOperation('IR_DATABASE', 'download_code_missing_field', {
@@ -447,7 +447,7 @@ export class IRDatabaseService {
       }
       
       logger.info('✅ [IR DATABASE] Code downloaded successfully')
-      logger.info('   Function:', functionName)
+      logger.info('   Function:', { data: functionName })
       logger.info('   Code1 length:', data.Code1.length)
       logger.info('   HexCode1 length:', data.HexCode1?.length || 0)
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -486,9 +486,9 @@ export class IRDatabaseService {
   ): Promise<IRDBCodeResponse> {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('⬇️  [IR DATABASE] Downloading complete codeset')
-    logger.info('   Codeset ID:', codesetId)
+    logger.info('   Codeset ID:', { data: codesetId })
     logger.info('   Format:', format)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -498,8 +498,8 @@ export class IRDatabaseService {
       const data: IRDBCodeResponse = await response.json()
       
       logger.info('✅ [IR DATABASE] Codeset downloaded successfully')
-      logger.info('   Status:', data.Status)
-      logger.info('   Code:', data.Code)
+      logger.info('   Status:', { data: data.Status })
+      logger.info('   Code:', { data: data.Code })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       logDatabaseOperation('IR_DATABASE', 'download_codeset', {

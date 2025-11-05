@@ -103,19 +103,23 @@ export default function SportsGuide() {
       const result: ApiResponse = await response.json()
       logger.info(`[SportsGuide] Response parsed successfully`)
       logger.info(`[SportsGuide] Response data:`, {
-        success: result.success,
-        hasData: !!result.data,
-        listingGroups: result.data?.listing_groups?.length || 0,
-        error: result.error || 'none'
+        data: {
+          success: result.success,
+          hasData: !!result.data,
+          listingGroups: result.data?.listing_groups?.length || 0,
+          error: result.error || 'none'
+        }
       })
       
       if (result.success && result.data) {
         logger.info(`[SportsGuide] ✓ Successfully loaded sports data`)
-        logger.info(`[SportsGuide] Summary:`, result.summary)
-        logger.info(`[SportsGuide] Listing groups:`, result.data.listing_groups.map(g => ({
-          title: g.group_title,
-          listings: g.listings.length
-        })))
+        logger.info(`[SportsGuide] Summary:`, { data: result.summary })
+        logger.info(`[SportsGuide] Listing groups:`, {
+          data: result.data.listing_groups.map(g => ({
+            title: g.group_title,
+            listings: g.listings.length
+          }))
+        })
         
         setGuideData(result.data)
         setLastUpdate(new Date().toISOString())
@@ -128,7 +132,7 @@ export default function SportsGuide() {
         logger.info(`[SportsGuide] State updated successfully`)
       } else {
         const errorMsg = result.error || 'Failed to load sports data'
-        logger.error(`[SportsGuide] ✗ API returned error:`, errorMsg)
+        logger.error(`[SportsGuide] ✗ API returned error:`, { data: errorMsg })
         setError(errorMsg)
         setGuideData(null)
       }
@@ -136,7 +140,7 @@ export default function SportsGuide() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred'
       logger.error(`[SportsGuide] ✗ Exception while loading data:`, err)
-      logger.error(`[SportsGuide] Error message:`, errorMsg)
+      logger.error(`[SportsGuide] Error message:`, { data: errorMsg })
       setError(errorMsg)
       setGuideData(null)
     } finally {

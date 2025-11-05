@@ -117,12 +117,12 @@ export default function LayoutConfiguration() {
         const detectedZones = result.zones?.length || 0
         const detectionCount = result.detection?.detectionsCount || 0
 
-        logger.info('[Layout Config] Upload response:', { detectedZones, detectionCount, zones: result.zones })
+        logger.info('[Layout Config] Upload response:', { data: { detectedZones, detectionCount, zones: result.zones } })
 
         if (detectedZones > 0) {
           const statusMsg = `✅ Upload successful! Auto-detected ${detectedZones} TV zones with touch-friendly spacing`
           setUploadStatus(statusMsg)
-          logger.info('[Layout Config] Status message set:', statusMsg)
+          logger.info('[Layout Config] Status message set:', { data: statusMsg })
         } else {
           setUploadStatus('✅ Upload successful! (No TVs auto-detected)')
         }

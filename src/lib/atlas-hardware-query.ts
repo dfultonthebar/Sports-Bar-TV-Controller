@@ -441,9 +441,11 @@ export async function queryAtlasHardwareConfiguration(
     }
 
     logger.info(`[Atlas Query] Successfully queried hardware configuration:`, {
-      sources: config.totalSources,
-      zones: config.totalZones,
-      groups: config.totalGroups
+      data: {
+        sources: config.totalSources,
+        zones: config.totalZones,
+        groups: config.totalGroups
+      }
     })
 
     return config

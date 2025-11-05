@@ -6,7 +6,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -27,11 +27,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.configUpload)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { processorId, ipAddress, inputs, outputs, scenes } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { processorId, ipAddress, inputs, outputs, scenes } = data
   try {
 
     if (!processorId || !ipAddress) {
@@ -63,11 +63,13 @@ export async function POST(request: NextRequest) {
     await fs.writeFile(backupPath, JSON.stringify(config, null, 2))
     
     logger.info('Configuration saved to file system:', {
-      mainFile: configPath,
-      backupFile: backupPath,
-      inputsCount: inputs?.length || 0,
-      outputsCount: outputs?.length || 0,
-      scenesCount: scenes?.length || 0
+      data: {
+        mainFile: configPath,
+        backupFile: backupPath,
+        inputsCount: inputs?.length || 0,
+        outputsCount: outputs?.length || 0,
+        scenesCount: scenes?.length || 0
+      }
     })
 
     // Note: Actual Atlas processor upload would happen here via HTTP API

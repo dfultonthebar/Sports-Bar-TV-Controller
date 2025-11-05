@@ -7,7 +7,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -97,11 +97,12 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.logQuery)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
 
   try {
-    const { action, hours = 24, category } = bodyValidation.data;
+    const { action, hours = 24, category } = data;
     
     if (action === 'export') {
       // Export logs for download

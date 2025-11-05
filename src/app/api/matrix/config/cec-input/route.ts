@@ -12,7 +12,7 @@ import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { cecInputChannel } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { cecInputChannel } = data
   try {
 
     if (typeof cecInputChannel !== 'number') {
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Update the CEC input channel
     await update('matrixConfigurations', eq(schema.matrixConfigurations.id, activeConfig.id), { cecInputChannel })
 
-    logger.info('[API] Updated CEC input channel to:', cecInputChannel)
+    logger.info('[API] Updated CEC input channel to:', { data: cecInputChannel })
 
     return NextResponse.json({
       success: true,

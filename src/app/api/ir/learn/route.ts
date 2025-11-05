@@ -9,7 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/ir/learn
  * Start IR learning session for a specific command
@@ -23,13 +23,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('🎓 [IR LEARN API] Starting IR learning session')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -64,9 +62,9 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('📡 [IR LEARN API] Global Cache device found')
-    logger.info('   Name:', globalCacheDevice.name)
-    logger.info('   IP:', globalCacheDevice.ipAddress)
-    logger.info('   Port:', globalCacheDevice.port)
+    logger.info('   Name:', { data: globalCacheDevice.name })
+    logger.info('   IP:', { data: globalCacheDevice.ipAddress })
+    logger.info('   Port:', { data: globalCacheDevice.port })
 
     // Start learning session
     const result = await startLearningSession(
@@ -76,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     if (result.success && result.learnedCode) {
       logger.info('✅ [IR LEARN API] IR code learned successfully')
-      logger.info('   Code length:', result.learnedCode.length)
+      logger.info('   Code length:', { data: result.learnedCode.length })
 
       // Update the command with the learned IR code
       const updatedCommand = await update(
@@ -99,7 +97,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       logger.info('❌ [IR LEARN API] Failed to learn IR code')
-      logger.info('   Error:', result.error)
+      logger.info('   Error:', { data: result.error })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json(
@@ -141,7 +139,7 @@ async function startLearningSession(
     let learningEnabled = false
 
     logger.info('🔌 [IR LEARN] Connecting to Global Cache device...')
-    logger.info('   Address:', `${ipAddress}:${port}`)
+    logger.info('   Address:', { data: `${ipAddress}:${port}` })
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
@@ -167,7 +165,7 @@ async function startLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      logger.info('📥 [IR LEARN] Received data:', response.trim())
+      logger.info('📥 [IR LEARN] Received data:', { data: response.trim() })
 
       // Check for "IR Learner Enabled" response
       if (response.includes('IR Learner Enabled')) {
@@ -206,7 +204,7 @@ async function startLearningSession(
             const learnedCode = irCodeLine.trim()
             logger.info('🎉 [IR LEARN] IR code learned successfully!')
             logger.info('   Code length:', learnedCode.length, 'characters')
-            logger.info('   Code preview:', learnedCode.substring(0, 100) + '...')
+            logger.info('   Code preview:', { data: learnedCode.substring(0, 100) + '...' })
             
             // Automatically stop learning
             client.write('stop_IRL\r')
@@ -230,7 +228,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        logger.error('❌ [IR LEARN] Socket error:', error.message)
+        logger.error('❌ [IR LEARN] Socket error:', { data: error.message })
         resolve({
           success: false,
           error: `Connection error: ${error.message}`

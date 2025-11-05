@@ -4,7 +4,7 @@ import { cecService } from '@/lib/cec-service';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 export async function GET(request: Request) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

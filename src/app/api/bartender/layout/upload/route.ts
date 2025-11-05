@@ -16,7 +16,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.layoutUpload)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
@@ -67,14 +67,16 @@ export async function POST(request: NextRequest) {
     // Auto-detect TV zones if requested
     if (autoDetect) {
       logger.info('[Layout Upload] Starting auto-detection...')
-      logger.info('[Layout Upload] Image path:', filepath)
+      logger.info('[Layout Upload] Image path:', { data: filepath })
 
       detectionResult = await detectTVZonesFromImage(filepath)
 
       logger.info('[Layout Upload] Detection result:', {
-        zonesFound: detectionResult.zones.length,
-        detectionsCount: detectionResult.detectionsCount,
-        errors: detectionResult.errors
+        data: {
+          zonesFound: detectionResult.zones.length,
+          detectionsCount: detectionResult.detectionsCount,
+          errors: detectionResult.errors
+        }
       })
 
       if (detectionResult.zones.length > 0) {

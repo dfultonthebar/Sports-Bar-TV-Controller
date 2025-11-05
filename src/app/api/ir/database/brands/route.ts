@@ -19,14 +19,14 @@ export async function GET(request: NextRequest) {
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR DATABASE API] Fetching brands')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
     const brands = await irDatabaseService.getBrands()
 
     logger.info('✅ [IR DATABASE API] Brands fetched successfully')
-    logger.info('   Count:', brands.length)
+    logger.info('   Count:', { data: brands.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_brands', {

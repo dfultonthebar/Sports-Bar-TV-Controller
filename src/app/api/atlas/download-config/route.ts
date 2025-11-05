@@ -6,7 +6,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 export async function POST(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
@@ -40,10 +40,12 @@ export async function POST(request: NextRequest) {
       const savedConfig = JSON.parse(configData)
       
       logger.info('Configuration loaded from saved file:', {
-        processorId,
-        inputsCount: savedConfig.inputs?.length || 0,
-        outputsCount: savedConfig.outputs?.length || 0,
-        scenesCount: savedConfig.scenes?.length || 0
+        data: {
+          processorId,
+          inputsCount: savedConfig.inputs?.length || 0,
+          outputsCount: savedConfig.outputs?.length || 0,
+          scenesCount: savedConfig.scenes?.length || 0
+        }
       })
 
       return NextResponse.json({ 

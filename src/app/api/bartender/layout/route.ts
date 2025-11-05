@@ -7,7 +7,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * Layout Storage API - Enhanced to support background images
  * 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     try {
       layout = JSON.parse(data || '{}')
     } catch (parseError) {
-      logger.error('Failed to parse bartender layout file:', { parseError, data: data?.substring(0, 100) })
+      logger.error('Failed to parse bartender layout file:', { error: parseError, data: { preview: data?.substring(0, 100) } })
       // Return default layout if parse fails
       return NextResponse.json({
         layout: {
@@ -77,12 +77,12 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const { layout } = bodyValidation.data
-    
+    const { data } = bodyValidation
+    const { layout } = data
     await ensureDataDir()
     await fs.writeFile(LAYOUT_FILE, JSON.stringify(layout, null, 2))
     

@@ -4,7 +4,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db } from '@/db'
 import { irDevices } from '@/db/schema'
 import { eq } from 'drizzle-orm'
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
     const { searchParams } = new URL(request.url)
@@ -68,10 +68,11 @@ export async function POST(request: NextRequest) {
   })
 
   const bodyValidation = await validateRequestBody(request, deviceSchema)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
   try {
-    const newDevice = bodyValidation.data
+    const newDevice = data
 
     const [created] = await db.insert(irDevices).values({
       name: newDevice.name,
@@ -119,10 +120,11 @@ export async function PUT(request: NextRequest) {
   })
 
   const bodyValidation = await validateRequestBody(request, updateSchema)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
   try {
-    const { id, ...updateData } = bodyValidation.data
+    const { id, ...updateData } = data
 
     // Check if device exists
     const existing = await db.query.irDevices.findFirst({

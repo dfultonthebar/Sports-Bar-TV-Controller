@@ -9,7 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,13 +22,12 @@ export async function POST(
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
@@ -109,9 +108,9 @@ export async function POST(
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('📋 [IR TEMPLATE] Commands loaded from template')
     logger.info('   Template:', template.name)
-    logger.info('   Device ID:', deviceId)
-    logger.info('   Commands added:', commandsCreated.length)
-    logger.info('   Commands skipped:', commandsToAdd.length - newCommands.length)
+    logger.info('   Device ID:', { data: deviceId })
+    logger.info('   Commands added:', { data: commandsCreated.length })
+    logger.info('   Commands skipped:', { data: commandsToAdd.length - newCommands.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({

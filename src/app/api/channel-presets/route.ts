@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 // GET /api/channel-presets - Get all presets (optionally filtered by deviceType)
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   logger.api.request('GET', '/api/channel-presets')
@@ -67,15 +67,16 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   logger.api.request('POST', '/api/channel-presets')
 
   try {
-    const { name, channelNumber, deviceType, order } = bodyValidation.data
-
-    logger.debug('Creating channel preset', { name, channelNumber, deviceType, order })
+    const { data } = bodyValidation
+    const { name, channelNumber, deviceType, order } = data
+    logger.debug('Creating channel preset', { data: { name, channelNumber, deviceType, order }
+      })
 
     // Validate required fields
     if (!name || !channelNumber || !deviceType) {

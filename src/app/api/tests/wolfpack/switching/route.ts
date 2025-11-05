@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // TCP command with timeout
 async function sendTCPCommand(
   ipAddress: string,
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   const startTime = Date.now()
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('🎛️ [WOLFPACK COMPREHENSIVE TEST] Starting')
   logger.info('Testing all active input/output combinations')
-  logger.info('Timestamp:', new Date().toISOString())
+  logger.info('Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   
   try {
@@ -146,14 +146,14 @@ export async function POST(request: NextRequest) {
       .orderBy(matrixOutputs.channelNumber)
 
     logger.info('✅ [WOLFPACK] Configuration loaded')
-    logger.info('Configuration ID:', matrixConfig.id)
-    logger.info('Name:', matrixConfig.name)
-    logger.info('IP Address:', matrixConfig.ipAddress)
-    logger.info('TCP Port:', matrixConfig.tcpPort)
-    logger.info('Protocol:', matrixConfig.protocol)
-    logger.info('Active Inputs:', inputs.length)
-    logger.info('Active Outputs:', outputs.length)
-    logger.info('Total Tests:', inputs.length * outputs.length)
+    logger.info('Configuration ID:', { data: matrixConfig.id })
+    logger.info('Name:', { data: matrixConfig.name })
+    logger.info('IP Address:', { data: matrixConfig.ipAddress })
+    logger.info('TCP Port:', { data: matrixConfig.tcpPort })
+    logger.info('Protocol:', { data: matrixConfig.protocol })
+    logger.info('Active Inputs:', { data: inputs.length })
+    logger.info('Active Outputs:', { data: outputs.length })
+    logger.info('Total Tests:', { data: inputs.length * outputs.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const ipAddress = matrixConfig.ipAddress
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
     const testStartLog = testStartLogResults[0]
     
     logger.info('✅ [WOLFPACK] Test start log created')
-    logger.info('Test Log ID:', testStartLog.id)
+    logger.info('Test Log ID:', { data: testStartLog.id })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Test all combinations
@@ -366,12 +366,12 @@ export async function POST(request: NextRequest) {
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('✅ [WOLFPACK COMPREHENSIVE TEST] Complete')
-    logger.info('   Total Tests:', totalTests)
-    logger.info('   Passed:', passedTests)
-    logger.info('   Failed:', failedTests)
-    logger.info('   Success Rate:', `${successRate}%`)
-    logger.info('   Total Duration:', `${totalDuration}ms`)
-    logger.info('   Average per Test:', `${(totalDuration / totalTests).toFixed(0)}ms`)
+    logger.info('   Total Tests:', { data: totalTests })
+    logger.info('   Passed:', { data: passedTests })
+    logger.info('   Failed:', { data: failedTests })
+    logger.info('   Success Rate:', { data: `${successRate}%` })
+    logger.info('   Total Duration:', { data: `${totalDuration}ms` })
+    logger.info('   Average per Test:', { data: `${(totalDuration / totalTests).toFixed(0)}ms` })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logger.info('💾 [WOLFPACK] Saving test completion log...')
@@ -405,7 +405,7 @@ export async function POST(request: NextRequest) {
     const testCompleteLog = testCompleteLogResults[0]
 
     logger.info('✅ [WOLFPACK] Test completion log saved')
-    logger.info('Test Log ID:', testCompleteLog.id)
+    logger.info('Test Log ID:', { data: testCompleteLog.id })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
@@ -427,9 +427,9 @@ export async function POST(request: NextRequest) {
     
     logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.error('❌ [WOLFPACK COMPREHENSIVE TEST] Unexpected error')
-    logger.error('Error:', error instanceof Error ? error.message : 'Unknown error')
-    logger.error('Stack:', error instanceof Error ? error.stack : 'N/A')
-    logger.error('Duration:', `${duration}ms`)
+    logger.error('Error:', { data: error instanceof Error ? error.message : 'Unknown error' })
+    logger.error('Stack:', { data: error instanceof Error ? error.stack : 'N/A' })
+    logger.error('Duration:', { data: `${duration}ms` })
     logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {

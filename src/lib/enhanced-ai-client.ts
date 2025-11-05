@@ -149,7 +149,7 @@ export class EnhancedAIClient {
         }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error')
-        logger.error(`Ollama API call attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message)
+        logger.error(`Ollama API call attempt ${attempt}/${MAX_RETRIES} failed:`, { data: lastError.message })
 
         // If this is not the last attempt, wait before retrying
         if (attempt < MAX_RETRIES) {

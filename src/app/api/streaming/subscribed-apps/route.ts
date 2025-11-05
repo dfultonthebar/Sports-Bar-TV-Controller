@@ -7,7 +7,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
 
 export async function GET(request: NextRequest) {
@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     try {
       config = JSON.parse(data || '{}')
     } catch (parseError) {
-      logger.error('Failed to parse subscribed apps config:', { parseError, data: data?.substring(0, 100) })
+      logger.error('Failed to parse subscribed apps config:', { data: { parseError, data: data?.substring(0, 100) }
+        })
       config = { subscribedApps: [], lastUpdated: new Date().toISOString() }
     }
 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
@@ -64,7 +65,8 @@ export async function POST(request: NextRequest) {
     try {
       config = JSON.parse(data || '{}')
     } catch (parseError) {
-      logger.error('Failed to parse subscribed apps config for update:', { parseError, data: data?.substring(0, 100) })
+      logger.error('Failed to parse subscribed apps config for update:', { data: { parseError, data: data?.substring(0, 100) }
+        })
       config = { subscribedApps: [], lastUpdated: new Date().toISOString() }
     }
 

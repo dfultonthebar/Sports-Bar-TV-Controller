@@ -15,7 +15,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 interface DeviceGuideRequest {
@@ -31,7 +31,7 @@ function logInfo(message: string, data?: any) {
   const timestamp = new Date().toISOString()
   logger.info(`[${timestamp}] [Channel-Guide-API] INFO: ${message}`)
   if (data) {
-    logger.info(`[${timestamp}] [Channel-Guide-API] DATA:`, JSON.stringify(data, null, 2))
+    logger.info(`[${timestamp}] [Channel-Guide-API] DATA:`, { data: JSON.stringify(data, null, 2) })
   }
 }
 
@@ -52,15 +52,15 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   const requestId = Math.random().toString(36).substring(7)
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
 
   try {
-    const { inputNumber, deviceType, deviceId, startTime, endTime } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { inputNumber, deviceType, deviceId, startTime, endTime } = data
     logInfo(`Request params:`, {
       inputNumber,
       deviceType,

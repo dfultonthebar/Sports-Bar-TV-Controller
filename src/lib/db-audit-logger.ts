@@ -45,9 +45,9 @@ export function logDatabaseOperation(
     logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
     logger.info(`📝 [DB AUDIT] ${operation} on ${table}`)
     logger.info(`User: ${user || 'system'}`)
-    logger.info(`Data:`, JSON.stringify(data, null, 2))
+    logger.info(`Data:`, { data: JSON.stringify(data, null, 2) })
     if (metadata) {
-      logger.info(`Metadata:`, JSON.stringify(metadata, null, 2))
+      logger.info(`Metadata:`, { data: JSON.stringify(metadata, null, 2) })
     }
     logger.info(`Timestamp: ${timestamp}`)
     logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
@@ -81,7 +81,7 @@ export function logDatabaseError(
     logger.error(`❌ [DB ERROR] ${operation} on ${table}`)
     logger.error(`Error:`, error.message || String(error))
     if (context) {
-      logger.error(`Context:`, JSON.stringify(context, null, 2))
+      logger.error(`Context:`, { data: JSON.stringify(context, null, 2) })
     }
     logger.error(`Timestamp: ${timestamp}`)
     logger.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)

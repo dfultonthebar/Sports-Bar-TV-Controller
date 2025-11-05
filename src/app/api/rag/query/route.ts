@@ -37,8 +37,10 @@ export async function POST(request: NextRequest) {
     const options = validation.data;
 
     logger.info('RAG query received', {
-      query: options.query.substring(0, 50),
-      tech: options.tech,
+      data: {
+        query: options.query.substring(0, 50),
+        tech: options.tech,
+      }
     });
 
     // Execute query

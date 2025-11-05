@@ -10,7 +10,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 /**
@@ -30,11 +30,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
             if (data.pct !== undefined) return Math.round(data.pct)
             
             // If we can't extract a primitive, return default
-            logger.warn(`[Query Hardware] Cannot extract primitive from object for zone ${zone.index}:`, JSON.stringify(data))
+            logger.warn(`[Query Hardware] Cannot extract primitive from object for zone ${zone.index}:`, { data: JSON.stringify(data) })
             return defaultValue
           }
           
@@ -301,10 +301,12 @@ export async function POST(request: NextRequest) {
                                null
         
         logger.info(`[Query Hardware] Zone ${zone.index} sanitized values:`, {
-          name: sanitizedName,
-          volume: sanitizedVolume,
-          muted: sanitizedMuted,
-          currentSource: sanitizedSource
+          data: {
+            name: sanitizedName,
+            volume: sanitizedVolume,
+            muted: sanitizedMuted,
+            currentSource: sanitizedSource
+          }
         })
         
         // First, try to find existing zone by processorId and zoneNumber
@@ -373,11 +375,13 @@ export async function POST(request: NextRequest) {
                            null
         
         logger.info(`[Query Hardware] Group ${group.index} sanitized values:`, {
-          name: groupName,
-          isActive: groupIsActive,
-          gain: groupGain,
-          muted: groupMuted,
-          currentSource: groupSource
+          data: {
+            name: groupName,
+            isActive: groupIsActive,
+            gain: groupGain,
+            muted: groupMuted,
+            currentSource: groupSource
+          }
         })
         
         // First, try to find existing group by processorId and groupNumber
@@ -475,11 +479,11 @@ export async function GET(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

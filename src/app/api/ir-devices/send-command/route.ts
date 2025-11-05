@@ -7,7 +7,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const IR_DEVICES_FILE = join(process.cwd(), 'data', 'ir-devices.json')
 
 // Common IR codes for testing (these would normally come from Global Cache IR Database)
@@ -53,7 +53,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
     })
 
     socket.on('data', (data) => {
-      logger.info('iTach response:', data.toString())
+      logger.info('iTach response:', { data: data.toString() })
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
@@ -63,7 +63,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
     })
 
     socket.on('error', (err) => {
-      logger.error('iTach connection error:', err)
+      logger.error('iTach connection error:', { data: err })
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
@@ -91,12 +91,12 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const { deviceId, command, iTachAddress, isRawCode } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { deviceId, command, iTachAddress, isRawCode } = data
     if (!deviceId || !command || !iTachAddress) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }

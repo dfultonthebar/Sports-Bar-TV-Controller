@@ -32,7 +32,7 @@ export function logDatabaseOperation(
   const logLine = `[${entry.timestamp}] [${entry.category}] ${entry.operation}`
   
   if (data) {
-    logger.info(logLine, JSON.stringify(data, null, 2))
+    logger.info(logLine, { data: JSON.stringify(data, null, 2) })
   } else {
     logger.info(logLine)
   }

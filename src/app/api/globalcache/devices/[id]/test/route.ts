@@ -9,7 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/globalcache/devices/[id]/test
  * Test connection to a Global Cache device
@@ -26,12 +26,12 @@ export async function POST(
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
@@ -124,7 +124,7 @@ async function testDeviceConnection(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        logger.error(`Connection error to ${ipAddress}:${port}:`, error.message)
+        logger.error(`Connection error to ${ipAddress}:${port}:`, { data: error.message })
         resolve({
           online: false,
           error: error.message

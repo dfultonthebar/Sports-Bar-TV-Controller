@@ -9,7 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/globalcache/learn
  * Start IR learning on a Global Cache device
@@ -23,17 +23,15 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   try {
     const { deviceId } = body
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🎓 [GLOBAL CACHE] Starting IR learning')
     logger.info('   Device ID:', deviceId)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Validate required fields
@@ -59,9 +57,9 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('📡 [GLOBAL CACHE] Device found')
-    logger.info('   Name:', device.name)
-    logger.info('   IP:', device.ipAddress)
-    logger.info('   Port:', device.port)
+    logger.info('   Name:', { data: device.name })
+    logger.info('   IP:', { data: device.ipAddress })
+    logger.info('   Port:', { data: device.port })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Start learning session
@@ -69,11 +67,11 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       logger.info('✅ [GLOBAL CACHE] Learning session started successfully')
-      logger.info('   Status:', result.status)
+      logger.info('   Status:', { data: result.status })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     } else {
       logger.info('❌ [GLOBAL CACHE] Failed to start learning session')
-      logger.info('   Error:', result.error)
+      logger.info('   Error:', { data: result.error })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
 
@@ -103,16 +101,15 @@ export async function DELETE(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   try {
     const { deviceId } = body
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🛑 [GLOBAL CACHE] Stopping IR learning')
     logger.info('   Device ID:', deviceId)
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Validate required fields
@@ -138,9 +135,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     logger.info('📡 [GLOBAL CACHE] Device found')
-    logger.info('   Name:', device.name)
-    logger.info('   IP:', device.ipAddress)
-    logger.info('   Port:', device.port)
+    logger.info('   Name:', { data: device.name })
+    logger.info('   IP:', { data: device.ipAddress })
+    logger.info('   Port:', { data: device.port })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Stop learning session
@@ -148,11 +145,11 @@ export async function DELETE(request: NextRequest) {
 
     if (result.success) {
       logger.info('✅ [GLOBAL CACHE] Learning session stopped successfully')
-      logger.info('   Status:', result.status)
+      logger.info('   Status:', { data: result.status })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     } else {
       logger.info('❌ [GLOBAL CACHE] Failed to stop learning session')
-      logger.info('   Error:', result.error)
+      logger.info('   Error:', { data: result.error })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     }
 
@@ -190,7 +187,7 @@ async function startLearningSession(
     let learningEnabled = false
 
     logger.info('🔌 [GLOBAL CACHE] Connecting to device...')
-    logger.info('   Address:', `${ipAddress}:${port}`)
+    logger.info('   Address:', { data: `${ipAddress}:${port}` })
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
@@ -216,7 +213,7 @@ async function startLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      logger.info('📥 [GLOBAL CACHE] Received data:', response.trim())
+      logger.info('📥 [GLOBAL CACHE] Received data:', { data: response.trim() })
 
       // Check for "IR Learner Enabled" response
       if (response.includes('IR Learner Enabled')) {
@@ -255,7 +252,7 @@ async function startLearningSession(
             const learnedCode = irCodeLine.trim()
             logger.info('🎉 [GLOBAL CACHE] IR code learned successfully!')
             logger.info('   Code length:', learnedCode.length, 'characters')
-            logger.info('   Code preview:', learnedCode.substring(0, 100) + '...')
+            logger.info('   Code preview:', { data: learnedCode.substring(0, 100) + '...' })
             
             // Automatically stop learning
             client.write('stop_IRL\r')
@@ -279,7 +276,7 @@ async function startLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        logger.error('❌ [GLOBAL CACHE] Socket error:', error.message)
+        logger.error('❌ [GLOBAL CACHE] Socket error:', { data: error.message })
         resolve({
           success: false,
           error: `Connection error: ${error.message}`
@@ -366,7 +363,7 @@ async function stopLearningSession(
       const response = data.toString()
       dataBuffer += response
       
-      logger.info('📥 [GLOBAL CACHE] Received data:', response.trim())
+      logger.info('📥 [GLOBAL CACHE] Received data:', { data: response.trim() })
 
       // Check for "IR Learner Disabled" response
       if (response.includes('IR Learner Disabled')) {
@@ -392,7 +389,7 @@ async function stopLearningSession(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        logger.error('❌ [GLOBAL CACHE] Socket error:', error.message)
+        logger.error('❌ [GLOBAL CACHE] Socket error:', { data: error.message })
         resolve({
           success: false,
           error: `Connection error: ${error.message}`

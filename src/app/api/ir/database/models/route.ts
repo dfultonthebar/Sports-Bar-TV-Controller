@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * GET /api/ir/database/models?brand=xxx&type=xxx
  * Get models for a specific brand and device type
@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR DATABASE API] Fetching models')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -45,13 +45,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    logger.info('   Brand:', brand)
-    logger.info('   Type:', type)
+    logger.info('   Brand:', { data: brand })
+    logger.info('   Type:', { data: type })
 
     const models = await irDatabaseService.getModels(brand, type)
 
     logger.info('✅ [IR DATABASE API] Models fetched successfully')
-    logger.info('   Count:', models.length)
+    logger.info('   Count:', { data: models.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_models', {

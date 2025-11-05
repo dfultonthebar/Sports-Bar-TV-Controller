@@ -40,9 +40,11 @@ export class MemoryBank {
       const snapshot = await this.storage.saveSnapshot(context, markdown);
 
       logger.info('Memory bank snapshot created', {
-        id: snapshot.id,
-        branch: snapshot.branch,
-        size: snapshot.size,
+        data: {
+          id: snapshot.id,
+          branch: snapshot.branch,
+          size: snapshot.size,
+        }
       });
 
       return snapshot;

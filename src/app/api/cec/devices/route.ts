@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   try {
     logger.info('[API] Fetching CEC devices...')
     const devices = await findMany('cecDevices')
-    logger.info('[API] Found CEC devices:', devices)
+    logger.info('[API] Found CEC devices:', { data: devices })
 
     return NextResponse.json({
       success: true,

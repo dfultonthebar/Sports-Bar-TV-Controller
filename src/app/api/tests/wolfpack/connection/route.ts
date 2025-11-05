@@ -11,7 +11,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // TCP connection test with timeout
 async function testTCPConnection(
   ipAddress: string,
@@ -23,15 +23,15 @@ async function testTCPConnection(
   return new Promise((resolve) => {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🎛️ [WOLFPACK CONNECTION TEST] Starting TCP connection test')
-    logger.info('Target:', `${ipAddress}:${port}`)
-    logger.info('Timeout:', `${timeoutMs}ms`)
-    logger.info('Timestamp:', new Date().toISOString())
+    logger.info('Target:', { data: `${ipAddress}:${port}` })
+    logger.info('Timeout:', { data: `${timeoutMs}ms` })
+    logger.info('Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     const client = net.createConnection({ port, host: ipAddress }, () => {
       const duration = Date.now() - startTime
       logger.info('✅ [WOLFPACK CONNECTION TEST] TCP connection established')
-      logger.info('Duration:', `${duration}ms`)
+      logger.info('Duration:', { data: `${duration}ms` })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.end()
@@ -47,7 +47,7 @@ async function testTCPConnection(
     client.on('timeout', () => {
       const duration = Date.now() - startTime
       logger.error('❌ [WOLFPACK CONNECTION TEST] Connection timeout')
-      logger.error('Duration:', `${duration}ms`)
+      logger.error('Duration:', { data: `${duration}ms` })
       logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.destroy()
@@ -61,8 +61,8 @@ async function testTCPConnection(
     client.on('error', (err) => {
       const duration = Date.now() - startTime
       logger.error('❌ [WOLFPACK CONNECTION TEST] Connection error')
-      logger.error('Error:', err.message)
-      logger.error('Duration:', `${duration}ms`)
+      logger.error('Error:', { data: err.message })
+      logger.error('Duration:', { data: `${duration}ms` })
       logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       client.destroy()
@@ -84,14 +84,14 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   const startTime = Date.now()
   
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('🎛️ [WOLFPACK CONNECTION TEST] API endpoint called')
-  logger.info('Timestamp:', new Date().toISOString())
+  logger.info('Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   
   try {
@@ -126,11 +126,11 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('✅ [WOLFPACK CONNECTION TEST] Configuration loaded')
-    logger.info('Configuration ID:', matrixConfig.id)
-    logger.info('Name:', matrixConfig.name)
-    logger.info('IP Address:', matrixConfig.ipAddress)
-    logger.info('TCP Port:', matrixConfig.tcpPort)
-    logger.info('Protocol:', matrixConfig.protocol)
+    logger.info('Configuration ID:', { data: matrixConfig.id })
+    logger.info('Name:', { data: matrixConfig.name })
+    logger.info('IP Address:', { data: matrixConfig.ipAddress })
+    logger.info('TCP Port:', { data: matrixConfig.tcpPort })
+    logger.info('Protocol:', { data: matrixConfig.protocol })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const ipAddress = matrixConfig.ipAddress
@@ -144,8 +144,8 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime
 
     logger.info('📊 [WOLFPACK CONNECTION TEST] Test completed')
-    logger.info('Success:', connectionResult.success)
-    logger.info('Total Duration:', `${duration}ms`)
+    logger.info('Success:', { data: connectionResult.success })
+    logger.info('Total Duration:', { data: `${duration}ms` })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Log the test result to database
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     const testLog = testLogResults[0]
 
     logger.info('✅ [WOLFPACK CONNECTION TEST] Test result saved')
-    logger.info('Test Log ID:', testLog.id)
+    logger.info('Test Log ID:', { data: testLog.id })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({
@@ -197,9 +197,9 @@ export async function POST(request: NextRequest) {
     
     logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.error('❌ [WOLFPACK CONNECTION TEST] Unexpected error occurred')
-    logger.error('Error:', error instanceof Error ? error.message : 'Unknown error')
-    logger.error('Stack:', error instanceof Error ? error.stack : 'N/A')
-    logger.error('Duration:', `${duration}ms`)
+    logger.error('Error:', { data: error instanceof Error ? error.message : 'Unknown error' })
+    logger.error('Stack:', { data: error instanceof Error ? error.stack : 'N/A' })
+    logger.error('Duration:', { data: `${duration}ms` })
     logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     try {

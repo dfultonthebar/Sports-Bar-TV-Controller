@@ -8,7 +8,7 @@ import { getSecurityLogs, getSecurityLogStats } from '@/lib/ai-tools/security/se
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic';
 
 /**
@@ -29,7 +29,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   // Query parameter validation
   const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

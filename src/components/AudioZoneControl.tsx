@@ -145,12 +145,14 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
       setZones(realZones)
 
       logger.info('Real Atlas configuration loaded from hardware:', {
-        processor: activeProcessor.name,
-        model: activeProcessor.model,
-        sources: atlasInputs.length,
-        matrixInputs: matrixInputs.length,
-        zones: realZones.length,
-        queriedAt: zonesStatusData.queriedAt
+        data: {
+          processor: activeProcessor.name,
+          model: activeProcessor.model,
+          sources: atlasInputs.length,
+          matrixInputs: matrixInputs.length,
+          zones: realZones.length,
+          queriedAt: zonesStatusData.queriedAt
+        }
       })
 
       setLoading(false)

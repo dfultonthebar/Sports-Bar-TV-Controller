@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 interface ControlCommand {
   action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
@@ -30,10 +30,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.audioControl)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
   // Security: use validated data
-  const { processorId, command } = bodyValidation.data as { processorId: string, command: ControlCommand }
+  const { processorId, command } = data as { processorId: string, command: ControlCommand }
 
   try {
 
@@ -224,7 +225,7 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
   )
 
   if (!result.success) {
-    logger.error('[Control API] Failed to set output volume:', result.error)
+    logger.error('[Control API] Failed to set output volume:', { data: result.error })
     throw new Error(result.error || 'Failed to set output volume')
   }
   

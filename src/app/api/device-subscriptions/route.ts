@@ -5,7 +5,7 @@ import { join } from 'path'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ const SUBSCRIPTIONS_FILE = join(process.cwd(), 'data', 'device-subscriptions.jso
 export async function GET(request: NextRequest) {
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

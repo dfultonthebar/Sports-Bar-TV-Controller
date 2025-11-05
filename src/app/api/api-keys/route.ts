@@ -6,7 +6,7 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 import { logger } from '@/lib/logger'
 export async function GET(request: NextRequest) {
@@ -50,9 +50,9 @@ export async function POST(request: NextRequest) {
   try {
     // Validate request body
     const validation = await validateRequestBody(request, createApiKeySchema)
-    if (!validation.success) return validation.error
-
-    const { name, provider, keyValue, description } = validation.data
+    if (isValidationError(validation)) return validation.error
+    const { data } = validation
+    const { name, provider, keyValue, description } = data
 
     // Encrypt the API key before storing
     const encryptedKey = encrypt(keyValue)

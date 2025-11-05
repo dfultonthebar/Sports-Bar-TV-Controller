@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * GET /api/ir/devices/[id]/commands
  * Get all commands for a specific IR device
@@ -26,15 +26,15 @@ export async function GET(
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   const { id: deviceId } = await params
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR COMMANDS] Fetching commands for device')
-  logger.info('   Device ID:', deviceId)
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Device ID:', { data: deviceId })
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -44,7 +44,7 @@ export async function GET(
     })
 
     logger.info('✅ [IR COMMANDS] Commands fetched successfully')
-    logger.info('   Count:', commands.length)
+    logger.info('   Count:', { data: commands.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return NextResponse.json({

@@ -119,7 +119,7 @@ export class SandboxExecutor {
       
       // Set up console logging
       await jail.set('log', new ivm.Reference((msg: string) => {
-        logger.info('[Sandbox]', msg);
+        logger.info('[Sandbox]', { data: msg });
       }));
       
       // Wrap code to capture result

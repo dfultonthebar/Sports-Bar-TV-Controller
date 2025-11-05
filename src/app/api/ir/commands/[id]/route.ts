@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * DELETE /api/ir/commands/[id]
  * Delete an IR command
@@ -26,15 +26,15 @@ export async function DELETE(
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   const { id: commandId } = await params
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('🗑️  [IR COMMANDS] Deleting IR command')
-  logger.info('   Command ID:', commandId)
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Command ID:', { data: commandId })
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {

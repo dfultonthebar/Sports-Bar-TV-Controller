@@ -116,14 +116,14 @@ class CommandScheduler {
       try {
         targets = JSON.parse(command.targets || '[]')
       } catch (parseError) {
-        logger.error('Failed to parse command targets:', { parseError, targets: command.targets?.substring(0, 100) })
+        logger.error('Failed to parse command targets:', { data: { parseError, targets: command.targets?.substring(0, 100) } })
         targets = []
       }
 
       try {
         commandSequence = JSON.parse(command.commandSequence || '[]')
       } catch (parseError) {
-        logger.error('Failed to parse command sequence:', { parseError, sequence: command.commandSequence?.substring(0, 100) })
+        logger.error('Failed to parse command sequence:', { data: { parseError, sequence: command.commandSequence?.substring(0, 100) } })
         commandSequence = []
       }
 
@@ -185,7 +185,8 @@ class CommandScheduler {
       try {
         scheduleData = JSON.parse(command.scheduleData || '{}')
       } catch (parseError) {
-        logger.error('Failed to parse schedule data:', { parseError, data: command.scheduleData?.substring(0, 100) })
+        logger.error('Failed to parse schedule data:', { data: { parseError, data: command.scheduleData?.substring(0, 100) }
+          })
         scheduleData = {}
       }
       const nextExecution = this.calculateNextExecution(

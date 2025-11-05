@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cecService } from '@/lib/cec-service'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 // Validation schema for CEC commands
 const cecCommandSchema = z.object({
@@ -28,10 +28,11 @@ export async function POST(request: NextRequest) {
   try {
     // Validate request body
     const validation = await validateRequestBody(request, cecCommandSchema)
-    if (!validation.success) return validation.error
+    if (isValidationError(validation)) return validation.error
 
-    const { action, tvAddress, params } = validation.data
+    const { data } = validation
 
+    const { action, tvAddress, params } = data
     let result;
 
     switch (action) {

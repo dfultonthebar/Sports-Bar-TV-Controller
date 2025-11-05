@@ -8,7 +8,7 @@ import { routeWolfpackToMatrix } from '@/services/wolfpackMatrixService'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 /**
  * Matrix Video Input Selection API
@@ -25,17 +25,17 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
   logger.api.request('POST', '/api/matrix/video-input-selection')
 
   // Security: use validated data
-  const { matrixOutputNumber, videoInputNumber, videoInputLabel } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { matrixOutputNumber, videoInputNumber, videoInputLabel } = data
   try {
 
     // Validate input parameters
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
   logger.api.request('GET', '/api/matrix/video-input-selection')
   

@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 /**
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -64,10 +64,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
+    const { data } = bodyValidation
     const {
       name,
       description,
@@ -80,8 +81,7 @@ export async function POST(request: NextRequest) {
       timezone,
       enabled,
       createdBy,
-    } = bodyValidation.data
-
+    } = data
     // Validate required fields
     if (!name || !commandType || !targetType || !targets || !commandSequence || !scheduleType || !scheduleData) {
       return NextResponse.json(
@@ -148,12 +148,12 @@ export async function PUT(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const { id, ...updates } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { id, ...updates } = data
     if (!id) {
       return NextResponse.json(
         { error: 'Command ID is required' },

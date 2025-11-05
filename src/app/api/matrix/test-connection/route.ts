@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 export async function GET(request: NextRequest) {
@@ -134,11 +134,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { ipAddress, port, protocol = 'TCP' } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { ipAddress, port, protocol = 'TCP' } = data
   try {
 
     if (!ipAddress || !port) {

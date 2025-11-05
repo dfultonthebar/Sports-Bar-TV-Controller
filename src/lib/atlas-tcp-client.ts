@@ -44,7 +44,7 @@ export class AtlasTCPClient {
       })
 
       this.socket.on('error', (err) => {
-        logger.error('Atlas TCP connection error:', err)
+        logger.error('Atlas TCP connection error:', { data: err })
         this.connected = false
         reject(err)
       })

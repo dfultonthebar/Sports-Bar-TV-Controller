@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * GET /api/ir/database/types?brand=xxx
  * Get device types for a brand, or all types if no brand specified
@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR DATABASE API] Fetching types')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -35,11 +35,11 @@ export async function GET(request: NextRequest) {
     const brand = searchParams.get('brand')
 
     if (brand) {
-      logger.info('   Brand:', brand)
+      logger.info('   Brand:', { data: brand })
       const types = await irDatabaseService.getBrandTypes(brand)
       
       logger.info('✅ [IR DATABASE API] Brand types fetched successfully')
-      logger.info('   Count:', types.length)
+      logger.info('   Count:', { data: types.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       logDatabaseOperation('IR_DATABASE_API', 'get_brand_types', {
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       const types = await irDatabaseService.getTypes()
       
       logger.info('✅ [IR DATABASE API] Types fetched successfully')
-      logger.info('   Count:', types.length)
+      logger.info('   Count:', { data: types.length })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       logDatabaseOperation('IR_DATABASE_API', 'get_types', {

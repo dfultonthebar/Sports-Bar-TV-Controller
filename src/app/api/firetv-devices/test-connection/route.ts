@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -18,12 +18,12 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.connectionTest)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   // Security: use validated data
-  const { deviceId, ipAddress, port } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { deviceId, ipAddress, port } = data
   try {
     
     
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const deviceInfo = await adbClient.getDeviceInfo()
     
     logger.info('[FIRE CUBE] ✅ Connection successful!')
-    logger.info('[FIRE CUBE] Device Info:', deviceInfo)
+    logger.info('[FIRE CUBE] Device Info:', { data: deviceInfo })
     
     // Get connection status
     const connectionStatus = connectionManager.getConnectionStatus(deviceId)

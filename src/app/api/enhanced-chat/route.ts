@@ -7,18 +7,19 @@ import { eq } from 'drizzle-orm'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   logger.info('[ENHANCED-CHAT] POST request received')
   try {
     logger.info('[ENHANCED-CHAT] Parsing request body...')
-    const { message, sessionId, chatType = 'general', context } = bodyValidation.data
-    logger.info('[ENHANCED-CHAT] Request parsed:', { message: message?.substring(0, 50), sessionId, chatType })
+    const { data } = bodyValidation
+    const { message, sessionId, chatType = 'general', context } = data
+    logger.info('[ENHANCED-CHAT] Request parsed:', { data: { message: message?.substring(0, 50), sessionId, chatType } })
 
     if (!message) {
       logger.info('[ENHANCED-CHAT] No message provided')
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     // Search for relevant documents based on the message
     logger.info('[ENHANCED-CHAT] Searching for relevant documents...')
     const relevantDocs = await searchRelevantDocuments(message)
-    logger.info('[ENHANCED-CHAT] Found documents:', relevantDocs.length)
+    logger.info('[ENHANCED-CHAT] Found documents:', { data: relevantDocs.length })
     const documentContext = relevantDocs.map(doc => 
       `Document: ${doc.originalName}\nContent: ${doc.content?.substring(0, 1500)}...`
     ).join('\n\n')
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     let session
     if (sessionId) {
       session = await findUnique('chatSessions', eq(schema.chatSessions.id, sessionId))
-      logger.info('[ENHANCED-CHAT] Session found:', !!session)
+      logger.info('[ENHANCED-CHAT] Session found:', { data: !!session })
     }
 
     const messages = session ? JSON.parse(session.messages || '[]') : []

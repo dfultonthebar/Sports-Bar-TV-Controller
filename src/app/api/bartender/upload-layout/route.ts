@@ -15,7 +15,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const execAsync = promisify(exec)
 
 /**
@@ -58,7 +58,7 @@ async function createEnhancedLayoutImage(
       .png({ quality: 95 })
       .toFile(outputFilename)
 
-    logger.info('[Enhanced Image] Created professional layout:', outputFilename)
+    logger.info('[Enhanced Image] Created professional layout:', { data: outputFilename })
 
     return outputFilename
   } catch (error) {
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File
     
-    logger.info('File received:', file ? file.name : 'No file')
+    logger.info('File received:', { data: file ? file.name : 'No file' })
     
     if (!file) {
       logger.info('No file provided in request')
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await fs.writeFile(filepath, buffer)
-    logger.info('File saved to:', filepath)
+    logger.info('File saved to:', { data: filepath })
 
     let imageUrl = `/api/uploads/layouts/${filename}`
     let convertedImageUrl: string | null = null
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
         const outputPrefix = join(UPLOAD_DIR, `${filename.replace(/\.pdf$/, '')}_page`)
         const command = `pdftoppm -png -f 1 -l 1 -r 300 "${tempPdfPath}" "${outputPrefix}"`
         
-        logger.info('Running command:', command)
+        logger.info('Running command:', { data: command })
         await execAsync(command)
         
         // Clean up temp PDF file
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
           await fs.unlink(imagePath).catch(err => logger.info('Cleanup error:', err))
           
           convertedImageUrl = `/api/uploads/layouts/${optimizedFilename}`
-          logger.info('PDF converted to image:', convertedImageUrl)
+          logger.info('PDF converted to image:', { data: convertedImageUrl })
         } else {
           logger.warn('No PNG file generated from PDF conversion');
         }
@@ -337,14 +337,16 @@ export async function POST(request: NextRequest) {
     let detectionResult: any = null
     const imageToAnalyze = convertedImageUrl ? join(UPLOAD_DIR, convertedImageUrl.split('/').pop()!) : filepath
 
-    logger.info('[Upload Layout] Starting auto-detection on:', imageToAnalyze)
+    logger.info('[Upload Layout] Starting auto-detection on:', { data: imageToAnalyze })
 
     try {
       detectionResult = await detectTVZonesFromImage(imageToAnalyze)
 
       logger.info('[Upload Layout] Detection result:', {
-        zonesFound: detectionResult.zones.length,
-        errors: detectionResult.errors
+        data: {
+          zonesFound: detectionResult.zones.length,
+          errors: detectionResult.errors
+        }
       })
 
       if (detectionResult.zones.length > 0) {

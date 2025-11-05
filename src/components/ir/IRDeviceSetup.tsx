@@ -90,7 +90,7 @@ export function IRDeviceSetup() {
   useEffect(() => {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🔌 [IR DEVICE SETUP] Component mounted')
-    logger.info('   Timestamp:', new Date().toISOString())
+    logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     loadDevices()
     loadGlobalCacheDevices()
@@ -137,11 +137,11 @@ export function IRDeviceSetup() {
   const addDevice = async () => {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('➕ [IR DEVICE SETUP] Adding new device')
-    logger.info('   Name:', newDevice.name)
-    logger.info('   Type:', newDevice.deviceType)
-    logger.info('   Brand:', newDevice.brand)
-    logger.info('   Global Cache Device:', newDevice.globalCacheDeviceId || 'Not selected')
-    logger.info('   Global Cache Port:', newDevice.globalCachePortNumber || 'Not selected')
+    logger.info('   Name:', { data: newDevice.name })
+    logger.info('   Type:', { data: newDevice.deviceType })
+    logger.info('   Brand:', { data: newDevice.brand })
+    logger.info('   Global Cache Device:', { data: newDevice.globalCacheDeviceId || 'Not selected' })
+    logger.info('   Global Cache Port:', { data: newDevice.globalCachePortNumber || 'Not selected' })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -186,8 +186,8 @@ export function IRDeviceSetup() {
   const startEdit = (device: IRDevice) => {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('✏️  [IR DEVICE SETUP] Starting edit mode')
-    logger.info('   Device:', device.name)
-    logger.info('   ID:', device.id)
+    logger.info('   Device:', { data: device.name })
+    logger.info('   ID:', { data: device.id })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     setEditingDevice(device)
@@ -210,10 +210,10 @@ export function IRDeviceSetup() {
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('💾 [IR DEVICE SETUP] Updating device')
-    logger.info('   Device ID:', editingDevice.id)
-    logger.info('   Name:', newDevice.name)
-    logger.info('   Global Cache Device:', newDevice.globalCacheDeviceId || 'Not selected')
-    logger.info('   Global Cache Port:', newDevice.globalCachePortNumber || 'Not selected')
+    logger.info('   Device ID:', { data: editingDevice.id })
+    logger.info('   Name:', { data: newDevice.name })
+    logger.info('   Global Cache Device:', { data: newDevice.globalCacheDeviceId || 'Not selected' })
+    logger.info('   Global Cache Port:', { data: newDevice.globalCachePortNumber || 'Not selected' })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -280,7 +280,7 @@ export function IRDeviceSetup() {
     
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🗑️  [IR DEVICE SETUP] Deleting device')
-    logger.info('   Device ID:', deviceId)
+    logger.info('   Device ID:', { data: deviceId })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     try {
@@ -439,7 +439,7 @@ export function IRDeviceSetup() {
                   id="globalCacheDevice"
                   value={newDevice.globalCacheDeviceId}
                   onChange={(e) => {
-                    logger.info('🔄 [IR DEVICE SETUP] Global Cache device changed:', e.target.value)
+                    logger.info('🔄 [IR DEVICE SETUP] Global Cache device changed:', { data: e.target.value })
                     setNewDevice({ ...newDevice, globalCacheDeviceId: e.target.value, globalCachePortNumber: '' })
                   }}
                   className="w-full h-10 px-3 rounded-md bg-slate-700 border border-slate-600 text-slate-100"
@@ -463,7 +463,7 @@ export function IRDeviceSetup() {
                   id="globalCachePort"
                   value={newDevice.globalCachePortNumber}
                   onChange={(e) => {
-                    logger.info('🔄 [IR DEVICE SETUP] Global Cache port changed:', e.target.value)
+                    logger.info('🔄 [IR DEVICE SETUP] Global Cache port changed:', { data: e.target.value })
                     setNewDevice({ ...newDevice, globalCachePortNumber: e.target.value })
                   }}
                   disabled={!newDevice.globalCacheDeviceId}

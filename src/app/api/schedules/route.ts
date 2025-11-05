@@ -7,7 +7,7 @@ import { findMany, create } from '@/lib/db-helpers';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 // GET - List all schedules
@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
 
   logger.api.request('POST', '/api/schedules');
 
   try {
-    const body = bodyValidation.data;
+    const body = data;
     logger.debug('Creating schedule with data', { data: body });
     
     const schedule = await create('schedules', {

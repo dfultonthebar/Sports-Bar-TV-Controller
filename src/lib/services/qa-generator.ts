@@ -249,7 +249,7 @@ async function processQAGeneration(
       } catch (error) {
         failedFiles++;
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        logger.error(`Error processing file ${file}:`, errorMsg);
+        logger.error(`Error processing file ${file}:`, { data: errorMsg });
         errors.push(`${file}: ${errorMsg}`);
         await updateFileTracking(file, 0, options.sourceType, 'failed');
         return { success: false, qas: [] };

@@ -131,13 +131,13 @@ class DirecTVLogger {
       }
 
       if (fullEntry.details) {
-        logger.info('Details:', JSON.stringify(fullEntry.details, null, 2))
+        logger.info('Details:', { data: JSON.stringify(fullEntry.details, null, 2) })
       }
 
       if (fullEntry.error) {
-        logger.error('Error:', fullEntry.error.message)
+        logger.error('Error:', { data: fullEntry.error.message })
         if (fullEntry.error.stack) {
-          logger.error('Stack:', fullEntry.error.stack)
+          logger.error('Stack:', { data: fullEntry.error.stack })
         }
       }
 

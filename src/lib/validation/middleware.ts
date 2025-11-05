@@ -24,6 +24,28 @@ export interface ValidationError {
 
 export type ValidatedResult<T> = ValidationResult<T> | ValidationError
 
+// ============================================================================
+// TYPE GUARDS
+// ============================================================================
+
+/**
+ * Type guard to check if validation was successful
+ */
+export function isValidationSuccess<T>(
+  result: ValidatedResult<T>
+): result is ValidationResult<T> {
+  return result.success === true
+}
+
+/**
+ * Type guard to check if validation failed
+ */
+export function isValidationError<T>(
+  result: ValidatedResult<T>
+): result is ValidationError {
+  return result.success === false
+}
+
 export interface ValidationOptions {
   /** Whether to strip unknown fields from the data (default: true) */
   stripUnknown?: boolean
@@ -115,8 +137,10 @@ export async function validateRequestBody<T>(
 
       if (logErrors) {
         logger.error('[Validation Error]', {
-          endpoint: request.url,
-          errors: formattedErrors
+          data: {
+            endpoint: request.url,
+            errors: formattedErrors
+          }
         })
       }
 
@@ -200,8 +224,10 @@ export function validateQueryParams<T>(
 
       if (logErrors) {
         logger.error('[Query Validation Error]', {
-          endpoint: request.url,
-          errors: formattedErrors
+          data: {
+            endpoint: request.url,
+            errors: formattedErrors
+          }
         })
       }
 
@@ -263,8 +289,10 @@ export function validatePathParams<T>(
 
       if (logErrors) {
         logger.error('[Path Params Validation Error]', {
-          params,
-          errors: formattedErrors
+          data: {
+            params,
+            errors: formattedErrors
+          }
         })
       }
 
@@ -422,5 +450,7 @@ export const ValidationMiddleware = {
   requireField,
   requireFields,
   formatZodErrors,
-  createValidationErrorResponse
+  createValidationErrorResponse,
+  isValidationSuccess,
+  isValidationError
 }

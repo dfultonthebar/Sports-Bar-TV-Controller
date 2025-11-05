@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * GET /api/ir/database/functions?codesetId=xxx
  * Get available functions for a codeset
@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR DATABASE API] Fetching functions')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -44,12 +44,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    logger.info('   Codeset ID:', codesetId)
+    logger.info('   Codeset ID:', { data: codesetId })
 
     const functions = await irDatabaseService.getFunctions(codesetId)
 
     logger.info('✅ [IR DATABASE API] Functions fetched successfully')
-    logger.info('   Count:', functions.length)
+    logger.info('   Count:', { data: functions.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'get_functions', {

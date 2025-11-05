@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (!sessionResult.success || !sessionResult.sessionId || !sessionResult.expiresAt) {
-      logger.error('Failed to create session:', sessionResult.error)
+      logger.error('Failed to create session:', { data: sessionResult.error })
 
       return NextResponse.json(
         { success: false, error: 'Failed to create session' },

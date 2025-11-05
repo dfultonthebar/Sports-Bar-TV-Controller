@@ -45,9 +45,11 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
   const { query, tech, topK = RAGConfig.topK, includeContext = false, temperature } = options;
 
   logger.info('Processing documentation query', {
-    query: query.substring(0, 100),
-    tech,
-    topK,
+    data: {
+      query: query.substring(0, 100),
+      tech,
+      topK,
+    }
   });
 
   try {
@@ -58,7 +60,8 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
     const searchResults = await searchVectorStore(query, topK, techFilter);
 
     if (searchResults.length === 0) {
-      logger.warn('No relevant documents found', { query, tech });
+      logger.warn('No relevant documents found', { data: { query, tech }
+        });
       return {
         answer: 'I could not find any relevant information in the documentation to answer your question. The documentation may need to be indexed, or the question may be outside the scope of available documentation.',
         sources: [],
@@ -107,15 +110,18 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
     }
 
     logger.info('Query completed successfully', {
-      query: query.substring(0, 50),
-      sourcesUsed: sources.length,
-      answerLength: llmResponse.answer.length,
-      duration,
+      data: {
+        query: query.substring(0, 50),
+        sourcesUsed: sources.length,
+        answerLength: llmResponse.answer.length,
+        duration,
+      }
     });
 
     return result;
   } catch (error) {
-    logger.error('Error processing query', { error, query });
+    logger.error('Error processing query', { data: { error, query }
+      });
     throw error;
   }
 }
@@ -207,7 +213,8 @@ export async function* queryDocsStream(
       },
     };
   } catch (error) {
-    logger.error('Error in streaming query', { error, query });
+    logger.error('Error in streaming query', { data: { error, query }
+      });
     throw error;
   }
 }
@@ -268,7 +275,8 @@ export async function findRelatedDocs(
 
     return docs;
   } catch (error) {
-    logger.error('Error finding related documents', { error, query });
+    logger.error('Error finding related documents', { data: { error, query }
+      });
     throw error;
   }
 }
@@ -310,7 +318,8 @@ export async function retrieveContext(
       },
     };
   } catch (error) {
-    logger.error('Error retrieving context', { error, query });
+    logger.error('Error retrieving context', { data: { error, query }
+      });
     throw error;
   }
 }

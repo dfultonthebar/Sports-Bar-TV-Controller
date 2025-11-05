@@ -10,7 +10,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // GET - Get single schedule
 export async function GET(
   request: NextRequest,
@@ -24,13 +24,12 @@ export async function GET(
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
@@ -67,12 +66,12 @@ export async function PUT(
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
   try {
     const { id } = await params;
@@ -122,12 +121,12 @@ export async function DELETE(
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
   const resolvedParams = await params
   const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (!paramsValidation.success) return paramsValidation.error
+  if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {

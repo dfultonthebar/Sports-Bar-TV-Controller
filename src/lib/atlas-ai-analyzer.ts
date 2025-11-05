@@ -389,7 +389,7 @@ if __name__ == '__main__':
       )
 
       if (stderr) {
-        logger.warn('Atlas AI analysis warnings:', stderr)
+        logger.warn('Atlas AI analysis warnings:', { data: stderr })
       }
 
       const result = JSON.parse(stdout)
@@ -562,7 +562,7 @@ if __name__ == '__main__':
    * Trigger Atlas alert for critical issues
    */
   private async triggerAtlasAlert(processorId: string, analysis: AtlasAIAnalysisResult): Promise<void> {
-    logger.error(`ATLAS CRITICAL ALERT - Processor ${processorId}:`, analysis.summary)
+    logger.error(`ATLAS CRITICAL ALERT - Processor ${processorId}:`, { data: analysis.summary })
     
     // Here you could integrate with notification systems:
     // - Send email alerts

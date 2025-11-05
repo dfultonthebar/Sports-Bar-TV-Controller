@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // GET - List all API keys
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
@@ -45,12 +45,12 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const { name, provider, keyValue, description } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { name, provider, keyValue, description } = data
     if (!name || !provider || !keyValue) {
       return NextResponse.json(
         { success: false, error: 'Name, provider, and key value are required' },
@@ -97,12 +97,12 @@ export async function PUT(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const { id, name, provider, keyValue, description, isActive } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { id, name, provider, keyValue, description, isActive } = data
     if (!id) {
       return NextResponse.json(
         { success: false, error: 'API key ID is required' },

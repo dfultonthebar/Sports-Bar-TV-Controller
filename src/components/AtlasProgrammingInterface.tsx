@@ -176,7 +176,7 @@ export default function AtlasProgrammingInterface() {
       const response = await fetch(`/api/atlas/configuration?processorId=${processorId}`)
       if (response.ok) {
         const config = await response.json()
-        logger.info('[Atlas Config] Fetching configuration for processor:', processorId)
+        logger.info('[Atlas Config] Fetching configuration for processor:', { data: processorId })
         logger.info('[Atlas Config] Received configuration:', config)
         
         // Helper function to extract string from Atlas name format

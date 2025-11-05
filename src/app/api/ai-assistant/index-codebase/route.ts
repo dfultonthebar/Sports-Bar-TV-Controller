@@ -12,7 +12,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // File extensions to include
 const INCLUDED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.prisma'];
 
@@ -146,20 +146,20 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   const startTime = Date.now();
   logger.info('='.repeat(80));
   logger.info('[AI INDEXING] Starting codebase indexing operation');
-  logger.info('[AI INDEXING] Timestamp:', new Date().toISOString());
+  logger.info('[AI INDEXING] Timestamp:', { data: new Date().toISOString() });
   
   try {
     const projectRoot = process.cwd();
     
-    logger.info('[AI INDEXING] Project root:', projectRoot);
-    logger.info('[AI INDEXING] Included extensions:', INCLUDED_EXTENSIONS.join(', '));
-    logger.info('[AI INDEXING] Excluded directories:', EXCLUDED_DIRS.join(', '));
+    logger.info('[AI INDEXING] Project root:', { data: projectRoot });
+    logger.info('[AI INDEXING] Included extensions:', { data: INCLUDED_EXTENSIONS.join(', ') });
+    logger.info('[AI INDEXING] Excluded directories:', { data: EXCLUDED_DIRS.join(', ') });
     
     // Scan the project directory
     logger.info('[AI INDEXING] Beginning directory scan...');
@@ -254,8 +254,8 @@ export async function POST(request: NextRequest) {
     
     const duration = Date.now() - startTime;
     logger.info('[AI INDEXING] ✓ Indexing complete!');
-    logger.info('[AI INDEXING] Stats:', { indexed, updated, skipped, deactivated });
-    logger.info('[AI INDEXING] Duration:', `${(duration / 1000).toFixed(2)}s`);
+    logger.info('[AI INDEXING] Stats:', { data: { indexed, updated, skipped, deactivated } });
+    logger.info('[AI INDEXING] Duration:', { data: `${(duration / 1000).toFixed(2)}s` });
     logger.info('='.repeat(80));
     
     return NextResponse.json({
@@ -272,11 +272,11 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('[AI INDEXING] ✗ FATAL ERROR during indexing:', error);
-    logger.error('[AI INDEXING] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    logger.error('[AI INDEXING] Error message:', error instanceof Error ? error.message : String(error));
-    logger.error('[AI INDEXING] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    logger.error('[AI INDEXING] Duration before error:', `${(duration / 1000).toFixed(2)}s`);
+    logger.error('[AI INDEXING] ✗ FATAL ERROR during indexing:', { error });
+    logger.error('[AI INDEXING] Error type:', { data: error instanceof Error ? error.constructor.name : typeof error });
+    logger.error('[AI INDEXING] Error message:', { data: error instanceof Error ? error.message : String(error) });
+    logger.error('[AI INDEXING] Error stack:', { data: error instanceof Error ? error.stack : 'No stack trace' });
+    logger.error('[AI INDEXING] Duration before error:', { data: `${(duration / 1000).toFixed(2)}s` });
     logger.info('='.repeat(80));
     
     return NextResponse.json(
@@ -329,10 +329,12 @@ export async function GET(request: NextRequest) {
     .limit(1);
     
     logger.info('[AI INDEXING] Stats retrieved:', {
-      totalFiles,
-      totalSize: `${((totalSize || 0) / 1024).toFixed(2)} KB`,
-      typeCount: filesByTypeResult.length,
-      lastIndexed: lastIndexedResult[0]?.lastIndexed
+      data: {
+        totalFiles,
+        totalSize: `${((totalSize || 0) / 1024).toFixed(2)} KB`,
+        typeCount: filesByTypeResult.length,
+        lastIndexed: lastIndexedResult[0]?.lastIndexed
+      }
     });
     
     return NextResponse.json({
@@ -349,8 +351,8 @@ export async function GET(request: NextRequest) {
     });
     
   } catch (error) {
-    logger.error('[AI INDEXING] ✗ Error getting index stats:', error);
-    logger.error('[AI INDEXING] Error details:', error instanceof Error ? error.message : String(error));
+    logger.error('[AI INDEXING] ✗ Error getting index stats:', { error });
+    logger.error('[AI INDEXING] Error details:', { data: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { 
         success: false,

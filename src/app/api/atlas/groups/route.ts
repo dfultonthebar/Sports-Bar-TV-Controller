@@ -5,7 +5,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -15,12 +15,11 @@ export async function GET(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -70,11 +69,13 @@ export async function GET(request: NextRequest) {
       ])
 
       logger.info(`Group ${i} results:`, {
-        nameResult,
-        activeResult,
-        sourceResult,
-        gainResult,
-        muteResult
+        data: {
+          nameResult,
+          activeResult,
+          sourceResult,
+          gainResult,
+          muteResult
+        }
       })
 
       // Extract values from the response structure
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
       const gain = (gainResult.success && gainResult.data?.value !== undefined) ? gainResult.data.value : -10
       const muted = (muteResult.success && muteResult.data?.value === 1)
 
-      logger.info(`Group ${i} extracted values:`, { name, isActive, source, gain, muted })
+      logger.info(`Group ${i} extracted values:`, { data: { name, isActive, source, gain, muted } })
 
       groups.push({
         index: i,
@@ -132,11 +133,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
     const { processorIp, groupIndex, action, value } = body

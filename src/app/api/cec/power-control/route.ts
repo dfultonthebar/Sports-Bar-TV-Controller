@@ -10,7 +10,7 @@ import { powerOn, powerOff, sendCECCommandDetailed, type CECResponse } from '@/l
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 export async function POST(request: NextRequest) {
@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.cecPowerControl)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Use the validated data from bodyValidation (don't call request.json() again!)
-  const { action, outputNumbers, individual = false } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { action, outputNumbers, individual = false } = data
   try {
     if (!action || !['power_on', 'power_off'].includes(action)) {
       return NextResponse.json({ 
@@ -311,14 +311,14 @@ async function sendCECCommandTCP(
 
     socket.on('data', (data) => {
       const response = data.toString()
-      logger.debug('CEC TCP response:', response)
+      logger.debug('CEC TCP response:', { data: response })
       clearTimeout(timeout)
       socket.destroy()
       resolve(response.includes('success') || response.includes('OK'))
     })
 
     socket.on('error', (error) => {
-      logger.error('CEC TCP error:', error)
+      logger.error('CEC TCP error:', { error: error })
       clearTimeout(timeout)
       resolve(false)
     })
@@ -348,7 +348,7 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
     })
 
     socket.on('error', (error) => {
-      logger.error('Wolf Pack TCP error:', error)
+      logger.error('Wolf Pack TCP error:', { error: error })
       clearTimeout(timeout)
       resolve(false)
     })
@@ -385,7 +385,7 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
     })
 
     client.on('error', (error) => {
-      logger.error('Wolf Pack UDP error:', error)
+      logger.error('Wolf Pack UDP error:', { error: error })
       clearTimeout(timeout)
       client.close()
       resolve(false)

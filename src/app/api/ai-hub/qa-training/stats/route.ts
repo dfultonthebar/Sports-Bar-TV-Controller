@@ -65,10 +65,12 @@ export async function GET(request: NextRequest) {
     };
 
     logger.info('[QA Stats] Statistics retrieved:', {
-      total: stats.total,
-      active: stats.active,
-      categoriesCount: stats.byCategory.length,
-      sourcesCount: stats.bySource.length,
+      data: {
+        total: stats.total,
+        active: stats.active,
+        categoriesCount: stats.byCategory.length,
+        sourcesCount: stats.bySource.length,
+      }
     });
 
     return NextResponse.json(stats);

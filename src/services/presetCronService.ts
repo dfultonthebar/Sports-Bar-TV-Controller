@@ -21,7 +21,7 @@ export function initializePresetCronJob() {
     logger.info('[Preset Cron] Running monthly preset reordering...')
     try {
       const result = await reorderAllPresets()
-      logger.info('[Preset Cron] Monthly reordering completed:', result)
+      logger.info('[Preset Cron] Monthly reordering completed:', { data: result })
     } catch (error) {
       logger.error('[Preset Cron] Error during monthly reordering:', error)
     }
@@ -50,7 +50,7 @@ export async function triggerManualReorder() {
   logger.info('[Preset Cron] Manual reordering triggered')
   try {
     const result = await reorderAllPresets()
-    logger.info('[Preset Cron] Manual reordering completed:', result)
+    logger.info('[Preset Cron] Manual reordering completed:', { data: result })
     return result
   } catch (error) {
     logger.error('[Preset Cron] Error during manual reordering:', error)

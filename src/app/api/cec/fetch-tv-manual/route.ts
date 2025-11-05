@@ -12,7 +12,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/cec/fetch-tv-manual
  * 
@@ -42,11 +42,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { manufacturer, model, forceRefetch = false } = bodyValidation.data
-
+  const { data } = bodyValidation
+  const { manufacturer, model, forceRefetch = false } = data
   try {
     
     if (!manufacturer || !model) {

@@ -13,7 +13,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // Simple encryption (in production, use proper encryption)
 function encrypt(text: string): string {
   const algorithm = 'aes-256-ctr'
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📋 [IR CREDENTIALS] Fetching credentials status')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -60,8 +60,8 @@ export async function GET(request: NextRequest) {
 
     if (credentials) {
       logger.info('✅ [IR CREDENTIALS] Credentials found')
-      logger.info('   Email:', credentials.email)
-      logger.info('   Has API Key:', !!credentials.apiKey)
+      logger.info('   Email:', { data: credentials.email })
+      logger.info('   Has API Key:', { data: !!credentials.apiKey })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json({
@@ -105,13 +105,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('💾 [IR CREDENTIALS] Saving credentials')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -134,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     if (loginResult.Status !== 'success' || !loginResult.Account?.ApiKey) {
       logger.info('❌ [IR CREDENTIALS] Login failed')
-      logger.info('   Message:', loginResult.Message)
+      logger.info('   Message:', { data: loginResult.Message })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       
       return NextResponse.json(

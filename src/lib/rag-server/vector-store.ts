@@ -124,8 +124,10 @@ export async function saveVectorStore(data: VectorStoreData): Promise<void> {
     data.lastUpdated = Date.now();
     await fs.writeFile(VECTOR_STORE_FILE, JSON.stringify(data, null, 2));
     logger.info('Vector store saved', {
-      entries: data.entries.length,
-      totalChunks: data.totalChunks,
+      data: {
+        entries: data.entries.length,
+        totalChunks: data.totalChunks,
+      }
     });
   } catch (error) {
     logger.error('Error saving vector store', { error });
@@ -142,7 +144,8 @@ export async function addChunks(chunks: DocumentChunk[]): Promise<void> {
   }
 
   const startTime = Date.now();
-  logger.info('Adding chunks to vector store', { count: chunks.length });
+  logger.info('Adding chunks to vector store', { data: { count: chunks.length }
+    });
 
   try {
     // Load existing store
@@ -173,9 +176,11 @@ export async function addChunks(chunks: DocumentChunk[]): Promise<void> {
 
     const duration = Date.now() - startTime;
     logger.info('Chunks added successfully', {
-      count: chunks.length,
-      totalChunks: store.totalChunks,
-      duration,
+      data: {
+        count: chunks.length,
+        totalChunks: store.totalChunks,
+        duration,
+      }
     });
   } catch (error) {
     logger.error('Error adding chunks to vector store', { error });
@@ -212,8 +217,10 @@ export async function searchVectorStore(
         entry.chunk.metadata.techTags.some(tag => techTagFilter.includes(tag))
       );
       logger.debug('Filtered by tech tags', {
-        filter: techTagFilter,
-        remaining: entries.length,
+        data: {
+          filter: techTagFilter,
+          remaining: entries.length,
+        }
       });
     }
 
@@ -237,10 +244,12 @@ export async function searchVectorStore(
 
     const duration = Date.now() - startTime;
     logger.info('Vector search completed', {
-      query: query.substring(0, 50),
-      resultsFound: filteredResults.length,
-      topScore: filteredResults[0]?.score || 0,
-      duration,
+      data: {
+        query: query.substring(0, 50),
+        resultsFound: filteredResults.length,
+        topScore: filteredResults[0]?.score || 0,
+        duration,
+      }
     });
 
     return filteredResults;
@@ -330,8 +339,10 @@ export async function removeDocument(filepath: string): Promise<void> {
       store.totalChunks = store.entries.length;
       await saveVectorStore(store);
       logger.info('Document removed from vector store', {
-        filepath,
-        chunksRemoved: removedCount,
+        data: {
+          filepath,
+          chunksRemoved: removedCount,
+        }
       });
     }
   } catch (error) {

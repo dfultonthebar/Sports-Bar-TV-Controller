@@ -679,7 +679,7 @@ export default function BartenderRemoteControl() {
     setSportsGuideStatus('Loading games...')
     
     try {
-      logger.info('🏆 Requesting sports guide with leagues:', selectedLeagues)
+      logger.info('🏆 Requesting sports guide with leagues:', { data: selectedLeagues })
       const response = await fetch('/api/sports-guide', {
         method: 'POST',
         headers: {
@@ -688,7 +688,7 @@ export default function BartenderRemoteControl() {
         body: JSON.stringify({ selectedLeagues })
       })
       
-      logger.info('🏆 Sports guide response status:', response.status)
+      logger.info('🏆 Sports guide response status:', { data: response.status })
       const result = await response.json()
       logger.info('🏆 Sports guide result:', result)
       
@@ -842,7 +842,7 @@ export default function BartenderRemoteControl() {
           return
         }
       } else {
-        logger.warn('Cable box not found for input:', input.id)
+        logger.warn('Cable box not found for input:', { data: input.id })
       }
     }
 

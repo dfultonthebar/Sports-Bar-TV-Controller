@@ -3,7 +3,7 @@ import { Socket } from 'net'
 import dgram from 'dgram'
 import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 import { logger } from '@/lib/logger'
 // Validation schema for matrix commands
@@ -25,10 +25,11 @@ export async function POST(request: NextRequest) {
   try {
     // Validate request body
     const validation = await validateRequestBody(request, matrixCommandSchema)
-    if (!validation.success) return validation.error
+    if (isValidationError(validation)) return validation.error
 
-    const { command, ipAddress, port, protocol } = validation.data
+    const { data } = validation
 
+    const { command, ipAddress, port, protocol } = data
     // Ensure command ends with period as per Wolf Pack protocol
     const wolfPackCommand = command.endsWith('.') ? command : command + '.'
 

@@ -123,7 +123,7 @@ class FireTVHealthMonitor {
       if (config.logging.logHealthChecks) {
         logger.info('[HEALTH MONITOR] ========================================')
         logger.info('[HEALTH MONITOR] Performing health check...')
-        logger.info('[HEALTH MONITOR] Timestamp:', new Date().toISOString())
+        logger.info('[HEALTH MONITOR] Timestamp:', { data: new Date().toISOString() })
       }
 
       const devices = await this.loadDevices()

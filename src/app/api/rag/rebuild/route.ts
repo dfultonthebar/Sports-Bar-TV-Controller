@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
 
     // Scan documents
     const documentPaths = await scanDocuments();
-    logger.info('Documents scanned', { count: documentPaths.length });
+    logger.info('Documents scanned', { data: { count: documentPaths.length }
+      });
 
     if (documentPaths.length === 0) {
       return NextResponse.json({
@@ -65,8 +66,10 @@ export async function POST(request: NextRequest) {
         if (result.error) {
           errors++;
           logger.warn('Document processing error', {
-            file: result.filename,
-            error: result.error,
+            data: {
+              file: result.filename,
+              error: result.error,
+            }
           });
           continue;
         }
@@ -78,19 +81,23 @@ export async function POST(request: NextRequest) {
       }
 
       logger.info('Batch processed', {
-        batch: Math.floor(i / batchSize) + 1,
-        totalBatches: Math.ceil(documentPaths.length / batchSize),
-        chunksCreated: totalChunks,
+        data: {
+          batch: Math.floor(i / batchSize) + 1,
+          totalBatches: Math.ceil(documentPaths.length / batchSize),
+          chunksCreated: totalChunks,
+        }
       });
     }
 
     const duration = Date.now() - startTime;
 
     logger.info('Vector database rebuild completed', {
-      documentsProcessed: documentPaths.length,
-      chunksCreated: totalChunks,
-      errors,
-      duration,
+      data: {
+        documentsProcessed: documentPaths.length,
+        chunksCreated: totalChunks,
+        errors,
+        duration,
+      }
     });
 
     return NextResponse.json({

@@ -92,7 +92,7 @@ export default function DocumentUpload() {
           setUploadProgress({})
         }, 2000)
       } else {
-        logger.error('Upload failed:', response.statusText)
+        logger.error('Upload failed:', { data: response.statusText })
       }
     } catch (error) {
       logger.error('Upload error:', error)
@@ -110,7 +110,7 @@ export default function DocumentUpload() {
       if (response.ok) {
         setUploadedFiles(prev => prev.filter(file => file.id !== fileId))
       } else {
-        logger.error('Delete failed:', response.statusText)
+        logger.error('Delete failed:', { data: response.statusText })
       }
     } catch (error) {
       logger.error('Delete error:', error)

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 import { logger } from '@/lib/logger'
 // Enhanced DirecTV command mappings
@@ -214,10 +214,11 @@ export async function POST(request: NextRequest) {
   try {
     // Validate request body
     const validation = await validateRequestBody(request, directvSendCommandSchema)
-    if (!validation.success) return validation.error
+    if (isValidationError(validation)) return validation.error
 
-    const { deviceId, command, ipAddress, port } = validation.data
+    const { data } = validation
 
+    const { deviceId, command, ipAddress, port } = data
     // Validate and map the command
     const mappedCommand = DIRECTV_COMMANDS[command as keyof typeof DIRECTV_COMMANDS]
     if (!mappedCommand) {

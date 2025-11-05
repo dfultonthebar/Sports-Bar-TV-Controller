@@ -8,13 +8,13 @@ import { direcTVLogger } from '@/lib/directv-logger'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const ipAddress = searchParams.get('ipAddress')
     
     let logs = []
-    let metadata = {
+    let metadata: Record<string, string | number> = {
       logDirectory: direcTVLogger.getLogDirectory(),
       logFilePath: direcTVLogger.getLogFilePath(),
       action,

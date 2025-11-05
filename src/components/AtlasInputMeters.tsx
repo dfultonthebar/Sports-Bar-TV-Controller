@@ -83,7 +83,7 @@ export default function AtlasInputMeters({
       }
 
       wsRef.current.onerror = (err) => {
-        logger.error('WebSocket error:', err)
+        logger.error('WebSocket error:', { data: err })
         setError('Connection error')
         setIsConnected(false)
       }

@@ -5,7 +5,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url)
   const iTachAddress = searchParams.get('address') || '192.168.1.100'
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       socket.on('data', (data) => {
         const response = data.toString().trim()
-        logger.info('iTach version response:', response)
+        logger.info('iTach version response:', { data: response })
         
         if (!isResolved) {
           isResolved = true
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })
 
       socket.on('error', (err) => {
-        logger.error('iTach connection error:', err)
+        logger.error('iTach connection error:', { data: err })
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)

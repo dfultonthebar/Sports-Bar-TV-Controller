@@ -12,7 +12,7 @@ import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 import { logger } from '@/lib/logger'
 const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
   try {
     // Validate request body
     const validation = await validateRequestBody(request, launchAppSchema)
-    if (!validation.success) return validation.error
+    if (isValidationError(validation)) return validation.error
+
+    const { data } = validation
 
     const {
       deviceId,
@@ -45,8 +47,7 @@ export async function POST(request: NextRequest) {
       port,
       deepLink,
       activityName: providedActivityName
-    } = validation.data
-
+    } = data
     logger.info(`[API] Launching app ${appId} on device ${deviceId}`)
 
     // Try to get activity name from subscribed apps config if not provided
@@ -58,7 +59,8 @@ export async function POST(request: NextRequest) {
         try {
           config = JSON.parse(data || '{}')
         } catch (parseError) {
-          logger.error('[API] Failed to parse subscribed apps config:', { parseError, data: data?.substring(0, 100) })
+          logger.error('[API] Failed to parse subscribed apps config:', { data: { parseError, data: data?.substring(0, 100) }
+            })
           config = { subscribedApps: [] }
         }
         const appConfig = config.subscribedApps?.find((app: any) => app.appId === appId)

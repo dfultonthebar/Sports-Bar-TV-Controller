@@ -6,16 +6,17 @@ import { logger } from '@/lib/logger'
 import { UnifiedTVControl, TVDevice } from '@/lib/unified-tv-control'
 import { CECCommand } from '@/lib/enhanced-cec-commands'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
+    const { data } = bodyValidation
     const {
       deviceId,
       deviceIds,
@@ -23,8 +24,7 @@ export async function POST(request: NextRequest) {
       forceMethod,
       sequential,
       delayBetween
-    } = bodyValidation.data
-    
+    } = data
     if (!command) {
       return NextResponse.json({ 
         success: false, 

@@ -125,8 +125,10 @@ export class FileWatcher extends EventEmitter {
           if (error.message.includes('ENOSPC')) {
             logger.error('File watcher ENOSPC error: System limit for file watchers reached', {
               error: error.message,
-              hint: 'Increase fs.inotify.max_user_watches or reduce watch patterns',
-              currentLimit: '/proc/sys/fs/inotify/max_user_watches',
+              data: {
+                hint: 'Increase fs.inotify.max_user_watches or reduce watch patterns',
+                currentLimit: '/proc/sys/fs/inotify/max_user_watches',
+              }
             });
           } else {
             logger.error('File watcher error:', { error: error.message });
@@ -136,9 +138,11 @@ export class FileWatcher extends EventEmitter {
         .on('ready', () => {
           this.isWatching = true;
           logger.info('File watcher started', {
-            projectRoot: this.projectRoot,
-            watchPaths: this.options.includePatterns,
-            debounceMs: this.options.debounceMs,
+            data: {
+              projectRoot: this.projectRoot,
+              watchPaths: this.options.includePatterns,
+              debounceMs: this.options.debounceMs,
+            }
           });
           this.emit('ready');
         });

@@ -5,7 +5,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 let learningSocket: any = null
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       learningSocket.on('data', (data: Buffer) => {
         const response = data.toString().trim()
-        logger.info('Learning response:', response)
+        logger.info('Learning response:', { data: response })
         
         if (response.includes('IR Learner Enabled') && !isResolved) {
           isResolved = true
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }, { status: 400 }))
         } else if (response.startsWith('sendir,') && !isResolved) {
           // Captured IR code
-          logger.info('Learned IR code:', response)
+          logger.info('Learned IR code:', { data: response })
           resolve(NextResponse.json({ 
             success: true, 
             message: 'IR code learned successfully!',
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
 
       learningSocket.on('error', (err: Error) => {
-        logger.error('Learning connection error:', err)
+        logger.error('Learning connection error:', { data: err })
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)

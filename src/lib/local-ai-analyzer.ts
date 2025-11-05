@@ -382,7 +382,7 @@ if __name__ == '__main__':
       )
 
       if (stderr) {
-        logger.warn('AI Analysis warning:', stderr)
+        logger.warn('AI Analysis warning:', { data: stderr })
       }
 
       const result = JSON.parse(stdout)

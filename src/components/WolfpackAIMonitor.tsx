@@ -52,7 +52,7 @@ export default function WolfpackAIMonitor({
         setInsights(data.insights || [])
         setLastAnalysis(new Date().toLocaleString())
       } else {
-        logger.error('Failed to get AI analysis:', response.statusText)
+        logger.error('Failed to get AI analysis:', { data: response.statusText })
       }
     } catch (error) {
       logger.error('Error during AI analysis:', error)

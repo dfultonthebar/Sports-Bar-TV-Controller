@@ -532,7 +532,7 @@ export class SoundtrackYourBrandAPI {
       const result = await this.graphql(query, { id: soundZoneId })
 
       if (result.errors) {
-        logger.error('[Soundtrack] getNowPlaying GraphQL errors:', JSON.stringify(result.errors, null, 2))
+        logger.error('[Soundtrack] getNowPlaying GraphQL errors:', { data: JSON.stringify(result.errors, null, 2) })
         return null
       }
 

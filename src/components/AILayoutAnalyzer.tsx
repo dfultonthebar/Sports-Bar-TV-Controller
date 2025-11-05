@@ -80,7 +80,7 @@ Starting from the bottom left of the L-shaped section and moving clockwise:
           const configData = await configResponse.json()
           if (configData.outputs) {
             availableOutputs = configData.outputs
-            logger.info('Loaded matrix outputs for AI analysis:', availableOutputs.length)
+            logger.info('Loaded matrix outputs for AI analysis:', { data: availableOutputs.length })
           }
         }
       } catch (configError) {

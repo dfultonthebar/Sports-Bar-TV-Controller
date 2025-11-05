@@ -360,7 +360,7 @@ async function checkFireTVStatus(): Promise<any> {
       try {
         firetvData = JSON.parse(fileContent || '{}')
       } catch (parseError) {
-        logger.error('[Health] Failed to parse FireTV devices file:', { parseError, content: fileContent?.substring(0, 100) })
+        logger.error('[Health] Failed to parse FireTV devices file:', { data: { parseError, content: fileContent?.substring(0, 100) } })
         firetvData = { devices: [] }
       }
       const devices = firetvData.devices || []

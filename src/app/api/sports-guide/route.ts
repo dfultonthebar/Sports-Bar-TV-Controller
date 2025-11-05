@@ -22,7 +22,7 @@ import { cacheManager } from '@/lib/cache-manager'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +31,7 @@ function logInfo(message: string, data?: any) {
   const timestamp = new Date().toISOString()
   logger.info(`[${timestamp}] [Sports-Guide-API] INFO: ${message}`)
   if (data) {
-    logger.info(`[${timestamp}] [Sports-Guide-API] DATA:`, JSON.stringify(data, null, 2))
+    logger.info(`[${timestamp}] [Sports-Guide-API] DATA:`, { data: JSON.stringify(data, null, 2) })
   }
 }
 
@@ -47,7 +47,7 @@ function logDebug(message: string, data?: any) {
   const timestamp = new Date().toISOString()
   logger.info(`[${timestamp}] [Sports-Guide-API] DEBUG: ${message}`)
   if (data) {
-    logger.info(`[${timestamp}] [Sports-Guide-API] DEBUG-DATA:`, JSON.stringify(data, null, 2))
+    logger.info(`[${timestamp}] [Sports-Guide-API] DEBUG-DATA:`, { data: JSON.stringify(data, null, 2) })
   }
 }
 
@@ -84,8 +84,9 @@ export async function POST(request: NextRequest) {
     let body: any = {}
     try {
       const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-      if (!bodyValidation.success) return bodyValidation.error
-      body = bodyValidation.data
+      if (isValidationError(bodyValidation)) return bodyValidation.error
+      const { data } = bodyValidation
+      body = data
       logDebug(`Request body received:`, body)
     } catch (e) {
       logInfo(`No request body provided - using defaults`)

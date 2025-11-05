@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const result = await destroySession(sessionId)
 
     if (!result.success) {
-      logger.error('Failed to destroy session:', result.error)
+      logger.error('Failed to destroy session:', { data: result.error })
     }
 
     // Clear cookie

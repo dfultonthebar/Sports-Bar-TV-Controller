@@ -364,7 +364,7 @@ export default function AudioProcessorManager() {
         muted: false
       }
 
-      logger.info('Creating zone with data:', zoneData)
+      logger.info('Creating zone with data:', { data: zoneData })
       
       const response = await fetch('/api/audio-processor/zones', {
         method: 'POST',
@@ -1121,7 +1121,7 @@ export default function AudioProcessorManager() {
                                   value={zoneFormData.zoneNumber}
                                   onChange={(e) => {
                                     const newZoneNumber = parseInt(e.target.value)
-                                    logger.info('Zone number changed to:', newZoneNumber)
+                                    logger.info('Zone number changed to:', { data: newZoneNumber })
                                     setZoneFormData({...zoneFormData, zoneNumber: newZoneNumber})
                                   }}
                                   className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -1144,7 +1144,7 @@ export default function AudioProcessorManager() {
                                   type="text"
                                   value={zoneFormData.name}
                                   onChange={(e) => {
-                                    logger.info('Zone name changed to:', e.target.value)
+                                    logger.info('Zone name changed to:', { data: e.target.value })
                                     setZoneFormData({...zoneFormData, name: e.target.value})
                                   }}
                                   placeholder="Main Dining Area"
@@ -1160,7 +1160,7 @@ export default function AudioProcessorManager() {
                                 type="text"
                                 value={zoneFormData.description}
                                 onChange={(e) => {
-                                  logger.info('Zone description changed to:', e.target.value)
+                                  logger.info('Zone description changed to:', { data: e.target.value })
                                   setZoneFormData({...zoneFormData, description: e.target.value})
                                 }}
                                 placeholder="Main dining area ceiling speakers"
@@ -1173,7 +1173,7 @@ export default function AudioProcessorManager() {
                               <select
                                 value={zoneFormData.currentSource}
                                 onChange={(e) => {
-                                  logger.info('Current source changed to:', e.target.value)
+                                  logger.info('Current source changed to:', { data: e.target.value })
                                   setZoneFormData({...zoneFormData, currentSource: e.target.value})
                                 }}
                                 className="w-full px-3 py-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"

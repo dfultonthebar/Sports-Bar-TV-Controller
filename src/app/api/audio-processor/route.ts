@@ -6,7 +6,7 @@ import { findMany, create, update, deleteRecord } from '@/lib/db-helpers'
 import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 import { encryptPassword, decryptPassword } from '@/lib/atlas-auth'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 // Helper function to get input/output counts from model config
 function getModelCounts(model: string) {
@@ -59,14 +59,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   logger.api.request('POST', '/api/audio-processor')
 
   try {
-    const { name, model, ipAddress, port, zones, description, username, password } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { name, model, ipAddress, port, zones, description, username, password } = data
     if (!name || !model || !ipAddress) {
       logger.api.response('POST', '/api/audio-processor', 400, { error: 'Missing required fields' })
       return NextResponse.json(
@@ -123,13 +123,13 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   logger.api.request('PUT', '/api/audio-processor')
 
   try {
-    const data = bodyValidation.data
+    const { data: data } = bodyValidation
     const { searchParams } = new URL(request.url)
 
     // Accept ID from either request body or query parameter

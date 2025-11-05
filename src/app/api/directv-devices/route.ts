@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
 
 // Ensure data directory exists
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (!queryValidation.success) return queryValidation.error
+  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
@@ -64,11 +64,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const newDevice = bodyValidation.data
+    const { data: newDevice } = bodyValidation
     const data = await loadDirecTVDevices()
     
     // Validate required fields
@@ -105,11 +105,11 @@ export async function PUT(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
-    const updatedDevice = bodyValidation.data
+    const { data: updatedDevice } = bodyValidation
     const data = await loadDirecTVDevices()
     
     const index = data.devices.findIndex((d: any) => d.id === updatedDevice.id)

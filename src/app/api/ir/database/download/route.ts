@@ -12,7 +12,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/ir/database/download
  * Download IR codes for a device
@@ -27,13 +27,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('⬇️  [IR DATABASE API] Downloading IR codes')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     logger.info('   Device ID:', deviceId)
     logger.info('   Codeset ID:', codesetId)
-    logger.info('   Functions count:', functions.length)
+    logger.info('   Functions count:', { data: functions.length })
 
     // Get active credentials
     const credentials = await db.select().from(irDatabaseCredentials).where(eq(irDatabaseCredentials.isActive, true)).limit(1).get()
@@ -150,8 +148,8 @@ export async function POST(request: NextRequest) {
     await update('irDevices', eq(schema.irDevices.id, deviceId), { irCodeSetId: codesetId })
 
     logger.info('✅ [IR DATABASE API] Download complete')
-    logger.info('   Success:', downloadedCommands.length)
-    logger.info('   Errors:', errors.length)
+    logger.info('   Success:', { data: downloadedCommands.length })
+    logger.info('   Errors:', { data: errors.length })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     logDatabaseOperation('IR_DATABASE_API', 'download_codes', {

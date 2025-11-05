@@ -61,7 +61,8 @@ export async function scanDocuments(dirPath: string = RAGConfig.docsPath): Promi
       }
     }
   } catch (error) {
-    logger.error('Error scanning documents', { error, dirPath });
+    logger.error('Error scanning documents', { data: { error, dirPath }
+      });
   }
 
   return documents;
@@ -137,10 +138,10 @@ async function extractTextFromPDF(filepath: string): Promise<string> {
     }
 
     // Fallback: skip PDF processing
-    logger.warn('pdf-parse not available, skipping PDF', { filepath });
+    logger.warn('pdf-parse not available, skipping PDF', { data: { filepath } });
     return '';
   } catch (error) {
-    logger.error('Error extracting PDF text', { error, filepath });
+    logger.error('Error extracting PDF text', { data: { error, filepath } });
     return '';
   }
 }
@@ -165,7 +166,8 @@ export async function readDocument(filepath: string): Promise<string> {
     // Markdown and text files
     return content;
   } catch (error) {
-    logger.error('Error reading document', { error, filepath });
+    logger.error('Error reading document', { data: { error, filepath }
+      });
     throw error;
   }
 }
@@ -344,9 +346,11 @@ export async function processDocument(filepath: string): Promise<ProcessedDocume
     const techTags = extractTechTags(filepath);
 
     logger.info('Document processed', {
-      filename,
-      chunks: chunks.length,
-      techTags,
+      data: {
+        filename,
+        chunks: chunks.length,
+        techTags,
+      }
     });
 
     return {
@@ -356,7 +360,8 @@ export async function processDocument(filepath: string): Promise<ProcessedDocume
       techTags,
     };
   } catch (error) {
-    logger.error('Error processing document', { error, filepath });
+    logger.error('Error processing document', { data: { error, filepath }
+      });
     return {
       filepath,
       filename,

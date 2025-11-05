@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 /**
  * n8n Webhook Handler
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   const startTime = Date.now()
@@ -177,7 +177,8 @@ async function handleTVControl(data: any) {
     return { error: 'outputNumber and action are required' }
   }
   
-  logger.debug('n8n TV control', { outputNumber, tvAction, value })
+  logger.debug('n8n TV control', { data: { outputNumber, tvAction, value }
+    })
   
   // Call the appropriate TV control API
   const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/matrix/outputs`
@@ -211,7 +212,8 @@ async function handleAudioControl(data: any) {
     return { error: 'zoneNumber and action are required' }
   }
   
-  logger.debug('n8n audio control', { zoneNumber, audioAction, value })
+  logger.debug('n8n audio control', { data: { zoneNumber, audioAction, value }
+    })
   
   // Call the appropriate audio control API
   const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/audio-processor/control`
@@ -245,7 +247,8 @@ async function handleWolfpackRouting(data: any) {
     return { error: 'wolfpackInputNumber and matrixOutputNumber are required' }
   }
   
-  logger.debug('n8n wolfpack routing', { wolfpackInputNumber, matrixOutputNumber })
+  logger.debug('n8n wolfpack routing', { data: { wolfpackInputNumber, matrixOutputNumber }
+    })
   
   // Call the wolfpack routing API
   const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/wolfpack/route-to-matrix`
@@ -278,7 +281,8 @@ async function handleScheduleExecution(data: any) {
     return { error: 'scheduleId is required' }
   }
   
-  logger.debug('n8n schedule execution', { scheduleId })
+  logger.debug('n8n schedule execution', { data: { scheduleId }
+    })
   
   // Call the schedule execution API
   const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/schedules/execute`
@@ -310,7 +314,8 @@ async function handleAtlasControl(data: any) {
     return { error: 'command is required' }
   }
   
-  logger.debug('n8n atlas control', { command, parameters })
+  logger.debug('n8n atlas control', { data: { command, parameters }
+    })
   
   // Call the appropriate Atlas control API
   const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/atlas/route-matrix-to-zone`

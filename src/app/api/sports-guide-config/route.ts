@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger"
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -137,13 +137,14 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data } = bodyValidation
 
 
   logger.api.request('POST', '/api/sports-guide-config')
 
   try {
-    const { zipCode, city, state, timezone, updateSchedule, providers, homeTeams } = bodyValidation.data as SportsGuideConfigRequest
+    const { zipCode, city, state, timezone, updateSchedule, providers, homeTeams } = data as SportsGuideConfigRequest
 
     // Validate timezone - ENHANCED TIMEZONE HANDLING
     const validTimezones = [

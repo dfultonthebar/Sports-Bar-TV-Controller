@@ -6,7 +6,7 @@ import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequest, ValidationSchemas } from '@/lib/validation'
+import { validateRequest, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 import { logger } from '@/lib/logger'
 // Validation schemas
@@ -40,10 +40,10 @@ export async function PUT(
       params: { data: resolvedParams, schema: pathParamsSchema }
     })
 
-    if (!validation.success) return validation.error
-
-    const { id } = validation.data.params!
-    const { name, provider, keyValue, description, isActive } = validation.data.body!
+    if (isValidationError(validation)) return validation.error
+    const { data } = validation
+    const { id } = data.params!
+    const { name, provider, keyValue, description, isActive } = data.body!
 
     const updateData: any = {
       name,
@@ -88,9 +88,9 @@ export async function DELETE(
       params: { data: resolvedParams, schema: pathParamsSchema }
     })
 
-    if (!validation.success) return validation.error
-
-    const { id } = validation.data.params!
+    if (isValidationError(validation)) return validation.error
+    const { data } = validation
+    const { id } = data.params!
     await deleteRecord('apiKeys', eq(schema.apiKeys.id, id))
 
     return NextResponse.json({ message: 'API key deleted successfully' })

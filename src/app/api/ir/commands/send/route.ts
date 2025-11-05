@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 /**
  * POST /api/ir/commands/send
  * Send an IR command via Global Cache device
@@ -22,13 +22,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('📤 [IR SEND] Sending IR command')
-  logger.info('   Timestamp:', new Date().toISOString())
+  logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
@@ -60,8 +58,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    logger.info('   Function Name:', command.functionName)
-    logger.info('   IR Code length:', command.irCode.length)
+    logger.info('   Function Name:', { data: command.functionName })
+    logger.info('   IR Code length:', { data: command.irCode.length })
 
     // Get the IR device
     const device = await db.select()
@@ -102,9 +100,9 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('📡 [IR SEND] Global Cache device found')
-    logger.info('   Name:', globalCacheDevice.name)
-    logger.info('   IP:', globalCacheDevice.ipAddress)
-    logger.info('   Port:', globalCacheDevice.port)
+    logger.info('   Name:', { data: globalCacheDevice.name })
+    logger.info('   IP:', { data: globalCacheDevice.ipAddress })
+    logger.info('   Port:', { data: globalCacheDevice.port })
 
     // Send the IR command
     const result = await sendIRCommand(
@@ -123,7 +121,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       logger.info('❌ [IR SEND] Failed to send command')
-      logger.info('   Error:', result.error)
+      logger.info('   Error:', { data: result.error })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return NextResponse.json(
@@ -162,7 +160,7 @@ async function sendIRCommand(
     let resolved = false
 
     logger.info('🔌 [IR SEND] Connecting to Global Cache device...')
-    logger.info('   Address:', `${ipAddress}:${port}`)
+    logger.info('   Address:', { data: `${ipAddress}:${port}` })
 
     const timeoutId = setTimeout(() => {
       if (!resolved) {
@@ -178,7 +176,7 @@ async function sendIRCommand(
 
     client.on('connect', () => {
       logger.info('✅ [IR SEND] Connected to Global Cache device')
-      logger.info('📤 [IR SEND] Sending IR command:', irCode.substring(0, 50) + '...')
+      logger.info('📤 [IR SEND] Sending IR command:', { data: irCode.substring(0, 50) + '...' })
       
       // Send the IR command
       client.write(irCode + '\r')
@@ -186,7 +184,7 @@ async function sendIRCommand(
 
     client.on('data', (data) => {
       const response = data.toString()
-      logger.info('📥 [IR SEND] Received response:', response.trim())
+      logger.info('📥 [IR SEND] Received response:', { data: response.trim() })
 
       // Check for successful completion
       if (response.includes('completeir') || response.includes('busyIR')) {
@@ -207,7 +205,7 @@ async function sendIRCommand(
           resolved = true
           clearTimeout(timeoutId)
           client.destroy()
-          logger.info('❌ [IR SEND] Error response:', response.trim())
+          logger.info('❌ [IR SEND] Error response:', { data: response.trim() })
           resolve({
             success: false,
             error: 'Global Cache returned an error: ' + response.trim()
@@ -220,7 +218,7 @@ async function sendIRCommand(
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutId)
-        logger.error('❌ [IR SEND] Socket error:', error.message)
+        logger.error('❌ [IR SEND] Socket error:', { data: error.message })
         resolve({
           success: false,
           error: `Connection error: ${error.message}`

@@ -12,7 +12,7 @@ export default function Error({
 }) {
   useEffect(() => {
     // Log the error to console for debugging
-    logger.error('Application error:', error)
+    logger.error('Application error:', { error: error })
   }, [error])
 
   return (

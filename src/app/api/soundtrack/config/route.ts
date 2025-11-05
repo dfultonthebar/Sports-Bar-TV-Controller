@@ -7,7 +7,7 @@ import { getSoundtrackAPI, setSoundtrackAPIToken, clearSoundtrackAPI } from '@/l
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 
 
 // GET - Fetch Soundtrack configuration
@@ -65,9 +65,8 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   try {
     const { apiKey } = body
 
@@ -136,7 +135,7 @@ export async function POST(request: NextRequest) {
     try {
       logger.debug(`[Soundtrack] Fetching sound zones for account: ${firstAccount?.id || 'all accounts'}`)
       const soundZones = await api.listSoundZones(firstAccount?.id)
-      logger.debug(`[Soundtrack] listSoundZones returned:`, soundZones)
+      logger.debug(`[Soundtrack] listSoundZones returned:`, { data: soundZones })
 
       if (soundZones && soundZones.length > 0) {
         // Update or create sound zone (player) records
@@ -223,9 +222,8 @@ export async function PATCH(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (!bodyValidation.success) return bodyValidation.error
-  const body = bodyValidation.data
-
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { data: body } = bodyValidation
   try {
     const { playerId, bartenderVisible, displayOrder } = body
 

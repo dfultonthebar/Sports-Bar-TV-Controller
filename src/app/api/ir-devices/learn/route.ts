@@ -10,7 +10,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody } from '@/lib/validation'
+import { validateRequestBody, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db } from '@/db'
 import { irDevices } from '@/db/schema'
 import { eq } from 'drizzle-orm'
@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, LearnRequestSchema)
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {
-    const { deviceId, command, iTachAddress, portNumber, timeout } = bodyValidation.data
-
+    const { data } = bodyValidation
+    const { deviceId, command, iTachAddress, portNumber, timeout } = data
     // Verify device exists
     const device = await db.query.irDevices.findFirst({
       where: eq(irDevices.id, deviceId),
@@ -235,7 +235,7 @@ async function startLearningSession(
 
     // Handle errors
     socket.on('error', (err: Error) => {
-      logger.error('[IR Learning] Socket error:', err)
+      logger.error('[IR Learning] Socket error:', { data: err })
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeoutHandle)
@@ -317,9 +317,11 @@ export async function DELETE(request: NextRequest) {
       command: z.string(),
     })
   )
-  if (!bodyValidation.success) return bodyValidation.error
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const { deviceId, command } = bodyValidation.data
+  const { data } = bodyValidation
+
+  const { deviceId, command } = data
   const sessionKey = `${deviceId}-${command}`
   const session = learningSessions.get(sessionKey)
 

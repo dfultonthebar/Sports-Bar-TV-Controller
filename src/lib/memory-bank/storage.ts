@@ -42,7 +42,8 @@ export class MemoryBankStorage {
   async initialize(): Promise<void> {
     try {
       await fs.mkdir(this.storageDir, { recursive: true });
-      logger.info('Memory bank storage initialized', { storageDir: this.storageDir });
+      logger.info('Memory bank storage initialized', { data: { storageDir: this.storageDir }
+        });
     } catch (error) {
       logger.error('Failed to initialize storage:', { error });
       throw error;
@@ -73,7 +74,8 @@ export class MemoryBankStorage {
         commitHash: context.lastCommit.hash.substring(0, 7),
       };
 
-      logger.info('Context snapshot saved', { id, filename, size: stats.size });
+      logger.info('Context snapshot saved', { data: { id, filename, size: stats.size }
+        });
 
       // Update index
       await this.updateIndex(snapshot);
@@ -99,7 +101,8 @@ export class MemoryBankStorage {
       const content = await fs.readFile(filepath, 'utf-8');
       return content;
     } catch (error) {
-      logger.warn('Snapshot not found:', { id });
+      logger.warn('Snapshot not found:', { data: { id }
+        });
       return null;
     }
   }
@@ -148,13 +151,15 @@ export class MemoryBankStorage {
 
     try {
       await fs.unlink(filepath);
-      logger.info('Snapshot deleted', { id });
+      logger.info('Snapshot deleted', { data: { id }
+        });
 
       // Update index
       await this.rebuildIndex();
       return true;
     } catch (error) {
-      logger.warn('Failed to delete snapshot:', { id, error });
+      logger.warn('Failed to delete snapshot:', { data: { id, error }
+        });
       return false;
     }
   }

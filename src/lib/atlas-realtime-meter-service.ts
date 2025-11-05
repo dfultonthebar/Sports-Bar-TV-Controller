@@ -71,7 +71,7 @@ export class AtlasRealtimeMeterService extends EventEmitter {
     })
 
     this.udpSocket.on('error', (err) => {
-      logger.error('UDP socket error:', err)
+      logger.error('UDP socket error:', { data: err })
       this.emit('error', err)
     })
 

@@ -5,7 +5,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas } from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const { iTachAddress = '192.168.1.100' } = await request.json().catch(() => ({}))
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       socket.on('data', (data: Buffer) => {
         const response = data.toString().trim()
-        logger.info('Stop learning response:', response)
+        logger.info('Stop learning response:', { data: response })
         
         if (response.includes('IR Learner Disabled') && !isResolved) {
           isResolved = true
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
 
       socket.on('error', (err: Error) => {
-        logger.error('Stop learning connection error:', err)
+        logger.error('Stop learning connection error:', { data: err })
         if (!isResolved) {
           isResolved = true
           clearTimeout(timeout)
