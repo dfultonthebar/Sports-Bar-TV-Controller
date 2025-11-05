@@ -41,11 +41,24 @@ export async function GET(request: NextRequest) {
   try {
     await ensureDataDir()
     const data = await fs.readFile(LAYOUT_FILE, 'utf8')
-    const layout = JSON.parse(data)
+    let layout
+    try {
+      layout = JSON.parse(data || '{}')
+    } catch (parseError) {
+      logger.error('Failed to parse bartender layout file:', { parseError, data: data?.substring(0, 100) })
+      // Return default layout if parse fails
+      return NextResponse.json({
+        layout: {
+          name: 'Bar Layout',
+          zones: [] as any[],
+          backgroundImage: null
+        }
+      })
+    }
     return NextResponse.json({ layout })
   } catch (error) {
     // Return default layout if file doesn't exist
-    return NextResponse.json({ 
+    return NextResponse.json({
       layout: {
         name: 'Bar Layout',
         zones: [] as any[],

@@ -54,8 +54,14 @@ export async function POST(request: NextRequest) {
     if (!activityName) {
       try {
         const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
-        const config = JSON.parse(data)
-        const appConfig = config.subscribedApps.find((app: any) => app.appId === appId)
+        let config
+        try {
+          config = JSON.parse(data || '{}')
+        } catch (parseError) {
+          logger.error('[API] Failed to parse subscribed apps config:', { parseError, data: data?.substring(0, 100) })
+          config = { subscribedApps: [] }
+        }
+        const appConfig = config.subscribedApps?.find((app: any) => app.appId === appId)
         if (appConfig?.activityName) {
           activityName = appConfig.activityName
           logger.info(`[API] Using activity name from config: ${activityName}`)

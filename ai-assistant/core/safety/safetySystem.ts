@@ -256,7 +256,7 @@ export class SafetySystem {
     const lines = content.split('\n')
     const diffLines = diff.split('\n')
     
-    let result = [...lines]
+    const result = [...lines]
     let lineIndex = 0
     
     for (const diffLine of diffLines) {

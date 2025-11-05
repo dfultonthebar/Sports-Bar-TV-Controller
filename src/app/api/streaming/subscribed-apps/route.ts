@@ -18,10 +18,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
-    const config = JSON.parse(data)
+    let config
+    try {
+      config = JSON.parse(data || '{}')
+    } catch (parseError) {
+      logger.error('Failed to parse subscribed apps config:', { parseError, data: data?.substring(0, 100) })
+      config = { subscribedApps: [], lastUpdated: new Date().toISOString() }
+    }
 
     // Enrich with app details from database
-    const enrichedApps = config.subscribedApps.map((subApp: any) => {
+    const enrichedApps = (config.subscribedApps || []).map((subApp: any) => {
       const appDetails = STREAMING_APPS_DATABASE.find(app => app.id === subApp.appId)
       return {
         ...subApp,
@@ -54,10 +60,16 @@ export async function POST(request: NextRequest) {
   try {
     const updates = await request.json()
     const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
-    const config = JSON.parse(data)
+    let config
+    try {
+      config = JSON.parse(data || '{}')
+    } catch (parseError) {
+      logger.error('Failed to parse subscribed apps config for update:', { parseError, data: data?.substring(0, 100) })
+      config = { subscribedApps: [], lastUpdated: new Date().toISOString() }
+    }
 
     // Update the configuration
-    config.subscribedApps = updates.subscribedApps || config.subscribedApps
+    config.subscribedApps = updates.subscribedApps || config.subscribedApps || []
     config.lastUpdated = new Date().toISOString()
 
     await writeFile(SUBSCRIBED_APPS_FILE, JSON.stringify(config, null, 2))

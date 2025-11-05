@@ -112,8 +112,20 @@ class CommandScheduler {
     try {
       logger.info(`Executing scheduled command: ${command.name}`)
 
-      const targets = JSON.parse(command.targets)
-      const commandSequence = JSON.parse(command.commandSequence)
+      let targets, commandSequence
+      try {
+        targets = JSON.parse(command.targets || '[]')
+      } catch (parseError) {
+        logger.error('Failed to parse command targets:', { parseError, targets: command.targets?.substring(0, 100) })
+        targets = []
+      }
+
+      try {
+        commandSequence = JSON.parse(command.commandSequence || '[]')
+      } catch (parseError) {
+        logger.error('Failed to parse command sequence:', { parseError, sequence: command.commandSequence?.substring(0, 100) })
+        commandSequence = []
+      }
 
       const results: any[] = []
       let commandsSent = 0
@@ -169,7 +181,13 @@ class CommandScheduler {
       })
 
       // Update command execution stats and next execution time
-      const scheduleData = JSON.parse(command.scheduleData)
+      let scheduleData
+      try {
+        scheduleData = JSON.parse(command.scheduleData || '{}')
+      } catch (parseError) {
+        logger.error('Failed to parse schedule data:', { parseError, data: command.scheduleData?.substring(0, 100) })
+        scheduleData = {}
+      }
       const nextExecution = this.calculateNextExecution(
         command.scheduleType,
         scheduleData,

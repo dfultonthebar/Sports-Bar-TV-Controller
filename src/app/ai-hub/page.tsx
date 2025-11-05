@@ -2,14 +2,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, GraduationCap, Workflow } from 'lucide-react'
+import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
 import SmartDeviceOptimizer from '@/components/SmartDeviceOptimizer'
 import IntelligentTroubleshooter from '@/components/IntelligentTroubleshooter'
-import AITeachingInterface from '@/components/AITeachingInterface'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 
@@ -141,41 +140,16 @@ export default function AIHubPage() {
     setIsChatting(true)
 
     try {
-      const response = await fetch('/api/ai/enhanced-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage,
-          useKnowledge: true,
-          useCodebase: true,
-          stream: false  // CRITICAL FIX: Explicitly request non-streaming response
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.response) {
-        setChatHistory(prev => [...prev, { role: 'assistant', content: data.response }])
-      } else if (data.error) {
-        setChatHistory(prev => [...prev, { 
-          role: 'assistant', 
-          content: `Error: ${data.error}${data.message ? '\n\n' + data.message : ''}${data.suggestion ? '\n\nSuggestion: ' + data.suggestion : ''}` 
-        }])
-      } else {
-        setChatHistory(prev => [...prev, { 
-          role: 'assistant', 
-          content: 'Sorry, I encountered an error processing your request.' 
-        }])
-      }
+      // NOTE: /api/ai/enhanced-chat endpoint has been removed
+      // This feature is temporarily disabled pending reimplementation
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: 'The AI chat feature is currently disabled. The enhanced chat endpoint has been removed. Please use the regular chat at /chat or contact support for assistance.'
+      }])
     } catch (error) {
       logger.error('Chat error:', error)
-      setChatHistory(prev => [...prev, { 
-        role: 'assistant', 
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
         content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error')
       }])
     } finally {
@@ -298,14 +272,10 @@ export default function AIHubPage() {
         </div>
 
         <Tabs defaultValue="assistant" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-5 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="assistant" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <MessageSquare className="w-4 h-4 mr-2" />
               AI Assistant
-            </TabsTrigger>
-            <TabsTrigger value="teach" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-              <GraduationCap className="w-4 h-4 mr-2" />
-              Teach AI
             </TabsTrigger>
             <TabsTrigger value="devices" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Cpu className="w-4 h-4 mr-2" />
@@ -503,11 +473,6 @@ export default function AIHubPage() {
                 </div>
               </div>
             </div>
-          </TabsContent>
-
-          {/* Teach AI Tab */}
-          <TabsContent value="teach" className="space-y-6">
-            <AITeachingInterface />
           </TabsContent>
 
           {/* AI Enhanced Devices Tab */}

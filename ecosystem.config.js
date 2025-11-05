@@ -2,7 +2,7 @@
 module.exports = {
   apps: [{
     name: 'sports-bar-tv-controller',
-    script: 'node_modules/next/dist/bin/next',
+    script: 'npm',
     args: 'start',
     cwd: '/home/ubuntu/Sports-Bar-TV-Controller',
     instances: 1,
@@ -12,6 +12,10 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 3001
-    }
+    },
+    error_file: '/home/ubuntu/Sports-Bar-TV-Controller/logs/pm2-error.log',
+    out_file: '/home/ubuntu/Sports-Bar-TV-Controller/logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    merge_logs: true
   }]
 }

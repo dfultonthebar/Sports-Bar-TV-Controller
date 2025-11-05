@@ -294,7 +294,7 @@ ${change.diff}
     const lines = content.split('\n')
     const diffLines = diff.split('\n')
     
-    let result = [...lines]
+    const result = [...lines]
     
     for (const diffLine of diffLines) {
       if (diffLine.startsWith('- ')) {

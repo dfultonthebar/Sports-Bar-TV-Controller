@@ -155,7 +155,7 @@ async function buildKnowledgeBase() {
     fs.mkdirSync(dataDir, { recursive: true });
   }
   
-  let allChunks: DocumentChunk[] = [];
+  const allChunks: DocumentChunk[] = [];
   
   // Process docs directory
   console.log('📚 Processing documentation...');

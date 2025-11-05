@@ -240,7 +240,7 @@ describe('Cache Manager - Unit Tests', () => {
       testCache.set('sports-data', 'key2', 'value2')
 
       const stats = testCache.getStats()
-      expect(stats.oldestEntry).toBeLessThanOrEqual(stats.newestEntry!)
+      expect(stats.oldestEntry).toBeLessThanOrEqual(stats.newestEntry)
     })
 
     it('should provide type-specific stats', () => {

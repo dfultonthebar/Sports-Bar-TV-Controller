@@ -144,10 +144,10 @@ export default function LayoutConfiguration() {
           body: JSON.stringify({ layout: newLayout })
         })
 
-        // Start AI analysis if description is available
-        if (result.description) {
-          await analyzeLayoutWithAI(result.description, result.convertedImageUrl || result.imageUrl)
-        }
+        // AI analysis feature disabled - /api/ai/analyze-layout endpoint removed
+        // if (result.description) {
+        //   await analyzeLayoutWithAI(result.description, result.convertedImageUrl || result.imageUrl)
+        // }
       } else {
         setUploadStatus(`❌ ${result.error}`)
       }

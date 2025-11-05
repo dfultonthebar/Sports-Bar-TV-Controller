@@ -65,19 +65,20 @@ export default function DeviceConfigPage() {
   }
 
   // Handle AI Actions
+  // NOTE: AI device optimization endpoint has been removed
   const handleAiAction = async (action: string) => {
     setAiActionLoading(action)
     setAiActionResult(null)
 
     try {
-      const response = await fetch('/api/ai/device-optimization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+      // /api/ai/device-optimization endpoint removed - feature disabled
+      setAiActionResult({
+        action,
+        data: {
+          success: false,
+          error: 'AI device optimization feature is currently disabled. The endpoint has been removed.'
+        }
       })
-
-      const data = await response.json()
-      setAiActionResult({ action, data })
 
       // Auto-dismiss after 5 seconds
       setTimeout(() => setAiActionResult(null), 5000)

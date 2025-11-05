@@ -28,39 +28,10 @@ async function generateQAPairsFromChunk(
   model: string,
   category: string
 ): Promise<QAPair[]> {
-  try {
-    // Use the AI service to generate Q&A pairs
-    const response = await fetch('/api/ai/generate-qa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: chunk,
-        context: `TV Manual for ${manufacturer} ${model}`,
-        category
-      })
-    })
-    
-    if (!response.ok) {
-      logger.warn(`[TV Docs] AI Q&A generation failed for chunk`)
-      return []
-    }
-    
-    const data = await response.json()
-    
-    if (data.qaPairs && Array.isArray(data.qaPairs)) {
-      return data.qaPairs.map((pair: any) => ({
-        question: pair.question,
-        answer: pair.answer,
-        category,
-        source: `${manufacturer} ${model} Manual`
-      }))
-    }
-    
-    return []
-  } catch (error) {
-    logger.error('[TV Docs] Error generating Q&A pairs:', error)
-    return []
-  }
+  // NOTE: /api/ai/generate-qa endpoint has been removed
+  // This feature is currently disabled - returning empty array
+  logger.warn(`[TV Docs] AI Q&A generation is disabled - endpoint removed`)
+  return []
 }
 
 /**

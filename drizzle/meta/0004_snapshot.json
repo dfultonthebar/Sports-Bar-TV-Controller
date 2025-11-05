@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3ae09cea-3e72-4c18-b864-572c0696a415",
-  "prevId": "1aca9140-1016-4532-b551-bef6d210f75e",
+  "id": "7f58caad-6e7e-490f-a5cf-acf57624f5d1",
+  "prevId": "3ae09cea-3e72-4c18-b864-572c0696a415",
   "tables": {
     "AIGainAdjustmentLog": {
       "name": "AIGainAdjustmentLog",
@@ -2051,14 +2051,6 @@
             "command"
           ],
           "isUnique": false
-        },
-        "CECCommandLog_cecDeviceId_timestamp_idx": {
-          "name": "CECCommandLog_cecDeviceId_timestamp_idx",
-          "columns": [
-            "cecDeviceId",
-            "timestamp"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -3365,20 +3357,6 @@
             "ipAddress"
           ],
           "isUnique": true
-        },
-        "FireTVDevice_status_idx": {
-          "name": "FireTVDevice_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "FireTVDevice_lastSeen_idx": {
-          "name": "FireTVDevice_lastSeen_idx",
-          "columns": [
-            "lastSeen"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -4866,20 +4844,6 @@
             "outputNum"
           ],
           "isUnique": false
-        },
-        "MatrixRoute_inputNum_idx": {
-          "name": "MatrixRoute_inputNum_idx",
-          "columns": [
-            "inputNum"
-          ],
-          "isUnique": false
-        },
-        "MatrixRoute_isActive_idx": {
-          "name": "MatrixRoute_isActive_idx",
-          "columns": [
-            "isActive"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -5623,29 +5587,7 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "ScheduleLog_executedAt_idx": {
-          "name": "ScheduleLog_executedAt_idx",
-          "columns": [
-            "executedAt"
-          ],
-          "isUnique": false
-        },
-        "ScheduleLog_scheduleId_idx": {
-          "name": "ScheduleLog_scheduleId_idx",
-          "columns": [
-            "scheduleId"
-          ],
-          "isUnique": false
-        },
-        "ScheduleLog_success_idx": {
-          "name": "ScheduleLog_success_idx",
-          "columns": [
-            "success"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "ScheduleLog_scheduleId_Schedule_id_fk": {
           "name": "ScheduleLog_scheduleId_Schedule_id_fk",
@@ -6047,23 +5989,7 @@
           "default": "CURRENT_TIMESTAMP"
         }
       },
-      "indexes": {
-        "Schedule_enabled_startTime_idx": {
-          "name": "Schedule_enabled_startTime_idx",
-          "columns": [
-            "enabled",
-            "startTime"
-          ],
-          "isUnique": false
-        },
-        "Schedule_deviceId_idx": {
-          "name": "Schedule_deviceId_idx",
-          "columns": [
-            "deviceId"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "Schedule_deviceId_FireTVDevice_id_fk": {
           "name": "Schedule_deviceId_FireTVDevice_id_fk",
@@ -6931,15 +6857,6 @@
             "importance"
           ],
           "isUnique": false
-        },
-        "SportsEvent_league_status_eventDate_idx": {
-          "name": "SportsEvent_league_status_eventDate_idx",
-          "columns": [
-            "league",
-            "status",
-            "eventDate"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -7193,14 +7110,6 @@
           "name": "TestLog_timestamp_idx",
           "columns": [
             "timestamp"
-          ],
-          "isUnique": false
-        },
-        "TestLog_testType_status_idx": {
-          "name": "TestLog_testType_status_idx",
-          "columns": [
-            "testType",
-            "status"
           ],
           "isUnique": false
         }

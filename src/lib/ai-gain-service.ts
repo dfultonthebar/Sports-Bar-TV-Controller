@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import * as net from 'net'
 import { findMany, findFirst, update, create } from '@/lib/db-helpers'
 import { schema } from '@/db'
+const { audioProcessors, aiGainConfigurations, aiGainAdjustmentLogs } = schema
 
 import { logger } from '@/lib/logger'
 interface AIGainConfig {

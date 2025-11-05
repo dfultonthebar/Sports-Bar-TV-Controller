@@ -198,10 +198,7 @@ export const MEMORY_CONFIG = {
  * Map specific API routes to their rate limit policies
  */
 export const ENDPOINT_RATE_LIMITS = {
-  // AI Endpoints
-  '/api/ai/enhanced-chat': 'AI',
-  '/api/ai/tool-chat': 'AI',
-  '/api/ai/log-analysis': 'AI',
+  // AI Endpoints (Note: Several /api/ai/* endpoints have been removed)
   '/api/ai-assistant/analyze-logs': 'AI',
   '/api/devices/ai-analysis': 'AI',
 
@@ -218,7 +215,6 @@ export const ENDPOINT_RATE_LIMITS = {
   '/api/cec/command': 'DEVICE_CONTROL',
 
   // Expensive Operations
-  '/api/ai/rebuild-knowledge-base': 'EXPENSIVE',
   '/api/backup': 'EXPENSIVE',
   '/api/system/reboot': 'EXPENSIVE',
 
