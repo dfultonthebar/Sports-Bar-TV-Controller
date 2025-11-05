@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     let presetOrder = order
     if (presetOrder === undefined || presetOrder === null) {
       const maxOrderPreset = await findFirst('channelPresets', {
-        where: eq(schema.channelPresets.deviceType, deviceType),
+        where: eq(schema.channelPresets.deviceType, deviceType as string),
         orderBy: desc(schema.channelPresets.order)
       })
       presetOrder = maxOrderPreset ? maxOrderPreset.order + 1 : 0

@@ -186,7 +186,7 @@ export async function PUT(request: NextRequest) {
         const [command] = tx
           .update(scheduledCommands)
           .set(updateData)
-          .where(eq(scheduledCommands.id, id))
+          .where(eq(scheduledCommands.id, id as string))
           .returning()
 
         if (!command) {

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     // Handle single device control
     if (deviceId) {
       const output = await findUnique('matrixOutputs',
-        eq(schema.matrixOutputs.id, deviceId)
+        eq(schema.matrixOutputs.id, deviceId as string)
       )
 
       if (!output) {

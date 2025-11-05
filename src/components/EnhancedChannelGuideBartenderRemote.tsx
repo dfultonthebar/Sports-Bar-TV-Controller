@@ -242,7 +242,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   // Auto-select cable box based on selected input
   const getCableBoxForInput = (inputChannel: number): CableBox | null => {
     // Find a cable box that matches this input's matrix channel
-    const matchingBox = cableBoxes.find((box) => {
+    const matchingBox = cableBoxes.find((box: any) => {
       // Try to match by matrix input ID if available
       const input = inputs.find((inp) => inp.channelNumber === inputChannel)
       if (input && box.matrixInputId === input.id) {
@@ -1117,7 +1117,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 {game.channel.number && (
                                   <span className="text-xs">
                                     ({game.channel.number})
-                                    {game.channel._presetMapped && (
+                                    {(game.channel as any)._presetMapped && (
                                       <Star className="w-2 h-2 inline ml-0.5 text-yellow-400" title="Channel number from preset" />
                                     )}
                                   </span>

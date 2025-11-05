@@ -113,7 +113,7 @@ export class AtlasMeterService {
               inputName: reading.inputName,
               level: reading.level,
               peak: reading.peak,
-              clipping: reading.clipping ? 1 : 0,
+              clipping: reading.clipping,
               timestamp: new Date().toISOString()
             })
             .run()

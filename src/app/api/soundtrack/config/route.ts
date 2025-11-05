@@ -194,11 +194,11 @@ export async function POST(request: NextRequest) {
       zonesWarning = `Could not fetch sound zones automatically. Error: ${error?.message || error}. Use the "Refresh" button to try again.`
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       config: {
         ...config,
-        apiKey: '***' + apiKey.slice(-4)
+        apiKey: '***' + (typeof apiKey === 'string' ? apiKey.slice(-4) : '')
       },
       warning: zonesWarning,
       testResult: testResult.details
@@ -236,7 +236,7 @@ export async function PATCH(request: NextRequest) {
 
     // Find the player
     const player = await findFirst('soundtrackPlayers', {
-      where: eq(schema.soundtrackPlayers.playerId, playerId)
+      where: eq(schema.soundtrackPlayers.playerId, playerId as string)
     })
 
     if (!player) {

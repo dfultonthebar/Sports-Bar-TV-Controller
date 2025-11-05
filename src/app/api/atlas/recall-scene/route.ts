@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         status: 'success'
       }
 
-      logger.info('Scene recall completed:', recallLog)
+      logger.info('Scene recall completed', { data: recallLog })
 
       // Save recall log to file
       try {

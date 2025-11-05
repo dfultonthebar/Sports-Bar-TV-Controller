@@ -212,8 +212,8 @@ export async function cleanupExpiredSessions(): Promise<{ cleaned: number; error
       .set({ isActive: false })
       .where(
         and(
-          eq(sessions.isActive, true),
-          lt(sessions.expiresAt, now.toISOString())
+          eq(sessions.isActive, true as any),
+          gt(sessions.expiresAt, now.toISOString())
         )
       )
       .returning()
@@ -248,8 +248,8 @@ export async function getActiveSessions(locationId?: string): Promise<SessionDat
       .where(
         and(
           eq(sessions.locationId, locId),
-          eq(sessions.isActive, true),
-          lt(now.toISOString(), sessions.expiresAt)
+          eq(sessions.isActive, true as any),
+          gt(sessions.expiresAt, now.toISOString())
         )
       )
 
@@ -323,8 +323,8 @@ export async function getSessionStats(locationId?: string): Promise<{
       .where(
         and(
           eq(sessions.locationId, locId),
-          eq(sessions.isActive, true),
-          lt(now.toISOString(), sessions.expiresAt)
+          eq(sessions.isActive, true as any),
+          gt(sessions.expiresAt, now.toISOString())
         )
       )
 

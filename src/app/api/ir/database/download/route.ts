@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
           .from(irCommands)
           .where(
             and(
-              eq(irCommands.deviceId, deviceId),
+              eq(irCommands.deviceId, deviceId as string),
               eq(irCommands.functionName, func.functionName)
             )
           )
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
           const updated = await update(
             'irCommands',
             and(
-              eq(schema.irCommands.deviceId, deviceId),
+              eq(schema.irCommands.deviceId, deviceId as string),
               eq(schema.irCommands.functionName, func.functionName)
             ),
             {
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update device with codeset ID
-    await update('irDevices', eq(schema.irDevices.id, deviceId), { irCodeSetId: codesetId })
+    await update('irDevices', eq(schema.irDevices.id, deviceId as string), { irCodeSetId: codesetId })
 
     logger.info('✅ [IR DATABASE API] Download complete')
     logger.info('   Success:', { data: downloadedCommands.length })

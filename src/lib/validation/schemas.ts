@@ -382,9 +382,11 @@ export const scheduledCommandCreateSchema = z.object({
  * CEC power control schema
  */
 export const cecPowerControlSchema = z.object({
-  action: z.enum(['on', 'off', 'toggle']),
+  action: z.enum(['on', 'off', 'toggle']).optional(),
   tvAddress: cecAddressSchema.optional().default('0'),
-  delay: z.number().int().min(0).max(10000).optional()
+  delay: z.number().int().min(0).max(10000).optional(),
+  outputNumbers: z.array(z.number()).optional(),
+  individual: z.boolean().optional()
 })
 
 /**
@@ -452,7 +454,12 @@ export const layoutUploadSchema = z.object({
  * Configuration upload schema
  */
 export const configUploadSchema = z.object({
-  config: z.record(z.unknown()),
+  config: z.record(z.unknown()).optional(),
+  processorId: z.string().optional(),
+  ipAddress: ipAddressSchema.optional(),
+  inputs: z.array(z.unknown()).optional(),
+  outputs: z.array(z.unknown()).optional(),
+  scenes: z.array(z.unknown()).optional(),
   overwrite: z.boolean().optional().default(false),
   backup: z.boolean().optional().default(true)
 })
@@ -518,9 +525,11 @@ export const streamingAppLaunchSchema = z.object({
  * Streaming credentials schema
  */
 export const streamingCredentialsSchema = z.object({
-  provider: z.enum(['netflix', 'hulu', 'prime', 'espn', 'youtube', 'other']),
-  username: nonEmptyStringSchema.max(200),
-  password: nonEmptyStringSchema.min(8).max(200),
+  provider: z.enum(['netflix', 'hulu', 'prime', 'espn', 'youtube', 'other']).optional(),
+  username: nonEmptyStringSchema.max(200).optional(),
+  password: nonEmptyStringSchema.min(8).max(200).optional(),
+  platformId: z.string().optional(),
+  rememberMe: z.boolean().optional(),
   additionalData: z.record(z.unknown()).optional()
 })
 
@@ -565,7 +574,10 @@ export const logQuerySchema = z.object({
   endDate: dateStringSchema.or(isoDateSchema).optional(),
   limit: paginationLimitSchema.optional(),
   offset: paginationOffsetSchema.optional(),
-  component: z.string().min(1).max(100).optional()
+  component: z.string().min(1).max(100).optional(),
+  action: z.string().optional(),
+  hours: z.number().optional(),
+  category: z.string().optional()
 })
 
 // ============================================================================
@@ -617,6 +629,11 @@ export const audioProcessorConfigSchema = z.object({
  */
 export const aiQuerySchema = z.object({
   query: nonEmptyStringSchema.max(2000),
+  message: nonEmptyStringSchema.max(2000).optional(),
+  sessionId: z.string().optional(),
+  enableTools: z.boolean().optional(),
+  stream: z.boolean().optional(),
+  chatType: z.string().optional(),
   context: z.record(z.unknown()).optional(),
   model: z.enum(['gpt-4', 'gpt-3.5-turbo', 'claude', 'ollama']).optional(),
   maxTokens: z.number().int().min(100).max(4000).optional()
@@ -643,6 +660,7 @@ export const aiAnalysisSchema = z.object({
  */
 export const connectionTestSchema = z.object({
   deviceId: deviceIdSchema.optional(),
+  deviceName: nonEmptyStringSchema.optional(),
   ipAddress: ipAddressSchema.optional(),
   port: portSchema.optional(),
   protocol: protocolSchema.optional().default('TCP'),

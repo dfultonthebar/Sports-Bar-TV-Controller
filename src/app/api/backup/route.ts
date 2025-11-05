@@ -73,8 +73,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const { action, filename } = data;
+    const actionStr = typeof action === 'string' ? action : String(action);
+    const filenameStr = typeof filename === 'string' ? filename : '';
 
-    if (action === 'create') {
+    if (actionStr === 'create') {
       // Create a new backup
       const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
       const backupFile = path.join(BACKUP_DIR, `config-backup-${timestamp}.tar.gz`);
@@ -117,15 +119,15 @@ export async function POST(request: NextRequest) {
         message: 'Backup created successfully',
         filename: path.basename(backupFile),
       });
-    } else if (action === 'restore') {
-      if (!filename) {
+    } else if (actionStr === 'restore') {
+      if (!filenameStr) {
         return NextResponse.json(
           { error: 'Filename is required for restore' },
           { status: 400 }
         );
       }
 
-      const backupFile = path.join(BACKUP_DIR, filename);
+      const backupFile = path.join(BACKUP_DIR, filenameStr);
       
       // Verify backup file exists
       await fs.access(backupFile);
@@ -155,15 +157,15 @@ export async function POST(request: NextRequest) {
         message: 'Backup restored successfully. Please restart the application.',
         safetyBackup: path.basename(safetyBackupFile),
       });
-    } else if (action === 'delete') {
-      if (!filename) {
+    } else if (actionStr === 'delete') {
+      if (!filenameStr) {
         return NextResponse.json(
           { error: 'Filename is required for delete' },
           { status: 400 }
         );
       }
 
-      const backupFile = path.join(BACKUP_DIR, filename);
+      const backupFile = path.join(BACKUP_DIR, filenameStr);
       await fs.unlink(backupFile);
 
       return NextResponse.json({

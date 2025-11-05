@@ -435,10 +435,9 @@ export class AutomatedHealthCheckService {
    */
   private async logHealthCheck(result: HealthCheckResult) {
     try {
-      const { insert } = await import('@/lib/db-helpers')
+      const { db, schema } = await import('@/lib/db-helpers')
 
-      await insert('systemSettings', {
-        id: crypto.randomUUID(),
+      await db.insert(schema.systemSettings).values({
         key: `health_check_${result.timestamp.getTime()}`,
         value: JSON.stringify({
           checkType: result.checkType,
@@ -447,7 +446,6 @@ export class AutomatedHealthCheckService {
           issuesCount: result.issues.length,
           timestamp: result.timestamp.toISOString()
         }),
-        createdAt: result.timestamp.toISOString(),
         updatedAt: result.timestamp.toISOString()
       })
     } catch (error) {

@@ -118,7 +118,7 @@ export async function PUT(request: NextRequest) {
     if (description !== undefined) updateData.description = description
     if (isActive !== undefined) updateData.isActive = isActive
 
-    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, id), updateData)
+    const apiKey = await update('apiKeys', eq(schema.apiKeys.id, id as string), updateData)
 
     // Remove keyValue from response
     const { keyValue: _, ...safeApiKey } = apiKey

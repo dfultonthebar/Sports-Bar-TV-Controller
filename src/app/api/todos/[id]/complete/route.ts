@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 // POST /api/todos/:id/complete - Mark TODO as complete with validation
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -29,12 +29,12 @@ export async function POST(
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { data: body } = bodyValidation
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
   try {
-    const { id } = await params
+    const { id } = params
     const { productionTested, mergedToMain } = body
 
     // Validate completion criteria

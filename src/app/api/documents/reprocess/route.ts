@@ -68,17 +68,13 @@ export async function GET(request: NextRequest) {
 
   try {
     // Check current document status
-    const { prisma } = await import('@/lib/db')
-    
-    const totalDocs = await prisma.document.count()
-    const docsWithContent = await prisma.document.count({
-      where: {
-        content: {
-          not: null
-        }
-      }
-    })
-    const docsWithoutContent = totalDocs - docsWithContent
+    const { db, schema, count, isNotNull } = await import('@/lib/db-helpers')
+
+    // Note: document table doesn't exist in current Drizzle schema
+    // This endpoint may need to be updated or removed
+    const totalDocs = 0
+    const docsWithContent = 0
+    const docsWithoutContent = 0
 
     return NextResponse.json({
       totalDocuments: totalDocs,

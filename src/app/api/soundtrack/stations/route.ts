@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first
     const cached = cacheManager.get('soundtrack-data', cacheKey)
-    if (cached) {
+    if (cached && Array.isArray(cached)) {
       logger.debug(`[Soundtrack] Returning ${cached.length} stations from cache`)
       return NextResponse.json({
         success: true,

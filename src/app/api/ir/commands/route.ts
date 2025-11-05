@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
       .from(irCommands)
       .where(
         and(
-          eq(irCommands.deviceId, deviceId),
-          eq(irCommands.functionName, functionName)
+          eq(irCommands.deviceId, deviceId as string),
+          eq(irCommands.functionName, functionName as string)
         )
       )
       .limit(1)

@@ -80,13 +80,13 @@ export async function GET(request: NextRequest) {
 
       // Extract values from the response structure
       // Response format: { success: true, data: { ...response, value: extractedValue } }
-      const name = (nameResult.success && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '') 
-        ? nameResult.data.value 
+      const name = (nameResult.success && 'data' in nameResult && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '')
+        ? nameResult.data.value
         : `Group ${i + 1}`
-      const isActive = (activeResult.success && activeResult.data?.value === 1)
-      const source = (sourceResult.success && sourceResult.data?.value !== undefined) ? sourceResult.data.value : -1
-      const gain = (gainResult.success && gainResult.data?.value !== undefined) ? gainResult.data.value : -10
-      const muted = (muteResult.success && muteResult.data?.value === 1)
+      const isActive = (activeResult.success && 'data' in activeResult && activeResult.data?.value === 1)
+      const source = (sourceResult.success && 'data' in sourceResult && sourceResult.data?.value !== undefined) ? sourceResult.data.value : -1
+      const gain = (gainResult.success && 'data' in gainResult && gainResult.data?.value !== undefined) ? gainResult.data.value : -10
+      const muted = (muteResult.success && 'data' in muteResult && muteResult.data?.value === 1)
 
       logger.info(`Group ${i} extracted values:`, { data: { name, isActive, source, gain, muted } })
 
@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
+    const body = bodyValidation.data
     const { processorIp, groupIndex, action, value } = body
 
     if (!processorIp || groupIndex === undefined) {

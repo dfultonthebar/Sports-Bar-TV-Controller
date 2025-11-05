@@ -48,8 +48,8 @@ export async function GET(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
@@ -115,8 +115,8 @@ export async function POST(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
@@ -269,7 +269,7 @@ export async function POST(
         .where(eq(schema.aiGainConfigurations.processorId, processorId))
         .all()
       
-      const aiConfig = aiConfigs.find(config => config.inputNumber === inputNumber)
+      const aiConfig = aiConfigs.find(config => config.inputNumber === inputNumber) as any
 
       if (aiConfig) {
         const previousGain = aiConfig.currentGain || 0
@@ -277,7 +277,7 @@ export async function POST(
         await db
           .update(schema.aiGainConfigurations)
           .set({
-            currentGain: gain,
+            currentGain: gain as any,
             lastAdjustment: new Date().toISOString(),
             adjustmentCount: (aiConfig.adjustmentCount || 0) + 1,
             updatedAt: new Date().toISOString()
@@ -289,14 +289,10 @@ export async function POST(
           configId: aiConfig.id,
           processorId: processorId,
           inputNumber: inputNumber,
-          previousGain: previousGain,
-          newGain: gain,
-          gainChange: gain - previousGain,
-          inputLevel: 0, // Will be updated by monitoring service
-          targetLevel: aiConfig.targetLevel || -18,
-          adjustmentMode: 'manual',
+          previousLevel: previousGain,
+          newLevel: gain,
+          adjustment: gain - previousGain,
           reason: reason,
-          success: 1,
           timestamp: new Date().toISOString()
         })
 

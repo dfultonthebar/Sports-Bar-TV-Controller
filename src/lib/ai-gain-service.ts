@@ -230,14 +230,10 @@ export class AIGainService {
           configId: config.id,
           processorId: processor.id,
           inputNumber: config.inputNumber,
-          previousGain: currentGain,
-          newGain: newGain,
-          gainChange: newGain - currentGain,
-          inputLevel: currentLevel,
-          targetLevel: targetLevel,
-          adjustmentMode: adjustmentMode,
-          reason: 'tracking',
-          success: true
+          previousLevel: currentGain,
+          newLevel: newGain,
+          adjustment: newGain - currentGain,
+          reason: 'tracking'
         }).returning().get()
 
       logger.info(
@@ -253,15 +249,10 @@ export class AIGainService {
           configId: config.id,
           processorId: processor.id,
           inputNumber: config.inputNumber,
-          previousGain: currentGain,
-          newGain: newGain,
-          gainChange: newGain - currentGain,
-          inputLevel: currentLevel,
-          targetLevel: targetLevel,
-          adjustmentMode: adjustmentMode,
-          reason: 'tracking',
-          success: false,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+          previousLevel: currentGain,
+          newLevel: newGain,
+          adjustment: newGain - currentGain,
+          reason: error instanceof Error ? error.message : 'Unknown error'
         }).returning().get()
     }
   }

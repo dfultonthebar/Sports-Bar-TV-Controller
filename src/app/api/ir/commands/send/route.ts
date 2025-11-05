@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Get the command
     const command = await db.select()
       .from(irCommands)
-      .where(eq(irCommands.id, commandId))
+      .where(eq(irCommands.id, commandId as string))
       .limit(1)
       .get()
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Get the IR device
     const device = await db.select()
       .from(irDevices)
-      .where(eq(irDevices.id, deviceId))
+      .where(eq(irDevices.id, deviceId as string))
       .limit(1)
       .get()
 

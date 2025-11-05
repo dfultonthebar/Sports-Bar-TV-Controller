@@ -29,9 +29,10 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get Wolf Pack inputs from database
-    const wolfPackInputs = await prisma.matrixInput.findMany({
-      orderBy: { channelNumber: 'asc' },
-      where: { isActive: true }
+    const wolfPackInputs = await findMany('matrixInputs', {
+      where: eq(schema.matrixInputs.isActive, true),
+      orderBy: asc(schema.matrixInputs.channelNumber),
+      limit: 1000
     })
 
     // Get IR devices from JSON file

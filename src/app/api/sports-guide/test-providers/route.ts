@@ -154,10 +154,10 @@ export async function POST(request: NextRequest) {
   const { data: body } = bodyValidation
   try {
     const { leagues = ['nfl', 'nba', 'premier'], date } = body
-    
+
     const testDate = date || new Date().toISOString().split('T')[0]
-    
-    logger.info(`🧪 Testing specific leagues: ${leagues.join(', ')} for date: ${testDate}`)
+
+    logger.info(`🧪 Testing specific leagues: ${Array.isArray(leagues) ? leagues.join(', ') : ''} for date: ${testDate}`)
     
     const results: any = {
       timestamp: new Date().toISOString(),

@@ -70,6 +70,18 @@ interface ChannelPreset {
   lastUsed: Date | null
 }
 
+interface CableBox {
+  id: string
+  name: string
+  provider: string
+  model: string
+  isOnline: boolean
+  devicePath: string
+  cecPhysicalAddress: string
+  matrixInputId?: string
+  matrixInputNumber?: number
+}
+
 type DeviceType = 'cable' | 'satellite' | 'streaming' | null
 
 export default function BartenderRemoteSelector() {
@@ -77,6 +89,7 @@ export default function BartenderRemoteSelector() {
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
   const [direcTVDevices, setDirecTVDevices] = useState<DirecTVDevice[]>([])
   const [fireTVDevices, setFireTVDevices] = useState<FireTVDevice[]>([])
+  const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | DirecTVDevice | FireTVDevice | null>(null)
   const [deviceType, setDeviceType] = useState<DeviceType>(null)
@@ -85,6 +98,27 @@ export default function BartenderRemoteSelector() {
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [hoveredInput, setHoveredInput] = useState<number | null>(null)
 
+  // Helper function to get cable box for a given input
+  const getCableBoxForInput = (inputChannel: number): CableBox | null => {
+    // Find the input first
+    const input = inputs.find(i => i.channelNumber === inputChannel)
+    if (!input) return null
+
+    // Try to match by matrix input ID first
+    const matchingBox = cableBoxes.find((box) => {
+      if (box.matrixInputId && input.id) {
+        return box.matrixInputId === input.id
+      }
+      // Fallback to matching by input number
+      if (box.matrixInputNumber !== undefined) {
+        return box.matrixInputNumber === inputChannel
+      }
+      return false
+    })
+
+    return matchingBox || null
+  }
+
   useEffect(() => {
     loadAllDevices()
     loadChannelPresets()
@@ -92,11 +126,12 @@ export default function BartenderRemoteSelector() {
 
   const loadAllDevices = async () => {
     try {
-      const [matrixResponse, irResponse, direcTVResponse, fireTVResponse] = await Promise.allSettled([
+      const [matrixResponse, irResponse, direcTVResponse, fireTVResponse, cableBoxResponse] = await Promise.allSettled([
         fetch('/api/matrix/config'),
         fetch('/api/ir-devices'),
         fetch('/api/directv-devices'),
-        fetch('/api/firetv-devices')
+        fetch('/api/firetv-devices'),
+        fetch('/api/cec/cable-box/discover')
       ])
 
       // Load matrix inputs
@@ -131,6 +166,12 @@ export default function BartenderRemoteSelector() {
       if (fireTVResponse.status === 'fulfilled') {
         const fireTVData = await fireTVResponse.value.json()
         setFireTVDevices(fireTVData.devices || [])
+      }
+
+      // Load Cable Boxes (CEC)
+      if (cableBoxResponse.status === 'fulfilled') {
+        const cableBoxData = await cableBoxResponse.value.json()
+        setCableBoxes(cableBoxData.devices || [])
       }
     } catch (error) {
       logger.error('Error loading devices:', error)

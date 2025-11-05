@@ -31,12 +31,6 @@ export async function GET(request: NextRequest) {
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
-  // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (isValidationError(paramsValidation)) return paramsValidation.error
-
-
   try {
     const { searchParams } = new URL(request.url)
     const processorId = searchParams.get('processorId')
@@ -92,8 +86,8 @@ export async function GET(request: NextRequest) {
 
         // Merge all model outputs with custom configurations where available
         outputs = modelOutputs.map(modelOutput => {
-          const customOutput = customOutputsMap.get(modelOutput.id)
-          
+          const customOutput = customOutputsMap.get(modelOutput.id) as any
+
           if (customOutput) {
             // Merge custom configuration with model defaults
             return {

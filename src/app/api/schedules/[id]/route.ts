@@ -14,7 +14,7 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 // GET - Get single schedule
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -27,13 +27,13 @@ export async function GET(
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { data: body } = bodyValidation
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, id)).limit(1).get();
 
     if (!schedule) {
@@ -56,7 +56,7 @@ export async function GET(
 // PUT - Update schedule
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -69,15 +69,16 @@ export async function PUT(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
   try {
-    const { id } = await params;
-    
+    const { id } = params;
+    const body = bodyValidation.data
+
     const updateData: any = {};
-    
+
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined) updateData.description = body.description;
     if (body.enabled !== undefined) updateData.enabled = body.enabled;
@@ -111,7 +112,7 @@ export async function PUT(
 // DELETE - Delete schedule
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -124,13 +125,13 @@ export async function DELETE(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     await db.delete(schema.schedules).where(eq(schema.schedules.id, id)).returning().get();
 
     return NextResponse.json({ success: true });

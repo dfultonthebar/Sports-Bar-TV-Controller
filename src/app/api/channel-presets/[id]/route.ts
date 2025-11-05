@@ -12,7 +12,7 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 // PUT /api/channel-presets/[id] - Update a preset
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
@@ -25,12 +25,12 @@ export async function PUT(
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { data: body } = bodyValidation
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
   try {
-    const { id } = await params
+    const { id } = params
     const { name, channelNumber, deviceType, order, isActive } = body
 
     // Check if preset exists
@@ -88,7 +88,7 @@ export async function PUT(
 // DELETE /api/channel-presets/[id] - Delete a preset
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
@@ -101,13 +101,13 @@ export async function DELETE(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
 
     // Check if preset exists
     const existingPreset = await findFirst('channelPresets', {

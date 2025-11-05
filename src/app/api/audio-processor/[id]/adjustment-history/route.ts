@@ -29,13 +29,10 @@ export async function GET(
   if (isValidationError(queryValidation)) return queryValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
-
   try {
-    const params = await context.params
     const processorId = params.id
     const { searchParams } = new URL(request.url)
     const inputNumber = parseInt(searchParams.get('inputNumber') || '')

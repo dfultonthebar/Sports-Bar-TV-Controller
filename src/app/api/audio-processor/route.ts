@@ -67,6 +67,11 @@ export async function POST(request: NextRequest) {
   try {
     const { data } = bodyValidation
     const { name, model, ipAddress, port, zones, description, username, password } = data
+
+    // Type conversions
+    const modelStr = typeof model === 'string' ? model : String(model);
+    const passwordStr = typeof password === 'string' ? password : undefined;
+
     if (!name || !model || !ipAddress) {
       logger.api.response('POST', '/api/audio-processor', 400, { error: 'Missing required fields' })
       return NextResponse.json(
@@ -76,13 +81,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get model configuration for accurate counts
-    const modelConfig = ATLAS_MODELS[model as keyof typeof ATLAS_MODELS]
-    const calculatedZones = zones || modelConfig?.zones || (model.includes('AZM8') || model.includes('AZMP8') ? 8 : 4)
-    
+    const modelConfig = ATLAS_MODELS[modelStr as keyof typeof ATLAS_MODELS]
+    const calculatedZones = zones || modelConfig?.zones || (typeof modelStr === 'string' && (modelStr.includes('AZM8') || modelStr.includes('AZMP8')) ? 8 : 4)
+
     // Prepare processor data
     const processorData: any = {
       name,
-      model,
+      model: modelStr,
       ipAddress,
       port: port || 80,
       zones: calculatedZones,
@@ -91,9 +96,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Add credentials if provided
-    if (username && password) {
+    if (username && passwordStr) {
       processorData.username = username
-      processorData.password = encryptPassword(password)
+      processorData.password = encryptPassword(passwordStr)
     }
 
     const processor = await create('audioProcessors', processorData)
@@ -133,7 +138,7 @@ export async function PUT(request: NextRequest) {
     const { searchParams } = new URL(request.url)
 
     // Accept ID from either request body or query parameter
-    const id = data.id || searchParams.get('id')
+    const id = (data.id as string | undefined) || searchParams.get('id')
     const { name, model, ipAddress, port, zones, description, username, password } = data
 
     if (!id) {
@@ -159,11 +164,12 @@ export async function PUT(request: NextRequest) {
       updateData.username = username || null
     }
     if (password !== undefined && password !== '') {
-      updateData.password = encryptPassword(password)
+      const passwordStr = typeof password === 'string' ? password : String(password);
+      updateData.password = encryptPassword(passwordStr)
     }
 
     const processor = await update('audioProcessors',
-      eq(schema.audioProcessors.id, id),
+      eq(schema.audioProcessors.id, id as string),
       updateData
     )
 

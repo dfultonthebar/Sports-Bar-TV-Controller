@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate days from now
-    const start = startTime ? new Date(startTime) : new Date()
-    const end = endTime ? new Date(endTime) : new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const start = startTime ? new Date(startTime as string | number | Date) : new Date()
+    const end = endTime ? new Date(endTime as string | number | Date) : new Date(Date.now() + 24 * 60 * 60 * 1000)
     const days = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000))
 
     logInfo(`Fetching ${days} days of guide data from The Rail Media API`)

@@ -51,19 +51,15 @@ export async function POST(request: NextRequest) {
         lastExecuted: new Date(),
         executionCount: schedule.executionCount + 1,
         lastResult: JSON.stringify(result)
-      }).where(eq(schema.schedules.id, scheduleId)).returning().get();
+      }).where(eq(schema.schedules.id, scheduleId as string)).returning().get();
 
     // Log the execution
     await db.insert(schema.scheduleLogs).values({
         scheduleId: schedule.id,
-        scheduleName: schedule.name,
         success: result.success,
-        message: result.message,
-        details: JSON.stringify(result.details),
-        gamesFound: result.gamesFound || 0,
-        tvsControlled: result.tvsControlled || 0,
-        channelsSet: result.channelsSet || 0,
-        errors: result.errors ? JSON.stringify(result.errors) : null
+        error: result.message || (result.errors ? JSON.stringify(result.errors) : null),
+        channelName: schedule.channelName || 'Unknown',
+        deviceName: schedule.deviceId || 'Unknown'
       }).returning().get();
 
     return NextResponse.json({ result });

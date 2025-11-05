@@ -18,15 +18,16 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get all Matrix routing configurations
-    const routings = await prisma.wolfpackMatrixRouting.findMany({
-      where: { isActive: true },
-      orderBy: { matrixOutputNumber: 'asc' }
+    const routings = await findMany('wolfpackMatrixRoutings', {
+      where: eq(schema.wolfpackMatrixRoutings.isActive, true),
+      orderBy: asc(schema.wolfpackMatrixRoutings.matrixOutputNumber),
+      limit: 1000
     })
 
     // Get recent routing history
-    const recentStates = await prisma.wolfpackMatrixState.findMany({
-      orderBy: { routedAt: 'desc' },
-      take: 20
+    const recentStates = await findMany('wolfpackMatrixStates', {
+      orderBy: desc(schema.wolfpackMatrixStates.routedAt),
+      limit: 20
     })
 
     return NextResponse.json({
@@ -67,14 +68,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Update or create Matrix routing configuration
-    const routing = await prisma.wolfpackMatrixRouting.upsert({
-      where: { matrixOutputNumber },
+    const routing = await upsert('wolfpackMatrixRoutings', {
+      where: eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixOutputNumber),
       update: {
         atlasInputLabel: atlasInputLabel || `Matrix ${matrixOutputNumber}`,
         updatedAt: new Date()
       },
       create: {
         matrixOutputNumber,
+        wolfpackInputNumber: matrixOutputNumber,
+        wolfpackInputLabel: `Input ${matrixOutputNumber}`,
         atlasInputLabel: atlasInputLabel || `Matrix ${matrixOutputNumber}`,
         isActive: true
       }

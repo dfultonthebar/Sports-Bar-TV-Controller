@@ -41,28 +41,28 @@ export async function POST(request: NextRequest) {
 
     // Get current preset to increment usage count
     const currentPreset = await findFirst('channelPresets', {
-      where: eq(schema.channelPresets.id, presetId)
+      where: eq(schema.channelPresets.id, presetId as string)
     })
 
     if (!currentPreset) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Preset not found' 
+        {
+          success: false,
+          error: 'Preset not found'
         },
         { status: 404 }
       )
     }
 
     // Update the preset's usage count and last used timestamp
-    await update('channelPresets', presetId, {
+    await update('channelPresets', presetId as string, {
       usageCount: currentPreset.usageCount + 1,
       lastUsed: new Date().toISOString()
     })
 
     // Get the updated preset
     const updatedPreset = await findFirst('channelPresets', {
-      where: eq(schema.channelPresets.id, presetId)
+      where: eq(schema.channelPresets.id, presetId as string)
     })
 
     logger.debug(`[Usage Tracking] Preset "${updatedPreset?.name}" usage updated: ${updatedPreset?.usageCount} uses`)

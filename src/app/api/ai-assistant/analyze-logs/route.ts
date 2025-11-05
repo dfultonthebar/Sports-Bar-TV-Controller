@@ -23,17 +23,21 @@ export async function POST(request: NextRequest) {
   const { data: body } = bodyValidation
 
   try {;
-    const { 
-      hours = 24, 
+    const {
+      hours = 24,
       category,
       includeKnowledge = true,
       model = 'llama3.2:3b',
       focusArea
     } = body;
-    
+
+    // Type assertions for validated body properties
+    const hoursNum = typeof hours === 'number' ? hours : Number(hours);
+    const categoryStr = typeof category === 'string' ? category : undefined;
+
     // Fetch logs and analytics
-    const logs = await enhancedLogger.getRecentLogs(hours, category);
-    const analytics = await enhancedLogger.getLogAnalytics(hours);
+    const logs = await enhancedLogger.getRecentLogs(hoursNum, categoryStr as any);
+    const analytics = await enhancedLogger.getLogAnalytics(hoursNum);
     
     // Filter to most relevant logs
     const errorLogs = logs.filter(log => 
@@ -118,7 +122,8 @@ export async function POST(request: NextRequest) {
     let sources: any[] = [];
     if (includeKnowledge) {
       // Search for relevant troubleshooting docs
-      const searchQuery = focusArea || 
+      const focusAreaStr = typeof focusArea === 'string' ? focusArea : '';
+      const searchQuery = focusAreaStr ||
         `troubleshooting ${errorLogs.map(l => l.source).join(' ')} errors`;
       const relevantDocs = searchKnowledgeBase(searchQuery, 3);
       

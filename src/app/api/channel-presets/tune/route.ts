@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
       const { findFirst } = await import('@/lib/db-helpers')
       const preset = await findFirst('channelPresets', {
-        where: eq(schema.channelPresets.id, presetId)
+        where: eq(schema.channelPresets.id, presetId as string)
       })
 
       if (!preset) {
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
           // Get current preset to increment usage count
           const { findFirst } = await import('@/lib/db-helpers')
           const currentPreset = await findFirst('channelPresets', {
-            where: eq(schema.channelPresets.id, presetId)
+            where: eq(schema.channelPresets.id, presetId as string)
           })
 
           if (currentPreset) {

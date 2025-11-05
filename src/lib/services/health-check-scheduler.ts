@@ -190,7 +190,7 @@ export class HealthCheckScheduler {
    */
   private async storeLastDailyCheck() {
     try {
-      const { findFirst, insert, update, eq, schema } = await import('@/lib/db-helpers')
+      const { db, findFirst, update, eq, schema } = await import('@/lib/db-helpers')
 
       const existing = await findFirst('systemSettings', {
         where: eq(schema.systemSettings.key, 'last_daily_health_check')
@@ -205,11 +205,9 @@ export class HealthCheckScheduler {
           { value: now, updatedAt: now }
         )
       } else {
-        await insert('systemSettings', {
-          id: crypto.randomUUID(),
+        await db.insert(schema.systemSettings).values({
           key: 'last_daily_health_check',
           value: now,
-          createdAt: now,
           updatedAt: now
         })
       }
@@ -248,7 +246,7 @@ export class HealthCheckScheduler {
    */
   private async markPreGameCheckDone(gameName: string) {
     try {
-      const { findFirst, insert, update, eq, schema } = await import('@/lib/db-helpers')
+      const { db, findFirst, update, eq, schema } = await import('@/lib/db-helpers')
 
       const key = `pre_game_check_${gameName.replace(/[^a-zA-Z0-9]/g, '_')}`
       const existing = await findFirst('systemSettings', {
@@ -264,11 +262,9 @@ export class HealthCheckScheduler {
           { value: now, updatedAt: now }
         )
       } else {
-        await insert('systemSettings', {
-          id: crypto.randomUUID(),
+        await db.insert(schema.systemSettings).values({
           key,
           value: now,
-          createdAt: now,
           updatedAt: now
         })
       }

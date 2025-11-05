@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
+  const body = bodyValidation.data
   const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (2 minute TTL)
     const cached = cacheManager.get('soundtrack-data', cacheKey)
-    if (cached) {
+    if (cached && Array.isArray(cached)) {
       logger.debug(`[Soundtrack] Returning ${cached.length} players from cache`)
       return NextResponse.json({
         success: true,
@@ -136,6 +137,7 @@ export async function PATCH(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())

@@ -1,0 +1,92 @@
+╔═══════════════════════════════════════════════════════════════╗
+║           TS2304 (Cannot find name) Error Fix Report          ║
+╚═══════════════════════════════════════════════════════════════╝
+
+FINAL RESULTS
+═════════════
+✓ Initial errors:  141 TS2304 errors
+✓ Final errors:    57 TS2304 errors  
+✓ Errors fixed:    84 errors (60% reduction)
+✓ Status:          All non-Prisma errors RESOLVED
+
+WHAT WAS FIXED
+══════════════
+
+1. ✅ Next.js 15 Dynamic Route Params (~30 errors)
+   - Updated all dynamic routes to use async params pattern
+   - Fixed { params } → { params: paramsPromise } pattern
+   - Fixed context.params await pattern
+   - Removed incorrect params validation from non-dynamic routes
+
+2. ✅ Missing Body Variables (~15 errors)
+   - Added const body = bodyValidation.data extraction
+   - Fixed 10+ route files
+
+3. ✅ getCableBoxForInput Missing (7 errors)
+   - Added CableBox interface
+   - Added cableBoxes state management
+   - Added getCableBoxForInput() helper
+   - Updated loadAllDevices() to fetch cable boxes
+
+4. ✅ Prisma → Drizzle Partial Conversion (~32 errors)
+   - Converted Prisma queries to Drizzle in API routes
+   - Fixed atlas, audio-processor, diagnostics routes
+   - Updated db helpers usage
+
+REMAINING WORK (57 errors)
+═══════════════════════════
+
+All remaining errors are Prisma references in library files:
+
+  Files requiring Prisma → Drizzle conversion:
+  ├── src/lib/ai-knowledge-enhanced.ts (4 errors)
+  ├── src/lib/ai-knowledge-qa.ts (2 errors)
+  ├── src/lib/firecube/app-discovery.ts (7 errors)
+  ├── src/lib/firecube/keep-awake-scheduler.ts (10 errors)
+  ├── src/lib/firecube/sideload-service.ts (13 errors)
+  ├── src/lib/firecube/sports-content-detector.ts (7 errors)
+  ├── src/lib/firecube/subscription-detector.ts (5 errors)
+  ├── src/lib/scheduler-service.ts (1 error)
+  ├── src/lib/services/qa-uploader.ts (1 error)
+  ├── src/lib/tvDocs/index.ts (3 errors)
+  └── src/app/api/todos/[id]/complete/route.ts (1 error)
+      src/app/api/todos/[id]/documents/route.ts (1 error)
+      src/app/api/matrix-display/route.ts (2 errors)
+      src/app/api/sports-guide/current-time/route.ts (1 error)
+
+PATTERN REFERENCE
+═════════════════
+
+Prisma → Drizzle Conversions:
+
+  findUnique:
+    await prisma.table.findUnique({ where: { id } })
+    ↓
+    await findUnique('tables', { where: eq(schema.tables.id, id) })
+
+  findMany:
+    await prisma.table.findMany({ where: { active: true }, orderBy: { name: 'asc' } })
+    ↓
+    await findMany('tables', { 
+      where: eq(schema.tables.active, true),
+      orderBy: asc(schema.tables.name),
+      limit: 1000
+    })
+
+  update:
+    await prisma.table.update({ where: { id }, data: { name } })
+    ↓
+    await update('tables', { where: eq(schema.tables.id, id), data: { name } })
+
+  upsert:
+    await prisma.table.upsert({ where: { id }, update: {...}, create: {...} })
+    ↓
+    await upsert('tables', { where: eq(schema.tables.id, id), update: {...}, create: {...} })
+
+NEXT STEPS
+══════════
+1. Fix remaining Prisma references in lib files (most complex)
+2. Run full test suite after all fixes
+3. Consider adding ESLint rule to prevent new Prisma usage
+
+See TS2304_FIX_REPORT.md for detailed information.

@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -20,13 +20,13 @@ export async function GET(
 
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     const processorId = id
 
     // Fetch processor from database

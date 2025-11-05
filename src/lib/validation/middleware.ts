@@ -259,7 +259,7 @@ export function validateQueryParams<T>(
  *   request: NextRequest,
  *   { params }: { params: Promise<{ id: string }> }
  * ) {
- *   const resolvedParams = await params
+ *   const params = await context.params
  *   const validation = validatePathParams(resolvedParams, paramsSchema)
  *   if (!validation.success) return validation.error
  *

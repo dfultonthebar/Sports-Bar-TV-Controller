@@ -102,9 +102,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function testProvider(providerId: string) {
+async function testProvider(providerId: unknown) {
   try {
-    const apiKey = await findUnique('apiKeys', eq(schema.apiKeys.id, providerId))
+    const providerIdStr = typeof providerId === 'string' ? providerId : String(providerId);
+    const apiKey = await findUnique('apiKeys', eq(schema.apiKeys.id, providerIdStr))
 
     if (!apiKey) {
       return NextResponse.json(

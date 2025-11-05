@@ -565,7 +565,7 @@ export class AtlasControlService extends EventEmitter {
         await db.insert(schema.atlasConnectionStates)
           .values({
             processorId: this.config.processorId,
-            isConnected: connected ? 1 : 0,
+            isConnected: connected,
             lastConnected: connected ? now : null,
             lastDisconnected: connected ? null : now,
             tcpPort: this.config.tcpPort,

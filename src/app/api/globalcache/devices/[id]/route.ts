@@ -15,7 +15,7 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -28,13 +28,13 @@ export async function GET(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     const device = await findFirst('globalCacheDevices', {
       where: eq(schema.globalCacheDevices.id, id)
     })
@@ -76,7 +76,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -89,13 +89,13 @@ export async function DELETE(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     await deleteRecord('globalCacheDevices', eq(schema.globalCacheDevices.id, id))
 
     logger.info(`Global Cache device deleted: ${id}`)
@@ -118,7 +118,7 @@ export async function DELETE(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  {  params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -131,13 +131,13 @@ export async function PUT(
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { data: body } = bodyValidation
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     const { name, ipAddress, port, model } = body
 
     const updateData: any = {}

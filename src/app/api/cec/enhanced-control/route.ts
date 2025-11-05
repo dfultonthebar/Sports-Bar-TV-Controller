@@ -26,19 +26,22 @@ export async function POST(request: NextRequest) {
   const { data } = bodyValidation
   const { command, outputNumber, parameters } = data
   try {
+    // Type conversions
+    const commandStr = typeof command === 'string' ? command : String(command);
+
     if (!command) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Command is required' 
+      return NextResponse.json({
+        success: false,
+        error: 'Command is required'
       }, { status: 400 })
     }
 
     // Get CEC configuration
     const cecConfig = await findFirst('cecConfigurations')
     if (!cecConfig || !cecConfig.isEnabled) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'CEC is not enabled' 
+      return NextResponse.json({
+        success: false,
+        error: 'CEC is not enabled'
       }, { status: 400 })
     }
 
@@ -46,7 +49,7 @@ export async function POST(request: NextRequest) {
     let brandConfig = getBrandConfig('Generic')
     if (outputNumber) {
       const output = await findFirst('matrixOutputs', {
-        where: eq(schema.matrixOutputs.channelNumber, outputNumber)
+        where: eq(schema.matrixOutputs.channelNumber, outputNumber as number)
       })
       // Use detected brand from CEC discovery if available
       if (output?.tvBrand) {
@@ -56,23 +59,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Get command mapping
-    const commandMapping = getCECCommandMapping(command as CECCommand)
+    const commandMapping = getCECCommandMapping(commandStr as CECCommand)
     if (!commandMapping) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Unknown CEC command: ${command}` 
+      return NextResponse.json({
+        success: false,
+        error: `Unknown CEC command: ${commandStr}`
       }, { status: 400 })
     }
 
     // Determine delay based on command type
     let delay = 2000
-    if (command === 'power_on') {
+    if (commandStr === 'power_on') {
       delay = brandConfig.cecPowerOnDelay
-    } else if (command === 'power_off' || command === 'standby') {
+    } else if (commandStr === 'power_off' || commandStr === 'standby') {
       delay = brandConfig.cecPowerOffDelay
-    } else if (['volume_up', 'volume_down', 'mute'].includes(command)) {
+    } else if (['volume_up', 'volume_down', 'mute'].includes(commandStr)) {
       delay = brandConfig.cecVolumeDelay
-    } else if (command.includes('source') || command === 'set_stream_path') {
+    } else if (commandStr.includes('source') || commandStr === 'set_stream_path') {
       delay = brandConfig.cecInputSwitchDelay
     }
 

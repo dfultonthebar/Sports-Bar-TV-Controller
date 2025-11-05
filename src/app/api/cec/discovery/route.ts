@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       // Single output discovery - always synchronous (fast, 10-15 seconds)
       logger.info(`[CEC Discovery API] Starting single output discovery for output ${outputNumber}`)
 
-      const result = await discoverSingleTV(parseInt(outputNumber))
+      const result = await discoverSingleTV(String(outputNumber))
 
       return NextResponse.json({
         success: true,

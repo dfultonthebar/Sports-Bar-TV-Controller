@@ -36,27 +36,16 @@ export async function GET(
   if (isValidationError(queryValidation)) return queryValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const params = await context.params
     const processorId = params.id
 
-    const processor = await prisma.audioProcessor.findUnique({
-      where: { id: processorId },
-      include: {
-        inputMeters: {
-          include: {
-            aiGainConfig: true
-          },
-          orderBy: {
-            inputNumber: 'asc'
-          }
-        }
-      }
+    const processor = await findUnique('audioProcessors', {
+      where: eq(schema.audioProcessors.id, processorId)
     })
 
     if (!processor) {
@@ -66,14 +55,38 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ 
+    // Get input meters with AI gain config separately (Drizzle doesn't support nested includes)
+    const inputMeters = await findMany('audioInputMeters', {
+      where: eq(schema.audioInputMeters.processorId, processorId),
+      orderBy: asc(schema.audioInputMeters.inputNumber),
+      limit: 1000
+    })
+
+    // Get AI gain configs for these input meters
+    const aiGainConfigs = await findMany('aiGainConfigurations', {
+      where: eq(schema.aiGainConfigurations.processorId, processorId),
+      limit: 1000
+    })
+
+    // Merge AI gain configs into input meters
+    const inputMetersWithConfig = inputMeters.map(meter => {
+      const aiGainConfig = aiGainConfigs.find(
+        config => config.inputNumber === meter.inputNumber
+      )
+      return {
+        ...meter,
+        aiGainConfig: aiGainConfig || null
+      }
+    })
+
+    return NextResponse.json({
       success: true,
       processor: {
         id: processor.id,
         name: processor.name,
         model: processor.model
       },
-      inputMeters: processor.inputMeters
+      inputMeters: inputMetersWithConfig
     })
 
   } catch (error) {
@@ -105,13 +118,12 @@ export async function POST(
   if (isValidationError(queryValidation)) return queryValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const params = await context.params
     const processorId = params.id
     const data = await request.json()
     const { 
@@ -144,11 +156,16 @@ export async function POST(
     }
 
     // Find or create the input meter
-    let inputMeter = await db.select().from(audioInputMeters).where(eq(audioInputMeters.processorId, processorId)).limit(1).get()
+    let inputMeter = await findFirst('audioInputMeters', {
+      where: and(
+        eq(schema.audioInputMeters.processorId, processorId),
+        eq(schema.audioInputMeters.inputNumber, inputNumber)
+      )
+    })
 
     if (!inputMeter) {
       // Create input meter if it doesn't exist
-      inputMeter = await prisma.audioInputMeter.create({
+      inputMeter = await create('audioInputMeters', {
         data: {
           processorId: processorId,
           inputNumber: inputNumber,
@@ -160,37 +177,36 @@ export async function POST(
     }
 
     // Find or create AI gain configuration
-    let aiConfig = await db.select().from(aiGainConfigurations).where(eq(aiGainConfigurations.processorId, processorId)).limit(1).get()
+    let aiConfig = await findFirst('aiGainConfigurations', {
+      where: and(
+        eq(schema.aiGainConfigurations.processorId, processorId),
+        eq(schema.aiGainConfigurations.inputNumber, inputNumber)
+      )
+    })
 
     const configData: any = {
-      inputType: inputType || 'line',
-      aiEnabled: aiEnabled !== undefined ? aiEnabled : false
+      enabled: aiEnabled !== undefined ? aiEnabled : false
     }
 
     // Add optional parameters if provided
     if (targetLevel !== undefined) configData.targetLevel = targetLevel
-    if (fastModeThreshold !== undefined) configData.fastModeThreshold = fastModeThreshold
-    if (silenceThreshold !== undefined) configData.silenceThreshold = silenceThreshold
-    if (silenceDuration !== undefined) configData.silenceDuration = silenceDuration
-    if (fastModeStep !== undefined) configData.fastModeStep = fastModeStep
-    if (slowModeStep !== undefined) configData.slowModeStep = slowModeStep
-    if (minGain !== undefined) configData.minGain = minGain
-    if (maxGain !== undefined) configData.maxGain = maxGain
 
     if (aiConfig) {
       // Update existing configuration
-      aiConfig = await prisma.aIGainConfiguration.update({
-        where: { id: aiConfig.id },
+      aiConfig = await update('aiGainConfigurations', {
+        where: eq(schema.aiGainConfigurations.id, aiConfig.id),
         data: configData
       })
     } else {
       // Create new configuration
-      aiConfig = await db.insert(aiGainConfigurations).values({
-          inputMeterId: inputMeter.id,
+      aiConfig = await create('aiGainConfigurations', {
+        data: {
           processorId: processorId,
           inputNumber: inputNumber,
+          inputName: `Input ${inputNumber + 1}`,
           ...configData
-        }).returning().get()
+        }
+      })
     }
 
     return NextResponse.json({ 
@@ -228,13 +244,12 @@ export async function DELETE(
   if (isValidationError(queryValidation)) return queryValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await context.params
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const params = await context.params
     const processorId = params.id
     const { searchParams } = new URL(request.url)
     const inputNumber = parseInt(searchParams.get('inputNumber') || '')

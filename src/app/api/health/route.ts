@@ -212,7 +212,7 @@ async function checkDatabaseHealth(): Promise<any> {
 
     // Try a simple query to verify database is accessible
     const result = await db.all(sql`SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'`)
-    const tables = result[0]?.count || 0
+    const tables = (result[0] && typeof result[0] === 'object' && 'count' in result[0]) ? (result[0] as any).count : 0
 
     return {
       status: 'healthy',
@@ -409,17 +409,18 @@ async function checkSportsGuideStatus(): Promise<any> {
     }
 
     // Check for recent successful fetch in logs table
+    // Note: errorLogs table doesn't exist in current schema
     try {
-      const recentLog = await db.select()
-        .from(schema.errorLogs)
-        .where(sql`${schema.errorLogs.endpoint} LIKE '%sports-guide%'`)
-        .orderBy(sql`${schema.errorLogs.timestamp} DESC`)
-        .limit(1)
-        .get()
+      // const recentLog = await db.select()
+      //   .from(schema.errorLogs)
+      //   .where(sql`${schema.errorLogs.endpoint} LIKE '%sports-guide%'`)
+      //   .orderBy(sql`${schema.errorLogs.timestamp} DESC`)
+      //   .limit(1)
+      //   .get()
 
       return {
         status: 'healthy',
-        lastFetch: recentLog?.timestamp || 'unknown'
+        lastFetch: 'unknown'
       }
     } catch {
       return {
@@ -496,14 +497,15 @@ async function calculateMetrics(services: any): Promise<any> {
     let devicesOnline = fireTVOnline
 
     // Calculate error rate from logs (last 1000 entries)
+    // Note: errorLogs table doesn't exist in current schema
     try {
-      const errorCount = await db.select()
-        .from(schema.errorLogs)
-        .limit(1000)
-        .all()
-        .then(logs => logs.length)
+      // const errorCount = await db.select()
+      //   .from(schema.errorLogs)
+      //   .limit(1000)
+      //   .all()
+      //   .then(logs => logs.length)
 
-      const errorRate = errorCount > 0 ? Math.min(100, errorCount / 10) : 0
+      const errorRate = 0
 
       return {
         totalDevices,

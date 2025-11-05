@@ -39,25 +39,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all input meters for the processor with current levels
-    const inputMeters = await prisma.audioInputMeter.findMany({
-      where: { 
-        processorId: processorId,
-        isActive: true 
-      },
-      orderBy: { inputNumber: 'asc' },
-      select: {
-        id: true,
-        inputNumber: true,
-        parameterName: true,
-        inputName: true,
-        currentLevel: true,
-        peakLevel: true,
-        levelPercent: true,
-        warningThreshold: true,
-        dangerThreshold: true,
-        lastUpdate: true,
-        isActive: true
-      }
+    const inputMeters = await findMany('audioInputMeters', {
+      where: and(
+        eq(schema.audioInputMeters.processorId, processorId),
+        eq(schema.audioInputMeters.isActive, true)
+      ),
+      orderBy: asc(schema.audioInputMeters.inputNumber),
+      limit: 1000
     })
 
     // Add status indicators based on levels
@@ -126,8 +114,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await prisma.audioInputMeter.updateMany({
-      where: { processorId },
+    await updateMany('audioInputMeters', {
+      where: eq(schema.audioInputMeters.processorId, processorId),
       data: { peakLevel: -80.0 } // Reset to minimum
     })
 

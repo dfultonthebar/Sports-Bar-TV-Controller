@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get device from database
-    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId as string)).limit(1).get()
 
     if (!device) {
       logger.info('❌ [GLOBAL CACHE] Error: Device not found')
@@ -123,7 +123,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Get device from database
-    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId)).limit(1).get()
+    const device = await db.select().from(globalCacheDevices).where(eq(globalCacheDevices.id, deviceId as string)).limit(1).get()
 
     if (!device) {
       logger.info('❌ [GLOBAL CACHE] Error: Device not found')

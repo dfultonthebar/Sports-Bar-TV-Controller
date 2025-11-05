@@ -11,7 +11,7 @@ const UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'layouts')
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ filename: string }> }
+  {  params: paramsPromise }: { params: Promise<{ filename: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
@@ -20,13 +20,13 @@ export async function GET(
 
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ filename: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ filename: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { filename } = await params
+    const { filename } = params
     
     // Security: Prevent directory traversal
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {

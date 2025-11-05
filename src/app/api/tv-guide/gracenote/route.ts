@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
+  const body = bodyValidation.data
   const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
+  const body = bodyValidation.data
 
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())

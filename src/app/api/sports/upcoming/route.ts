@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (5 minute TTL)
     const cached = cacheManager.get('sports-data', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object' && 'total' in cached) {
       logger.debug(`[Sports] Returning ${cached.total} upcoming events from cache`)
       return NextResponse.json({
         ...cached,

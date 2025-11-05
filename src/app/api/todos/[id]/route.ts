@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/todos/:id - Get single TODO
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -30,14 +30,14 @@ export async function GET(
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { data: body } = bodyValidation
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
-    const todo = await prisma.todo.findUnique({
+    const { id } = params
+    const todo = await findUnique("todos", {
       where: { id },
       include: {
         documents: true
@@ -67,7 +67,7 @@ export async function GET(
 // PUT /api/todos/:id - Update TODO
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -80,12 +80,13 @@ export async function PUT(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
   try {
-    const { id } = await params
+    const { id } = params
+    const body = bodyValidation.data
     const { title, description, priority, status, category, tags } = body
 
     const updateData: any = {}
@@ -101,7 +102,7 @@ export async function PUT(
     if (category !== undefined) updateData.category = category
     if (tags !== undefined) updateData.tags = JSON.stringify(tags)
 
-    const todo = await prisma.todo.update({
+    const todo = await update("todos", {
       where: { id },
       data: updateData,
       include: {
@@ -130,7 +131,7 @@ export async function PUT(
 // DELETE /api/todos/:id - Delete TODO
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ)
   if (!rateLimit.allowed) {
@@ -143,15 +144,15 @@ export async function DELETE(
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
+  const params = await paramsPromise
+  const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
 
   try {
-    const { id } = await params
+    const { id } = params
     // Get TODO title before deleting
-    const todo = await prisma.todo.findUnique({
+    const todo = await findUnique("todos", {
       where: { id },
       select: { title: true }
     })

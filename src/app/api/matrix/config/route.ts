@@ -71,13 +71,13 @@ export async function POST(request: NextRequest) {
 
   // Security: use validated data
   const { data } = bodyValidation
-  const { config, inputs, outputs } = data
+  const { config, inputs, outputs } = data as any
   try {
 
     // Validate required fields
-    if (!config.name || !config.ipAddress) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: name and ipAddress are required' 
+    if (!config || typeof config !== 'object' || !config.name || !config.ipAddress) {
+      return NextResponse.json({
+        error: 'Missing required fields: name and ipAddress are required'
       }, { status: 400 })
     }
 
@@ -173,8 +173,8 @@ export async function POST(request: NextRequest) {
         .run()
 
       // Save inputs - only fields that exist in actual database
-      if (inputs?.length > 0) {
-        for (const input of inputs) {
+      if (inputs && Array.isArray(inputs) && inputs.length > 0) {
+        for (const input of inputs as any[]) {
           await tx.insert(schema.matrixInputs)
             .values({
               id: randomUUID(),
@@ -195,8 +195,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Save outputs - preserve CEC discovery data from existing records
-      if (outputs?.length > 0) {
-        for (const output of outputs) {
+      if (outputs && Array.isArray(outputs) && outputs.length > 0) {
+        for (const output of outputs as any[]) {
           const existing = existingOutputMap.get(output.channelNumber)
 
           await tx.insert(schema.matrixOutputs)
@@ -228,15 +228,15 @@ export async function POST(request: NextRequest) {
     })
 
     logger.debug(`Configuration saved successfully: ${result.name} (${result.id})`)
-    logger.debug(`- Inputs saved: ${inputs?.length || 0}`)
-    logger.debug(`- Outputs saved: ${outputs?.length || 0}`)
+    logger.debug(`- Inputs saved: ${Array.isArray(inputs) ? inputs.length : 0}`)
+    logger.debug(`- Outputs saved: ${Array.isArray(outputs) ? outputs.length : 0}`)
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Configuration saved successfully',
       config: result,
-      inputCount: inputs?.length || 0,
-      outputCount: outputs?.length || 0
+      inputCount: Array.isArray(inputs) ? inputs.length : 0,
+      outputCount: Array.isArray(outputs) ? outputs.length : 0
     })
   } catch (error) {
     logger.error('Error saving matrix configuration:', error)

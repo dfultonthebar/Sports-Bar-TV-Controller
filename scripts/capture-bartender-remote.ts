@@ -76,10 +76,10 @@ async function captureScreenshots() {
     console.log('Looking for device/input selector...');
 
     // Try to find and click on Cable Box 2
-    const cableBoxOptions = page.locator('text=Cable Box').all();
-    const cableBoxButtons = page.locator('button:has-text("Cable Box")').all();
+    const cableBoxOptions = await page.locator('text=Cable Box').all();
+    const cableBoxButtons = await page.locator('button:has-text("Cable Box")').all();
 
-    console.log(`Found ${await cableBoxOptions.length} Cable Box references`);
+    console.log(`Found ${cableBoxOptions.length} Cable Box references`);
 
     // Try clicking on any Cable Box 2 option
     const cableBox2 = page.locator('text=Cable Box 2, button:has-text("Cable Box 2")').first();
@@ -127,8 +127,8 @@ async function captureScreenshots() {
     });
 
     // Screenshot 6: Look for any error messages or status indicators
-    const errorElements = page.locator('[class*="error"], [class*="Error"], [class*="warning"], [class*="Warning"], [role="alert"]').all();
-    console.log(`Found ${await errorElements.length} potential error/warning elements`);
+    const errorElements = await page.locator('[class*="error"], [class*="Error"], [class*="warning"], [class*="Warning"], [role="alert"]').all();
+    console.log(`Found ${errorElements.length} potential error/warning elements`);
 
     const errors = page.locator('[class*="error"], [class*="Error"]');
     if (await errors.first().isVisible({ timeout: 2000 }).catch(() => false)) {

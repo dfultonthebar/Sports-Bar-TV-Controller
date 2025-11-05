@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     // Check if device with this IP already exists
     const existingDevice = await db.select()
       .from(globalCacheDevices)
-      .where(eq(globalCacheDevices.ipAddress, ipAddress))
+      .where(eq(globalCacheDevices.ipAddress, ipAddress as string))
       .limit(1)
       .get()
 

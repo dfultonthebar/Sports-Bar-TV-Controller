@@ -42,8 +42,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Type conversion for matrixInputNumber
+    const matrixInputNum = typeof matrixInputNumber === 'number' ? matrixInputNumber : Number(matrixInputNumber);
+    const processorIdStr = typeof processorId === 'string' ? processorId : String(processorId);
+
     // Validate matrix input is 1-4
-    if (matrixInputNumber < 1 || matrixInputNumber > 4) {
+    if (matrixInputNum < 1 || matrixInputNum > 4) {
       return NextResponse.json(
         { error: 'Matrix input number must be between 1 and 4' },
         { status: 400 }
@@ -51,9 +55,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the Atlas processor
-    const processor = processorId 
-      ? await prisma.audioProcessor.findUnique({ where: { id: processorId } })
-      : await prisma.audioProcessor.findFirst({ where: { status: 'online' } })
+    const processor = processorId
+      ? await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorIdStr))
+      : await findFirst('audioProcessors', eq(schema.audioProcessors.status, 'online'))
 
     if (!processor) {
       return NextResponse.json(
@@ -63,40 +67,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the current video input selection for this matrix output
-    const matrixRouting = await prisma.wolfpackMatrixRouting.findUnique({
-      where: { matrixOutputNumber: parseInt(matrixInputNumber) }
-    })
+    const matrixRouting = await findUnique('wolfpackMatrixRoutings',
+      eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixInputNum)
+    )
 
-    const videoInputLabel = matrixRouting?.wolfpackInputLabel || `Matrix ${matrixInputNumber}`
+    const videoInputLabel = matrixRouting?.wolfpackInputLabel || `Matrix ${matrixInputNum}`
 
     // Get or create zones
     const zones = await Promise.all(
       zoneNumbers.map(async (zoneNum: number) => {
-        return await prisma.audioZone.upsert({
-          where: {
-            processorId_zoneNumber: {
-              processorId: processor.id,
-              zoneNumber: zoneNum
-            }
-          },
-          update: {
-            currentSource: `Matrix ${matrixInputNumber}`,
+        return await upsert('audioZones',
+          and(
+            eq(schema.audioZones.processorId, processor.id),
+            eq(schema.audioZones.zoneNumber, zoneNum)
+          ),
+          {
+            currentSource: `Matrix ${matrixInputNum}`,
             updatedAt: new Date()
           },
-          create: {
+          {
             processorId: processor.id,
             zoneNumber: zoneNum,
             name: `Zone ${zoneNum}`,
-            currentSource: `Matrix ${matrixInputNumber}`,
+            currentSource: `Matrix ${matrixInputNum}`,
             volume: 50
           }
-        })
+        )
       })
     )
 
     // Here you would send actual commands to the Atlas processor
     // For now, we'll simulate the routing by updating the database
-    logger.debug(`Routing Matrix ${matrixInputNumber} (${videoInputLabel}) to zones: ${zoneNumbers.join(', ')}`)
+    logger.debug(`Routing Matrix ${matrixInputNum} (${videoInputLabel}) to zones: ${zoneNumbers.join(', ')}`)
     
     // In a real implementation, you would:
     // 1. Get the Atlas processor configuration
@@ -106,21 +108,21 @@ export async function POST(request: NextRequest) {
     //   { "input": matrixInputNumber + 8, "outputs": zoneNumbers }
 
     // For now, log the routing action
-    await prisma.wolfpackMatrixRouting.update({
-      where: { matrixOutputNumber: parseInt(matrixInputNumber) },
-      data: {
-        atlasInputLabel: `Matrix ${matrixInputNumber}`,
+    await update('wolfpackMatrixRoutings',
+      eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixInputNum),
+      {
+        atlasInputLabel: `Matrix ${matrixInputNum}`,
         updatedAt: new Date()
       }
-    })
+    )
 
     return NextResponse.json({
       success: true,
-      message: `Successfully routed Matrix ${matrixInputNumber} (${videoInputLabel}) to zones ${zoneNumbers.join(', ')}`,
+      message: `Successfully routed Matrix ${matrixInputNum} (${videoInputLabel}) to zones ${zoneNumbers.join(', ')}`,
       routing: {
-        matrixInput: matrixInputNumber,
+        matrixInput: matrixInputNum,
         videoInputLabel,
-        atlasInput: `Matrix ${matrixInputNumber}`,
+        atlasInput: `Matrix ${matrixInputNum}`,
         zones: zones.map(z => ({
           number: z.zoneNumber,
           name: z.name
@@ -165,14 +167,12 @@ export async function GET(request: NextRequest) {
     const matrixInputNumber = searchParams.get('matrixInputNumber')
 
     // Get processor
-    const processor = processorId 
-      ? await prisma.audioProcessor.findUnique({ 
-          where: { id: processorId },
-          include: { audioZones: true }
+    const processor = processorId
+      ? await findUnique('audioProcessors', {
+          where: eq(schema.audioProcessors.id, processorId)
         })
-      : await prisma.audioProcessor.findFirst({ 
-          where: { status: 'online' },
-          include: { audioZones: true }
+      : await findFirst('audioProcessors', {
+          where: eq(schema.audioProcessors.status, 'online')
         })
 
     if (!processor) {
@@ -182,17 +182,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get audio zones for this processor
+    const audioZonesForProcessor = await findMany('audioZones', {
+      where: eq(schema.audioZones.processorId, processor.id)
+    })
+
     // Get matrix routing states
-    const matrixRoutings = await prisma.wolfpackMatrixRouting.findMany({
-      where: matrixInputNumber 
-        ? { matrixOutputNumber: parseInt(matrixInputNumber) }
-        : { matrixOutputNumber: { gte: 1, lte: 4 } },
-      orderBy: { matrixOutputNumber: 'asc' }
+    const matrixRoutings = await findMany('wolfpackMatrixRoutings', {
+      where: matrixInputNumber
+        ? eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, parseInt(matrixInputNumber))
+        : and(
+            eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, 1),
+            or(
+              eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, 2),
+              eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, 3),
+              eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, 4)
+            )
+          ),
+      orderBy: asc(schema.wolfpackMatrixRoutings.matrixOutputNumber)
     })
 
     // Build routing state
     const routingState = matrixRoutings.map(routing => {
-      const zonesWithThisSource = processor.audioZones.filter(
+      const zonesWithThisSource = audioZonesForProcessor.filter(
         zone => zone.currentSource === `Matrix ${routing.matrixOutputNumber}`
       )
 

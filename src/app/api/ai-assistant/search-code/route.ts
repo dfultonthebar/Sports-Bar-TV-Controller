@@ -24,14 +24,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const { query, fileTypes, maxResults = 10 } = data;
-    
-    if (!query) {
+
+    if (!query || typeof query !== 'string') {
       return NextResponse.json(
         { error: 'Query is required' },
         { status: 400 }
       );
     }
-    
+
     const queryLower = query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter((term: string) => term.length > 2);
     
@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
     }
     
     // Add file type filter if provided
-    if (fileTypes && fileTypes.length > 0) {
+    if (fileTypes && Array.isArray(fileTypes) && fileTypes.length > 0) {
       // For multiple file types, we need to check each one
-      const fileTypeConditions = fileTypes.map((ft: string) => 
+      const fileTypeConditions = fileTypes.map((ft: string) =>
         eq(schema.indexedFiles.fileType, ft)
       );
       conditions.push(or(...fileTypeConditions));
@@ -69,17 +69,17 @@ export async function POST(request: NextRequest) {
     });
     
     // Score and rank results
-    const scoredFiles = files.map(file => {
+    const scoredFiles = files.map((file: any) => {
       let score = 0;
-      const contentLower = file.content.toLowerCase();
-      const pathLower = file.filePath.toLowerCase();
-      const nameLower = file.fileName.toLowerCase();
-      
+      const contentLower = (file.content || '').toLowerCase();
+      const pathLower = (file.filePath || '').toLowerCase();
+      const nameLower = (file.fileName || '').toLowerCase();
+
       for (const term of queryTerms) {
         // File name matches are worth more
         if (nameLower.includes(term)) score += 5;
         if (pathLower.includes(term)) score += 3;
-        
+
         // Count occurrences in content
         const regex = new RegExp(term, 'gi');
         const matches = contentLower.match(regex);
@@ -87,20 +87,25 @@ export async function POST(request: NextRequest) {
           score += matches.length;
         }
       }
-      
+
       return {
-        ...file,
+        id: file.id,
+        filePath: file.filePath,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        lastModified: file.lastModified,
         score,
         // Extract relevant snippets
-        snippets: extractSnippets(file.content, queryTerms)
+        snippets: extractSnippets(file.content || '', queryTerms)
       };
     });
     
     // Sort by score and return
+    const maxResultsNum = typeof maxResults === 'number' ? maxResults : Number(maxResults);
     const results = scoredFiles
       .filter(f => f.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, maxResults);
+      .slice(0, maxResultsNum);
     
     return NextResponse.json({
       success: true,

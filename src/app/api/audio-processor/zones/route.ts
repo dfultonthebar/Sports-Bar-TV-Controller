@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const zones = await prisma.audioZone.findMany({
-      where: { processorId: processorId },
-      orderBy: { zoneNumber: 'asc' }
+    const zones = await findMany('audioZones', {
+      where: eq(schema.audioZones.processorId, processorId),
+      orderBy: asc(schema.audioZones.zoneNumber),
+      limit: 1000
     })
 
     return NextResponse.json({ zones })

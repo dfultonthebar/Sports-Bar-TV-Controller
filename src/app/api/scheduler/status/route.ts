@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Start/stop scheduler service
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SCHEDULER)
   if (!rateLimit.allowed) {
     return rateLimit.response

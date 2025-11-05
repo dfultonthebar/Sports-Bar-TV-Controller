@@ -43,7 +43,7 @@ async function logCECCommand(command: string, address: number | 'all', response:
         deviceResponded: response.deviceResponded,
         powerStatus: response.powerStatus
       }),
-      success: response.success ? 1 : 0,
+      success: response.success,
       responseTime,
       errorMessage: response.error || null,
       timestamp: now

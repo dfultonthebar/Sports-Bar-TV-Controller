@@ -24,7 +24,7 @@ const pathParamsSchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
   if (!rateLimit.allowed) {
@@ -32,12 +32,12 @@ export async function PUT(
   }
 
   try {
-    const resolvedParams = await params
+    const params = await paramsPromise
 
     // Validate path parameters and request body
     const validation = await validateRequest(request, {
       body: updateApiKeySchema,
-      params: { data: resolvedParams, schema: pathParamsSchema }
+      params: { data: params, schema: pathParamsSchema }
     })
 
     if (isValidationError(validation)) return validation.error
@@ -73,19 +73,18 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
-
   try {
-    const resolvedParams = await params
+    const params = await paramsPromise
 
     // Validate path parameters
     const validation = await validateRequest(request, {
-      params: { data: resolvedParams, schema: pathParamsSchema }
+      params: { data: params, schema: pathParamsSchema }
     })
 
     if (isValidationError(validation)) return validation.error

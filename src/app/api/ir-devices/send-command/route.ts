@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     // Load device information
     const data = await loadDevices()
-    const device = data.devices.find((d: any) => d.id === deviceId)
+    const device = (data.devices && Array.isArray(data.devices)) ? data.devices.find((d: any) => d.id === deviceId) : null
 
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     let irCode: string
 
     // Check if this is a raw IR code or a command name
-    if (isRawCode || command.startsWith('sendir,') || command.startsWith('completeir,')) {
+    if (isRawCode || (typeof command === 'string' && (command.startsWith('sendir,') || command.startsWith('completeir,')))) {
       // This is already a raw IR code
       irCode = command
       logger.info(`Sending raw IR code to ${device.name}`)

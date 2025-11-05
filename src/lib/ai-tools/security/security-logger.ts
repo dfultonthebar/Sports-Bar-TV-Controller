@@ -42,11 +42,11 @@ export async function logSecurityEvent(entry: SecurityLogEntry): Promise<void> {
     await db.insert(securityValidationLogs).values({
       validationType: entry.validationType,
       operationType: entry.operationType || null,
-      allowed: entry.allowed ? 1 : 0,
+      allowed: entry.allowed,
       blockedReason: entry.blockedReason || null,
       blockedPatterns: entry.blockedPatterns ? JSON.stringify(entry.blockedPatterns) : null,
-      requestPath: truncateContent(entry.requestPath) || null,
-      requestContent: truncateContent(entry.requestContent, 2000) || null,
+      requestPath: truncateContent(entry.requestPath || '') || null,
+      requestContent: truncateContent(entry.requestContent || '', 2000) || null,
       sanitizedInput: entry.sanitizedInput ? JSON.stringify(entry.sanitizedInput) : null,
       severity: severity,
       ipAddress: entry.ipAddress || null,
@@ -100,7 +100,7 @@ export async function getSecurityLogs(query: SecurityLogQuery = {}) {
     }
 
     if (query.allowed !== undefined) {
-      conditions.push(eq(securityValidationLogs.allowed, query.allowed ? 1 : 0));
+      conditions.push(eq(securityValidationLogs.allowed, query.allowed));
     }
 
     if (query.severity) {

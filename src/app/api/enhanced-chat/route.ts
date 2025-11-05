@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
     logger.info('[ENHANCED-CHAT] Searching for relevant documents...')
     const relevantDocs = await searchRelevantDocuments(message)
     logger.info('[ENHANCED-CHAT] Found documents:', { data: relevantDocs.length })
-    const documentContext = relevantDocs.map(doc => 
-      `Document: ${doc.originalName}\nContent: ${doc.content?.substring(0, 1500)}...`
+    const documentContext = relevantDocs.map((doc: any) =>
+      `Document: ${doc.originalName || 'Unknown'}\nContent: ${doc.content?.substring(0, 1500) || ''}...`
     ).join('\n\n')
 
     // Combine context from documents and user-provided context
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       response: aiResponse.content,
       sessionId: session.id,
-      relevantDocuments: relevantDocs.map(doc => ({
+      relevantDocuments: relevantDocs.map((doc: any) => ({
         id: doc.id,
         name: doc.originalName,
       })),

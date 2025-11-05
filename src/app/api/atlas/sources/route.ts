@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (30 second TTL for hardware status)
     const cached = cacheManager.get('hardware-status', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object' && 'sources' in cached && Array.isArray(cached.sources)) {
       logger.debug(`[Atlas] Returning ${cached.sources.length} sources from cache`)
       return NextResponse.json({
         ...cached,
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
       })
 
       // Extract the source name from the response
-      const name = (nameResult.success && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '')
+      const name = (nameResult.success && 'data' in nameResult && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '')
         ? nameResult.data.value
         : `Source ${i + 1}`
 

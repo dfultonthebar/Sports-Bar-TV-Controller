@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     // Save or update CEC configuration
     const savedConfig = await upsert(
       'cecConfigurations',
-      eq(schema.cecConfigurations.id, config.id || 'default'),
+      eq(schema.cecConfigurations.id, (config.id as string | undefined) || 'default'),
       {
         cecInputChannel: config.cecInputChannel,
         usbDevicePath: config.usbDevicePath || '/dev/ttyACM0',

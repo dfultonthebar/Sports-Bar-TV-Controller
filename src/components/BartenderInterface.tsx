@@ -46,7 +46,7 @@ export default function BartenderInterface() {
       const response = await fetch('/api/matrix/config')
       if (response.ok) {
         const data = await response.json()
-        const activeConfig = data.configs?.find((c: MatrixConfig) => c.isActive)
+        const activeConfig = data.configs?.find((c: any) => c.isActive)
         
         if (activeConfig) {
           setMatrixConfig(activeConfig)

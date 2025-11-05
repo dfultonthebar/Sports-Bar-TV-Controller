@@ -365,13 +365,13 @@ export default function BartenderRemoteSelectorEnhanced() {
                   <FireTVRemote
                     deviceId={selectedDevice.id}
                     deviceName={selectedDevice.name}
-                    ipAddress={selectedDevice.ipAddress}
-                    port={selectedDevice.port}
+                    ipAddress={'ipAddress' in selectedDevice ? (selectedDevice as any).ipAddress : ''}
+                    port={'port' in selectedDevice ? (selectedDevice as any).port : 0}
                   />
                   <FireTVStreamingGuide
                     deviceId={selectedDevice.id}
-                    ipAddress={selectedDevice.ipAddress}
-                    port={selectedDevice.port}
+                    ipAddress={'ipAddress' in selectedDevice ? (selectedDevice as any).ipAddress : ''}
+                    port={'port' in selectedDevice ? (selectedDevice as any).port : 0}
                   />
                 </div>
               )}

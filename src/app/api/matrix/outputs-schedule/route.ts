@@ -103,12 +103,12 @@ export async function PUT(request: NextRequest) {
 
     await db.update(schema.matrixOutputs)
       .set(updateData)
-      .where(eq(schema.matrixOutputs.id, outputId))
+      .where(eq(schema.matrixOutputs.id, outputId as string))
       .run()
 
     const updated = await db.select()
       .from(schema.matrixOutputs)
-      .where(eq(schema.matrixOutputs.id, outputId))
+      .where(eq(schema.matrixOutputs.id, outputId as string))
       .limit(1)
       .get()
 

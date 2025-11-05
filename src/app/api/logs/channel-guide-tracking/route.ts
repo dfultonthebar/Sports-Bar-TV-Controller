@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Special handling for content downloads
-    if (action.includes('download') || action.includes('content_access')) {
+    if (typeof action === 'string' && (action.includes('download') || action.includes('content_access'))) {
       await enhancedLogger.info(
         'user_interaction',
         'channel-guide',

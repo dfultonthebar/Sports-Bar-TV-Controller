@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (5 minute TTL)
     const cached = cacheManager.get('device-config', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object' && 'count' in cached) {
       logger.debug(`[ChannelPresets] Returning ${cached.count} ${deviceType} presets from cache`)
       return NextResponse.json({
         ...cached,

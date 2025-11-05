@@ -179,12 +179,6 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  // Path parameter validation
-  const resolvedParams = await params
-  const paramsValidation = validatePathParams(resolvedParams, z.object({ id: z.string().min(1) }))
-  if (isValidationError(paramsValidation)) return paramsValidation.error
-
-
   try {
     const { deviceId, command, deviceIpAddress, ipControlPort, brand } = await request.json()
 

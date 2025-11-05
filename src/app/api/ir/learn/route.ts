@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Get Global Cache device
     const globalCacheDevice = await db.select()
       .from(globalCacheDevices)
-      .where(eq(globalCacheDevices.id, globalCacheDeviceId))
+      .where(eq(globalCacheDevices.id, globalCacheDeviceId as string))
       .limit(1)
       .get()
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       // Update the command with the learned IR code
       const updatedCommand = await update(
         'irCommands',
-        eq(schema.irCommands.id, commandId),
+        eq(schema.irCommands.id, commandId as string),
         {
           irCode: result.learnedCode,
           updatedAt: new Date().toISOString()
