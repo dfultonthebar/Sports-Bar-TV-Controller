@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       deviceType as any,
       deviceId as string | undefined,
       String(action),
-      success,
+      Boolean(success),
       details && typeof details === 'object'
         ? { ...(details as object), component }
         : { component }

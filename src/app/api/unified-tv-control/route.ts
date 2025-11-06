@@ -21,10 +21,13 @@ export async function POST(request: NextRequest) {
       deviceId,
       deviceIds,
       command,
-      forceMethod,
-      sequential,
-      delayBetween
+      forceMethod: rawForceMethod,
+      sequential: rawSequential,
+      delayBetween: rawDelayBetween
     } = data
+    const forceMethod = rawForceMethod as 'IR' | 'CEC' | undefined
+    const sequential = Boolean(rawSequential)
+    const delayBetween = Number(rawDelayBetween)
     if (!command) {
       return NextResponse.json({ 
         success: false, 

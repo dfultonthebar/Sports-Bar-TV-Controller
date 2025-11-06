@@ -94,18 +94,18 @@ export async function POST(request: NextRequest) {
 
   try {
     logger.info('[FIRETV API] POST request - adding new device')
-    const newDevice: FireTVDevice = data
-    
-    const data = await readDevices()
-    
+    const newDevice: FireTVDevice = data as any
+
+    const devicesData = await readDevices()
+
     // Set timestamps
     newDevice.addedAt = new Date().toISOString()
     newDevice.updatedAt = new Date().toISOString()
-    
+
     // Add device to list
-    data.devices.push(newDevice)
-    
-    await writeDevices(data)
+    devicesData.devices.push(newDevice)
+
+    await writeDevices(devicesData)
     
     logger.info(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
     return NextResponse.json({ success: true, device: newDevice })
@@ -134,25 +134,25 @@ export async function PUT(request: NextRequest) {
 
   try {
     logger.info('[FIRETV API] PUT request - updating device')
-    const updatedDevice: FireTVDevice = data
-    
-    const data = await readDevices()
-    const deviceIndex = data.devices.findIndex(d => d.id === updatedDevice.id)
-    
+    const updatedDevice: FireTVDevice = data as any
+
+    const devicesData = await readDevices()
+    const deviceIndex = devicesData.devices.findIndex(d => d.id === updatedDevice.id)
+
     if (deviceIndex === -1) {
       return NextResponse.json(
         { error: 'Device not found' },
         { status: 404 }
       )
     }
-    
+
     // Update timestamp
     updatedDevice.updatedAt = new Date().toISOString()
-    
+
     // Replace device
-    data.devices[deviceIndex] = updatedDevice
-    
-    await writeDevices(data)
+    devicesData.devices[deviceIndex] = updatedDevice
+
+    await writeDevices(devicesData)
     
     logger.info(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
     return NextResponse.json({ success: true, device: updatedDevice })
