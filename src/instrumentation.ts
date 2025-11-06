@@ -11,13 +11,16 @@ export async function register() {
   // Only run on server side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     logger.info('[INSTRUMENTATION] Initializing Fire TV services...')
-    
+
     try {
-      // Import health monitor (will auto-start due to module-level code)
+      // Import health monitor singleton
       const { healthMonitor } = await import('./services/firetv-health-monitor')
-      
-      logger.info('[INSTRUMENTATION] Fire TV health monitor initialized')
-      logger.info('[INSTRUMENTATION] Health monitoring will begin in 5 seconds')
+
+      // Explicitly start the health monitor
+      // (Previously had auto-start code in module which caused duplicate instances)
+      await healthMonitor.start()
+
+      logger.info('[INSTRUMENTATION] Fire TV health monitor started successfully')
     } catch (error) {
       logger.error('[INSTRUMENTATION] Failed to initialize Fire TV services:', error)
     }

@@ -26,9 +26,10 @@ export interface HealthCheckResult {
 
 /**
  * Singleton health monitor for Fire TV devices
+ *
+ * Uses global object to ensure true singleton across Next.js module contexts
  */
 class FireTVHealthMonitor {
-  private static instance: FireTVHealthMonitor
   private monitorInterval: NodeJS.Timeout | null = null
 
   private healthStatus: Map<string, HealthCheckResult> = new Map()
@@ -44,12 +45,15 @@ class FireTVHealthMonitor {
 
   /**
    * Get singleton instance
+   * Uses global object to prevent Next.js from creating multiple instances
    */
   public static getInstance(): FireTVHealthMonitor {
-    if (!FireTVHealthMonitor.instance) {
-      FireTVHealthMonitor.instance = new FireTVHealthMonitor()
+    // Use global object to ensure singleton across module contexts
+    const globalAny = global as any
+    if (!globalAny.__fireTVHealthMonitor) {
+      globalAny.__fireTVHealthMonitor = new FireTVHealthMonitor()
     }
-    return FireTVHealthMonitor.instance
+    return globalAny.__fireTVHealthMonitor
   }
 
   /**
@@ -57,7 +61,7 @@ class FireTVHealthMonitor {
    */
   public async start(): Promise<void> {
     if (this.isMonitoring) {
-      logger.info('[HEALTH MONITOR] Already monitoring')
+      logger.warn('[HEALTH MONITOR] Already monitoring - ignoring duplicate start() call')
       return
     }
 
@@ -454,26 +458,22 @@ class FireTVHealthMonitor {
   }
 }
 
-// Export singleton instance
+// Export singleton getter (NOT instance) to avoid module loading issues
+// IMPORTANT: Always call getInstance() instead of exporting the instance directly
+// This prevents Next.js from creating multiple instances during module loading
 export const healthMonitor = FireTVHealthMonitor.getInstance()
 
-// Auto-start monitoring when module is loaded (in server environment)
-if (typeof window === 'undefined') {
-  // We're on the server - start monitoring after configured delay
-  setTimeout(() => {
-    healthMonitor.start().catch(error => {
-      logger.error('[HEALTH MONITOR] Failed to start:', error)
-    })
-  }, config.healthCheck.startupDelay)
-}
+// Note: Health monitor is started via instrumentation.ts
+// Do NOT auto-start here to prevent duplicate instances
 
 // Cleanup on process termination
+// Use getInstance() to ensure we get the correct singleton instance
 process.on('SIGTERM', () => {
   logger.info('[HEALTH MONITOR] SIGTERM received')
-  healthMonitor.stop()
+  FireTVHealthMonitor.getInstance().stop()
 })
 
 process.on('SIGINT', () => {
   logger.info('[HEALTH MONITOR] SIGINT received')
-  healthMonitor.stop()
+  FireTVHealthMonitor.getInstance().stop()
 })
