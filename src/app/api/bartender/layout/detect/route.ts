@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { imageUrl } = await request.json()
+    const { imageUrl } = bodyValidation.data
 
     if (!imageUrl) {
       return NextResponse.json(
