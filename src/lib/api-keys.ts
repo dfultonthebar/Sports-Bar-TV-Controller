@@ -31,11 +31,14 @@ export async function getApiKeysByProvider(provider: string): Promise<ApiKeyData
       )
       .all()
 
-    // Decrypt the key values
+    // Decrypt the key values and map fields
     return apiKeys.map(key => ({
-      ...key,
-      keyValue: decrypt(key.keyValue),
-      description: key.description ?? undefined
+      id: key.id,
+      name: key.keyName,
+      provider: key.provider,
+      keyValue: decrypt(key.apiKey),
+      isActive: key.isActive,
+      description: undefined
     }))
   } catch (error) {
     logger.error(`Error fetching API keys for provider ${provider}:`, error)
@@ -64,7 +67,7 @@ export async function getApiKey(provider: string): Promise<string | null> {
       return null
     }
 
-    return decrypt(apiKey.keyValue)
+    return decrypt(apiKey.apiKey)
   } catch (error) {
     logger.error(`Error fetching API key for provider ${provider}:`, error)
     return null
@@ -85,14 +88,14 @@ export async function getApiKeysByNames(provider: string, names: string[]): Prom
         and(
           eq(schema.apiKeys.provider, provider),
           eq(schema.apiKeys.isActive, true),
-          inArray(schema.apiKeys.name, names)
+          inArray(schema.apiKeys.keyName, names)
         )
       )
       .all()
 
     const result: Record<string, string> = {}
     apiKeys.forEach(key => {
-      result[key.name] = decrypt(key.keyValue)
+      result[key.keyName] = decrypt(key.apiKey)
     })
 
     return result

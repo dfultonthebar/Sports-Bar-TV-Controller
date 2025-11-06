@@ -335,7 +335,7 @@ function setupCircuitBreakerLogging(
       `Request timeout in circuit: ${name}`,
       {
         circuitBreaker: name,
-        timeout: breaker.options.timeout,
+        timeout: (breaker as any).options?.timeout,
         stats: breaker.stats
       }
     )

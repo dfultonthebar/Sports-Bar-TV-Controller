@@ -115,9 +115,10 @@ export class FireCubeDiscovery {
       if (!connected) return null;
 
       const props = await client.getDeviceInfo();
-      const serialNumber = await client.getSerialNumber();
-      const model = await client.getModel();
-      const softwareVersion = await client.getSoftwareVersion();
+      const clientAny = client as any;
+      const serialNumber = await clientAny.getSerialNumber?.();
+      const model = await clientAny.getModel?.() || props.model;
+      const softwareVersion = await clientAny.getSoftwareVersion?.() || props.softwareVersion;
 
       // Determine device type
       let deviceModel = 'Fire TV';

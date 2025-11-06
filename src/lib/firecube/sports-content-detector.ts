@@ -4,10 +4,10 @@
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, FireCubeSportsContent, LiveSportsContent } from './types';
 import { and, asc, deleteMany, desc, eq, findMany, or, upsert } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { fireCubeApps, fireCubeSportsContents } from '@/db/schema'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
+import { lt, gte, lte, like } from 'drizzle-orm';
 
 export class SportsContentDetector {
   /**
@@ -16,12 +16,12 @@ export class SportsContentDetector {
   async detectLiveSports(deviceId: string): Promise<FireCubeSportsContent[]> {
     try {
       // Get subscribed sports apps
-      const subscribedApps = await prisma.fireCubeApp.findMany({
-        where: {
-          deviceId,
-          isSportsApp: true,
-          hasSubscription: true
-        }
+      const subscribedApps = await findMany('fireCubeApps', {
+        where: and(
+          eq(fireCubeApps.deviceId, deviceId),
+          eq(fireCubeApps.isSportsApp, true),
+          eq(fireCubeApps.hasSubscription, true)
+        )
       });
 
       const allContent: FireCubeSportsContent[] = [];
@@ -126,40 +126,37 @@ export class SportsContentDetector {
       const content = await this.detectLiveSports(deviceId);
 
       // Clear old content
-      await prisma.fireCubeSportsContent.deleteMany({
-        where: {
-          deviceId,
-          lastUpdated: {
-            lt: new Date(Date.now() - 24 * 60 * 60 * 1000) // Older than 24 hours
-          }
-        }
+      await deleteMany('fireCubeSportsContents', {
+        where: and(
+          eq(fireCubeSportsContents.deviceId, deviceId),
+          lt(fireCubeSportsContents.lastUpdated, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        )
       });
 
       // Add new content
       for (const item of content) {
-        await prisma.fireCubeSportsContent.upsert({
-          where: {
-            id: item.id || 'new'
-          },
+        await upsert('fireCubeSportsContents', {
+          where: eq(fireCubeSportsContents.id, item.id || 'new'),
           create: {
+            id: crypto.randomUUID(),
             deviceId: item.deviceId,
             appId: item.appId,
             contentTitle: item.contentTitle,
             contentType: item.contentType,
-            league: item.league,
-            teams: item.teams,
-            startTime: item.startTime,
-            endTime: item.endTime,
-            channel: item.channel,
+            league: item.league || null,
+            teams: item.teams || null,
+            startTime: item.startTime?.toISOString() || null,
+            endTime: item.endTime?.toISOString() || null,
+            channel: item.channel || null,
             isLive: item.isLive,
-            deepLink: item.deepLink,
-            thumbnailUrl: item.thumbnailUrl,
-            description: item.description,
-            lastUpdated: new Date()
+            deepLink: item.deepLink || null,
+            thumbnailUrl: item.thumbnailUrl || null,
+            description: item.description || null,
+            lastUpdated: new Date().toISOString()
           },
           update: {
             isLive: item.isLive,
-            lastUpdated: new Date()
+            lastUpdated: new Date().toISOString()
           }
         });
       }
@@ -174,14 +171,12 @@ export class SportsContentDetector {
    */
   async getLiveSportsContent(deviceId: string): Promise<FireCubeSportsContent[]> {
     try {
-      return await prisma.fireCubeSportsContent.findMany({
-        where: {
-          deviceId,
-          isLive: true
-        },
-        orderBy: {
-          startTime: 'asc'
-        }
+      return await findMany('fireCubeSportsContents', {
+        where: and(
+          eq(fireCubeSportsContents.deviceId, deviceId),
+          eq(fireCubeSportsContents.isLive, true)
+        ),
+        orderBy: [asc(fireCubeSportsContents.startTime)]
       });
     } catch (error) {
       logger.error('Failed to get live sports content:', error);
@@ -197,17 +192,13 @@ export class SportsContentDetector {
       const now = new Date();
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-      return await prisma.fireCubeSportsContent.findMany({
-        where: {
-          deviceId,
-          startTime: {
-            gte: now,
-            lte: tomorrow
-          }
-        },
-        orderBy: {
-          startTime: 'asc'
-        }
+      return await findMany('fireCubeSportsContents', {
+        where: and(
+          eq(fireCubeSportsContents.deviceId, deviceId),
+          gte(fireCubeSportsContents.startTime, now.toISOString()),
+          lte(fireCubeSportsContents.startTime, tomorrow.toISOString())
+        ),
+        orderBy: [asc(fireCubeSportsContents.startTime)]
       });
     } catch (error) {
       logger.error('Failed to get upcoming sports content:', error);
@@ -223,19 +214,17 @@ export class SportsContentDetector {
     query: string
   ): Promise<FireCubeSportsContent[]> {
     try {
-      return await prisma.fireCubeSportsContent.findMany({
-        where: {
-          deviceId,
-          OR: [
-            { contentTitle: { contains: query } },
-            { league: { contains: query } },
-            { teams: { contains: query } },
-            { description: { contains: query } }
-          ]
-        },
-        orderBy: {
-          startTime: 'asc'
-        }
+      return await findMany('fireCubeSportsContents', {
+        where: and(
+          eq(fireCubeSportsContents.deviceId, deviceId),
+          or(
+            like(fireCubeSportsContents.contentTitle, `%${query}%`),
+            like(fireCubeSportsContents.league, `%${query}%`),
+            like(fireCubeSportsContents.teams, `%${query}%`),
+            like(fireCubeSportsContents.description, `%${query}%`)
+          )
+        ),
+        orderBy: [asc(fireCubeSportsContents.startTime)]
       });
     } catch (error) {
       logger.error('Failed to search sports content:', error);
@@ -248,16 +237,12 @@ export class SportsContentDetector {
    */
   async getContentByLeague(deviceId: string, league: string): Promise<FireCubeSportsContent[]> {
     try {
-      return await prisma.fireCubeSportsContent.findMany({
-        where: {
-          deviceId,
-          league: {
-            equals: league
-          }
-        },
-        orderBy: {
-          startTime: 'asc'
-        }
+      return await findMany('fireCubeSportsContents', {
+        where: and(
+          eq(fireCubeSportsContents.deviceId, deviceId),
+          eq(fireCubeSportsContents.league, league)
+        ),
+        orderBy: [asc(fireCubeSportsContents.startTime)]
       });
     } catch (error) {
       logger.error('Failed to get content by league:', error);

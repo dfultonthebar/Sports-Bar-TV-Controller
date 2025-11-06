@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { matrixConfigurations, matrixInputs, matrixOutputs } from '@/db/schema'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
@@ -55,21 +56,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get('includeInactive') === 'true'
-    
+
     // Get active matrix configuration
-    const config = await prisma.matrixConfiguration.findFirst({
-      where: { isActive: true },
-      include: {
-        inputs: {
-          where: includeInactive ? {} : { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        },
-        outputs: {
-          where: includeInactive ? {} : { isActive: true },
-          orderBy: { channelNumber: 'asc' }
-        }
-      }
-    })
+    const configs = await db.select()
+      .from(matrixConfigurations)
+      .where(eq(matrixConfigurations.isActive, true))
+
+    const config = configs[0]
 
     if (!config) {
       return NextResponse.json(
@@ -78,12 +71,47 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get inputs for this configuration
+    const inputsQuery = db.select()
+      .from(matrixInputs)
+      .where(
+        includeInactive
+          ? eq(matrixInputs.configId, config.id)
+          : and(
+              eq(matrixInputs.configId, config.id),
+              eq(matrixInputs.isActive, true)
+            )
+      )
+      .orderBy(asc(matrixInputs.channelNumber))
+
+    // Get outputs for this configuration
+    const outputsQuery = db.select()
+      .from(matrixOutputs)
+      .where(
+        includeInactive
+          ? eq(matrixOutputs.configId, config.id)
+          : and(
+              eq(matrixOutputs.configId, config.id),
+              eq(matrixOutputs.isActive, true)
+            )
+      )
+      .orderBy(asc(matrixOutputs.channelNumber))
+
+    const [inputs, outputs] = await Promise.all([inputsQuery, outputsQuery])
+
+    // Add inputs and outputs to config object
+    const configWithRelations = {
+      ...config,
+      inputs,
+      outputs
+    }
+
     const ITEMS_PER_ROW = 4 // Wolfpack cards have 4 inputs OR 4 outputs per card
 
     // Format inputs into rows of 4
     const inputRows: DisplayRow[] = []
-    for (let i = 0; i < config.inputs.length; i += ITEMS_PER_ROW) {
-      const rowItems = config.inputs.slice(i, i + ITEMS_PER_ROW)
+    for (let i = 0; i < configWithRelations.inputs.length; i += ITEMS_PER_ROW) {
+      const rowItems = configWithRelations.inputs.slice(i, i + ITEMS_PER_ROW)
       const cardNumber = Math.floor(i / ITEMS_PER_ROW) + 1
       
       inputRows.push({
@@ -96,8 +124,8 @@ export async function GET(request: NextRequest) {
 
     // Format outputs into rows of 4
     const outputRows: DisplayRow[] = []
-    for (let i = 0; i < config.outputs.length; i += ITEMS_PER_ROW) {
-      const rowItems = config.outputs.slice(i, i + ITEMS_PER_ROW)
+    for (let i = 0; i < configWithRelations.outputs.length; i += ITEMS_PER_ROW) {
+      const rowItems = configWithRelations.outputs.slice(i, i + ITEMS_PER_ROW)
       const cardNumber = Math.floor(i / ITEMS_PER_ROW) + 1
       
       outputRows.push({
@@ -110,12 +138,12 @@ export async function GET(request: NextRequest) {
 
     const response: MatrixDisplayResponse = {
       inputs: {
-        total: config.inputs.length,
+        total: configWithRelations.inputs.length,
         rows: inputRows,
         itemsPerRow: ITEMS_PER_ROW
       },
       outputs: {
-        total: config.outputs.length,
+        total: configWithRelations.outputs.length,
         rows: outputRows,
         itemsPerRow: ITEMS_PER_ROW
       },
@@ -127,12 +155,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response)
   } catch (error) {
-    logger.error('Error fetching matrix display data:', error)
+    logger.error('Error fetching matrix display data:', { error })
     return NextResponse.json(
       { error: 'Failed to fetch matrix display data' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

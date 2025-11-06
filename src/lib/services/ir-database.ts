@@ -375,7 +375,7 @@ export class IRDatabaseService {
     logger.info('⬇️  [IR DATABASE] Downloading IR code')
     logger.info('   Codeset ID:', { data: codesetId })
     logger.info('   Function:', { data: functionName })
-    logger.info('   Format:', format)
+    logger.info('   Format:', { data: format })
     logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
@@ -487,7 +487,7 @@ export class IRDatabaseService {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('⬇️  [IR DATABASE] Downloading complete codeset')
     logger.info('   Codeset ID:', { data: codesetId })
-    logger.info('   Format:', format)
+    logger.info('   Format:', { data: format })
     logger.info('   Timestamp:', { data: new Date().toISOString() })
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 

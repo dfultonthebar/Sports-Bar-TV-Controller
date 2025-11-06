@@ -183,13 +183,13 @@ export async function POST(request: NextRequest) {
       }
     } catch (error: any) {
       logger.error('[Soundtrack] Error syncing sound zones')
-      logger.error('[Soundtrack] Error type:', typeof error)
-      logger.error('[Soundtrack] Error name:', error?.name)
-      logger.error('[Soundtrack] Error message:', error?.message)
-      logger.error('[Soundtrack] Error stack:', error?.stack)
-      logger.error('[Soundtrack] Error toString:', error?.toString())
+      logger.error('[Soundtrack] Error type:', { data: typeof error })
+      logger.error('[Soundtrack] Error name:', { data: error?.name })
+      logger.error('[Soundtrack] Error message:', { data: error?.message })
+      logger.error('[Soundtrack] Error stack:', { data: error?.stack })
+      logger.error('[Soundtrack] Error toString:', { data: error?.toString() })
       if (error?.response) {
-        logger.error('[Soundtrack] Error response:', error.response)
+        logger.error('[Soundtrack] Error response:', { data: error.response })
       }
       zonesWarning = `Could not fetch sound zones automatically. Error: ${error?.message || error}. Use the "Refresh" button to try again.`
     }

@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Get enhanced AI response
     logger.info('[ENHANCED-CHAT] Calling enhancedAI.enhancedChat...')
     const aiResponse = await enhancedAI.enhancedChat(messages, fullContext)
-    logger.info('[ENHANCED-CHAT] AI response received:', aiResponse.error ? 'ERROR' : 'SUCCESS')
+    logger.info('[ENHANCED-CHAT] AI response received:', { data: aiResponse.error ? 'ERROR' : 'SUCCESS' })
 
     if (aiResponse.error) {
       return NextResponse.json({

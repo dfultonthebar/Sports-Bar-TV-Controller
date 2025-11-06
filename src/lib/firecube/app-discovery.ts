@@ -4,10 +4,9 @@
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, FireCubeApp, InstalledApp } from './types';
 import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, updateMany } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { fireCubeDevices, fireCubeApps } from '@/db/schema'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
 
 export class AppDiscoveryService {
   /**
@@ -47,7 +46,7 @@ export class AppDiscoveryService {
               hasSubscription: false, // Will be checked separately
               subscriptionStatus: undefined,
               lastChecked: new Date(),
-              installedAt: appInfo.installedAt,
+              installedAt: (appInfo as any).installedAt || new Date(),
               updatedAt: new Date()
             };
 
@@ -75,16 +74,17 @@ export class AppDiscoveryService {
     packageName: string
   ): Promise<InstalledApp | null> {
     try {
-      const packageInfo = await client.getPackageInfo(packageName);
-      const appLabel = await client.getAppLabel(packageName);
-      const isSystemApp = await client.isSystemApp(packageName);
+      const clientAny = client as any;
+      const packageInfo = await clientAny.getPackageInfo?.(packageName);
+      const appLabel = await clientAny.getAppLabel?.(packageName);
+      const isSystemApp = await clientAny.isSystemApp?.(packageName);
 
       return {
         packageName,
-        appName: appLabel,
+        appName: appLabel || packageName,
         version: packageInfo?.versionName,
         versionCode: packageInfo?.versionCode,
-        isSystemApp
+        isSystemApp: isSystemApp || false
       };
     } catch (error) {
       return null;
@@ -97,8 +97,8 @@ export class AppDiscoveryService {
   async syncAppsToDatabase(deviceId: string, apps: FireCubeApp[]): Promise<void> {
     try {
       // Get existing apps
-      const existingApps = await prisma.fireCubeApp.findMany({
-        where: { deviceId }
+      const existingApps = await findMany('fireCubeApps', {
+        where: eq(fireCubeApps.deviceId, deviceId)
       });
 
       const existingPackages = new Set(
@@ -109,32 +109,35 @@ export class AppDiscoveryService {
       for (const app of apps) {
         if (!existingPackages.has(app.packageName)) {
           await create('fireCubeApps', {
+              id: crypto.randomUUID(),
               deviceId: app.deviceId,
               packageName: app.packageName,
               appName: app.appName,
-              version: app.version,
-              versionCode: app.versionCode,
-              category: app.category,
-              iconUrl: app.iconUrl,
+              version: app.version || null,
+              versionCode: app.versionCode || null,
+              category: app.category || null,
+              iconUrl: app.iconUrl || null,
               isSystemApp: app.isSystemApp,
               isSportsApp: app.isSportsApp,
               hasSubscription: app.hasSubscription,
-              subscriptionStatus: app.subscriptionStatus,
-              lastChecked: app.lastChecked,
-              installedAt: app.installedAt
+              subscriptionStatus: app.subscriptionStatus || null,
+              lastChecked: app.lastChecked?.toISOString() || null,
+              installedAt: app.installedAt?.toISOString() || null,
+              updatedAt: new Date().toISOString()
             });
         } else {
           // Update existing app
-          await prisma.fireCubeApp.updateMany({
-            where: {
-              deviceId: app.deviceId,
-              packageName: app.packageName
-            },
+          await updateMany('fireCubeApps', {
+            where: and(
+              eq(fireCubeApps.deviceId, app.deviceId),
+              eq(fireCubeApps.packageName, app.packageName)
+            ),
             data: {
               appName: app.appName,
-              version: app.version,
-              versionCode: app.versionCode,
-              lastChecked: new Date()
+              version: app.version || null,
+              versionCode: app.versionCode || null,
+              lastChecked: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           });
         }
@@ -144,8 +147,8 @@ export class AppDiscoveryService {
       const currentPackages = new Set(apps.map(app => app.packageName));
       for (const existingApp of existingApps) {
         if (!currentPackages.has(existingApp.packageName)) {
-          await prisma.fireCubeApp.delete({
-            where: { id: existingApp.id }
+          await deleteRecord('fireCubeApps', {
+            where: eq(fireCubeApps.id, existingApp.id)
           });
         }
       }
@@ -160,11 +163,11 @@ export class AppDiscoveryService {
    */
   async getDeviceApps(deviceId: string): Promise<FireCubeApp[]> {
     try {
-      return await prisma.fireCubeApp.findMany({
-        where: { deviceId },
+      return await findMany('fireCubeApps', {
+        where: eq(fireCubeApps.deviceId, deviceId),
         orderBy: [
-          { isSportsApp: 'desc' },
-          { appName: 'asc' }
+          desc(fireCubeApps.isSportsApp),
+          asc(fireCubeApps.appName)
         ]
       });
     } catch (error) {
@@ -178,11 +181,11 @@ export class AppDiscoveryService {
    */
   async getAllSportsApps(): Promise<FireCubeApp[]> {
     try {
-      return await prisma.fireCubeApp.findMany({
-        where: { isSportsApp: true },
+      return await findMany('fireCubeApps', {
+        where: eq(fireCubeApps.isSportsApp, true),
         orderBy: [
-          { hasSubscription: 'desc' },
-          { appName: 'asc' }
+          desc(fireCubeApps.hasSubscription),
+          asc(fireCubeApps.appName)
         ]
       });
     } catch (error) {
@@ -196,8 +199,8 @@ export class AppDiscoveryService {
    */
   async launchApp(deviceId: string, packageName: string): Promise<boolean> {
     try {
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device) {
@@ -221,8 +224,8 @@ export class AppDiscoveryService {
    */
   async stopApp(deviceId: string, packageName: string): Promise<boolean> {
     try {
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device) {

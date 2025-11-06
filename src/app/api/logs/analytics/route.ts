@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { enhancedLogger } from '@/lib/enhanced-logger'
+import { enhancedLogger, LogCategory } from '@/lib/enhanced-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const hours = parseInt(searchParams.get('hours') || '24')
     const category = searchParams.get('category') || undefined
 
-    const analytics = await enhancedLogger.getLogAnalytics(hours, category)
+    const analytics = await enhancedLogger.getLogAnalytics(hours, category as LogCategory | undefined)
 
     return NextResponse.json(analytics)
   } catch (error) {

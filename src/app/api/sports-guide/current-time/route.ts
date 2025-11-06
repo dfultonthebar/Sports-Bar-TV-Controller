@@ -2,7 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { sportsGuideConfigurations } from '@/db/schema'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
@@ -19,10 +20,11 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get timezone configuration
-    const config = await prisma.sportsGuideConfiguration.findFirst({
-      where: { isActive: true }
-    })
-    
+    const configs = await db.select()
+      .from(sportsGuideConfigurations)
+      .where(eq(sportsGuideConfigurations.isActive, true))
+
+    const config = configs[0]
     const timezone = config?.timezone || 'America/New_York'
     
     // Get current date/time in configured timezone

@@ -132,8 +132,13 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { action, data } = body
-    
+    const action = body.action as string | undefined
+    const data = body.data as Record<string, any> | undefined
+
+    if (!data) {
+      return NextResponse.json({ error: 'Data is required' }, { status: 400 })
+    }
+
     switch (action) {
       case 'customGuide':
         const { startTime, endTime, channelIds, filters } = data

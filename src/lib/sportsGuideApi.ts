@@ -12,6 +12,7 @@ import type { CircuitBreaker } from 'opossum'
 
 export interface SportsGuideListing {
   time: string;
+  date?: string;
   stations?: string[] | { [key: string]: string };
   channel_numbers?: {
     [lineup: string]: {

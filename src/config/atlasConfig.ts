@@ -275,15 +275,15 @@ export function validateParameterValue(
   if (typeof value !== 'number') {
     return false
   }
-  
-  if (param.min !== undefined && value < param.min) {
+
+  if ('min' in param && param.min !== undefined && value < param.min) {
     return false
   }
-  
-  if (param.max !== undefined && value > param.max) {
+
+  if ('max' in param && param.max !== undefined && value > param.max) {
     return false
   }
-  
+
   return true
 }
 

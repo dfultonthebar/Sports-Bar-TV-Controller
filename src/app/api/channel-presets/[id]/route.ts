@@ -50,13 +50,14 @@ export async function PUT(
     if (name !== undefined) updateData.name = name
     if (channelNumber !== undefined) updateData.channelNumber = channelNumber
     if (deviceType !== undefined) {
-      if (!['cable', 'directv'].includes(deviceType)) {
+      const deviceTypeStr = String(deviceType)
+      if (!['cable', 'directv'].includes(deviceTypeStr)) {
         return NextResponse.json(
           { success: false, error: 'Invalid deviceType' },
           { status: 400 }
         )
       }
-      updateData.deviceType = deviceType
+      updateData.deviceType = deviceTypeStr
     }
     if (order !== undefined) updateData.order = order
     if (isActive !== undefined) updateData.isActive = isActive

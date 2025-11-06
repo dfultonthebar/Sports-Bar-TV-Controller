@@ -82,16 +82,17 @@ export async function POST(request: NextRequest) {
     if (!name || !channelNumber || !deviceType) {
       logger.api.response('POST', '/api/channel-presets', 400, { error: 'Missing required fields' })
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Missing required fields: name, channelNumber, deviceType' 
+        {
+          success: false,
+          error: 'Missing required fields: name, channelNumber, deviceType'
         },
         { status: 400 }
       )
     }
 
     // Validate deviceType
-    if (!['cable', 'directv'].includes(deviceType)) {
+    const deviceTypeStr = String(deviceType)
+    if (!['cable', 'directv'].includes(deviceTypeStr)) {
       logger.api.response('POST', '/api/channel-presets', 400, { error: 'Invalid deviceType' })
       return NextResponse.json(
         { 
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     let presetOrder = order
     if (presetOrder === undefined || presetOrder === null) {
       const maxOrderPreset = await findFirst('channelPresets', {
-        where: eq(schema.channelPresets.deviceType, deviceType as string),
+        where: eq(schema.channelPresets.deviceType, deviceTypeStr),
         orderBy: desc(schema.channelPresets.order)
       })
       presetOrder = maxOrderPreset ? maxOrderPreset.order + 1 : 0
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
     const preset = await create('channelPresets', {
       name,
       channelNumber,
-      deviceType,
+      deviceType: deviceTypeStr,
       order: presetOrder
     })
 

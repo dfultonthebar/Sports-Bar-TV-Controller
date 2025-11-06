@@ -3,13 +3,14 @@
 
 import { ADBClient } from './adb-client';
 import { and, asc, create, desc, eq, findFirst, findMany, findUnique, or, update, upsert } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { fireCubeDevices, fireCubeApps, fireCubeSideloadOperations } from '@/db/schema'
 import { logger } from '@/lib/logger';
+import { not } from 'drizzle-orm'
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 
-// Using singleton prisma from @/lib/prisma;
 const mkdir = promisify(fs.mkdir);
 const exists = promisify(fs.exists);
 
@@ -43,8 +44,8 @@ export class SideloadService {
   ): Promise<string> {
     try {
       // Get source device
-      const sourceDevice = await prisma.fireCubeDevice.findUnique({
-        where: { id: sourceDeviceId }
+      const sourceDevice = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, sourceDeviceId)
       });
 
       if (!sourceDevice) {
@@ -52,11 +53,11 @@ export class SideloadService {
       }
 
       // Get app info
-      const app = await prisma.fireCubeApp.findFirst({
-        where: {
-          deviceId: sourceDeviceId,
-          packageName
-        }
+      const app = await findFirst('fireCubeApps', {
+        where: and(
+          eq(fireCubeApps.deviceId, sourceDeviceId),
+          eq(fireCubeApps.packageName, packageName)
+        )
       });
 
       if (!app) {
@@ -109,9 +110,10 @@ export class SideloadService {
       // Step 1: Backup APK from source device
       const apkPath = path.join(this.apkCacheDir, `${packageName}.apk`);
       const sourceClient = new ADBClient(sourceDevice.ipAddress, sourceDevice.port);
-      
+
       await sourceClient.connect();
-      const backupSuccess = await sourceClient.backupApk(packageName, apkPath);
+      const sourceClientAny = sourceClient as any;
+      const backupSuccess = await sourceClientAny.backupApk?.(packageName, apkPath);
       await sourceClient.disconnect();
 
       if (!backupSuccess) {
@@ -126,10 +128,10 @@ export class SideloadService {
 
       for (let i = 0; i < targetDeviceIds.length; i++) {
         const targetDeviceId = targetDeviceIds[i];
-        
+
         try {
-          const targetDevice = await prisma.fireCubeDevice.findUnique({
-            where: { id: targetDeviceId }
+          const targetDevice = await findUnique('fireCubeDevices', {
+            where: eq(fireCubeDevices.id, targetDeviceId)
           });
 
           if (!targetDevice) {
@@ -140,32 +142,32 @@ export class SideloadService {
 
           const targetClient = new ADBClient(targetDevice.ipAddress, targetDevice.port);
           await targetClient.connect();
-          
-          const installSuccess = await targetClient.installApk(apkPath);
+
+          const targetClientAny = targetClient as any;
+          const installSuccess = await targetClientAny.installApk?.(apkPath);
           
           if (installSuccess) {
             completedDevices++;
-            
+
             // Update app in database
-            await prisma.fireCubeApp.upsert({
-              where: {
-                deviceId_packageName: {
-                  deviceId: targetDeviceId,
-                  packageName
-                }
-              },
+            await upsert('fireCubeApps', {
+              where: and(
+                eq(fireCubeApps.deviceId, targetDeviceId),
+                eq(fireCubeApps.packageName, packageName)
+              ),
               create: {
+                id: crypto.randomUUID(),
                 deviceId: targetDeviceId,
                 packageName,
                 appName,
                 isSystemApp: false,
                 isSportsApp: false,
                 hasSubscription: false,
-                installedAt: new Date(),
-                updatedAt: new Date()
+                installedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
               },
               update: {
-                updatedAt: new Date()
+                updatedAt: new Date().toISOString()
               }
             });
           } else {
@@ -200,31 +202,31 @@ export class SideloadService {
       }
 
       // Step 4: Update final status
-      const finalStatus = failedDevices === 0 ? 'completed' : 
+      const finalStatus = failedDevices === 0 ? 'completed' :
                          completedDevices === 0 ? 'failed' : 'partial';
 
-      await prisma.fireCubeSideloadOperation.update({
-        where: { id: operationId },
+      await update('fireCubeSideloadOperations', {
+        where: eq(fireCubeSideloadOperations.id, operationId),
         data: {
           status: finalStatus,
           progress: 100,
           completedDevices,
           failedDevices,
           errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
-          completedAt: new Date()
+          completedAt: new Date().toISOString()
         }
       });
 
       logger.debug(`Sideload operation ${operationId} completed: ${completedDevices} succeeded, ${failedDevices} failed`);
     } catch (error: any) {
       logger.error('Sideload operation failed:', error);
-      
-      await prisma.fireCubeSideloadOperation.update({
-        where: { id: operationId },
+
+      await update('fireCubeSideloadOperations', {
+        where: eq(fireCubeSideloadOperations.id, operationId),
         data: {
           status: 'failed',
           errorLog: JSON.stringify([...errorLog, error.message]),
-          completedAt: new Date()
+          completedAt: new Date().toISOString()
         }
       });
     }
@@ -250,8 +252,8 @@ export class SideloadService {
       updateData.failedDevices = failedDevices;
     }
 
-    await prisma.fireCubeSideloadOperation.update({
-      where: { id: operationId },
+    await update('fireCubeSideloadOperations', {
+      where: eq(fireCubeSideloadOperations.id, operationId),
       data: updateData
     });
   }
@@ -261,8 +263,8 @@ export class SideloadService {
    */
   async getOperationStatus(operationId: string): Promise<any> {
     try {
-      const operation = await prisma.fireCubeSideloadOperation.findUnique({
-        where: { id: operationId }
+      const operation = await findUnique('fireCubeSideloadOperations', {
+        where: eq(fireCubeSideloadOperations.id, operationId)
       });
 
       if (!operation) {
@@ -285,9 +287,9 @@ export class SideloadService {
    */
   async getAllOperations(limit: number = 50): Promise<any[]> {
     try {
-      const operations = await prisma.fireCubeSideloadOperation.findMany({
-        orderBy: { startedAt: 'desc' },
-        take: limit
+      const operations = await findMany('fireCubeSideloadOperations', {
+        orderBy: [desc(fireCubeSideloadOperations.startedAt)],
+        limit
       });
 
       return operations.map(op => ({
@@ -307,11 +309,11 @@ export class SideloadService {
   async cloneDevice(sourceDeviceId: string, targetDeviceId: string): Promise<string> {
     try {
       // Get all non-system apps from source device
-      const apps = await prisma.fireCubeApp.findMany({
-        where: {
-          deviceId: sourceDeviceId,
-          isSystemApp: false
-        }
+      const apps = await findMany('fireCubeApps', {
+        where: and(
+          eq(fireCubeApps.deviceId, sourceDeviceId),
+          eq(fireCubeApps.isSystemApp, false)
+        )
       });
 
       if (apps.length === 0) {
@@ -347,11 +349,11 @@ export class SideloadService {
   async syncAppToAllDevices(sourceDeviceId: string, packageName: string): Promise<string> {
     try {
       // Get all devices except source
-      const devices = await prisma.fireCubeDevice.findMany({
-        where: {
-          id: { not: sourceDeviceId },
-          status: 'online'
-        }
+      const devices = await findMany('fireCubeDevices', {
+        where: and(
+          not(eq(fireCubeDevices.id, sourceDeviceId)),
+          eq(fireCubeDevices.status, 'online')
+        )
       });
 
       const targetDeviceIds = devices.map(d => d.id);
@@ -372,8 +374,8 @@ export class SideloadService {
    */
   async cancelOperation(operationId: string): Promise<void> {
     try {
-      const operation = await prisma.fireCubeSideloadOperation.findUnique({
-        where: { id: operationId }
+      const operation = await findUnique('fireCubeSideloadOperations', {
+        where: eq(fireCubeSideloadOperations.id, operationId)
       });
 
       if (!operation) {
@@ -384,12 +386,12 @@ export class SideloadService {
         throw new Error('Cannot cancel completed or failed operation');
       }
 
-      await prisma.fireCubeSideloadOperation.update({
-        where: { id: operationId },
+      await update('fireCubeSideloadOperations', {
+        where: eq(fireCubeSideloadOperations.id, operationId),
         data: {
           status: 'failed',
           errorLog: JSON.stringify(['Operation cancelled by user']),
-          completedAt: new Date()
+          completedAt: new Date().toISOString()
         }
       });
     } catch (error) {

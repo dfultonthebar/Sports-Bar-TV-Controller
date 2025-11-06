@@ -4,10 +4,9 @@
 import cron from 'node-cron';
 import { ADBClient } from './adb-client';
 import { and, asc, create, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { fireCubeDevices, fireCubeKeepAwakeLogs } from '@/db/schema'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
 
 export class KeepAwakeScheduler {
   private scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
@@ -17,15 +16,15 @@ export class KeepAwakeScheduler {
    */
   async initializeSchedules(): Promise<void> {
     try {
-      const devices = await prisma.fireCubeDevice.findMany({
-        where: {
-          keepAwakeEnabled: true,
-          status: 'online'
-        }
+      const devices = await findMany('fireCubeDevices', {
+        where: and(
+          eq(fireCubeDevices.keepAwakeEnabled, true),
+          eq(fireCubeDevices.status, 'online')
+        )
       });
 
       for (const device of devices) {
-        await this.scheduleDevice(device.id, device.keepAwakeStart, device.keepAwakeEnd);
+        await this.scheduleDevice(device.id, device.keepAwakeStart!, device.keepAwakeEnd!);
       }
 
       logger.debug(`Initialized keep-awake schedules for ${devices.length} devices`);
@@ -46,8 +45,8 @@ export class KeepAwakeScheduler {
       // Cancel existing schedule if any
       this.cancelSchedule(deviceId);
 
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device) {
@@ -140,8 +139,8 @@ export class KeepAwakeScheduler {
    */
   private async wakeUpDevice(deviceId: string): Promise<void> {
     try {
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device) {
@@ -171,8 +170,8 @@ export class KeepAwakeScheduler {
    */
   private async keepDeviceAwake(deviceId: string): Promise<void> {
     try {
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device || !device.keepAwakeEnabled) {
@@ -181,16 +180,17 @@ export class KeepAwakeScheduler {
 
       const client = new ADBClient(device.ipAddress, device.port);
       await client.connect();
-      
+
       // Check screen state
-      const screenState = await client.getScreenState();
-      
+      const clientAny = client as any;
+      const screenState = await clientAny.getScreenState?.();
+
       if (screenState === 'off') {
         // Wake up the device
-        await client.keepAwake();
+        await client.keepAwake(true);
         await this.logAction(deviceId, 'keep_awake', true);
       }
-      
+
       await client.disconnect();
     } catch (error) {
       // Silently fail for periodic checks
@@ -203,8 +203,8 @@ export class KeepAwakeScheduler {
    */
   private async allowSleepDevice(deviceId: string): Promise<void> {
     try {
-      const device = await prisma.fireCubeDevice.findUnique({
-        where: { id: deviceId }
+      const device = await findUnique('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId)
       });
 
       if (!device) {
@@ -213,7 +213,8 @@ export class KeepAwakeScheduler {
 
       const client = new ADBClient(device.ipAddress, device.port);
       await client.connect();
-      const success = await client.allowSleep();
+      const clientAny = client as any;
+      const success = await clientAny.allowSleep?.() || false;
       await client.disconnect();
 
       await this.logAction(deviceId, 'allow_sleep', success);
@@ -240,11 +241,12 @@ export class KeepAwakeScheduler {
   ): Promise<void> {
     try {
       await create('fireCubeKeepAwakeLogs', {
+          id: crypto.randomUUID(),
           deviceId,
           action,
           success,
-          errorMessage,
-          timestamp: new Date()
+          errorMessage: errorMessage || null,
+          timestamp: new Date().toISOString()
         });
     } catch (error) {
       logger.error('Failed to log keep-awake action:', error);
@@ -266,8 +268,8 @@ export class KeepAwakeScheduler {
       if (startTime) updateData.keepAwakeStart = startTime;
       if (endTime) updateData.keepAwakeEnd = endTime;
 
-      await prisma.fireCubeDevice.update({
-        where: { id: deviceId },
+      await update('fireCubeDevices', {
+        where: eq(fireCubeDevices.id, deviceId),
         data: updateData
       });
 
@@ -287,10 +289,10 @@ export class KeepAwakeScheduler {
    */
   async getDeviceLogs(deviceId: string, limit: number = 100): Promise<any[]> {
     try {
-      return await prisma.fireCubeKeepAwakeLog.findMany({
-        where: { deviceId },
-        orderBy: { timestamp: 'desc' },
-        take: limit
+      return await findMany('fireCubeKeepAwakeLogs', {
+        where: eq(fireCubeKeepAwakeLogs.deviceId, deviceId),
+        orderBy: [desc(fireCubeKeepAwakeLogs.timestamp)],
+        limit
       });
     } catch (error) {
       logger.error('Failed to get device logs:', error);
@@ -303,17 +305,17 @@ export class KeepAwakeScheduler {
    */
   async getKeepAwakeStatus(): Promise<any[]> {
     try {
-      const devices = await prisma.fireCubeDevice.findMany({
-        where: { keepAwakeEnabled: true }
+      const devices = await findMany('fireCubeDevices', {
+        where: eq(fireCubeDevices.keepAwakeEnabled, true)
       });
 
       const status = [];
 
       for (const device of devices) {
-        const recentLogs = await prisma.fireCubeKeepAwakeLog.findMany({
-          where: { deviceId: device.id },
-          orderBy: { timestamp: 'desc' },
-          take: 1
+        const recentLogs = await findMany('fireCubeKeepAwakeLogs', {
+          where: eq(fireCubeKeepAwakeLogs.deviceId, device.id),
+          orderBy: [desc(fireCubeKeepAwakeLogs.timestamp)],
+          limit: 1
         });
 
         status.push({

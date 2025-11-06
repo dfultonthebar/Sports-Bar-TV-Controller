@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
       const { findFirst } = await import('@/lib/db-helpers')
       const preset = await findFirst('channelPresets', {
-        where: eq(schema.channelPresets.id, presetId as string)
+        where: eq(schema.channelPresets.id, String(presetId))
       })
 
       if (!preset) {
@@ -48,8 +48,14 @@ export async function POST(request: NextRequest) {
       deviceType = preset.deviceType
     }
 
+    // Convert unknown types to strings
+    const channelNumberStr = String(channelNumber)
+    const deviceTypeStr = String(deviceType)
+    const deviceIpStr = deviceIp ? String(deviceIp) : undefined
+    const cableBoxIdStr = cableBoxId ? String(cableBoxId) : undefined
+
     // Validate required fields
-    if (!channelNumber || !deviceType) {
+    if (!channelNumberStr || !deviceTypeStr) {
       return NextResponse.json(
         {
           success: false,
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate deviceType
-    if (!['cable', 'directv'].includes(deviceType)) {
+    if (!['cable', 'directv'].includes(deviceTypeStr)) {
       return NextResponse.json(
         { 
           success: false, 
@@ -72,23 +78,23 @@ export async function POST(request: NextRequest) {
 
     let result: any = { success: false }
 
-    if (deviceType === 'directv') {
+    if (deviceTypeStr === 'directv') {
       // DirecTV uses IP control
-      if (!deviceIp) {
+      if (!deviceIpStr) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Device IP address required for DirecTV control' 
+          {
+            success: false,
+            error: 'Device IP address required for DirecTV control'
           },
           { status: 400 }
         )
       }
 
       // Send DirecTV channel change command
-      result = await sendDirecTVChannelChange(deviceIp, channelNumber)
-    } else if (deviceType === 'cable') {
+      result = await sendDirecTVChannelChange(deviceIpStr, channelNumberStr)
+    } else if (deviceTypeStr === 'cable') {
       // Cable Box uses IR control via Global Cache
-      result = await sendCableBoxChannelChange(channelNumber, cableBoxId)
+      result = await sendCableBoxChannelChange(channelNumberStr, cableBoxIdStr)
     }
 
     if (result.success) {

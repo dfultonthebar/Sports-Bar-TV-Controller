@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     
     if (action === 'export') {
       // Export logs for download
-      const exportData = await enhancedLogger.exportLogsForDownload(hours, category);
+      const exportData = await enhancedLogger.exportLogsForDownload(hours, category as LogCategory | undefined);
       
       return NextResponse.json({
         filename: exportData.filename,
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     
     if (action === 'analyze') {
       // Get logs and prepare them for AI analysis
-      const logs = await enhancedLogger.getRecentLogs(hours, category);
+      const logs = await enhancedLogger.getRecentLogs(hours, category as LogCategory | undefined);
       const analytics = await enhancedLogger.getLogAnalytics(hours);
       
       // Filter to most relevant logs for AI analysis

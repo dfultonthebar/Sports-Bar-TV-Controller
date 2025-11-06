@@ -272,8 +272,8 @@ export async function createMany<T extends TableName>(
       return sanitizeData(itemWithTimestamp)
     })
     
-    const result = await db.insert(table).values(sanitizedData).returning().all()
-    
+    const result = await db.insert(table).values(sanitizedData).returning().all() as any[]
+
     logger.database.success('createMany', displayName, { count: result.length })
     
     // Serialize result to remove circular references
@@ -338,8 +338,8 @@ export async function updateMany<T extends TableName>(
     }
     
     const sanitizedData = sanitizeData(dataWithTimestamp)
-    const result = await db.update(table).set(sanitizedData).where(where).returning().all()
-    
+    const result = await db.update(table).set(sanitizedData).where(where).returning().all() as any[]
+
     logger.database.success('updateMany', displayName, { count: result.length })
     
     // Serialize result to remove circular references
@@ -388,8 +388,8 @@ export async function deleteMany<T extends TableName>(
   logger.database.query('deleteMany', displayName, { where })
   
   try {
-    const result = await db.delete(table).where(where).returning().all()
-    
+    const result = await db.delete(table).where(where).returning().all() as any[]
+
     logger.database.success('deleteMany', displayName, { count: result.length })
     
     // Serialize result to remove circular references

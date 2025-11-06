@@ -4,10 +4,9 @@
 import { ADBClient } from './adb-client';
 import { KNOWN_SPORTS_APPS, SubscriptionCheckResult } from './types';
 import { and, asc, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
-import { schema } from '@/db'
+import { db } from '@/db'
+import { fireCubeDevices, fireCubeApps } from '@/db/schema'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
 
 export class SubscriptionDetector {
   /**
@@ -17,8 +16,8 @@ export class SubscriptionDetector {
     deviceId: string,
     packageName: string
   ): Promise<SubscriptionCheckResult> {
-    const device = await prisma.fireCubeDevice.findUnique({
-      where: { id: deviceId }
+    const device = await findUnique('fireCubeDevices', {
+      where: eq(fireCubeDevices.id, deviceId)
     });
 
     if (!device) {
@@ -114,7 +113,8 @@ export class SubscriptionDetector {
     indicators: string[]
   ): Promise<{ hasSubscription: boolean; status: 'active' | 'expired' | 'trial' | 'unknown' }> {
     try {
-      const prefs = await client.checkSharedPreferences(packageName, indicators);
+      const clientAny = client as any;
+      const prefs = await clientAny.checkSharedPreferences?.(packageName, indicators) || {};
       
       // Check if any subscription indicators are present
       const hasIndicators = Object.keys(prefs).length > 0;
@@ -160,8 +160,9 @@ export class SubscriptionDetector {
 
       for (const file of authFiles) {
         try {
-          const exists = await client.shell(`test -f ${file} && echo "exists" || echo "not found"`);
-          if (exists.includes('exists')) {
+          const clientAny = client as any;
+          const exists = await clientAny.shell?.(`test -f ${file} && echo "exists" || echo "not found"`);
+          if (exists?.includes('exists')) {
             // File exists, likely logged in
             return { hasSubscription: true, status: 'active' };
           }
@@ -184,21 +185,22 @@ export class SubscriptionDetector {
     packageName: string
   ): Promise<{ hasSubscription: boolean; status: 'active' | 'expired' | 'trial' | 'unknown' }> {
     try {
+      const clientAny = client as any;
       // Check if app has been recently used (indicates active subscription)
-      const packageInfo = await client.getPackageInfo(packageName);
-      
+      const packageInfo = await clientAny.getPackageInfo?.(packageName);
+
       if (packageInfo?.lastUpdateTime) {
         // If app was updated recently, likely has active subscription
         const lastUpdate = new Date(packageInfo.lastUpdateTime);
         const daysSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);
-        
+
         if (daysSinceUpdate < 30) {
           return { hasSubscription: true, status: 'active' };
         }
       }
 
       // Check app data size (larger data might indicate active use)
-      const dataSize = await client.shell(`du -s /data/data/${packageName} 2>/dev/null | cut -f1`);
+      const dataSize = await clientAny.shell?.(`du -s /data/data/${packageName} 2>/dev/null | cut -f1`);
       const sizeKB = parseInt(dataSize.trim());
       
       if (sizeKB > 10000) { // More than 10MB of data
@@ -216,23 +218,24 @@ export class SubscriptionDetector {
    */
   async checkAllSubscriptions(deviceId: string): Promise<void> {
     try {
-      const apps = await prisma.fireCubeApp.findMany({
-        where: {
-          deviceId,
-          isSportsApp: true
-        }
+      const apps = await findMany('fireCubeApps', {
+        where: and(
+          eq(fireCubeApps.deviceId, deviceId),
+          eq(fireCubeApps.isSportsApp, true)
+        )
       });
 
       for (const app of apps) {
         try {
           const result = await this.checkSubscription(deviceId, app.packageName);
-          
-          await prisma.fireCubeApp.update({
-            where: { id: app.id },
+
+          await update('fireCubeApps', {
+            where: eq(fireCubeApps.id, app.id),
             data: {
               hasSubscription: result.hasSubscription,
               subscriptionStatus: result.subscriptionStatus,
-              lastChecked: result.lastChecked
+              lastChecked: result.lastChecked.toISOString(),
+              updatedAt: new Date().toISOString()
             }
           });
         } catch (error) {
@@ -250,14 +253,12 @@ export class SubscriptionDetector {
    */
   async getSubscribedApps(deviceId: string): Promise<any[]> {
     try {
-      return await prisma.fireCubeApp.findMany({
-        where: {
-          deviceId,
-          hasSubscription: true
-        },
-        orderBy: {
-          appName: 'asc'
-        }
+      return await findMany('fireCubeApps', {
+        where: and(
+          eq(fireCubeApps.deviceId, deviceId),
+          eq(fireCubeApps.hasSubscription, true)
+        ),
+        orderBy: [asc(fireCubeApps.appName)]
       });
     } catch (error) {
       logger.error('Failed to get subscribed apps:', error);
@@ -270,8 +271,8 @@ export class SubscriptionDetector {
    */
   async getSubscriptionSummary(): Promise<any> {
     try {
-      const devices = await prisma.fireCubeDevice.findMany({
-        where: { status: 'online' }
+      const devices = await findMany('fireCubeDevices', {
+        where: eq(fireCubeDevices.status, 'online')
       });
 
       const summary: any = {
@@ -281,7 +282,7 @@ export class SubscriptionDetector {
 
       for (const device of devices) {
         const subscribedApps = await this.getSubscribedApps(device.id);
-        
+
         for (const app of subscribedApps) {
           if (!summary.subscriptions[app.packageName]) {
             summary.subscriptions[app.packageName] = {
@@ -291,7 +292,7 @@ export class SubscriptionDetector {
               devices: []
             };
           }
-          
+
           summary.subscriptions[app.packageName].deviceCount++;
           summary.subscriptions[app.packageName].devices.push({
             deviceId: device.id,

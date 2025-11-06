@@ -31,7 +31,7 @@ describe('Circuit Breaker - Unit Tests', () => {
 
       expect(breaker).toBeDefined()
       expect(breaker.name).toBe('test-default')
-      expect(breaker.options.timeout).toBe(10000) // Default timeout
+      expect((breaker as any).options.timeout).toBe(10000) // Default timeout
     })
 
     it('should create a circuit breaker with custom configuration', () => {
@@ -44,10 +44,10 @@ describe('Circuit Breaker - Unit Tests', () => {
         volumeThreshold: 20
       })
 
-      expect(breaker.options.timeout).toBe(5000)
-      expect(breaker.options.errorThresholdPercentage).toBe(75)
-      expect(breaker.options.resetTimeout).toBe(15000)
-      expect(breaker.options.volumeThreshold).toBe(20)
+      expect((breaker as any).options.timeout).toBe(5000)
+      expect((breaker as any).options.errorThresholdPercentage).toBe(75)
+      expect((breaker as any).options.resetTimeout).toBe(15000)
+      expect((breaker as any).options.volumeThreshold).toBe(20)
     })
 
     it('should register circuit breaker in global registry', () => {

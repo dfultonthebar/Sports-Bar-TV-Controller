@@ -114,8 +114,13 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { action, data } = body
-    
+    const action = body.action as string | undefined
+    const data = body.data as Record<string, any> | undefined
+
+    if (!data) {
+      return NextResponse.json({ error: 'Data is required' }, { status: 400 })
+    }
+
     switch (action) {
       case 'bulkGuide':
         const { startTime, endTime, channelIds } = data
@@ -125,7 +130,7 @@ export async function POST(request: NextRequest) {
           channelIds
         )
         return NextResponse.json(guideData)
-        
+
       case 'customSports':
         const { startTime: sportsStart, endTime: sportsEnd, leagues, filters } = data
         let sportsPrograms = await spectrumBusinessApiService.getSportsPrograms(

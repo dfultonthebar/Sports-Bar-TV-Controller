@@ -150,6 +150,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Convert unknown types to numbers
+    const groupIndexNum = Number(groupIndex)
+    const valueNum = Number(value)
+
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
       tcpPort: 5321,
@@ -161,22 +165,22 @@ export async function POST(request: NextRequest) {
     let result
     switch (action) {
       case 'setActive':
-        result = await client.setGroupActive(groupIndex, value)
+        result = await client.setGroupActive(groupIndexNum, valueNum)
         break
-      
+
       case 'setSource':
         // Need to add setGroupSource method to atlasClient
-        result = await client.setGroupSource(groupIndex, value)
+        result = await client.setGroupSource(groupIndexNum, valueNum)
         break
-      
+
       case 'setGain':
         // Need to add setGroupVolume method to atlasClient
-        result = await client.setGroupVolume(groupIndex, value)
+        result = await client.setGroupVolume(groupIndexNum, valueNum)
         break
-      
+
       case 'setMute':
         // Need to add setGroupMute method to atlasClient
-        result = await client.setGroupMute(groupIndex, value)
+        result = await client.setGroupMute(groupIndexNum, valueNum)
         break
       
       default:

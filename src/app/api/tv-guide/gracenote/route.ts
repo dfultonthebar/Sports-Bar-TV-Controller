@@ -116,8 +116,13 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { action, data } = body
-    
+    const action = body.action as string | undefined
+    const data = body.data as Record<string, any> | undefined
+
+    if (!data) {
+      return NextResponse.json({ error: 'Data is required' }, { status: 400 })
+    }
+
     switch (action) {
       case 'bulkGuide':
         const { channels, startTime, endTime, zipCode } = data
@@ -128,7 +133,7 @@ export async function POST(request: NextRequest) {
           zipCode
         )
         return NextResponse.json(guideData)
-        
+
       case 'sportsByLeagues':
         const { leagues, startTime: sportsStart, endTime: sportsEnd, zipCode: sportsZip } = data
         const sportsPrograms = await gracenoteService.getSportsPrograms(
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
           programs: sportsPrograms,
           requestedLeagues: leagues
         })
-        
+
       default:
         return NextResponse.json({ error: 'Invalid action parameter' }, { status: 400 })
     }
