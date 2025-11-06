@@ -277,7 +277,6 @@ export async function POST(
         await db
           .update(schema.aiGainConfigurations)
           .set({
-            currentGain: gain as any,
             lastAdjustment: new Date().toISOString(),
             adjustmentCount: (aiConfig.adjustmentCount || 0) + 1,
             updatedAt: new Date().toISOString()

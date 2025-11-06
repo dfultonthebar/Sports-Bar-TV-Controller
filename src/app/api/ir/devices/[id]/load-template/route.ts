@@ -23,7 +23,6 @@ export async function POST(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -32,7 +31,7 @@ export async function POST(
 
   try {
     const { id: deviceId } = params
-    const { templateId, selectedCommands } = body
+    const { templateId, selectedCommands } = bodyValidation.data
 
     // Verify device exists
     const device = await db.select().from(irDevices).where(eq(irDevices.id, deviceId)).get()

@@ -24,9 +24,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { deviceId } = body
+    const { deviceId } = bodyValidation.data
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🎓 [GLOBAL CACHE] Starting IR learning')
@@ -102,9 +101,8 @@ export async function DELETE(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { deviceId } = body
+    const { deviceId } = bodyValidation.data
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🛑 [GLOBAL CACHE] Stopping IR learning')
@@ -251,7 +249,7 @@ async function startLearningSession(
           if (irCodeLine) {
             const learnedCode = irCodeLine.trim()
             logger.info('🎉 [GLOBAL CACHE] IR code learned successfully!')
-            logger.info('   Code length:', learnedCode.length, 'characters')
+            logger.info(`   Code length: ${learnedCode.length} characters`)
             logger.info('   Code preview:', { data: learnedCode.substring(0, 100) + '...' })
             
             // Automatically stop learning

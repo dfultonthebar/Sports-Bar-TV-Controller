@@ -275,7 +275,7 @@ async function sendCECCommand(
       logger.debug('CEC command response:', result)
       return true
     } else {
-      logger.error('CEC command failed:', response.status, response.statusText)
+      logger.error(`CEC command failed: ${response.status} ${response.statusText}`)
       return false
     }
   } catch (error) {

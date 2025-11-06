@@ -7,13 +7,13 @@
 
 import { and, asc, count, desc, eq, findMany, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { db } from '@/db'
+import { like } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 import { searchTVManual, validateManualUrl } from './searchManual'
 import { downloadTVManual, getManualPath } from './downloadManual'
 import { generateQAFromManual } from './generateQA'
 import { TVManualFetchOptions, TVManualFetchResult, TVDocumentationRecord } from './types'
-
-// Using singleton prisma from @/lib/prisma
 
 /**
  * Fetch TV manual and generate Q&A pairs
@@ -33,13 +33,7 @@ export async function fetchTVManual(
         logger.debug(`[TV Docs] Manual already exists: ${existingPath}`)
         
         // Check if Q&A pairs were already generated
-        const existingQA = await prisma.qAEntry.count({
-          where: {
-            sourceFile: {
-              contains: `${manufacturer} ${model}`
-            }
-          }
-        })
+        const existingQA = await count('qaEntries', like(schema.qaEntries.sourceFile, `%${manufacturer} ${model}%`))
         
         return {
           success: true,
@@ -114,18 +108,20 @@ export async function fetchTVManual(
 export async function getAllTVDocumentation(): Promise<TVDocumentationRecord[]> {
   try {
     // Get all unique TV models from matrix outputs
-    const outputs = await prisma.matrixOutput.findMany({
-      where: {
-        tvBrand: { not: null },
-        tvModel: { not: null }
-      },
-      select: {
-        tvBrand: true,
-        tvModel: true,
-        lastDiscovery: true
-      },
-      distinct: ['tvBrand', 'tvModel']
-    })
+    const allOutputs = await findMany('matrixOutputs', {})
+
+    // Filter for outputs with both tvBrand and tvModel
+    const filteredOutputs = allOutputs.filter(o => o.tvBrand && o.tvModel)
+
+    // Get unique combinations of tvBrand and tvModel
+    const uniqueMap = new Map<string, typeof filteredOutputs[0]>()
+    for (const output of filteredOutputs) {
+      const key = `${output.tvBrand}|${output.tvModel}`
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, output)
+      }
+    }
+    const outputs = Array.from(uniqueMap.values())
     
     const records: TVDocumentationRecord[] = []
     
@@ -134,13 +130,7 @@ export async function getAllTVDocumentation(): Promise<TVDocumentationRecord[]> 
       
       const manualPath = await getManualPath(output.tvBrand, output.tvModel)
       
-      const qaCount = await prisma.qAEntry.count({
-        where: {
-          sourceFile: {
-            contains: `${output.tvBrand} ${output.tvModel}`
-          }
-        }
-      })
+      const qaCount = await count('qaEntries', like(schema.qaEntries.sourceFile, `%${output.tvBrand} ${output.tvModel}%`))
       
       records.push({
         id: `${output.tvBrand}-${output.tvModel}`,

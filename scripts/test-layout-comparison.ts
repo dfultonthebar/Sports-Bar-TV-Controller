@@ -182,7 +182,7 @@ async function captureRemoteControlPage(page: Page, results: TestResult) {
     }
 
     // Analyze TV layout display
-    const tvCards = await page.locator('[class*="tv"]', '[class*="card"]', '[class*="zone"]').count();
+    const tvCards = await page.locator('[class*="tv"],[class*="card"],[class*="zone"]').count();
     results.findings.push(`Found ${tvCards} potential TV/zone elements on remote page`);
 
     // Check for grid vs positioned layout

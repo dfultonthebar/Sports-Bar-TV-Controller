@@ -20,16 +20,15 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
 
-  try {;
+  try {
     const {
       hours = 24,
       category,
       includeKnowledge = true,
       model = 'llama3.2:3b',
       focusArea
-    } = body;
+    } = bodyValidation.data;
 
     // Type assertions for validated body properties
     const hoursNum = typeof hours === 'number' ? hours : Number(hours);

@@ -129,7 +129,6 @@ export async function PUT(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -138,7 +137,7 @@ export async function PUT(
 
   try {
     const { id } = params
-    const { name, ipAddress, port, model } = body
+    const { name, ipAddress, port, model } = bodyValidation.data
 
     const updateData: any = {}
     if (name !== undefined) updateData.name = name

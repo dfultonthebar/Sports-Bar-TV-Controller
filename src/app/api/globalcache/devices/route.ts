@@ -64,9 +64,12 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { name, ipAddress, port = 4998, model } = body
+    const data = bodyValidation.data
+    const name = String(data.name || '')
+    const ipAddress = String(data.ipAddress || '')
+    const port = Number(data.port) || 4998
+    const model = data.model ? String(data.model) : undefined
 
     // Validate required fields
     if (!name || !ipAddress) {

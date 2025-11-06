@@ -24,7 +24,6 @@ export async function GET(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const body = bodyValidation.data
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error

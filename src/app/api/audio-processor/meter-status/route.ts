@@ -114,10 +114,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await updateMany('audioInputMeters', {
-      where: eq(schema.audioInputMeters.processorId, processorId),
-      data: { peakLevel: -80.0 } // Reset to minimum
-    })
+    await updateMany('audioInputMeters',
+      eq(schema.audioInputMeters.processorId, processorId),
+      { peakLevel: -80.0 } // Reset to minimum
+    )
 
     return NextResponse.json({ success: true, message: 'Peak levels reset' })
   } catch (error) {

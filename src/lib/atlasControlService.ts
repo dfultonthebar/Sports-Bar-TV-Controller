@@ -555,7 +555,7 @@ export class AtlasControlService extends EventEmitter {
       if (existing) {
         await db.update(schema.atlasConnectionStates)
           .set({
-            isConnected: connected ? 1 : 0,
+            isConnected: connected,
             ...(connected ? { lastConnected: now, connectionErrors: 0 } : { lastDisconnected: now }),
             reconnectAttempts: this.reconnectAttempts,
             updatedAt: now

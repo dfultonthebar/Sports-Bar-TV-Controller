@@ -23,14 +23,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('➕ [IR COMMANDS] Creating new IR command')
   logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const { deviceId, functionName, irCode, hexCode, category, description } = body
+    const { deviceId, functionName, irCode, hexCode, category, description } = bodyValidation.data
 
     if (!deviceId || !functionName || !irCode) {
       logger.info('❌ [IR COMMANDS] Missing required fields')

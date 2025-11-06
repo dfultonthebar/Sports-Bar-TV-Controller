@@ -8,9 +8,8 @@
 
 import { and, asc, desc, eq, findMany, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { db } from '@/db'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
 
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
@@ -62,8 +61,8 @@ class SchedulerService {
       const now = new Date();
       
       // Get all enabled schedules
-      const schedules = await prisma.schedule.findMany({
-        where: { enabled: true }
+      const schedules = await findMany('schedules', {
+        where: eq(schema.schedules.enabled, true)
       });
 
       for (const schedule of schedules) {

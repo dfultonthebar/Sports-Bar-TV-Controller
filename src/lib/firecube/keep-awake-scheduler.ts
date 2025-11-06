@@ -149,7 +149,7 @@ export class KeepAwakeScheduler {
 
       const client = new ADBClient(device.ipAddress, device.port);
       await client.connect();
-      const success = await client.keepAwake();
+      const success = await client.keepAwake(true);
       await client.disconnect();
 
       await this.logAction(deviceId, 'wake_up', success);
@@ -268,10 +268,10 @@ export class KeepAwakeScheduler {
       if (startTime) updateData.keepAwakeStart = startTime;
       if (endTime) updateData.keepAwakeEnd = endTime;
 
-      await update('fireCubeDevices', {
-        where: eq(fireCubeDevices.id, deviceId),
-        data: updateData
-      });
+      await update('fireCubeDevices',
+        eq(fireCubeDevices.id, deviceId),
+        updateData
+      );
 
       if (enabled && startTime && endTime) {
         await this.scheduleDevice(deviceId, startTime, endTime);

@@ -98,7 +98,7 @@ export class AtlasMeterService {
             .set({
               level: reading.level,
               peak: reading.peak,
-              clipping: reading.clipping ? 1 : 0,
+              clipping: reading.clipping,
               timestamp: new Date().toISOString()
             })
             .where(eq(schema.audioInputMeters.id, existing.id))

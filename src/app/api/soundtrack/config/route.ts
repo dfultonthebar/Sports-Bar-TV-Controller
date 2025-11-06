@@ -66,9 +66,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { apiKey } = body
+    const { apiKey } = bodyValidation.data
 
     if (!apiKey) {
       return NextResponse.json({ 
@@ -223,9 +222,8 @@ export async function PATCH(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { playerId, bartenderVisible, displayOrder } = body
+    const { playerId, bartenderVisible, displayOrder } = bodyValidation.data
 
     if (!playerId) {
       return NextResponse.json({

@@ -29,9 +29,8 @@ export async function POST(req: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(req, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { suite = 'all', safeMode = true } = body
+    const { suite = 'all', safeMode = true } = bodyValidation.data
 
     // Build test command
     let testPattern = ''

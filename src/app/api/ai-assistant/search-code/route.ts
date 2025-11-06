@@ -19,11 +19,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data } = bodyValidation
+  const rawData = bodyValidation.data
 
 
   try {
-    const { query, fileTypes, maxResults = 10 } = data;
+    const query = String(rawData.query || '')
+    const fileTypes = rawData.fileTypes
+    const maxResults = Number(rawData.maxResults) || 10
 
     if (!query || typeof query !== 'string') {
       return NextResponse.json(

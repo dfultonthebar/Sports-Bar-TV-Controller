@@ -68,20 +68,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Update or create Matrix routing configuration
-    const routing = await upsert('wolfpackMatrixRoutings', {
-      where: eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixOutputNumber),
-      update: {
-        atlasInputLabel: atlasInputLabel || `Matrix ${matrixOutputNumber}`,
-        updatedAt: new Date()
-      },
-      create: {
+    const routing = await upsert('wolfpackMatrixRoutings',
+      eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixOutputNumber),
+      {
         matrixOutputNumber,
         wolfpackInputNumber: matrixOutputNumber,
         wolfpackInputLabel: `Input ${matrixOutputNumber}`,
         atlasInputLabel: atlasInputLabel || `Matrix ${matrixOutputNumber}`,
         isActive: true
+      },
+      {
+        atlasInputLabel: atlasInputLabel || `Matrix ${matrixOutputNumber}`,
+        updatedAt: new Date()
       }
-    })
+    )
 
     return NextResponse.json({
       success: true,

@@ -28,14 +28,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('⬇️  [IR DATABASE API] Downloading IR codes')
   logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const { deviceId, codesetId, functions } = body
+    const { deviceId, codesetId, functions } = bodyValidation.data
 
     if (!deviceId || !codesetId || !functions || !Array.isArray(functions)) {
       logger.info('❌ [IR DATABASE API] Invalid request body')

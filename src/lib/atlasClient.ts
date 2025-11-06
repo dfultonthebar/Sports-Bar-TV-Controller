@@ -501,10 +501,10 @@ export class AtlasTCPClient {
 
   /**
    * Send a command to the Atlas processor
-   * 
+   *
    * CRITICAL: Messages MUST be terminated with "\n" (newline), NOT "\r\n"
    */
-  private async sendCommand(command: AtlasCommand, withResponse: boolean = true): Promise<any> {
+  async sendCommand(command: AtlasCommand, withResponse: boolean = true): Promise<any> {
     if (!this.connected || !this.tcpSocket || this.tcpSocket.destroyed) {
       atlasLogger.error('COMMAND', 'Cannot send command - not connected', {
         connected: this.connected,

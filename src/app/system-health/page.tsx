@@ -116,7 +116,7 @@ export default function SystemHealthPage() {
           break
 
         default:
-          logger.info('Action not implemented:', action, params)
+          logger.info(`Action not implemented: ${action}`, { data: params })
       }
 
       // Refresh after action

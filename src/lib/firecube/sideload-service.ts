@@ -150,12 +150,12 @@ export class SideloadService {
             completedDevices++;
 
             // Update app in database
-            await upsert('fireCubeApps', {
-              where: and(
+            await upsert('fireCubeApps',
+              and(
                 eq(fireCubeApps.deviceId, targetDeviceId),
                 eq(fireCubeApps.packageName, packageName)
               ),
-              create: {
+              {
                 id: crypto.randomUUID(),
                 deviceId: targetDeviceId,
                 packageName,
@@ -166,10 +166,10 @@ export class SideloadService {
                 installedAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
               },
-              update: {
+              {
                 updatedAt: new Date().toISOString()
               }
-            });
+            );
           } else {
             errorLog.push(`Failed to install on ${targetDevice.name}`);
             failedDevices++;
@@ -205,9 +205,9 @@ export class SideloadService {
       const finalStatus = failedDevices === 0 ? 'completed' :
                          completedDevices === 0 ? 'failed' : 'partial';
 
-      await update('fireCubeSideloadOperations', {
-        where: eq(fireCubeSideloadOperations.id, operationId),
-        data: {
+      await update('fireCubeSideloadOperations',
+        eq(fireCubeSideloadOperations.id, operationId),
+        {
           status: finalStatus,
           progress: 100,
           completedDevices,
@@ -215,20 +215,20 @@ export class SideloadService {
           errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
           completedAt: new Date().toISOString()
         }
-      });
+      );
 
       logger.debug(`Sideload operation ${operationId} completed: ${completedDevices} succeeded, ${failedDevices} failed`);
     } catch (error: any) {
       logger.error('Sideload operation failed:', error);
 
-      await update('fireCubeSideloadOperations', {
-        where: eq(fireCubeSideloadOperations.id, operationId),
-        data: {
+      await update('fireCubeSideloadOperations',
+        eq(fireCubeSideloadOperations.id, operationId),
+        {
           status: 'failed',
           errorLog: JSON.stringify([...errorLog, error.message]),
           completedAt: new Date().toISOString()
         }
-      });
+      );
     }
   }
 
@@ -252,10 +252,10 @@ export class SideloadService {
       updateData.failedDevices = failedDevices;
     }
 
-    await update('fireCubeSideloadOperations', {
-      where: eq(fireCubeSideloadOperations.id, operationId),
-      data: updateData
-    });
+    await update('fireCubeSideloadOperations',
+      eq(fireCubeSideloadOperations.id, operationId),
+      updateData
+    );
   }
 
   /**

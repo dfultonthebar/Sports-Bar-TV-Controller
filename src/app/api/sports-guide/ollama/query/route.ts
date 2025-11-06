@@ -31,9 +31,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { query, action, includeRecentLogs, userPreferences } = body
+    const { query, action, includeRecentLogs, userPreferences } = bodyValidation.data
 
     logger.info(`[Ollama-Query] Request received - Action: ${action || 'query'}`)
 

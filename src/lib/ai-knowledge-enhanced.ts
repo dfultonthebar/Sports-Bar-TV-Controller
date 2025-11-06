@@ -1,10 +1,10 @@
 
 import { and, asc, desc, eq, findMany, findUnique, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { db } from '@/db'
+import { like } from 'drizzle-orm'
 import { logger } from '@/lib/logger';
 import { loadKnowledgeBase, DocumentChunk } from './ai-knowledge';
-
-// Using singleton prisma from @/lib/prisma;
 
 export interface CodebaseContext {
   files: Array<{
@@ -27,19 +27,25 @@ export async function searchCodebase(
     const queryLower = query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(term => term.length > 2);
     
-    // Search in indexed files
-    const files = await prisma.indexedFile.findMany({
-      where: {
-        isActive: true,
-        OR: queryTerms.map(term => ({
-          OR: [
-            { content: { contains: term } },
-            { filePath: { contains: term } },
-            { fileName: { contains: term } }
-          ]
-        }))
-      },
-      take: maxResults * 2 // Get more than needed for scoring
+    // Search in indexed files using Drizzle
+    // Note: Drizzle doesn't support complex nested OR with dynamic terms,
+    // so we fetch all active files and filter in memory
+    const allFiles = await db.select()
+      .from(schema.indexedFiles)
+      .where(eq(schema.indexedFiles.isActive, true))
+      .all()
+
+    // Filter files that match any query term
+    const files = allFiles.filter(file => {
+      const contentLower = file.content.toLowerCase()
+      const pathLower = file.filePath.toLowerCase()
+      const nameLower = file.fileName.toLowerCase()
+
+      return queryTerms.some(term =>
+        contentLower.includes(term) ||
+        pathLower.includes(term) ||
+        nameLower.includes(term)
+      )
     });
     
     // Score and rank files
@@ -184,9 +190,7 @@ export async function buildEnhancedContext(
  */
 export async function getFileByPath(filePath: string): Promise<any | null> {
   try {
-    const file = await prisma.indexedFile.findUnique({
-      where: { filePath }
-    });
+    const file = await findUnique('indexedFiles', eq(schema.indexedFiles.filePath, filePath));
     return file;
   } catch (error) {
     logger.error('Error getting file:', error);
@@ -199,27 +203,31 @@ export async function getFileByPath(filePath: string): Promise<any | null> {
  */
 export async function getCodebaseStats() {
   try {
-    const stats = await prisma.indexedFile.aggregate({
-      where: { isActive: true },
-      _count: true,
-      _sum: {
-        fileSize: true
-      }
-    });
-    
-    const filesByType = await prisma.indexedFile.groupBy({
-      by: ['fileType'],
-      where: { isActive: true },
-      _count: true
-    });
-    
+    // Fetch all active files
+    const files = await db.select()
+      .from(schema.indexedFiles)
+      .where(eq(schema.indexedFiles.isActive, true))
+      .all();
+
+    // Calculate aggregate stats
+    const totalFiles = files.length;
+    const totalSize = files.reduce((sum, f) => sum + (f.fileSize || 0), 0);
+
+    // Group by file type
+    const typeMap = new Map<string, number>();
+    for (const file of files) {
+      typeMap.set(file.fileType, (typeMap.get(file.fileType) || 0) + 1);
+    }
+
+    const filesByType = Array.from(typeMap.entries()).map(([type, count]) => ({
+      type,
+      count
+    }));
+
     return {
-      totalFiles: stats._count,
-      totalSize: stats._sum.fileSize || 0,
-      filesByType: filesByType.map(ft => ({
-        type: ft.fileType,
-        count: ft._count
-      }))
+      totalFiles,
+      totalSize,
+      filesByType
     };
   } catch (error) {
     logger.error('Error getting codebase stats:', error);

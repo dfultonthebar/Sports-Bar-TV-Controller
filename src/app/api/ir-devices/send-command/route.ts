@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Load device information
-    const data = await loadDevices()
-    const device = (data.devices && Array.isArray(data.devices)) ? data.devices.find((d: any) => d.id === deviceId) : null
+    const deviceData = await loadDevices()
+    const device = (deviceData.devices && Array.isArray(deviceData.devices)) ? deviceData.devices.find((d: any) => d.id === deviceId) : null
 
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })

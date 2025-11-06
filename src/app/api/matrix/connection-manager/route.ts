@@ -62,8 +62,7 @@ export async function POST(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { data: body } = bodyValidation
-  const action = (body as any).action || 'connect'
+  const action = (bodyValidation.data as any).action || 'connect'
 
   try {
 

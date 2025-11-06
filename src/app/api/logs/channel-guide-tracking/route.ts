@@ -184,25 +184,24 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
-    const { 
-      action, 
-      content, 
-      channel, 
-      league, 
-      searchQuery, 
-      filters, 
+    const {
+      action,
+      content,
+      channel,
+      league,
+      searchQuery,
+      filters,
       results,
       userId,
       sessionId,
-      metadata 
-    } = body
+      metadata
+    } = bodyValidation.data
 
     // Validate required fields
     if (!action) {

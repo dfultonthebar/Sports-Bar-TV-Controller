@@ -45,10 +45,12 @@ export async function POST(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Security: use validated data
-  const { data } = bodyValidation
-  const { manufacturer, model, forceRefetch = false } = data
+  const rawData = bodyValidation.data
+  const manufacturer = String(rawData.manufacturer || '')
+  const model = String(rawData.model || '')
+  const forceRefetch = Boolean(rawData.forceRefetch ?? false)
   try {
-    
+
     if (!manufacturer || !model) {
       return NextResponse.json(
         {
@@ -58,9 +60,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
+
     logger.info(`[Fetch TV Manual API] Fetching manual for ${manufacturer} ${model}`)
-    
+
     const result = await fetchTVManual({
       manufacturer,
       model,

@@ -122,7 +122,6 @@ export async function PUT(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -149,7 +148,7 @@ export async function PUT(
       globalCachePortNumber,
       description,
       status
-    } = body
+    } = bodyValidation.data
 
     logger.info('   Update fields:')
     logger.info('     Name:', name)

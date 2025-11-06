@@ -106,14 +106,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('💾 [IR CREDENTIALS] Saving credentials')
   logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const { email, password } = body
+    const { email, password } = bodyValidation.data
 
     if (!email || !password) {
       logger.info('❌ [IR CREDENTIALS] Email and password required')

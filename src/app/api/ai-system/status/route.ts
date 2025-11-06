@@ -136,9 +136,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { action } = body
+    const { action } = bodyValidation.data
 
     switch (action) {
       case 'test_analysis':

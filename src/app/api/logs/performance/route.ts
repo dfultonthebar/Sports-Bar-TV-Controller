@@ -17,9 +17,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { operation, duration, metadata, component } = body
+    const { operation, duration, metadata, component } = bodyValidation.data
 
     await enhancedLogger.logPerformanceMetric(
       operation,

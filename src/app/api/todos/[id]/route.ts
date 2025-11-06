@@ -28,7 +28,6 @@ export async function GET(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -102,13 +101,10 @@ export async function PUT(
     if (category !== undefined) updateData.category = category
     if (tags !== undefined) updateData.tags = JSON.stringify(tags)
 
-    const todo = await update("todos", {
-      where: { id },
-      data: updateData,
-      include: {
-        documents: true
-      }
-    })
+    const todo = await update("todos",
+      eq(schema.todos.id, id),
+      updateData
+    )
 
     // Sync to GitHub in background
     syncTodosToGitHub(`chore: Update TODO - ${todo.title}`).catch(err => {

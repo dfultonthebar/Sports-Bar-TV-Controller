@@ -245,9 +245,15 @@ export function getParameterName(type: keyof typeof ATLAS_PARAMETERS, index: num
   return `${param.prefix}_${index}`
 }
 
-export function getModelConfig(model: string): typeof ATLAS_CONFIG.MODELS.AZMP8 | null {
+export type AtlasModel =
+  | typeof ATLAS_CONFIG.MODELS.AZMP8
+  | typeof ATLAS_CONFIG.MODELS.AZM8
+  | typeof ATLAS_CONFIG.MODELS.AZMP4
+  | typeof ATLAS_CONFIG.MODELS.AZM4
+
+export function getModelConfig(model: string): AtlasModel {
   const normalizedModel = model.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  
+
   if (normalizedModel.includes('AZMP8') || normalizedModel === 'AZM8P') {
     return ATLAS_CONFIG.MODELS.AZMP8
   } else if (normalizedModel.includes('AZM8')) {
@@ -257,7 +263,7 @@ export function getModelConfig(model: string): typeof ATLAS_CONFIG.MODELS.AZMP8 
   } else if (normalizedModel.includes('AZM4')) {
     return ATLAS_CONFIG.MODELS.AZM4
   }
-  
+
   // Default to AZMP8 for unknown models
   return ATLAS_CONFIG.MODELS.AZMP8
 }

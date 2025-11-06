@@ -27,7 +27,6 @@ export async function POST(
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -35,7 +34,7 @@ export async function POST(
 
   try {
     const { id } = params
-    const { productionTested, mergedToMain } = body
+    const { productionTested, mergedToMain } = bodyValidation.data
 
     // Validate completion criteria
     if (!productionTested || !mergedToMain) {
@@ -48,21 +47,28 @@ export async function POST(
       )
     }
 
-    const todo = await prisma.todo.update({
-      where: { id },
-      data: {
-        status: 'COMPLETE',
-        completedAt: new Date()
-      },
-      include: {
-        documents: true
-      }
+    // Update the todo using Drizzle
+    await update('todos', id, {
+      status: 'COMPLETE',
+      completedAt: new Date()
+    })
+
+    // Fetch the updated todo with documents
+    const todo = await findFirst('todos', {
+      where: eq(schema.todos.id, id)
+    })
+
+    // Fetch associated documents
+    const documents = await findMany('todoDocuments', {
+      where: eq(schema.todoDocuments.todoId, id)
     })
 
     // Sync to GitHub in background
-    syncTodosToGitHub(`chore: Complete TODO - ${todo.title}`).catch(err => {
-      logger.error('GitHub sync failed:', err)
-    })
+    if (todo) {
+      syncTodosToGitHub(`chore: Complete TODO - ${todo.title}`).catch(err => {
+        logger.error('GitHub sync failed:', err)
+      })
+    }
 
     return NextResponse.json({
       success: true,

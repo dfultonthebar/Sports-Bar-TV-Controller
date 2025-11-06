@@ -127,19 +127,19 @@ export class AppDiscoveryService {
             });
         } else {
           // Update existing app
-          await updateMany('fireCubeApps', {
-            where: and(
+          await updateMany('fireCubeApps',
+            and(
               eq(fireCubeApps.deviceId, app.deviceId),
               eq(fireCubeApps.packageName, app.packageName)
             ),
-            data: {
+            {
               appName: app.appName,
               version: app.version || null,
               versionCode: app.versionCode || null,
               lastChecked: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             }
-          });
+          );
         }
       }
 
@@ -163,13 +163,14 @@ export class AppDiscoveryService {
    */
   async getDeviceApps(deviceId: string): Promise<FireCubeApp[]> {
     try {
-      return await findMany('fireCubeApps', {
+      const apps = await findMany('fireCubeApps', {
         where: eq(fireCubeApps.deviceId, deviceId),
         orderBy: [
           desc(fireCubeApps.isSportsApp),
           asc(fireCubeApps.appName)
         ]
       });
+      return apps as FireCubeApp[];
     } catch (error) {
       logger.error('Failed to get device apps:', error);
       return [];
@@ -181,13 +182,14 @@ export class AppDiscoveryService {
    */
   async getAllSportsApps(): Promise<FireCubeApp[]> {
     try {
-      return await findMany('fireCubeApps', {
+      const apps = await findMany('fireCubeApps', {
         where: eq(fireCubeApps.isSportsApp, true),
         orderBy: [
           desc(fireCubeApps.hasSubscription),
           asc(fireCubeApps.appName)
         ]
       });
+      return apps as FireCubeApp[];
     } catch (error) {
       logger.error('Failed to get sports apps:', error);
       return [];

@@ -6,9 +6,8 @@
 
 import { and, asc, create, desc, eq, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { db } from '@/db'
 import { logger } from '@/lib/logger';
-
-// Using singleton prisma from @/lib/prisma;
 
 export interface UploadedQA {
   question: string;
@@ -267,16 +266,14 @@ export async function saveUploadedQAs(
 
   for (const qa of qas) {
     try {
-      await prisma.qAEntry.create({
-        data: {
-          question: qa.question,
-          answer: qa.answer,
-          category: qa.category || 'general',
-          tags: qa.tags ? JSON.stringify(qa.tags) : null,
-          sourceType: 'uploaded',
-          sourceFile,
-          confidence: 1.0,
-        },
+      await create('qaEntries', {
+        question: qa.question,
+        answer: qa.answer,
+        category: qa.category || 'general',
+        tags: qa.tags ? JSON.stringify(qa.tags) : null,
+        sourceType: 'uploaded',
+        sourceFile,
+        confidence: 1.0,
       });
       saved++;
     } catch (error) {

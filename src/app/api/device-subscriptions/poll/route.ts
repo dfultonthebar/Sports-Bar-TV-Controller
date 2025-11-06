@@ -79,9 +79,11 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { deviceId, deviceType, force = false } = body
+    const data = bodyValidation.data
+    const deviceId = String(data.deviceId)
+    const deviceType = String(data.deviceType) as 'directv' | 'firetv'
+    const force = Boolean(data.force ?? false)
 
     await direcTVLogger.log({
       level: LogLevel.INFO,
@@ -101,11 +103,11 @@ export async function POST(request: NextRequest) {
 
     // Load current subscriptions
     const subscriptionsData = await loadSubscriptionsData()
-    
+
     // Load device information
     const deviceData = await loadDeviceList(deviceType)
     const device = deviceData.devices.find((d: any) => d.id === deviceId)
-    
+
     if (!device) {
       await direcTVLogger.log({
         level: LogLevel.ERROR,
@@ -127,16 +129,16 @@ export async function POST(request: NextRequest) {
       level: LogLevel.DEBUG,
       operation: DirecTVOperation.SUBSCRIPTION_POLL,
       deviceId,
-      deviceName: device.name,
-      ipAddress: device.ipAddress,
+      deviceName: String(device.name),
+      ipAddress: String(device.ipAddress),
       port: device.port || 8080,
       message: `Device found, preparing to poll subscriptions`,
       details: {
         device: {
-          id: device.id,
-          name: device.name,
+          id: String(device.id),
+          name: String(device.name),
           type: deviceType,
-          ipAddress: device.ipAddress,
+          ipAddress: String(device.ipAddress),
           port: device.port || 8080
         }
       }
@@ -153,7 +155,7 @@ export async function POST(request: NextRequest) {
         level: LogLevel.INFO,
         operation: DirecTVOperation.CACHE_OPERATION,
         deviceId,
-        deviceName: device.name,
+        deviceName: String(device.name),
         message: `Returning cached subscription data (polled ${hoursSinceLastPoll.toFixed(2)} hours ago)`,
         details: {
           lastPolled: existingEntry?.lastPolled,
@@ -173,8 +175,8 @@ export async function POST(request: NextRequest) {
       level: LogLevel.INFO,
       operation: DirecTVOperation.SUBSCRIPTION_POLL,
       deviceId,
-      deviceName: device.name,
-      ipAddress: device.ipAddress,
+      deviceName: String(device.name),
+      ipAddress: String(device.ipAddress),
       port: device.port || 8080,
       message: force ? 'Forced poll requested' : `Cache expired (${hoursSinceLastPoll.toFixed(2)} hours old), initiating fresh poll`,
       details: {
@@ -188,7 +190,7 @@ export async function POST(request: NextRequest) {
     const updatedEntry: DeviceSubscription = {
       deviceId,
       deviceType,
-      deviceName: device.name,
+      deviceName: String(device.name),
       subscriptions: existingEntry?.subscriptions || [],
       lastPolled: now.toISOString(),
       pollStatus: 'pending'
@@ -213,17 +215,17 @@ export async function POST(request: NextRequest) {
           level: LogLevel.DEBUG,
           operation: DirecTVOperation.CACHE_OPERATION,
           deviceId,
-          deviceName: device.name,
+          deviceName: String(device.name),
           message: 'Checking in-memory cache for subscription data'
         })
-        
+
         const cached = cacheService.get<Subscription[]>(cacheKey)
         if (cached) {
           await direcTVLogger.log({
             level: LogLevel.INFO,
             operation: DirecTVOperation.CACHE_OPERATION,
             deviceId,
-            deviceName: device.name,
+            deviceName: String(device.name),
             message: `Found cached subscription data (${cached.length} subscriptions)`,
             details: {
               subscriptionCount: cached.length,
@@ -238,23 +240,23 @@ export async function POST(request: NextRequest) {
             lastPolled: existingEntry?.lastPolled
           })
         }
-        
+
         await direcTVLogger.log({
           level: LogLevel.DEBUG,
           operation: DirecTVOperation.CACHE_OPERATION,
           deviceId,
-          deviceName: device.name,
+          deviceName: String(device.name),
           message: 'No cached data found, proceeding with device poll'
         })
       }
-      
+
       // Poll subscriptions based on device type (REAL DATA)
       await direcTVLogger.log({
         level: LogLevel.INFO,
         operation: DirecTVOperation.SUBSCRIPTION_POLL,
         deviceId,
-        deviceName: device.name,
-        ipAddress: device.ipAddress,
+        deviceName: String(device.name),
+        ipAddress: String(device.ipAddress),
         port: device.port || 8080,
         message: `Beginning ${deviceType} subscription poll`,
         details: {
@@ -262,7 +264,7 @@ export async function POST(request: NextRequest) {
           pollingFunction: deviceType === 'directv' ? 'pollRealDirecTVSubscriptions' : 'pollRealFireTVSubscriptions'
         }
       })
-      
+
       if (deviceType === 'directv') {
         subscriptions = await pollRealDirecTVSubscriptions(device)
       } else if (deviceType === 'firetv') {
@@ -272,19 +274,19 @@ export async function POST(request: NextRequest) {
           level: LogLevel.ERROR,
           operation: DirecTVOperation.SUBSCRIPTION_POLL,
           deviceId,
-          deviceName: device.name,
+          deviceName: String(device.name),
           message: `Unsupported device type: ${deviceType}`,
           details: { deviceType }
         })
         throw new Error(`Unsupported device type: ${deviceType}`)
       }
-      
+
       await direcTVLogger.log({
         level: LogLevel.INFO,
         operation: DirecTVOperation.SUBSCRIPTION_POLL,
         deviceId,
-        deviceName: device.name,
-        ipAddress: device.ipAddress,
+        deviceName: String(device.name),
+        ipAddress: String(device.ipAddress),
         port: device.port || 8080,
         message: `Subscription poll completed successfully (${subscriptions.length} subscriptions found)`,
         details: {
@@ -292,15 +294,15 @@ export async function POST(request: NextRequest) {
           subscriptions: subscriptions.map(s => ({ id: s.id, name: s.name, type: s.type, status: s.status }))
         }
       })
-      
+
       // Cache the results for 1 hour
       cacheService.set(cacheKey, subscriptions, CacheTTL.HOUR)
-      
+
       await direcTVLogger.log({
         level: LogLevel.DEBUG,
         operation: DirecTVOperation.CACHE_OPERATION,
         deviceId,
-        deviceName: device.name,
+        deviceName: String(device.name),
         message: 'Subscription data cached successfully',
         details: {
           cacheKey,
@@ -335,8 +337,8 @@ export async function POST(request: NextRequest) {
         level: LogLevel.ERROR,
         operation: DirecTVOperation.SUBSCRIPTION_POLL,
         deviceId,
-        deviceName: device.name,
-        ipAddress: device.ipAddress,
+        deviceName: String(device.name),
+        ipAddress: String(device.ipAddress),
         port: device.port || 8080,
         message: `Subscription poll failed: ${updatedEntry.error}`,
         error: pollError instanceof Error ? {

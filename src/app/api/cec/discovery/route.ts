@@ -50,15 +50,14 @@ export async function POST(request: NextRequest) {
   )
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const { data: body } = bodyValidation
-  const { outputNumber, async: asyncMode } = body
+  const { outputNumber, async: asyncMode } = bodyValidation.data
 
   try {
     if (outputNumber) {
       // Single output discovery - always synchronous (fast, 10-15 seconds)
       logger.info(`[CEC Discovery API] Starting single output discovery for output ${outputNumber}`)
 
-      const result = await discoverSingleTV(String(outputNumber))
+      const result = await discoverSingleTV(outputNumber)
 
       return NextResponse.json({
         success: true,

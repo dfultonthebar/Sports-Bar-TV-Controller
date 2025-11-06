@@ -11,7 +11,7 @@
 
 import { db } from '@/db'
 import { sessions } from '@/db/schema'
-import { eq, and, lt } from 'drizzle-orm'
+import { eq, and, lt, gt } from 'drizzle-orm'
 import { AUTH_CONFIG, type UserRole } from './config'
 import { logger } from '@/lib/logger'
 

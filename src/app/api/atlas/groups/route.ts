@@ -16,7 +16,6 @@ export async function GET(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
@@ -141,7 +140,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = bodyValidation.data
-    const { processorIp, groupIndex, action, value } = body
+    const processorIp = String(body.processorIp || '')
+    const groupIndex = body.groupIndex
+    const action = String(body.action || '')
+    const value = body.value
 
     if (!processorIp || groupIndex === undefined) {
       return NextResponse.json(
@@ -165,7 +167,7 @@ export async function POST(request: NextRequest) {
     let result
     switch (action) {
       case 'setActive':
-        result = await client.setGroupActive(groupIndexNum, valueNum)
+        result = await client.setGroupActive(groupIndexNum, Boolean(valueNum))
         break
 
       case 'setSource':
@@ -180,7 +182,7 @@ export async function POST(request: NextRequest) {
 
       case 'setMute':
         // Need to add setGroupMute method to atlasClient
-        result = await client.setGroupMute(groupIndexNum, valueNum)
+        result = await client.setGroupMute(groupIndexNum, Boolean(valueNum))
         break
       
       default:

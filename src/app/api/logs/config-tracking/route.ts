@@ -120,21 +120,20 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
-    const { 
-      component, 
-      setting, 
-      oldValue, 
-      newValue, 
-      userId, 
-      metadata 
-    } = body
+    const {
+      component,
+      setting,
+      oldValue,
+      newValue,
+      userId,
+      metadata
+    } = bodyValidation.data
 
     // Validate required fields
     if (!component || !setting) {

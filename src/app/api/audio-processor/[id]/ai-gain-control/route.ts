@@ -193,10 +193,10 @@ export async function POST(
 
     if (aiConfig) {
       // Update existing configuration
-      aiConfig = await update('aiGainConfigurations', {
-        where: eq(schema.aiGainConfigurations.id, aiConfig.id),
-        data: configData
-      })
+      aiConfig = await update('aiGainConfigurations',
+        eq(schema.aiGainConfigurations.id, aiConfig.id),
+        configData
+      )
     } else {
       // Create new configuration
       aiConfig = await create('aiGainConfigurations', {

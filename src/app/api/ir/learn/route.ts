@@ -24,14 +24,13 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('🎓 [IR LEARN API] Starting IR learning session')
   logger.info('   Timestamp:', { data: new Date().toISOString() })
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const { deviceId, globalCacheDeviceId, commandId, functionName } = body
+    const { deviceId, globalCacheDeviceId, commandId, functionName } = bodyValidation.data
 
     if (!deviceId || !globalCacheDeviceId || !commandId || !functionName) {
       logger.info('❌ [IR LEARN API] Missing required fields')
@@ -203,7 +202,7 @@ async function startLearningSession(
           if (irCodeLine) {
             const learnedCode = irCodeLine.trim()
             logger.info('🎉 [IR LEARN] IR code learned successfully!')
-            logger.info('   Code length:', learnedCode.length, 'characters')
+            logger.info(`   Code length: ${learnedCode.length} characters`)
             logger.info('   Code preview:', { data: learnedCode.substring(0, 100) + '...' })
             
             // Automatically stop learning

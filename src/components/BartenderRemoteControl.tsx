@@ -694,7 +694,7 @@ export default function BartenderRemoteControl() {
       
       if (result.success && result.data && result.data.games) {
         const games = result.data.games || []
-        logger.info('🏆 Setting', games.length, 'games to state')
+        logger.info(`🏆 Setting ${games.length} games to state`)
         setSportsGuide(games)
         setSportsGuideStatus(`Found ${games.length} games`)
       } else {

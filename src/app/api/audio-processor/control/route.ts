@@ -210,7 +210,7 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
   
   // Send command to Atlas processor
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, port: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
     async (client) => {
       // Use setParameter method to set the output gain
       // Atlas expects volume in percentage (0-100)

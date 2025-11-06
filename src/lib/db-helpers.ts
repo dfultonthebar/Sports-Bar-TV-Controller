@@ -3,12 +3,12 @@
  * Provides high-level database operations with comprehensive logging
  */
 
-import { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, count as drizzleCount, sql } from 'drizzle-orm'
+import { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, count as drizzleCount, sql, isNotNull, isNull } from 'drizzle-orm'
 import { db, schema } from '@/db'
 import { logger } from './logger'
 
 // Re-export operators for convenience
-export { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, sql }
+export { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, sql, isNotNull, isNull }
 
 // Re-export schema for external usage
 export { schema }

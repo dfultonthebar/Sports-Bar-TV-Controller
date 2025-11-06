@@ -25,7 +25,6 @@ export async function GET(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const body = bodyValidation.data
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
@@ -78,19 +77,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const { modelId, codesetId, functionName } = body
+    const modelIdStr = modelId as string
+    const functionNameStr = functionName as string
 
-    if (!modelId || !functionName) {
-      return NextResponse.json({ 
-        error: 'Model ID and function name are required' 
+    if (!modelIdStr || !functionNameStr) {
+      return NextResponse.json({
+        error: 'Model ID and function name are required'
       }, { status: 400 })
     }
 
     // Get specific IR code for a function
-    const codes = await globalCacheAPI.getModelCodes(modelId)
+    const codes = await globalCacheAPI.getModelCodes(modelIdStr)
     
     let irCode: string | null = null
     for (const codeset of codes) {
-      const func = codeset.functions?.find(f => f.name === functionName)
+      const func = codeset.functions?.find(f => f.name === functionNameStr)
       if (func) {
         irCode = func.code
         break

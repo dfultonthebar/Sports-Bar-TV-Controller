@@ -6,10 +6,9 @@
 
 import { and, asc, desc, eq, findMany, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
+import { db } from '@/db'
 import { logger } from '@/lib/logger';
 import { loadKnowledgeBase, DocumentChunk, searchKnowledgeBase } from './ai-knowledge';
-
-// Using singleton prisma from @/lib/prisma;
 
 export interface EnhancedContext {
   documentation: DocumentChunk[];
@@ -38,17 +37,17 @@ export async function searchQAForContext(
     const queryLower = query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(term => term.length > 2);
 
-    // Get active Q&A entries
-    const entries = await prisma.qAEntry.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        question: true,
-        answer: true,
-        category: true,
-        usageCount: true,
-      },
-    });
+    // Get active Q&A entries using Drizzle
+    const entries = await db.select({
+      id: schema.qaEntries.id,
+      question: schema.qaEntries.question,
+      answer: schema.qaEntries.answer,
+      category: schema.qaEntries.category,
+      usageCount: schema.qaEntries.usageCount
+    })
+      .from(schema.qaEntries)
+      .where(eq(schema.qaEntries.isActive, true))
+      .all();
 
     // Score each Q&A entry
     const scoredEntries = entries.map(entry => {
@@ -94,13 +93,22 @@ export async function searchQAForContext(
 
     // Update usage count for returned entries
     for (const entry of topEntries) {
-      await prisma.qAEntry.update({
-        where: { id: entry.id },
-        data: {
-          usageCount: { increment: 1 },
-          lastUsed: new Date(),
-        },
-      }).catch(console.error);
+      // Fetch current entry to get current usageCount
+      const current = await db.select()
+        .from(schema.qaEntries)
+        .where(eq(schema.qaEntries.id, entry.id))
+        .get();
+
+      if (current) {
+        await db.update(schema.qaEntries)
+          .set({
+            usageCount: (current.usageCount || 0) + 1,
+            lastUsed: new Date().toISOString()
+          })
+          .where(eq(schema.qaEntries.id, entry.id))
+          .run()
+          .catch(console.error);
+      }
     }
 
     return topEntries;

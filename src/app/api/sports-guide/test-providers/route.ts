@@ -151,9 +151,8 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   try {
-    const { leagues = ['nfl', 'nba', 'premier'], date } = body
+    const { leagues = ['nfl', 'nba', 'premier'], date } = bodyValidation.data
 
     const testDate = date || new Date().toISOString().split('T')[0]
 

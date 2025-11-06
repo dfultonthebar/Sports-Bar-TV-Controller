@@ -31,7 +31,7 @@ async function createEnhancedLayoutImage(
   imageHeight: number
 ): Promise<string> {
   try {
-    logger.info('[Enhanced Image] Creating professional layout with', zones.length, 'zones')
+    logger.info(`[Enhanced Image] Creating professional layout with ${zones.length} zones`)
 
     // Target size for tablets (larger for better visibility)
     const TARGET_WIDTH = 1920
@@ -330,7 +330,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    logger.info('Returning imageUrl:', imageUrl, 'convertedImageUrl:', convertedImageUrl)
+    logger.info(`Returning imageUrl: ${imageUrl}, convertedImageUrl: ${convertedImageUrl}`)
 
     // Auto-detect TV zones from the uploaded/converted image
     let zones: any[] = []

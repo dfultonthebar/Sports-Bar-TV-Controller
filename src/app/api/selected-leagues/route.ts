@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findMany, or, updateMany, upsert, create, update, transaction, db, count } from '@/lib/db-helpers'
+import { and, asc, desc, eq, findMany, or, updateMany, upsert, create, update, transaction, db, count, sql } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -131,10 +131,13 @@ export async function DELETE(request: NextRequest) {
     const activeCount = await count('selectedLeagues', eq(schema.selectedLeagues.isActive, true))
 
     // Mark all leagues as inactive using a batch update
-    await updateMany('selectedLeagues', {
-      isActive: false,
-      updatedAt: new Date().toISOString()
-    })
+    await updateMany('selectedLeagues',
+      sql`1=1`, // Match all records
+      {
+        isActive: false,
+        updatedAt: new Date().toISOString()
+      }
+    )
 
     logger.api.response('DELETE', '/api/selected-leagues', 200, { cleared: activeCount })
     return NextResponse.json({

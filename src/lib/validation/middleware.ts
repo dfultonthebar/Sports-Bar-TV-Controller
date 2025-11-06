@@ -123,9 +123,9 @@ export async function validateRequestBody<T>(
     // Parse request body
     const rawBody = await request.json()
 
-    // Validate with schema
-    const parseOptions = stripUnknown ? { stripUnknown: true } : {}
-    const validatedData = schema.parse(rawBody, parseOptions)
+    // Validate with schema (Zod doesn't use parseOptions as second param)
+    // Use safeParse or passthrough() on schema instead
+    const validatedData = stripUnknown ? schema.parse(rawBody) : schema.passthrough().parse(rawBody)
 
     return {
       success: true,
@@ -210,9 +210,8 @@ export function validateQueryParams<T>(
       params[key] = value
     })
 
-    // Validate with schema
-    const parseOptions = stripUnknown ? { stripUnknown: true } : {}
-    const validatedData = schema.parse(params, parseOptions)
+    // Validate with schema (Zod doesn't use parseOptions as second param)
+    const validatedData = stripUnknown ? schema.parse(params) : schema.passthrough().parse(params)
 
     return {
       success: true,
@@ -276,8 +275,8 @@ export function validatePathParams<T>(
   const { stripUnknown = true, logErrors = true, errorPrefix } = options
 
   try {
-    const parseOptions = stripUnknown ? { stripUnknown: true } : {}
-    const validatedData = schema.parse(params, parseOptions)
+    // Validate with schema (Zod doesn't use parseOptions as second param)
+    const validatedData = stripUnknown ? schema.parse(params) : schema.passthrough().parse(params)
 
     return {
       success: true,

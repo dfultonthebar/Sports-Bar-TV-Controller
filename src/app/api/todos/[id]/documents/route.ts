@@ -43,9 +43,9 @@ export async function GET(
 
   try {
     const { id } = params
-    const documents = await prisma.todoDocument.findMany({
-      where: { todoId: id },
-      orderBy: { uploadedAt: 'desc' }
+    const documents = await findMany('todoDocuments', {
+      where: eq(schema.todoDocuments.todoId, id),
+      orderBy: desc(schema.todoDocuments.uploadedAt)
     })
 
     return NextResponse.json({

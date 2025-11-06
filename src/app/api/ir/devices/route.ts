@@ -94,7 +94,6 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   logger.info('➕ [IR DEVICES] Creating new IR device')
   logger.info('   Timestamp:', { data: new Date().toISOString() })
@@ -112,7 +111,7 @@ export async function POST(request: NextRequest) {
       globalCacheDeviceId,
       globalCachePortNumber,
       description
-    } = body
+    } = bodyValidation.data
 
     if (!name || !deviceType || !brand) {
       logger.info('❌ [IR DEVICES] Missing required fields')

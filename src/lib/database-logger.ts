@@ -71,7 +71,7 @@ export function logInfo(
   message: string,
   data?: any
 ): void {
-  logger.info(`[INFO] [${category}] ${message}`, data || '')
+  logger.info(`[INFO] [${category}] ${message}`, data ? { data } : undefined)
 }
 
 /**

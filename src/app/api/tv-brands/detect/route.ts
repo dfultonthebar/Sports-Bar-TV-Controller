@@ -31,13 +31,12 @@ export async function POST(request: NextRequest) {
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  const { data: body } = bodyValidation
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { cecAddress, forceRefresh } = body
+    const { cecAddress, forceRefresh } = bodyValidation.data
 
     if (!cecAddress) {
       return NextResponse.json(
