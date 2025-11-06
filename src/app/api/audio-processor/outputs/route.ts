@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
               groupId: null
             }
           }
-        })
+        }) as any
 
         logger.info(`Merged ${outputs.length} outputs (${configData.outputs.length} custom, ${modelOutputs.length} total)`)
       }

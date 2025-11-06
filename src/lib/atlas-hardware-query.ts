@@ -521,7 +521,7 @@ async function queryZoneOutputs(
     // STRATEGY 2: Just use the standard ZoneGain parameter
     // If multi-output support is needed in the future, it can be added with proper device detection
     
-    const outputCount = 1 // Always use single output for now
+    const outputCount: number = 1 // Always use single output for now
     
     // STRATEGY 3: Fallback to single output using ZoneGain (always used for now)
     if (outputCount > 1) {
@@ -559,8 +559,11 @@ async function queryZoneOutputs(
         // Determine output name and type based on index and count
         let outName = `Output ${outIdx + 1}`
         let outType = 'output'
-        
-        if (outputCount === 2) {
+
+        if (outputCount === 2 && zoneName.toLowerCase().includes('stereo')) {
+          outName = outIdx === 0 ? 'Left' : 'Right'
+          outType = outIdx === 0 ? 'left' : 'right'
+        } else if (outputCount === 2) {
           if (outIdx === 0) {
             outName = 'Main'
             outType = 'main'
@@ -568,9 +571,6 @@ async function queryZoneOutputs(
             outName = 'Sub'
             outType = 'sub'
           }
-        } else if (outputCount === 2 && zoneName.toLowerCase().includes('stereo')) {
-          outName = outIdx === 0 ? 'Left' : 'Right'
-          outType = outIdx === 0 ? 'left' : 'right'
         }
         
         outputs.push({

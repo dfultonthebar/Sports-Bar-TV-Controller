@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
   logger.api.request('POST', '/api/sports-guide-config')
 
   try {
-    const { zipCode, city, state, timezone, updateSchedule, providers, homeTeams } = data as SportsGuideConfigRequest
+    const { zipCode, city, state, timezone, updateSchedule, providers, homeTeams } = data as unknown as SportsGuideConfigRequest
 
     // Validate timezone - ENHANCED TIMEZONE HANDLING
     const validTimezones = [

@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
     logger.info(`[API] Detecting streaming apps on device ${deviceId}`)
 
     const installedApps = await streamingManager.getInstalledApps(
-      deviceId,
-      ipAddress,
-      port,
-      forceRefresh
+      String(deviceId),
+      String(ipAddress),
+      Number(port),
+      Boolean(forceRefresh)
     )
 
     const installedCount = installedApps.filter(a => a.isInstalled).length

@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const designRequest: FeatureDesignRequest = data
+    const designRequest = data as unknown as FeatureDesignRequest
 
     if (!designRequest.featureName || !designRequest.description || !designRequest.requirements) {
       return NextResponse.json({ 

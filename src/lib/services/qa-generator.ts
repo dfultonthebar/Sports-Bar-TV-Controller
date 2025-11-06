@@ -481,7 +481,7 @@ Remember: Output ONLY the JSON object, nothing else.`;
 
           if (!response.ok) {
             const errorText = await response.text();
-            logger.error(`Ollama API error for ${fileName}${chunkLabel}:`, response.status, errorText);
+            logger.error(`Ollama API error for ${fileName}${chunkLabel}: ${response.status} ${errorText}`);
             
             if (retries === 0 && options.model === DEFAULT_MODEL) {
               logger.debug(`Retrying with fallback model: ${FALLBACK_MODEL}`);

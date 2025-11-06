@@ -386,14 +386,14 @@ export class SideloadService {
         throw new Error('Cannot cancel completed or failed operation');
       }
 
-      await update('fireCubeSideloadOperations', {
-        where: eq(fireCubeSideloadOperations.id, operationId),
-        data: {
+      await update('fireCubeSideloadOperations',
+        eq(fireCubeSideloadOperations.id, operationId),
+        {
           status: 'failed',
           errorLog: JSON.stringify(['Operation cancelled by user']),
           completedAt: new Date().toISOString()
         }
-      });
+      );
     } catch (error) {
       logger.error('Failed to cancel operation:', error);
       throw error;

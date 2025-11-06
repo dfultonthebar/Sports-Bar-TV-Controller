@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate next execution time BEFORE transaction (async-safe)
-    const nextExecution = calculateNextExecution(scheduleType as string, scheduleData, timezone || 'America/New_York')
+    const nextExecution = calculateNextExecution(scheduleType as string, scheduleData as any, String(timezone || 'America/New_York'))
 
     // Use synchronous transaction to create command with audit log
     const newCommand = transactionHelpers.createWithAudit(

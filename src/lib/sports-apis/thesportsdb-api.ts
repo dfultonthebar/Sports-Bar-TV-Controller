@@ -145,7 +145,7 @@ class SportsDBAPIService {
 
   constructor() {
     // Create circuit breaker for TheSportsDB API calls with fallback
-    this.circuitBreaker = createCircuitBreaker(
+    this.circuitBreaker = createCircuitBreaker<Response>(
       async (url: string, options?: RequestInit) => this.fetchWithoutCircuitBreaker(url, options),
       {
         name: 'thesportsdb-api',
@@ -163,7 +163,7 @@ class SportsDBAPIService {
           headers: { 'Content-Type': 'application/json' }
         })
       }
-    )
+    ) as CircuitBreaker<[string, RequestInit?], Response>
   }
 
   /**

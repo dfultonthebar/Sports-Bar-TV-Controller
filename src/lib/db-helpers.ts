@@ -504,9 +504,9 @@ export async function transaction<T>(
   callback: (tx: typeof db) => Promise<T>
 ): Promise<T> {
   logger.database.query('transaction', 'START', {})
-  
+
   try {
-    const result = await db.transaction(callback as any)
+    const result = await db.transaction(callback as any) as T
     logger.database.success('transaction', 'COMMIT', {})
     return result
   } catch (error) {

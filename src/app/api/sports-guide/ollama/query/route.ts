@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         }
 
         logger.info(`[Ollama-Query] Querying Ollama: "${query}"`)
-        const result = await queryOllamaWithContext(query, includeRecentLogs !== false)
+        const result = await queryOllamaWithContext(String(query), includeRecentLogs !== false)
         return NextResponse.json(result)
     }
 

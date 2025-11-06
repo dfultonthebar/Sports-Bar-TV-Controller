@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     const videoInputs = await findMany('matrixInputs', {
       where: and(
         eq(schema.matrixInputs.configId, config.id as string),
-        eq(schema.matrixInputs.channelNumber, parseInt(videoInputNumber))
+        eq(schema.matrixInputs.channelNumber, videoInputNumber)
       )
     })
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     const matrixOutputs = await findMany('matrixOutputs', {
       where: and(
         eq(schema.matrixOutputs.configId, config.id as string),
-        eq(schema.matrixOutputs.channelNumber, 32 + parseInt(matrixOutputNumber))
+        eq(schema.matrixOutputs.channelNumber, 32 + matrixOutputNumber)
       )
     })
 
@@ -131,19 +131,19 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Update the matrix output with selected video input info
     await update('matrixOutputs', matrixOutput.id, {
-      selectedVideoInput: parseInt(videoInputNumber),
+      selectedVideoInput: videoInputNumber,
       videoInputLabel: videoInput.label,
       label: videoInput.label
     })
 
     // Step 3: Update or create the Wolfpack-Matrix routing state
     const existingRouting = await findFirst('wolfpackMatrixRoutings', {
-      where: eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, parseInt(matrixOutputNumber))
+      where: eq(schema.wolfpackMatrixRoutings.matrixOutputNumber, matrixOutputNumber)
     })
 
     if (existingRouting) {
       await update('wolfpackMatrixRoutings', existingRouting.id, {
-        wolfpackInputNumber: parseInt(videoInputNumber),
+        wolfpackInputNumber: videoInputNumber,
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
         lastRouted: new Date().toISOString(),
@@ -151,8 +151,8 @@ export async function POST(request: NextRequest) {
       })
     } else {
       await create('wolfpackMatrixRoutings', {
-        matrixOutputNumber: parseInt(matrixOutputNumber),
-        wolfpackInputNumber: parseInt(videoInputNumber),
+        matrixOutputNumber: matrixOutputNumber,
+        wolfpackInputNumber: videoInputNumber,
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
         isActive: true,
@@ -162,8 +162,8 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Log the routing state
     await create('wolfpackMatrixStates', {
-      matrixOutputNumber: parseInt(matrixOutputNumber),
-      wolfpackInputNumber: parseInt(videoInputNumber),
+      matrixOutputNumber: matrixOutputNumber,
+      wolfpackInputNumber: videoInputNumber,
       wolfpackInputLabel: videoInput.label,
       channelInfo: JSON.stringify({
         deviceType: videoInput.deviceType,

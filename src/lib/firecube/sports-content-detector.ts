@@ -135,9 +135,9 @@ export class SportsContentDetector {
 
       // Add new content
       for (const item of content) {
-        await upsert('fireCubeSportsContents', {
-          where: eq(fireCubeSportsContents.id, item.id || 'new'),
-          create: {
+        await upsert('fireCubeSportsContents',
+          eq(fireCubeSportsContents.id, item.id || 'new'),
+          {
             id: crypto.randomUUID(),
             deviceId: item.deviceId,
             appId: item.appId,
@@ -154,11 +154,11 @@ export class SportsContentDetector {
             description: item.description || null,
             lastUpdated: new Date().toISOString()
           },
-          update: {
+          {
             isLive: item.isLive,
             lastUpdated: new Date().toISOString()
           }
-        });
+        );
       }
     } catch (error) {
       logger.error('Failed to sync sports content:', error);
@@ -171,13 +171,14 @@ export class SportsContentDetector {
    */
   async getLiveSportsContent(deviceId: string): Promise<FireCubeSportsContent[]> {
     try {
-      return await findMany('fireCubeSportsContents', {
+      const results = await findMany('fireCubeSportsContents', {
         where: and(
           eq(fireCubeSportsContents.deviceId, deviceId),
           eq(fireCubeSportsContents.isLive, true)
         ),
         orderBy: [asc(fireCubeSportsContents.startTime)]
       });
+      return results as FireCubeSportsContent[];
     } catch (error) {
       logger.error('Failed to get live sports content:', error);
       return [];
@@ -192,7 +193,7 @@ export class SportsContentDetector {
       const now = new Date();
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-      return await findMany('fireCubeSportsContents', {
+      const results = await findMany('fireCubeSportsContents', {
         where: and(
           eq(fireCubeSportsContents.deviceId, deviceId),
           gte(fireCubeSportsContents.startTime, now.toISOString()),
@@ -200,6 +201,7 @@ export class SportsContentDetector {
         ),
         orderBy: [asc(fireCubeSportsContents.startTime)]
       });
+      return results as FireCubeSportsContent[];
     } catch (error) {
       logger.error('Failed to get upcoming sports content:', error);
       return [];
@@ -214,7 +216,7 @@ export class SportsContentDetector {
     query: string
   ): Promise<FireCubeSportsContent[]> {
     try {
-      return await findMany('fireCubeSportsContents', {
+      const results = await findMany('fireCubeSportsContents', {
         where: and(
           eq(fireCubeSportsContents.deviceId, deviceId),
           or(
@@ -226,6 +228,7 @@ export class SportsContentDetector {
         ),
         orderBy: [asc(fireCubeSportsContents.startTime)]
       });
+      return results as FireCubeSportsContent[];
     } catch (error) {
       logger.error('Failed to search sports content:', error);
       return [];
@@ -237,13 +240,14 @@ export class SportsContentDetector {
    */
   async getContentByLeague(deviceId: string, league: string): Promise<FireCubeSportsContent[]> {
     try {
-      return await findMany('fireCubeSportsContents', {
+      const results = await findMany('fireCubeSportsContents', {
         where: and(
           eq(fireCubeSportsContents.deviceId, deviceId),
           eq(fireCubeSportsContents.league, league)
         ),
         orderBy: [asc(fireCubeSportsContents.startTime)]
       });
+      return results as FireCubeSportsContent[];
     } catch (error) {
       logger.error('Failed to get content by league:', error);
       return [];

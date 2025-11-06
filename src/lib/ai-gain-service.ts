@@ -96,9 +96,6 @@ export class AIGainService {
         processorId: processorId,
         aiEnabled: true,
         inputType: 'line' // Only adjust line-level inputs, not microphones
-      },
-      include: {
-        inputMeter: true
       }
     })
 
@@ -140,27 +137,13 @@ export class AIGainService {
     // Check if audio is present (above silence threshold)
     const isAudioPresent = currentLevel > config.silenceThreshold
 
-    // Update last audio detected timestamp
-    if (isAudioPresent) {
-      await db.update(aiGainConfigurations).set({ lastAudioDetected: new Date() }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
-    }
+    // Note: lastAudioDetected tracking removed - field not in schema
 
     // Check if we should wait for audio
     if (!isAudioPresent) {
-      const lastAudioTime = config.lastAudioDetected
-      if (lastAudioTime) {
-        const silenceDurationMs = Date.now() - lastAudioTime.getTime()
-        const silenceThresholdMs = config.silenceDuration * 1000
-
-        if (silenceDurationMs > silenceThresholdMs) {
-          // Been silent too long, switch to waiting mode
-          if (config.adjustmentMode !== 'waiting') {
-            await db.update(aiGainConfigurations).set({ adjustmentMode: 'waiting' }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
-            logger.info(`Input ${config.inputNumber}: Waiting for audio source`)
-          }
-          return // Don't adjust while waiting
-        }
-      }
+      // Note: silence tracking removed - fields not in schema
+      // Skip adjustment when no audio is present
+      return
     }
 
     // Check if adjustment is needed
@@ -168,11 +151,8 @@ export class AIGainService {
     const tolerance = 0.5 // dB tolerance
 
     if (Math.abs(levelDifference) < tolerance) {
-      // Level is within tolerance, mark as idle
-      if (config.adjustmentMode !== 'idle') {
-        await db.update(aiGainConfigurations).set({ adjustmentMode: 'idle' }).where(eq(aiGainConfigurations.id, config.id)).returning().get()
-        logger.info(`Input ${config.inputNumber}: Target level reached (${currentLevel.toFixed(1)}dB)`)
-      }
+      // Level is within tolerance
+      logger.info(`Input ${config.inputNumber}: Target level reached (${currentLevel.toFixed(1)}dB)`)
       return
     }
 
@@ -218,8 +198,6 @@ export class AIGainService {
       await update('aiGainConfigurations',
         eq(schema.aiGainConfigurations.id, config.id),
         {
-          currentGain: newGain,
-          adjustmentMode: adjustmentMode,
           lastAdjustment: new Date(),
           adjustmentCount: (currentConfig?.adjustmentCount || 0) + 1
         }
@@ -316,8 +294,8 @@ export class AIGainService {
    * Get adjustment history for an input
    */
   async getAdjustmentHistory(
-    processorId: string, 
-    inputNumber: number, 
+    processorId: string,
+    inputNumber: number,
     limit: number = 100
   ): Promise<any[]> {
     return await findMany('aiGainAdjustmentLogs', {
@@ -328,7 +306,7 @@ export class AIGainService {
       orderBy: {
         timestamp: 'desc'
       },
-      take: limit
+      limit: limit
     })
   }
 
@@ -340,9 +318,6 @@ export class AIGainService {
       where: {
         processorId: processorId,
         aiEnabled: true
-      },
-      include: {
-        inputMeter: true
       },
       orderBy: {
         inputNumber: 'asc'

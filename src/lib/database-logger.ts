@@ -56,10 +56,12 @@ export function logError(
   const errorStack = error instanceof Error ? error.stack : undefined
 
   logger.error(`[ERROR] [${category}]`, {
-    message: errorMessage,
-    stack: errorStack,
-    context,
-    timestamp: new Date().toISOString()
+    data: {
+      message: errorMessage,
+      stack: errorStack,
+      context,
+      timestamp: new Date().toISOString()
+    }
   })
 }
 

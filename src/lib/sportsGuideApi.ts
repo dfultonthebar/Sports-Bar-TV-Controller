@@ -56,14 +56,14 @@ export class SportsGuideApiError extends Error {
  */
 export class SportsGuideApi {
   private config: SportsGuideApiConfig;
-  private circuitBreaker: CircuitBreaker<[string, RequestInit], Response>;
+  private circuitBreaker: CircuitBreaker<[string, RequestInit?], Response>;
 
   constructor(config: SportsGuideApiConfig) {
     this.config = config;
 
     // Create circuit breaker for Sports Guide API calls with empty fallback
-    this.circuitBreaker = createCircuitBreaker(
-      async (url: string, options: RequestInit) => this.fetchWithoutCircuitBreaker(url, options),
+    this.circuitBreaker = createCircuitBreaker<Response>(
+      async (url: string, options?: RequestInit) => this.fetchWithoutCircuitBreaker(url, options || {}),
       {
         name: 'sports-guide-api',
         timeout: 15000, // 15 seconds for guide data
@@ -80,7 +80,7 @@ export class SportsGuideApi {
           headers: { 'Content-Type': 'application/json' }
         })
       }
-    )
+    ) as CircuitBreaker<[string, RequestInit?], Response>
   }
 
   /**

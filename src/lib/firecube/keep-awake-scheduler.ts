@@ -9,7 +9,7 @@ import { fireCubeDevices, fireCubeKeepAwakeLogs } from '@/db/schema'
 import { logger } from '@/lib/logger';
 
 export class KeepAwakeScheduler {
-  private scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
+  private scheduledTasks: Map<string, any> = new Map();
 
   /**
    * Initialize keep-awake schedules for all enabled devices
@@ -152,7 +152,7 @@ export class KeepAwakeScheduler {
       const success = await client.keepAwake(true);
       await client.disconnect();
 
-      await this.logAction(deviceId, 'wake_up', success);
+      await this.logAction(deviceId, 'wake_up', Boolean(success));
 
       if (success) {
         logger.debug(`Woke up device ${device.name}`);

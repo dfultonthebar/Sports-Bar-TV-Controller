@@ -21,7 +21,7 @@ export interface WatcherOptions {
 }
 
 export class FileWatcher extends EventEmitter {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: any | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
   private pendingChanges: FileChangeEvent[] = [];
   private options: Required<WatcherOptions>;

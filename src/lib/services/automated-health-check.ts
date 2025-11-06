@@ -135,9 +135,7 @@ export class AutomatedHealthCheckService {
       // Note: DirecTV devices are not in schema yet, using empty array
       const directvDevices: any[] = []
 
-      const firetvDevices = await findMany('fireTVDevices', {
-        where: eq(schema.fireTVDevices.isActive, true)
-      })
+      const firetvDevices = await findMany('fireTVDevices', {})
 
       const devicesTotal = directvDevices.length + firetvDevices.length
       const directvOnline = directvDevices.filter((d: any) => d.isOnline).length

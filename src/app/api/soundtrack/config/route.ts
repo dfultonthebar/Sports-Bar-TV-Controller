@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // AUTHENTICATE ONCE: Test the API token before saving
     // This is the ONLY time we authenticate - token is then cached in database
-    const api = getSoundtrackAPI(apiKey)
+    const api = getSoundtrackAPI(String(apiKey))
     
     let testResult
     try {

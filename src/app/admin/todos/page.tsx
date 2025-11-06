@@ -7,7 +7,7 @@ import SportsBarLayout from '@/components/SportsBarLayout'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
 import TodoDetails from '@/components/TodoDetails'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 
 import { logger } from '@/lib/logger'
@@ -73,7 +73,11 @@ export default function TodosPage() {
   return (
     <SportsBarLayout>
       <div className="min-h-screen bg-gradient-to-br from-sportsBar-900 via-sportsBar-800 to-sportsBar-900">
-        <SportsBarHeader />
+        <SportsBarHeader
+          title="TODO Management"
+          subtitle="Track and manage system tasks"
+          icon={<CheckCircle2 className="w-8 h-8" />}
+        />
         
         <main className="container mx-auto px-4 py-8">
           {/* Back Button */}

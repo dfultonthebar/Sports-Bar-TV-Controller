@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Get the Atlas processor
     const processor = processorId
       ? await findUnique('audioProcessors', eq(schema.audioProcessors.id, processorIdStr))
-      : await findFirst('audioProcessors', eq(schema.audioProcessors.status, 'online'))
+      : await findFirst('audioProcessors', { where: eq(schema.audioProcessors.status, 'online') })
 
     if (!processor) {
       return NextResponse.json(

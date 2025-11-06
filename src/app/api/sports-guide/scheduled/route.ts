@@ -49,14 +49,16 @@ export async function POST(request: NextRequest) {
 
     // Log the successful update with timezone-adjusted time
     logger.info(`🏆 Scheduled Sports Guide Update Completed:`, {
-      timestamp: localNow.toISOString(),
-      timezone: timezone,
-      totalGames: liveData.totalGames,
-      liveGames: liveData.liveGames,
-      upcomingGames: liveData.upcomingGames,
-      completedGames: liveData.completedGames,
-      dataSources: liveData.sources,
-      dateRange: `${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`
+      data: {
+        timestamp: localNow.toISOString(),
+        timezone: timezone,
+        totalGames: liveData.totalGames,
+        liveGames: liveData.liveGames,
+        upcomingGames: liveData.upcomingGames,
+        completedGames: liveData.completedGames,
+        dataSources: liveData.sources,
+        dateRange: `${localNow.toISOString().split('T')[0]} to ${sevenDaysFromNow.toISOString().split('T')[0]}`
+      }
     })
 
     return NextResponse.json({

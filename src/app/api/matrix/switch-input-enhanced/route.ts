@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   const requestId = request.headers.get('x-request-id') || 'unknown'
 
   // Security: use validated data
-  const { input, output = 1, userId } = data as MatrixSwitchRequest
+  const { input, output = 1, userId } = data as unknown as MatrixSwitchRequest
 
   try {
 

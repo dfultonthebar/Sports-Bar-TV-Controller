@@ -123,7 +123,7 @@ class CircuitBreakerRegistry {
         cacheHits: breakerStats.cacheHits,
         cacheMisses: breakerStats.cacheMisses,
         latencyMean: breakerStats.latencyMean,
-        percentiles: breakerStats.percentiles
+        percentiles: breakerStats.percentiles as any
       }
     })
     return stats
@@ -147,7 +147,7 @@ class CircuitBreakerRegistry {
           cacheHits: breakerStats.cacheHits,
           cacheMisses: breakerStats.cacheMisses,
           latencyMean: breakerStats.latencyMean,
-          percentiles: breakerStats.percentiles
+          percentiles: breakerStats.percentiles as any
         }
       }
 
@@ -474,4 +474,4 @@ export function getCircuitBreakerHealth(): {
 /**
  * Export types for external use
  */
-export type { CircuitBreaker } from 'opossum'
+export type { default as CircuitBreaker } from 'opossum'

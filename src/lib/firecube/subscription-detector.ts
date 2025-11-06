@@ -229,15 +229,15 @@ export class SubscriptionDetector {
         try {
           const result = await this.checkSubscription(deviceId, app.packageName);
 
-          await update('fireCubeApps', {
-            where: eq(fireCubeApps.id, app.id),
-            data: {
+          await update('fireCubeApps',
+            eq(fireCubeApps.id, app.id),
+            {
               hasSubscription: result.hasSubscription,
               subscriptionStatus: result.subscriptionStatus,
               lastChecked: result.lastChecked.toISOString(),
               updatedAt: new Date().toISOString()
             }
-          });
+          );
         } catch (error) {
           logger.error(`Failed to check subscription for ${app.packageName}:`, error);
         }

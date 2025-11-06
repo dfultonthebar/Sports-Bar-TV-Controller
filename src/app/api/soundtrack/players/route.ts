@@ -170,7 +170,7 @@ export async function PATCH(request: NextRequest) {
     if (stationId) updatedData.stationId = stationId
     if (volume !== undefined) updatedData.volume = volume
 
-    const soundZone = await api.updateSoundZone(playerId, updatedData)
+    const soundZone = await api.updateSoundZone(String(playerId), updatedData)
 
     // Invalidate players cache since state changed
     cacheManager.clearType('soundtrack-data')

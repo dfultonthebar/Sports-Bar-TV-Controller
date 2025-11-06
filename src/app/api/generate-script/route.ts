@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const scriptRequest: ScriptGenerationRequest = data
+    const scriptRequest = data as unknown as ScriptGenerationRequest
 
     if (!scriptRequest.description || !scriptRequest.scriptType) {
       return NextResponse.json({ 
