@@ -27,7 +27,11 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
   try {
-    const { apiKey, userId } = bodyValidation.data;
+    const { apiKey: apiKeyRaw, userId: userIdRaw } = bodyValidation.data;
+
+    // Convert unknown to string
+    const apiKey = String(apiKeyRaw)
+    const userId = String(userIdRaw)
 
     if (!apiKey || !userId) {
       return NextResponse.json(

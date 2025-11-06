@@ -21,12 +21,11 @@ export async function POST(request: NextRequest) {
     const { operation, duration, metadata, component } = bodyValidation.data
 
     await enhancedLogger.logPerformanceMetric(
-      operation,
-      duration,
-      {
-        ...metadata,
-        component
-      }
+      operation as string,
+      duration as number,
+      metadata && typeof metadata === 'object'
+        ? { ...(metadata as object), component }
+        : { component }
     )
 
     return NextResponse.json({ success: true })

@@ -40,10 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Get all input meters for the processor with current levels
     const inputMeters = await findMany('audioInputMeters', {
-      where: and(
-        eq(schema.audioInputMeters.processorId, processorId),
-        eq(schema.audioInputMeters.isActive, true)
-      ),
+      where: eq(schema.audioInputMeters.processorId, processorId),
       orderBy: asc(schema.audioInputMeters.inputNumber),
       limit: 1000
     })

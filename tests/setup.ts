@@ -6,8 +6,8 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Set test environment
-process.env.NODE_ENV = 'test';
+// Set test environment (bypass readonly check)
+Object.defineProperty(process.env, 'NODE_ENV', { value: 'test', writable: true });
 
 // Suppress console output during tests unless debugging
 if (!process.env.DEBUG_TESTS) {

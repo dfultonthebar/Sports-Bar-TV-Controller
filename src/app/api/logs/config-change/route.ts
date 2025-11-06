@@ -21,11 +21,11 @@ export async function POST(request: NextRequest) {
     const { component, setting, oldValue, newValue, userId } = bodyValidation.data
 
     await enhancedLogger.logConfigurationChange(
-      component,
-      setting,
+      String(component),
+      String(setting),
       oldValue,
       newValue,
-      userId
+      userId as string | undefined
     )
 
     return NextResponse.json({ success: true })

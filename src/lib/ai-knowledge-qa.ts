@@ -43,7 +43,7 @@ export async function searchQAForContext(
       question: schema.qaEntries.question,
       answer: schema.qaEntries.answer,
       category: schema.qaEntries.category,
-      usageCount: schema.qaEntries.usageCount
+      usageCount: schema.qaEntries.useCount
     })
       .from(schema.qaEntries)
       .where(eq(schema.qaEntries.isActive, true))
@@ -102,7 +102,7 @@ export async function searchQAForContext(
       if (current) {
         await db.update(schema.qaEntries)
           .set({
-            usageCount: (current.usageCount || 0) + 1,
+            useCount: (current.useCount || 0) + 1,
             lastUsed: new Date().toISOString()
           })
           .where(eq(schema.qaEntries.id, entry.id))

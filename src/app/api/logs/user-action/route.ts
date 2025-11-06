@@ -21,14 +21,11 @@ export async function POST(request: NextRequest) {
     const { action, details, userId, component, userAgent, url } = bodyValidation.data
 
     await enhancedLogger.logUserInteraction(
-      action,
-      {
-        ...details,
-        component,
-        url,
-        userAgent
-      },
-      userId,
+      action as string,
+      details && typeof details === 'object'
+        ? { ...(details as object), component, url, userAgent }
+        : { component, url, userAgent },
+      userId as string | undefined,
       request.headers.get('x-session-id') || undefined
     )
 

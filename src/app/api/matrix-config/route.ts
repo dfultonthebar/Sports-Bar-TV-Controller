@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (1 minute TTL)
     const cached = cacheManager.get('matrix-config', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object') {
       logger.debug('[Matrix] Returning matrix config from cache')
       return NextResponse.json({
         ...cached,

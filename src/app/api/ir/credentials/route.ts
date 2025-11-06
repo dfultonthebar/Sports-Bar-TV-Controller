@@ -127,13 +127,13 @@ export async function POST(request: NextRequest) {
     logger.info('   Email:', email)
 
     // Try to login to verify credentials
-    const loginResult = await irDatabaseService.login(email, password)
+    const loginResult = await irDatabaseService.login(email as string, password as string)
 
     if (loginResult.Status !== 'success' || !loginResult.Account?.ApiKey) {
       logger.info('❌ [IR CREDENTIALS] Login failed')
       logger.info('   Message:', { data: loginResult.Message })
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      
+
       return NextResponse.json(
         { success: false, error: loginResult.Message || 'Login failed' },
         { status: 401 }
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Encrypt password
-    const encryptedPassword = encrypt(password)
+    const encryptedPassword = encrypt(password as string)
 
     // Deactivate old credentials
     await db.update(irDatabaseCredentials)

@@ -8,7 +8,7 @@
  */
 
 import { createCircuitBreaker } from './circuit-breaker'
-import type { CircuitBreaker } from 'opossum'
+import type CircuitBreaker from 'opossum'
 
 export interface SportsGuideListing {
   time: string;

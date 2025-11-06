@@ -35,7 +35,12 @@ export async function POST(request: NextRequest) {
 
   // Security: use validated data
   const { data } = bodyValidation
-  const { matrixOutputNumber, videoInputNumber, videoInputLabel } = data
+  const { matrixOutputNumber: matrixOutputRaw, videoInputNumber: videoInputRaw, videoInputLabel } = data
+
+  // Convert to numbers
+  const matrixOutputNumber = typeof matrixOutputRaw === 'string' ? parseInt(matrixOutputRaw, 10) : Number(matrixOutputRaw)
+  const videoInputNumber = typeof videoInputRaw === 'string' ? parseInt(videoInputRaw, 10) : Number(videoInputRaw)
+
   try {
 
     // Validate input parameters
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Get the video input
     const videoInputs = await findMany('matrixInputs', {
       where: and(
-        eq(schema.matrixInputs.configId, config.id),
+        eq(schema.matrixInputs.configId, config.id as string),
         eq(schema.matrixInputs.channelNumber, parseInt(videoInputNumber))
       )
     })
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
     // Get the matrix output (channels 33-36 for Matrix 1-4)
     const matrixOutputs = await findMany('matrixOutputs', {
       where: and(
-        eq(schema.matrixOutputs.configId, config.id),
+        eq(schema.matrixOutputs.configId, config.id as string),
         eq(schema.matrixOutputs.channelNumber, 32 + parseInt(matrixOutputNumber))
       )
     })
@@ -107,7 +112,7 @@ export async function POST(request: NextRequest) {
     logger.info(`Routing video input ${videoInputNumber} (${videoInput.label}) to Matrix ${matrixOutputNumber}`)
     
     const routingResult = await routeWolfpackToMatrix(
-      config,
+      config as any,
       videoInputNumber,
       matrixOutputNumber,
       videoInput.label
@@ -234,11 +239,11 @@ export async function GET(request: NextRequest) {
     const outputs = await findMany('matrixOutputs', {
       where: matrixOutputNumber 
         ? and(
-            eq(schema.matrixOutputs.configId, config.id),
+            eq(schema.matrixOutputs.configId, config.id as string),
             eq(schema.matrixOutputs.channelNumber, 32 + parseInt(matrixOutputNumber))
           )
         : and(
-            eq(schema.matrixOutputs.configId, config.id),
+            eq(schema.matrixOutputs.configId, config.id as string),
             gte(schema.matrixOutputs.channelNumber, 33),
             lte(schema.matrixOutputs.channelNumber, 36)
           ),

@@ -132,12 +132,11 @@ export class AutomatedHealthCheckService {
     try {
       const { findMany, eq, schema } = await import('@/lib/db-helpers')
 
-      const directvDevices = await findMany('directvDevices', {
-        where: eq(schema.directvDevices.isActive, true)
-      })
+      // Note: DirecTV devices are not in schema yet, using empty array
+      const directvDevices: any[] = []
 
-      const firetvDevices = await findMany('firetvDevices', {
-        where: eq(schema.firetvDevices.isActive, true)
+      const firetvDevices = await findMany('fireTVDevices', {
+        where: eq(schema.fireTVDevices.isActive, true)
       })
 
       const devicesTotal = directvDevices.length + firetvDevices.length

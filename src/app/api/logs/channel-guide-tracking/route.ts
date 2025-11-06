@@ -226,10 +226,10 @@ export async function POST(request: NextRequest) {
 
     // Log channel guide interaction
     await enhancedLogger.logUserInteraction(
-      action,
+      action as string,
       logDetails,
-      userId,
-      sessionId
+      userId as string | undefined,
+      sessionId as string | undefined
     )
 
     // Special handling for content downloads

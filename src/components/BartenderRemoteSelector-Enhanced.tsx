@@ -385,36 +385,31 @@ export default function BartenderRemoteSelectorEnhanced() {
                   />
                   {selectedInput && channelPresets.length > 0 && (
                     <ChannelPresetGrid
-                      presets={channelPresets.filter(p => p.deviceType === 'directv')}
+                      deviceType="directv"
                       onPresetClick={async (preset) => {
                         setLoading(true)
                         setCommandStatus(`Tuning to ${preset.name}...`)
                         // ... tune logic
                       }}
-                      loading={loading}
                     />
                   )}
                 </div>
               )}
-              {deviceType === 'cable' && selectedDevice && (
+              {deviceType === 'cable' && selectedDevice && 'iTachAddress' in selectedDevice && (
                 <div className="space-y-4">
                   <CableBoxRemote
-                    inputChannel={selectedInput!}
-                    onChannelChange={async (channel) => {
-                      setLoading(true)
-                      setCommandStatus(`Tuning to channel ${channel}...`)
-                      // ... tune logic
-                    }}
+                    deviceId={selectedDevice.id}
+                    deviceName={selectedDevice.name}
+                    iTachAddress={selectedDevice.iTachAddress}
                   />
                   {selectedInput && channelPresets.length > 0 && (
                     <ChannelPresetGrid
-                      presets={channelPresets.filter(p => p.deviceType === 'cable')}
+                      deviceType="cable"
                       onPresetClick={async (preset) => {
                         setLoading(true)
                         setCommandStatus(`Tuning to ${preset.name}...`)
                         // ... tune logic
                       }}
-                      loading={loading}
                     />
                   )}
                 </div>

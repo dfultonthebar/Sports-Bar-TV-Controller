@@ -593,7 +593,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${game.league}`)
           setLastOperationTime(new Date())
-          logButtonClick('game_watch_cec', { game: game.league, cableBoxId: cableBox.id })
+          logButtonClick('game_watch_cec', `${game.league}`, { game: game.league, cableBoxId: cableBox.id })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'game_watch_cec')
@@ -774,7 +774,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${preset.name}`)
           setLastOperationTime(new Date())
-          logButtonClick('preset_tune_cec', { preset: preset.name, cableBoxId: cableBox.id })
+          logButtonClick('preset_tune_cec', preset.name, { preset: preset.name, cableBoxId: cableBox.id })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'preset_tune_cec')
@@ -1118,7 +1118,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                   <span className="text-xs">
                                     ({game.channel.number})
                                     {(game.channel as any)._presetMapped && (
-                                      <Star className="w-2 h-2 inline ml-0.5 text-yellow-400" title="Channel number from preset" />
+                                      <Star className="w-2 h-2 inline ml-0.5 text-yellow-400" />
                                     )}
                                   </span>
                                 )}

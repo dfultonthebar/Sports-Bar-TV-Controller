@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           )
         }
-        await commandScheduler.triggerCommand(commandId)
+        await commandScheduler.triggerCommand(commandId as string)
         return NextResponse.json({
           success: true,
           message: 'Command triggered successfully',

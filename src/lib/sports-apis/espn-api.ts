@@ -9,7 +9,7 @@
 import { espnThrottler } from '@/lib/rate-limiting/request-throttler'
 import { cacheManager } from '../cache-manager'
 import { createCircuitBreaker } from '@/lib/circuit-breaker'
-import type { CircuitBreaker } from 'opossum'
+import type CircuitBreaker from 'opossum'
 
 import { logger } from '@/lib/logger'
 export interface ESPNGame {

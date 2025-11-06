@@ -22,10 +22,15 @@ export async function POST(request: NextRequest) {
   // Security: use validated data
   const { data } = bodyValidation
   const { input, output } = data
+
+  // Convert to numbers if strings
+  const inputNum = typeof input === 'string' ? parseInt(input, 10) : input
+  const outputNum = typeof output === 'string' ? parseInt(output, 10) : output
+
   try {
 
     // Validate input parameters
-    if (!input || !output || input < 1 || output < 1 || input > 32 || output > 32) {
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 32 || outputNum > 32) {
       return NextResponse.json(
         { error: 'Invalid input or output channel' },
         { status: 400 }
@@ -33,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use shared matrix routing logic
-    const success = await routeMatrix(input, output)
+    const success = await routeMatrix(inputNum, outputNum)
 
     if (!success) {
       return NextResponse.json({

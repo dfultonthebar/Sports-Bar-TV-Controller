@@ -26,9 +26,9 @@ async function cleanupDuplicates() {
   let totalDeleted = 0
 
   for (const dup of duplicates) {
-    const question = dup.question as string
-    const firstCreated = dup.firstCreated as string
-    const count = dup.count as number
+    const question = (dup as any).question as string
+    const firstCreated = (dup as any).firstCreated as string
+    const count = (dup as any).count as number
 
     // Delete all entries for this question EXCEPT the oldest one
     const result = await db.run(sql`

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     // Try to get from cache first (1 minute TTL)
     const cached = cacheManager.get('streaming-status', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object') {
       logger.debug('[Streaming] Returning service status from cache')
       return NextResponse.json({
         ...cached,

@@ -47,7 +47,7 @@ export async function scanDocuments(dirPath: string = RAGConfig.docsPath): Promi
 
       // Skip excluded folders
       if (entry.isDirectory()) {
-        if (!RAGConfig.excludeFolders.includes(entry.name)) {
+        if (!(RAGConfig.excludeFolders as readonly string[]).includes(entry.name)) {
           const subDocs = await scanDocuments(fullPath);
           documents.push(...subDocs);
         }
@@ -56,7 +56,7 @@ export async function scanDocuments(dirPath: string = RAGConfig.docsPath): Promi
 
       // Check if file has supported extension
       const ext = path.extname(entry.name).toLowerCase();
-      if (RAGConfig.supportedExtensions.includes(ext)) {
+      if ((RAGConfig.supportedExtensions as readonly string[]).includes(ext)) {
         documents.push(fullPath);
       }
     }

@@ -125,7 +125,12 @@ export async function validateRequestBody<T>(
 
     // Validate with schema (Zod doesn't use parseOptions as second param)
     // Use safeParse or passthrough() on schema instead
-    const validatedData = stripUnknown ? schema.parse(rawBody) : schema.passthrough().parse(rawBody)
+    // Note: passthrough() only exists on ZodObject, not on all ZodTypes
+    const validatedData = stripUnknown
+      ? schema.parse(rawBody)
+      : ('passthrough' in schema && typeof (schema as any).passthrough === 'function'
+        ? (schema as any).passthrough().parse(rawBody)
+        : schema.parse(rawBody))
 
     return {
       success: true,
@@ -211,7 +216,12 @@ export function validateQueryParams<T>(
     })
 
     // Validate with schema (Zod doesn't use parseOptions as second param)
-    const validatedData = stripUnknown ? schema.parse(params) : schema.passthrough().parse(params)
+    // Note: passthrough() only exists on ZodObject, not on all ZodTypes
+    const validatedData = stripUnknown
+      ? schema.parse(params)
+      : ('passthrough' in schema && typeof (schema as any).passthrough === 'function'
+        ? (schema as any).passthrough().parse(params)
+        : schema.parse(params))
 
     return {
       success: true,
@@ -276,7 +286,12 @@ export function validatePathParams<T>(
 
   try {
     // Validate with schema (Zod doesn't use parseOptions as second param)
-    const validatedData = stripUnknown ? schema.parse(params) : schema.passthrough().parse(params)
+    // Note: passthrough() only exists on ZodObject, not on all ZodTypes
+    const validatedData = stripUnknown
+      ? schema.parse(params)
+      : ('passthrough' in schema && typeof (schema as any).passthrough === 'function'
+        ? (schema as any).passthrough().parse(params)
+        : schema.parse(params))
 
     return {
       success: true,

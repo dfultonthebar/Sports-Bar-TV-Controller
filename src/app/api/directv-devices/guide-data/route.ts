@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     // Try to get from cache first (5 minutes TTL for guide data)
     const cached = cacheManager.get('device-config', cacheKey)
-    if (cached) {
+    if (cached && typeof cached === 'object') {
       logger.info(`🎭 Returning cached DirecTV guide data for ${deviceId}`)
       return NextResponse.json({
         ...cached,

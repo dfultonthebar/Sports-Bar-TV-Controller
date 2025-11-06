@@ -30,6 +30,9 @@ export const schedules = sqliteTable('Schedule', {
   recurring: integer('recurring', { mode: 'boolean' }).notNull().default(false),
   daysOfWeek: text('daysOfWeek'),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  lastExecuted: timestamp('lastExecuted'),
+  executionCount: integer('executionCount').notNull().default(0),
+  lastResult: text('lastResult'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })

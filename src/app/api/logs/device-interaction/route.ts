@@ -21,14 +21,13 @@ export async function POST(request: NextRequest) {
     const { deviceType, deviceId, action, success, details, component } = bodyValidation.data
 
     await enhancedLogger.logHardwareOperation(
-      deviceType,
-      deviceId,
-      action,
+      deviceType as any,
+      deviceId as string | undefined,
+      String(action),
       success,
-      {
-        ...details,
-        component
-      }
+      details && typeof details === 'object'
+        ? { ...(details as object), component }
+        : { component }
     )
 
     return NextResponse.json({ success: true })

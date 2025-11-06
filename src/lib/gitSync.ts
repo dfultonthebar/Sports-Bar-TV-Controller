@@ -85,12 +85,12 @@ async function generateTodoListMarkdown(): Promise<string> {
   });
 
   // Fetch documents for each todo
-  const todos = await Promise.all(
-    todosList.map(async (todo) => {
+  const todos: Todo[] = await Promise.all(
+    todosList.map(async (todo): Promise<Todo> => {
       const documents = await findMany('todoDocuments', {
         where: eq(schema.todoDocuments.todoId, todo.id)
       })
-      return { ...todo, documents }
+      return { ...todo, documents } as Todo
     })
   );
   

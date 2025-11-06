@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         logger.info(`\n📥 Downloading: ${func.functionName}`)
         
         const code = await irDatabaseService.downloadCode(
-          codesetId,
+          codesetId as string,
           func.functionName,
           credentials.apiKey,
           'gc'

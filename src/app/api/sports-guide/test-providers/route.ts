@@ -152,11 +152,12 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
   try {
-    const { leagues = ['nfl', 'nba', 'premier'], date } = bodyValidation.data
+    const { leagues: leaguesRaw = ['nfl', 'nba', 'premier'], date } = bodyValidation.data
+    const leagues = Array.isArray(leaguesRaw) ? leaguesRaw : ['nfl', 'nba', 'premier']
 
-    const testDate = date || new Date().toISOString().split('T')[0]
+    const testDate = (date as string | undefined) || new Date().toISOString().split('T')[0]
 
-    logger.info(`🧪 Testing specific leagues: ${Array.isArray(leagues) ? leagues.join(', ') : ''} for date: ${testDate}`)
+    logger.info(`🧪 Testing specific leagues: ${leagues.join(', ')} for date: ${testDate}`)
     
     const results: any = {
       timestamp: new Date().toISOString(),

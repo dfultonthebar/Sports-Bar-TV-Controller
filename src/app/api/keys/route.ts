@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Encrypt the API key
-    const encryptedKey = encrypt(keyValue)
+    const encryptedKey = encrypt(keyValue as string)
 
     // Create the API key record
     const apiKey = await create('apiKeys', {
@@ -114,7 +114,7 @@ export async function PUT(request: NextRequest) {
 
     if (name) updateData.name = name
     if (provider) updateData.provider = provider
-    if (keyValue) updateData.keyValue = encrypt(keyValue)
+    if (keyValue) updateData.keyValue = encrypt(keyValue as string)
     if (description !== undefined) updateData.description = description
     if (isActive !== undefined) updateData.isActive = isActive
 

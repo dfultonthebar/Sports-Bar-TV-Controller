@@ -208,7 +208,7 @@ export class FireCubeDiscovery {
       return {
         devices,
         duration: Date.now() - startTime,
-        method,
+        method: method === 'both' ? 'network_scan' : method,
         errors
       };
     } catch (error: any) {
@@ -216,7 +216,7 @@ export class FireCubeDiscovery {
       return {
         devices: [],
         duration: Date.now() - startTime,
-        method,
+        method: method === 'both' ? 'network_scan' : method,
         errors
       };
     }

@@ -34,11 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const options = validation.data;
+    const options = validation.data as import('@/lib/rag-server/query-engine').QueryOptions;
 
     logger.info('RAG query received', {
       data: {
-        query: options.query.substring(0, 50),
+        query: options.query?.substring(0, 50),
         tech: options.tech,
       }
     });

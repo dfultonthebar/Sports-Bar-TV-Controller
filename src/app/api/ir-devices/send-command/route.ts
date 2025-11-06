@@ -97,13 +97,19 @@ export async function POST(request: NextRequest) {
   try {
     const { data } = bodyValidation
     const { deviceId, command, iTachAddress, isRawCode } = data
-    if (!deviceId || !command || !iTachAddress) {
+
+    // Type assertions for unknown values
+    const deviceIdStr = String(deviceId)
+    const commandStr = String(command)
+    const iTachAddressStr = String(iTachAddress)
+
+    if (!deviceIdStr || !commandStr || !iTachAddressStr) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
     // Load device information
     const deviceData = await loadDevices()
-    const device = (deviceData.devices && Array.isArray(deviceData.devices)) ? deviceData.devices.find((d: any) => d.id === deviceId) : null
+    const device = (deviceData.devices && Array.isArray(deviceData.devices)) ? deviceData.devices.find((d: any) => d.id === deviceIdStr) : null
 
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
@@ -112,18 +118,18 @@ export async function POST(request: NextRequest) {
     let irCode: string
 
     // Check if this is a raw IR code or a command name
-    if (isRawCode || (typeof command === 'string' && (command.startsWith('sendir,') || command.startsWith('completeir,')))) {
+    if (isRawCode || (commandStr.startsWith('sendir,') || commandStr.startsWith('completeir,'))) {
       // This is already a raw IR code
-      irCode = command
+      irCode = commandStr
       logger.info(`Sending raw IR code to ${device.name}`)
     } else {
       // Look up the command in common codes
-      irCode = COMMON_IR_CODES[command]
+      irCode = COMMON_IR_CODES[commandStr]
 
       if (!irCode) {
-        return NextResponse.json({ error: `IR code not found for command: ${command}` }, { status: 404 })
+        return NextResponse.json({ error: `IR code not found for command: ${commandStr}` }, { status: 404 })
       }
-      logger.info(`Sending command '${command}' to ${device.name}`)
+      logger.info(`Sending command '${commandStr}' to ${device.name}`)
     }
 
     // Modify the IR code to use the correct connector if needed
@@ -131,13 +137,13 @@ export async function POST(request: NextRequest) {
     // For common codes, we might need to adjust
 
     try {
-      await sendITachCommand(iTachAddress, irCode)
+      await sendITachCommand(iTachAddressStr, irCode)
 
       return NextResponse.json({
         success: true,
-        message: `Successfully sent ${isRawCode ? 'IR code' : command} to ${device.name}`,
+        message: `Successfully sent ${isRawCode ? 'IR code' : commandStr} to ${device.name}`,
         device: device.name,
-        command: isRawCode ? 'raw_ir_code' : command,
+        command: isRawCode ? 'raw_ir_code' : commandStr,
       })
     } catch (error) {
       logger.error('Failed to send IR command:', error)

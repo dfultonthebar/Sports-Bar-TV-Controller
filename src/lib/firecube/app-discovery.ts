@@ -214,7 +214,7 @@ export class AppDiscoveryService {
       const result = await client.launchApp(packageName);
       await client.disconnect();
 
-      return result;
+      return !!result;
     } catch (error) {
       logger.error(`Failed to launch app ${packageName}:`, error);
       return false;
@@ -239,7 +239,7 @@ export class AppDiscoveryService {
       const result = await client.stopApp(packageName);
       await client.disconnect();
 
-      return result;
+      return !!result;
     } catch (error) {
       logger.error(`Failed to stop app ${packageName}:`, error);
       return false;

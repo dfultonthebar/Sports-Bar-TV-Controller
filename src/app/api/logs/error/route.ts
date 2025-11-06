@@ -22,15 +22,13 @@ export async function POST(request: NextRequest) {
 
     await enhancedLogger.error(
       'system',
-      context || 'frontend',
+      context as string | 'frontend',
       'client_error',
-      message,
-      {
-        ...details,
-        url,
-        userAgent
-      },
-      stack
+      String(message),
+      details && typeof details === 'object'
+        ? { ...(details as object), url, userAgent }
+        : { url, userAgent },
+      stack as string | undefined
     )
 
     return NextResponse.json({ success: true })

@@ -9,7 +9,7 @@
 
 import { sportsDBThrottler } from '@/lib/rate-limiting/request-throttler'
 import { createCircuitBreaker } from '@/lib/circuit-breaker'
-import type { CircuitBreaker } from 'opossum'
+import type CircuitBreaker from 'opossum'
 
 import { logger } from '@/lib/logger'
 export interface SportsDBTeam {

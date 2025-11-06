@@ -71,8 +71,8 @@ export async function GET(request: NextRequest) {
         // Merge all model inputs with custom configurations where available
         const mergedInputs = inputs.map(modelInput => {
           const customInput = customInputsMap.get(modelInput.id)
-          
-          if (customInput) {
+
+          if (customInput && typeof customInput === 'object') {
             // Merge custom configuration with model defaults
             return {
               ...modelInput,

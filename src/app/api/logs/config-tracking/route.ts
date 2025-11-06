@@ -145,11 +145,11 @@ export async function POST(request: NextRequest) {
 
     // Log the configuration change
     await enhancedLogger.logConfigurationChange(
-      component,
-      setting,
+      component as string,
+      setting as string,
       oldValue,
       newValue,
-      userId
+      userId as string | undefined
     )
 
     // Also log as user action for comprehensive tracking
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
         newValue,
         metadata
       },
-      userId
+      userId as string | undefined
     )
 
     return NextResponse.json({

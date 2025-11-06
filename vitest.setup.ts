@@ -1,11 +1,11 @@
 import { vi } from 'vitest'
 
-// Mock environment variables
-process.env.NODE_ENV = 'test'
-process.env.DATABASE_URL = ':memory:'
-process.env.ANTHROPIC_API_KEY = 'test-key'
-process.env.NEXTAUTH_SECRET = 'test-secret'
-process.env.NEXTAUTH_URL = 'http://localhost:3000'
+// Mock environment variables (bypass readonly check)
+Object.defineProperty(process.env, 'NODE_ENV', { value: 'test', writable: true })
+Object.defineProperty(process.env, 'DATABASE_URL', { value: ':memory:', writable: true })
+Object.defineProperty(process.env, 'ANTHROPIC_API_KEY', { value: 'test-key', writable: true })
+Object.defineProperty(process.env, 'NEXTAUTH_SECRET', { value: 'test-secret', writable: true })
+Object.defineProperty(process.env, 'NEXTAUTH_URL', { value: 'http://localhost:3000', writable: true })
 
 // Mock Next.js environment
 vi.mock('next/headers', () => ({

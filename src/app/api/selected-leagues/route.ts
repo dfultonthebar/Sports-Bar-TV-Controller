@@ -91,8 +91,8 @@ export async function POST(request: NextRequest) {
       for (const leagueId of leagueIds) {
         await upsert(
           'selectedLeagues',
-          eq(schema.selectedLeagues.leagueId, leagueId),
-          { leagueId, isActive: true },
+          eq(schema.selectedLeagues.league, leagueId),
+          { league: leagueId, isActive: true },
           { isActive: true, updatedAt: new Date().toISOString() }
         )
       }

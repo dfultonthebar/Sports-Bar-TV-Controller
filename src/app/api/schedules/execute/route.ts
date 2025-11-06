@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     // Update schedule execution stats
     await db.update(schema.schedules).set({
-        lastExecuted: new Date(),
+        lastExecuted: new Date().toISOString(),
         executionCount: schedule.executionCount + 1,
         lastResult: JSON.stringify(result)
       }).where(eq(schema.schedules.id, scheduleId as string)).returning().get();

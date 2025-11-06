@@ -38,14 +38,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const { data } = bodyValidation
-    const { query, numResults = 5 } = data
+    const { query: rawQuery, numResults: rawNumResults = 5 } = data
+    const query = String(rawQuery)
+    const numResults = Number(rawNumResults)
+
     if (!query) {
       return NextResponse.json(
         { success: false, error: 'Query is required' },
         { status: 400 }
       )
     }
-    
+
     // Mock search results for development
     // In production, this would integrate with a real search API
     const mockResults = [
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
         snippet: 'Technical specifications and user guide'
       }
     ]
-    
+
     return NextResponse.json({
       success: true,
       results: mockResults.slice(0, numResults)

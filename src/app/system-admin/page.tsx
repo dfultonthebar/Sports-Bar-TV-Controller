@@ -1090,7 +1090,7 @@ export default function SystemAdminPage() {
 
               {todoView === 'details' && selectedTodo && (
                 <TodoDetails
-                  todo={selectedTodo}
+                  todoId={selectedTodo.id}
                   onEdit={() => setTodoView('form')}
                   onDelete={async () => {
                     if (confirm('Are you sure you want to delete this TODO?')) {

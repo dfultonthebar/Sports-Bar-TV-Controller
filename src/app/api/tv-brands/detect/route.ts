@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { cecAddress, forceRefresh } = bodyValidation.data
+    const { cecAddress: cecAddressRaw, forceRefresh } = bodyValidation.data
+    const cecAddress = cecAddressRaw as string | undefined
 
     if (!cecAddress) {
       return NextResponse.json(

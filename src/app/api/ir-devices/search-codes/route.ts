@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'getModelCodes' && modelId) {
       // Get IR codes for specific model
-      const codes = await globalCacheAPI.getModelCodes(modelId)
+      const codes = await globalCacheAPI.getModelCodes(modelId as string)
       
       return NextResponse.json({
         codes,

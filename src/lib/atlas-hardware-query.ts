@@ -21,6 +21,7 @@ export interface AtlasHardwareSource {
   index: number
   name: string
   parameterName: string // e.g., "SourceName_0"
+  type?: string // Optional source type (e.g., 'HDMI', 'Analog', etc.)
 }
 
 export interface AtlasZoneOutput {

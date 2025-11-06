@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate next execution time BEFORE transaction (async-safe)
-    const nextExecution = calculateNextExecution(scheduleType, scheduleData, timezone || 'America/New_York')
+    const nextExecution = calculateNextExecution(scheduleType as string, scheduleData, timezone || 'America/New_York')
 
     // Use synchronous transaction to create command with audit log
     const newCommand = transactionHelpers.createWithAudit(
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
           timezone: timezone || 'America/New_York',
           enabled: enabled !== undefined ? enabled : true,
           nextExecution,
-          createdBy,
+          createdBy: createdBy as string,
         }).returning()
 
         return command
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       {
         action: 'scheduled_command_created',
         details: { name, commandType, targetType, scheduleType },
-        userId: createdBy || 'system'
+        userId: (createdBy as string) || 'system'
       },
       { name: 'create-scheduled-command' }
     )
@@ -174,9 +174,9 @@ export async function PUT(request: NextRequest) {
       updateData.scheduleData = JSON.stringify(updates.scheduleData)
       // Recalculate next execution if schedule changed
       updateData.nextExecution = calculateNextExecution(
-        updates.scheduleType || 'daily',
+        (updates.scheduleType as string) || 'daily',
         updates.scheduleData,
-        updates.timezone || 'America/New_York'
+        (updates.timezone as string) || 'America/New_York'
       )
     }
 
