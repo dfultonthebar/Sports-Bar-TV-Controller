@@ -459,6 +459,7 @@ export const scheduledCommands = sqliteTable('ScheduledCommand', {
   commandSequence: text('commandSequence').notNull(), // JSON array of commands
   scheduleType: text('scheduleType').notNull(), // 'once', 'daily', 'weekly', 'monthly', 'cron'
   scheduleData: text('scheduleData').notNull(), // JSON schedule configuration
+  cronExpression: text('cron_expression'), // Cron expression for 'cron' scheduleType (e.g., '0 19 * * 1')
   timezone: text('timezone').notNull().default('America/New_York'),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   lastExecuted: timestamp('lastExecuted'),

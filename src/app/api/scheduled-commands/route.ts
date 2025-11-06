@@ -5,6 +5,7 @@ import { eq, desc, and } from 'drizzle-orm'
 import { withTransaction, transactionHelpers } from '@/lib/db/transaction-wrapper'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { getNextExecution } from '@/lib/cron-utils'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
       commandSequence,
       scheduleType,
       scheduleData,
+      cronExpression,
       timezone,
       enabled,
       createdBy,
@@ -90,14 +92,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate cron expression if scheduleType is 'cron'
+    if (scheduleType === 'cron' && !cronExpression) {
+      return NextResponse.json(
+        { error: 'cronExpression is required when scheduleType is "cron"' },
+        { status: 400 }
+      )
+    }
+
     // Calculate next execution time BEFORE transaction (async-safe)
-    const nextExecution = calculateNextExecution(scheduleType as string, scheduleData as any, String(timezone || 'America/New_York'))
+    const nextExecution = calculateNextExecution(
+      scheduleType as string,
+      scheduleData as any,
+      String(timezone || 'America/New_York'),
+      cronExpression as string | undefined
+    )
 
     // Use synchronous transaction to create command with audit log
     const newCommand = transactionHelpers.createWithAudit(
       (tx) => {
         // Create the scheduled command (SYNCHRONOUS)
-        const [command] = tx.insert(scheduledCommands).values({
+        const command = tx.insert(scheduledCommands).values({
           name,
           description,
           commandType,
@@ -106,17 +121,18 @@ export async function POST(request: NextRequest) {
           commandSequence: JSON.stringify(commandSequence),
           scheduleType,
           scheduleData: JSON.stringify(scheduleData),
+          cronExpression: cronExpression as string | undefined,
           timezone: timezone || 'America/New_York',
           enabled: enabled !== undefined ? enabled : true,
           nextExecution,
           createdBy: createdBy as string,
-        }).returning()
+        }).returning().get()
 
         return command
       },
       {
         action: 'scheduled_command_created',
-        details: { name, commandType, targetType, scheduleType },
+        details: { name, commandType, targetType, scheduleType, cronExpression },
         userId: (createdBy as string) || 'system'
       },
       { name: 'create-scheduled-command' }
@@ -170,24 +186,31 @@ export async function PUT(request: NextRequest) {
     // Serialize JSON fields
     if (updates.targets) updateData.targets = JSON.stringify(updates.targets)
     if (updates.commandSequence) updateData.commandSequence = JSON.stringify(updates.commandSequence)
-    if (updates.scheduleData) {
-      updateData.scheduleData = JSON.stringify(updates.scheduleData)
+    if (updates.scheduleData || updates.cronExpression) {
+      if (updates.scheduleData) {
+        updateData.scheduleData = JSON.stringify(updates.scheduleData)
+      }
+      if (updates.cronExpression !== undefined) {
+        updateData.cronExpression = updates.cronExpression
+      }
       // Recalculate next execution if schedule changed
       updateData.nextExecution = calculateNextExecution(
         (updates.scheduleType as string) || 'daily',
-        updates.scheduleData,
-        (updates.timezone as string) || 'America/New_York'
+        updates.scheduleData || {},
+        (updates.timezone as string) || 'America/New_York',
+        updates.cronExpression as string | undefined
       )
     }
 
     // Use synchronous transaction to update command with audit log
     const updatedCommand = transactionHelpers.updateWithAudit(
       (tx) => {
-        const [command] = tx
+        const command = tx
           .update(scheduledCommands)
           .set(updateData)
           .where(eq(scheduledCommands.id, id as string))
           .returning()
+          .get()
 
         if (!command) {
           throw new Error('Scheduled command not found')
@@ -255,7 +278,12 @@ export async function DELETE(request: NextRequest) {
 /**
  * Helper function to calculate next execution time
  */
-function calculateNextExecution(scheduleType: string, scheduleData: any, timezone: string): string {
+function calculateNextExecution(
+  scheduleType: string,
+  scheduleData: any,
+  timezone: string,
+  cronExpression?: string
+): string {
   const now = new Date()
   let nextExec = new Date(now)
 
@@ -322,9 +350,27 @@ function calculateNextExecution(scheduleType: string, scheduleData: any, timezon
       break
 
     case 'cron':
-      // TODO: Implement cron expression parsing
-      // For now, default to next hour
-      nextExec.setHours(nextExec.getHours() + 1, 0, 0, 0)
+      // Use cron expression to calculate next execution
+      if (cronExpression) {
+        const nextCronExec = getNextExecution(cronExpression)
+        if (nextCronExec) {
+          nextExec = nextCronExec
+          logger.info('[SCHEDULED_COMMANDS] Calculated next cron execution', {
+            cronExpression,
+            nextExecution: nextExec.toISOString()
+          })
+        } else {
+          logger.error('[SCHEDULED_COMMANDS] Failed to calculate cron execution, using default', {
+            cronExpression
+          })
+          // Fallback to next hour if cron parsing fails
+          nextExec.setHours(nextExec.getHours() + 1, 0, 0, 0)
+        }
+      } else {
+        logger.warn('[SCHEDULED_COMMANDS] Cron schedule type without cronExpression, using default')
+        // Default to next hour if no cron expression provided
+        nextExec.setHours(nextExec.getHours() + 1, 0, 0, 0)
+      }
       break
 
     default:

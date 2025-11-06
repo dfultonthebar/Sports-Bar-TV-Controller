@@ -4,6 +4,8 @@
 import { useState, useEffect } from 'react'
 import StreamingPlatformsWidget from '@/components/StreamingPlatformsWidget'
 import LayoutConfiguration from '@/components/LayoutConfiguration'
+import { BulkOperations } from '@/components/BulkOperations'
+import { QuickActions } from '@/components/QuickActions'
 import { Settings, Music } from 'lucide-react'
 
 export default function Home() {
@@ -60,6 +62,24 @@ export default function Home() {
                   </span>
                 </div>
                 <span className="text-slate-200 font-medium">Server Online</span>
+              </div>
+
+              {/* Bulk Operations & Quick Actions */}
+              <div className="mt-6 p-6 bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-xl border-2 border-purple-400/30">
+                <h3 className="text-lg font-bold text-purple-200 mb-4 flex items-center">
+                  <span className="mr-2">⚡</span>
+                  Quick Power Controls
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-purple-100/90 mb-2">Bulk Operations:</p>
+                    <BulkOperations />
+                  </div>
+                  <div>
+                    <p className="text-sm text-purple-100/90 mb-2">Quick Routines:</p>
+                    <QuickActions />
+                  </div>
+                </div>
               </div>
               
               {/* Main System Controls */}

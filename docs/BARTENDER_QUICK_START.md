@@ -43,7 +43,191 @@ http://192.168.1.100:3001
 
 **From Behind the Bar:**
 - Bookmark the URL on your phone/tablet
-- Add to home screen for app-like experience
+- Add to home screen for app-like experience (see [Installing as Mobile App](#installing-as-mobile-app))
+
+---
+
+## Installing as Mobile App
+
+The Sports Bar TV Controller can be installed as a Progressive Web App (PWA) on your phone or tablet for a faster, app-like experience. This provides:
+
+- Full-screen mode (no browser bars)
+- Offline capability for basic functions
+- Faster loading with cached assets
+- Home screen icon for instant access
+- Native app feel
+
+### Android Installation (Chrome/Edge)
+
+1. **Open the System in Chrome or Edge**
+   - Navigate to `http://[server-ip]:3001`
+   - Wait for the page to fully load
+
+2. **Install Prompt Method (Easiest)**
+   - If prompted, tap "Install" on the popup banner
+   - Or tap "Add to Home Screen" in the notification
+
+3. **Manual Installation Method**
+   - Tap the **three dots menu** (⋮) in top-right corner
+   - Select **"Add to Home screen"** or **"Install app"**
+   - Tap **"Add"** or **"Install"** to confirm
+   - The app icon appears on your home screen
+
+4. **Launch the App**
+   - Tap the **TV Controller** icon on your home screen
+   - App opens in full-screen mode
+   - Works just like a native app!
+
+### iOS Installation (Safari)
+
+1. **Open the System in Safari**
+   - Navigate to `http://[server-ip]:3001`
+   - Wait for the page to fully load
+   - **Note:** Must use Safari browser (not Chrome or Firefox)
+
+2. **Add to Home Screen**
+   - Tap the **Share button** (square with arrow up) at the bottom
+   - Scroll down and tap **"Add to Home Screen"**
+   - Edit the name if desired (defaults to "TV Control")
+   - Tap **"Add"** in top-right corner
+
+3. **Launch the App**
+   - Tap the **TV Control** icon on your home screen
+   - App opens in full-screen mode
+   - Status bar shows your theme color
+
+### Desktop Installation (Chrome/Edge)
+
+1. **Open System in Chrome or Edge**
+   - Navigate to `http://[server-ip]:3001`
+   - Wait for page to load
+
+2. **Install via Browser**
+   - Look for **install icon** (⊕ or computer icon) in address bar
+   - Or click three dots menu → **"Install TV Controller"**
+   - Click **"Install"** in the popup
+
+3. **Launch Desktop App**
+   - App appears in your applications/programs list
+   - Opens in its own window (not a browser tab)
+   - Can pin to taskbar/dock
+
+### Features When Installed
+
+**Offline Capability:**
+- Basic UI remains accessible offline
+- Cached pages and assets load instantly
+- Real-time controls require internet connection
+- Automatic reconnection when back online
+
+**Performance Benefits:**
+- Instant loading (cached assets)
+- Reduced data usage
+- Faster navigation
+- Smoother animations
+
+**App-Like Experience:**
+- No browser chrome (address bar, tabs, etc.)
+- Full-screen immersive mode
+- Custom theme color
+- Native app appearance
+
+**Quick Access:**
+- Home screen icon
+- App switcher integration
+- Can run alongside other apps
+
+### Verifying Installation
+
+**Check Installation Success:**
+1. Look for home screen icon with purple TV logo
+2. Tap to open - should open in full-screen
+3. No browser address bar or tabs visible
+4. Status bar shows app theme color (purple)
+
+**Test Offline Mode:**
+1. Open the installed app
+2. Turn on airplane mode or disconnect WiFi
+3. You should see an offline page with connection status
+4. Reconnect WiFi
+5. App automatically reconnects to server
+
+### Updating the App
+
+The PWA automatically updates when you visit:
+- App checks for updates on each launch
+- New version downloads in background
+- Refresh or reopen to use latest version
+- No manual updates required
+
+**Force Update:**
+1. Close the app completely
+2. Reopen from home screen
+3. Wait a few seconds for update check
+4. New version loads automatically
+
+### Troubleshooting Installation
+
+**"Add to Home Screen" Not Available:**
+- Make sure you're using the correct browser (Safari on iOS, Chrome/Edge on Android)
+- Verify you're accessing via HTTPS or localhost
+- Clear browser cache and try again
+- Check browser is up to date
+
+**Install Prompt Doesn't Appear:**
+- Browser may have dismissed it previously
+- Use manual installation method instead
+- Check browser settings → Site permissions
+- Try from different browser
+
+**App Won't Open After Install:**
+- Check network connectivity
+- Verify server is running (port 3001)
+- Try removing and reinstalling
+- Clear browser cache and data
+
+**Offline Mode Not Working:**
+- First time requires full load while online
+- Service worker needs to cache assets
+- Try opening app while online once
+- Close and reopen to activate service worker
+
+### Uninstalling the App
+
+**Android:**
+1. Long-press app icon on home screen
+2. Select "Uninstall" or "Remove"
+3. Confirm removal
+
+**iOS:**
+1. Long-press app icon
+2. Tap "Remove App"
+3. Select "Delete App"
+4. Confirm deletion
+
+**Desktop:**
+1. Click three dots in app window
+2. Select "Uninstall TV Controller"
+3. Or go to browser → Settings → Apps
+4. Find and uninstall from list
+
+### PWA vs Browser Access
+
+**Use PWA Installation When:**
+- You access the system frequently
+- You want faster load times
+- You prefer full-screen experience
+- You need it to feel like a native app
+- You want offline capability
+
+**Use Browser Access When:**
+- First time trying the system
+- Accessing from shared/public device
+- Don't want to install anything
+- Need browser features (bookmarks, tabs, etc.)
+- Testing or troubleshooting
+
+**Both work identically** - choose based on your preference!
 
 ---
 
@@ -317,21 +501,46 @@ For big games, you may want audio from one TV through all speakers:
 
 **Time:** ~15 seconds
 
-### Task: Power On All TVs
+### Task: Power On All TVs ✅ IMPLEMENTED
 
 **Scenario:** Opening time, need to turn on all TVs
 
-**Option 1 - Individual:**
+**Option 1 - Bulk Operations (Fastest):**
+1. Go to home screen
+2. Look for **"Quick Power Controls"** section
+3. Under **Bulk Operations**, tap **"Power On All"**
+4. Confirm in the dialog
+5. Wait for completion (shows success/failure count)
+6. Verify from home screen
+
+**Time:** ~30 seconds for all TVs
+
+**Option 2 - Quick Routines (Automated):**
+1. Go to home screen
+2. Look for **"Quick Power Controls"** section
+3. Under **Quick Routines**, tap **"Opening Routine"**
+4. System will:
+   - Power on all online devices
+   - (Future: Set default channels)
+   - (Future: Adjust audio levels)
+5. Wait for completion notification
+
+**Time:** ~30 seconds
+
+**Option 3 - Individual (Manual):**
 1. Go to home screen
 2. Tap each TV card
 3. Tap power button on remote
 4. Repeat for each TV
 
-**Option 2 - Bulk (if configured):**
-1. Go to **Admin** → **Quick Actions**
-2. Tap **"Power On All TVs"**
-3. Wait for confirmation
-4. Verify from home screen
+**Time:** ~5 minutes for 25+ TVs
+
+**Available Operations:**
+- **Power On All** - Wake all Fire TV devices
+- **Power Off All** - Sleep all Fire TV devices (with confirmation)
+- **Restart All** - Reboot all Fire TV devices (with confirmation)
+- **Opening Routine** - Automated opening checklist
+- **Closing Routine** - Automated closing checklist
 
 ### Task: Troubleshoot a Non-Responsive TV
 
@@ -459,9 +668,13 @@ For big games, you may want audio from one TV through all speakers:
 1. Select TV → Switch Input → Choose source
 2. Time: ~10 seconds
 
-**Power On/Off:**
+**Power On/Off (Single TV):**
 1. Select TV → Remote → Power button
 2. Time: ~5 seconds
+
+**Power On/Off (All TVs):**
+1. Home screen → Quick Power Controls → Power On/Off All
+2. Time: ~30 seconds
 
 ### Status Indicators Reference
 
@@ -498,18 +711,26 @@ For big games, you may want audio from one TV through all speakers:
 
 *Channel numbers vary by cable provider - confirm with your system*
 
-### Common Keyboard Shortcuts
+### Common Keyboard Shortcuts ✅ IMPLEMENTED
 
-When using from a computer:
+When using from a computer, the system supports these keyboard shortcuts for faster navigation:
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl + H` | Go to Home |
-| `Ctrl + G` | Go to Guide |
-| `Ctrl + M` | Go to Matrix |
-| `Ctrl + A` | Go to Audio |
-| `Ctrl + R` | Refresh current page |
-| `Escape` | Close current dialog/remote |
+| `Ctrl + H` (⌘H on Mac) | Go to Home |
+| `Ctrl + G` | Open Sports Guide |
+| `Ctrl + T` | Go to TVs (Remote Control) |
+| `Ctrl + A` | Go to Audio Control |
+| `Ctrl + S` | Go to System Health |
+| `Ctrl + M` | Go to Matrix Control |
+| `Ctrl + D` | Go to Admin Dashboard |
+| `Ctrl + I` | Go to AI Hub |
+| `?` | Show all keyboard shortcuts |
+| `Escape` | Close modal/dialog |
+
+**Pro Tip:** Press `?` (Shift + /) anywhere in the app to see the full keyboard shortcuts dialog.
+
+**Note:** Shortcuts are automatically disabled when typing in text fields to prevent accidental navigation.
 
 ### Emergency Contacts
 

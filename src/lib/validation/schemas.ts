@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod'
+import { isValidCronExpression } from '@/lib/cron-utils'
 
 // ============================================================================
 // COMMON PRIMITIVES
@@ -227,6 +228,16 @@ export const dayOfWeekSchema = z.number().int().min(0).max(6)
  */
 export const timezoneSchema = z.string().min(1, 'Timezone is required')
 
+/**
+ * Cron expression validation (5-field format)
+ */
+export const cronExpressionSchema = z.string()
+  .min(9, 'Cron expression too short')
+  .refine(
+    (val) => isValidCronExpression(val),
+    { message: 'Invalid cron expression format' }
+  )
+
 // ============================================================================
 // SPORTS & ENTERTAINMENT
 // ============================================================================
@@ -369,6 +380,7 @@ export const scheduledCommandCreateSchema = z.object({
   commandSequence: z.array(z.record(z.unknown())).min(1, 'At least one command is required'),
   scheduleType: scheduleTypeSchema,
   scheduleData: z.record(z.unknown()),
+  cronExpression: cronExpressionSchema.optional(),
   timezone: timezoneSchema.optional(),
   enabled: z.boolean().optional(),
   createdBy: optionalNonEmptyStringSchema
@@ -719,6 +731,7 @@ export const ValidationSchemas = {
   timeString: timeStringSchema,
   dayOfWeek: dayOfWeekSchema,
   timezone: timezoneSchema,
+  cronExpression: cronExpressionSchema,
 
   // Sports
   sportsLeague: sportsLeagueSchema,

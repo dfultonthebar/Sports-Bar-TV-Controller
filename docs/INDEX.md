@@ -14,7 +14,10 @@ Start here if you're using the system daily to control TVs and audio.
 | Document | Purpose | Est. Reading Time |
 |----------|---------|-------------------|
 | [Bartender Quick Start](BARTENDER_QUICK_START.md) | Daily operations guide | 15-30 min training |
+| [Emergency Documentation Guide](EMERGENCY_DOCUMENTATION_GUIDE.md) | Which emergency doc to use | 5 min |
 | [Emergency Quick Reference](EMERGENCY_QUICK_REFERENCE.md) | Emergency procedures (print this!) | 5 min |
+| [Emergency One-Page](EMERGENCY_ONE_PAGE.md) | 1-minute emergency fixes (print this!) | 1 min |
+| [Emergency Contact Card](EMERGENCY_CONTACT_CARD.md) | Contact info & checklists (print this!) | 2 min |
 | [Remote Control Reference](REMOTE_CONTROL_QUICK_REFERENCE.md) | Button mappings for all remotes | 2 min |
 | [Channel Number Lookup](CHANNEL_NUMBER_QUICK_REFERENCE.md) | Quick channel number finder | 1 min |
 | [Operations Playbook](OPERATIONS_PLAYBOOK.md) | Opening/closing procedures | 20 min |
@@ -184,30 +187,44 @@ Code architecture, APIs, and development.
 One-page guides you can print and laminate:
 
 1. **[Emergency Quick Reference](EMERGENCY_QUICK_REFERENCE.md)** ⚠️
-   - Emergency procedures
-   - Quick diagnostics
-   - Contact information
-   - **Location: Keep near server**
+   - Complete emergency procedures (bartenders + admins)
+   - Quick diagnostics and system commands
+   - Contact information templates
+   - Daily checklists
+   - **Location: Keep near TV control station AND server**
 
-2. **[Remote Control Quick Reference](REMOTE_CONTROL_QUICK_REFERENCE.md)** 🎮
+2. **[Emergency One-Page](EMERGENCY_ONE_PAGE.md)** 🚨
+   - Ultra-condensed 1-minute fixes
+   - Most common problems (90% of issues)
+   - Quick decision tree
+   - **Location: Post at bar/control station**
+
+3. **[Emergency Contact Card](EMERGENCY_CONTACT_CARD.md)** 📞
+   - Cut-out contact cards
+   - Incident report templates
+   - Daily checklists
+   - Top 5 problems reference
+   - **Location: Laminate and post multiple copies**
+
+4. **[Remote Control Quick Reference](REMOTE_CONTROL_QUICK_REFERENCE.md)** 🎮
    - All remote button mappings
    - Device type identification
    - Quick command reference
    - **Location: Keep at bar**
 
-3. **[Channel Number Quick Reference](CHANNEL_NUMBER_QUICK_REFERENCE.md)** 📺
+5. **[Channel Number Quick Reference](CHANNEL_NUMBER_QUICK_REFERENCE.md)** 📺
    - ESPN, FS1, NBC Sports, etc.
    - Provider-specific numbers
    - Sports channel list
    - **Location: Keep at bar**
 
-4. **[IR Migration Quick Card](IR_MIGRATION_QUICK_CARD.md)** 💡
+6. **[IR Migration Quick Card](IR_MIGRATION_QUICK_CARD.md)** 💡
    - IR vs CEC comparison
    - When to use each method
    - Quick setup steps
    - **Location: With hardware**
 
-5. **[Device Status Icons Reference](DEVICE_STATUS_QUICK_REFERENCE.md)** 🔴🟢
+7. **[Device Status Icons Reference](DEVICE_STATUS_QUICK_REFERENCE.md)** 🔴🟢
    - What each color means
    - Status indicator guide
    - Troubleshooting by status

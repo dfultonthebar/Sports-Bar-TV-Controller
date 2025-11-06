@@ -2,15 +2,33 @@
 import './globals.css'
 import { Inter } from 'next/font/google'
 import { ErrorHandler } from './error-handler'
+import { ClientLayout } from '@/components/ClientLayout'
+import type { Metadata, Viewport } from 'next'
 
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata = {
-  title: 'Sports Bar AI Assistant',
-  description: 'AI-powered assistant for sports bar AV system management',
+export const metadata: Metadata = {
+  title: 'Sports Bar TV Controller',
+  description: 'Professional TV and audio control system for sports bars',
+  manifest: '/manifest.json',
+  themeColor: '#7c3aed',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/icon-192x192.png',
+    apple: '/icon-192x192.png',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'TV Control',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#7c3aed',
 }
 
 export default function RootLayout({
@@ -25,7 +43,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <ErrorHandler />
-        {children}
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   )
