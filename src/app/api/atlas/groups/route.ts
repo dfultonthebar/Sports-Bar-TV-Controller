@@ -30,14 +30,15 @@ export async function GET(request: NextRequest) {
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
       tcpPort: 5321,
-      timeout: 5000
+      timeout: 3000,      // 3 seconds for UI responsiveness
+      maxRetries: 1       // Single retry
     })
 
     await client.connect()
 
     // Get group information
     const groups: any[] = []
-    
+
     for (let i = 0; i < 8; i++) {
       const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
         client.getParameter(`GroupName_${i}`, 'str').catch((err) => {
@@ -154,7 +155,8 @@ export async function POST(request: NextRequest) {
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
       tcpPort: 5321,
-      timeout: 5000
+      timeout: 3000,      // 3 seconds for faster failure
+      maxRetries: 1       // Single retry for UI responsiveness
     })
 
     await client.connect()
@@ -190,10 +192,18 @@ export async function POST(request: NextRequest) {
 
     await client.disconnect()
 
+    // Check if command was successful
+    if (!result.success) {
+      return NextResponse.json({
+        success: false,
+        error: result.error || 'Failed to control group',
+        timestamp: Date.now()
+      }, { status: 500 })
+    }
+
     return NextResponse.json({
-      success: result.success,
+      success: true,
       result: result.data,
-      error: result.error,
       timestamp: Date.now()
     })
   } catch (error) {

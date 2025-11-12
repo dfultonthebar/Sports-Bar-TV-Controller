@@ -93,14 +93,21 @@ export default function AtlasGroupsControl({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to control group')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to control group')
       }
 
-      // Update local state
-      setGroups(prev => prev.map(g => 
-        g.index === groupIndex 
-          ? { 
-              ...g, 
+      // Parse response and check success field
+      const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to control group')
+      }
+
+      // Update local state only after confirming success
+      setGroups(prev => prev.map(g =>
+        g.index === groupIndex
+          ? {
+              ...g,
               ...(action === 'setActive' ? { isActive: value } : {}),
               ...(action === 'setSource' ? { source: value } : {}),
               ...(action === 'setGain' ? { gain: value } : {}),
@@ -114,7 +121,12 @@ export default function AtlasGroupsControl({
       }
     } catch (err) {
       logger.error('Error controlling group:', err)
-      alert('Failed to control group: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      // Don't duplicate "Failed to control group" prefix
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      alert(errorMessage)
+
+      // Refresh groups to show actual state
+      fetchGroups()
     }
   }
 
