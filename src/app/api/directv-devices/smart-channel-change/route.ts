@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { deviceId, channel, reason } = await request.json()
+    const { deviceId, channel, reason } = bodyValidation.data
 
     // Log the AI-driven channel change for analytics
     logger.info(`AI Channel Change: Device ${deviceId} -> Channel ${channel}. Reason: ${reason}`)

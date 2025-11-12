@@ -42,16 +42,10 @@ export async function GET(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Path parameter validation
   const params = await context.params
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   try {
     // Await params for Next.js 15+ compatibility
@@ -122,27 +116,14 @@ export async function POST(
 
   // Declare processorId outside try block so it's accessible in catch
   let processorId = 'unknown'
-  let requestBody: any = {}
-  
+
   try {
     // Await params for Next.js 15+ compatibility
     const params = await context.params
     processorId = params.id
-    
-    // Parse request body with error handling
-    try {
-      requestBody = await request.json()
-    } catch (parseError) {
-      logger.api.error('POST', `/api/audio-processor/${processorId}/input-gain`, parseError)
-      return NextResponse.json(
-        { 
-          error: 'Invalid JSON in request body',
-          details: parseError instanceof Error ? parseError.message : 'Unknown parsing error'
-        },
-        { status: 400 }
-      )
-    }
 
+    // Use validated data
+    const requestBody = bodyValidation.data
     const { inputNumber, gain, reason = 'manual_override' } = requestBody
 
     logger.api.request('POST', `/api/audio-processor/${processorId}/input-gain`, { 

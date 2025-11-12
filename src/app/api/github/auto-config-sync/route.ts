@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const updates = await request.json()
+    const updates = bodyValidation.data
     
     // Read existing config
     let config = DEFAULT_CONFIG

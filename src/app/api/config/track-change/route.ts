@@ -12,18 +12,17 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    type: z.string(),
+    file: z.string(),
+    changes: z.unknown().optional(),
+    action: z.string().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
-
-
   try {
-    const { type, file, changes, action = 'modified' } = await request.json()
+    const { type, file, changes, action = 'modified' } = bodyValidation.data
     
     if (!type || !file) {
       return NextResponse.json({
@@ -59,13 +58,11 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  // Query parameter validation (GET requests don't have a body)
+  const queryValidation = validateQueryParams(request, z.object({
+    type: z.string().optional(),
+    limit: z.string().optional()
+  }))
   if (isValidationError(queryValidation)) return queryValidation.error
 
 

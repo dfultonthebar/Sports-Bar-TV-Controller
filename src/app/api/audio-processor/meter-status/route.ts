@@ -17,15 +17,9 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const { searchParams } = new URL(request.url)
@@ -100,9 +94,8 @@ export async function POST(request: NextRequest) {
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
-
   try {
-    const { processorId } = await request.json()
+    const { processorId } = bodyValidation.data
 
     if (!processorId) {
       return NextResponse.json(

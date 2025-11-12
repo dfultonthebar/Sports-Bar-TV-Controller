@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const suggestion = await request.json()
+    const suggestion = bodyValidation.data
 
     // Log the suggestion implementation
     logger.info(`Implementing AI suggestion: ${suggestion.title}`)

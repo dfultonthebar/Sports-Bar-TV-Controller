@@ -19,11 +19,6 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
@@ -70,7 +65,7 @@ export async function POST(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const data = await request.json()
+    const data = bodyValidation.data
     const { processorId, inputNumber, parameterName, inputName, warningThreshold, dangerThreshold } = data
 
     if (!processorId || inputNumber === undefined || !parameterName) {

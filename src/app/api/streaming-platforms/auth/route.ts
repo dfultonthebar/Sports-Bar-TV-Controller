@@ -216,7 +216,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { platformId } = await request.json()
+    const { platformId } = bodyValidation.data
 
     if (!platformId) {
       return NextResponse.json(

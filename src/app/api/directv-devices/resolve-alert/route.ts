@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { alertId, deviceId } = await request.json()
+    const { alertId, deviceId } = bodyValidation.data
 
     logger.info(`Auto-resolving alert ${alertId} for device ${deviceId}`)
 

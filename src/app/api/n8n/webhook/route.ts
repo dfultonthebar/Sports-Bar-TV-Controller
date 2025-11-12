@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const payload: N8nWebhookPayload = await request.json()
+    const payload: N8nWebhookPayload = bodyValidation.data
     
     logger.debug('n8n webhook payload received', payload)
     

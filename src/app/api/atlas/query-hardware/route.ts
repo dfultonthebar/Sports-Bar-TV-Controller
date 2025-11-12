@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { processorId, testOnly } = await request.json()
+    const { processorId, testOnly } = bodyValidation.data
 
     if (!processorId) {
       return NextResponse.json({ error: 'Processor ID is required' }, { status: 400 })
@@ -476,15 +476,9 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const { searchParams } = new URL(request.url)

@@ -32,9 +32,8 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.scriptExecution)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-
   try {
-    const { scriptName, content, scriptType, directory = 'scripts', makeExecutable = true }: WriteScriptRequest = await request.json()
+    const { scriptName, content, scriptType, directory = 'scripts', makeExecutable = true } = bodyValidation.data as WriteScriptRequest
 
     if (!scriptName || !content || !scriptType) {
       return NextResponse.json({ 

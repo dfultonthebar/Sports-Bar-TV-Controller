@@ -26,11 +26,6 @@ export async function GET(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
@@ -39,7 +34,6 @@ export async function GET(
   const params = await context.params
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   try {
     const processorId = params.id
@@ -125,7 +119,7 @@ export async function POST(
 
   try {
     const processorId = params.id
-    const data = await request.json()
+    const data = bodyValidation.data
     const { 
       inputNumber, 
       aiEnabled, 
@@ -234,11 +228,6 @@ export async function DELETE(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
@@ -247,7 +236,6 @@ export async function DELETE(
   const params = await context.params
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   try {
     const processorId = params.id

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { matrixData } = await request.json()
+    const { matrixData } = bodyValidation.data
     
     if (!matrixData) {
       return NextResponse.json(

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     logger.api.request('POST', '/api/wolfpack/route-to-matrix')
     
-    const { wolfpackInputNumber, matrixOutputNumber } = await request.json()
+    const { wolfpackInputNumber, matrixOutputNumber } = bodyValidation.data
 
     if (!wolfpackInputNumber || !matrixOutputNumber) {
       logger.api.response('POST', '/api/wolfpack/route-to-matrix', 400, { error: 'Missing parameters' })

@@ -31,9 +31,8 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.scriptExecution)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-
   try {
-    const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 }: ExecuteRequest = await request.json()
+    const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 } = bodyValidation.data as ExecuteRequest
 
     if (!command && !scriptPath) {
       return NextResponse.json({ 

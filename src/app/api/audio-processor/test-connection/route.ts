@@ -157,9 +157,9 @@ export async function POST(request: NextRequest) {
 
 
   logger.api.request('POST', '/api/audio-processor/test-connection')
-  
+
   try {
-    const { processorId, ipAddress, port, username, password, autoDetectCredentials } = await request.json()
+    const { processorId, ipAddress, port, username, password, autoDetectCredentials } = bodyValidation.data
 
     if (!ipAddress) {
       return NextResponse.json(

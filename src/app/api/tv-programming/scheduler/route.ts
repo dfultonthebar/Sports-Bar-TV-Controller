@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { action } = await request.json()
+    const { action } = bodyValidation.data
     
     if (action === 'start') {
       // Stop existing scheduler if running

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
-  const { action } = await request.json();
+  const { action } = bodyValidation.data;
   
   if (action === 'start') {
     schedulerService.start();

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { actionId, deviceId } = await request.json()
+    const { actionId, deviceId } = bodyValidation.data
 
     logger.info(`Executing fix: ${actionId} for device: ${deviceId}`)
 

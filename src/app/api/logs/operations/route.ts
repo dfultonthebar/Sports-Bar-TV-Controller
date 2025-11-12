@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const logData = await request.json()
+    const logData = bodyValidation.data
     
     if (logData.type === 'operation') {
       await operationLogger.logOperation(logData)

@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const updates = await request.json()
+    const updates = bodyValidation.data
     const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
     let config
     try {

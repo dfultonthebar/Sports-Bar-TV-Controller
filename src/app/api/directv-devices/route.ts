@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { data: newDevice } = bodyValidation
+    const newDevice = bodyValidation.data
     const data = await loadDirecTVDevices()
     
     // Validate required fields
@@ -109,7 +109,7 @@ export async function PUT(request: NextRequest) {
 
 
   try {
-    const { data: updatedDevice } = bodyValidation
+    const updatedDevice = bodyValidation.data
     const data = await loadDirecTVDevices()
     
     const index = data.devices.findIndex((d: any) => d.id === updatedDevice.id)

@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { deviceId, ipAddress, port, startTime, endTime, channelList } = await request.json()
+    const { deviceId, ipAddress, port, startTime, endTime, channelList } = bodyValidation.data
 
     if (!deviceId || !ipAddress) {
       return NextResponse.json({ error: 'Device ID and IP address are required' }, { status: 400 })
@@ -221,15 +221,9 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const { searchParams } = new URL(request.url)

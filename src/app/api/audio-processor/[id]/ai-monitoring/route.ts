@@ -23,11 +23,6 @@ export async function GET(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Path parameter validation
   const params = await context.params
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
@@ -73,7 +68,7 @@ export async function POST(
   if (isValidationError(paramsValidation)) return paramsValidation.error
   try {
     const processorId = params.id
-    const { action } = await request.json()
+    const { action } = bodyValidation.data
 
     if (!action || !['start', 'stop'].includes(action)) {
       return NextResponse.json(

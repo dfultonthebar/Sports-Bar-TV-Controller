@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { apiKey } = await request.json()
+    const { apiKey } = bodyValidation.data
 
     if (!apiKey) {
       return NextResponse.json(

@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { deviceList, timeRange, includeCache } = await request.json()
+    const { deviceList, timeRange, includeCache } = bodyValidation.data
 
     if (!deviceList || !Array.isArray(deviceList) || deviceList.length === 0) {
       return NextResponse.json({ error: 'Device list is required' }, { status: 400 })

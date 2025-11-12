@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { matrixOutputNumber, atlasInputLabel } = await request.json()
+    const { matrixOutputNumber, atlasInputLabel } = bodyValidation.data
 
     if (!matrixOutputNumber) {
       return NextResponse.json(

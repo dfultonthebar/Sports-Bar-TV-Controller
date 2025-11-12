@@ -7,8 +7,16 @@ import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+
   try {
-    const { iTachAddress = '192.168.1.100' } = await request.json().catch(() => ({}))
+    const { iTachAddress = '192.168.1.100' } = isValidationError(bodyValidation) ? {} : bodyValidation.data
     
     const net = await import('net')
 

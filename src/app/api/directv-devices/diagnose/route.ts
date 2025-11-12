@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { ipAddress, port } = await request.json()
+    const { ipAddress, port } = bodyValidation.data
 
     if (!ipAddress) {
       return NextResponse.json(

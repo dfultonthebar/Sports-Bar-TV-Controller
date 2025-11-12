@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { scheduleId } = await request.json();
+    const { scheduleId } = bodyValidation.data;
     
     if (!scheduleId) {
       return NextResponse.json(

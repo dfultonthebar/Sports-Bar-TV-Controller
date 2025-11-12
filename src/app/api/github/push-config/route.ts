@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { commitMessage, configChanges, autoCommit = true }: { 
+    const { commitMessage, configChanges, autoCommit = true } = bodyValidation.data as {
       commitMessage?: string
       configChanges: ConfigChange[]
-      autoCommit?: boolean 
-    } = await request.json()
+      autoCommit?: boolean
+    }
 
     // Log the configuration push attempt
     await logger.log({

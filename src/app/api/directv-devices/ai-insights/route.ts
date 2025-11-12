@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { deviceId } = await request.json()
+    const { deviceId } = bodyValidation.data
 
     logger.info(`[AI Insights] Generating insights for device: ${deviceId}`)
 

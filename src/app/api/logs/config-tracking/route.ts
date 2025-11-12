@@ -14,13 +14,11 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
+  // Query parameter validation (GET requests don't have a body)
+  const queryValidation = validateQueryParams(request, z.object({
+    hours: z.string().optional(),
+    component: z.string().optional()
+  }))
   if (isValidationError(queryValidation)) return queryValidation.error
 
 
@@ -116,13 +114,16 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    component: z.string(),
+    setting: z.string(),
+    oldValue: z.unknown().optional(),
+    newValue: z.unknown().optional(),
+    userId: z.string().optional(),
+    metadata: z.unknown().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {

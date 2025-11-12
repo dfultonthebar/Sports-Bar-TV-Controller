@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { processorId, ipAddress } = await request.json()
+    const { processorId, ipAddress } = bodyValidation.data
 
     if (!processorId || !ipAddress) {
       return NextResponse.json({ error: 'Processor ID and IP address are required' }, { status: 400 })

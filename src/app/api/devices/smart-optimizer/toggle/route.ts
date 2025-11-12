@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { id, isActive } = await request.json()
+    const { id, isActive } = bodyValidation.data
 
     // Log the optimization rule toggle
     logger.info(`Optimization rule ${id} ${isActive ? 'activated' : 'deactivated'}`)

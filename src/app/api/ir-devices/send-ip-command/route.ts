@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {
-    const { deviceId, command, deviceIpAddress, ipControlPort, brand } = await request.json()
+    const { deviceId, command, deviceIpAddress, ipControlPort, brand } = bodyValidation.data
 
     if (!deviceId || !command || !deviceIpAddress || !brand) {
       return NextResponse.json(
