@@ -102,7 +102,7 @@ export default function BartenderRemoteSelector() {
         fetch('/api/ir-devices'),
         fetch('/api/directv-devices'),
         fetch('/api/firetv-devices'),
-        fetch('/api/global-cache-devices')
+        fetch('/api/globalcache/devices')
       ])
 
       // Load matrix inputs
@@ -448,7 +448,7 @@ export default function BartenderRemoteSelector() {
                 <h3 className="text-xl font-medium text-white mb-2">No Device Selected</h3>
                 <p className="text-slate-400">Select an input from the left panel to show its remote control</p>
               </div>
-            ) : deviceType === 'cable' && selectedDevice && 'iTachAddress' in selectedDevice ? (
+            ) : deviceType === 'cable' && selectedDevice ? (
               <>
                 {/* IR Cable Box Remote */}
                 <div className="w-full flex justify-center">
