@@ -45,11 +45,22 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
         socket.destroy()
         reject(new Error('Connection timeout'))
       }
-    }, 5000)
+    }, 2000)
 
     socket.connect(4998, iTachAddress, () => {
       logger.info(`Connected to iTach at ${iTachAddress}:4998`)
       socket.write(command + '\r')
+
+      // For IR commands, we can resolve quickly after sending
+      // iTach usually responds within 100ms
+      setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true
+          clearTimeout(timeout)
+          socket.destroy()
+          resolve(true)
+        }
+      }, 150)
     })
 
     socket.on('data', (data) => {
@@ -57,7 +68,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
       if (!isResolved) {
         isResolved = true
         clearTimeout(timeout)
-        socket.end()
+        socket.destroy()
         resolve(true)
       }
     })
@@ -103,8 +114,17 @@ export async function POST(request: NextRequest) {
     const commandStr = String(command)
     const iTachAddressStr = String(iTachAddress)
 
-    if (!deviceIdStr || !commandStr || !iTachAddressStr) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
+    if (!deviceIdStr || !commandStr || !iTachAddressStr ||
+        iTachAddressStr === 'undefined' || iTachAddressStr === '' ||
+        deviceIdStr === 'undefined' || commandStr === 'undefined') {
+      return NextResponse.json({
+        error: 'Missing required parameters',
+        details: {
+          deviceId: deviceIdStr || 'missing',
+          command: commandStr || 'missing',
+          iTachAddress: iTachAddressStr || 'missing'
+        }
+      }, { status: 400 })
     }
 
     // Load device information

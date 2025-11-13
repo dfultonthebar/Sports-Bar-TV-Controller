@@ -456,6 +456,11 @@ export default function BartenderRemoteSelector() {
                     deviceId={selectedDevice.id}
                     deviceName={selectedDevice.name}
                     iTachAddress={selectedDevice.iTachAddress || ''}
+                    irCodes={
+                      'irCodes' in selectedDevice && typeof selectedDevice.irCodes === 'string' && selectedDevice.irCodes
+                        ? JSON.parse(selectedDevice.irCodes)
+                        : undefined
+                    }
                   />
                 </div>
                 {/* Channel Presets for Cable */}
