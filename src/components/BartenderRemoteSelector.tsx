@@ -23,14 +23,18 @@ interface IRDevice {
   name: string
   brand: string
   deviceType: string
-  inputChannel: number
-  controlMethod: 'IP' | 'GlobalCache'
-  deviceIpAddress?: string
-  ipControlPort?: number
+  matrixInput?: number
+  matrixInputLabel?: string
+  irCodeSetId?: string
+  irCodes?: string
+  globalCacheDeviceId?: string
+  globalCachePortNumber?: number
+  description?: string
+  status: string
+  createdAt?: string
+  updatedAt?: string
+  // Joined from GlobalCacheDevice
   iTachAddress?: string
-  iTachPort?: number
-  codesetId?: string
-  isActive: boolean
 }
 
 interface DirecTVDevice {
@@ -70,17 +74,6 @@ interface ChannelPreset {
   lastUsed: Date | null
 }
 
-interface CableBox {
-  id: string
-  name: string
-  provider: string
-  model: string
-  isOnline: boolean
-  devicePath: string
-  cecPhysicalAddress: string
-  matrixInputId?: string
-  matrixInputNumber?: number
-}
 
 type DeviceType = 'cable' | 'satellite' | 'streaming' | null
 
@@ -89,7 +82,6 @@ export default function BartenderRemoteSelector() {
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
   const [direcTVDevices, setDirecTVDevices] = useState<DirecTVDevice[]>([])
   const [fireTVDevices, setFireTVDevices] = useState<FireTVDevice[]>([])
-  const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | DirecTVDevice | FireTVDevice | null>(null)
   const [deviceType, setDeviceType] = useState<DeviceType>(null)
@@ -98,27 +90,6 @@ export default function BartenderRemoteSelector() {
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [hoveredInput, setHoveredInput] = useState<number | null>(null)
 
-  // Helper function to get cable box for a given input
-  const getCableBoxForInput = (inputChannel: number): CableBox | null => {
-    // Find the input first
-    const input = inputs.find(i => i.channelNumber === inputChannel)
-    if (!input) return null
-
-    // Try to match by matrix input ID first
-    const matchingBox = cableBoxes.find((box) => {
-      if (box.matrixInputId && input.id) {
-        return box.matrixInputId === input.id
-      }
-      // Fallback to matching by input number
-      if (box.matrixInputNumber !== undefined) {
-        return box.matrixInputNumber === inputChannel
-      }
-      return false
-    })
-
-    return matchingBox || null
-  }
-
   useEffect(() => {
     loadAllDevices()
     loadChannelPresets()
@@ -126,12 +97,12 @@ export default function BartenderRemoteSelector() {
 
   const loadAllDevices = async () => {
     try {
-      const [matrixResponse, irResponse, direcTVResponse, fireTVResponse, cableBoxResponse] = await Promise.allSettled([
+      const [matrixResponse, irResponse, direcTVResponse, fireTVResponse, globalCacheResponse] = await Promise.allSettled([
         fetch('/api/matrix/config'),
         fetch('/api/ir-devices'),
         fetch('/api/directv-devices'),
         fetch('/api/firetv-devices'),
-        fetch('/api/cec/cable-box/discover')
+        fetch('/api/global-cache-devices')
       ])
 
       // Load matrix inputs
@@ -150,10 +121,30 @@ export default function BartenderRemoteSelector() {
         }
       }
 
-      // Load IR devices
+      // Load GlobalCache devices for IR device lookup
+      let globalCacheMap: Record<string, any> = {}
+      if (globalCacheResponse.status === 'fulfilled') {
+        const gcData = await globalCacheResponse.value.json()
+        if (gcData.devices) {
+          gcData.devices.forEach((gc: any) => {
+            globalCacheMap[gc.id] = gc
+          })
+        }
+      }
+
+      // Load IR devices and enrich with GlobalCache IP addresses
       if (irResponse.status === 'fulfilled') {
         const irData = await irResponse.value.json()
-        setIRDevices(irData.devices || [])
+        const enrichedDevices = (irData.devices || []).map((device: IRDevice) => {
+          if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
+            return {
+              ...device,
+              iTachAddress: globalCacheMap[device.globalCacheDeviceId].ipAddress
+            }
+          }
+          return device
+        })
+        setIRDevices(enrichedDevices)
       }
 
       // Load DirecTV devices
@@ -166,12 +157,6 @@ export default function BartenderRemoteSelector() {
       if (fireTVResponse.status === 'fulfilled') {
         const fireTVData = await fireTVResponse.value.json()
         setFireTVDevices(fireTVData.devices || [])
-      }
-
-      // Load Cable Boxes (CEC)
-      if (cableBoxResponse.status === 'fulfilled') {
-        const cableBoxData = await cableBoxResponse.value.json()
-        setCableBoxes(cableBoxData.devices || [])
       }
     } catch (error) {
       logger.error('Error loading devices:', error)
@@ -246,43 +231,6 @@ export default function BartenderRemoteSelector() {
   }
 
   const handlePresetClick = async (preset: ChannelPreset) => {
-    if (!selectedInput) return
-
-    const cableBox = getCableBoxForInput(selectedInput)
-
-    if (deviceType === 'cable' && cableBox && preset.deviceType === 'cable') {
-      setLoading(true)
-      setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber}) via CEC...`)
-
-      try {
-        const response = await fetch('/api/channel-presets/tune', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            presetId: preset.id,
-            channelNumber: preset.channelNumber,
-            deviceType: preset.deviceType,
-            cableBoxId: cableBox.id,
-          }),
-        })
-
-        const data = await response.json()
-
-        if (data.success) {
-          setCommandStatus(`Now watching: ${preset.name}`)
-        } else {
-          setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
-        }
-      } catch (error) {
-        logger.error('Error tuning via CEC:', error)
-        setCommandStatus('CEC tuning failed')
-      } finally {
-        setLoading(false)
-        setTimeout(() => setCommandStatus(''), 5000)
-      }
-      return
-    }
-
     if (!selectedDevice) {
       setCommandStatus('No device selected')
       return
@@ -308,7 +256,7 @@ export default function BartenderRemoteSelector() {
     // Find associated device
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)
 
     const activeDevice = direcTVDevice || fireTVDevice || irDevice
     setSelectedDevice(activeDevice || null)
@@ -321,13 +269,7 @@ export default function BartenderRemoteSelector() {
     } else if (irDevice) {
       setDeviceType('cable')
     } else {
-      // Check if there's a CEC cable box for this input
-      const cableBox = getCableBoxForInput(inputNumber)
-      if (cableBox && cableBox.devicePath) {
-        setDeviceType('cable')
-      } else {
-        setDeviceType(null)
-      }
+      setDeviceType(null)
     }
   }
 
@@ -352,10 +294,9 @@ export default function BartenderRemoteSelector() {
   const getDeviceStatusIcon = (inputNumber: number) => {
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
-    const cableBox = getCableBoxForInput(inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)
 
-    const isOnline = direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive || !!cableBox
+    const isOnline = direcTVDevice?.isOnline || fireTVDevice?.isOnline || (irDevice?.status === 'active')
 
     return isOnline ? (
       <div className="relative">
@@ -412,9 +353,8 @@ export default function BartenderRemoteSelector() {
                 inputs.map((input) => {
                   const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
                   const fireTVDevice = fireTVDevices.find(d => d.inputChannel === input.channelNumber)
-                  const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
-                  const cableBox = getCableBoxForInput(input.channelNumber)
-                  const hasDevice = direcTVDevice || fireTVDevice || irDevice || cableBox
+                  const irDevice = irDevices.find(d => d.matrixInput === input.channelNumber)
+                  const hasDevice = direcTVDevice || fireTVDevice || irDevice
                   const isSelected = selectedInput === input.channelNumber
                   const isHovered = hoveredInput === input.channelNumber
 
@@ -471,7 +411,6 @@ export default function BartenderRemoteSelector() {
                               {direcTVDevice ? 'DirecTV' :
                                fireTVDevice ? 'Fire TV' :
                                irDevice ? 'Cable (IR)' :
-                               cableBox ? 'Cable (CEC)' :
                                'No Device'}
                             </span>
                           </div>
@@ -520,58 +459,6 @@ export default function BartenderRemoteSelector() {
                   />
                 </div>
                 {/* Channel Presets for Cable */}
-                <div className="w-full mt-4">
-                  <ChannelPresetGrid
-                    deviceType="cable"
-                    onPresetClick={handlePresetClick}
-                    maxVisible={6}
-                  />
-                </div>
-              </>
-            ) : deviceType === 'cable' && selectedInput && getCableBoxForInput(selectedInput) ? (
-              <>
-                {/* CEC Cable Box Remote */}
-                <div className="w-full flex justify-center">
-                  <div className="bg-slate-800 rounded-lg p-6 max-w-md">
-                    <h3 className="text-lg font-semibold text-white mb-4 text-center">
-                      CEC Cable Box Control
-                    </h3>
-                    <p className="text-sm text-slate-400 mb-4 text-center">
-                      Controlling: {getCableBoxForInput(selectedInput)?.name}
-                    </p>
-                    <div className="space-y-3">
-                      {/* Channel Entry */}
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Enter channel..."
-                          className="flex-1 px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 focus:outline-none"
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && selectedInput) {
-                              const channel = (e.target as HTMLInputElement).value
-                              const cableBox = getCableBoxForInput(selectedInput)
-                              if (cableBox) {
-                                handlePresetClick({
-                                  id: 'manual',
-                                  name: `Channel ${channel}`,
-                                  channelNumber: channel,
-                                  deviceType: 'cable',
-                                  order: 0,
-                                  usageCount: 0,
-                                  lastUsed: null
-                                })
-                              }
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="text-xs text-slate-500 text-center">
-                        Enter a channel number and press Enter, or use presets below
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Channel Presets for CEC Cable */}
                 <div className="w-full mt-4">
                   <ChannelPresetGrid
                     deviceType="cable"
