@@ -147,18 +147,13 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
     const newChannelInput = channelInput + number
     setChannelInput(newChannelInput)
 
-    // For IR devices, send each digit immediately
+    // For IR devices, send each digit immediately - cable box handles the channel tuning
     await sendCommand(number, `Number ${number}`)
 
-    // Auto-submit after 3 digits for IR
-    if (newChannelInput.length >= 3) {
-      setTimeout(() => {
-        if (channelInput.length + 1 >= 3) {
-          sendCommand('OK', 'Enter')
-          setChannelInput('')
-        }
-      }, 1500)
-    }
+    // Auto-clear display after 2 seconds (just for UI, no ENTER command sent)
+    setTimeout(() => {
+      setChannelInput('')
+    }, 2000)
   }
 
   const handleChannelEnter = () => {
