@@ -25,8 +25,11 @@ const COMMON_IR_CODES: { [key: string]: string } = {
 
 async function loadDevices() {
   try {
-    const data = await readFile(IR_DEVICES_FILE, 'utf8')
-    return JSON.parse(data)
+    // Load from database instead of JSON file
+    const { db } = await import('@/db')
+    const { irDevices } = await import('@/db/schema')
+    const devices = await db.select().from(irDevices).all()
+    return { devices }
   } catch (error) {
     return { devices: [] as any[] }
   }
