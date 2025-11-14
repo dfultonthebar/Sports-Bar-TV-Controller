@@ -1115,6 +1115,7 @@ n          {/* API Configuration Tab */}
                             <option value="baseball">Baseball</option>
                             <option value="hockey">Hockey</option>
                             <option value="soccer">Soccer</option>
+                            <option value="volleyball">Volleyball</option>
                           </select>
                         </div>
 

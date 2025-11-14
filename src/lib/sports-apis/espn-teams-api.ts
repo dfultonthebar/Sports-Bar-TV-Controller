@@ -77,10 +77,12 @@ class ESPNTeamsAPIService {
         baseLeague = 'womens-college-basketball';
       }
 
-      // Build URL with optional group filter
+      // Build URL with optional group filter and limit parameter
       let url = `${this.baseUrl}/${baseSport}/${baseLeague}/teams`;
       if (groupId) {
-        url += `?groups=${groupId}`;
+        url += `?groups=${groupId}&limit=500`;
+      } else {
+        url += `?limit=500`;
       }
 
       logger.info(`[ESPN TEAMS] Fetching teams from ${url}`);
@@ -156,6 +158,12 @@ class ESPNTeamsAPIService {
       { id: 'mens-college-basketball-cusa', name: 'Conference USA (Men\'s)', abbreviation: 'C-USA', sport: 'basketball' },
       { id: 'mens-college-basketball-mac', name: 'Mid-American (Men\'s)', abbreviation: 'MAC', sport: 'basketball' },
       { id: 'mens-college-basketball-sunbelt', name: 'Sun Belt (Men\'s)', abbreviation: 'Sun Belt', sport: 'basketball' },
+
+      // Volleyball
+      { id: 'womens-college-volleyball', name: 'NCAA Women\'s Volleyball', abbreviation: 'NCAAVB', sport: 'volleyball' },
+
+      // Softball
+      { id: 'college-softball', name: 'NCAA Softball', abbreviation: 'NCAASB', sport: 'baseball' },
     ];
 
     return leagues;
