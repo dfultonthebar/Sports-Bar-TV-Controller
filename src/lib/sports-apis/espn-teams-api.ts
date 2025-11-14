@@ -61,7 +61,28 @@ class ESPNTeamsAPIService {
     }
 
     try {
-      const url = `${this.baseUrl}/${sport}/${league}/teams`;
+      // Check if this league has a specific group ID (for college conferences)
+      const groupId = this.getGroupIdForLeague(league);
+
+      // Extract base sport/league for ESPN API
+      let baseSport = sport;
+      let baseLeague = league;
+
+      // Handle conference-specific leagues
+      if (league.startsWith('mens-college-basketball-')) {
+        baseSport = 'basketball';
+        baseLeague = 'mens-college-basketball';
+      } else if (league.startsWith('womens-college-basketball-')) {
+        baseSport = 'basketball';
+        baseLeague = 'womens-college-basketball';
+      }
+
+      // Build URL with optional group filter
+      let url = `${this.baseUrl}/${baseSport}/${baseLeague}/teams`;
+      if (groupId) {
+        url += `?groups=${groupId}`;
+      }
+
       logger.info(`[ESPN TEAMS] Fetching teams from ${url}`);
 
       const response = await fetch(url, {
@@ -102,18 +123,68 @@ class ESPNTeamsAPIService {
    */
   async getAvailableLeagues(): Promise<ESPNLeague[]> {
     const leagues: ESPNLeague[] = [
+      // Professional Leagues
       { id: 'nfl', name: 'National Football League', abbreviation: 'NFL', sport: 'football' },
-      { id: 'college-football', name: 'NCAA Football', abbreviation: 'CFB', sport: 'football' },
       { id: 'nba', name: 'National Basketball Association', abbreviation: 'NBA', sport: 'basketball' },
-      { id: 'mens-college-basketball', name: 'NCAA Men\'s Basketball', abbreviation: 'NCAAM', sport: 'basketball' },
-      { id: 'womens-college-basketball', name: 'NCAA Women\'s Basketball', abbreviation: 'NCAAW', sport: 'basketball' },
       { id: 'mlb', name: 'Major League Baseball', abbreviation: 'MLB', sport: 'baseball' },
       { id: 'nhl', name: 'National Hockey League', abbreviation: 'NHL', sport: 'hockey' },
       { id: 'mls', name: 'Major League Soccer', abbreviation: 'MLS', sport: 'soccer' },
       { id: 'wnba', name: 'Women\'s National Basketball Association', abbreviation: 'WNBA', sport: 'basketball' },
+
+      // College Football
+      { id: 'college-football', name: 'NCAA Football (All)', abbreviation: 'CFB', sport: 'football' },
+
+      // College Basketball - Major Conferences
+      { id: 'mens-college-basketball', name: 'NCAA Men\'s Basketball (All)', abbreviation: 'NCAAM', sport: 'basketball' },
+      { id: 'womens-college-basketball', name: 'NCAA Women\'s Basketball (All)', abbreviation: 'NCAAW', sport: 'basketball' },
+
+      // College Basketball - Power Conferences
+      { id: 'mens-college-basketball-acc', name: 'ACC (Men\'s)', abbreviation: 'ACC', sport: 'basketball' },
+      { id: 'mens-college-basketball-big12', name: 'Big 12 (Men\'s)', abbreviation: 'Big 12', sport: 'basketball' },
+      { id: 'mens-college-basketball-bigten', name: 'Big Ten (Men\'s)', abbreviation: 'Big Ten', sport: 'basketball' },
+      { id: 'mens-college-basketball-sec', name: 'SEC (Men\'s)', abbreviation: 'SEC', sport: 'basketball' },
+      { id: 'mens-college-basketball-bigeast', name: 'Big East (Men\'s)', abbreviation: 'Big East', sport: 'basketball' },
+      { id: 'mens-college-basketball-pac12', name: 'Pac-12 (Men\'s)', abbreviation: 'Pac-12', sport: 'basketball' },
+
+      // College Basketball - Mid-Major Conferences
+      { id: 'mens-college-basketball-a10', name: 'Atlantic 10 (Men\'s)', abbreviation: 'A-10', sport: 'basketball' },
+      { id: 'mens-college-basketball-horizon', name: 'Horizon League (Men\'s)', abbreviation: 'Horizon', sport: 'basketball' },
+      { id: 'mens-college-basketball-mvc', name: 'Missouri Valley (Men\'s)', abbreviation: 'MVC', sport: 'basketball' },
+      { id: 'mens-college-basketball-wcc', name: 'West Coast Conference (Men\'s)', abbreviation: 'WCC', sport: 'basketball' },
+      { id: 'mens-college-basketball-aac', name: 'American Athletic (Men\'s)', abbreviation: 'AAC', sport: 'basketball' },
+      { id: 'mens-college-basketball-mwc', name: 'Mountain West (Men\'s)', abbreviation: 'MWC', sport: 'basketball' },
+      { id: 'mens-college-basketball-cusa', name: 'Conference USA (Men\'s)', abbreviation: 'C-USA', sport: 'basketball' },
+      { id: 'mens-college-basketball-mac', name: 'Mid-American (Men\'s)', abbreviation: 'MAC', sport: 'basketball' },
+      { id: 'mens-college-basketball-sunbelt', name: 'Sun Belt (Men\'s)', abbreviation: 'Sun Belt', sport: 'basketball' },
     ];
 
     return leagues;
+  }
+
+  /**
+   * Map league ID to ESPN group ID for conference-specific queries
+   */
+  private getGroupIdForLeague(leagueId: string): string | null {
+    const groupMap: Record<string, string> = {
+      // College Basketball Men's Conferences (ESPN Group IDs)
+      'mens-college-basketball-acc': '2',
+      'mens-college-basketball-big12': '8',
+      'mens-college-basketball-bigten': '7',
+      'mens-college-basketball-sec': '23',
+      'mens-college-basketball-bigeast': '4',
+      'mens-college-basketball-pac12': '21',
+      'mens-college-basketball-a10': '3',
+      'mens-college-basketball-horizon': '45',
+      'mens-college-basketball-mvc': '18',
+      'mens-college-basketball-wcc': '26',
+      'mens-college-basketball-aac': '62',
+      'mens-college-basketball-mwc': '44',
+      'mens-college-basketball-cusa': '11',
+      'mens-college-basketball-mac': '15',
+      'mens-college-basketball-sunbelt': '37',
+    };
+
+    return groupMap[leagueId] || null;
   }
 
   /**
@@ -177,20 +248,32 @@ class ESPNTeamsAPIService {
   /**
    * Get teams with divisions/conferences
    */
-  async getTeamsWithDivisions(sport: string, league: string): Promise<{ teams: ESPNTeam[]; groups: ESPNGroup[] }> {
+  async getTeamsWithDivisions(sport: string, league: string): Promise<{ teams: ESPNTeam[]; groups: ESPNGroup[]; autoConference?: string }> {
     try {
       // Get teams from ESPN API
       const teams = await this.getTeams(sport, league);
 
-      // Use hardcoded divisions since ESPN API doesn't provide them directly
+      // Use hardcoded divisions for professional leagues
       const groups = this.getHardcodedDivisions(league);
 
-      logger.info(`[ESPN TEAMS] Returning ${teams.length} teams and ${groups.length} divisions for ${sport}/${league}`);
-      return { teams, groups };
+      // For conference-specific leagues, extract the conference name
+      let autoConference: string | undefined;
+      if (league.startsWith('mens-college-basketball-') || league.startsWith('womens-college-basketball-')) {
+        // Find the league definition to get the conference name
+        const leagues = await this.getAvailableLeagues();
+        const leagueDef = leagues.find(l => l.id === league);
+        if (leagueDef && leagueDef.id !== 'mens-college-basketball' && leagueDef.id !== 'womens-college-basketball') {
+          // Extract conference name (everything except sport and "(Men's)" or "(Women's)")
+          autoConference = leagueDef.name.replace(' (Men\'s)', '').replace(' (Women\'s)', '').replace(' (All)', '');
+        }
+      }
+
+      logger.info(`[ESPN TEAMS] Returning ${teams.length} teams, ${groups.length} divisions${autoConference ? `, auto-conference: ${autoConference}` : ''} for ${sport}/${league}`);
+      return { teams, groups, autoConference };
     } catch (error: any) {
       logger.error(`[ESPN TEAMS] Error in getTeamsWithDivisions for ${sport}/${league}:`, error);
       logger.error(`[ESPN TEAMS] Error stack:`, error.stack);
-      return { teams: [], groups: [] };
+      return { teams, groups: [] };
     }
   }
 

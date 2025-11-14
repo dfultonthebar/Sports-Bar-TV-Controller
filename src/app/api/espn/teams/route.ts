@@ -41,12 +41,13 @@ export async function GET(request: NextRequest) {
     // Get teams for specific league
     if (sport && league) {
       if (withDivisions === 'true') {
-        const { teams, groups } = await espnTeamsAPI.getTeamsWithDivisions(sport, league);
-        logger.api.response('GET', '/api/espn/teams', 200, { teams: teams.length, groups: groups.length });
+        const { teams, groups, autoConference } = await espnTeamsAPI.getTeamsWithDivisions(sport, league);
+        logger.api.response('GET', '/api/espn/teams', 200, { teams: teams.length, groups: groups.length, autoConference });
         return NextResponse.json({
           success: true,
           teams,
           divisions: groups,
+          autoConference,
         });
       } else {
         const teams = await espnTeamsAPI.getTeams(sport, league);

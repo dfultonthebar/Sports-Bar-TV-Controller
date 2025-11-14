@@ -313,6 +313,15 @@ export default function SportsGuideConfigPage() {
       const data = await response.json()
       if (data.success) {
         setEspnDivisions(data.divisions || [])
+
+        // Auto-populate conference field if the API returned an autoConference value
+        // This happens for conference-specific leagues like "Horizon League (Men's)"
+        if (data.autoConference) {
+          setTeamFormData(prev => ({
+            ...prev,
+            conference: data.autoConference
+          }))
+        }
       }
     } catch (error) {
       logger.error('Failed to load divisions:', error)
