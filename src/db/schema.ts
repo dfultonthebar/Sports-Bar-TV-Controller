@@ -63,10 +63,49 @@ export const homeTeams = sqliteTable('HomeTeam', {
   secondaryColor: text('secondaryColor'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   priority: integer('priority').notNull().default(0),
+
+  // Fuzzy Matching Fields
+  aliases: text('aliases'), // JSON array of team name variations
+  cityAbbreviations: text('cityAbbreviations'), // JSON array of city abbreviations (e.g., ["MIL", "Milw"])
+  teamAbbreviations: text('teamAbbreviations'), // JSON array of team abbreviations (e.g., ["UW", "Wisc"])
+  commonVariations: text('commonVariations'), // JSON array of common name variations
+  matchingStrategy: text('matchingStrategy').default('fuzzy'), // 'exact', 'fuzzy', 'alias', 'learned'
+  minMatchConfidence: real('minMatchConfidence').default(0.7), // Minimum confidence score (0.0-1.0)
+
+  // Scheduler Integration Fields
+  minTVsWhenActive: integer('minTVsWhenActive').default(1), // Minimum TVs when game is on
+  autoPromotePlayoffs: integer('autoPromotePlayoffs', { mode: 'boolean' }).default(true), // Auto-boost playoff games
+  preferredZones: text('preferredZones'), // JSON array of preferred zone names (e.g., ["main", "bar"])
+  rivalTeams: text('rivalTeams'), // JSON array of rival team names for bonus priority
+  schedulerNotes: text('schedulerNotes'), // Admin notes for scheduling decisions
+
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
   teamLeagueIdx: uniqueIndex('HomeTeam_teamName_league_key').on(table.teamName, table.league),
+}))
+
+// Team Name Matches - Learning system for fuzzy matching
+export const teamNameMatches = sqliteTable('TeamNameMatch', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  guideTeamName: text('guideTeamName').notNull(), // Team name as it appeared in guide
+  matchedTeamId: text('matchedTeamId').references(() => homeTeams.id, { onDelete: 'cascade' }), // Matched home team (nullable for no-match)
+  matchedTeamName: text('matchedTeamName'), // Name of matched team (denormalized for speed)
+  confidence: real('confidence').notNull(), // Match confidence score (0.0-1.0)
+  matchMethod: text('matchMethod').notNull(), // 'exact', 'alias', 'fuzzy', 'partial', 'abbreviation', 'learned'
+  sport: text('sport'), // Sport context for the match
+  league: text('league'), // League context for the match
+  isValidated: integer('isValidated', { mode: 'boolean' }).default(false), // Admin validated match
+  isCorrect: integer('isCorrect', { mode: 'boolean' }), // Admin marked as correct/incorrect
+  validatedBy: text('validatedBy'), // Admin user who validated
+  validatedAt: timestamp('validatedAt'), // When validation occurred
+  matchCount: integer('matchCount').notNull().default(1), // How many times this match occurred
+  lastMatchedAt: timestamp('lastMatchedAt').notNull().default(timestampNow()), // Last occurrence
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  guideNameIdx: index('TeamNameMatch_guideTeamName_idx').on(table.guideTeamName),
+  matchedTeamIdx: index('TeamNameMatch_matchedTeamId_idx').on(table.matchedTeamId),
+  confidenceIdx: index('TeamNameMatch_confidence_idx').on(table.confidence),
 }))
 
 // TV Layout Model
