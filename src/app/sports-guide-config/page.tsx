@@ -240,8 +240,15 @@ export default function SportsGuideConfigPage() {
   })
   const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
 
+  // ESPN API state
+  const [espnLeagues, setEspnLeagues] = useState<any[]>([])
+  const [espnDivisions, setEspnDivisions] = useState<any[]>([])
+  const [loadingLeagues, setLoadingLeagues] = useState(false)
+  const [loadingDivisions, setLoadingDivisions] = useState(false)
+
   useEffect(() => {
     loadConfiguration()
+    loadESPNLeagues()
   }, [])
 
   const loadConfiguration = async () => {
@@ -281,6 +288,37 @@ export default function SportsGuideConfigPage() {
       }
     } catch (error) {
       logger.error('Error loading teams:', error)
+    }
+  }
+
+  const loadESPNLeagues = async () => {
+    try {
+      setLoadingLeagues(true)
+      const response = await fetch('/api/espn/leagues')
+      const data = await response.json()
+      if (data.success) {
+        setEspnLeagues(data.leagues || [])
+      }
+    } catch (error) {
+      logger.error('Failed to load ESPN leagues:', error)
+    } finally {
+      setLoadingLeagues(false)
+    }
+  }
+
+  const loadDivisionsForLeague = async (sport: string, league: string) => {
+    try {
+      setLoadingDivisions(true)
+      const response = await fetch(`/api/espn/teams?sport=${sport}&league=${league}&withDivisions=true`)
+      const data = await response.json()
+      if (data.success) {
+        setEspnDivisions(data.divisions || [])
+      }
+    } catch (error) {
+      logger.error('Failed to load divisions:', error)
+      setEspnDivisions([])
+    } finally {
+      setLoadingDivisions(false)
     }
   }
 
@@ -367,6 +405,10 @@ export default function SportsGuideConfigPage() {
         autoPromotePlayoffs: team.autoPromotePlayoffs ?? true,
         schedulerNotes: team.schedulerNotes || ''
       })
+      // Load divisions for the team's league if available
+      if (team.sport && team.league) {
+        loadDivisionsForLeague(team.sport, team.league)
+      }
     } else {
       setEditingTeam(null)
       setTeamFormData({
@@ -381,6 +423,7 @@ export default function SportsGuideConfigPage() {
         autoPromotePlayoffs: true,
         schedulerNotes: ''
       })
+      setEspnDivisions([])
     }
     setShowTeamForm(true)
   }
@@ -400,6 +443,7 @@ export default function SportsGuideConfigPage() {
       autoPromotePlayoffs: true,
       schedulerNotes: ''
     })
+    setEspnDivisions([])
   }
 
   const saveTeam = async () => {
@@ -407,10 +451,17 @@ export default function SportsGuideConfigPage() {
       setIsSaving(true)
       setSaveMessage(null)
 
+      // Determine category based on league
+      let category = 'professional'
+      if (teamFormData.league?.toLowerCase().includes('ncaa') ||
+          teamFormData.league?.toLowerCase().includes('college')) {
+        category = 'college'
+      }
+
       const teamData = {
         teamName: teamFormData.teamName,
         league: teamFormData.league,
-        category: teamFormData.category || 'professional',
+        category: category,
         sport: teamFormData.sport,
         location: teamFormData.location || null,
         conference: teamFormData.conference || null,
@@ -1026,15 +1077,28 @@ n          {/* API Configuration Tab */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-200 mb-2">
-                            Team Name *
+                            Sport *
                           </label>
-                          <input
-                            type="text"
-                            value={teamFormData.teamName || ''}
-                            onChange={(e) => setTeamFormData({ ...teamFormData, teamName: e.target.value })}
-                            placeholder="e.g., Dallas Cowboys"
-                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
+                          <select
+                            value={teamFormData.sport || ''}
+                            onChange={(e) => {
+                              setTeamFormData({
+                                ...teamFormData,
+                                sport: e.target.value,
+                                league: '', // Reset league when sport changes
+                                conference: '' // Reset conference when sport changes
+                              })
+                              setEspnDivisions([]) // Clear divisions
+                            }}
+                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          >
+                            <option value="">Select Sport</option>
+                            <option value="football">Football</option>
+                            <option value="basketball">Basketball</option>
+                            <option value="baseball">Baseball</option>
+                            <option value="hockey">Hockey</option>
+                            <option value="soccer">Soccer</option>
+                          </select>
                         </div>
 
                         <div>
@@ -1044,23 +1108,46 @@ n          {/* API Configuration Tab */}
                           <select
                             value={teamFormData.league || ''}
                             onChange={(e) => {
-                              const league = SPORTS_LEAGUES.find(l => l.id === e.target.value)
+                              const selectedLeague = espnLeagues.find(l => l.abbreviation === e.target.value)
                               setTeamFormData({
                                 ...teamFormData,
                                 league: e.target.value,
-                                sport: league?.sport || '',
-                                category: league?.category || 'professional'
+                                conference: '' // Reset conference when league changes
                               })
+                              // Load divisions for the selected league
+                              if (teamFormData.sport && e.target.value) {
+                                loadDivisionsForLeague(teamFormData.sport, e.target.value)
+                              } else {
+                                setEspnDivisions([])
+                              }
                             }}
-                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            disabled={!teamFormData.sport || loadingLeagues}
+                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <option value="">Select League</option>
-                            {SPORTS_LEAGUES.map((league) => (
-                              <option key={league.id} value={league.id}>
-                                {league.name}
-                              </option>
-                            ))}
+                            <option value="">
+                              {loadingLeagues ? 'Loading leagues...' : teamFormData.sport ? 'Select League' : 'Select Sport First'}
+                            </option>
+                            {espnLeagues
+                              .filter(league => league.sport.toLowerCase() === teamFormData.sport?.toLowerCase())
+                              .map((league) => (
+                                <option key={league.id} value={league.abbreviation}>
+                                  {league.name} ({league.abbreviation})
+                                </option>
+                              ))}
                           </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-200 mb-2">
+                            Team Name *
+                          </label>
+                          <input
+                            type="text"
+                            value={teamFormData.teamName || ''}
+                            onChange={(e) => setTeamFormData({ ...teamFormData, teamName: e.target.value })}
+                            placeholder="e.g., Dallas Cowboys"
+                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
                         </div>
 
                         <div>
@@ -1078,15 +1165,26 @@ n          {/* API Configuration Tab */}
 
                         <div>
                           <label className="block text-sm font-medium text-slate-200 mb-2">
-                            Conference
+                            Conference/Division
                           </label>
-                          <input
-                            type="text"
+                          <select
                             value={teamFormData.conference || ''}
                             onChange={(e) => setTeamFormData({ ...teamFormData, conference: e.target.value })}
-                            placeholder="e.g., NFC East"
-                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
+                            disabled={!teamFormData.league || loadingDivisions}
+                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="">
+                              {loadingDivisions ? 'Loading divisions...' : espnDivisions.length > 0 ? 'Select Division (Optional)' : 'Select League First'}
+                            </option>
+                            {espnDivisions.map((division) => (
+                              <option key={division.id} value={division.name}>
+                                {division.name}
+                              </option>
+                            ))}
+                          </select>
+                          {!teamFormData.league && (
+                            <p className="text-xs text-slate-500 mt-1">Select a league to see available divisions</p>
+                          )}
                         </div>
                       </div>
 
