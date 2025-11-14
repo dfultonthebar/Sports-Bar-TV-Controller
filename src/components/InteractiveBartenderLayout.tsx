@@ -42,13 +42,20 @@ interface Props {
   onInputSelect: (inputNumber: number, outputNumber: number) => void
   currentSources?: Map<number, number> // outputNumber -> inputNumber
   inputs: MatrixInput[]
+  currentChannels?: Record<number, {
+    channelNumber: string
+    channelName: string | null
+    deviceType: string
+    inputLabel: string
+  }>
 }
 
 export default function InteractiveBartenderLayout({
   layout,
   onInputSelect,
   currentSources,
-  inputs
+  inputs,
+  currentChannels = {}
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
 
@@ -69,7 +76,21 @@ export default function InteractiveBartenderLayout({
     if (!inputNum) return null
 
     const input = inputs.find(i => i.channelNumber === inputNum)
-    return input ? input.label : `Input ${inputNum}`
+    if (!input) return `Input ${inputNum}`
+
+    // Check if this input has current channel info
+    const channelInfo = currentChannels[inputNum]
+    if (channelInfo) {
+      if (channelInfo.channelName) {
+        // Show preset name if available (e.g., "Cable Box 1 - ESPN")
+        return `${input.label} - ${channelInfo.channelName}`
+      } else {
+        // Show channel number if no preset name (e.g., "Cable Box 1 - Ch 40")
+        return `${input.label} - Ch ${channelInfo.channelNumber}`
+      }
+    }
+
+    return input.label
   }
 
   // Use professional image if available, otherwise fallback to original
@@ -139,6 +160,12 @@ export default function InteractiveBartenderLayout({
                   {/* TV Icon - LARGER ICON */}
                   <div className="relative z-10 p-3 flex flex-col items-center">
                     <Tv className={`w-12 h-12 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
+                    {/* Current Input Label */}
+                    {currentInput && (
+                      <div className="mt-2 px-3 py-1 bg-black/60 rounded-lg text-xs font-semibold text-white whitespace-nowrap">
+                        {currentInput}
+                      </div>
+                    )}
                   </div>
                 </div>
               </button>

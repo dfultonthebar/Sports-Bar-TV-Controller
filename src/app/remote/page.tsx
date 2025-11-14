@@ -155,13 +155,21 @@ export default function BartenderRemotePage() {
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
-  
+
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing'>('video')
 
   // Routing matrix state
   const [routingStatus, setRoutingStatus] = useState<string>('')
   const [loadingRoutes, setLoadingRoutes] = useState(false)
+
+  // Channel tracking state
+  const [currentChannels, setCurrentChannels] = useState<Record<number, {
+    channelNumber: string
+    channelName: string | null
+    deviceType: string
+    inputLabel: string
+  }>>({})
 
 
 
@@ -174,15 +182,17 @@ export default function BartenderRemotePage() {
     loadAudioProcessor()
     // Also fetch matrix data on initial load
     fetchMatrixData()
-    
+    loadCurrentChannels()
+
     // Establish persistent connection on component mount
     establishPersistentConnection()
-    
-    // Poll connection status every 10 seconds
+
+    // Poll connection status and channel data every 10 seconds
     const statusInterval = setInterval(() => {
       checkConnectionStatus()
+      loadCurrentChannels()
     }, 10000)
-    
+
     // Cleanup on unmount
     return () => {
       clearInterval(statusInterval)
@@ -584,6 +594,20 @@ export default function BartenderRemotePage() {
     }
   }
 
+  const loadCurrentChannels = async () => {
+    try {
+      const response = await fetch('/api/matrix/current-channels')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.channels) {
+          setCurrentChannels(data.channels)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading current channels:', error)
+    }
+  }
+
   const loadCurrentRoutes = async () => {
     setLoadingRoutes(true)
     try {
@@ -603,6 +627,25 @@ export default function BartenderRemotePage() {
     }
   }
 
+  const getInputLabelWithChannel = (inputNum: number): string => {
+    const input = inputs.find(i => i.channelNumber === inputNum)
+    if (!input) return `IN ${inputNum}`
+
+    // Check if this input has current channel info
+    const channelInfo = currentChannels[inputNum]
+    if (channelInfo) {
+      if (channelInfo.channelName) {
+        // Show preset name if available (e.g., "ESPN")
+        return channelInfo.channelName
+      } else {
+        // Show channel number if no preset name (e.g., "Ch 40")
+        return `Ch ${channelInfo.channelNumber}`
+      }
+    }
+
+    return input.label
+  }
+
   const handleRoutingMatrixClick = async (inputNum: number, outputNum: number) => {
     setRoutingStatus(`Routing input ${inputNum} to output ${outputNum}...`)
     setIsRouting(true)
@@ -618,6 +661,7 @@ export default function BartenderRemotePage() {
       if (response.ok && result.success) {
         setRoutingStatus(`✓ Successfully routed input ${inputNum} to output ${outputNum}`)
         await loadCurrentRoutes() // Reload to show updated routing
+        await loadCurrentChannels() // Reload channel info
       } else {
         setRoutingStatus(`✗ Failed to route: ${result.error || 'Unknown error'}`)
       }
@@ -670,6 +714,7 @@ export default function BartenderRemotePage() {
               onInputSelect={routeInputToOutput}
               currentSources={currentSources}
               inputs={inputs}
+              currentChannels={currentChannels}
             />
           </div>
         )}
@@ -725,16 +770,28 @@ export default function BartenderRemotePage() {
                       <th className="bg-slate-800 border border-slate-700 p-2 text-slate-200 font-semibold sticky left-0 z-10 text-xs">
                         Out \ In
                       </th>
-                      {inputs.filter(input => input.isActive && !input.isCecPort).map((input) => (
-                        <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[70px]">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="font-bold text-blue-400">IN {input.channelNumber}</span>
-                            <span className="text-slate-400 text-[9px] truncate max-w-[60px]" title={input.label}>
-                              {input.label}
-                            </span>
-                          </div>
-                        </th>
-                      ))}
+                      {inputs.filter(input => input.isActive && !input.isCecPort).map((input) => {
+                        const channelInfo = currentChannels[input.channelNumber]
+                        const channelLabel = channelInfo
+                          ? (channelInfo.channelName || `Ch ${channelInfo.channelNumber}`)
+                          : null
+
+                        return (
+                          <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[90px]">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="font-bold text-blue-400">IN {input.channelNumber}</span>
+                              <span className="text-slate-400 text-[9px] truncate max-w-[80px]" title={input.label}>
+                                {input.label}
+                              </span>
+                              {channelLabel && (
+                                <span className="text-green-400 text-[9px] font-semibold truncate max-w-[80px]" title={channelLabel}>
+                                  {channelLabel}
+                                </span>
+                              )}
+                            </div>
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -861,6 +918,7 @@ export default function BartenderRemotePage() {
             onClick={() => {
               setActiveTab('routing')
               loadCurrentRoutes()
+              loadCurrentChannels()
             }}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'routing'

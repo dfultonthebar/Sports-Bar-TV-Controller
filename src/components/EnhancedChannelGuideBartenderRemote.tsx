@@ -195,10 +195,26 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [lastOperationTime, setLastOperationTime] = useState<Date | null>(null)
   const [showRemotePopup, setShowRemotePopup] = useState(false)
 
+  // Current Channel Tracking State
+  const [currentChannels, setCurrentChannels] = useState<Record<number, {
+    channelNumber: string
+    channelName: string | null
+    deviceType: string
+    inputLabel: string
+  }>>({})
+
   useEffect(() => {
     loadAllDeviceConfigurations()
     loadChannelPresets()
     loadCableBoxes()
+    loadCurrentChannels()
+
+    // Auto-refresh channel data every 10 seconds
+    const interval = setInterval(() => {
+      loadCurrentChannels()
+    }, 10000)
+
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -236,6 +252,32 @@ export default function EnhancedChannelGuideBartenderRemote() {
       }
     } catch (error) {
       logger.error('Error loading cable boxes:', error)
+    }
+  }
+
+  const loadCurrentChannels = async () => {
+    try {
+      const response = await fetch('/api/matrix/current-channels')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.channels) {
+          setCurrentChannels(data.channels)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading current channels:', error)
+    }
+  }
+
+  // Get input label with current channel info
+  const getInputLabelWithChannel = (input: MatrixInput): string => {
+    const channelInfo = currentChannels[input.channelNumber]
+    if (!channelInfo) return input.label
+
+    if (channelInfo.channelName) {
+      return `${input.label} - ${channelInfo.channelName}`
+    } else {
+      return `${input.label} - Ch ${channelInfo.channelNumber}`
     }
   }
 
@@ -936,7 +978,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                         {getDeviceStatusIcon(input.channelNumber)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className={`font-medium truncate ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{input.label}</div>
+                        <div className={`font-medium truncate ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{getInputLabelWithChannel(input)}</div>
                         <div className={`text-xs truncate ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
                           Ch {input.channelNumber} • {deviceType || input.inputType}
                         </div>
