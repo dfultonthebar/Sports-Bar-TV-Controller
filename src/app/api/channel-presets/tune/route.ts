@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (currentPreset) {
-            await update('channelPresets', presetId, {
+            await update('channelPresets', eq(schema.channelPresets.id, presetId as string), {
               usageCount: currentPreset.usageCount + 1,
               lastUsed: new Date().toISOString()
             })
@@ -129,16 +129,22 @@ export async function POST(request: NextRequest) {
         let inputNum: number | null = null
         let inputLabel = 'Unknown'
 
-        if (deviceTypeStr === 'cable' && cableBoxIdStr) {
-          // Find the specific cable box's matrix input
-          const irDevice = await db.select()
-            .from(schema.irDevices)
-            .where(and(
-              eq(schema.irDevices.id, cableBoxIdStr),
-              eq(schema.irDevices.deviceType, 'Cable Box')
-            ))
-            .limit(1)
-            .get()
+        if (deviceTypeStr === 'cable') {
+          // Find the cable box's matrix input
+          const irDevice = cableBoxIdStr
+            ? await db.select()
+                .from(schema.irDevices)
+                .where(and(
+                  eq(schema.irDevices.id, cableBoxIdStr),
+                  eq(schema.irDevices.deviceType, 'Cable Box')
+                ))
+                .limit(1)
+                .get()
+            : await db.select()
+                .from(schema.irDevices)
+                .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+                .limit(1)
+                .get()
 
           if (irDevice?.matrixInput) {
             inputNum = irDevice.matrixInput
@@ -181,7 +187,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (existing) {
-            await update('inputCurrentChannels', existing.id, {
+            await update('inputCurrentChannels', eq(schema.inputCurrentChannels.id, existing.id), {
               channelNumber: channelNumberStr,
               channelName,
               presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
