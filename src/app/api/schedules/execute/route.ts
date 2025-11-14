@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { findMany, inArray } from '@/lib/db-helpers'
 import { schema } from '@/db'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -11,6 +11,11 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getTeamMatcher } from '@/lib/scheduler/team-name-matcher'
+import { getPriorityCalculator } from '@/lib/scheduler/priority-calculator'
+import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
+import { getStateReader } from '@/lib/scheduler/state-reader'
+import type { GameInfo } from '@/lib/scheduler/priority-calculator'
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
@@ -222,12 +227,103 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
     // Search for games in channel guide data
     // This would integrate with your existing TV guide APIs
     const games = await searchForGames(homeTeamsList, now, endOfDay);
-    
+
     result.games = games;
     result.gamesFound = games.length;
 
-    // TODO: Assign games to outputs based on preferred providers
-    // This would be more complex logic based on your needs
+    // AI-POWERED DISTRIBUTION: Assign games to outputs using intelligent distribution engine
+    if (games.length > 0) {
+      logger.info(`[AI_SCHEDULER] Starting intelligent distribution for ${games.length} games`);
+
+      // Transform games into format for AI scheduler
+      const gameInfos: GameInfo[] = games.map(game => ({
+        id: game.id || `${game.homeTeam}-${game.awayTeam}`,
+        homeTeam: game.homeTeam || game.home || '',
+        awayTeam: game.awayTeam || game.away || '',
+        sport: game.sport || undefined,
+        league: game.league || undefined,
+        startTime: game.startTime || game.time,
+        description: game.description || game.title || '',
+        channelNumber: game.channelNumber || game.channel || undefined,
+        channelName: game.channelName || game.network || undefined
+      }));
+
+      // Create intelligent distribution plan
+      const distributionEngine = getDistributionEngine();
+      const distributionPlan = await distributionEngine.createDistributionPlan(gameInfos);
+
+      logger.info(
+        `[AI_SCHEDULER] Distribution plan created: ${distributionPlan.games.length} games, ` +
+        `${distributionPlan.summary.assignedTVs}/${distributionPlan.summary.totalTVs} TVs assigned`
+      );
+
+      // Transform distribution plan into output assignments format
+      for (const gameAssignment of distributionPlan.games) {
+        for (const tvAssignment of gameAssignment.assignments) {
+          // Find the matrix output ID from output number
+          const output = await db.select()
+            .from(schema.matrixOutputs)
+            .where(eq(schema.matrixOutputs.outputNumber, tvAssignment.outputNumber))
+            .limit(1)
+            .get();
+
+          if (output) {
+            // Find the matrix input ID from input number
+            const input = await db.select()
+              .from(schema.matrixInputs)
+              .where(eq(schema.matrixInputs.channelNumber, tvAssignment.inputNumber))
+              .limit(1)
+              .get();
+
+            if (input) {
+              result.assignments[output.id] = {
+                inputId: input.id,
+                channel: tvAssignment.channelNumber || gameAssignment.game.channelNumber,
+                priority: gameAssignment.priority.finalScore,
+                gameName: `${gameAssignment.game.homeTeam} vs ${gameAssignment.game.awayTeam}`,
+                requiresChannelChange: tvAssignment.requiresChannelChange,
+                alreadyTuned: tvAssignment.alreadyTuned
+              };
+            }
+          }
+        }
+      }
+
+      // Add default content assignments (ESPN, Atmosphere TV)
+      for (const defaultAssignment of distributionPlan.defaults) {
+        const output = await db.select()
+          .from(schema.matrixOutputs)
+          .where(eq(schema.matrixOutputs.outputNumber, defaultAssignment.outputNumber))
+          .limit(1)
+          .get();
+
+        if (output && !result.assignments[output.id]) {
+          const input = await db.select()
+            .from(schema.matrixInputs)
+            .where(eq(schema.matrixInputs.channelNumber, defaultAssignment.inputNumber))
+            .limit(1)
+            .get();
+
+          if (input) {
+            result.assignments[output.id] = {
+              inputId: input.id,
+              channel: defaultAssignment.channelNumber || '',
+              priority: 0,
+              gameName: defaultAssignment.contentType === 'espn' ? 'ESPN' : 'Atmosphere TV',
+              requiresChannelChange: defaultAssignment.requiresChannelChange,
+              alreadyTuned: false
+            };
+          }
+        }
+      }
+
+      logger.info(`[AI_SCHEDULER] Final assignments created for ${Object.keys(result.assignments).length} outputs`);
+
+      // Log distribution plan reasoning
+      for (const reason of distributionPlan.reasoning) {
+        logger.info(`[AI_SCHEDULER] ${reason}`);
+      }
+    }
 
   } catch (error) {
     logger.error('Error finding games:', error);
