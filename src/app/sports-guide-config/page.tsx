@@ -242,8 +242,10 @@ export default function SportsGuideConfigPage() {
 
   // ESPN API state
   const [espnLeagues, setEspnLeagues] = useState<any[]>([])
+  const [espnTeams, setEspnTeams] = useState<any[]>([])
   const [espnDivisions, setEspnDivisions] = useState<any[]>([])
   const [loadingLeagues, setLoadingLeagues] = useState(false)
+  const [loadingTeams, setLoadingTeams] = useState(false)
   const [loadingDivisions, setLoadingDivisions] = useState(false)
 
   useEffect(() => {
@@ -306,12 +308,14 @@ export default function SportsGuideConfigPage() {
     }
   }
 
-  const loadDivisionsForLeague = async (sport: string, league: string) => {
+  const loadTeamsForLeague = async (sport: string, league: string) => {
     try {
+      setLoadingTeams(true)
       setLoadingDivisions(true)
       const response = await fetch(`/api/espn/teams?sport=${sport}&league=${league}&withDivisions=true`)
       const data = await response.json()
       if (data.success) {
+        setEspnTeams(data.teams || [])
         setEspnDivisions(data.divisions || [])
 
         // Auto-populate conference field if the API returned an autoConference value
@@ -324,9 +328,11 @@ export default function SportsGuideConfigPage() {
         }
       }
     } catch (error) {
-      logger.error('Failed to load divisions:', error)
+      logger.error('Failed to load teams:', error)
+      setEspnTeams([])
       setEspnDivisions([])
     } finally {
+      setLoadingTeams(false)
       setLoadingDivisions(false)
     }
   }
@@ -414,9 +420,9 @@ export default function SportsGuideConfigPage() {
         autoPromotePlayoffs: team.autoPromotePlayoffs ?? true,
         schedulerNotes: team.schedulerNotes || ''
       })
-      // Load divisions for the team's league if available
+      // Load teams and divisions for the team's league if available
       if (team.sport && team.league) {
-        loadDivisionsForLeague(team.sport, team.league)
+        loadTeamsForLeague(team.sport, team.league)
       }
     } else {
       setEditingTeam(null)
@@ -432,6 +438,7 @@ export default function SportsGuideConfigPage() {
         autoPromotePlayoffs: true,
         schedulerNotes: ''
       })
+      setEspnTeams([])
       setEspnDivisions([])
     }
     setShowTeamForm(true)
@@ -452,6 +459,7 @@ export default function SportsGuideConfigPage() {
       autoPromotePlayoffs: true,
       schedulerNotes: ''
     })
+    setEspnTeams([])
     setEspnDivisions([])
   }
 
@@ -1121,12 +1129,15 @@ n          {/* API Configuration Tab */}
                               setTeamFormData({
                                 ...teamFormData,
                                 league: e.target.value,
-                                conference: '' // Reset conference when league changes
+                                conference: '', // Reset conference when league changes
+                                teamName: '', // Reset team name when league changes
+                                location: '' // Reset location when league changes
                               })
-                              // Load divisions for the selected league
+                              // Load teams and divisions for the selected league
                               if (teamFormData.sport && e.target.value) {
-                                loadDivisionsForLeague(teamFormData.sport, e.target.value)
+                                loadTeamsForLeague(teamFormData.sport, e.target.value)
                               } else {
+                                setEspnTeams([])
                                 setEspnDivisions([])
                               }
                             }}
@@ -1144,6 +1155,41 @@ n          {/* API Configuration Tab */}
                                 </option>
                               ))}
                           </select>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-slate-200 mb-2">
+                            Select Team from {teamFormData.league || 'League'}
+                          </label>
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const selectedTeam = espnTeams.find(t => t.id === e.target.value)
+                              if (selectedTeam) {
+                                setTeamFormData({
+                                  ...teamFormData,
+                                  teamName: selectedTeam.displayName,
+                                  location: selectedTeam.location
+                                })
+                              }
+                            }}
+                            disabled={!teamFormData.league || loadingTeams || espnTeams.length === 0}
+                            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="">
+                              {loadingTeams ? 'Loading teams...' : espnTeams.length === 0 ? 'Select League First' : 'Select a team (optional)'}
+                            </option>
+                            {espnTeams
+                              .sort((a, b) => a.displayName.localeCompare(b.displayName))
+                              .map((team) => (
+                                <option key={team.id} value={team.id}>
+                                  {team.displayName}
+                                </option>
+                              ))}
+                          </select>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Select a team to auto-fill name and location, or manually enter below
+                          </p>
                         </div>
 
                         <div>
