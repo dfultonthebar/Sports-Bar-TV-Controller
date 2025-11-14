@@ -17,14 +17,19 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, ValidationSchemas.matrixRouting)
+  // Input validation - custom schema for wolfpack routing
+  const wolfpackRoutingSchema = z.object({
+    wolfpackInputNumber: z.number().int().min(1).max(32),
+    matrixOutputNumber: z.number().int().min(1).max(4)
+  })
+
+  const bodyValidation = await validateRequestBody(request, wolfpackRoutingSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
     logger.api.request('POST', '/api/wolfpack/route-to-matrix')
-    
+
     const { wolfpackInputNumber, matrixOutputNumber } = bodyValidation.data
 
     if (!wolfpackInputNumber || !matrixOutputNumber) {
