@@ -18,12 +18,7 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-  const body = bodyValidation.data
-  // Query parameter validation
+  // Query parameter validation (GET requests don't have a body)
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
