@@ -551,7 +551,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         const eventDay = new Date(startTime)
         eventDay.setHours(0, 0, 0, 0)
         const nextDayMidnight = new Date(eventDay.getTime() + 24 * 60 * 60 * 1000)
-        
+
         // Keep event if we haven't passed midnight of its scheduled day
         return now < nextDayMidnight
       } catch (error) {
@@ -562,7 +562,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(prog => 
+      filtered = filtered.filter(prog =>
         prog.league.toLowerCase().includes(query) ||
         prog.homeTeam.toLowerCase().includes(query) ||
         prog.awayTeam.toLowerCase().includes(query) ||
@@ -606,6 +606,33 @@ export default function EnhancedChannelGuideBartenderRemote() {
         })
         .filter((prog): prog is GameListing => prog !== null)  // Remove channels without presets
     }
+
+    // Sort: Today's events first, then future events
+    // Get today's date boundaries
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(todayStart)
+    todayEnd.setDate(todayEnd.getDate() + 1)
+
+    filtered.sort((a, b) => {
+      const aStart = new Date(a.startTime)
+      const bStart = new Date(b.startTime)
+
+      const aIsToday = aStart >= todayStart && aStart < todayEnd
+      const bIsToday = bStart >= todayStart && bStart < todayEnd
+
+      // Both today: sort by start time (earliest first)
+      if (aIsToday && bIsToday) {
+        return aStart.getTime() - bStart.getTime()
+      }
+
+      // One is today, one is future: today comes first
+      if (aIsToday) return -1
+      if (bIsToday) return 1
+
+      // Both future: sort by start time (earliest first)
+      return aStart.getTime() - bStart.getTime()
+    })
 
     setFilteredPrograms(filtered)
   }
