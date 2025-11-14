@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { findMany, inArray } from '@/lib/db-helpers'
 import { schema } from '@/db'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -230,6 +230,15 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
 
     result.games = games;
     result.gamesFound = games.length;
+
+    // Check if AI scheduler is enabled
+    const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
+    const aiSchedulerEnabled = schedulerSettings.length > 0 ? schedulerSettings[0].enabled === 1 : true
+
+    if (!aiSchedulerEnabled) {
+      logger.info('[SCHEDULER] AI Smart Scheduler is DISABLED - skipping intelligent distribution')
+      return result
+    }
 
     // AI-POWERED DISTRIBUTION: Assign games to outputs using intelligent distribution engine
     if (games.length > 0) {

@@ -12,6 +12,7 @@
 
 import { getStateReader, SystemState, OutputState, AvailableInput } from './state-reader'
 import { getPriorityCalculator, GameInfo, PriorityScore } from './priority-calculator'
+import { getFireTVContentDetector, StreamingGame } from './firetv-content-detector'
 import { logger } from '@/lib/logger'
 
 export interface DistributionPlan {
