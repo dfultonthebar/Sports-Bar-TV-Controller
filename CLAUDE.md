@@ -21,6 +21,25 @@ pm2 status                           # Check process status
 **Port:** Production runs on port 3001 (configured in ecosystem.config.js)
 **Database:** Production SQLite database is at `/home/ubuntu/sports-bar-data/production.db`
 
+### IMPORTANT: Rebuild and Restart After Code Changes
+**After making any code changes in `/src`, you MUST rebuild and restart PM2:**
+```bash
+# Step 1: Clear Next.js cache (recommended)
+rm -rf .next
+
+# Step 2: Rebuild the application
+npm run build
+
+# Step 3: Restart PM2
+pm2 restart sports-bar-tv-controller
+```
+
+**Why this is required:**
+- Next.js caches compiled code in `.next/` directory
+- PM2 runs the production build, not the development server
+- Without rebuilding, code changes won't take effect
+- Clearing `.next` ensures a clean build without stale cache
+
 ### Database Operations
 ```bash
 npm run db:generate      # Generate Drizzle migrations from schema changes
@@ -433,47 +452,45 @@ const result = await queryDocs({
 #### 8. IR Learning System
 **Purpose:** Capture IR codes from physical remotes for cable box control
 
-**Location:** `/src/lib/ir-learning/` and `/src/app/api/ir-devices/learn/`
 **Hardware Required:** Global Cache iTach IP2IR
 
+**UI Component:** `/src/components/ir/IRLearningPanel.tsx`
+**API Endpoint:** `/src/app/api/ir/learn/route.ts`
+
+**Access:** Device Config page → IR tab → Select device → Click "Learn IR" button
+
 **API Endpoints:**
-- `POST /api/ir-devices/learn` - Start learning session
-- `POST /api/ir-devices/send-command` - Send learned code (supports `isRawCode: true`)
-- `GET /api/ir-devices` - List devices with learned codes
+- `POST /api/ir/learn` - Start learning session for a command
+- `POST /api/ir/commands/send` - Send learned IR command
+- `GET /api/ir/devices/{deviceId}/commands` - Get all commands for device
+- `POST /api/ir/commands` - Create new command placeholder
+- `DELETE /api/ir/commands/{commandId}` - Delete command
 
 **Learning Flow:**
-1. Frontend calls `/api/ir-devices/learn` with device ID, command name, iTach address
-2. Backend sends `get_IRL` to iTach to enter learning mode
-3. iTach waits for IR signal from physical remote (10s timeout)
-4. Backend receives IR code (e.g., `sendir,1:1,1,38000,1,1,342,171,...`)
-5. Code saved to database in `IRDevice.irCodes` JSON field
-6. Frontend can test code by sending via `/api/ir-devices/send-command`
+1. User clicks "Learn" button in IRLearningPanel for a specific command
+2. Frontend calls `/api/ir/learn` with device ID, command ID, Global Cache device ID
+3. Backend connects to iTach device and sends `get_IRL` command
+4. iTach enters learning mode and waits for IR signal (60 second timeout)
+5. User points physical remote at iTach IR sensor and presses button
+6. iTach captures complete IR code (e.g., `sendir,1:1,1,37764,1,1,342,171,21,83...`)
+7. Backend validates code is complete (ends with number, has 6+ segments)
+8. Code saved to `IRCommand` table with command ID
+9. Frontend reloads command list to show learned code
 
 **Database Schema:**
 ```typescript
-// schema.irDevices table
+// schema.irCommands table
 {
   id: string
-  name: string
-  iTachAddress: string
-  portNumber: number
-  irCodes: text // JSON: { "power": "sendir,...", "channel_up": "sendir,...", ... }
+  deviceId: string        // Foreign key to IRDevice
+  functionName: string    // Command name (e.g., "power", "channel_up")
+  irCode: string          // Complete sendir command
+  category: string        // "Power", "Volume", "Channel", etc.
+  createdAt: string
 }
 ```
 
-**Smart Remote Integration:**
-The `CableBoxRemote` component automatically detects if `irCodes` exist and uses learned codes:
-```typescript
-if (device.irCodes && device.irCodes[command]) {
-  // Use learned IR code
-  await sendCommand({ isRawCode: true, command: device.irCodes[command] })
-} else {
-  // Fall back to pre-programmed codes or CEC
-}
-```
-
-**Frontend UI Status:** Backend API complete, frontend UI at `/ir-learning` needs to be created
-**See:** `/docs/IR_LEARNING_DEMO_SCRIPT.md` for complete implementation specification
+**Important:** IR codes must be COMPLETE. Truncated codes will cause `ERR_2:1,010` errors from iTach device. The learning API properly buffers TCP data to ensure complete codes are captured.
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 

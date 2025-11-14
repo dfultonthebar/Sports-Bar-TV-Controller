@@ -435,14 +435,13 @@ export default function BartenderRemoteControl() {
             })
           })
         } else if (selectedDevice.iTachAddress) {
-          // Send Global Cache command
-          response = await fetch('/api/ir-devices/send-command', {
+          // Send Global Cache IR command
+          response = await fetch('/api/ir/commands/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               deviceId: selectedDevice.id,
-              command: command,
-              iTachAddress: selectedDevice.iTachAddress
+              commandName: command
             })
           })
         } else {

@@ -152,7 +152,7 @@ export const KNOWN_SPORTS_APPS: KnownSportsApp[] = [
     iconUrl: '/icons/espn.png'
   },
   {
-    packageName: 'com.nfhs.network',
+    packageName: 'com.playon.nfhslive',
     displayName: 'NFHS Network',
     category: 'Sports',
     subscriptionCheckMethod: 'shared_prefs',

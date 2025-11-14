@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { matrixConfigurations, matrixInputs, matrixOutputs, testLogs } from '@/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, asc } from 'drizzle-orm'
 import * as net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation - allow empty body for test endpoints
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()).optional())
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
@@ -134,8 +134,8 @@ export async function POST(request: NextRequest) {
         eq(matrixInputs.configId, matrixConfig.id),
         eq(matrixInputs.isActive, true)
       ))
-      .orderBy(matrixInputs.channelNumber)
-    
+      .orderBy(asc(matrixInputs.channelNumber))
+
     const outputs = await db
       .select()
       .from(matrixOutputs)
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
         eq(matrixOutputs.configId, matrixConfig.id),
         eq(matrixOutputs.isActive, true)
       ))
-      .orderBy(matrixOutputs.channelNumber)
+      .orderBy(asc(matrixOutputs.channelNumber))
 
     logger.info('✅ [WOLFPACK] Configuration loaded')
     logger.info('Configuration ID:', { data: matrixConfig.id })

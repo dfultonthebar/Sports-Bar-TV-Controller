@@ -7,15 +7,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { logger } from '@/lib/logger'
-import { 
-  Plus, 
-  Radio, 
-  Trash2, 
+import {
+  Plus,
+  Radio,
+  Trash2,
   Loader2,
   CheckCircle2,
   AlertCircle,
   Play,
-  Download
+  Download,
+  FlaskConical
 } from 'lucide-react'
 
 interface IRDevice {
@@ -74,6 +75,11 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<CommandTemplate | null>(null)
   const [selectedTemplateCommands, setSelectedTemplateCommands] = useState<Set<string>>(new Set())
   const [loadingTemplate, setLoadingTemplate] = useState(false)
+
+  // Test state
+  const [testing, setTesting] = useState(false)
+  const [testResults, setTestResults] = useState<any>(null)
+  const [showTestResults, setShowTestResults] = useState(false)
 
   const categories = ['Power', 'Volume', 'Channel', 'Menu', 'Navigation', 'Other']
 
@@ -360,6 +366,49 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
     }
   }
 
+  const testAllCommands = async () => {
+    if (!device.globalCacheDeviceId) {
+      alert('This device is not configured with a Global Cache device.')
+      return
+    }
+
+    const learnedCommands = commands.filter(cmd => cmd.irCode !== 'PLACEHOLDER')
+    if (learnedCommands.length === 0) {
+      alert('No learned commands to test. Please learn some IR codes first.')
+      return
+    }
+
+    setTesting(true)
+    setTestResults(null)
+
+    try {
+      logger.info(`Testing ${learnedCommands.length} IR commands...`)
+
+      const response = await fetch('/api/ir-devices/test-all-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: device.id
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setTestResults(data)
+        setShowTestResults(true)
+        logger.info(`Test complete: ${data.summary.passed}/${data.summary.total} passed`)
+      } else {
+        alert('Error testing commands: ' + data.error)
+      }
+    } catch (error) {
+      logger.error('Error testing all commands:', error)
+      alert('Error testing all commands')
+    } finally {
+      setTesting(false)
+    }
+  }
+
   // Group commands by category
   const commandsByCategory = commands.reduce((acc, cmd) => {
     const category = cmd.category || 'Other'
@@ -380,9 +429,29 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
             Learn IR commands from your physical remote for <span className="text-slate-200 font-medium">{device.name}</span>
           </p>
         </div>
-        <Button variant="outline" onClick={onClose}>
-          Back to Devices
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={testAllCommands}
+            disabled={testing || commands.filter(c => c.irCode !== 'PLACEHOLDER').length === 0}
+            className="flex items-center gap-2"
+          >
+            {testing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              <>
+                <FlaskConical className="w-4 h-4" />
+                Test All Commands
+              </>
+            )}
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            Back to Devices
+          </Button>
+        </div>
       </div>
 
       {/* Global Cache Status */}
@@ -630,6 +699,7 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                   {categoryCommands.map((command) => {
                     const isPlaceholder = command.irCode === 'PLACEHOLDER'
                     const isLearning = learningCommandId === command.id
+                    const testResult = testResults?.results?.find((r: any) => r.command === command.functionName)
 
                     return (
                       <div
@@ -637,21 +707,57 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                         className={`flex items-center justify-between p-3 rounded-lg border ${
                           isPlaceholder
                             ? 'border-amber-500/30 bg-amber-500/5'
+                            : testResult?.success === false
+                            ? 'border-red-500/30 bg-red-500/5'
+                            : testResult?.success === true
+                            ? 'border-green-500/30 bg-green-500/5'
                             : 'border-slate-600 bg-slate-700/30'
                         }`}
                       >
                         <div className="flex items-center gap-3 flex-1">
-                          <div className={`p-2 rounded ${isPlaceholder ? 'bg-amber-500/20' : 'bg-green-500/20'}`}>
+                          <div className={`p-2 rounded ${
+                            isPlaceholder
+                              ? 'bg-amber-500/20'
+                              : testResult?.success === false
+                              ? 'bg-red-500/20'
+                              : testResult?.success === true
+                              ? 'bg-green-500/20'
+                              : 'bg-slate-600/20'
+                          }`}>
                             {isPlaceholder ? (
                               <AlertCircle className="w-4 h-4 text-amber-400" />
-                            ) : (
+                            ) : testResult?.success === false ? (
+                              <AlertCircle className="w-4 h-4 text-red-400" />
+                            ) : testResult?.success === true ? (
                               <CheckCircle2 className="w-4 h-4 text-green-400" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 text-slate-400" />
                             )}
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-slate-200">{command.functionName}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-slate-200">{command.functionName}</div>
+                              {testResult && (
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    testResult.success
+                                      ? 'bg-green-500/20 text-green-400 border-green-500/30 text-xs'
+                                      : 'bg-red-500/20 text-red-400 border-red-500/30 text-xs'
+                                  }
+                                >
+                                  {testResult.success ? '✓ PASS' : '✗ FAIL'}
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-xs text-slate-400">
-                              {isPlaceholder ? 'Not learned yet' : `Learned ${new Date(command.createdAt).toLocaleDateString()}`}
+                              {isPlaceholder ? (
+                                'Not learned yet'
+                              ) : testResult?.error ? (
+                                <span className="text-red-400 font-mono">{testResult.error} • {command.irCode.length} chars</span>
+                              ) : (
+                                `Learned ${new Date(command.createdAt).toLocaleDateString()} • ${command.irCode.length} chars`
+                              )}
                             </div>
                           </div>
                         </div>
@@ -701,6 +807,127 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Test Results Modal */}
+      {showTestResults && testResults && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden border-slate-700 bg-slate-800">
+            <CardHeader className="border-b border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-slate-100">IR Command Test Results</CardTitle>
+                  <CardDescription>
+                    Tested {testResults.summary.total} commands on {testResults.device}
+                  </CardDescription>
+                </div>
+                <Button variant="outline" onClick={() => setShowTestResults(false)}>
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <Card className="border-slate-600 bg-slate-700/50">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-slate-100">{testResults.summary.total}</div>
+                    <div className="text-sm text-slate-400 mt-1">Total Tested</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-green-500/30 bg-green-500/10">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-green-400">{testResults.summary.passed}</div>
+                    <div className="text-sm text-green-300 mt-1">Passed ✓</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-500/30 bg-red-500/10">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-red-400">{testResults.summary.failed}</div>
+                    <div className="text-sm text-red-300 mt-1">Failed ✗</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Results List */}
+              <div className="space-y-3">
+                {testResults.results.map((result: any, index: number) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg border ${
+                      result.success
+                        ? 'border-green-500/30 bg-green-500/5'
+                        : 'border-red-500/30 bg-red-500/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        {result.success ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <div className="font-medium text-slate-200">{result.command}</div>
+                          <div className="text-xs text-slate-400 mt-1">
+                            Code length: {result.code.length} chars
+                            {result.error && (
+                              <span className="ml-3 text-red-400 font-mono">
+                                {result.error}
+                              </span>
+                            )}
+                            {result.success && result.response && result.response !== 'No response' && (
+                              <span className="ml-3 text-green-400">
+                                {result.response}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          result.success
+                            ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                            : 'bg-red-500/20 text-red-400 border-red-500/30'
+                        }
+                      >
+                        {result.success ? 'PASS' : 'FAIL'}
+                      </Badge>
+                    </div>
+                    {!result.success && result.code && (
+                      <div className="mt-2 text-xs text-slate-500 font-mono truncate">
+                        Ending: ...{result.code.slice(-60)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Failed Commands Summary */}
+              {testResults.summary.failed > 0 && (
+                <div className="mt-6 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                  <div className="flex items-center gap-2 text-amber-400 font-medium mb-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Commands Needing Re-learning
+                  </div>
+                  <div className="text-sm text-amber-200">
+                    The following {testResults.summary.failed} command(s) failed and should be re-learned:
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {testResults.results
+                      .filter((r: any) => !r.success)
+                      .map((r: any, i: number) => (
+                        <Badge key={i} variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/30">
+                          {r.command}
+                        </Badge>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

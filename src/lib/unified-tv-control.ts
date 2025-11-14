@@ -263,15 +263,12 @@ export class UnifiedTVControl {
         }
       }
 
-      const response = await fetch('/api/ir-devices/send-command', {
+      const response = await fetch('/api/ir/commands/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceId: device.id,
-          command,
-          iTachAddress: device.iTachAddress,
-          iTachPort: device.iTachPort || 1,
-          codesetId: device.irCodesetId
+          commandName: command
         })
       })
 

@@ -99,6 +99,12 @@ export default function TVLayoutView() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [outputs, setOutputs] = useState<MatrixOutput[]>([])
   const [routes, setRoutes] = useState<MatrixRoute[]>([])
+  const [currentChannels, setCurrentChannels] = useState<Record<number, {
+    channelNumber: string
+    channelName: string | null
+    deviceType: string
+    inputLabel: string
+  }>>({})
   const [loading, setLoading] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [layoutConfig, setLayoutConfig] = useState<any>(null)
@@ -112,11 +118,13 @@ export default function TVLayoutView() {
   useEffect(() => {
     loadMatrixData()
     loadLayoutConfig()
+    loadCurrentChannels()
     checkConnectionStatus()
 
     // Refresh data every 10 seconds
     const interval = setInterval(() => {
       loadMatrixData()
+      loadCurrentChannels()
       checkConnectionStatus()
     }, 10000)
 
@@ -135,6 +143,20 @@ export default function TVLayoutView() {
       }
     } catch (error) {
       logger.error('Error loading layout config:', error)
+    }
+  }
+
+  const loadCurrentChannels = async () => {
+    try {
+      const response = await fetch('/api/matrix/current-channels')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.channels) {
+          setCurrentChannels(data.channels)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading current channels:', error)
     }
   }
 
@@ -208,17 +230,39 @@ export default function TVLayoutView() {
     }
   }
 
-  const getSourceForOutput = (outputNumber: number): { sourceName: string; inputNumber: number } | null => {
+  const getSourceForOutput = (outputNumber: number): { sourceName: string; inputNumber: number; channelInfo?: string } | null => {
     const route = routes.find(r => r.outputNum === outputNumber && r.isActive)
     if (!route) return null
-    
+
     const input = inputs.find(i => i.channelNumber === route.inputNum)
-    return input ? { sourceName: input.label, inputNumber: input.channelNumber } : null
+    if (!input) return null
+
+    // Check if this input has current channel info
+    const channelInfo = currentChannels[route.inputNum]
+    let sourceName = input.label
+
+    // If we have channel info, append it to the source name
+    if (channelInfo) {
+      if (channelInfo.channelName) {
+        // Show preset name if available (e.g., "Cable Box 1 - ESPN")
+        sourceName = `${input.label} - ${channelInfo.channelName}`
+      } else {
+        // Show channel number if no preset name (e.g., "Cable Box 1 - Ch 27")
+        sourceName = `${input.label} - Ch ${channelInfo.channelNumber}`
+      }
+    }
+
+    return {
+      sourceName,
+      inputNumber: input.channelNumber,
+      channelInfo: channelInfo ? (channelInfo.channelName || `Ch ${channelInfo.channelNumber}`) : undefined
+    }
   }
 
   const handleRefresh = async () => {
     setLoading(true)
     await loadMatrixData()
+    await loadCurrentChannels()
     await checkConnectionStatus()
     setLoading(false)
   }

@@ -61,7 +61,7 @@ export async function PUT(
     if (order !== undefined) updateData.order = order
     if (isActive !== undefined) updateData.isActive = isActive
 
-    await update('channelPresets', id, updateData)
+    await update('channelPresets', eq(schema.channelPresets.id, id), updateData)
 
     // Get the updated preset
     const preset = await findFirst('channelPresets', {
@@ -95,16 +95,10 @@ export async function DELETE(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
   // Path parameter validation
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   try {
     const { id } = params

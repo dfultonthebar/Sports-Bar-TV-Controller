@@ -1,9 +1,9 @@
 import { logger } from '@/lib/logger'
-
+import { startAutoIndexer } from '@/lib/rag-server'
 
 /**
  * Startup Initialization
- * This module handles application startup tasks including Wolf Pack connection
+ * This module handles application startup tasks including Wolf Pack connection and RAG auto-indexer
  */
 
 export async function initializeWolfPackConnection() {
@@ -32,11 +32,33 @@ export async function initializeWolfPackConnection() {
   }
 }
 
+export async function initializeRAGAutoIndexer() {
+  try {
+    logger.info('[Startup] Initializing RAG auto-indexer...')
+
+    // Start auto-indexer with configuration
+    await startAutoIndexer({
+      debounceMs: 3000, // 3 second debounce for file changes
+      initialRebuild: false, // Don't rebuild on startup
+      periodicRebuildMinutes: 1440, // Full rebuild once per day (24 hours)
+    })
+
+    logger.info('[Startup] ✓ RAG auto-indexer started successfully')
+    return true
+  } catch (error) {
+    logger.error('[Startup] ✗ Failed to start RAG auto-indexer:', error)
+    return false
+  }
+}
+
 export async function runStartupTasks() {
   logger.info('[Startup] Running application startup tasks...')
-  
+
   // Initialize Wolf Pack connection
   await initializeWolfPackConnection()
-  
+
+  // Initialize RAG auto-indexer
+  await initializeRAGAutoIndexer()
+
   logger.info('[Startup] Startup tasks completed')
 }

@@ -532,34 +532,37 @@ export default function EnhancedChannelGuideBartenderRemote() {
     // Filter for sports content only
     filtered = filtered.filter(prog => prog.isSports)
 
-    // Map channel numbers from presets if available
+    // Map channel numbers from presets if available and filter out channels without presets
     const deviceType = getDeviceTypeForInput(selectedInput!)
     const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType === 'cable' ? 'cable' : null
-    
+
     if (presetDeviceType) {
-      filtered = filtered.map(prog => {
-        // Find matching preset by channel name or number
-        const matchingPreset = channelPresets.find(preset => 
-          preset.deviceType === presetDeviceType && 
-          (preset.name.toLowerCase() === prog.channel.name.toLowerCase() ||
-           preset.channelNumber === prog.channel.number)
-        )
-        
-        if (matchingPreset) {
-          // Use preset's channel number instead of guide's channel number
-          return {
-            ...prog,
-            channel: {
-              ...prog.channel,
-              number: matchingPreset.channelNumber,
-              channelNumber: matchingPreset.channelNumber,
-              _presetMapped: true  // Flag to indicate this was mapped from a preset
+      // Filter and map - only show channels that have a preset configured
+      filtered = filtered
+        .map(prog => {
+          // Find matching preset by channel name or number
+          const matchingPreset = channelPresets.find(preset =>
+            preset.deviceType === presetDeviceType &&
+            (preset.name.toLowerCase() === prog.channel.name.toLowerCase() ||
+             preset.channelNumber === prog.channel.number)
+          )
+
+          if (matchingPreset) {
+            // Use preset's channel number instead of guide's channel number
+            return {
+              ...prog,
+              channel: {
+                ...prog.channel,
+                number: matchingPreset.channelNumber,
+                channelNumber: matchingPreset.channelNumber,
+                _presetMapped: true  // Flag to indicate this was mapped from a preset
+              }
             }
           }
-        }
-        
-        return prog
-      })
+
+          return null  // Mark for filtering
+        })
+        .filter((prog): prog is GameListing => prog !== null)  // Remove channels without presets
     }
 
     setFilteredPrograms(filtered)
@@ -569,22 +572,24 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const deviceType = getDeviceTypeForInput(selectedInput!)
     const cableBox = selectedInput ? getCableBoxForInput(selectedInput) : null
 
-    // Use CEC control automatically for cable inputs
-    if (deviceType === 'cable' && cableBox && game.channel.channelNumber) {
+    // Use IR control for cable inputs (CEC deprecated for Spectrum boxes)
+    if (deviceType === 'cable' && game.channel.channelNumber) {
       setLoading(true)
       setCommandStatus(
         `Switching to ${game.league}: ${game.awayTeam || 'Game'} ${game.homeTeam ? '@' : ''} ${
           game.homeTeam || ''
-        } via CEC...`
+        }...`
       )
 
       try {
-        const response = await fetch('/api/cec/cable-box/tune', {
+        const response = await fetch('/api/channel-presets/tune', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cableBoxId: cableBox.id,
-            channel: game.channel.channelNumber,
+            channelNumber: game.channel.channelNumber,
+            deviceType: 'cable',
+            presetId: 'manual',
+            cableBoxId: cableBox?.id
           }),
         })
 
@@ -593,15 +598,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${game.league}`)
           setLastOperationTime(new Date())
-          logButtonClick('game_watch_cec', `${game.league}`, { game: game.league, cableBoxId: cableBox.id })
+          logButtonClick('game_watch_ir', `${game.league}`, { game: game.league, channel: game.channel.channelNumber })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
-          logError(new Error(data.error || 'Tune failed'), 'game_watch_cec')
+          logError(new Error(data.error || 'Tune failed'), 'game_watch_ir')
         }
       } catch (error) {
-        logger.error('Error tuning via CEC:', error)
-        setCommandStatus('CEC tuning failed')
-        logError(error as Error, 'game_watch_cec')
+        logger.error('Error tuning cable box:', error)
+        setCommandStatus('Channel tuning failed')
+        logError(error as Error, 'game_watch_ir')
       } finally {
         setLoading(false)
         setTimeout(() => setCommandStatus(''), 5000)
@@ -734,12 +739,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
       }
     } else {
       // IR Device
-      const response = await fetch('/api/ir-devices/send-command', {
+      const response = await fetch('/api/ir/commands/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceId: selectedDevice.id,
-          command: command
+          commandName: command
         })
       })
 

@@ -191,33 +191,50 @@ async function startLearningSession(
 
       // Check if we received a learned IR code (starts with "sendir")
       if (learningEnabled && response.includes('sendir')) {
-        if (!resolved) {
-          resolved = true
-          clearTimeout(timeoutId)
-          
-          // Extract the IR code
-          const lines = dataBuffer.split('\r')
-          const irCodeLine = lines.find(line => line.trim().startsWith('sendir'))
-          
-          if (irCodeLine) {
-            const learnedCode = irCodeLine.trim()
-            logger.info('🎉 [IR LEARN] IR code learned successfully!')
-            logger.info(`   Code length: ${learnedCode.length} characters`)
-            logger.info('   Code preview:', { data: learnedCode.substring(0, 100) + '...' })
-            
-            // Automatically stop learning
-            client.write('stop_IRL\r')
-            
-            // Give it a moment to process stop command, then close
-            setTimeout(() => {
-              client.destroy()
-            }, 500)
-            
-            resolve({
-              success: true,
-              status: 'IR code learned successfully',
-              learnedCode
-            })
+        // Only process complete lines (ending with \r)
+        const lines = dataBuffer.split('\r')
+
+        // Process all complete lines (all except last which might be incomplete)
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i].trim()
+
+          if (line.startsWith('sendir,')) {
+            // Validate this is a COMPLETE IR code:
+            // - Must end with a number (not a comma)
+            // - Must have at least 6 comma-separated segments (valid IR code structure)
+            const endsWithNumber = /,\d{3,}$/.test(line)  // At least 3 digits for final timing value
+            const segmentCount = line.split(',').length
+
+            if (endsWithNumber && segmentCount >= 6) {
+              // Successfully captured COMPLETE IR code!
+              if (!resolved) {
+                resolved = true
+                clearTimeout(timeoutId)
+
+                logger.info('🎉 [IR LEARN] COMPLETE IR code learned successfully!')
+                logger.info(`   Code length: ${line.length} characters`)
+                logger.info(`   Segments: ${segmentCount}`)
+                logger.info('   Code preview:', { data: line.substring(0, 100) + '...' })
+                logger.info('   Code ending:', { data: line.slice(-50) })
+
+                // Automatically stop learning
+                client.write('stop_IRL\r')
+
+                // Give it a moment to process stop command, then close
+                setTimeout(() => {
+                  client.destroy()
+                }, 500)
+
+                resolve({
+                  success: true,
+                  status: 'IR code learned successfully',
+                  learnedCode: line
+                })
+              }
+              break
+            } else {
+              logger.info(`⏳ [IR LEARN] Received incomplete IR code (${segmentCount} segments, ends: ${line.slice(-20)}), waiting for more data...`)
+            }
           }
         }
       }

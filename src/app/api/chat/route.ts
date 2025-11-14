@@ -60,23 +60,24 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('[CHAT API] Parsing request body...')
     const { data } = bodyValidation
-    const { message, sessionId, enableTools = true, stream = true } = data
-    logger.info('[CHAT API] Request parsed:', { data: { message: message?.substring(0, 50), sessionId, enableTools, stream } })
+    const { message, query, sessionId, enableTools = true, stream = true } = data
+    const userMessage = message || query
+    logger.info('[CHAT API] Request parsed:', { data: { message: userMessage?.substring(0, 50), sessionId, enableTools, stream } })
 
-    if (!message) {
+    if (!userMessage) {
       logger.info('[CHAT API] No message provided')
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Message or query is required' }, { status: 400 })
     }
 
     // OPTIMIZED: Return streaming response if requested
     if (stream) {
       logger.info('[CHAT API] Handling streaming chat...')
-      return handleStreamingChat(message, sessionId, enableTools)
+      return handleStreamingChat(userMessage, sessionId, enableTools)
     }
 
     // Fallback to non-streaming for compatibility
     logger.info('[CHAT API] Handling non-streaming chat...')
-    return handleNonStreamingChat(message, sessionId, enableTools)
+    return handleNonStreamingChat(userMessage, sessionId, enableTools)
   } catch (error) {
     logger.error('[CHAT API] Error:', error)
     return NextResponse.json(

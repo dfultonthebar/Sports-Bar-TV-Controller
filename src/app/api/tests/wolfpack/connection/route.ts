@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation - allow empty body for test endpoints
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()).optional())
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
@@ -98,7 +98,8 @@ export async function POST(request: NextRequest) {
     logger.info('📂 [WOLFPACK CONNECTION TEST] Loading matrix configuration from database...')
     
     // Get the active matrix configuration
-    const matrixConfig = await db.select().from(matrixConfigurations).where(eq(matrixConfigurations.isActive, true)).limit(1).get()
+    const matrixConfigResults = await db.select().from(matrixConfigurations).where(eq(matrixConfigurations.isActive, true)).limit(1)
+    const matrixConfig = matrixConfigResults[0]
 
     if (!matrixConfig) {
       logger.error('❌ [WOLFPACK CONNECTION TEST] No active matrix configuration found')

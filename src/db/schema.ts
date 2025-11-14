@@ -772,6 +772,22 @@ export const matrixRoutes = sqliteTable('MatrixRoute', {
   outputNumIdx: index('MatrixRoute_outputNum_idx').on(table.outputNum),
 }))
 
+// Input Current Channel Model (for tracking current channel per matrix input)
+export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inputNum: integer('inputNum').notNull().unique(), // Matrix input number
+  inputLabel: text('inputLabel').notNull(), // Matrix input label (e.g., "Cable Box 1")
+  deviceType: text('deviceType').notNull(), // "cable" or "directv"
+  channelNumber: text('channelNumber').notNull(), // Current channel number
+  channelName: text('channelName'), // Channel preset name if available
+  presetId: text('presetId'), // Reference to channel preset if used
+  lastTuned: timestamp('lastTuned').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  inputNumIdx: index('InputCurrentChannel_inputNum_idx').on(table.inputNum),
+  deviceTypeIdx: index('InputCurrentChannel_deviceType_idx').on(table.deviceType),
+}))
+
 // AI Gain Configuration Model
 export const aiGainConfigurations = sqliteTable('AIGainConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

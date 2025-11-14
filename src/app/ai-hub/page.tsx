@@ -140,17 +140,34 @@ export default function AIHubPage() {
     setIsChatting(true)
 
     try {
-      // NOTE: /api/ai/enhanced-chat endpoint has been removed
-      // This feature is temporarily disabled pending reimplementation
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: userMessage,
+          message: userMessage,
+          enableTools: true,
+          stream: false // Use non-streaming for simplicity in AI Hub
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chat request failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: 'The AI chat feature is currently disabled. The enhanced chat endpoint has been removed. Please use the regular chat at /chat or contact support for assistance.'
+        content: data.response || data.content || 'Sorry, I could not process your request.'
       }])
     } catch (error) {
       logger.error('Chat error:', error)
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error')
+        content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error') + '. Make sure Ollama is running with the phi3:mini model.'
       }])
     } finally {
       setIsChatting(false)

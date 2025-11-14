@@ -29,30 +29,45 @@ export async function POST(request: NextRequest) {
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   try {
-    const { deviceId, commandId } = bodyValidation.data
+    const { deviceId, commandId, commandName } = bodyValidation.data
 
-    if (!deviceId || !commandId) {
+    if (!deviceId || (!commandId && !commandName)) {
       logger.info('❌ [IR SEND] Missing required fields')
       return NextResponse.json(
-        { success: false, error: 'Device ID and Command ID are required' },
+        { success: false, error: 'Device ID and (Command ID or Command Name) are required' },
         { status: 400 }
       )
     }
 
     logger.info('   Device ID:', deviceId)
     logger.info('   Command ID:', commandId)
+    logger.info('   Command Name:', commandName)
 
-    // Get the command
-    const command = await db.select()
-      .from(irCommands)
-      .where(eq(irCommands.id, commandId as string))
-      .limit(1)
-      .get()
+    // Get the command - look up by ID or by deviceId + functionName
+    let command
+    if (commandId) {
+      command = await db.select()
+        .from(irCommands)
+        .where(eq(irCommands.id, commandId as string))
+        .limit(1)
+        .get()
+    } else {
+      command = await db.select()
+        .from(irCommands)
+        .where(
+          and(
+            eq(irCommands.deviceId, deviceId as string),
+            eq(irCommands.functionName, commandName as string)
+          )
+        )
+        .limit(1)
+        .get()
+    }
 
     if (!command) {
       logger.info('❌ [IR SEND] Command not found')
       return NextResponse.json(
-        { success: false, error: 'Command not found' },
+        { success: false, error: `Command not found: ${commandName || commandId}` },
         { status: 404 }
       )
     }
@@ -149,7 +164,7 @@ async function sendIRCommand(
   ipAddress: string,
   port: number,
   irCode: string,
-  timeout: number = 5000
+  timeout: number = 10000
 ): Promise<{
   success: boolean
   error?: string

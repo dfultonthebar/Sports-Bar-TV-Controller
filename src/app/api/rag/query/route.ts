@@ -19,7 +19,7 @@ const querySchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const body = bodyValidation.data;
+    const body = await request.json();
 
     // Validate input
     const validation = querySchema.safeParse(body);

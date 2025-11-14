@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import DirecTVController from '@/components/DirecTVController'
 import FireTVController from '@/components/FireTVController'
-import IRDeviceControl from '@/components/IRDeviceControl'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
@@ -180,7 +179,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="channel-presets" className="flex items-center gap-2">
             <Star className="w-4 h-4" />
             Channel Presets
@@ -208,10 +207,6 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
             <Tv className="w-4 h-4" />
             CEC Discovery
-          </TabsTrigger>
-          <TabsTrigger value="ir-learning" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
-            IR Learning
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -337,12 +332,32 @@ export default function DeviceConfigPage() {
                 )}
               </CardTitle>
               <CardDescription>
-                {aiEnhancementsEnabled 
+                {aiEnhancementsEnabled
                   ? "Manage IR devices with intelligent command learning, failure prediction, and automatic positioning optimization"
-                  : "Configure IR-controlled devices (Cable boxes, AV receivers) and download IR commands from the Global Cache database"
+                  : "Configure IR-controlled devices (Cable boxes, AV receivers) and learn IR codes from physical remotes"
                 }
               </CardDescription>
             </CardHeader>
+            <CardContent>
+              <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+                <div className="flex items-start gap-3">
+                  <Radio className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <p className="text-sm text-blue-200 font-medium">
+                      IR Code Learning Available Per-Device
+                    </p>
+                    <p className="text-sm text-blue-300">
+                      To learn IR codes from your physical remote control, click the "Learn IR" button
+                      on individual devices below. Each device has a 27-button learning interface
+                      (Power, Digits 0-9, Navigation, Channel, DVR controls).
+                    </p>
+                    <p className="text-xs text-blue-400 mt-2">
+                      Hardware Required: Global Cache iTach IP2IR with IR receiver sensor
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
           </Card>
           <IRDeviceSetup />
         </TabsContent>
@@ -384,70 +399,6 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <CECDiscoveryPanel />
-        </TabsContent>
-
-        <TabsContent value="ir-learning" className="space-y-4">
-          <Card className="bg-[#1e3a5f]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white">
-                <Radio className="w-5 h-5 text-green-400" />
-                IR Learning Interface
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription className="text-blue-200">
-                {aiEnhancementsEnabled
-                  ? "Learn IR codes from physical remotes with AI-powered signal optimization and automatic validation"
-                  : "Learn IR codes from physical remotes using iTach IP2IR hardware"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
-                <p className="text-sm text-blue-200 mb-3">
-                  <strong>IR Learning Interface</strong> allows you to capture infrared codes from any physical remote control (cable box, TV, etc.) and store them in the database for later use.
-                </p>
-                <Button
-                  onClick={() => window.location.href = '/ir-learning'}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                >
-                  <Radio className="w-4 h-4 mr-2" />
-                  Open IR Learning Interface
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="font-semibold text-white">Features Available:</h3>
-                <ul className="list-disc list-inside text-sm space-y-1 text-blue-200">
-                  <li>27-button learning grid (Power, Digits 0-9, Navigation, Channel, DVR)</li>
-                  <li>Learn codes from Spectrum cable box remotes</li>
-                  <li>Test learned codes immediately</li>
-                  <li>Export/Import IR code libraries</li>
-                  <li>Save codes to database for device control</li>
-                  <li>iTach IP2IR hardware integration</li>
-                  <li>Visual progress tracking (X/27 buttons learned)</li>
-                </ul>
-              </div>
-
-              <div className="p-4 bg-green-900/30 rounded-lg border border-green-500/30">
-                <p className="text-sm text-green-200">
-                  <strong>Hardware Required:</strong> Global Cache iTach IP2IR device (default: 192.168.1.100) with IR receiver connected to learn codes, and IR emitters to test/send commands.
-                </p>
-              </div>
-
-              {aiEnhancementsEnabled && (
-                <div className="p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
-                  <p className="text-sm text-purple-200">
-                    <strong>AI Enhancements:</strong> Signal quality analysis, automatic duplicate detection, optimal timing recommendations, and predictive IR code validation.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">

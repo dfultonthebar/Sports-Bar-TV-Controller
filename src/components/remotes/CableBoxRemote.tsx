@@ -103,52 +103,55 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
     }
   }
 
-  // Map remote button commands to IR learning command names
+  // Map remote button commands to IR learning command names (matches IRCommand table)
   const mapCommandToIR = (command: string): string => {
     const mapping: Record<string, string> = {
-      'POWER': 'power',
-      'UP': 'arrow_up',
-      'DOWN': 'arrow_down',
-      'LEFT': 'arrow_left',
-      'RIGHT': 'arrow_right',
-      'OK': 'select',
-      'MENU': 'menu',
-      'GUIDE': 'guide',
-      'INFO': 'info',
-      'EXIT': 'exit',
-      'BACK': 'exit',
-      'LAST': 'last',
-      'CH_UP': 'channel_up',
-      'CH_DOWN': 'channel_down',
-      'VOL_UP': 'volume_up',
-      'VOL_DOWN': 'volume_down',
-      'MUTE': 'mute',
-      'PLAY': 'play',
-      'PAUSE': 'pause',
-      'REWIND': 'rewind',
-      'FAST_FORWARD': 'fast_forward',
-      'RECORD': 'record',
-      'STOP': 'stop',
-      '0': 'digit_0',
-      '1': 'digit_1',
-      '2': 'digit_2',
-      '3': 'digit_3',
-      '4': 'digit_4',
-      '5': 'digit_5',
-      '6': 'digit_6',
-      '7': 'digit_7',
-      '8': 'digit_8',
-      '9': 'digit_9',
+      'POWER': 'Power',
+      'UP': 'Up',
+      'DOWN': 'Down',
+      'LEFT': 'Left',
+      'RIGHT': 'Right',
+      'OK': 'Select',
+      'MENU': 'Menu',
+      'GUIDE': 'Guide',
+      'INFO': 'Info',
+      'EXIT': 'Exit',
+      'BACK': 'Exit',
+      'LAST': 'Last',
+      'CH_UP': 'Channel Up',
+      'CH_DOWN': 'Channel Down',
+      'VOL_UP': 'Volume Up',
+      'VOL_DOWN': 'Volume Down',
+      'MUTE': 'Mute',
+      'PLAY': 'Play',
+      'PAUSE': 'Pause',
+      'REWIND': 'Rewind',
+      'FAST_FORWARD': 'Fast Forward',
+      'RECORD': 'Record',
+      'STOP': 'Stop',
+      'SKIP_BACK': 'Skip Back',     // May not be available on all cable boxes
+      'SKIP_FORWARD': 'Skip Forward', // May not be available on all cable boxes
+      '0': '0',
+      '1': '1',
+      '2': '2',
+      '3': '3',
+      '4': '4',
+      '5': '5',
+      '6': '6',
+      '7': '7',
+      '8': '8',
+      '9': '9',
     }
     return mapping[command] || command.toLowerCase()
   }
 
-  const handleNumberClick = async (number: string) => {
+  const handleNumberClick = (number: string) => {
     const newChannelInput = channelInput + number
     setChannelInput(newChannelInput)
 
-    // For IR devices, send each digit immediately - cable box handles the channel tuning
-    await sendCommand(number, `Number ${number}`)
+    // For IR devices, send each digit immediately (don't await - send quickly)
+    // Cable box handles the channel tuning
+    sendCommand(number, `Number ${number}`)
 
     // Auto-clear display after 2 seconds (just for UI, no ENTER command sent)
     setTimeout(() => {
@@ -174,40 +177,34 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Cable Box Remote</h3>
         <p className="text-sm text-slate-400">{deviceName}</p>
-        {status.message && (
-          <div className={`mt-2 px-3 py-1 rounded-full text-xs flex items-center justify-center space-x-1 ${
-            status.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-          }`}>
-            {status.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-            <span>{status.message}</span>
-          </div>
-        )}
       </div>
 
       {/* Remote Control Layout */}
       <div className="space-y-4">
-        {/* Channel Input Display */}
-        {channelInput && (
-          <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-blue-400">{channelInput}</div>
-            <div className="flex justify-center space-x-2 mt-2">
-              <Button
-                onClick={handleChannelEnter}
-                size="sm"
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Enter
-              </Button>
-              <Button
-                onClick={handleClearChannel}
-                size="sm"
-                variant="outline"
-              >
-                Clear
-              </Button>
+        {/* Channel Input Display - Fixed height to prevent layout shift */}
+        <div className="h-24 flex items-center justify-center">
+          {channelInput && (
+            <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center w-full transition-opacity">
+              <div className="text-2xl font-bold text-blue-400">{channelInput}</div>
+              <div className="flex justify-center space-x-2 mt-2">
+                <Button
+                  onClick={handleChannelEnter}
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Enter
+                </Button>
+                <Button
+                  onClick={handleClearChannel}
+                  size="sm"
+                  variant="outline"
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Power & Top Row */}
         <div className="grid grid-cols-4 gap-2">

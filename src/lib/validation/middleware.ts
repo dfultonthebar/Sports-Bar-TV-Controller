@@ -120,8 +120,26 @@ export async function validateRequestBody<T>(
   const { stripUnknown = true, logErrors = true, errorPrefix } = options
 
   try {
-    // Parse request body
-    const rawBody = await request.json()
+    // Parse request body - handle empty body case
+    let rawBody
+    try {
+      rawBody = await request.json()
+    } catch (parseError) {
+      // If JSON parsing fails and schema is optional, return undefined
+      if (parseError instanceof SyntaxError) {
+        // Check if the schema accepts undefined/null
+        const testResult = schema.safeParse(undefined)
+        if (testResult.success) {
+          return {
+            success: true,
+            data: testResult.data
+          }
+        }
+        // If schema doesn't accept undefined, throw the original error
+        throw parseError
+      }
+      throw parseError
+    }
 
     // Validate with schema (Zod doesn't use parseOptions as second param)
     // Use safeParse or passthrough() on schema instead

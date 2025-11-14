@@ -17,8 +17,13 @@ export async function GET(request: NextRequest) {
   }
 
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, ValidationSchemas.logQuery)
+  // Query parameter validation - allow optional query params for test logs
+  const queryValidation = validateQueryParams(request, z.object({
+    testType: z.string().optional(),
+    status: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(1000).optional(),
+    offset: z.coerce.number().int().min(0).optional()
+  }).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
 

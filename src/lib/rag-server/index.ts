@@ -51,3 +51,13 @@ export {
   retrieveContext,
 } from './query-engine';
 export type { QueryOptions, QueryResult } from './query-engine';
+
+// Auto-Indexer
+export {
+  RAGAutoIndexer,
+  initializeAutoIndexer,
+  getAutoIndexer,
+  startAutoIndexer,
+  stopAutoIndexer,
+} from './auto-indexer';
+export type { AutoIndexerOptions } from './auto-indexer';

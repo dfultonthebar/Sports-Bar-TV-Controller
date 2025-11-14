@@ -18,6 +18,14 @@ interface MatrixInput {
   isActive: boolean
 }
 
+interface IRCommand {
+  id: string
+  deviceId: string
+  functionName: string
+  irCode: string
+  category?: string
+}
+
 interface IRDevice {
   id: string
   name: string
@@ -26,7 +34,8 @@ interface IRDevice {
   matrixInput?: number
   matrixInputLabel?: string
   irCodeSetId?: string
-  irCodes?: string
+  irCodes?: string  // Legacy field - deprecated
+  commands?: IRCommand[]  // New system - from IRCommand table
   globalCacheDeviceId?: string
   globalCachePortNumber?: number
   description?: string
@@ -132,19 +141,46 @@ export default function BartenderRemoteSelector() {
         }
       }
 
-      // Load IR devices and enrich with GlobalCache IP addresses
+      // Load IR devices and enrich with GlobalCache IP addresses and commands
       if (irResponse.status === 'fulfilled') {
         const irData = await irResponse.value.json()
-        const enrichedDevices = (irData.devices || []).map((device: IRDevice) => {
-          if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
-            return {
-              ...device,
-              iTachAddress: globalCacheMap[device.globalCacheDeviceId].ipAddress
+        const devices = irData.devices || []
+
+        // Load commands for each IR device
+        const devicesWithCommands = await Promise.all(
+          devices.map(async (device: IRDevice) => {
+            try {
+              const commandsResponse = await fetch(`/api/ir/devices/${device.id}/commands`)
+              const commandsData = await commandsResponse.json()
+
+              let enrichedDevice = { ...device }
+
+              // Add commands if successfully loaded
+              if (commandsData.success && commandsData.commands) {
+                enrichedDevice.commands = commandsData.commands
+              }
+
+              // Add iTach address if GlobalCache device is assigned
+              if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
+                enrichedDevice.iTachAddress = globalCacheMap[device.globalCacheDeviceId].ipAddress
+              }
+
+              return enrichedDevice
+            } catch (error) {
+              logger.error(`Error loading commands for device ${device.id}:`, error)
+              // Return device without commands if loading fails
+              if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
+                return {
+                  ...device,
+                  iTachAddress: globalCacheMap[device.globalCacheDeviceId].ipAddress
+                }
+              }
+              return device
             }
-          }
-          return device
-        })
-        setIRDevices(enrichedDevices)
+          })
+        )
+
+        setIRDevices(devicesWithCommands)
       }
 
       // Load DirecTV devices
@@ -213,13 +249,12 @@ export default function BartenderRemoteSelector() {
       }
     } else if ('iTachAddress' in selectedDevice) {
       // IR Device
-      const response = await fetch('/api/ir-devices/send-command', {
+      const response = await fetch('/api/ir/commands/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceId: selectedDevice.id,
-          command: command,
-          iTachAddress: selectedDevice.iTachAddress
+          commandName: command
         })
       })
 
@@ -457,7 +492,16 @@ export default function BartenderRemoteSelector() {
                     deviceName={selectedDevice.name}
                     iTachAddress={selectedDevice.iTachAddress || ''}
                     irCodes={
-                      'irCodes' in selectedDevice && typeof selectedDevice.irCodes === 'string' && selectedDevice.irCodes
+                      // Convert commands array to irCodes format for compatibility
+                      'commands' in selectedDevice && selectedDevice.commands
+                        ? selectedDevice.commands.reduce((acc: Record<string, string>, cmd: IRCommand) => {
+                            if (cmd.irCode && cmd.irCode !== 'PLACEHOLDER') {
+                              acc[cmd.functionName] = cmd.irCode
+                            }
+                            return acc
+                          }, {})
+                        : // Fallback to legacy irCodes field
+                          'irCodes' in selectedDevice && typeof selectedDevice.irCodes === 'string' && selectedDevice.irCodes
                         ? JSON.parse(selectedDevice.irCodes)
                         : undefined
                     }

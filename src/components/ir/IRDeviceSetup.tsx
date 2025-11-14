@@ -7,14 +7,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Plus, 
-  Settings, 
-  Trash2, 
+import {
+  Plus,
+  Settings,
+  Trash2,
   Edit3,
   Radio,
   Download,
-  Search
+  Search,
+  Copy
 } from 'lucide-react'
 import { IRDatabaseSearch } from './IRDatabaseSearch'
 import { IRLearningPanel } from './IRLearningPanel'
@@ -62,8 +63,12 @@ export function IRDeviceSetup() {
   const [showAddDevice, setShowAddDevice] = useState(false)
   const [showIRDatabase, setShowIRDatabase] = useState(false)
   const [showIRLearning, setShowIRLearning] = useState(false)
+  const [showCloneModal, setShowCloneModal] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
   const [editingDevice, setEditingDevice] = useState<IRDevice | null>(null)
+  const [cloneSourceDevice, setCloneSourceDevice] = useState<IRDevice | null>(null)
+  const [selectedTargetDevices, setSelectedTargetDevices] = useState<Set<string>>(new Set())
+  const [cloning, setCloning] = useState(false)
   const [newDevice, setNewDevice] = useState({
     name: '',
     deviceType: '',
@@ -323,6 +328,70 @@ export function IRDeviceSetup() {
     setShowIRLearning(false)
     setSelectedDevice(null)
     await loadDevices()
+  }
+
+  const openCloneModal = (device: IRDevice) => {
+    if (device.commands.length === 0) {
+      alert('This device has no commands to clone. Please learn IR commands first.')
+      return
+    }
+    setCloneSourceDevice(device)
+    setSelectedTargetDevices(new Set())
+    setShowCloneModal(true)
+  }
+
+  const closeCloneModal = () => {
+    setShowCloneModal(false)
+    setCloneSourceDevice(null)
+    setSelectedTargetDevices(new Set())
+  }
+
+  const toggleTargetDevice = (deviceId: string) => {
+    const newSet = new Set(selectedTargetDevices)
+    if (newSet.has(deviceId)) {
+      newSet.delete(deviceId)
+    } else {
+      newSet.add(deviceId)
+    }
+    setSelectedTargetDevices(newSet)
+  }
+
+  const executeClone = async () => {
+    if (!cloneSourceDevice || selectedTargetDevices.size === 0) {
+      alert('Please select at least one target device')
+      return
+    }
+
+    setCloning(true)
+    try {
+      const response = await fetch('/api/ir/commands/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceDeviceId: cloneSourceDevice.id,
+          targetDeviceIds: Array.from(selectedTargetDevices)
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        const summary = data.results.map((r: any) =>
+          `${r.deviceName}: ${r.added} added, ${r.skipped} skipped`
+        ).join('\n')
+
+        alert(`Clone completed successfully!\n\n${summary}`)
+        closeCloneModal()
+        await loadDevices()
+      } else {
+        alert(`Clone failed: ${data.error}`)
+      }
+    } catch (error) {
+      logger.error('Error cloning commands:', error)
+      alert('Error cloning commands')
+    } finally {
+      setCloning(false)
+    }
   }
 
   if (loading) {
@@ -601,6 +670,16 @@ export function IRDeviceSetup() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => openCloneModal(device)}
+                      className="flex items-center gap-1"
+                      disabled={device.commands.length === 0}
+                    >
+                      <Copy className="w-4 h-4" />
+                      Clone
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => startEdit(device)}
                       className="flex items-center gap-1"
                     >
@@ -675,6 +754,98 @@ export function IRDeviceSetup() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Clone Commands Modal */}
+      {showCloneModal && cloneSourceDevice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-2xl border-slate-700 bg-slate-800">
+            <CardHeader>
+              <CardTitle className="text-slate-100">Clone IR Commands</CardTitle>
+              <CardDescription>
+                Copy all {cloneSourceDevice.commands.length} commands from "{cloneSourceDevice.name}" to other devices
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-slate-300 mb-3 block">
+                  Select target devices to clone commands to:
+                </Label>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {devices
+                    .filter(d => d.id !== cloneSourceDevice.id)
+                    .map((device) => (
+                      <label
+                        key={device.id}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-700/30 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTargetDevices.has(device.id)}
+                          onChange={() => toggleTargetDevice(device.id)}
+                          className="w-4 h-4"
+                        />
+                        <div className="flex-1">
+                          <div className="text-slate-200 font-medium">{device.name}</div>
+                          <div className="text-xs text-slate-400">
+                            {device.brand} • {device.deviceType}
+                            {device.commands.length > 0 && (
+                              <span className="ml-2 text-amber-400">
+                                ({device.commands.length} existing commands)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            device.commands.length > 0
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                              : 'bg-slate-600/20 text-slate-400'
+                          }
+                        >
+                          {device.commands.length} commands
+                        </Badge>
+                      </label>
+                    ))}
+                  {devices.filter(d => d.id !== cloneSourceDevice.id).length === 0 && (
+                    <div className="text-center py-8 text-slate-400">
+                      No other devices available. Create more IR devices first.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
+                <Button
+                  variant="outline"
+                  onClick={closeCloneModal}
+                  disabled={cloning}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={executeClone}
+                  disabled={cloning || selectedTargetDevices.size === 0}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {cloning ? (
+                    <>
+                      <Radio className="w-4 h-4 mr-2 animate-spin" />
+                      Cloning...
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Clone to {selectedTargetDevices.size} Device{selectedTargetDevices.size !== 1 ? 's' : ''}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

@@ -144,8 +144,8 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation - POST body is optional (no parameters needed)
+  const bodyValidation = await validateRequestBody(request, z.object({}).optional())
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 

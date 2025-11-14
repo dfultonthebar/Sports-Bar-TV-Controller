@@ -297,6 +297,16 @@ export async function pollRealFireTVSubscriptions(device: any): Promise<Subscrip
         type: 'sports',
         provider: 'Disney'
       },
+      'com.espn.gtv': {
+        name: 'ESPN',
+        type: 'sports',
+        provider: 'Disney'
+      },
+      'com.playon.nfhslive': {
+        name: 'NFHS Network',
+        type: 'sports',
+        provider: 'NFHS'
+      },
       'com.cbs.app': {
         name: 'Paramount+',
         type: 'streaming',
