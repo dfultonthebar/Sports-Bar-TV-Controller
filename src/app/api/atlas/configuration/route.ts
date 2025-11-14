@@ -8,7 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
