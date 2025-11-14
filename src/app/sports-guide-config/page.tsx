@@ -1125,7 +1125,7 @@ n          {/* API Configuration Tab */}
                           <select
                             value={teamFormData.league || ''}
                             onChange={(e) => {
-                              const selectedLeague = espnLeagues.find(l => l.abbreviation === e.target.value)
+                              const selectedLeague = espnLeagues.find(l => l.id === e.target.value)
                               setTeamFormData({
                                 ...teamFormData,
                                 league: e.target.value,
@@ -1150,7 +1150,7 @@ n          {/* API Configuration Tab */}
                             {espnLeagues
                               .filter(league => league.sport.toLowerCase() === teamFormData.sport?.toLowerCase())
                               .map((league) => (
-                                <option key={league.id} value={league.abbreviation}>
+                                <option key={league.id} value={league.id}>
                                   {league.name} ({league.abbreviation})
                                 </option>
                               ))}
