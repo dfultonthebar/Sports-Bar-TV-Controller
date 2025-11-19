@@ -18,24 +18,31 @@ interface ConfigChange {
   metadata?: any
 }
 
+// Proper validation schema for GitHub push config
+const pushConfigSchema = z.object({
+  commitMessage: z.string().optional(),
+  configChanges: z.array(z.object({
+    type: z.enum(['matrix', 'audio', 'ir', 'tv', 'directv', 'general']),
+    description: z.string().min(1, 'Description is required'),
+    files: z.array(z.string()).min(1, 'At least one file must be specified'),
+    metadata: z.any().optional()
+  })).min(1, 'At least one config change is required'),
+  autoCommit: z.boolean().optional().default(true)
+})
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation with proper schema
+  const bodyValidation = await validateRequestBody(request, pushConfigSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-
   try {
-    const { commitMessage, configChanges, autoCommit = true } = bodyValidation.data as {
-      commitMessage?: string
-      configChanges: ConfigChange[]
-      autoCommit?: boolean
-    }
+    // Use validated data directly - no type assertion needed!
+    const { commitMessage, configChanges, autoCommit = true } = bodyValidation.data
 
     // Log the configuration push attempt
     await logger.log({
@@ -77,8 +84,9 @@ export async function POST(request: NextRequest) {
         finalCommitMessage = `Configuration Update: ${changeTypes.join(', ')} - ${changeDescriptions}`
       }
 
-      // Commit changes
-      await execAsync(`git commit -m "${finalCommitMessage}"`)
+      // Commit changes with properly escaped message to prevent command injection
+      const escapedMessage = finalCommitMessage.replace(/'/g, "'\\''")
+      await execAsync(`git commit -m '${escapedMessage}'`)
       operations.push('Committed changes')
 
       // Push to remote

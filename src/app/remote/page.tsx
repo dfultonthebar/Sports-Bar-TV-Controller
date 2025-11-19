@@ -15,8 +15,6 @@ import {
   Settings,
   MapPin,
   Zap,
-  Wifi,
-  WifiOff,
   Volume1,
   VolumeIcon,
   Sliders,
@@ -687,14 +685,7 @@ export default function BartenderRemotePage() {
               🏈 Bartender Remote Control
             </h1>
             <div className="flex items-center justify-center space-x-4">
-              <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
-                connectionStatus === 'connected' 
-                  ? 'bg-green-900/80 text-green-200 border border-green-800'
-                  : 'bg-red-900/80 text-red-200 border border-red-800'
-              }`}>
-                {connectionStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                <span>Matrix: {connectionStatus}</span>
-              </div>
+              {/* Matrix connection status removed - technical info not needed for bartenders */}
               {commandStatus && (
                 <div className="px-3 py-1 bg-primary-900/80 text-blue-200 border border-primary-800 rounded-full text-sm">
                   {commandStatus}
@@ -753,15 +744,18 @@ export default function BartenderRemotePage() {
                 </button>
               </div>
 
-              {routingStatus && (
-                <div className={`p-3 rounded-md mb-4 text-sm font-medium ${
-                  routingStatus.includes('✓') ? 'bg-green-900/40 text-green-300 border border-green-700/50' :
-                  routingStatus.includes('✗') ? 'bg-red-900/40 text-red-300 border border-red-700/50' :
-                  'bg-blue-900/40 text-blue-300 border border-blue-700/50'
-                }`}>
-                  {routingStatus}
-                </div>
-              )}
+              {/* Fixed-height status container to prevent layout shift */}
+              <div className="mb-4 min-h-[52px]">
+                {routingStatus && (
+                  <div className={`p-3 rounded-md text-sm font-medium transition-opacity ${
+                    routingStatus.includes('✓') ? 'bg-green-900/40 text-green-300 border border-green-700/50' :
+                    routingStatus.includes('✗') ? 'bg-red-900/40 text-red-300 border border-red-700/50' :
+                    'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                  }`}>
+                    {routingStatus}
+                  </div>
+                )}
+              </div>
 
               <div className="overflow-x-auto -mx-4 px-4">
                 <table className="w-full border-collapse min-w-[600px]">

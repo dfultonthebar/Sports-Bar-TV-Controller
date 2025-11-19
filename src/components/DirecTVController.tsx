@@ -661,7 +661,7 @@ export default function DirecTVController() {
                       className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                         selectedSportsCategory === category
                           ? 'bg-blue-500 text-white'
-                          : 'bg-slate-800 or bg-slate-900 text-slate-200 hover:bg-gray-300'
+                          : 'bg-slate-900 text-slate-200 hover:bg-slate-800'
                       }`}
                     >
                       {category}
@@ -974,7 +974,7 @@ export default function DirecTVController() {
                   placeholder="e.g., Main Bar DirecTV"
                   value={newDevice.name}
                   onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
               </div>
 
@@ -985,9 +985,9 @@ export default function DirecTVController() {
                   placeholder="192.168.1.150"
                   value={newDevice.ipAddress}
                   onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
-                <p className="text-xs text-slate-400 mt-1">Find this in your DirecTV receiver's network settings</p>
+                <p className="text-xs text-slate-300 mt-1">Find this in your DirecTV receiver's network settings</p>
               </div>
 
               <div>
@@ -996,9 +996,9 @@ export default function DirecTVController() {
                   type="number"
                   value={newDevice.port}
                   onChange={(e) => setNewDevice({ ...newDevice, port: parseInt(e.target.value) || 8080 })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
-                <p className="text-xs text-slate-400 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
+                <p className="text-xs text-slate-300 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
               </div>
 
               <div>
@@ -1006,7 +1006,7 @@ export default function DirecTVController() {
                 <select
                   value={newDevice.receiverType}
                   onChange={(e) => setNewDevice({ ...newDevice, receiverType: e.target.value as any })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 >
                   <option value="Genie HD DVR">Genie HD DVR (HR54, HR44)</option>
                   <option value="Genie Mini">Genie Mini (C61K, C51)</option>
@@ -1033,10 +1033,10 @@ export default function DirecTVController() {
                     const value = parseInt(e.target.value);
                     setNewDevice({ ...newDevice, inputChannel: !isNaN(value) && value > 0 ? value : undefined });
                   }}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                   required
                 />
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-300 mt-1">
                   Enter which matrix input channel this DirecTV box is connected to (typically 1-32).
                 </p>
               </div>
@@ -1045,7 +1045,7 @@ export default function DirecTVController() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={() => setShowAddDevice(false)}
-                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>
@@ -1071,7 +1071,7 @@ export default function DirecTVController() {
                   setShowEditDevice(false)
                   setEditingDevice(null)
                 }}
-                className="text-slate-500 hover:text-gray-600 transition-colors"
+                className="text-slate-300 hover:text-slate-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1085,7 +1085,7 @@ export default function DirecTVController() {
                   placeholder="e.g., Main Bar DirecTV"
                   value={editDevice.name}
                   onChange={(e) => setEditDevice({ ...editDevice, name: e.target.value })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
               </div>
 
@@ -1096,9 +1096,9 @@ export default function DirecTVController() {
                   placeholder="192.168.1.150"
                   value={editDevice.ipAddress}
                   onChange={(e) => setEditDevice({ ...editDevice, ipAddress: e.target.value })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
-                <p className="text-xs text-slate-400 mt-1">Find this in your DirecTV receiver's network settings</p>
+                <p className="text-xs text-slate-300 mt-1">Find this in your DirecTV receiver's network settings</p>
               </div>
 
               <div>
@@ -1107,9 +1107,9 @@ export default function DirecTVController() {
                   type="number"
                   value={editDevice.port}
                   onChange={(e) => setEditDevice({ ...editDevice, port: parseInt(e.target.value) || 8080 })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 />
-                <p className="text-xs text-slate-400 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
+                <p className="text-xs text-slate-300 mt-1">Default is 8080 (usually doesn't need to be changed)</p>
               </div>
 
               <div>
@@ -1117,7 +1117,7 @@ export default function DirecTVController() {
                 <select
                   value={editDevice.receiverType}
                   onChange={(e) => setEditDevice({ ...editDevice, receiverType: e.target.value as any })}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                 >
                   <option value="Genie HD DVR">Genie HD DVR (HR54, HR44)</option>
                   <option value="Genie Mini">Genie Mini (C61K, C51)</option>
@@ -1144,10 +1144,10 @@ export default function DirecTVController() {
                     const value = parseInt(e.target.value);
                     setEditDevice({ ...editDevice, inputChannel: !isNaN(value) && value > 0 ? value : undefined });
                   }}
-                  className="w-full px-3 py-2 input-dark"
+                  className="w-full px-3 py-2 form-input-dark"
                   required
                 />
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-300 mt-1">
                   Enter which matrix input channel this DirecTV box is connected to (typically 1-32).
                 </p>
               </div>
@@ -1159,7 +1159,7 @@ export default function DirecTVController() {
                   setShowEditDevice(false)
                   setEditingDevice(null)
                 }}
-                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>
@@ -1195,7 +1195,7 @@ export default function DirecTVController() {
                   setShowDeleteDevice(false)
                   setDeletingDevice(null)
                 }}
-                className="flex-1 bg-slate-800 or bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-slate-900 text-slate-100 py-2 px-4 rounded-lg font-medium hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>

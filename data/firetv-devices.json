@@ -10,7 +10,31 @@
       "isOnline": true,
       "addedAt": "2025-10-31T19:15:34.087Z",
       "updatedAt": "2025-10-31T19:15:34.087Z",
-      "lastSeen": "2025-11-14T22:49:18.598Z"
+      "lastSeen": "2025-11-19T20:39:54.281Z"
+    },
+    {
+      "name": "Amazon 2",
+      "ipAddress": "192.168.5.132",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 14,
+      "id": "firetv_1763577904432_y1leu4lud",
+      "isOnline": true,
+      "addedAt": "2025-11-19T18:43:40.837Z",
+      "updatedAt": "2025-11-19T18:43:40.837Z",
+      "lastSeen": "2025-11-19T20:09:28.090Z"
+    },
+    {
+      "name": "Amazon 3",
+      "ipAddress": "192.168.5.133",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 15,
+      "id": "firetv_1763581819225_xbgsm3c4e",
+      "isOnline": true,
+      "addedAt": "2025-11-19T19:48:55.626Z",
+      "updatedAt": "2025-11-19T19:48:55.626Z",
+      "lastSeen": "2025-11-19T20:25:58.138Z"
     }
   ]
 }

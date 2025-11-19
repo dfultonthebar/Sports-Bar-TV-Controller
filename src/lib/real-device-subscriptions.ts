@@ -266,13 +266,14 @@ export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscri
  */
 export async function pollRealFireTVSubscriptions(device: any): Promise<Subscription[]> {
   const subscriptions: Subscription[] = []
+  const deviceSerial = `${device.ipAddress}:5555`
 
   try {
     // Connect to Fire TV via ADB
-    await execAsync(`adb connect ${device.ipAddress}:5555`)
+    await execAsync(`adb connect ${deviceSerial}`)
 
-    // Get list of installed packages
-    const { stdout } = await execAsync('adb shell pm list packages')
+    // Get list of installed packages - IMPORTANT: Use -s flag to target specific device
+    const { stdout } = await execAsync(`adb -s ${deviceSerial} shell pm list packages`)
     const packages = stdout.split('\n').filter(line => line.startsWith('package:'))
 
     // Known streaming app package names
@@ -363,8 +364,8 @@ export async function pollRealFireTVSubscriptions(device: any): Promise<Subscrip
       }
     }
 
-    // Disconnect ADB
-    await execAsync(`adb disconnect ${device.ipAddress}:5555`)
+    // Disconnect ADB from specific device
+    await execAsync(`adb disconnect ${deviceSerial}`)
 
   } catch (error) {
     logger.error('Fire TV subscription poll error:', error)

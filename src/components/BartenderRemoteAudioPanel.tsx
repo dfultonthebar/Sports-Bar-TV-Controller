@@ -1,10 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
-import { Volume2, Activity, Users } from 'lucide-react'
-import AtlasInputMeters from './AtlasInputMeters'
-import AtlasOutputMeters from './AtlasOutputMeters'
+import { Volume2 } from 'lucide-react'
 import AtlasGroupsControl from './AtlasGroupsControl'
 import WolfpackMatrixOutputControl from './WolfpackMatrixOutputControl'
 
@@ -36,56 +32,12 @@ export default function BartenderRemoteAudioPanel({
             Audio Control
           </h3>
 
-          <Tabs defaultValue="groups" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-1">
-              <TabsTrigger
-                value="groups"
-                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                Groups
-              </TabsTrigger>
-              <TabsTrigger
-                value="input-meters"
-                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
-              >
-                <Activity className="w-4 h-4 mr-2" />
-                Input Meters
-              </TabsTrigger>
-              <TabsTrigger
-                value="output-meters"
-                className="text-sm data-[state=active]:backdrop-blur-xl data-[state=active]:bg-gradient-to-br data-[state=active]:from-teal-500/20 data-[state=active]:to-purple-500/20 data-[state=active]:border data-[state=active]:border-teal-400/30 data-[state=active]:text-white rounded-lg transition-all duration-300"
-              >
-                <Activity className="w-4 h-4 mr-2" />
-                Output Meters
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="groups" className="mt-6">
-              <AtlasGroupsControl
-                processorIp={processorIp}
-              />
-            </TabsContent>
-
-            <TabsContent value="input-meters" className="mt-6">
-              <AtlasInputMeters
-                processorId={processorId}
-                processorIp={processorIp}
-                autoRefresh={false}
-                refreshInterval={1000}
-              />
-            </TabsContent>
-
-            <TabsContent value="output-meters" className="mt-6">
-              <AtlasOutputMeters
-                processorId={processorId}
-                processorIp={processorIp}
-                showGroups={true}
-                autoRefresh={false}
-                refreshInterval={1000}
-              />
-            </TabsContent>
-          </Tabs>
+          {/* Meters disabled - too slow to be useful */}
+          <div className="w-full">
+            <AtlasGroupsControl
+              processorIp={processorIp}
+            />
+          </div>
         </div>
       </div>
     </div>

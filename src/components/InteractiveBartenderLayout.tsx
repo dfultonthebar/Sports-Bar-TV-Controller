@@ -162,7 +162,7 @@ export default function InteractiveBartenderLayout({
                     <Tv className={`w-12 h-12 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
                     {/* Current Input Label */}
                     {currentInput && (
-                      <div className="mt-2 px-3 py-1 bg-black/60 rounded-lg text-xs font-semibold text-white whitespace-nowrap">
+                      <div className="mt-2 px-3 py-1 bg-black/60 rounded-lg text-xs font-semibold text-white truncate max-w-[90px]">
                         {currentInput}
                       </div>
                     )}

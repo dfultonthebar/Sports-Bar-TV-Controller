@@ -73,14 +73,16 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Fire TV Remote</h3>
         <p className="text-sm text-slate-400">{deviceName}</p>
-        {status.message && (
-          <div className={`mt-2 px-3 py-1 rounded-full text-xs flex items-center justify-center space-x-1 ${
-            status.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-          }`}>
-            {status.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-            <span>{status.message}</span>
-          </div>
-        )}
+        {/* Fixed-height status container to prevent layout shift */}
+        <div className="mt-2 h-6 flex items-center justify-center">
+          {status.message && (
+            <div className={`px-2 py-0.5 rounded text-xs flex items-center space-x-1 transition-opacity ${
+              status.type === 'success' ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {status.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Remote Control Layout */}
@@ -232,15 +234,7 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
         )}
       </div>
 
-      {/* Loading Overlay */}
-      {loading && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-          <div className="bg-slate-800 p-4 rounded-lg flex items-center space-x-2">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
-            <span className="text-white text-sm">Sending {lastCommand}...</span>
-          </div>
-        </div>
-      )}
+      {/* Removed loading overlay - too intrusive for bartender remote */}
     </div>
   )
 }

@@ -5,32 +5,33 @@
       "name": "Direct TV 1",
       "ipAddress": "192.168.5.121",
       "port": 8080,
-      "receiverType": "Genie HD DVR",
+      "receiverType": "h24/100",
       "inputChannel": 5,
       "isOnline": true,
       "addedAt": "2025-09-29T23:06:18.386Z",
-      "updatedAt": "2025-10-16T23:35:16.691Z"
+      "updatedAt": "2025-11-17T15:43:14.923Z"
     },
     {
       "id": "directv_1759187265011",
       "name": "Direct TV 2",
-      "ipAddress": "192.168.1.122",
+      "ipAddress": "192.168.5.122",
       "port": 8080,
-      "receiverType": "Genie HD DVR",
+      "receiverType": "h24/100",
       "inputChannel": 6,
-      "isOnline": false,
+      "isOnline": true,
       "addedAt": "2025-09-29T23:07:05.584Z",
-      "updatedAt": "2025-09-29T23:09:35.359Z"
+      "updatedAt": "2025-11-17T15:43:30.495Z"
     },
     {
       "id": "directv_1759187398411",
       "name": "Direct TV 3",
-      "ipAddress": "192.168.1.123",
+      "ipAddress": "192.168.5.123",
       "port": 8080,
-      "receiverType": "Genie HD DVR",
+      "receiverType": "h24/100",
       "inputChannel": 7,
-      "isOnline": false,
-      "addedAt": "2025-09-29T23:09:18.991Z"
+      "isOnline": true,
+      "addedAt": "2025-09-29T23:09:18.991Z",
+      "updatedAt": "2025-11-18T15:43:32.185Z"
     },
     {
       "id": "directv_1759187444390",
