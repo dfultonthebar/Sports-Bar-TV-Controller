@@ -254,7 +254,18 @@ export async function pollRealDirecTVSubscriptions(device: any): Promise<Subscri
       error instanceof Error ? error : new Error(String(error))
     )
 
-    logger.error('DirecTV subscription poll error:', error)
+    // Log error with full context for debugging
+    logger.error(`[DirecTV] Subscription poll failed for ${deviceName} (${ipAddress}:${port})`, {
+      error,
+      data: {
+        deviceId,
+        deviceName,
+        ipAddress,
+        port,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      }
+    })
     throw new Error('Unable to connect to DirecTV receiver')
   }
 
@@ -368,7 +379,18 @@ export async function pollRealFireTVSubscriptions(device: any): Promise<Subscrip
     await execAsync(`adb disconnect ${deviceSerial}`)
 
   } catch (error) {
-    logger.error('Fire TV subscription poll error:', error)
+    // Log error with full context for debugging
+    logger.error(`[FireTV] Subscription poll failed for ${device.name || 'Unknown'} (${deviceSerial})`, {
+      error,
+      data: {
+        deviceId: device.id || 'unknown',
+        deviceName: device.name || 'Unknown',
+        deviceSerial,
+        ipAddress: device.ipAddress,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      }
+    })
     throw new Error('Unable to connect to Fire TV device via ADB')
   }
 

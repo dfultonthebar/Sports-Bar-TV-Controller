@@ -76,14 +76,20 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation with proper schema
+  const pollRequestSchema = z.object({
+    deviceId: z.string().min(1, 'Device ID is required'),
+    deviceType: z.enum(['directv', 'firetv'], {
+      errorMap: () => ({ message: 'Device type must be either "directv" or "firetv"' })
+    }),
+    force: z.boolean().optional()
+  })
+
+  const bodyValidation = await validateRequestBody(request, pollRequestSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
+
   try {
-    const data = bodyValidation.data
-    const deviceId = String(data.deviceId)
-    const deviceType = String(data.deviceType) as 'directv' | 'firetv'
-    const force = Boolean(data.force ?? false)
+    const { deviceId, deviceType, force = false } = bodyValidation.data
 
     await direcTVLogger.log({
       level: LogLevel.INFO,
@@ -116,12 +122,21 @@ export async function POST(request: NextRequest) {
         message: `Device not found in ${deviceType} device list`,
         details: {
           deviceType,
-          availableDevices: deviceData.devices.map((d: any) => ({ id: d.id, name: d.name }))
+          requestedDeviceId: deviceId,
+          availableDeviceCount: deviceData.devices?.length || 0,
+          availableDevices: deviceData.devices?.map((d: any) => ({ id: d.id, name: d.name })) || [],
+          deviceDataLoaded: !!deviceData,
+          devicesArrayExists: Array.isArray(deviceData.devices)
         }
       })
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Device not found' 
+      return NextResponse.json({
+        success: false,
+        error: `Device not found: ${deviceId} not found in ${deviceType} device list`,
+        details: {
+          requestedDeviceId: deviceId,
+          deviceType,
+          availableDevices: deviceData.devices?.map((d: any) => d.id) || []
+        }
       }, { status: 404 })
     }
 

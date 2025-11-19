@@ -16,6 +16,7 @@ import { getPriorityCalculator } from '@/lib/scheduler/priority-calculator'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import { getStateReader } from '@/lib/scheduler/state-reader'
 import type { GameInfo } from '@/lib/scheduler/priority-calculator'
+import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
@@ -89,6 +90,40 @@ async function executeSchedule(schedule: any) {
   };
 
   try {
+    // Step 0: Check if this is a midnight schedule - clear cache and pre-fetch next day
+    const isMidnightSchedule = schedule.executionTime === '00:00' || schedule.name?.toLowerCase().includes('closing');
+    if (isMidnightSchedule) {
+      logger.info('[MIDNIGHT] Detected midnight schedule - clearing sports guide cache');
+
+      try {
+        // Clear sports guide cache to remove old games
+        const clearCacheResponse = await fetch('http://localhost:3001/api/sports-guide/clear-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (clearCacheResponse.ok) {
+          logger.info('[MIDNIGHT] Cache cleared successfully');
+        }
+
+        // Pre-fetch next 7 days of games to warm up cache for tomorrow
+        logger.info('[MIDNIGHT] Pre-fetching next 7 days of games');
+        const preFetchResponse = await fetch('http://localhost:3001/api/sports-guide', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: 7 })
+        });
+
+        if (preFetchResponse.ok) {
+          const data = await preFetchResponse.json();
+          logger.info(`[MIDNIGHT] Pre-fetched ${data.data?.games?.length || 0} games for next 7 days`);
+        }
+      } catch (error: any) {
+        logger.warn('[MIDNIGHT] Cache clear/pre-fetch failed (non-critical):', error.message);
+        // Don't fail the entire schedule if cache operations fail
+      }
+    }
+
     const selectedOutputs = JSON.parse(schedule.selectedOutputs || '[]');
     
     if (selectedOutputs.length === 0) {
@@ -130,30 +165,160 @@ async function executeSchedule(schedule: any) {
       }
     }
 
-    // Step 2: Find games if enabled
+    // Step 2: Apply audio settings if enabled
+    if (schedule.audioSettings) {
+      try {
+        const audioSettings = typeof schedule.audioSettings === 'string'
+          ? JSON.parse(schedule.audioSettings)
+          : schedule.audioSettings;
+
+        if (audioSettings.enabled && audioSettings.zones && audioSettings.zones.length > 0) {
+          logger.info(`[SCHEDULE] Applying audio settings for ${audioSettings.zones.length} zones`);
+
+          // Get the first active processor
+          const processor = await db.select().from(schema.audioProcessors).where(eq(schema.audioProcessors.status, 'online')).limit(1).get();
+
+          if (!processor) {
+            logger.warn('[SCHEDULE] No active audio processor found - skipping audio settings');
+            result.errors.push('No active audio processor found');
+          } else {
+            for (const zone of audioSettings.zones) {
+              try {
+                // Extract zone number from zoneId (e.g., "zone-0" → 0)
+                const zoneNumber = parseInt(zone.zoneId.split('-')[1]);
+
+                // Update zone settings in database
+                await db.update(schema.audioZones)
+                  .set({
+                    volume: zone.volume,
+                    muted: zone.muted === true ? 1 : 0,
+                    currentSource: zone.source,
+                    updatedAt: new Date().toISOString()
+                  })
+                  .where(and(
+                    eq(schema.audioZones.processorId, processor.id),
+                    eq(schema.audioZones.zoneNumber, zoneNumber)
+                  ))
+                  .returning().get();
+
+                logger.info(`[SCHEDULE] Updated database for zone ${zone.zoneName}: volume=${zone.volume}, source=${zone.source}`);
+
+                // Send commands to Atlas hardware
+                try {
+                  // Set volume
+                  const volumeResponse = await fetch('http://localhost:3001/api/audio-processor/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      processorId: processor.id,
+                      command: {
+                        action: 'volume',
+                        zone: zoneNumber + 1,  // Convert 0-based to 1-based
+                        value: zone.volume
+                      }
+                    })
+                  });
+
+                  if (!volumeResponse.ok) {
+                    const errorData = await volumeResponse.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(`Volume command failed: ${errorData.error || 'Unknown error'}`);
+                  }
+
+                  // Set source
+                  const sourceResponse = await fetch('http://localhost:3001/api/audio-processor/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      processorId: processor.id,
+                      command: {
+                        action: 'source',
+                        zone: zoneNumber + 1,  // Convert 0-based to 1-based
+                        value: String(zone.source)
+                      }
+                    })
+                  });
+
+                  if (!sourceResponse.ok) {
+                    const errorData = await sourceResponse.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(`Source command failed: ${errorData.error || 'Unknown error'}`);
+                  }
+
+                  // Set mute state if needed
+                  if (zone.muted !== undefined) {
+                    const muteResponse = await fetch('http://localhost:3001/api/audio-processor/control', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        processorId: processor.id,
+                        command: {
+                          action: 'mute',
+                          zone: zoneNumber + 1,
+                          value: zone.muted
+                        }
+                      })
+                    });
+
+                    if (!muteResponse.ok) {
+                      const errorData = await muteResponse.json().catch(() => ({ error: 'Unknown error' }));
+                      throw new Error(`Mute command failed: ${errorData.error || 'Unknown error'}`);
+                    }
+                  }
+
+                  logger.info(`[SCHEDULE] Applied audio hardware commands to zone ${zone.zoneName}: volume=${zone.volume}, source=${zone.source}, muted=${zone.muted || false}`);
+                } catch (hardwareError: any) {
+                  logger.error(`[SCHEDULE] Error sending commands to Atlas hardware for ${zone.zoneName}:`, hardwareError);
+                  result.errors.push(`Hardware control error for ${zone.zoneName}: ${hardwareError.message}`);
+                }
+              } catch (error: any) {
+                logger.error(`[SCHEDULE] Error applying audio to ${zone.zoneName}:`, error);
+                result.errors.push(`Error applying audio to ${zone.zoneName}: ${error.message}`);
+              }
+
+              // Delay between audio commands
+              await new Promise(resolve => setTimeout(resolve, schedule.delayBetweenCommands || 500));
+            }
+          }
+        }
+      } catch (error: any) {
+        logger.error('[SCHEDULE] Error parsing/applying audio settings:', error);
+        result.errors.push(`Audio settings error: ${error.message}`);
+      }
+    }
+
+    // Step 3: Find games if enabled
     let gameAssignments: any = {};
+    let aiSchedulerExecuted = false; // Track if AI scheduler handled everything
     if (schedule.autoFindGames && schedule.monitorHomeTeams) {
       const homeTeamIds = JSON.parse(schedule.homeTeamIds || '[]');
-      
+
       if (homeTeamIds.length > 0) {
         const gamesResult = await findHomeTeamGames(homeTeamIds, schedule);
         gameAssignments = gamesResult.assignments;
         result.gamesFound = gamesResult.gamesFound;
         result.details.games = gamesResult.games;
+        result.channelsSet = gamesResult.channelsSet || 0;
+        aiSchedulerExecuted = gamesResult.aiSchedulerExecuted || false; // Check if AI handled execution
       }
     }
 
-    // Step 3: Set channels
-    if (schedule.setDefaultChannels || Object.keys(gameAssignments).length > 0) {
-      const defaultChannelMap = schedule.defaultChannelMap 
-        ? JSON.parse(schedule.defaultChannelMap) 
-        : {};
+    // Step 4: Set channels
+    const defaultChannelMap = schedule.defaultChannelMap
+      ? JSON.parse(schedule.defaultChannelMap)
+      : {};
+
+    const inputDefaultChannels = schedule.inputDefaultChannels
+      ? JSON.parse(schedule.inputDefaultChannels)
+      : {};
+
+    // Process channels if any of these are configured
+    // Skip manual channel setting if AI scheduler already executed the distribution plan
+    if (!aiSchedulerExecuted && (schedule.setDefaultChannels || Object.keys(gameAssignments).length > 0 || Object.keys(inputDefaultChannels).length > 0)) {
 
       for (const output of outputs) {
         let inputId: string | null = null;
         let channel: string | null = null;
 
-        // Priority: Game assignment > Default channel
+        // Priority: Game assignment > Per-output default > Per-input default
         if (gameAssignments[output.id]) {
           inputId = gameAssignments[output.id].inputId;
           channel = gameAssignments[output.id].channel;
@@ -161,28 +326,53 @@ async function executeSchedule(schedule: any) {
           const mapping = defaultChannelMap[output.id];
           inputId = mapping.inputId;
           channel = mapping.channel;
+        } else if (Object.keys(inputDefaultChannels).length > 0) {
+          // Simplified approach - distribute outputs across inputs with default channels
+          // Get all inputs with default channels configured
+          const inputsWithDefaults = Object.keys(inputDefaultChannels);
+
+          if (inputsWithDefaults.length > 0) {
+            // Distribute outputs round-robin across inputs with defaults
+            const outputIndex = outputs.findIndex(o => o.id === output.id);
+            const inputIndex = outputIndex % inputsWithDefaults.length;
+            const assignedInputId = inputsWithDefaults[inputIndex];
+
+            inputId = assignedInputId;
+            channel = inputDefaultChannels[assignedInputId];
+            logger.info(`[SCHEDULE] Distributing ${output.label} to input with default channel ${channel}`);
+          }
         }
 
         if (inputId && channel) {
           try {
+            // Look up the input to get its channel number
+            const input = await db.select().from(schema.matrixInputs).where(eq(schema.matrixInputs.id, inputId)).limit(1).get();
+
+            if (!input) {
+              result.errors.push(`Input not found for ${output.label}`);
+              continue;
+            }
+
+            logger.info(`[SCHEDULE] Routing ${output.label} to ${input.label} (input ${input.channelNumber}) channel ${channel}`);
+
             // Route the matrix
             const routeResponse = await fetch(`http://localhost:3001/api/matrix/route`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                input: parseInt(inputId),
+                input: input.channelNumber,
                 output: output.channelNumber
               })
             });
 
             if (routeResponse.ok) {
               result.channelsSet++;
-              
+
               // Send channel change command to input device
-              // This would need the input device control API
-              await changeChannel(inputId, channel);
+              await changeChannel(input, channel);
             } else {
-              result.errors.push(`Failed to route ${output.label}`);
+              const errorData = await routeResponse.json().catch(() => ({ error: 'Unknown error' }));
+              result.errors.push(`Failed to route ${output.label}: ${errorData.error || 'Unknown error'}`);
             }
           } catch (error: any) {
             result.errors.push(`Error setting channel for ${output.label}: ${error.message}`);
@@ -224,12 +414,65 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
+    // Start time should include currently live games (games that started up to 4 hours ago)
+    const startOfWindow = new Date(now.getTime() - (4 * 60 * 60 * 1000)); // 4 hours ago
+
     // Search for games in channel guide data
     // This would integrate with your existing TV guide APIs
-    const games = await searchForGames(homeTeamsList, now, endOfDay);
+    const fillWithSports = schedule.fillWithSports !== false; // Default true if not set
+    const games = await searchForGames(homeTeamsList, startOfWindow, endOfDay, fillWithSports);
 
     result.games = games;
     result.gamesFound = games.length;
+
+    // ENRICH GAMES WITH ESPN LIVE DATA
+    logger.info('[AI_SCHEDULER] Enriching games with ESPN live data...')
+    const espnDataByLeague = new Map<string, any[]>()
+
+    // Group games by league and fetch ESPN data
+    const leaguesInUse = new Set<string>()
+    for (const game of games) {
+      if (game.league) {
+        leaguesInUse.add(game.league)
+      }
+    }
+
+    // Fetch ESPN data for each league
+    for (const league of leaguesInUse) {
+      const espnMapping = mapLeagueToESPN(league)
+      if (espnMapping) {
+        try {
+          const espnGames = await espnScoreboardAPI.getTodaysGames(espnMapping.sport, espnMapping.league)
+          logger.info(`[AI_SCHEDULER] Fetched ${espnGames.length} ESPN games for ${league}`)
+          espnDataByLeague.set(league, espnGames)
+        } catch (error: any) {
+          logger.error(`[AI_SCHEDULER] Failed to fetch ESPN data for ${league}:`, error.message)
+        }
+      }
+    }
+
+    // Enrich each game with ESPN live data
+    for (const game of games) {
+      if (game.league) {
+        const espnGames = espnDataByLeague.get(game.league)
+        if (espnGames) {
+          const matchedGame = matchGameByTeams(espnGames, game.homeTeam, game.awayTeam)
+          if (matchedGame) {
+            game.espnData = {
+              homeScore: matchedGame.homeTeam.score,
+              awayScore: matchedGame.awayTeam.score,
+              clock: matchedGame.status.displayClock,
+              period: matchedGame.status.period,
+              statusState: matchedGame.status.type.state, // 'pre', 'in', 'post'
+              statusDetail: matchedGame.status.type.shortDetail,
+              isLive: espnScoreboardAPI.isLive(matchedGame),
+              isCompleted: espnScoreboardAPI.isCompleted(matchedGame),
+            }
+            logger.debug(`[AI_SCHEDULER] Enriched ${game.homeTeam} vs ${game.awayTeam} with ESPN data (${game.espnData.statusState})`)
+          }
+        }
+      }
+    }
 
     // Check if AI scheduler is enabled
     const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
@@ -272,7 +515,7 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
           // Find the matrix output ID from output number
           const output = await db.select()
             .from(schema.matrixOutputs)
-            .where(eq(schema.matrixOutputs.outputNumber, tvAssignment.outputNumber))
+            .where(eq(schema.matrixOutputs.channelNumber, tvAssignment.outputNumber))
             .limit(1)
             .get();
 
@@ -302,7 +545,7 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
       for (const defaultAssignment of distributionPlan.defaults) {
         const output = await db.select()
           .from(schema.matrixOutputs)
-          .where(eq(schema.matrixOutputs.outputNumber, defaultAssignment.outputNumber))
+          .where(eq(schema.matrixOutputs.channelNumber, defaultAssignment.outputNumber))
           .limit(1)
           .get();
 
@@ -332,20 +575,106 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
       for (const reason of distributionPlan.reasoning) {
         logger.info(`[AI_SCHEDULER] ${reason}`);
       }
+
+      // EXECUTE THE DISTRIBUTION PLAN - Send actual hardware commands
+      logger.info(`[AI_SCHEDULER] Executing distribution plan...`);
+
+      // Track which inputs have been tuned to avoid duplicate commands
+      const tunedInputs = new Map<number, string>(); // inputNumber -> channelNumber
+
+      // Execute game assignments
+      // Track outputs that need routing
+      const routingCommands: Array<{outputNumber: number, inputNumber: number, zoneName?: string}> = [];
+
+      for (const gameAssignment of distributionPlan.games) {
+        for (const tvAssignment of gameAssignment.assignments) {
+          // Collect routing commands
+          routingCommands.push({
+            outputNumber: tvAssignment.outputNumber,
+            inputNumber: tvAssignment.inputNumber,
+            zoneName: tvAssignment.zoneName
+          });
+
+          // Tune channel if we have a channel number
+          if (tvAssignment.channelNumber) {
+            // Only tune each input once
+            if (!tunedInputs.has(tvAssignment.inputNumber)) {
+              // Find the matrix input details
+              const input = await db.select()
+                .from(schema.matrixInputs)
+                .where(eq(schema.matrixInputs.channelNumber, tvAssignment.inputNumber))
+                .limit(1)
+                .get();
+
+              if (input) {
+                logger.info(
+                  `[AI_SCHEDULER] Tuning input ${tvAssignment.inputNumber} (${tvAssignment.inputLabel}) to channel ${tvAssignment.channelNumber} for ${gameAssignment.game.homeTeam} vs ${gameAssignment.game.awayTeam}`
+                );
+
+                try {
+                  await changeChannel(input, tvAssignment.channelNumber);
+                  tunedInputs.set(tvAssignment.inputNumber, tvAssignment.channelNumber);
+                  result.channelsSet++;
+                } catch (error: any) {
+                  logger.error(`[AI_SCHEDULER] Failed to tune input ${tvAssignment.inputNumber}:`, error);
+                  result.errors.push(`Failed to tune ${tvAssignment.inputLabel} to channel ${tvAssignment.channelNumber}: ${error.message}`);
+                }
+
+                // Delay between commands
+                await new Promise(resolve => setTimeout(resolve, schedule.delayBetweenCommands || 500));
+              }
+            }
+          }
+        }
+      }
+
+      // Execute matrix routing commands
+      logger.info(`[AI_SCHEDULER] Routing ${routingCommands.length} outputs to inputs`);
+      for (const routeCmd of routingCommands) {
+        try {
+          const routeResponse = await fetch('http://localhost:3001/api/matrix/route', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input: routeCmd.inputNumber,
+              output: routeCmd.outputNumber
+            })
+          });
+
+          if (!routeResponse.ok) {
+            logger.warn(`[AI_SCHEDULER] Failed to route output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}`);
+          } else {
+            logger.debug(`[AI_SCHEDULER] Routed output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}`);
+          }
+        } catch (error: any) {
+          logger.error(`[AI_SCHEDULER] Matrix routing error:`, error);
+        }
+
+        // Small delay between routing commands
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      logger.info(`[AI_SCHEDULER] Distribution plan execution complete - ${tunedInputs.size} inputs tuned`);
+
+      // Mark that AI scheduler handled execution so manual channel tuning is skipped
+      result.aiSchedulerExecuted = true;
+      result.channelsSet = tunedInputs.size;
     }
 
-  } catch (error) {
-    logger.error('Error finding games:', error);
+  } catch (error: any) {
+    logger.error('[SCHEDULER] Error finding games:', error);
+    logger.error('[SCHEDULER] Error stack:', error?.stack);
+    logger.error('[SCHEDULER] Error message:', error?.message);
   }
 
   return result;
 }
 
-async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date) {
+async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, fillWithSports: boolean = true) {
   const games: any[] = [];
 
   try {
-    logger.info(`Searching for games for ${homeTeams.length} home teams between ${startTime.toISOString()} and ${endTime.toISOString()}`);
+    logger.info(`Searching for games for ${homeTeams.length} home teams between ${startTime.toISOString()} and ${endTime.toISOString()} (fillWithSports: ${fillWithSports})`);
 
     // Fetch sports guide data from The Rail Media API
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -367,36 +696,129 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date) 
     }
 
     // Parse the guide data to find matching games
-    const allGames = guideData.data.games || [];
+    const allGames: any[] = [];
+
+    // Parse listing_groups from The Rail Media API
+    for (const group of guideData.data.listing_groups || []) {
+      for (const listing of group.listings || []) {
+        // Parse the date properly
+        let eventDate: Date;
+        if (listing.date) {
+          const currentYear = new Date().getFullYear();
+          const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`;
+          eventDate = new Date(dateWithYear);
+
+          // If date is in the past, try next year
+          if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+            eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`);
+          }
+        } else {
+          eventDate = new Date(`${new Date().toDateString()} ${listing.time}`);
+        }
+
+        // Extract channel number based on available lineups (prefer cable, fallback to satellite)
+        let channelNumber = '';
+        if (listing.channel_numbers?.CAB) {
+          const cableChannels = listing.channel_numbers.CAB;
+          // Find first provider with non-empty channels
+          for (const providerChannels of Object.values(cableChannels)) {
+            const channels = providerChannels as any;
+            if (Array.isArray(channels) && channels.length > 0) {
+              channelNumber = String(channels[0]);
+              break;
+            } else if (channels && !Array.isArray(channels)) {
+              channelNumber = String(channels);
+              break;
+            }
+          }
+        }
+
+        // Fallback to satellite if no cable channel found
+        if (!channelNumber && listing.channel_numbers?.SAT) {
+          const satChannels = listing.channel_numbers.SAT;
+          // Find first provider with non-empty channels
+          for (const providerChannels of Object.values(satChannels)) {
+            const channels = providerChannels as any;
+            if (Array.isArray(channels) && channels.length > 0) {
+              channelNumber = String(channels[0]);
+              break;
+            } else if (channels && !Array.isArray(channels)) {
+              channelNumber = String(channels);
+              break;
+            }
+          }
+        }
+
+        // Only add game if we have a channel number
+        if (channelNumber) {
+          const game = {
+            league: group.group_title,
+            homeTeam: listing.data['home team'] || listing.data['team'] || '',
+            awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+            gameTime: listing.time,
+            startTime: eventDate.toISOString(),
+            channelNumber: channelNumber,
+            venue: listing.data['venue'] || listing.data['location'] || ''
+          };
+
+          allGames.push(game);
+        }
+      }
+    }
 
     logger.info(`Found ${allGames.length} total games in sports guide`);
 
-    // Filter games by home teams
-    for (const homeTeam of homeTeams) {
-      const teamGames = allGames.filter((game: any) => {
-        // Check if this game involves the home team
+    // Filter out games that started more than 2 hours ago to keep the guide fresh
+    const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000));
+    const freshGames = allGames.filter(game => {
+      const gameStart = new Date(game.startTime);
+      return gameStart >= twoHoursAgo;
+    });
+
+    const removedCount = allGames.length - freshGames.length;
+    if (removedCount > 0) {
+      logger.info(`[CLEANUP] Filtered out ${removedCount} games that started more than 2 hours ago`);
+    }
+
+    // Return ALL fresh games in time window (not just home team games)
+    // Tag games that involve home teams for priority boosting
+    const gamesInWindow = freshGames.filter((game: any) => {
+      const gameTime = new Date(game.startTime || game.time);
+      return gameTime >= startTime && gameTime <= endTime;
+    });
+
+    // Tag each game with matching home team info (if any)
+    for (const game of gamesInWindow) {
+      let matchedHomeTeam = null;
+
+      for (const homeTeam of homeTeams) {
         const homeTeamMatch =
           game.homeTeam?.toLowerCase().includes(homeTeam.teamName.toLowerCase()) ||
           game.awayTeam?.toLowerCase().includes(homeTeam.teamName.toLowerCase());
 
-        if (!homeTeamMatch) return false;
-
-        // Check if game is within our time window
-        const gameTime = new Date(game.startTime || game.time);
-        return gameTime >= startTime && gameTime <= endTime;
-      });
-
-      if (teamGames.length > 0) {
-        logger.info(`Found ${teamGames.length} games for ${homeTeam.teamName}`);
-        games.push(...teamGames.map((game: any) => ({
-          ...game,
-          homeTeamId: homeTeam.id,
-          homeTeamName: homeTeam.teamName
-        })));
+        if (homeTeamMatch) {
+          matchedHomeTeam = homeTeam;
+          break;
+        }
       }
+
+      // Add game with home team info (null if no match)
+      games.push({
+        ...game,
+        homeTeamId: matchedHomeTeam?.id || null,
+        homeTeamName: matchedHomeTeam?.teamName || null,
+        isHomeTeamGame: !!matchedHomeTeam
+      });
     }
 
-    logger.info(`Total games found: ${games.length}`);
+    logger.info(`Total games found: ${games.length} (${games.filter(g => g.isHomeTeamGame).length} home team games, ${games.filter(g => !g.isHomeTeamGame).length} other games)`);
+
+    // If fillWithSports is disabled, filter out non-home-team games
+    if (!fillWithSports) {
+      const filteredGames = games.filter(g => g.isHomeTeamGame);
+      logger.info(`fillWithSports disabled - filtered to ${filteredGames.length} home team games only`);
+      return filteredGames;
+    }
   } catch (error: any) {
     logger.error('Error searching for games:', error);
   }
@@ -404,24 +826,13 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date) 
   return games;
 }
 
-async function changeChannel(inputId: string, channel: string) {
+async function changeChannel(input: any, channel: string) {
   try {
-    // Get the matrix input to determine device type
-    const input = await db.select()
-      .from(schema.matrixInputs)
-      .where(eq(schema.matrixInputs.id, inputId))
-      .limit(1)
-      .get();
+    logger.info(`[CHANNEL_CHANGE] Changing ${input.label} (${input.deviceType}) to channel ${channel}`);
 
-    if (!input) {
-      logger.error(`Matrix input not found: ${inputId}`);
-      return { success: false, error: 'Matrix input not found' };
-    }
-
-    logger.info(`Changing ${input.label} (${input.deviceType}) to channel ${channel}`);
-
-    // Route based on device type
-    switch (input.deviceType) {
+    // Route based on device type (deviceType field contains the actual device, inputType is just "HDMI")
+    const deviceType = input.deviceType || input.inputType;
+    switch (deviceType) {
       case 'Cable Box':
         return await changeCableBoxChannel(input, channel);
 
@@ -460,6 +871,92 @@ async function changeCableBoxChannel(input: any, channel: string) {
       return { success: false, error: 'IR device not configured' };
     }
 
+    // Update the database BEFORE sending IR command so channel guide reflects the intent
+    // Find the cable box by matching the input label
+    const cableBox = await db.select()
+      .from(schema.cableBoxes)
+      .where(eq(schema.cableBoxes.name, input.label))
+      .limit(1)
+      .get();
+
+    if (cableBox) {
+      // Look up what game/program is on this channel from sports guide
+      let currentProgram = null;
+      try {
+        const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: 1 })
+        });
+
+        if (guideResponse.ok) {
+          const guideData = await guideResponse.json();
+          if (guideData.success && guideData.data?.listing_groups) {
+            const now = new Date();
+
+            // Search through all games to find what's on this channel right now
+            for (const group of guideData.data.listing_groups) {
+              for (const listing of group.listings || []) {
+                // Get channel number for this listing
+                let listingChannel = '';
+                if (listing.channel_numbers?.CAB) {
+                  const cableChannels = listing.channel_numbers.CAB;
+                  const firstChannel = Object.values(cableChannels)[0] as any;
+                  listingChannel = String(Array.isArray(firstChannel) ? firstChannel[0] : firstChannel);
+                } else if (listing.channel_numbers?.SAT) {
+                  const satChannels = listing.channel_numbers.SAT;
+                  const firstChannel = Object.values(satChannels)[0] as any;
+                  listingChannel = String(Array.isArray(firstChannel) ? firstChannel[0] : firstChannel);
+                }
+
+                // Check if this listing is on our channel
+                if (listingChannel === channel) {
+                  // Parse the time to check if game is on now or soon
+                  const currentYear = new Date().getFullYear();
+                  const dateWithYear = listing.date ? `${listing.date} ${currentYear} ${listing.time}` : `${now.toDateString()} ${listing.time}`;
+                  const gameTime = new Date(dateWithYear);
+
+                  // If game starts within next 6 hours, consider it current
+                  const timeDiff = gameTime.getTime() - now.getTime();
+                  if (timeDiff > -3 * 60 * 60 * 1000 && timeDiff < 6 * 60 * 60 * 1000) {
+                    currentProgram = {
+                      league: group.group_title,
+                      homeTeam: listing.data['home team'] || listing.data['team'] || '',
+                      awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+                      venue: listing.data['venue'] || listing.data['location'] || '',
+                      time: listing.time,
+                      date: listing.date,
+                      channel: listingChannel
+                    };
+                    break;
+                  }
+                }
+              }
+              if (currentProgram) break;
+            }
+          }
+        }
+      } catch (error: any) {
+        logger.warn(`Could not fetch sports guide for ${input.label}:`, error.message);
+      }
+
+      await db.update(schema.cableBoxes)
+        .set({
+          lastChannel: channel,
+          currentProgram: currentProgram ? JSON.stringify(currentProgram) : null,
+          currentProgramUpdatedAt: currentProgram ? new Date().toISOString() : null,
+          updatedAt: new Date().toISOString()
+        })
+        .where(eq(schema.cableBoxes.id, cableBox.id))
+        .returning().get();
+
+      if (currentProgram) {
+        logger.info(`Updated ${input.label} to channel ${channel} - Now Playing: ${currentProgram.homeTeam} vs ${currentProgram.awayTeam} (${currentProgram.league})`);
+      } else {
+        logger.info(`Updated ${input.label} database to channel ${channel} - no game data found`);
+      }
+    }
+
     // Use the channel-presets tune API to send IR commands
     const response = await fetch('http://localhost:3001/api/channel-presets/tune', {
       method: 'POST',
@@ -488,34 +985,39 @@ async function changeCableBoxChannel(input: any, channel: string) {
 
 async function changeDirectTVChannel(input: any, channel: string) {
   try {
-    // Find the DirecTV device by matching the input label
-    const direcTVDevice = await db.select()
-      .from(schema.direcTVDevices)
-      .where(eq(schema.direcTVDevices.name, input.label))
-      .limit(1)
-      .get();
+    // TODO: DirecTV devices are stored in JSON file, not database
+    // Need to load from /data/directv-devices.json instead
+    logger.error(`DirecTV channel change not implemented - devices stored in JSON file, not DB`);
+    return { success: false, error: 'DirecTV device lookup not implemented' };
 
-    if (!direcTVDevice) {
-      logger.error(`No DirecTV device found for: ${input.label}`);
-      return { success: false, error: 'DirecTV device not configured' };
-    }
+    // FIXME: This code references non-existent schema.direcTVDevices table
+    // const direcTVDevice = await db.select()
+    //   .from(schema.direcTVDevices)
+    //   .where(eq(schema.direcTVDevices.name, input.label))
+    //   .limit(1)
+    //   .get();
 
-    // Use the DirecTV tune API
-    const response = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: parseInt(channel) })
-    });
+    // if (!direcTVDevice) {
+    //   logger.error(`No DirecTV device found for: ${input.label}`);
+    //   return { success: false, error: 'DirecTV device not configured' };
+    // }
 
-    const result = await response.json();
+    // // Use the DirecTV tune API
+    // const response = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ channel: parseInt(channel) })
+    // });
 
-    if (result.success) {
-      logger.info(`Successfully tuned ${input.label} to channel ${channel}`);
-      return { success: true };
-    } else {
-      logger.error(`Failed to tune DirecTV: ${result.error}`);
-      return { success: false, error: result.error };
-    }
+    // const result = await response.json();
+
+    // if (result.success) {
+    //   logger.info(`Successfully tuned ${input.label} to channel ${channel}`);
+    //   return { success: true };
+    // } else {
+    //   logger.error(`Failed to tune DirecTV: ${result.error}`);
+    //   return { success: false, error: result.error };
+    // }
   } catch (error: any) {
     logger.error(`Error tuning DirecTV ${input.label}:`, error);
     return { success: false, error: error.message };
@@ -548,4 +1050,57 @@ async function changeFireTVChannel(input: any, channel: string) {
     logger.error(`Error with Fire TV ${input.label}:`, error);
     return { success: false, error: error.message };
   }
+}
+
+// Helper function: Map league names to ESPN API parameters
+function mapLeagueToESPN(league: string): { sport: string; league: string } | null {
+  const leagueLower = league.toLowerCase()
+
+  if (leagueLower.includes('nfl')) return { sport: 'football', league: 'nfl' }
+  if (leagueLower.includes('ncaa football') || leagueLower.includes('college football'))
+    return { sport: 'football', league: 'college-football' }
+
+  if (leagueLower.includes('nba')) return { sport: 'basketball', league: 'nba' }
+  if (leagueLower.includes('ncaa basketball') || leagueLower.includes('college basketball')) {
+    if (leagueLower.includes("women")) return { sport: 'basketball', league: 'womens-college-basketball' }
+    return { sport: 'basketball', league: 'mens-college-basketball' }
+  }
+
+  if (leagueLower.includes('nhl')) return { sport: 'hockey', league: 'nhl' }
+  if (leagueLower.includes('mlb') || leagueLower.includes('baseball')) return { sport: 'baseball', league: 'mlb' }
+  if (leagueLower.includes('mls') || leagueLower.includes('soccer')) return { sport: 'soccer', league: 'usa.1' }
+
+  return null
+}
+
+// Helper function: Match game by team names (fuzzy matching)
+function matchGameByTeams(espnGames: any[], homeTeam: string, awayTeam: string): any | null {
+  const cleanTeam = (name: string) => {
+    // Remove common prefixes like "NCAA:", "NFL:", "NBA:", etc.
+    let cleaned = name.replace(/^(NCAA|NFL|NBA|NHL|MLB|MLS):\\s*/i, '')
+    // Convert to lowercase and remove all non-alphanumeric characters
+    return cleaned.toLowerCase().replace(/[^a-z0-9]/g, '')
+  }
+  const homeClean = cleanTeam(homeTeam)
+  const awayClean = cleanTeam(awayTeam)
+
+  for (const espnGame of espnGames) {
+    const espnHomeClean = cleanTeam(espnGame.homeTeam.displayName)
+    const espnAwayClean = cleanTeam(espnGame.awayTeam.displayName)
+
+    // Check if teams match (in either order since sometimes home/away can be swapped)
+    const exactMatch = (
+      (espnHomeClean.includes(homeClean) || homeClean.includes(espnHomeClean)) &&
+      (espnAwayClean.includes(awayClean) || awayClean.includes(espnAwayClean))
+    ) || (
+      (espnHomeClean.includes(awayClean) || awayClean.includes(espnHomeClean)) &&
+      (espnAwayClean.includes(homeClean) || homeClean.includes(espnAwayClean))
+    )
+
+    if (exactMatch) {
+      return espnGame
+    }
+  }
+
+  return null
 }

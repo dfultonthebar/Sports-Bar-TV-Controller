@@ -69,6 +69,8 @@ export class AtlasTCPClient {
   private keepAliveTimer: NodeJS.Timeout | null = null
   private reconnectAttempts: number = 0
   private maxReconnectAttempts: number = 10
+  private circuitBreakerTripped: boolean = false
+  private lastReconnectLog: number = 0
 
   constructor(config: AtlasConnectionConfig) {
     this.config = {
@@ -111,12 +113,16 @@ export class AtlasTCPClient {
         lastError = error instanceof Error ? error : new Error(String(error))
         
         if (attempt < this.config.maxRetries) {
-          const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
-          atlasLogger.warn('CONNECTION', `Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`, {
-            ipAddress: this.config.ipAddress,
-            port: this.config.tcpPort,
-            error: lastError.message
-          })
+          const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+
+          // Only log every 3rd retry to reduce spam
+          if (attempt % 3 === 1 || attempt === this.config.maxRetries - 1) {
+            atlasLogger.warn('CONNECTION', `Connection attempt ${attempt} failed, retrying in ${retryDelay}ms...`, {
+              ipAddress: this.config.ipAddress,
+              port: this.config.tcpPort,
+              error: lastError.message
+            })
+          }
           await new Promise(resolve => setTimeout(resolve, retryDelay))
         }
       }
@@ -161,23 +167,36 @@ export class AtlasTCPClient {
         // Handle connection success
         this.tcpSocket.on('connect', () => {
           this.connected = true
+
+          // Reset reconnection state on successful connection
+          const wasInCircuitBreaker = this.circuitBreakerTripped
+          this.reconnectAttempts = 0
+          this.circuitBreakerTripped = false
+
+          if (wasInCircuitBreaker) {
+            atlasLogger.info('CONNECTION', 'Successfully reconnected after circuit breaker', {
+              ipAddress: this.config.ipAddress,
+              port: this.config.tcpPort
+            })
+          }
+
           atlasLogger.connectionSuccess(this.config.ipAddress, this.config.tcpPort)
-          
+
           // CRITICAL FIX: Clear the connection timeout after successful connection
           // The timeout was causing immediate disconnections after connecting
           if (this.tcpSocket) {
             this.tcpSocket.setTimeout(0)  // Disable timeout - we'll use keepalive instead
           }
-          
+
           // Start keep-alive mechanism
           this.startKeepAlive()
-          
+
           // Resubscribe to all previous subscriptions
           this.resubscribeAll()
-          
+
           // Initialize UDP socket for meter updates
           this.initializeUdpSocket()
-          
+
           resolve()
         })
 
@@ -300,28 +319,56 @@ export class AtlasTCPClient {
   }
 
   /**
-   * Handle reconnection attempts
+   * Handle reconnection attempts with circuit breaker pattern
    */
   private async handleReconnection(): Promise<void> {
+    // Circuit breaker: After max attempts, wait 5 minutes before trying again
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      atlasLogger.error('RECONNECT', 'Max reconnection attempts reached', {
-        attempts: this.reconnectAttempts
-      })
+      if (!this.circuitBreakerTripped) {
+        this.circuitBreakerTripped = true
+        atlasLogger.error('RECONNECT', 'Max reconnection attempts reached - entering circuit breaker mode (will retry in 5 minutes)', {
+          attempts: this.reconnectAttempts,
+          ipAddress: this.config.ipAddress
+        })
+      }
+
+      // Reset and try again after 5 minutes
+      setTimeout(async () => {
+        this.reconnectAttempts = 0
+        this.circuitBreakerTripped = false
+        atlasLogger.info('RECONNECT', 'Circuit breaker reset - attempting reconnection', {
+          ipAddress: this.config.ipAddress
+        })
+        await this.handleReconnection()
+      }, 300000) // 5 minutes
       return
     }
 
     this.reconnectAttempts++
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
-    
-    atlasLogger.info('RECONNECT', `Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
-      ipAddress: this.config.ipAddress
-    })
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (max)
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 60000)
+
+    // Only log every 5th attempt or first/last to reduce spam
+    const now = Date.now()
+    const shouldLog = this.reconnectAttempts % 5 === 1
+                   || this.reconnectAttempts === this.maxReconnectAttempts
+                   || (now - this.lastReconnectLog) > 60000 // or every minute
+
+    if (shouldLog) {
+      atlasLogger.info('RECONNECT', `Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
+        ipAddress: this.config.ipAddress
+      })
+      this.lastReconnectLog = now
+    }
 
     setTimeout(async () => {
       try {
         await this.connect()
       } catch (error) {
-        atlasLogger.error('RECONNECT', 'Reconnection failed', error)
+        // Only log error if we're logging this attempt
+        if (shouldLog) {
+          atlasLogger.error('RECONNECT', 'Reconnection failed', error)
+        }
       }
     }, delay)
   }
@@ -471,15 +518,20 @@ export class AtlasTCPClient {
       
       // Handle "update" method (subscription updates)
       else if (response.method === 'update') {
-        const param = response.params?.param || 'unknown'
-        const value = response.params?.val !== undefined ? response.params.val 
-                    : response.params?.pct !== undefined ? response.params.pct 
-                    : response.params?.str
-        
-        atlasLogger.parameterUpdate(param, value, this.config.ipAddress)
-        
-        // Emit update event (can be extended for real-time UI updates)
-        this.handleParameterUpdate(param, value, response.params)
+        // params can be either an array of updates or a single update object
+        const params = Array.isArray(response.params) ? response.params : [response.params]
+
+        for (const paramObj of params) {
+          const param = paramObj?.param || 'unknown'
+          const value = paramObj?.val !== undefined ? paramObj.val
+                      : paramObj?.pct !== undefined ? paramObj.pct
+                      : paramObj?.str
+
+          atlasLogger.parameterUpdate(param, value, this.config.ipAddress)
+
+          // Emit update event for each parameter
+          this.handleParameterUpdate(param, value, paramObj)
+        }
       }
     } catch (error) {
       atlasLogger.error('PARSING', 'Error parsing message from Atlas', { 
