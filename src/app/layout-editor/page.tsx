@@ -179,6 +179,9 @@ export default function LayoutEditorPage() {
           type: 'success',
           text: 'Layout saved successfully!'
         })
+        // Clear the preview image after save to make it cleaner
+        setPreviewUrl(null)
+        setSelectedFile(null)
       } else {
         setMessage({
           type: 'error',
