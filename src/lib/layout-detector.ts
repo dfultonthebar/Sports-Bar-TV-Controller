@@ -43,9 +43,11 @@ interface Rectangle {
  * Red rectangles represent TV positions
  */
 export async function detectTVZonesFromImage(
-  imagePath: string
+  imagePath: string,
+  options?: { skipOCR?: boolean }
 ): Promise<LayoutDetectionResult> {
   const errors: string[] = []
+  const skipOCR = options?.skipOCR ?? false
 
   try {
     // Load image and get metadata
@@ -76,7 +78,8 @@ export async function detectTVZonesFromImage(
       rectangles,
       imagePath,
       imageWidth,
-      imageHeight
+      imageHeight,
+      skipOCR
     )
 
     // Sort by position (top to bottom, left to right)
@@ -481,7 +484,8 @@ async function extractZonesFromRectangles(
   rectangles: Rectangle[],
   imagePath: string,
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  skipOCR: boolean = false
 ): Promise<DetectedZone[]> {
   const zones: DetectedZone[] = []
 
@@ -527,8 +531,19 @@ async function extractZonesFromRectangles(
     const zone = resolvedZones[i]
     let { x, y, width, height, rect } = zone
 
-    // Try to extract label from nearby text using OCR (Ollama Vision or Tesseract)
-    const ocrResult = await extractLabelNearRectangle(rect, imagePath, imageWidth, imageHeight)
+    let ocrResult: { label: string; ocrMethod?: 'ollama' | 'tesseract' | 'manual' }
+
+    if (skipOCR) {
+      // Fast mode: skip OCR, use manual labels
+      const tvNumber = i + 1
+      ocrResult = {
+        label: `TV ${String(tvNumber).padStart(2, '0')}`,
+        ocrMethod: 'manual'
+      }
+    } else {
+      // Normal mode: extract label from nearby text using OCR (Ollama Vision or Tesseract)
+      ocrResult = await extractLabelNearRectangle(rect, imagePath, imageWidth, imageHeight)
+    }
 
     // Extract TV number from label (e.g., "TV 01" → 1)
     const tvNumber = extractTVNumber(ocrResult.label) || (i + 1)

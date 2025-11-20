@@ -59,10 +59,12 @@ export async function POST(request: NextRequest) {
 
     // Auto-detect TV zones if requested
     if (autoDetect) {
-      logger.info('[Layout Upload] Starting auto-detection...')
+      logger.info('[Layout Upload] Starting auto-detection (fast mode - skip OCR)...')
       logger.info('[Layout Upload] Image path:', { data: filepath })
 
-      detectionResult = await detectTVZonesFromImage(filepath)
+      // Use skipOCR for instant detection (~8 seconds vs 48+ seconds)
+      // User can manually edit labels or re-detect with OCR later
+      detectionResult = await detectTVZonesFromImage(filepath, { skipOCR: true })
 
       logger.info('[Layout Upload] Detection result:', {
         data: {
