@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[Layout Upload] Saved: ${filepath}`)
 
-    const imageUrl = `/uploads/layouts/${filename}`
+    const imageUrl = `/api/uploads/layouts/${filename}`
     let zones: any[] = []
     let detectionResult: any = null
 
