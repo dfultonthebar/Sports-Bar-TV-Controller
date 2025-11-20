@@ -43,8 +43,13 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[Layout Detection] Processing: ${filepath}`)
 
+    // Check if full OCR requested (default: skip OCR for speed)
+    const enableOCR = bodyValidation.data.enableOCR === true
+
+    logger.info(`[Layout Detection] OCR mode: ${enableOCR ? 'ENABLED (slow, 2-4 min)' : 'DISABLED (fast, 8 sec)'}`)
+
     // Detect zones
-    const detectionResult = await detectTVZonesFromImage(filepath)
+    const detectionResult = await detectTVZonesFromImage(filepath, { skipOCR: !enableOCR })
 
     if (detectionResult.zones.length === 0) {
       return NextResponse.json({

@@ -126,13 +126,8 @@ export default function InteractiveBartenderLayout({
         </div>
 
         {/* Layout Container - Responsive sizing for all devices */}
-        <div className="relative w-full backdrop-blur-xl bg-white/5 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
-          {/* Background Image */}
-          <img
-            src={imageUrl}
-            alt={layout.name}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
+          {/* Background image hidden - only used for zone positioning during setup */}
 
           {/* Interactive TV Zones */}
           {layout.zones.map((zone) => {
