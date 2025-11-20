@@ -15,19 +15,12 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
-import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
-
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, ValidationSchemas.layoutUpload)
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
 
   try {
     const formData = await request.formData()
