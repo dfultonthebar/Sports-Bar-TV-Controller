@@ -405,33 +405,36 @@ export default function LayoutEditorPage() {
               <h3 className="text-lg font-semibold text-white mb-3">Edit Mode</h3>
 
               <div className="space-y-2">
-                <button
+                <Button
                   onClick={() => setEditMode('select')}
-                  className={`w-full px-3 py-2 rounded transition-all ${
-                    editMode === 'select' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  variant={editMode === 'select' ? 'default' : 'secondary'}
+                  className={`w-full ${
+                    editMode === 'select' ? 'bg-blue-600 hover:bg-blue-700' : ''
                   }`}
                 >
                   Select & Edit
-                </button>
+                </Button>
 
-                <button
+                <Button
                   onClick={() => setEditMode('draw')}
-                  className={`w-full px-3 py-2 rounded transition-all ${
-                    editMode === 'draw' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  variant={editMode === 'draw' ? 'default' : 'secondary'}
+                  className={`w-full ${
+                    editMode === 'draw' ? 'bg-blue-600 hover:bg-blue-700' : ''
                   }`}
                 >
                   Draw New Zone
-                </button>
+                </Button>
 
-                <button
+                <Button
                   onClick={() => setEditMode('move')}
-                  className={`w-full px-3 py-2 rounded transition-all ${
-                    editMode === 'move' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  variant={editMode === 'move' ? 'default' : 'secondary'}
+                  className={`w-full ${
+                    editMode === 'move' ? 'bg-blue-600 hover:bg-blue-700' : ''
                   }`}
                 >
                   <Move className="w-4 h-4 inline mr-2" />
                   Move Zones
-                </button>
+                </Button>
               </div>
 
               {editMode === 'draw' && (
