@@ -33,6 +33,7 @@ import TodoDetails from '@/components/TodoDetails'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
+import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 
 import { logger } from '@/lib/logger'
 interface Backup {
@@ -424,6 +425,7 @@ export default function SystemAdminPage() {
 
           {/* Power Controls Tab */}
           <TabsContent value="power" className="space-y-6">
+            <SystemResourceMonitor />
             <SystemControlPanel />
           </TabsContent>
 

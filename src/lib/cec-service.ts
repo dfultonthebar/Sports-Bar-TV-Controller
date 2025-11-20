@@ -109,8 +109,8 @@ export class CECService {
           if (addressMatch) {
             currentDevice = { address: addressMatch[1] };
           }
-        } else if (line.includes('osd name:')) {
-          const match = line.match(/osd name:\s*(.+)/);
+        } else if (line.includes('osd string:')) {
+          const match = line.match(/osd string:\s*(.+)/);
           if (match) currentDevice.osdName = match[1].trim();
         } else if (line.includes('vendor:')) {
           const match = line.match(/vendor:\s*(.+)/);

@@ -79,7 +79,16 @@ export async function POST(request: NextRequest) {
       preferredProviders: body.preferredProviders ? JSON.stringify(body.preferredProviders) : JSON.stringify(['cable', 'streaming', 'satellite']),
       executionOrder: body.executionOrder || 'outputs_first',
       delayBetweenCommands: body.delayBetweenCommands || 2000,
-      nextExecution: calculateNextExecution(body)
+      nextExecution: calculateNextExecution(body),
+      audioSettings: body.audioSettings ? JSON.stringify(body.audioSettings) : null,
+
+      // Fire TV specific fields (nullable for smart scheduling)
+      deviceId: body.deviceId || null,
+      channelName: body.channelName || null,
+      channelNumber: body.channelNumber || null,
+      startTime: body.startTime || null,
+      endTime: body.endTime || null,
+      recurring: body.recurring || false,
     });
 
     logger.api.response('POST', '/api/schedules', 201, { scheduleId: schedule.id });

@@ -89,12 +89,15 @@ export async function PUT(
     if (body.selectedOutputs !== undefined) updateData.selectedOutputs = JSON.stringify(body.selectedOutputs);
     if (body.setDefaultChannels !== undefined) updateData.setDefaultChannels = body.setDefaultChannels;
     if (body.defaultChannelMap !== undefined) updateData.defaultChannelMap = JSON.stringify(body.defaultChannelMap);
+    if (body.inputDefaultChannels !== undefined) updateData.inputDefaultChannels = JSON.stringify(body.inputDefaultChannels);
     if (body.autoFindGames !== undefined) updateData.autoFindGames = body.autoFindGames;
     if (body.monitorHomeTeams !== undefined) updateData.monitorHomeTeams = body.monitorHomeTeams;
     if (body.homeTeamIds !== undefined) updateData.homeTeamIds = JSON.stringify(body.homeTeamIds);
     if (body.preferredProviders !== undefined) updateData.preferredProviders = JSON.stringify(body.preferredProviders);
     if (body.executionOrder !== undefined) updateData.executionOrder = body.executionOrder;
     if (body.delayBetweenCommands !== undefined) updateData.delayBetweenCommands = body.delayBetweenCommands;
+    if (body.audioSettings !== undefined) updateData.audioSettings = JSON.stringify(body.audioSettings);
+    if (body.fillWithSports !== undefined) updateData.fillWithSports = body.fillWithSports;
 
     const schedule = await update('schedules', eq(schema.schedules.id, id), updateData);
 

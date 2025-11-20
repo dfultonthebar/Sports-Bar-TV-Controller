@@ -433,10 +433,17 @@ export const irCommandSendSchema = z.object({
  * Audio control schema
  */
 export const audioControlSchema = z.object({
-  action: z.enum(['volume', 'mute', 'unmute', 'source']),
-  volume: volumeSchema.optional(),
-  source: deviceIdSchema.optional(),
-  zone: z.string().min(1).max(50).optional()
+  processorId: z.string().uuid(),
+  command: z.object({
+    action: z.enum(['volume', 'mute', 'unmute', 'source', 'scene', 'message', 'combine', 'output-volume']),
+    zone: z.number().int().min(1).max(16).optional(),
+    value: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    zones: z.array(z.number().int().min(1).max(16)).optional(),
+    sceneId: z.number().int().optional(),
+    messageId: z.number().int().optional(),
+    outputIndex: z.number().int().min(0).optional(),
+    parameterName: z.string().optional()
+  })
 })
 
 // ============================================================================
@@ -640,7 +647,7 @@ export const audioProcessorConfigSchema = z.object({
  * AI chat/query schema
  */
 export const aiQuerySchema = z.object({
-  query: nonEmptyStringSchema.max(2000),
+  query: nonEmptyStringSchema.max(2000).optional(),
   message: nonEmptyStringSchema.max(2000).optional(),
   sessionId: z.string().optional(),
   enableTools: z.boolean().optional(),
@@ -649,6 +656,9 @@ export const aiQuerySchema = z.object({
   context: z.record(z.unknown()).optional(),
   model: z.enum(['gpt-4', 'gpt-3.5-turbo', 'claude', 'ollama']).optional(),
   maxTokens: z.number().int().min(100).max(4000).optional()
+}).refine((data) => data.query || data.message, {
+  message: "Either 'query' or 'message' must be provided",
+  path: ['query']
 })
 
 /**

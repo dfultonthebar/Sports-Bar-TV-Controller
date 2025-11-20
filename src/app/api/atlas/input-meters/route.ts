@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AtlasTCPClient } from '@/lib/atlasClient'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateQueryParams, isValidationError } from '@/lib/validation'
+import { atlasMeterManager } from '@/lib/atlas-meter-manager'
+
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
-
   // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const searchParams = request.nextUrl.searchParams
@@ -29,6 +27,24 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Ensure we're subscribed to meters for this processor
+    if (!atlasMeterManager.isSubscribed(processorIp)) {
+      logger.info(`[INPUT METERS] Subscribing to meters for ${processorIp}...`)
+      await atlasMeterManager.subscribeToMeters(
+        `processor-${processorIp}`, // processor ID
+        processorIp,
+        14, // input count (AZMP8)
+        8,  // output count
+        8   // group count
+      )
+    }
+
+    // Get cached meter values (instant response!)
+    const meters = atlasMeterManager.getInputMeters(processorIp, 14)
+
+    // Get source names separately (these don't change often)
+    // We can cache these too eventually, but for now query them
+    const { AtlasTCPClient } = await import('@/lib/atlasClient')
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
       tcpPort: 5321,
@@ -37,19 +53,6 @@ export async function GET(request: NextRequest) {
 
     await client.connect()
 
-    // Subscribe to input meters (SourceMeter_0 through SourceMeter_13 for AZMP8)
-    const meterPromises = []
-    for (let i = 0; i < 14; i++) {
-      meterPromises.push(
-        client.sendCommand({
-          method: 'get',
-          param: `SourceMeter_${i}`,
-          format: 'val'
-        }).catch(() => null)
-      )
-    }
-
-    // Also get source names
     const namePromises = []
     for (let i = 0; i < 14; i++) {
       namePromises.push(
@@ -61,42 +64,32 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const [meterResults, nameResults] = await Promise.all([
-      Promise.all(meterPromises),
-      Promise.all(namePromises)
-    ])
-
+    const nameResults = await Promise.all(namePromises)
     await client.disconnect()
 
-    // Build meter data
-    const meters = meterResults
-      .map((result, index) => {
-        if (!result || !result.data) return null
-        
-        const level = result.data.val || result.data.value || -80
-        const name = nameResults[index]?.data?.str || `Input ${index + 1}`
-        
-        return {
-          index,
-          name,
-          level,
-          peak: level, // In real implementation, track peak over time
-          clipping: level > -3
-        }
-      })
-      .filter(m => m !== null)
+    // Add names to meter data
+    const metersWithNames = meters.map((meter, index) => {
+      let name = `Input ${index + 1}`
+      if (nameResults[index]?.result && Array.isArray(nameResults[index].result)) {
+        name = nameResults[index].result[0]?.str || name
+      }
+      return {
+        ...meter,
+        name
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      meters,
+      meters: metersWithNames,
       timestamp: Date.now()
     })
   } catch (error) {
     logger.error('Error fetching input meters:', error)
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to fetch input meters' 
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch input meters'
       },
       { status: 500 }
     )

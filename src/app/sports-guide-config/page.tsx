@@ -106,6 +106,7 @@ interface Schedule {
   defaultChannelMap: string | null;
   autoFindGames: boolean;
   monitorHomeTeams: boolean;
+  fillWithSports: boolean;
   homeTeamIds: string | null;
   preferredProviders: string | null;
   executionOrder: string;
@@ -184,6 +185,10 @@ export default function SportsGuideConfigPage() {
   const [outputScheduleInfo, setOutputScheduleInfo] = useState<OutputScheduleInfo | null>(null)
   const [showScheduleForm, setShowScheduleForm] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
+  const [audioZones, setAudioZones] = useState<any[]>([])
+  const [channelPresets, setChannelPresets] = useState<any[]>([])
+  const [audioSourceNames, setAudioSourceNames] = useState<Map<number, string>>(new Map())
+  const [currentProcessorIp, setCurrentProcessorIp] = useState<string | null>(null)
 
   // Schedule form state
   const [scheduleFormData, setScheduleFormData] = useState({
@@ -198,12 +203,24 @@ export default function SportsGuideConfigPage() {
     selectedOutputs: [] as string[],
     setDefaultChannels: false,
     defaultChannelMap: {} as any,
+    inputDefaultChannels: {} as any,
     autoFindGames: false,
     monitorHomeTeams: false,
+    fillWithSports: true,
     homeTeamIds: [] as string[],
     preferredProviders: ['cable', 'streaming', 'satellite'],
     executionOrder: 'outputs_first',
-    delayBetweenCommands: 2000
+    delayBetweenCommands: 2000,
+    audioSettings: {
+      enabled: false,
+      zones: [] as Array<{
+        zoneId: string
+        zoneName: string
+        volume: number
+        muted: boolean
+        source: string
+      }>
+    }
   })
 
   // New item forms
@@ -552,23 +569,35 @@ export default function SportsGuideConfigPage() {
   // Scheduler functions
   const loadSchedulerData = async () => {
     try {
-      const [schedulesRes, outputsRes, inputsRes, scheduleInfoRes] = await Promise.all([
+      const [schedulesRes, outputsRes, inputsRes, scheduleInfoRes, presetsRes] = await Promise.all([
         fetch('/api/schedules'),
         fetch('/api/matrix/outputs'),
         fetch('/api/matrix/inputs'),
-        fetch('/api/matrix/outputs-schedule')
+        fetch('/api/matrix/outputs-schedule'),
+        fetch('/api/channel-presets')
       ]);
 
-      const [schedulesData, outputsData, inputsData, scheduleInfoData] = await Promise.all([
+      const [schedulesData, outputsData, inputsData, scheduleInfoData, presetsData] = await Promise.all([
         schedulesRes.json(),
         outputsRes.json(),
         inputsRes.json(),
-        scheduleInfoRes.json()
+        scheduleInfoRes.json(),
+        presetsRes.json()
       ]);
 
       setSchedules(schedulesData.schedules || []);
-      setOutputs(outputsData.outputs || []);
-      setInputs(inputsData.inputs || []);
+
+      // Filter to only active outputs and inputs
+      const activeOutputs = (outputsData.outputs || []).filter((o: any) => o.isActive !== false);
+      const activeInputs = (inputsData.inputs || []).filter((i: any) => i.isActive !== false);
+
+      setOutputs(activeOutputs);
+      setInputs(activeInputs);
+
+      // Load channel presets
+      if (presetsData.presets) {
+        setChannelPresets(presetsData.presets);
+      }
 
       if (scheduleInfoData.success) {
         setOutputScheduleInfo({
@@ -579,6 +608,73 @@ export default function SportsGuideConfigPage() {
       }
     } catch (error) {
       logger.error('Error loading scheduler data:', error);
+    }
+  };
+
+  const loadAudioZones = async (shouldFetchSources = true): Promise<any[]> => {
+    try {
+      // Get list of audio processors from database
+      const processorsRes = await fetch('/api/atlas-processors');
+      const processorsData = await processorsRes.json();
+
+      if (processorsData.success && processorsData.processors && processorsData.processors.length > 0) {
+        const processor = processorsData.processors[0]; // Get first processor
+
+        // Store processor IP for future reference
+        setCurrentProcessorIp(processor.ipAddress);
+
+        // Fetch source names if requested
+        if (shouldFetchSources && processor.ipAddress) {
+          try {
+            const sourcesRes = await fetch(`/api/atlas/sources?processorIp=${processor.ipAddress}`);
+            const sourcesData = await sourcesRes.json();
+
+            if (sourcesData.success && sourcesData.sources) {
+              const sourceMap = new Map(
+                sourcesData.sources.map((s: any) => [s.index, s.name])
+              );
+              setAudioSourceNames(sourceMap);
+              logger.info('[AUDIO] Source names loaded:', { count: sourceMap.size, sources: Array.from(sourceMap.entries()) });
+            }
+          } catch (error) {
+            logger.warn('[AUDIO] Failed to fetch source names:', error);
+            // Continue with fallback labels
+          }
+        }
+
+        // Fetch groups from the processor
+        const groupsRes = await fetch(`/api/atlas/groups?processorIp=${processor.ipAddress}`);
+        const groupsData = await groupsRes.json();
+
+        if (groupsData.success && groupsData.groups) {
+          // Map groups to zones
+          const zones = groupsData.groups
+            .filter((g: any) => g.isActive)  // Fixed: use isActive instead of active
+            .map((g: any, index: number) => ({
+              id: `zone-${index}`,
+              name: g.name || `Zone ${index + 1}`,
+              currentSource: g.source?.toString() || '1',
+              currentGain: g.gain || 0,
+              muted: g.muted || false
+            }));
+          setAudioZones(zones);
+          logger.info('Audio zones loaded successfully:', { count: zones.length });
+          return zones;  // Return the zones array
+        } else {
+          logger.warn('No audio groups found or groups API failed');
+          setAudioZones([]);
+          return [];
+        }
+      } else {
+        logger.warn('No audio processors configured in database');
+        setAudioZones([]);
+        return [];
+      }
+    } catch (error) {
+      logger.error('Error loading audio zones:', error);
+      // Set empty array on error so UI doesn't break
+      setAudioZones([]);
+      return [];
     }
   };
 
@@ -598,16 +694,28 @@ export default function SportsGuideConfigPage() {
       defaultChannelMap: {},
       autoFindGames: false,
       monitorHomeTeams: false,
+      fillWithSports: true,
       homeTeamIds: [] as any[],
       preferredProviders: ['cable', 'streaming', 'satellite'],
       executionOrder: 'outputs_first',
-      delayBetweenCommands: 2000
+      delayBetweenCommands: 2000,
+      audioSettings: {
+        enabled: false,
+        zones: []
+      }
     });
     setShowScheduleForm(true);
   };
 
-  const handleEditSchedule = (schedule: Schedule) => {
+  const handleEditSchedule = async (schedule: Schedule) => {
     setEditingSchedule(schedule);
+    const audioSettings = (schedule as any).audioSettings ? JSON.parse((schedule as any).audioSettings) : { enabled: false, zones: [] };
+
+    // If schedule has audio settings enabled, fetch source names
+    if (audioSettings.enabled && audioSettings.zones?.length > 0) {
+      await loadAudioZones(); // This will populate audioSourceNames
+    }
+
     setScheduleFormData({
       name: schedule.name,
       description: schedule.description || '',
@@ -620,12 +728,15 @@ export default function SportsGuideConfigPage() {
       selectedOutputs: JSON.parse(schedule.selectedOutputs || '[]'),
       setDefaultChannels: schedule.setDefaultChannels,
       defaultChannelMap: schedule.defaultChannelMap ? JSON.parse(schedule.defaultChannelMap) : {},
+      inputDefaultChannels: (schedule as any).inputDefaultChannels ? JSON.parse((schedule as any).inputDefaultChannels) : {},
       autoFindGames: schedule.autoFindGames,
       monitorHomeTeams: schedule.monitorHomeTeams,
+      fillWithSports: schedule.fillWithSports !== false, // Default true if not set
       homeTeamIds: schedule.homeTeamIds ? JSON.parse(schedule.homeTeamIds) : [],
       preferredProviders: schedule.preferredProviders ? JSON.parse(schedule.preferredProviders) : ['cable', 'streaming', 'satellite'],
       executionOrder: schedule.executionOrder || 'outputs_first',
-      delayBetweenCommands: schedule.delayBetweenCommands || 2000
+      delayBetweenCommands: schedule.delayBetweenCommands || 2000,
+      audioSettings: audioSettings
     });
     setShowScheduleForm(true);
   };
@@ -728,12 +839,22 @@ export default function SportsGuideConfigPage() {
     }));
   };
 
-  const setDefaultChannel = (outputId: string, inputId: string, channel: string) => {
+  const setDefaultChannel = (outputId: string, inputId: string, channel: string, presetName?: string) => {
     setScheduleFormData(prev => ({
       ...prev,
       defaultChannelMap: {
         ...prev.defaultChannelMap,
-        [outputId]: { inputId, channel }
+        [outputId]: { inputId, channel, presetName: presetName || null }
+      }
+    }));
+  };
+
+  const setInputDefaultChannel = (inputId: string, channel: string) => {
+    setScheduleFormData(prev => ({
+      ...prev,
+      inputDefaultChannels: {
+        ...prev.inputDefaultChannels,
+        [inputId]: channel
       }
     }));
   };
@@ -1891,7 +2012,99 @@ n          {/* API Configuration Tab */}
                       </div>
                     </div>
 
-                    {/* Default Channels */}
+                    {/* Input Default Channels - Simplified Approach */}
+                    <div className="border-t border-slate-700 pt-6">
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg font-semibold text-slate-100">
+                            Input Default Channels
+                          </span>
+                          <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">Simplified</span>
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          Set a default channel for each input source. All TVs using that input will automatically tune to this channel.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {inputs
+                          .filter(input =>
+                            input.deviceType === 'Cable Box' ||
+                            input.deviceType === 'DirecTV' ||
+                            input.inputType?.toLowerCase().includes('cable') ||
+                            input.inputType?.toLowerCase().includes('directv') ||
+                            input.inputType?.toLowerCase().includes('satellite')
+                          )
+                          .map(input => {
+                            const currentChannel = scheduleFormData.inputDefaultChannels[input.id] || '';
+
+                            return (
+                              <div key={input.id} className="bg-sportsBar-900 border border-slate-700 rounded-lg p-4">
+                                <p className="text-sm font-medium text-slate-300 mb-3">
+                                  Input {input.channelNumber}: {input.label}
+                                  <span className="text-xs text-slate-500 ml-2">({input.deviceType || input.inputType})</span>
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs text-slate-500 mb-1">Channel Preset</label>
+                                    <select
+                                      value={channelPresets.find(p => p.channelNumber === currentChannel)?.id || ''}
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          const preset = channelPresets.find(p => p.id === e.target.value);
+                                          if (preset) {
+                                            setInputDefaultChannel(input.id, preset.channelNumber);
+                                          }
+                                        } else {
+                                          setInputDefaultChannel(input.id, '');
+                                        }
+                                      }}
+                                      className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm w-full"
+                                    >
+                                      <option value="">Select Preset</option>
+                                      {channelPresets
+                                        .filter(p => {
+                                          // Filter presets by input type - use deviceType from preset
+                                          if (input.deviceType === 'Cable Box' || input.inputType?.toLowerCase().includes('cable')) {
+                                            return p.deviceType === 'cable' || p.deviceType === 'both';
+                                          }
+                                          if (input.deviceType === 'DirecTV' || input.inputType?.toLowerCase().includes('directv') || input.inputType?.toLowerCase().includes('satellite')) {
+                                            return p.deviceType === 'directv' || p.deviceType === 'satellite' || p.deviceType === 'both';
+                                          }
+                                          return true;
+                                        })
+                                        .map(preset => (
+                                          <option key={preset.id} value={preset.id}>
+                                            {preset.channelName || preset.name} ({preset.channelNumber})
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-xs text-slate-500 mb-1">
+                                      {(() => {
+                                        const preset = channelPresets.find(p => p.channelNumber === currentChannel);
+                                        return preset ? `Channel (${preset.channelName})` : 'Or Enter Channel';
+                                      })()}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={currentChannel}
+                                      onChange={(e) => setInputDefaultChannel(input.id, e.target.value)}
+                                      placeholder="e.g., 206"
+                                      className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm w-full"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    {/* Default Channels - Per-Output Configuration */}
                     <div className="border-t border-slate-700 pt-6">
                       <label className="flex items-center gap-2 mb-4">
                         <input
@@ -1901,7 +2114,7 @@ n          {/* API Configuration Tab */}
                           className="w-4 h-4"
                         />
                         <span className="text-lg font-semibold text-slate-100">
-                          Set Default Channels
+                          Set Default Channels (Advanced)
                         </span>
                       </label>
 
@@ -1918,11 +2131,11 @@ n          {/* API Configuration Tab */}
                                 <p className="text-sm font-medium text-slate-300 mb-2">
                                   {output.label} (Output {output.channelNumber})
                                 </p>
-                                <div className="grid md:grid-cols-2 gap-3">
+                                <div className="space-y-3">
                                   <select
                                     value={mapping.inputId || ''}
                                     onChange={(e) => setDefaultChannel(outputId, e.target.value, mapping.channel || '')}
-                                    className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm"
+                                    className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm w-full"
                                   >
                                     <option value="">Select Input Source</option>
                                     {inputs.map(input => (
@@ -1931,13 +2144,59 @@ n          {/* API Configuration Tab */}
                                       </option>
                                     ))}
                                   </select>
-                                  <input
-                                    type="text"
-                                    value={mapping.channel || ''}
-                                    onChange={(e) => setDefaultChannel(outputId, mapping.inputId || '', e.target.value)}
-                                    placeholder="Channel (e.g., 206, optional)"
-                                    className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm"
-                                  />
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs text-slate-500 mb-1">Channel Preset</label>
+                                      <select
+                                        value={channelPresets.find(p => p.channelNumber === mapping.channel && p.channelName === mapping.presetName)?.id || ''}
+                                        onChange={(e) => {
+                                          if (e.target.value) {
+                                            const preset = channelPresets.find(p => p.id === e.target.value);
+                                            if (preset) {
+                                              setDefaultChannel(outputId, mapping.inputId || '', preset.channelNumber, preset.channelName);
+                                            }
+                                          } else {
+                                            setDefaultChannel(outputId, mapping.inputId || '', '');
+                                          }
+                                        }}
+                                        className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm w-full"
+                                      >
+                                        <option value="">Select Preset</option>
+                                        {channelPresets
+                                          .filter(p => {
+                                            const input = inputs.find(i => i.id === mapping.inputId);
+                                            if (!input) return false;
+                                            // Filter presets by input type - use deviceType from preset
+                                            if (input.inputType?.toLowerCase().includes('cable') || input.deviceType === 'Cable Box') {
+                                              return p.deviceType === 'cable' || p.deviceType === 'both';
+                                            }
+                                            if (input.inputType?.toLowerCase().includes('directv') || input.inputType?.toLowerCase().includes('satellite') || input.deviceType === 'DirecTV') {
+                                              return p.deviceType === 'directv' || p.deviceType === 'satellite' || p.deviceType === 'both';
+                                            }
+                                            return true;
+                                          })
+                                          .map(preset => (
+                                            <option key={preset.id} value={preset.id}>
+                                              {preset.channelName} ({preset.channelNumber})
+                                            </option>
+                                          ))}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs text-slate-500 mb-1">
+                                        {mapping.presetName ? `Channel (${mapping.presetName})` : 'Or Enter Channel'}
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={mapping.channel || ''}
+                                        onChange={(e) => setDefaultChannel(outputId, mapping.inputId || '', e.target.value)}
+                                        placeholder="e.g., 206"
+                                        className="px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm w-full"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -1971,6 +2230,19 @@ n          {/* API Configuration Tab */}
                               className="w-4 h-4"
                             />
                             <span className="text-slate-300">Monitor Home Teams</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 pl-6">
+                            <input
+                              type="checkbox"
+                              checked={scheduleFormData.fillWithSports}
+                              onChange={(e) => setScheduleFormData({ ...scheduleFormData, fillWithSports: e.target.checked })}
+                              className="w-4 h-4"
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-slate-300">Fill TVs with ANY live sports</span>
+                              <span className="text-xs text-slate-500">Show other games when home teams aren't playing (defaults to ESPN if disabled)</span>
+                            </div>
                           </label>
 
                           {scheduleFormData.monitorHomeTeams && (
@@ -2017,6 +2289,185 @@ n          {/* API Configuration Tab */}
                               ))}
                             </div>
                           </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Audio Settings */}
+                    <div className="border-t border-slate-700 pt-6">
+                      <label className="flex items-center gap-2 mb-4">
+                        <input
+                          type="checkbox"
+                          checked={scheduleFormData.audioSettings?.enabled || false}
+                          onChange={(e) => setScheduleFormData({
+                            ...scheduleFormData,
+                            audioSettings: {
+                              ...(scheduleFormData.audioSettings || { enabled: false, zones: [] }),
+                              enabled: e.target.checked
+                            }
+                          })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                          🔊 Audio Zone Control
+                        </span>
+                      </label>
+
+                      {scheduleFormData.audioSettings?.enabled && (
+                        <div className="space-y-4">
+                          <p className="text-sm text-slate-400">
+                            Set audio volume and sources for each zone when this schedule runs
+                          </p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              // Load audio zones if not already loaded
+                              let zones = audioZones;
+                              if (zones.length === 0) {
+                                zones = await loadAudioZones();
+                              }
+
+                              // Add a zone selector
+                              if (zones.length > 0) {
+                                // Find first zone not already added
+                                const usedZoneIds = scheduleFormData.audioSettings?.zones?.map(z => z.zoneId) || [];
+                                const availableZone = zones.find(z => !usedZoneIds.includes(z.id));
+
+                                if (availableZone) {
+                                  setScheduleFormData({
+                                    ...scheduleFormData,
+                                    audioSettings: {
+                                      enabled: scheduleFormData.audioSettings?.enabled || true,
+                                      zones: [...(scheduleFormData.audioSettings?.zones || []), {
+                                        zoneId: availableZone.id,
+                                        zoneName: availableZone.name,
+                                        volume: 50,
+                                        muted: false,
+                                        source: availableZone.currentSource || '1'
+                                      }]
+                                    }
+                                  });
+                                } else {
+                                  alert('All available zones have been added');
+                                }
+                              } else {
+                                alert('No audio zones found. Please configure Atlas audio processor first.');
+                              }
+                            }}
+                            disabled={scheduleFormData.audioSettings?.zones?.length >= audioZones.length && audioZones.length > 0}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+                          >
+                            <Plus className="w-4 h-4 inline mr-1" />
+                            Add Audio Zone
+                          </button>
+
+                          {(scheduleFormData.audioSettings?.zones || []).map((zone, index) => (
+                            <div key={index} className="bg-sportsBar-900 border border-slate-700 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="font-medium text-slate-300">Zone {zone.zoneName || zone.zoneId}</span>
+                                <button
+                                  onClick={() => {
+                                    setScheduleFormData({
+                                      ...scheduleFormData,
+                                      audioSettings: {
+                                        ...(scheduleFormData.audioSettings || { enabled: false, zones: [] }),
+                                        zones: (scheduleFormData.audioSettings?.zones || []).filter((_, i) => i !== index)
+                                      }
+                                    });
+                                  }}
+                                  className="text-red-400 hover:text-red-300 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="grid md:grid-cols-2 gap-4">
+                                {/* Volume Control */}
+                                <div>
+                                  <label className="block text-sm text-slate-400 mb-2">
+                                    Volume: {zone.volume}%
+                                  </label>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    value={zone.volume}
+                                    onChange={(e) => {
+                                      const newZones = [...(scheduleFormData.audioSettings?.zones || [])];
+                                      newZones[index].volume = parseInt(e.target.value);
+                                      setScheduleFormData({
+                                        ...scheduleFormData,
+                                        audioSettings: {
+                                          ...(scheduleFormData.audioSettings || { enabled: false, zones: [] }),
+                                          zones: newZones
+                                        }
+                                      });
+                                    }}
+                                    className="w-full"
+                                  />
+                                </div>
+
+                                {/* Source Selection */}
+                                <div>
+                                  <label className="block text-sm text-slate-400 mb-2">
+                                    Audio Source: {audioSourceNames.get(parseInt(zone.source)) || `Source ${parseInt(zone.source) + 1}`}
+                                  </label>
+                                  <select
+                                    value={zone.source}
+                                    onChange={(e) => {
+                                      const newZones = [...(scheduleFormData.audioSettings?.zones || [])];
+                                      newZones[index].source = e.target.value;
+                                      setScheduleFormData({
+                                        ...scheduleFormData,
+                                        audioSettings: {
+                                          ...(scheduleFormData.audioSettings || { enabled: false, zones: [] }),
+                                          zones: newZones
+                                        }
+                                      });
+                                    }}
+                                    className="w-full px-3 py-2 bg-sportsBar-800 border border-slate-700 rounded text-slate-100 text-sm"
+                                  >
+                                    {Array.from({ length: 14 }, (_, i) => {
+                                      const sourceIndex = i;
+                                      const sourceName = audioSourceNames.get(sourceIndex) || `Source ${sourceIndex + 1}`;
+                                      return (
+                                        <option key={sourceIndex} value={sourceIndex.toString()}>
+                                          {sourceName}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Mute Toggle */}
+                              <label className={`flex items-center gap-2 mt-3 px-3 py-2 rounded transition-colors ${
+                                zone.muted ? 'bg-slate-800/50 border border-slate-600' : ''
+                              }`}>
+                                <input
+                                  type="checkbox"
+                                  checked={zone.muted}
+                                  onChange={(e) => {
+                                    const newZones = [...(scheduleFormData.audioSettings?.zones || [])];
+                                    newZones[index].muted = e.target.checked;
+                                    setScheduleFormData({
+                                      ...scheduleFormData,
+                                      audioSettings: {
+                                        ...(scheduleFormData.audioSettings || { enabled: false, zones: [] }),
+                                        zones: newZones
+                                      }
+                                    });
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                <span className={`text-sm ${
+                                  zone.muted ? 'text-slate-300 font-medium' : 'text-slate-400'
+                                }`}>
+                                  {zone.muted ? '🔇 Unmute this zone' : '🔊 Mute this zone'}
+                                </span>
+                              </label>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

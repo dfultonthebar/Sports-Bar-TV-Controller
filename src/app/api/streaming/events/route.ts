@@ -76,11 +76,33 @@ export async function GET(request: NextRequest) {
           ipAddress,
           port
         )
-        
+
+        // Filter out games that started more than 2 hours ago
+        const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
+        const filteredApps = installedEvents.map(app => {
+          if (app.events && Array.isArray(app.events)) {
+            const freshEvents = app.events.filter(event => {
+              if (event.startTime) {
+                const gameStart = new Date(event.startTime)
+                return gameStart >= twoHoursAgo
+              }
+              return true // Keep events without startTime
+            })
+
+            const removedCount = app.events.length - freshEvents.length
+            if (removedCount > 0) {
+              logger.info(`[CLEANUP] Filtered out ${removedCount} old events from ${app.appName}`)
+            }
+
+            return { ...app, events: freshEvents }
+          }
+          return app
+        })
+
         return NextResponse.json({
           success: true,
           type: 'installed',
-          apps: installedEvents
+          apps: filteredApps
         })
 
       default:
@@ -88,12 +110,27 @@ export async function GET(request: NextRequest) {
         events = await unifiedStreamingApi.getUpcomingEvents(sport, days)
     }
 
+    // Filter out games that started more than 2 hours ago to keep the guide fresh
+    const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
+    const freshEvents = events.filter(event => {
+      if (event.startTime) {
+        const gameStart = new Date(event.startTime)
+        return gameStart >= twoHoursAgo
+      }
+      return true // Keep events without startTime
+    })
+
+    const removedCount = events.length - freshEvents.length
+    if (removedCount > 0) {
+      logger.info(`[CLEANUP] Filtered out ${removedCount} old events from streaming guide (${type})`)
+    }
+
     return NextResponse.json({
       success: true,
       type,
       sport,
-      count: events.length,
-      events
+      count: freshEvents.length,
+      events: freshEvents
     })
   } catch (error: any) {
     logger.error('[API] Error getting events:', error)

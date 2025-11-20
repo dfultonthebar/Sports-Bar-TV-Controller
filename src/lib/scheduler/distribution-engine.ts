@@ -86,17 +86,23 @@ export class DistributionEngine {
     // Track assigned outputs to prevent overlap
     const assignedOutputs = new Set<number>()
     const assignedGames = new Set<string>() // Track game IDs to prevent duplicates
+    const assignedInputs = new Map<number, number>() // Track input usage: inputNumber -> game count
 
     // Game assignments
     const gameAssignments: GameAssignment[] = []
 
     // Distribute high-priority games first
     for (const score of priorityScores) {
-      if (!score.matchedTeam) continue
+      // Skip games with score of 0 (shouldn't happen anymore, but safety check)
+      if (score.finalScore === 0) continue
 
       const game = games.find(g => g.id === score.gameId) || games[0]
-      const minTVs = score.matchedTeam.minTVsWhenActive
-      const preferredZones = this.priorityCalc.getPreferredZones(score)
+
+      // For non-home-team games, use defaults: 1 TV, main/bar zones
+      const minTVs = score.matchedTeam?.minTVsWhenActive || 1
+      const preferredZones = score.matchedTeam
+        ? this.priorityCalc.getPreferredZones(score)
+        : ['main', 'bar']
 
       logger.debug(
         `[DISTRIBUTION] Assigning: ${game.homeTeam} vs ${game.awayTeam} ` +
@@ -109,6 +115,7 @@ export class DistributionEngine {
         score,
         systemState,
         assignedOutputs,
+        assignedInputs,
         preferredZones,
         minTVs
       )
@@ -123,8 +130,17 @@ export class DistributionEngine {
         minTVsMet
       })
 
-      // Mark outputs as assigned
-      assignments.forEach(a => assignedOutputs.add(a.outputNumber))
+      // Mark outputs as assigned and track input usage
+      assignments.forEach(a => {
+        assignedOutputs.add(a.outputNumber)
+        // Track input usage for distribution (only count each input once per game)
+      })
+
+      // Track which input(s) were used for this game
+      const inputsUsedForGame = new Set(assignments.map(a => a.inputNumber))
+      inputsUsedForGame.forEach(inputNum => {
+        assignedInputs.set(inputNum, (assignedInputs.get(inputNum) || 0) + 1)
+      })
 
       if (!minTVsMet) {
         reasoning.push(
@@ -171,6 +187,7 @@ export class DistributionEngine {
     score: PriorityScore,
     state: SystemState,
     assignedOutputs: Set<number>,
+    assignedInputs: Map<number, number>,
     preferredZones: string[],
     minTVs: number
   ): Promise<TVAssignment[]> {
@@ -235,23 +252,40 @@ export class DistributionEngine {
         preferredZones
       )
 
-      // Find best input for this game (prefer Cable > DirecTV > Fire TV)
+      // Get all available sports inputs (prefer Cable > DirecTV > Fire TV)
       const sportsInputs = await this.stateReader.getSportsInputs()
-      const bestInput = sportsInputs.find(input => input.capabilities.canChangechannel)
+      const availableInputs = sportsInputs
+        .filter(input => input.capabilities.canChangechannel)
+        .sort((a, b) => {
+          // Sort by usage count (least used first) to distribute games evenly
+          const aUsage = assignedInputs.get(a.inputNumber) || 0
+          const bUsage = assignedInputs.get(b.inputNumber) || 0
+          if (aUsage !== bUsage) return aUsage - bUsage
 
-      if (bestInput && game.channelNumber) {
+          // If usage is equal, prioritize by device type: cable > directv > firetv
+          const deviceTypeOrder = { cable: 1, directv: 2, firetv: 3, atmosphere: 4 }
+          return (deviceTypeOrder[a.deviceType] || 999) - (deviceTypeOrder[b.deviceType] || 999)
+        })
+
+      // Use round-robin distribution across available inputs
+      let inputIndex = 0
+      if (availableInputs.length > 0 && game.channelNumber) {
         for (const output of sortedOutputs) {
           if (assignments.length >= minTVs) break
 
           // Check if output is already on a different input showing a game
           if (output.currentChannel?.isLiveEvent) continue
 
+          // Select input using round-robin
+          const selectedInput = availableInputs[inputIndex % availableInputs.length]
+          inputIndex++
+
           assignments.push({
             outputNumber: output.outputNumber,
             zoneName: output.zoneName,
             zoneType: output.zoneType,
-            inputNumber: bestInput.inputNumber,
-            inputLabel: bestInput.label,
+            inputNumber: selectedInput.inputNumber,
+            inputLabel: selectedInput.label,
             channelNumber: game.channelNumber,
             requiresChannelChange: true,
             alreadyTuned: false

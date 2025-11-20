@@ -10,6 +10,7 @@ import { useLogging } from '@/hooks/useLogging'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
+import AIGamePlanModal from './AIGamePlanModal'
 import { logger } from '@/lib/logger'
 import { 
   Power, 
@@ -128,6 +129,13 @@ interface GameListing {
   status?: string
   isSports: boolean
   isLive?: boolean
+  // Live game data
+  homeScore?: number | null
+  awayScore?: number | null
+  timeRemaining?: string | null
+  quarter?: string | null
+  isAutoScheduled?: boolean
+  allocatedInput?: string | null
 }
 
 interface StreamingApp {
@@ -177,6 +185,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   // Channel Guide State
   const [showChannelGuide, setShowChannelGuide] = useState(false)
   const [guideData, setGuideData] = useState<DeviceGuideData | null>(null)
+  const [showAIGamePlan, setShowAIGamePlan] = useState(false)
   const [loadingGuide, setLoadingGuide] = useState(false)
   const [guideError, setGuideError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -188,6 +197,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
   // Cable Box State (for CEC control)
   const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [selectedCableBox, setSelectedCableBox] = useState<string | null>(null)
+
+  // Live Game Status State
+  const [liveGameData, setLiveGameData] = useState<Map<string, any>>(new Map())
 
   // UI State
   const [loading, setLoading] = useState(false)
@@ -208,13 +220,33 @@ export default function EnhancedChannelGuideBartenderRemote() {
     loadChannelPresets()
     loadCableBoxes()
     loadCurrentChannels()
+    loadLiveGameData()
 
-    // Auto-refresh channel data every 10 seconds
+    // Auto-refresh channel data and live game data every 30 seconds
     const interval = setInterval(() => {
       loadCurrentChannels()
-    }, 10000)
+      loadLiveGameData()
+    }, 30000)
 
-    return () => clearInterval(interval)
+    // Check for midnight crossing every minute to refresh guide
+    let lastDate = new Date().getDate()
+    const midnightCheck = setInterval(() => {
+      const currentDate = new Date().getDate()
+      if (currentDate !== lastDate) {
+        logger.info('[BARTENDER] Day changed - refreshing sports guide')
+        lastDate = currentDate
+
+        // Refresh guide data if currently showing
+        if (selectedInput && showChannelGuide) {
+          loadChannelGuideForInput()
+        }
+      }
+    }, 60000) // Check every minute
+
+    return () => {
+      clearInterval(interval)
+      clearInterval(midnightCheck)
+    }
   }, [])
 
   useEffect(() => {
@@ -227,7 +259,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     if (guideData?.programs) {
       filterPrograms()
     }
-  }, [searchQuery, guideData, channelPresets])
+  }, [searchQuery, guideData, channelPresets, liveGameData])
 
   const loadChannelPresets = async () => {
     try {
@@ -266,6 +298,28 @@ export default function EnhancedChannelGuideBartenderRemote() {
       }
     } catch (error) {
       logger.error('Error loading current channels:', error)
+    }
+  }
+
+  const loadLiveGameData = async () => {
+    try {
+      const response = await fetch('/api/scheduling/live-status')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.games) {
+          // Create a map of ESPN game IDs to live game data
+          const gameMap = new Map()
+          data.games.forEach((game: any) => {
+            // Key by both ESPN game ID and team names for matching
+            gameMap.set(game.espnGameId, game)
+            gameMap.set(`${game.awayTeam}-${game.homeTeam}`, game)
+          })
+          setLiveGameData(gameMap)
+          logger.debug('[LIVE-GAME-DATA] Loaded live data for', data.games.length, 'games')
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading live game data:', error)
     }
   }
 
@@ -606,6 +660,28 @@ export default function EnhancedChannelGuideBartenderRemote() {
         })
         .filter((prog): prog is GameListing => prog !== null)  // Remove channels without presets
     }
+
+    // Merge live game data with filtered programs
+    filtered = filtered.map(prog => {
+      // Try to find live data by team names
+      const liveData = liveGameData.get(`${prog.awayTeam}-${prog.homeTeam}`)
+
+      if (liveData) {
+        return {
+          ...prog,
+          homeScore: liveData.homeScore,
+          awayScore: liveData.awayScore,
+          timeRemaining: liveData.timeRemaining,
+          quarter: liveData.quarter,
+          isLive: liveData.isLive,
+          isAutoScheduled: liveData.isAutoScheduled,
+          allocatedInput: liveData.inputLabel,
+          status: liveData.status
+        }
+      }
+
+      return prog
+    })
 
     // Sort: Today's events first, then future events
     // Get today's date boundaries
@@ -1055,13 +1131,25 @@ export default function EnhancedChannelGuideBartenderRemote() {
               <Calendar className="w-16 h-16 text-blue-400 mx-auto mb-4 opacity-50" />
               <h3 className="text-xl font-medium bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">Channel Guide</h3>
               <p className="text-slate-400 mb-4">Select an input and click "Channel Guide" to see available sports programming</p>
-              <Button
-                onClick={() => setShowChannelGuide(true)}
-                className="group relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                <div className="relative z-10 text-blue-400 font-medium">Open Channel Guide</div>
-              </Button>
+              <div className="flex gap-3 justify-center">
+                <Button
+                  onClick={() => setShowChannelGuide(true)}
+                  className="group relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10 text-blue-400 font-medium">Open Channel Guide</div>
+                </Button>
+                <Button
+                  onClick={() => setShowAIGamePlan(true)}
+                  className="group relative backdrop-blur-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border-2 border-purple-400/30 hover:border-purple-400/50 hover:scale-105 transition-all duration-300 shadow-xl"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10 text-purple-400 font-medium flex items-center">
+                    <Gamepad2 className="w-4 h-4 mr-2" />
+                    AI Game Plan
+                  </div>
+                </Button>
+              </div>
             </div>
           ) : !selectedInput ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
@@ -1154,29 +1242,63 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               )}
                             </div>
                             
-                            <h4 className="font-medium text-white mb-1 group-hover:text-purple-200 transition-colors duration-300">
-                              {game.awayTeam && game.homeTeam ?
-                                `${game.awayTeam} @ ${game.homeTeam}` :
-                                game.description
-                              }
-                            </h4>
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-medium text-white group-hover:text-purple-200 transition-colors duration-300 flex-1">
+                                {game.awayTeam && game.homeTeam ?
+                                  `${game.awayTeam} @ ${game.homeTeam}` :
+                                  game.description
+                                }
+                              </h4>
+                              {/* Live Scores */}
+                              {game.isLive && game.homeScore !== null && game.awayScore !== null && (
+                                <div className="flex items-center space-x-2 text-sm font-bold">
+                                  <span className={game.awayScore > game.homeScore ? "text-green-400" : "text-white"}>
+                                    {game.awayScore}
+                                  </span>
+                                  <span className="text-slate-500">-</span>
+                                  <span className={game.homeScore > game.awayScore ? "text-green-400" : "text-white"}>
+                                    {game.homeScore}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
 
                             <div className="flex items-center space-x-4 text-sm text-slate-400 flex-wrap">
+                              {/* Auto-Schedule Indicator */}
+                              {game.isAutoScheduled && (
+                                <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-green-500/20 text-green-400 border border-green-400/30 rounded-full px-2 py-0.5">
+                                  <Star className="w-3 h-3" />
+                                  <span>Auto-Scheduled{game.allocatedInput ? ` → ${game.allocatedInput}` : ''}</span>
+                                </span>
+                              )}
+
+                              {/* Time Remaining (for live games) */}
+                              {game.isLive && game.timeRemaining && (
+                                <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-red-500/20 text-red-400 border border-red-400/30 rounded-full px-2 py-0.5 animate-pulse">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{game.timeRemaining}{game.quarter ? ` ${game.quarter}` : ''}</span>
+                                </span>
+                              )}
+
                               {/* Date Display */}
-                              <span className="flex items-center space-x-1">
-                                <Calendar className="w-3 h-3" />
-                                <span>{new Date(game.startTime).toLocaleDateString('en-US', { 
-                                  month: 'short', 
-                                  day: 'numeric',
-                                  year: new Date(game.startTime).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-                                })}</span>
-                              </span>
-                              
+                              {!game.isLive && (
+                                <span className="flex items-center space-x-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span>{new Date(game.startTime).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: new Date(game.startTime).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                                  })}</span>
+                                </span>
+                              )}
+
                               {/* Time Display */}
-                              <span className="flex items-center space-x-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{game.gameTime}</span>
-                              </span>
+                              {!game.isLive && (
+                                <span className="flex items-center space-x-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{game.gameTime}</span>
+                                </span>
+                              )}
                               
                               {/* Channel Display with Preset Mapping Indicator */}
                               <span className="flex items-center space-x-1">
@@ -1267,6 +1389,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
           onClose={() => setShowRemotePopup(false)}
         />
       )}
+
+      {/* AI Game Plan Modal */}
+      <AIGamePlanModal
+        isOpen={showAIGamePlan}
+        onClose={() => setShowAIGamePlan(false)}
+      />
     </div>
   )
 }

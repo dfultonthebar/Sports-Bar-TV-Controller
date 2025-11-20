@@ -211,6 +211,21 @@ export async function POST(request: NextRequest) {
 
     logInfo(`Transformed ${programs.length} programs and ${channels.size} channels`)
 
+    // Filter out games that started more than 2 hours ago to keep the guide fresh
+    const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
+    const freshPrograms = programs.filter(program => {
+      if (program.startTime) {
+        const gameStart = new Date(program.startTime)
+        return gameStart >= twoHoursAgo
+      }
+      return true // Keep programs without startTime
+    })
+
+    const removedCount = programs.length - freshPrograms.length
+    if (removedCount > 0) {
+      logInfo(`[CLEANUP] Filtered out ${removedCount} old programs that started more than 2 hours ago`)
+    }
+
     const response = {
       success: true,
       inputNumber,
@@ -223,17 +238,17 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
       type: deviceType,
       channels: Array.from(channels.values()),
-      programs: programs,
+      programs: freshPrograms,
       dataSource: 'The Rail Media API',
       summary: {
-        programCount: programs.length,
+        programCount: freshPrograms.length,
         channelCount: channels.size,
-        leagues: [...new Set(programs.map(p => p.league))]
+        leagues: [...new Set(freshPrograms.map(p => p.league))]
       }
     }
 
     logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)
-    logInfo(`Returning ${programs.length} programs for ${deviceType}`)
+    logInfo(`Returning ${freshPrograms.length} programs for ${deviceType} (filtered ${removedCount} old games)`)
 
     return NextResponse.json(response)
 

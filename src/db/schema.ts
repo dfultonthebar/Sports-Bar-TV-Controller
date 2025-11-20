@@ -22,10 +22,10 @@ export const fireTVDevices = sqliteTable('FireTVDevice', {
 export const schedules = sqliteTable('Schedule', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
-  deviceId: text('deviceId').notNull().references(() => fireTVDevices.id, { onDelete: 'cascade' }),
-  channelName: text('channelName').notNull(),
+  deviceId: text('deviceId').references(() => fireTVDevices.id, { onDelete: 'cascade' }),
+  channelName: text('channelName'),
   channelNumber: text('channelNumber'),
-  startTime: timestamp('startTime').notNull(),
+  startTime: timestamp('startTime'),
   endTime: timestamp('endTime'),
   recurring: integer('recurring', { mode: 'boolean' }).notNull().default(false),
   daysOfWeek: text('daysOfWeek'),
@@ -35,6 +35,30 @@ export const schedules = sqliteTable('Schedule', {
   lastResult: text('lastResult'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+
+  // Smart scheduling specific fields
+  description: text('description'),
+  scheduleType: text('scheduleType'),
+  executionTime: text('executionTime'),
+  powerOnTVs: integer('powerOnTVs', { mode: 'boolean' }).default(true),
+  powerOffTVs: integer('powerOffTVs', { mode: 'boolean' }).default(false),
+  selectedOutputs: text('selectedOutputs'),
+  setDefaultChannels: integer('setDefaultChannels', { mode: 'boolean' }).default(false),
+  defaultChannelMap: text('defaultChannelMap'),
+  inputDefaultChannels: text('inputDefaultChannels'), // JSON: Simplified approach - map input IDs to default channels { "input-uuid": "channel" }
+  autoFindGames: integer('autoFindGames', { mode: 'boolean' }).default(false),
+  monitorHomeTeams: integer('monitorHomeTeams', { mode: 'boolean' }).default(false),
+  homeTeamIds: text('homeTeamIds'),
+  preferredProviders: text('preferredProviders'),
+  executionOrder: text('executionOrder'),
+  delayBetweenCommands: integer('delayBetweenCommands'),
+  nextExecution: text('nextExecution'),
+
+  // Audio control fields
+  audioSettings: text('audioSettings'), // JSON field for audio zone settings
+
+  // Fill-with-sports strategy
+  fillWithSports: integer('fillWithSports', { mode: 'boolean' }).default(true), // Show any live sports when home teams aren't playing
 })
 
 // Schedule Log Model
@@ -601,6 +625,8 @@ export const cableBoxes = sqliteTable('CableBox', {
   provider: text('provider').notNull().default('spectrum'), // 'spectrum', 'xfinity', 'cox', etc.
   model: text('model').notNull().default('spectrum-100h'), // Cable box model
   lastChannel: text('lastChannel'), // Last tuned channel
+  currentProgram: text('currentProgram'), // JSON: Current program/game info from sports guide
+  currentProgramUpdatedAt: timestamp('currentProgramUpdatedAt'), // When currentProgram was last updated
   isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
@@ -1275,4 +1301,215 @@ export const auditLogs = sqliteTable('AuditLog', {
   resourceIdx: index('AuditLog_resource_idx').on(table.resource),
   timestampIdx: index('AuditLog_timestamp_idx').on(table.timestamp),
   successIdx: index('AuditLog_success_idx').on(table.success),
+}))
+
+// ============================================================================
+// SMART SCHEDULING & TOURNAMENT TRACKING MODELS
+// ============================================================================
+
+// Game Schedules Model - Track game schedules from ESPN API
+export const gameSchedules = sqliteTable('game_schedules', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // ESPN Data
+  espnEventId: text('espn_event_id').unique().notNull(),
+  espnCompetitionId: text('espn_competition_id').notNull(),
+  sport: text('sport').notNull(),
+  league: text('league').notNull(),
+
+  // Teams
+  homeTeamId: text('home_team_id'),
+  awayTeamId: text('away_team_id'),
+  homeTeamEspnId: text('home_team_espn_id').notNull(),
+  awayTeamEspnId: text('away_team_espn_id').notNull(),
+  homeTeamName: text('home_team_name').notNull(),
+  awayTeamName: text('away_team_name').notNull(),
+  homeTeamAbbr: text('home_team_abbr'),
+  awayTeamAbbr: text('away_team_abbr'),
+
+  // Timing
+  scheduledStart: integer('scheduled_start').notNull(), // Unix timestamp
+  estimatedEnd: integer('estimated_end').notNull(), // Unix timestamp
+  actualStart: integer('actual_start'), // Unix timestamp
+  actualEnd: integer('actual_end'), // Unix timestamp
+  durationMinutes: integer('duration_minutes'), // actual duration once game ends
+
+  // Game Status
+  status: text('status').notNull().default('scheduled'), // 'scheduled', 'delayed', 'in_progress', 'halftime', 'final', 'postponed', 'cancelled'
+  statusDetail: text('status_detail'), // "8:32 - 3rd Quarter", "Halftime", "Final"
+  currentPeriod: integer('current_period'), // 1, 2, 3, 4 (or innings, etc.)
+  clockTime: text('clock_time'), // "8:32"
+
+  // Scoring
+  homeScore: integer('home_score').default(0),
+  awayScore: integer('away_score').default(0),
+
+  // Playoff/Tournament
+  seasonType: integer('season_type').notNull(), // 1=Pre, 2=Regular, 3=Playoff, 4=Off
+  seasonYear: integer('season_year').notNull(),
+  weekNumber: integer('week_number'),
+  weekText: text('week_text'), // "Week 11", "Wild Card", "Super Bowl"
+  playoffRound: text('playoff_round'), // "Wild Card", "Divisional Round", "Conference Championship", "Super Bowl"
+  tournamentName: text('tournament_name'), // "NCAA Tournament", "March Madness"
+
+  // Broadcasting
+  primaryNetwork: text('primary_network'), // "ESPN", "FOX", "NBC"
+  broadcastNetworks: text('broadcast_networks'), // JSON array of all networks
+  streamingServices: text('streaming_services'), // JSON array ["ESPN+", "Paramount+"]
+
+  // Venue
+  venueName: text('venue_name'),
+  venueCity: text('venue_city'),
+  venueState: text('venue_state'),
+  isNeutralSite: integer('is_neutral_site', { mode: 'boolean' }).default(false),
+
+  // Priority Calculation
+  calculatedPriority: integer('calculated_priority').default(0),
+  priorityFactors: text('priority_factors'), // JSON explaining priority calculation
+  isPriorityGame: integer('is_priority_game', { mode: 'boolean' }).default(false),
+
+  // Metadata
+  lastSynced: integer('last_synced').default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  syncSource: text('sync_source').default('espn'),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+}, (table) => ({
+  scheduledStartIdx: index('GameSchedule_scheduledStart_idx').on(table.scheduledStart),
+  statusIdx: index('GameSchedule_status_idx').on(table.status),
+  homeTeamIdIdx: index('GameSchedule_homeTeamId_idx').on(table.homeTeamId),
+  awayTeamIdIdx: index('GameSchedule_awayTeamId_idx').on(table.awayTeamId),
+  isPriorityGameIdx: index('GameSchedule_isPriorityGame_scheduledStart_idx').on(table.isPriorityGame, table.scheduledStart),
+  seasonTypeIdx: index('GameSchedule_seasonType_scheduledStart_idx').on(table.seasonType, table.scheduledStart),
+  espnEventIdIdx: index('GameSchedule_espnEventId_idx').on(table.espnEventId),
+  leagueIdx: index('GameSchedule_league_idx').on(table.league),
+}))
+
+// Input Sources Model - Registry of all input sources (cable boxes, Fire TVs, etc.)
+export const inputSources = sqliteTable('input_sources', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Basic Info
+  name: text('name').notNull(), // "Main Cable Box", "Fire TV #1"
+  type: text('type').notNull(), // 'cable', 'directv', 'firetv', 'stream'
+
+  // Connection Info
+  deviceId: text('device_id'), // Reference to cableBoxes, fireTVDevices, etc.
+  connectionType: text('connection_type'), // 'hdmi', 'component', 'network'
+  matrixInputId: text('matrix_input_id'), // Which HDMI input on matrix this connects to
+
+  // Capabilities
+  availableNetworks: text('available_networks').notNull(), // JSON array ["ESPN", "FOX", "NBC", "Bally Sports"]
+  installedApps: text('installed_apps'), // JSON array (for streaming devices)
+  maxQuality: text('max_quality'), // '4k', '1080p', '720p'
+
+  // Status
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  currentlyAllocated: integer('currently_allocated', { mode: 'boolean' }).default(false),
+  currentChannel: text('current_channel'), // for cable/directv
+  currentApp: text('current_app'), // for streaming
+
+  // Priority
+  priorityRank: integer('priority_rank').default(50), // higher = preferred (cable > directv > streaming)
+
+  // Metadata
+  notes: text('notes'),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+}, (table) => ({
+  typeIdx: index('InputSource_type_idx').on(table.type),
+  isActiveIdx: index('InputSource_isActive_currentlyAllocated_idx').on(table.isActive, table.currentlyAllocated),
+  deviceIdIdx: index('InputSource_deviceId_idx').on(table.deviceId),
+}))
+
+// Input Source Allocations Model - Track which input is allocated to which game
+export const inputSourceAllocations = sqliteTable('input_source_allocations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Input Source
+  inputSourceId: text('input_source_id').notNull().references(() => inputSources.id, { onDelete: 'cascade' }),
+  inputSourceType: text('input_source_type').notNull(), // 'cable', 'directv', 'firetv', 'stream'
+
+  // Game
+  gameScheduleId: text('game_schedule_id').notNull().references(() => gameSchedules.id, { onDelete: 'cascade' }),
+
+  // Channel/App Info
+  channelNumber: text('channel_number'), // for cable/directv
+  appName: text('app_name'), // for streaming devices
+  streamUrl: text('stream_url'), // for web streams
+
+  // TV Outputs Allocated
+  tvOutputIds: text('tv_output_ids').notNull(), // JSON array of matrix output IDs
+  tvCount: integer('tv_count').notNull(),
+
+  // Timing
+  allocatedAt: integer('allocated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  expectedFreeAt: integer('expected_free_at').notNull(), // Unix timestamp (estimated game end + buffer)
+  actuallyFreedAt: integer('actually_freed_at'), // Unix timestamp
+
+  // Status
+  status: text('status').notNull().default('pending'), // 'pending', 'active', 'completed', 'preempted', 'cancelled'
+
+  // Preemption Tracking
+  preemptedByAllocationId: text('preempted_by_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
+  preemptedReason: text('preempted_reason'),
+
+  // Quality of Service
+  allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
+  qualityNotes: text('quality_notes'), // explanation of quality rating
+
+  // Metadata
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+}, (table) => ({
+  inputSourceIdIdx: index('InputSourceAllocation_inputSourceId_status_idx').on(table.inputSourceId, table.status),
+  gameScheduleIdIdx: index('InputSourceAllocation_gameScheduleId_idx').on(table.gameScheduleId),
+  statusIdx: index('InputSourceAllocation_status_expectedFreeAt_idx').on(table.status, table.expectedFreeAt),
+  preemptedByAllocationIdIdx: index('InputSourceAllocation_preemptedByAllocationId_idx').on(table.preemptedByAllocationId),
+}))
+
+// Tournament Brackets Model - Track tournament/playoff brackets
+export const tournamentBrackets = sqliteTable('tournament_brackets', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Tournament Info
+  espnTournamentId: text('espnTournamentId').unique(),
+  tournamentName: text('tournamentName').notNull(), // "NCAA Men's Basketball Tournament"
+  shortName: text('shortName'), // "March Madness"
+  seasonYear: integer('seasonYear').notNull(),
+  sport: text('sport').notNull(),
+  league: text('league').notNull(),
+
+  // Structure
+  totalTeams: integer('totalTeams'),
+  totalRounds: integer('totalRounds'), // 6 for NCAA (64 teams → 32 → 16 → 8 → 4 → 2 → 1)
+  currentRound: integer('currentRound'),
+  roundName: text('roundName'), // "First Round", "Elite Eight", "Final Four", "Championship"
+
+  // Bracket Data
+  bracketStructure: text('bracketStructure'), // JSON with full bracket layout
+  regions: text('regions'), // JSON array ["East", "West", "Midwest", "South"]
+
+  // Progress Tracking
+  totalGames: integer('totalGames'),
+  gamesScheduled: integer('gamesScheduled'),
+  gamesInProgress: integer('gamesInProgress'),
+  gamesCompleted: integer('gamesCompleted'),
+
+  // Timing
+  tournamentStart: integer('tournamentStart'), // Unix timestamp
+  tournamentEnd: integer('tournamentEnd'), // Unix timestamp
+  currentRoundStart: integer('currentRoundStart'), // Unix timestamp
+  currentRoundEnd: integer('currentRoundEnd'), // Unix timestamp
+
+  // Status
+  status: text('status'), // 'upcoming', 'in_progress', 'completed'
+
+  // Metadata
+  lastSynced: integer('lastSynced').default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
+}, (table) => ({
+  seasonYearSportIdx: index('TournamentBracket_seasonYear_sport_idx').on(table.seasonYear, table.sport),
+  statusCurrentRoundIdx: index('TournamentBracket_status_currentRound_idx').on(table.status, table.currentRound),
+  leagueIdx: index('TournamentBracket_league_idx').on(table.league),
 }))

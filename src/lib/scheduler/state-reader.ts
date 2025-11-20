@@ -86,14 +86,14 @@ export class StateReader {
 
     // Map outputs with current input/channel info
     const outputs = matrixOutputs.map(output => {
-      const route = routes.find(r => r.outputNumber === output.outputNumber)
-      const currentInput = route?.inputNumber
+      const route = routes.find(r => r.outputNum === output.channelNumber)
+      const currentInput = route?.inputNum
       const currentChannel = currentInput
         ? inputs.find(i => i.inputNumber === currentInput)
         : undefined
 
       return {
-        outputNumber: output.outputNumber,
+        outputNumber: output.channelNumber,
         zoneName: output.label || undefined,
         zoneType: this.inferZoneType(output.label),
         currentInput,
@@ -189,7 +189,7 @@ export class StateReader {
       return await db
         .select()
         .from(schema.matrixOutputs)
-        .orderBy(schema.matrixOutputs.outputNumber)
+        .orderBy(schema.matrixOutputs.channelNumber)
     } catch (error) {
       logger.error('[STATE_READER] Error fetching matrix outputs:', error)
       return []

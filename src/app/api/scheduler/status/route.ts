@@ -1,6 +1,7 @@
 
 import { NextResponse, NextRequest } from 'next/server';
 import { schedulerService } from '@/lib/scheduler-service';
+import { autoReallocatorWorker } from '@/lib/scheduling/auto-reallocator-worker';
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -13,9 +14,12 @@ export async function GET(request: NextRequest) {
     return rateLimit.response
   }
 
+  const autoReallocatorStatus = autoReallocatorWorker.getStatus();
+
   return NextResponse.json({
     status: 'running',
-    message: 'Scheduler service is active'
+    message: 'Scheduler service is active',
+    autoReallocator: autoReallocatorStatus
   });
 }
 
@@ -36,10 +40,12 @@ export async function POST(request: NextRequest) {
   
   if (action === 'start') {
     schedulerService.start();
-    return NextResponse.json({ message: 'Scheduler service started' });
+    autoReallocatorWorker.start();
+    return NextResponse.json({ message: 'Scheduler service and auto-reallocator started' });
   } else if (action === 'stop') {
     schedulerService.stop();
-    return NextResponse.json({ message: 'Scheduler service stopped' });
+    autoReallocatorWorker.stop();
+    return NextResponse.json({ message: 'Scheduler service and auto-reallocator stopped' });
   }
   
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

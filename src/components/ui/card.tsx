@@ -29,6 +29,14 @@ export const CardTitle = ({ children, className = '' }: CardProps) => {
   )
 }
 
+export const CardDescription = ({ children, className = '' }: CardProps) => {
+  return (
+    <p className={`text-sm text-slate-500 mt-1 ${className}`}>
+      {children}
+    </p>
+  )
+}
+
 export const CardContent = ({ children, className = '' }: CardProps) => {
   return (
     <div className={`px-6 py-4 ${className}`}>

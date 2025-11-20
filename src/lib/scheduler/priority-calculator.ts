@@ -69,16 +69,60 @@ export class PriorityCalculator {
     const matchedTeam = this.selectBestMatch(homeMatch, awayMatch)
 
     if (!matchedTeam) {
-      logger.debug(`[PRIORITY_CALC] No home team match for: ${game.homeTeam} vs ${game.awayTeam}`)
+      // No home team match - assign base score by league importance
+      // This allows non-home-team games to fill TVs instead of defaulting to ESPN
+      const leagueBaseScores: Record<string, number> = {
+        'nfl': 40,
+        'nba': 35,
+        'college-football': 35,
+        'mlb': 30,
+        'nhl': 25,
+        'mens-college-basketball': 25,
+        'womens-college-basketball': 20,
+        'college-baseball': 20,
+        'mens-college-soccer': 15,
+        'womens-college-soccer': 15
+      }
+
+      const baseScore = leagueBaseScores[game.league?.toLowerCase()] || 20
+
+      // Still apply bonuses for playoff/prime time
+      if (this.isPlayoffGame(game.description, game.league)) {
+        bonuses.playoff = 20
+        reasoning.push('🏆 Playoff game: +20')
+      }
+
+      const gameTime = new Date(game.startTime)
+      if (this.isPrimeTime(gameTime)) {
+        bonuses.primeTime = 10
+        reasoning.push(`🌙 Prime time (${gameTime.getHours()}:00): +10`)
+      }
+
+      const dayBonus = this.getDayOfWeekBonus(gameTime, game.sport, game.league)
+      if (dayBonus > 0) {
+        bonuses.dayOfWeek = dayBonus
+        reasoning.push(`📅 Special day: +${dayBonus}`)
+      }
+
+      const totalBonus = Object.values(bonuses).reduce((sum, val) => sum + val, 0)
+      const finalScore = Math.min(baseScore + totalBonus, 70) // Cap non-home-team games at 70
+
+      logger.debug(`[PRIORITY_CALC] Non-home-team game: ${game.homeTeam} vs ${game.awayTeam} = ${finalScore} (league: ${game.league})`)
+
       return {
         gameId: game.id,
-        baseScore: 0,
+        baseScore,
         matchConfidence: 0,
         bonuses,
-        totalBonus: 0,
-        finalScore: 0,
+        totalBonus,
+        finalScore,
         matchedTeam: null,
-        reasoning: ['No matching home team found']
+        reasoning: [
+          `Non-home-team game (${game.league})`,
+          `League base score: ${baseScore}`,
+          ...reasoning,
+          `Final score: ${baseScore} + ${totalBonus} = ${finalScore} (capped at 70)`
+        ]
       }
     }
 

@@ -6,6 +6,8 @@
  */
 
 import sharp from 'sharp'
+import Tesseract from 'tesseract.js'
+import fetch from 'node-fetch'
 
 import { logger } from '@/lib/logger'
 export interface DetectedZone {
@@ -17,6 +19,7 @@ export interface DetectedZone {
   height: number // percentage
   label: string
   confidence: number // 0-1 scale
+  ocrMethod?: 'ollama' | 'tesseract' | 'manual' // Track which OCR method was used
 }
 
 export interface LayoutDetectionResult {
@@ -524,12 +527,12 @@ async function extractZonesFromRectangles(
     const zone = resolvedZones[i]
     let { x, y, width, height, rect } = zone
 
-    // Try to extract label from nearby text (OCR would be used here in production)
-    // For now, we'll use position-based numbering and let user adjust
-    const label = await extractLabelNearRectangle(rect, imagePath, imageWidth, imageHeight)
+    // Try to extract label from nearby text using OCR (Ollama Vision or Tesseract)
+    const ocrResult = await extractLabelNearRectangle(rect, imagePath, imageWidth, imageHeight)
 
     // Extract TV number from label (e.g., "TV 01" → 1)
-    const tvNumber = extractTVNumber(label) || (i + 1)
+    const tvNumber = extractTVNumber(ocrResult.label) || (i + 1)
+    const finalLabel = ocrResult.label || `TV ${String(tvNumber).padStart(2, '0')}`
 
     zones.push({
       id: `tv${tvNumber}`,
@@ -538,8 +541,9 @@ async function extractZonesFromRectangles(
       y: Math.round(y * 100) / 100,
       width: Math.round(width * 100) / 100,
       height: Math.round(height * 100) / 100,
-      label: label || `TV ${String(tvNumber).padStart(2, '0')}`,
-      confidence: 0.85
+      label: finalLabel,
+      confidence: 0.85,
+      ocrMethod: ocrResult.ocrMethod || (ocrResult.label ? undefined : 'manual')
     })
   }
 
@@ -549,17 +553,183 @@ async function extractZonesFromRectangles(
 }
 
 /**
- * Extract label text near a rectangle
- * This is a simplified version - in production, you'd use OCR (tesseract.js)
+ * Extract label using Ollama Vision Model (GPU-accelerated with Intel graphics)
+ * Uses local AI model to read text from images - more accurate than traditional OCR
+ */
+async function extractLabelWithOllama(regionBuffer: Buffer): Promise<string | null> {
+  try {
+    // Convert buffer to base64 for Ollama API
+    const base64Image = regionBuffer.toString('base64')
+
+    logger.debug('[OLLAMA-OCR] Calling Ollama vision model...')
+
+    // Call Ollama API with vision model
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3.2-vision',
+        prompt: 'Read any text visible in this image. Look for TV labels like "TV 01", "TV 02", etc. Return ONLY the exact text you see, nothing else. If you see a TV number, return it in the format "TV 01".',
+        images: [base64Image],
+        stream: false
+      })
+    })
+
+    if (!response.ok) {
+      logger.warn(`[OLLAMA-OCR] Ollama API returned ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    const detectedText = data.response?.trim() || ''
+
+    if (detectedText) {
+      logger.info(`[OLLAMA-OCR] Vision model detected: "${detectedText}"`)
+      return detectedText
+    }
+
+    return null
+  } catch (error) {
+    logger.debug(`[OLLAMA-OCR] Ollama vision failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    return null
+  }
+}
+
+/**
+ * Extract label text near a rectangle using OCR
+ * Primary: Ollama Vision (GPU-accelerated)
+ * Fallback: Tesseract (CPU-based)
+ * Searches above and inside the detected red rectangle for labels like "TV 01", "TV 02", etc.
  */
 async function extractLabelNearRectangle(
   rect: Rectangle,
   imagePath: string,
   imageWidth: number,
   imageHeight: number
-): Promise<string> {
-  // For now, we'll return empty and rely on position-based numbering
-  // TODO: Integrate OCR library (tesseract.js) to read "TV 01", "TV 02", etc.
+): Promise<{ label: string; ocrMethod?: 'ollama' | 'tesseract' | 'manual' }> {
+  try {
+    // Define search region: expand rectangle to capture label text
+    // Search above (primary) and inside the rectangle
+    const EXPANSION_ABOVE = 80 // pixels above rectangle
+    const EXPANSION_SIDES = 20 // pixels on each side
+    const EXPANSION_INSIDE = 30 // pixels inside rectangle from top
+
+    // Calculate expanded region (primarily above the rectangle)
+    const searchX = Math.max(0, rect.x - EXPANSION_SIDES)
+    const searchY = Math.max(0, rect.y - EXPANSION_ABOVE)
+    const searchWidth = Math.min(
+      imageWidth - searchX,
+      rect.width + (EXPANSION_SIDES * 2)
+    )
+    const searchHeight = Math.min(
+      imageHeight - searchY,
+      EXPANSION_ABOVE + EXPANSION_INSIDE
+    )
+
+    // Skip if region is too small
+    if (searchWidth < 20 || searchHeight < 20) {
+      logger.debug('[OCR] Search region too small, skipping OCR')
+      return { label: '', ocrMethod: 'manual' }
+    }
+
+    logger.debug(`[OCR] Extracting region at (${searchX}, ${searchY}) size ${searchWidth}x${searchHeight}`)
+
+    // Extract the region from the image
+    const regionBuffer = await sharp(imagePath)
+      .extract({
+        left: Math.round(searchX),
+        top: Math.round(searchY),
+        width: Math.round(searchWidth),
+        height: Math.round(searchHeight)
+      })
+      .png() // Convert to PNG for better OCR results
+      .toBuffer()
+
+    // Try Ollama Vision Model first (GPU-accelerated with Intel graphics)
+    const ollamaText = await extractLabelWithOllama(regionBuffer)
+    if (ollamaText) {
+      const cleanedText = cleanOCRText(ollamaText)
+      if (cleanedText) {
+        logger.info(`[OCR] Successfully extracted label via Ollama Vision: "${cleanedText}"`)
+        return { label: cleanedText, ocrMethod: 'ollama' }
+      }
+    }
+
+    // Fallback to Tesseract OCR (CPU-based)
+    logger.debug('[OCR] Falling back to Tesseract OCR...')
+
+    const result = await Tesseract.recognize(
+      regionBuffer,
+      'eng',
+      {
+        logger: (m: any) => {
+          if (m.status === 'recognizing text') {
+            logger.debug(`[OCR] Progress: ${Math.round(m.progress * 100)}%`)
+          }
+        }
+      }
+    )
+
+    const detectedText = result.data.text.trim()
+    const confidence = result.data.confidence
+
+    logger.info(`[OCR] Raw text detected: "${detectedText}" (confidence: ${confidence.toFixed(1)}%)`)
+
+    // Check if confidence is too low
+    if (confidence < 60) {
+      logger.warn(`[OCR] Confidence too low (${confidence.toFixed(1)}%), ignoring result`)
+      return { label: '', ocrMethod: 'manual' }
+    }
+
+    // Clean and normalize the text
+    const cleanedText = cleanOCRText(detectedText)
+
+    if (cleanedText) {
+      logger.info(`[OCR] Successfully extracted label via Tesseract: "${cleanedText}"`)
+      return { label: cleanedText, ocrMethod: 'tesseract' }
+    }
+
+    return { label: '', ocrMethod: 'manual' }
+
+  } catch (error) {
+    logger.error('[OCR] Error extracting label:', error)
+    return { label: '', ocrMethod: 'manual' } // Fallback to manual on error
+  }
+}
+
+/**
+ * Clean and normalize OCR text to extract TV labels
+ * Handles formats: "TV 01", "TV01", "TV 1", etc.
+ */
+function cleanOCRText(rawText: string): string {
+  if (!rawText) return ''
+
+  // Remove extra whitespace and newlines
+  let cleaned = rawText.replace(/\s+/g, ' ').trim()
+
+  // Look for TV label patterns
+  // Match: "TV 01", "TV01", "TV 1", "tv 01", etc.
+  const tvPattern = /TV\s*(\d+)/i
+  const match = cleaned.match(tvPattern)
+
+  if (match) {
+    const tvNumber = match[1].padStart(2, '0') // Normalize to 2 digits
+    return `TV ${tvNumber}`
+  }
+
+  // If we found just a number near the top, assume it's a TV number
+  const numberPattern = /^\s*(\d{1,2})\s*$/
+  const numMatch = cleaned.match(numberPattern)
+  if (numMatch) {
+    const tvNumber = numMatch[1].padStart(2, '0')
+    return `TV ${tvNumber}`
+  }
+
+  // Return cleaned text if it looks like a label (short text)
+  if (cleaned.length > 0 && cleaned.length < 20) {
+    return cleaned
+  }
+
   return ''
 }
 

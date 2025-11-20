@@ -33,11 +33,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Device not found' }, { status: 404 })
       }
 
-      return NextResponse.json({ devices: [device] })
+      // Map matrixInput to inputChannel for frontend compatibility
+      const mappedDevice = { ...device, inputChannel: device.matrixInput }
+      return NextResponse.json({ devices: [mappedDevice] })
     } else {
       // Get all devices
       const devices = await db.query.irDevices.findMany()
-      return NextResponse.json({ devices })
+      // Map matrixInput to inputChannel for frontend compatibility
+      const mappedDevices = devices.map(d => ({ ...d, inputChannel: d.matrixInput }))
+      return NextResponse.json({ devices: mappedDevices })
     }
   } catch (error) {
     logger.error('Error loading devices:', error)

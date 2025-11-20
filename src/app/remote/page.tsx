@@ -699,7 +699,7 @@ export default function BartenderRemotePage() {
       {/* Main Content Area - Changes based on active tab */}
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
         {activeTab === 'video' && (
-          <div className="max-w-7xl mx-auto space-y-4">
+          <div className="w-full max-w-7xl lg:max-w-full mx-auto space-y-4 px-2 sm:px-4 lg:px-8">
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
@@ -757,11 +757,11 @@ export default function BartenderRemotePage() {
                 )}
               </div>
 
-              <div className="overflow-x-auto -mx-4 px-4">
+              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-400px)] -mx-4 px-4">
                 <table className="w-full border-collapse min-w-[600px]">
-                  <thead>
+                  <thead className="sticky top-0 z-20">
                     <tr>
-                      <th className="bg-slate-800 border border-slate-700 p-2 text-slate-200 font-semibold sticky left-0 z-10 text-xs">
+                      <th className="bg-slate-800 border border-slate-700 p-2 text-slate-200 font-semibold sticky left-0 z-30 text-xs">
                         Out \ In
                       </th>
                       {inputs.filter(input => input.isActive && !input.isCecPort).map((input) => {

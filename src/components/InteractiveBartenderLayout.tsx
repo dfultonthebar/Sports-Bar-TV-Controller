@@ -125,7 +125,7 @@ export default function InteractiveBartenderLayout({
           </p>
         </div>
 
-        {/* Layout Container */}
+        {/* Layout Container - Responsive sizing for all devices */}
         <div className="relative w-full backdrop-blur-xl bg-white/5 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
           {/* Background Image */}
           <img
@@ -151,18 +151,19 @@ export default function InteractiveBartenderLayout({
                 }}
                 title={`${zoneLabel}${currentInput ? ` - ${currentInput}` : ''}`}
               >
-                {/* Icon Container - ENLARGED WITHOUT BLUE EFFECTS */}
-                <div className={`relative backdrop-blur-xl rounded-xl border-2 shadow-xl hover:scale-105 transition-all duration-300 min-w-[60px] ${
+                {/* Icon Container - Responsive sizing for mobile/tablet/desktop - SQUARE ICONS */}
+                <div className={`relative backdrop-blur-xl border-2 shadow-xl hover:scale-105 transition-all duration-300
+                  min-w-[44px] sm:min-w-[50px] md:min-w-[60px] lg:min-w-[70px] xl:min-w-[80px] 2xl:min-w-[90px] ${
                   currentInput
                     ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/30'
                     : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'
                 }`}>
-                  {/* TV Icon - LARGER ICON */}
-                  <div className="relative z-10 p-3 flex flex-col items-center">
-                    <Tv className={`w-12 h-12 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
-                    {/* Current Input Label */}
+                  {/* TV Icon - Responsive sizing: mobile (32px) → tablet (48px) → desktop (64px) */}
+                  <div className="relative z-10 p-2 sm:p-2.5 md:p-3 lg:p-3.5 xl:p-4 flex flex-col items-center">
+                    <Tv className={`w-8 h-8 sm:w-9 sm:h-9 md:w-12 md:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
+                    {/* Current Input Label - Responsive text sizing */}
                     {currentInput && (
-                      <div className="mt-2 px-3 py-1 bg-black/60 rounded-lg text-xs font-semibold text-white truncate max-w-[90px]">
+                      <div className="mt-1 sm:mt-1.5 md:mt-2 px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 bg-black/60 rounded-lg text-[9px] sm:text-[10px] md:text-xs lg:text-sm font-semibold text-white truncate max-w-[70px] sm:max-w-[80px] md:max-w-[90px] lg:max-w-[120px] xl:max-w-[150px]">
                         {currentInput}
                       </div>
                     )}
@@ -173,16 +174,16 @@ export default function InteractiveBartenderLayout({
           })}
         </div>
 
-        {/* Legend - LARGER ICONS FOR BETTER VISIBILITY */}
+        {/* Legend - LARGER SQUARE ICONS FOR BETTER VISIBILITY */}
         <div className="mt-6 flex items-center justify-center space-x-8 text-sm">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-slate-500/10 to-gray-500/10 rounded-xl border-2 border-white/10 shadow-lg flex items-center justify-center">
+            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-2 border-white/10 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-slate-300" />
             </div>
             <span className="text-slate-300 font-medium">Available</span>
           </div>
           <div className="flex items-center space-x-3">
-            <div className="relative w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 shadow-lg flex items-center justify-center">
+            <div className="relative w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/30 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-green-400" />
               <div className="absolute -top-1 -left-1 w-3 h-3 bg-green-500 rounded-full border border-white text-[8px] flex items-center justify-center font-bold">
                 #
@@ -191,7 +192,7 @@ export default function InteractiveBartenderLayout({
             <span className="text-slate-300 font-medium">Active (Input# + Name)</span>
           </div>
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/50 shadow-lg flex items-center justify-center">
+            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/50 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-green-400" />
             </div>
             <span className="text-slate-300 font-medium">Hover</span>
@@ -229,7 +230,7 @@ export default function InteractiveBartenderLayout({
                     <button
                       key={input.id}
                       onClick={() => handleInputSelect(input.channelNumber)}
-                      className={`group relative backdrop-blur-xl rounded-xl border-2 shadow-xl p-5 text-left transition-all duration-300 hover:scale-105 ${
+                      className={`group relative backdrop-blur-xl border-2 shadow-xl p-5 text-left transition-all duration-300 hover:scale-105 ${
                         isActive
                           ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/50'
                           : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'

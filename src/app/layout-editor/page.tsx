@@ -7,7 +7,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Upload, Scan, Save, RefreshCw, Download, Trash2, Move, Check, X } from 'lucide-react'
+import { Upload, Scan, Save, RefreshCw, Download, Trash2, Move, Check, X, Eye, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 import { logger } from '@/lib/logger'
@@ -20,6 +20,7 @@ interface Zone {
   height: number
   label: string
   confidence?: number
+  ocrMethod?: 'ollama' | 'tesseract' | 'manual' // Track OCR detection method
 }
 
 interface Layout {
@@ -349,7 +350,10 @@ export default function LayoutEditorPage() {
 
             {/* Detection Section */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 border border-slate-700/50">
-              <h3 className="text-lg font-semibold text-white mb-3">Detection</h3>
+              <h3 className="text-lg font-semibold text-white mb-3">
+                <Sparkles className="w-4 h-4 inline mr-2 text-blue-400" />
+                OCR Detection
+              </h3>
 
               <Button
                 onClick={handleRedetect}
@@ -361,8 +365,35 @@ export default function LayoutEditorPage() {
                 Re-detect Zones
               </Button>
 
-              <div className="mt-3 text-sm text-slate-400">
-                <p>Detected: {layout.zones.length} zones</p>
+              <div className="mt-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-300">
+                  <span>Total Zones:</span>
+                  <span className="font-semibold">{layout.zones.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-blue-300">
+                  <span className="flex items-center">
+                    <Sparkles className="w-3 h-3 mr-1" />
+                    Ollama Vision:
+                  </span>
+                  <span className="font-semibold">
+                    {layout.zones.filter(z => z.ocrMethod === 'ollama').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-green-300">
+                  <span className="flex items-center">
+                    <Eye className="w-3 h-3 mr-1" />
+                    Tesseract OCR:
+                  </span>
+                  <span className="font-semibold">
+                    {layout.zones.filter(z => z.ocrMethod === 'tesseract').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Manual:</span>
+                  <span className="font-semibold">
+                    {layout.zones.filter(z => !z.ocrMethod || z.ocrMethod === 'manual').length}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -480,9 +511,20 @@ export default function LayoutEditorPage() {
                           userSelect: 'none'
                         }}
                       >
-                        <div className="absolute top-0 left-0 bg-green-600 text-white text-xs px-1 rounded-br">
-                          {zone.label}
+                        <div className="absolute top-0 left-0 bg-green-600 text-white text-xs px-1.5 py-0.5 rounded-br flex items-center space-x-1">
+                          <span>{zone.label}</span>
+                          {zone.ocrMethod === 'ollama' && (
+                            <Sparkles className="w-2.5 h-2.5 text-blue-200" />
+                          )}
+                          {zone.ocrMethod === 'tesseract' && (
+                            <Eye className="w-2.5 h-2.5 text-green-200" />
+                          )}
                         </div>
+                        {zone.confidence !== undefined && zone.confidence < 0.8 && (
+                          <div className="absolute top-6 left-0 bg-yellow-600 text-white text-[10px] px-1 rounded-br">
+                            {(zone.confidence * 100).toFixed(0)}%
+                          </div>
+                        )}
                         {editMode === 'move' && selectedZone === zone.id && (
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <Move className="w-6 h-6 text-white drop-shadow-lg" />
@@ -537,7 +579,28 @@ export default function LayoutEditorPage() {
                     onClick={() => setSelectedZone(zone.id)}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">{zone.label}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-medium">{zone.label}</span>
+                          {zone.ocrMethod === 'ollama' && (
+                            <span className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded text-[10px] font-semibold text-blue-300 flex items-center">
+                              <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                              AI
+                            </span>
+                          )}
+                          {zone.ocrMethod === 'tesseract' && (
+                            <span className="px-1.5 py-0.5 bg-green-500/20 border border-green-400/30 rounded text-[10px] font-semibold text-green-300 flex items-center">
+                              <Eye className="w-2.5 h-2.5 mr-0.5" />
+                              OCR
+                            </span>
+                          )}
+                        </div>
+                        {zone.confidence !== undefined && zone.confidence < 1.0 && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Confidence: {(zone.confidence * 100).toFixed(0)}%
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()

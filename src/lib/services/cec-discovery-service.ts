@@ -12,6 +12,16 @@ import { logger } from '@/lib/logger'
 import { cecService } from '@/lib/cec-service'
 import { autoFetchDocumentation } from '@/lib/tvDocs'
 
+// Discovery Timing Configuration (Conservative - Measure First, Optimize Later)
+const DISCOVERY_TIMING = {
+  afterRouteToDiscovery: 4000,    // 4 sec - Wait for TV to recognize Input 18 and CEC handshake
+  afterCECQuery: 1000,             // 1 sec - Allow CEC bus to settle after query
+  afterRouteBack: 1500,            // 1.5 sec - Wait for route back command to complete
+  betweenTVs: 2000                 // 2 sec - Cooldown between TV discoveries (prevent CEC bus conflicts)
+}
+
+const CEC_DISCOVERY_INPUT = 20 // Input 20 = CEC SERVER adapter
+
 export interface CECDiscoveryResult {
   outputNumber: number
   label: string
@@ -83,46 +93,201 @@ async function ensureCECConfiguration() {
 
 /**
  * Query a single CEC device for its OSD name using USB CEC adapter
+ * Routes output to Input 18 (CEC SERVER), queries TV, then routes back
  */
 async function queryCECDevice(
   outputNumber: number
-): Promise<{ osdName?: string; physicalAddress?: string; error?: string }> {
+): Promise<{ osdName?: string; physicalAddress?: string; error?: string; timings?: any }> {
+  const timings = {
+    routeToDiscovery: 0,
+    handshake: 0,
+    cecQuery: 0,
+    routeBack: 0,
+    total: 0
+  }
+
+  const startTime = Date.now()
+  let originalInput: number | null = null
+
   try {
-    logger.debug(`[CEC Discovery] Scanning CEC devices for output ${outputNumber}...`)
-    
-    // Scan for CEC devices using the USB adapter
-    const devices = await cecService.scanDevices(true)
-    logger.debug(`[CEC Discovery] Found ${devices.length} CEC devices`)
-    
-    if (devices.length === 0) {
-      logger.warn('[CEC Discovery] No CEC devices detected on the bus')
-      return { error: 'No CEC devices detected' }
+    logger.info(`[CEC Discovery] ┌─────────────────────────────────────────────────────`)
+    logger.info(`[CEC Discovery] │ Starting discovery for Output ${outputNumber}`)
+    logger.info(`[CEC Discovery] └─────────────────────────────────────────────────────`)
+
+    // Step 1: Get current output state
+    const output = await findFirst('matrixOutputs', {
+      where: eq(schema.matrixOutputs.channelNumber, outputNumber)
+    })
+
+    if (!output) {
+      logger.error(`[CEC Discovery] ✗ Output ${outputNumber} not found in database`)
+      return { error: 'Output not found' }
     }
-    
+
+    // Query WolfPack matrix for current routing
+    try {
+      const statusResponse = await fetch('http://localhost:3001/api/wolfpack/current-routings')
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json()
+        const routing = statusData.routings?.find((r: any) => r.matrixOutputNumber === outputNumber)
+        if (routing && routing.wolfpackInputNumber) {
+          originalInput = routing.wolfpackInputNumber
+          logger.info(`[CEC Discovery] │ Output ${outputNumber} currently on Input ${originalInput} (${routing.wolfpackInputLabel || 'Unknown'}) - from WolfPack`)
+        } else {
+          // Fallback to database value
+          originalInput = output.selectedVideoInput
+          logger.info(`[CEC Discovery] │ Output ${outputNumber} currently on Input ${originalInput || 'Unknown'} (from database - no routing found)`)
+        }
+      } else {
+        // Fallback to database value
+        originalInput = output.selectedVideoInput
+        logger.info(`[CEC Discovery] │ Output ${outputNumber} currently on Input ${originalInput || 'Unknown'} (from database - API error)`)
+      }
+    } catch (error) {
+      // Fallback to database value
+      originalInput = output.selectedVideoInput
+      logger.info(`[CEC Discovery] │ Output ${outputNumber} currently on Input ${originalInput || 'Unknown'} (from database - exception)`)
+    }
+
+    // Step 2: Route output to Input 18 (CEC SERVER)
+    logger.info(`[CEC Discovery] │ ⚡ Routing Output ${outputNumber} → Input ${CEC_DISCOVERY_INPUT} (CEC SERVER)`)
+    const routeStartTime = Date.now()
+
+    const routeResponse = await fetch('http://localhost:3001/api/matrix/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: CEC_DISCOVERY_INPUT,
+        output: outputNumber
+      })
+    })
+
+    if (!routeResponse.ok) {
+      const error = await routeResponse.json()
+      logger.error(`[CEC Discovery] ✗ Failed to route to Input ${CEC_DISCOVERY_INPUT}: ${error.error}`)
+      return { error: `Matrix routing failed: ${error.error}` }
+    }
+
+    timings.routeToDiscovery = Date.now() - routeStartTime
+    logger.info(`[CEC Discovery] │ ✓ Routed in ${timings.routeToDiscovery}ms`)
+
+    // Step 3: Wait for TV to recognize input and establish CEC handshake
+    logger.info(`[CEC Discovery] │ ⏳ Waiting ${DISCOVERY_TIMING.afterRouteToDiscovery}ms for HDMI handshake and CEC initialization...`)
+    const handshakeStartTime = Date.now()
+    await new Promise(resolve => setTimeout(resolve, DISCOVERY_TIMING.afterRouteToDiscovery))
+    timings.handshake = Date.now() - handshakeStartTime
+    logger.info(`[CEC Discovery] │ ✓ Handshake wait complete (${timings.handshake}ms)`)
+
+    // Step 4: Query TV via CEC
+    logger.info(`[CEC Discovery] │ 🔍 Querying TV via CEC...`)
+    const cecQueryStartTime = Date.now()
+
+    const devices = await cecService.scanDevices(true)
+    timings.cecQuery = Date.now() - cecQueryStartTime
+    logger.info(`[CEC Discovery] │ ✓ CEC scan complete in ${timings.cecQuery}ms - Found ${devices.length} device(s)`)
+
+    if (devices.length === 0) {
+      logger.warn(`[CEC Discovery] │ ⚠️  No CEC devices detected on the bus`)
+      // Still route back before returning error
+      if (originalInput) {
+        await routeBackToOriginal(outputNumber, originalInput, timings)
+      }
+      return { error: 'No CEC devices detected', timings }
+    }
+
     // Log all detected devices
     devices.forEach((device, index) => {
-      logger.debug(`[CEC Discovery] Device ${index + 1}: address=${device.address}, vendor=${device.vendor}, osdName="${device.osdName}"`)
+      logger.info(`[CEC Discovery] │   Device ${index + 1}: address=${device.address}, vendor="${device.vendor}", osd="${device.osdName}"`)
     })
-    
-    // For now, we'll use the first TV device found (address 0)
-    // In the future, this could be enhanced to map specific outputs to specific CEC addresses
+
+    // Use the first TV device found (address 0) or first device
     const tvDevice = devices.find(d => d.address === '0') || devices[0]
-    
+
     if (!tvDevice) {
-      logger.error('[CEC Discovery] No TV device found on CEC bus')
-      return { error: 'No TV device found on CEC bus' }
+      logger.error(`[CEC Discovery] │ ✗ No TV device found on CEC bus`)
+      if (originalInput) {
+        await routeBackToOriginal(outputNumber, originalInput, timings)
+      }
+      return { error: 'No TV device found on CEC bus', timings }
     }
-    
-    logger.debug(`[CEC Discovery] Using device: ${tvDevice.osdName} (${tvDevice.vendor}) at address ${tvDevice.address}`)
-    
+
+    logger.info(`[CEC Discovery] │ ✓ TV Detected: "${tvDevice.osdName}" (${tvDevice.vendor}) at address ${tvDevice.address}`)
+
+    // Step 5: Wait after CEC query
+    logger.info(`[CEC Discovery] │ ⏳ Waiting ${DISCOVERY_TIMING.afterCECQuery}ms for CEC bus to settle...`)
+    await new Promise(resolve => setTimeout(resolve, DISCOVERY_TIMING.afterCECQuery))
+
+    // Step 6: Route back to original input
+    if (originalInput) {
+      await routeBackToOriginal(outputNumber, originalInput, timings)
+    } else {
+      logger.warn(`[CEC Discovery] │ ⚠️  No original input recorded, leaving on Input ${CEC_DISCOVERY_INPUT}`)
+    }
+
+    timings.total = Date.now() - startTime
+
+    logger.info(`[CEC Discovery] │`)
+    logger.info(`[CEC Discovery] │ 📊 TIMING SUMMARY for Output ${outputNumber}:`)
+    logger.info(`[CEC Discovery] │    Route to Discovery: ${timings.routeToDiscovery}ms`)
+    logger.info(`[CEC Discovery] │    Handshake Wait:     ${timings.handshake}ms`)
+    logger.info(`[CEC Discovery] │    CEC Query:          ${timings.cecQuery}ms`)
+    logger.info(`[CEC Discovery] │    Route Back:         ${timings.routeBack}ms`)
+    logger.info(`[CEC Discovery] │    TOTAL TIME:         ${timings.total}ms (${(timings.total / 1000).toFixed(1)}s)`)
+    logger.info(`[CEC Discovery] └─────────────────────────────────────────────────────`)
+
     return {
       osdName: tvDevice.osdName,
-      physicalAddress: tvDevice.address
+      physicalAddress: tvDevice.address,
+      timings
     }
   } catch (error: any) {
-    logger.error(`[CEC Discovery] Error querying output ${outputNumber}:`, error.message)
-    logger.error(`[CEC Discovery] Error stack:`, error.stack)
-    return { error: error.message }
+    logger.error(`[CEC Discovery] │ ✗ ERROR: ${error.message}`)
+    logger.error(`[CEC Discovery] │ Stack: ${error.stack}`)
+    logger.info(`[CEC Discovery] └─────────────────────────────────────────────────────`)
+
+    // Attempt to route back on error
+    if (originalInput) {
+      try {
+        await routeBackToOriginal(outputNumber, originalInput, timings)
+      } catch (routeError) {
+        logger.error(`[CEC Discovery] Failed to route back after error:`, routeError)
+      }
+    }
+
+    return { error: error.message, timings }
+  }
+}
+
+/**
+ * Helper function to route output back to original input
+ */
+async function routeBackToOriginal(
+  outputNumber: number,
+  originalInput: number,
+  timings: any
+): Promise<void> {
+  logger.info(`[CEC Discovery] │ ↩️  Routing Output ${outputNumber} back to Input ${originalInput}`)
+  const routeBackStartTime = Date.now()
+
+  const routeBackResponse = await fetch('http://localhost:3001/api/matrix/route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      input: originalInput,
+      output: outputNumber
+    })
+  })
+
+  if (!routeBackResponse.ok) {
+    const error = await routeBackResponse.json()
+    logger.error(`[CEC Discovery] │ ✗ Failed to route back to Input ${originalInput}: ${error.error}`)
+  } else {
+    timings.routeBack = Date.now() - routeBackStartTime
+    logger.info(`[CEC Discovery] │ ✓ Routed back in ${timings.routeBack}ms`)
+
+    // Wait for route back to complete
+    logger.info(`[CEC Discovery] │ ⏳ Waiting ${DISCOVERY_TIMING.afterRouteBack}ms for route to settle...`)
+    await new Promise(resolve => setTimeout(resolve, DISCOVERY_TIMING.afterRouteBack))
   }
 }
 
@@ -249,9 +414,11 @@ export async function discoverAllTVBrands(
         })
       }
 
-      // PERFORMANCE OPTIMIZATION: Reduced delay between queries (was 1000ms, now 500ms for 50% speed improvement)
-      logger.debug('[CEC Discovery] Waiting 500ms before next query...')
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Cooldown between TVs to prevent CEC bus conflicts
+      if (i < outputs.length - 1) { // Don't wait after last TV
+        logger.info(`[CEC Discovery] ⏸️  Cooldown: Waiting ${DISCOVERY_TIMING.betweenTVs}ms before next TV...`)
+        await new Promise(resolve => setTimeout(resolve, DISCOVERY_TIMING.betweenTVs))
+      }
     }
 
     // PERFORMANCE OPTIMIZATION: Batch update all successful discoveries
