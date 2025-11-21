@@ -688,7 +688,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
           body: JSON.stringify({
             channelNumber: game.channel.channelNumber,
             deviceType: 'cable',
-            presetId: 'manual'
+            presetId: 'manual',
+            cableBoxId: selectedDevice?.id  // Fixed: pass specific cable box ID for sports guide
           }),
         })
 
