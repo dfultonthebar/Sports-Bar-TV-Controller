@@ -710,6 +710,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
           setCommandStatus(`Now watching: ${game.league}`)
           setLastOperationTime(new Date())
           logButtonClick('game_watch_ir', `${game.league}`, { game: game.league, channel: game.channel.channelNumber, cableBoxId: cableBoxDevice.id })
+
+          // Refresh current channel data to update input selector
+          await loadCurrentChannels()
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'game_watch_ir')
@@ -768,6 +771,10 @@ export default function EnhancedChannelGuideBartenderRemote() {
         channel: game.channel,
         deviceType
       })
+
+      // Refresh current channel data to update input selector
+      // Note: This fallback path doesn't update the database, but refresh anyway for consistency
+      await loadCurrentChannels()
 
     } catch (error) {
       logError(error as Error, 'watch_game')
@@ -901,6 +908,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
           setCommandStatus(`Now watching: ${preset.name}`)
           setLastOperationTime(new Date())
           logButtonClick('preset_tune_ir', preset.name, { preset: preset.name, cableBoxId: cableBoxDevice.id })
+
+          // Refresh current channel data to update input selector
+          await loadCurrentChannels()
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'preset_tune_ir')
@@ -938,6 +948,10 @@ export default function EnhancedChannelGuideBartenderRemote() {
         channelNumber: preset.channelNumber,
         deviceType: preset.deviceType
       })
+
+      // Refresh current channel data to update input selector
+      // Note: This fallback path doesn't update the database, but refresh anyway for consistency
+      await loadCurrentChannels()
 
     } catch (error) {
       logError(error as Error, 'preset_tune')
