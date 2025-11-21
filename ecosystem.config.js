@@ -16,7 +16,8 @@ module.exports = {
     exp_backoff_restart_delay: 1000, // Exponential backoff starting at 1s
     env: {
       NODE_ENV: 'production',
-      PORT: 3001
+      PORT: 3001,
+      ADB_VENDOR_KEYS: '/home/ubuntu/.android'
     },
     // Use PM2's default log location for better log rotation support
     // Custom logs still work through the app's logger system

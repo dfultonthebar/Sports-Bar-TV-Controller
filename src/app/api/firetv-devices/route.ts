@@ -68,7 +68,13 @@ export async function GET(request: NextRequest) {
     const data = await readDevices()
     
     logger.info(`[FIRETV API] Found ${data.devices.length} devices`)
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
   } catch (error: any) {
     logger.error('[FIRETV API] GET error:', error)
     return NextResponse.json(

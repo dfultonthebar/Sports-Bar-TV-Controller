@@ -35,13 +35,25 @@ export async function GET(request: NextRequest) {
 
       // Map matrixInput to inputChannel for frontend compatibility
       const mappedDevice = { ...device, inputChannel: device.matrixInput }
-      return NextResponse.json({ devices: [mappedDevice] })
+      return NextResponse.json({ devices: [mappedDevice] }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
     } else {
       // Get all devices
       const devices = await db.query.irDevices.findMany()
       // Map matrixInput to inputChannel for frontend compatibility
       const mappedDevices = devices.map(d => ({ ...d, inputChannel: d.matrixInput }))
-      return NextResponse.json({ devices: mappedDevices })
+      return NextResponse.json({ devices: mappedDevices }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
     }
   } catch (error) {
     logger.error('Error loading devices:', error)

@@ -48,7 +48,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await loadDirecTVDevices()
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
   } catch (error) {
     logger.error('Error loading DirecTV devices:', error)
     return NextResponse.json({ error: 'Failed to load DirecTV devices' }, { status: 500 })

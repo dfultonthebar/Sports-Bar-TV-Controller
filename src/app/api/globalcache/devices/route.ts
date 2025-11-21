@@ -40,6 +40,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       devices: devicesWithPorts
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     })
   } catch (error) {
     logger.error('Error fetching Global Cache devices:', error)

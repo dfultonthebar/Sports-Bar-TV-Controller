@@ -60,7 +60,7 @@
           "description": "Installed on Amazon 1"
         }
       ],
-      "lastPolled": "2025-11-19T19:15:54.762Z",
+      "lastPolled": "2025-11-21T18:23:06.181Z",
       "pollStatus": "success"
     },
     {
@@ -197,6 +197,33 @@
       "lastPolled": "2025-11-19T20:27:31.636Z",
       "pollStatus": "error",
       "error": "Unable to connect to DirecTV receiver"
+    },
+    {
+      "deviceId": "firetv_1763749343167_32nym6f7h",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 4",
+      "subscriptions": [
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 4"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 4"
+        }
+      ],
+      "lastPolled": "2025-11-21T18:40:59.000Z",
+      "pollStatus": "success"
     }
   ]
 }
