@@ -237,26 +237,27 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
         {/* Number Pad */}
         <div className="bg-slate-800 rounded-lg p-3">
           <div className="grid grid-cols-3 gap-2">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'LAST', '0', 'ENTER'].map((btn) => (
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DASH', '0', 'ENTER'].map((btn) => (
               <Button
                 key={btn}
                 onClick={() => {
                   if (btn === 'ENTER') {
                     handleChannelEnter()
-                  } else if (btn === 'LAST') {
-                    sendCommand('LAST', 'Last Channel')
+                  } else if (btn === 'DASH') {
+                    handleNumberClick('DASH')
+                    sendCommand('DASH', 'Dash')
                   } else {
                     handleNumberClick(btn)
                   }
                 }}
                 disabled={loading}
                 className={`${
-                  btn === 'ENTER' ? 'bg-green-600 hover:bg-green-700' : 
-                  btn === 'LAST' ? 'bg-blue-600 hover:bg-blue-700' :
+                  btn === 'ENTER' ? 'bg-green-600 hover:bg-green-700' :
+                  btn === 'DASH' ? 'bg-blue-600 hover:bg-blue-700' :
                   'bg-slate-700 hover:bg-slate-600'
                 } text-white p-3 font-bold`}
               >
-                {btn === 'LAST' ? <RotateCcw className="w-4 h-4" /> : btn}
+                {btn === 'DASH' ? '-' : btn}
               </Button>
             ))}
           </div>
