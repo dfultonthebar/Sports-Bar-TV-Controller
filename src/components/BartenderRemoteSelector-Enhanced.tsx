@@ -10,7 +10,9 @@ import ChannelPresetGrid from './ChannelPresetGrid'
 import FireTVStreamingGuide from './FireTVStreamingGuide'
 
 import { logger } from '@/lib/logger'
-// ... (keep all interfaces and types from original)
+
+// Cable boxes are now configured as IR devices, not CEC devices.
+// All cable box control goes through IR endpoints.
 
 interface MatrixInput {
   id: string
@@ -72,16 +74,6 @@ interface ChannelPreset {
   lastUsed: Date | null
 }
 
-interface CableBox {
-  id: string
-  name: string
-  provider: string
-  model: string
-  isOnline: boolean
-  devicePath?: string
-  matrixInputId?: string
-}
-
 type DeviceType = 'cable' | 'satellite' | 'streaming' | null
 
 export default function BartenderRemoteSelectorEnhanced() {
@@ -93,7 +85,6 @@ export default function BartenderRemoteSelectorEnhanced() {
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | DirecTVDevice | FireTVDevice | null>(null)
   const [deviceType, setDeviceType] = useState<DeviceType>(null)
   const [channelPresets, setChannelPresets] = useState<ChannelPreset[]>([])
-  const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [hoveredInput, setHoveredInput] = useState<number | null>(null)
@@ -103,7 +94,6 @@ export default function BartenderRemoteSelectorEnhanced() {
   useEffect(() => {
     loadAllDevices()
     loadChannelPresets()
-    loadCableBoxes()
   }, [])
 
   const loadAllDevices = async () => {
@@ -153,18 +143,6 @@ export default function BartenderRemoteSelectorEnhanced() {
       }
     } catch (error) {
       logger.error('Error loading channel presets:', error)
-    }
-  }
-
-  const loadCableBoxes = async () => {
-    try {
-      const response = await fetch('/api/cec/cable-box')
-      const data = await response.json()
-      if (data.success && data.cableBoxes && data.cableBoxes.length > 0) {
-        setCableBoxes(data.cableBoxes)
-      }
-    } catch (error) {
-      logger.error('Error loading cable boxes:', error)
     }
   }
 

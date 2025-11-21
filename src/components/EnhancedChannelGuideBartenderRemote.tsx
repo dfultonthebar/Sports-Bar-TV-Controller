@@ -41,15 +41,6 @@ import {
   ArrowLeft
 } from 'lucide-react'
 
-interface CableBox {
-  id: string
-  name: string
-  provider: string
-  model: string
-  isOnline: boolean
-  devicePath?: string
-}
-
 interface MatrixInput {
   id: string
   channelNumber: number
@@ -194,10 +185,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
   // Channel Presets State
   const [channelPresets, setChannelPresets] = useState<ChannelPreset[]>([])
 
-  // Cable Box State (for CEC control)
-  const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
-  const [selectedCableBox, setSelectedCableBox] = useState<string | null>(null)
-
   // Live Game Status State
   const [liveGameData, setLiveGameData] = useState<Map<string, any>>(new Map())
 
@@ -218,7 +205,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
   useEffect(() => {
     loadAllDeviceConfigurations()
     loadChannelPresets()
-    loadCableBoxes()
     loadCurrentChannels()
     loadLiveGameData()
 
@@ -274,19 +260,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
   }
 
-  const loadCableBoxes = async () => {
-    try {
-      const response = await fetch('/api/cec/cable-box')
-      const data = await response.json()
-
-      if (data.success && data.cableBoxes && data.cableBoxes.length > 0) {
-        setCableBoxes(data.cableBoxes)
-      }
-    } catch (error) {
-      logger.error('Error loading cable boxes:', error)
-    }
-  }
-
   const loadCurrentChannels = async () => {
     try {
       const response = await fetch('/api/matrix/current-channels')
@@ -333,23 +306,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
     } else {
       return `${input.label} - Ch ${channelInfo.channelNumber}`
     }
-  }
-
-  // Auto-select cable box based on selected input
-  const getCableBoxForInput = (inputChannel: number): CableBox | null => {
-    // Find a cable box that matches this input's matrix channel
-    const matchingBox = cableBoxes.find((box: any) => {
-      // Try to match by matrix input ID if available
-      const input = inputs.find((inp) => inp.channelNumber === inputChannel)
-      if (input && box.matrixInputId === input.id) {
-        return true
-      }
-      // Otherwise, use a simple mapping: Input 1 -> Cable Box 1, etc.
-      const inputIndex = inputs.findIndex((inp) => inp.channelNumber === inputChannel)
-      const boxNumber = parseInt(box.id.replace('cable-box-', ''), 10)
-      return inputIndex + 1 === boxNumber
-    })
-    return matchingBox || cableBoxes[0] || null
   }
 
   const loadAllDeviceConfigurations = async () => {
@@ -715,9 +671,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   const handleGameClick = async (game: GameListing) => {
     const deviceType = getDeviceTypeForInput(selectedInput!)
-    const cableBox = selectedInput ? getCableBoxForInput(selectedInput) : null
 
-    // Use IR control for cable inputs (CEC deprecated for Spectrum boxes)
+    // Use IR control for cable inputs (all cable boxes now use IR control)
     if (deviceType === 'cable' && game.channel.channelNumber) {
       setLoading(true)
       setCommandStatus(
@@ -733,8 +688,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
           body: JSON.stringify({
             channelNumber: game.channel.channelNumber,
             deviceType: 'cable',
-            presetId: 'manual',
-            cableBoxId: cableBox?.id
+            presetId: 'manual'
           }),
         })
 
@@ -901,21 +855,19 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   const handlePresetClick = async (preset: ChannelPreset) => {
-    // Determine if this is a cable input and use CEC automatically
+    // Determine if this is a cable input and use IR control
     const deviceType = getDeviceTypeForInput(selectedInput!)
-    const cableBox = selectedInput ? getCableBoxForInput(selectedInput) : null
 
-    if (deviceType === 'cable' && cableBox && preset.deviceType === 'cable') {
+    if (deviceType === 'cable' && preset.deviceType === 'cable') {
       setLoading(true)
-      setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber}) via CEC...`)
+      setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber}) via IR...`)
 
       try {
         const response = await fetch('/api/channel-presets/tune', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            presetId: preset.id,
-            cableBoxId: cableBox.id,
+            presetId: preset.id
           }),
         })
 
@@ -924,15 +876,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${preset.name}`)
           setLastOperationTime(new Date())
-          logButtonClick('preset_tune_cec', preset.name, { preset: preset.name, cableBoxId: cableBox.id })
+          logButtonClick('preset_tune_ir', preset.name, { preset: preset.name })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
-          logError(new Error(data.error || 'Tune failed'), 'preset_tune_cec')
+          logError(new Error(data.error || 'Tune failed'), 'preset_tune_ir')
         }
       } catch (error) {
-        logger.error('Error tuning via CEC:', error)
-        setCommandStatus('CEC tuning failed')
-        logError(error as Error, 'preset_tune_cec')
+        logger.error('Error tuning via IR:', error)
+        setCommandStatus('IR tuning failed')
+        logError(error as Error, 'preset_tune_ir')
       } finally {
         setLoading(false)
         setTimeout(() => setCommandStatus(''), 5000)

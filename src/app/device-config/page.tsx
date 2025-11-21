@@ -11,7 +11,6 @@ import FireTVController from '@/components/FireTVController'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
-import CECDiscoveryPanel from '@/components/CECDiscoveryPanel'
 import GlobalCacheControl from '@/components/globalcache/GlobalCacheControl'
 import { IRDeviceSetup } from '@/components/ir/IRDeviceSetup'
 import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
@@ -398,7 +397,14 @@ export default function DeviceConfigPage() {
               </CardDescription>
             </CardHeader>
           </Card>
-          <CECDiscoveryPanel />
+          <Card>
+            <CardHeader>
+              <CardTitle>CEC Discovery Removed</CardTitle>
+              <CardDescription>
+                CEC-based TV discovery has been removed from the system. All cable box and TV control now uses IR (infrared) control via Global Cache iTach devices.
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">

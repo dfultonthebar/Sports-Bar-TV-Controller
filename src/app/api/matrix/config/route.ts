@@ -152,13 +152,13 @@ export async function POST(request: NextRequest) {
           .get()
       }
 
-      // Get existing outputs to preserve CEC discovery data
+      // Get existing outputs to preserve TV brand/model data
       const existingOutputs = await tx.select()
         .from(schema.matrixOutputs)
         .where(eq(schema.matrixOutputs.configId, savedConfig.id))
         .all()
 
-      // Create a map of existing outputs by channel number to preserve CEC data
+      // Create a map of existing outputs by channel number to preserve TV data
       const existingOutputMap = new Map(
         existingOutputs.map(o => [o.channelNumber, o])
       )
@@ -212,10 +212,9 @@ export async function POST(request: NextRequest) {
               powerOn: output.powerOn || false,
               dailyTurnOn: true,
               dailyTurnOff: true,
-              // Preserve CEC discovery data from existing record, or use new data if provided
+              // Preserve TV brand/model data from existing record, or use new data if provided
               tvBrand: output.tvBrand || existing?.tvBrand || null,
               tvModel: output.tvModel || existing?.tvModel || null,
-              cecAddress: output.cecAddress || existing?.cecAddress || null,
               lastDiscovery: existing?.lastDiscovery || null,
               createdAt: now,
               updatedAt: now

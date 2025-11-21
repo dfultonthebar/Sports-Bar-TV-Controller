@@ -136,7 +136,6 @@ export default function LogAnalyticsDashboard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="cec">CEC Control (TVs & Cable Boxes)</SelectItem>
               <SelectItem value="user_interaction">User Interactions</SelectItem>
               <SelectItem value="system">System Events</SelectItem>
               <SelectItem value="api">API Calls</SelectItem>

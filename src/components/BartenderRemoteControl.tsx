@@ -67,16 +67,7 @@ interface DirecTVDevice {
   serialNumber?: string
 }
 
-interface CableBox {
-  id: string
-  name: string
-  provider: string
-  model: string
-  isOnline: boolean
-  devicePath: string
-  matrixInputId?: string
-  lastChannel?: string
-}
+// DEPRECATED: CableBox interface removed - cable boxes are now IR devices
 
 interface AudioProcessor {
   id: string
@@ -171,11 +162,9 @@ export default function BartenderRemoteControl() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
   const [direcTVDevices, setDirecTVDevices] = useState<DirecTVDevice[]>([])
-  const [cableBoxes, setCableBoxes] = useState<CableBox[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
   const [selectedDirecTVDevice, setSelectedDirecTVDevice] = useState<DirecTVDevice | null>(null)
-  const [selectedCableBox, setSelectedCableBox] = useState<CableBox | null>(null)
   const [loading, setLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -211,7 +200,6 @@ export default function BartenderRemoteControl() {
     loadMatrixConfiguration()
     loadIRDevices()
     loadDirecTVDevices()
-    loadCableBoxes()
     checkConnectionStatus()
     loadAudioProcessors()
     loadAvailableLeagues()
@@ -295,17 +283,7 @@ export default function BartenderRemoteControl() {
     }
   }
 
-  const loadCableBoxes = async () => {
-    try {
-      const response = await fetch('/api/cec/cable-box')
-      const data = await response.json()
-      if (data.success) {
-        setCableBoxes(data.cableBoxes || [])
-      }
-    } catch (error) {
-      logger.error('Error loading cable boxes:', error)
-    }
-  }
+  // DEPRECATED: loadCableBoxes removed - cable boxes are now IR devices
 
   const checkConnectionStatus = async () => {
     try {
@@ -811,41 +789,7 @@ export default function BartenderRemoteControl() {
   }
 
   const sendChannelCommand = async (channelNumber: string, device: IRDevice) => {
-    // Check if this is a cable box - use CEC instead of IR
-    const input = inputs.find(i => i.channelNumber === device.inputChannel)
-    if (input && input.inputType === 'Cable') {
-      // This is a cable box - use CEC API
-      const cableBox = cableBoxes.find(cb => cb.matrixInputId === input.id)
-      if (cableBox) {
-        setSportsGuideStatus(`Tuning cable box ${cableBox.name} to channel ${channelNumber} via CEC...`)
-        try {
-          const response = await fetch('/api/cec/cable-box/tune', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cableBoxId: cableBox.id,
-              channel: channelNumber
-            })
-          })
-          const data = await response.json()
-          if (data.success) {
-            setSportsGuideStatus(`✅ Tuned to channel ${channelNumber} via CEC (${data.executionTime}ms)`)
-          } else {
-            setSportsGuideStatus(`❌ Failed to tune: ${data.error}`)
-          }
-          logger.info('CEC tune result:', data)
-          return
-        } catch (error) {
-          logger.error('CEC tune error:', error)
-          setSportsGuideStatus(`❌ CEC command failed`)
-          return
-        }
-      } else {
-        logger.warn('Cable box not found for input:', { data: input.id })
-      }
-    }
-
-    // Fall back to IR control for non-cable devices (DirecTV, etc.)
+    // All cable boxes now use IR control (CEC removed)
     const digits = channelNumber.split('')
 
     for (const digit of digits) {

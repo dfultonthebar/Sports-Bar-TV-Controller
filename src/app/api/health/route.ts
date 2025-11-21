@@ -4,7 +4,7 @@
  * Provides comprehensive system health monitoring for:
  * - PM2 process status
  * - Database health
- * - Hardware status (Matrix, CEC, FireTV, Audio)
+ * - Hardware status (Matrix, FireTV, Audio)
  * - External API health (Sports Guide, Soundtrack)
  *
  * Returns:
@@ -77,11 +77,6 @@ interface HealthCheckResult {
         status: 'healthy' | 'degraded' | 'critical' | 'unknown'
         reason?: string
         config?: any
-      }
-      cec: {
-        status: 'healthy' | 'degraded' | 'critical' | 'unknown'
-        adapter?: string
-        reason?: string
       }
       fireTv: {
         status: 'healthy' | 'degraded' | 'critical' | 'unknown'
@@ -263,43 +258,6 @@ async function checkMatrixStatus(): Promise<any> {
 }
 
 /**
- * Check CEC adapter status
- */
-async function checkCECStatus(): Promise<any> {
-  try {
-    // Try to list CEC adapters
-    const { stdout, stderr } = await execAsync('cec-client -l', { timeout: 3000 })
-
-    if (stderr?.includes('ERROR') || !stdout) {
-      return {
-        status: 'degraded',
-        reason: 'CEC adapter not found or error occurred'
-      }
-    }
-
-    // Look for adapter info
-    const lines = stdout.split('\n')
-    let adapterName = 'Unknown'
-    for (const line of lines) {
-      if (line.includes('Pulse Eight') || line.includes('com port:')) {
-        adapterName = 'Pulse Eight'
-        break
-      }
-    }
-
-    return {
-      status: 'healthy',
-      adapter: adapterName
-    }
-  } catch (error: any) {
-    return {
-      status: 'unknown',
-      reason: 'Unable to verify CEC adapter'
-    }
-  }
-}
-
-/**
  * Check FireTV devices status
  */
 async function checkFireTVStatus(): Promise<any> {
@@ -474,8 +432,7 @@ function calculateOverallStatus(services: any): 'healthy' | 'degraded' | 'critic
   if (
     services.database.status === 'degraded' ||
     services.pm2.status === 'degraded' ||
-    services.hardware.matrix.status === 'degraded' ||
-    services.hardware.cec.status === 'degraded'
+    services.hardware.matrix.status === 'degraded'
   ) {
     return 'degraded'
   }
@@ -536,7 +493,6 @@ async function performHealthCheck(): Promise<HealthCheckResult> {
     pm2Status,
     dbStatus,
     matrixStatus,
-    cecStatus,
     fireTvStatus,
     audioStatus,
     sportsGuideStatus,
@@ -545,7 +501,6 @@ async function performHealthCheck(): Promise<HealthCheckResult> {
     checkPM2Status(),
     checkDatabaseHealth(),
     checkMatrixStatus(),
-    checkCECStatus(),
     checkFireTVStatus(),
     checkAudioStatus(),
     checkSportsGuideStatus(),
@@ -557,7 +512,6 @@ async function performHealthCheck(): Promise<HealthCheckResult> {
     pm2: pm2Status,
     hardware: {
       matrix: matrixStatus,
-      cec: cecStatus,
       fireTv: fireTvStatus,
       audio: audioStatus
     },

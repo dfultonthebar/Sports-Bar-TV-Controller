@@ -138,31 +138,13 @@ async function executeSchedule(schedule: any) {
     });
 
     // Step 1: Power on/off TVs if requested
+    // TODO: Implement IR-based TV power control (CEC removed)
     if (schedule.powerOnTVs || schedule.powerOffTVs) {
-      for (const output of outputs) {
-        try {
-          const command = schedule.powerOnTVs ? 'on' : 'standby';
-          const cecResponse = await fetch(`http://localhost:3001/api/cec/power`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              outputChannel: output.channelNumber,
-              command
-            })
-          });
-
-          if (cecResponse.ok) {
-            result.tvsControlled++;
-          } else {
-            result.errors.push(`Failed to power ${command} TV: ${output.label}`);
-          }
-        } catch (error: any) {
-          result.errors.push(`Error controlling TV ${output.label}: ${error.message}`);
-        }
-
-        // Delay between commands
-        await new Promise(resolve => setTimeout(resolve, schedule.delayBetweenCommands));
-      }
+      logger.info('[SCHEDULE] TV power control not yet implemented (CEC removed, awaiting IR implementation)')
+      // for (const output of outputs) {
+      //   // Future: Add IR-based TV power control here
+      //   await new Promise(resolve => setTimeout(resolve, schedule.delayBetweenCommands));
+      // }
     }
 
     // Step 2: Apply audio settings if enabled

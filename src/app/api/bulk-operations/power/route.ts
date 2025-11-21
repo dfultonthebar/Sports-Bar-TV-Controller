@@ -137,10 +137,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // TODO: Add TV power control via CEC/IR when needed
+    // TODO: Add TV power control via IR when needed
     if (includeTVs) {
       logger.info('[BULK POWER] TV power control not yet implemented')
-      // Future: Add CEC/IR TV control here
+      // Future: Add IR TV control here
     }
 
     const summary = `[BULK POWER] ${operation.toUpperCase()} completed: ${results.successful}/${results.total} successful, ${results.failed} failed`

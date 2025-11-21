@@ -24,7 +24,6 @@ import {
   Gamepad2
 } from 'lucide-react'
 import Image from 'next/image'
-import CECPowerControl from '@/components/CECPowerControl'
 import SportsGuide from '@/components/SportsGuide'
 import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
@@ -719,7 +718,13 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
-        {activeTab === 'power' && <CECPowerControl />}
+        {activeTab === 'power' && (
+          <div className="bg-slate-800 rounded-lg p-8 text-center">
+            <Power className="w-16 h-16 text-slate-500 mx-auto mb-4" />
+            <h3 className="text-xl font-medium text-white mb-2">Power Control</h3>
+            <p className="text-slate-400">CEC-based power control has been removed. IR-based TV power control coming soon.</p>
+          </div>
+        )}
 
         {activeTab === 'music' && <BartenderMusicControl />}
 

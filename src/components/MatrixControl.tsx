@@ -606,15 +606,7 @@ export default function MatrixControl() {
                         <option value="Fire TV">Fire TV</option>
                         <option value="Other">Other</option>
                       </select>
-                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={input.isCecPort}
-                          onChange={(e) => updateInput(index, 'isCecPort', e.target.checked)}
-                          className="w-4 h-4 cursor-pointer"
-                        />
-                        <span>CEC Port (Hidden from Bartender)</span>
-                      </label>
+                      {/* CEC Port checkbox removed - CEC deprecated */}
                     </div>
                   </div>
                 ))}
@@ -637,7 +629,7 @@ export default function MatrixControl() {
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-200">Output {output.channelNumber}</span>
                           {!isMatrixOutput && output.tvModel && (
-                            <span className="text-xs text-blue-400 mt-0.5" title="TV Model from CEC Discovery">
+                            <span className="text-xs text-blue-400 mt-0.5" title="TV Model">
                               {output.tvBrand ? `${output.tvBrand} ` : ''}{output.tvModel}
                             </span>
                           )}

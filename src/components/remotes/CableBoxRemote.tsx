@@ -51,7 +51,7 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
     setLastCommand(displayName || command)
 
     try {
-      // Use IR control only (CEC not supported for Spectrum cable boxes)
+      // Use IR control only (all cable boxes now use IR)
       const irCommand = mapCommandToIR(command)
       const hasLearnedCode = hasIRCodes && irCodes[irCommand]
 

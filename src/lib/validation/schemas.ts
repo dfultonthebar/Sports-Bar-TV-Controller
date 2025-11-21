@@ -92,29 +92,6 @@ export const deviceIdSchema = z.string().regex(
   'Device ID must contain only alphanumeric characters, underscores, and hyphens'
 )
 
-/**
- * CEC TV Address validation (single digit or 'all')
- */
-export const cecAddressSchema = z.string().regex(
-  /^(\d|all)$/,
-  'CEC address must be a single digit or "all"'
-)
-
-/**
- * CEC Action validation
- */
-export const cecActionSchema = z.enum([
-  'power_on',
-  'power_off',
-  'toggle_power',
-  'set_input',
-  'set_volume',
-  'mute',
-  'send_key',
-  'raw'
-], {
-  errorMap: () => ({ message: 'Invalid CEC action' })
-})
 
 /**
  * Volume level validation (0-100)
@@ -390,16 +367,6 @@ export const scheduledCommandCreateSchema = z.object({
 // HARDWARE CONTROL SCHEMAS
 // ============================================================================
 
-/**
- * CEC power control schema
- */
-export const cecPowerControlSchema = z.object({
-  action: z.enum(['on', 'off', 'toggle']).optional(),
-  tvAddress: cecAddressSchema.optional().default('0'),
-  delay: z.number().int().min(0).max(10000).optional(),
-  outputNumbers: z.array(z.number()).optional(),
-  individual: z.boolean().optional()
-})
 
 /**
  * Channel tuning schema
@@ -720,8 +687,6 @@ export const ValidationSchemas = {
 
   // Hardware
   deviceId: deviceIdSchema,
-  cecAddress: cecAddressSchema,
-  cecAction: cecActionSchema,
   volume: volumeSchema,
   inputNumber: inputNumberSchema,
   matrixRoute: matrixRouteSchema,
@@ -767,7 +732,6 @@ export const ValidationSchemas = {
   scheduledCommandCreate: scheduledCommandCreateSchema,
 
   // Hardware Control
-  cecPowerControl: cecPowerControlSchema,
   channelTune: channelTuneSchema,
   matrixRouting: matrixRoutingSchema,
   irCommandSend: irCommandSendSchema,

@@ -163,7 +163,6 @@ export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   udpPort: integer('udpPort').notNull().default(4000),
   protocol: text('protocol').notNull().default('TCP'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
-  cecInputChannel: integer('cecInputChannel'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
@@ -179,7 +178,6 @@ export const matrixInputs = sqliteTable('MatrixInput', {
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   status: text('status').notNull().default('active'),
   powerOn: integer('powerOn', { mode: 'boolean' }).notNull().default(false),
-  isCecPort: integer('isCecPort', { mode: 'boolean' }).notNull().default(false),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
@@ -203,7 +201,6 @@ export const matrixOutputs = sqliteTable('MatrixOutput', {
   dailyTurnOff: integer('dailyTurnOff', { mode: 'boolean' }).notNull().default(false),
   tvBrand: text('tvBrand'),
   tvModel: text('tvModel'),
-  cecAddress: text('cecAddress'),
   lastDiscovery: timestamp('lastDiscovery'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
@@ -574,45 +571,6 @@ export const apiKeys = sqliteTable('ApiKey', {
   isActiveIdx: index('ApiKey_isActive_idx').on(table.isActive),
 }))
 
-// CEC Configuration Model
-// NOTE: Only used for TV power control via CEC
-// Cable box CEC control has been deprecated - use IR control instead
-export const cecConfigurations = sqliteTable('CECConfiguration', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  isEnabled: integer('isEnabled', { mode: 'boolean' }).notNull().default(false),
-  cecInputChannel: integer('cecInputChannel'),
-  usbDevicePath: text('usbDevicePath').notNull().default('/dev/ttyACM0'),
-  powerOnDelay: integer('powerOnDelay').notNull().default(2000),
-  powerOffDelay: integer('powerOffDelay').notNull().default(1000),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
-// CEC Device Model
-// NOTE: Only used for TV power control via CEC adapters
-// DEPRECATED: Cable box CEC control (deviceType='cable_box') - use IR control instead
-// Valid deviceType values: 'tv_power' (others deprecated)
-export const cecDevices = sqliteTable('CECDevice', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  devicePath: text('devicePath').notNull().unique(), // e.g., /dev/ttyACM0
-  deviceType: text('deviceType').notNull().default('tv_power'), // 'tv_power' (cable_box deprecated)
-  deviceName: text('deviceName').notNull(), // User-friendly name
-  matrixInputId: text('matrixInputId'), // Link to matrix input if applicable
-  cecAddress: text('cecAddress'), // CEC logical address (0-15)
-  vendorId: text('vendorId'), // USB vendor ID
-  productId: text('productId'), // USB product ID
-  serialNumber: text('serialNumber'), // Adapter serial number
-  firmwareVersion: text('firmwareVersion'), // Adapter firmware version
-  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
-  lastSeen: timestamp('lastSeen'),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-}, (table) => ({
-  devicePathIdx: index('CECDevice_devicePath_idx').on(table.devicePath),
-  deviceTypeIdx: index('CECDevice_deviceType_idx').on(table.deviceType),
-  isActiveIdx: index('CECDevice_isActive_idx').on(table.isActive),
-}))
-
 // Cable Box Model
 // DEPRECATED: This table is no longer used for CEC control
 // Cable boxes should now be configured as IR devices in the irDevices table
@@ -632,25 +590,6 @@ export const cableBoxes = sqliteTable('CableBox', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
   matrixInputIdIdx: index('CableBox_matrixInputId_idx').on(table.matrixInputId),
-}))
-
-// CEC Command Log Model
-// NOTE: Only logs TV power control commands now
-// Historical cable box command logs are preserved for reference
-export const cecCommandLogs = sqliteTable('CECCommandLog', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  cecDeviceId: text('cecDeviceId').notNull().references(() => cecDevices.id, { onDelete: 'cascade' }),
-  command: text('command').notNull(), // TV power commands: 'power_on', 'power_off', 'power_toggle'
-  cecCode: text('cecCode'), // Raw CEC code (e.g., "tx 40:44:40" for power)
-  params: text('params'), // JSON params
-  success: integer('success', { mode: 'boolean' }).notNull(),
-  responseTime: integer('responseTime'), // Execution time in ms
-  errorMessage: text('errorMessage'),
-  timestamp: timestamp('timestamp').notNull().default(timestampNow()),
-}, (table) => ({
-  cecDeviceIdIdx: index('CECCommandLog_cecDeviceId_idx').on(table.cecDeviceId),
-  timestampIdx: index('CECCommandLog_timestamp_idx').on(table.timestamp),
-  commandIdx: index('CECCommandLog_command_idx').on(table.command),
 }))
 
 // QA Generation Job Model
