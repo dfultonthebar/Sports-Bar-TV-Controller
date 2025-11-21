@@ -194,14 +194,14 @@ export function SystemResourceMonitor() {
   }
 
   return (
-    <Card className="bg-sportsBar-800/50 border-sportsBar-700">
-      <CardHeader>
-        <CardTitle className="text-slate-900 dark:text-slate-100">System Resources</CardTitle>
-        <CardDescription className="text-slate-700 dark:text-slate-300">
+    <Card className="bg-sportsBar-800/50 border-sportsBar-700 [&>*]:!bg-transparent">
+      <CardHeader className="bg-transparent">
+        <CardTitle className="text-slate-100">System Resources</CardTitle>
+        <CardDescription className="text-slate-300">
           Real-time system resource monitoring • Uptime: {formatUptime(metrics.uptime)}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="bg-transparent">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* CPU Gauge */}
           <ResourceGauge
@@ -247,25 +247,25 @@ export function SystemResourceMonitor() {
         </div>
 
         {/* System Info */}
-        <div className="mt-6 pt-6 border-t border-slate-700 dark:border-slate-700 border-slate-200">
+        <div className="mt-6 pt-6 border-t border-slate-700">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
-              <span className="text-slate-600 dark:text-slate-400">CPU Model:</span>
-              <span className="ml-2 text-slate-900 dark:text-slate-200">{metrics.cpu.model}</span>
+              <span className="text-slate-400">CPU Model:</span>
+              <span className="ml-2 text-slate-200">{metrics.cpu.model}</span>
             </div>
             <div>
-              <span className="text-slate-600 dark:text-slate-400">Memory Free:</span>
-              <span className="ml-2 text-slate-900 dark:text-slate-200">{formatBytes(metrics.memory.free)}</span>
+              <span className="text-slate-400">Memory Free:</span>
+              <span className="ml-2 text-slate-200">{formatBytes(metrics.memory.free)}</span>
             </div>
             <div>
-              <span className="text-slate-600 dark:text-slate-400">Disk Free:</span>
-              <span className="ml-2 text-slate-900 dark:text-slate-200">{formatBytes(metrics.disk.free)}</span>
+              <span className="text-slate-400">Disk Free:</span>
+              <span className="ml-2 text-slate-200">{formatBytes(metrics.disk.free)}</span>
             </div>
           </div>
         </div>
 
         {/* Last Updated */}
-        <div className="mt-4 text-xs text-slate-600 dark:text-slate-500 text-right">
+        <div className="mt-4 text-xs text-slate-500 text-right">
           Last updated: {new Date(metrics.timestamp).toLocaleTimeString()}
         </div>
       </CardContent>
