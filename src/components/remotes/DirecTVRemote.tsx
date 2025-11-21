@@ -96,14 +96,6 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">DirecTV Remote</h3>
         <p className="text-sm text-slate-400">{deviceName}</p>
-        {status.message && (
-          <div className={`mt-2 px-3 py-1 rounded-full text-xs flex items-center justify-center space-x-1 ${
-            status.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-          }`}>
-            {status.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-            <span>{status.message}</span>
-          </div>
-        )}
       </div>
 
       {/* Remote Control Layout */}

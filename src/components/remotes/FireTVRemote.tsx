@@ -73,16 +73,6 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Fire TV Remote</h3>
         <p className="text-sm text-slate-400">{deviceName}</p>
-        {/* Fixed-height status container to prevent layout shift */}
-        <div className="mt-2 h-6 flex items-center justify-center">
-          {status.message && (
-            <div className={`px-2 py-0.5 rounded text-xs flex items-center space-x-1 transition-opacity ${
-              status.type === 'success' ? 'text-green-400' : 'text-red-400'
-            }`}>
-              {status.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Remote Control Layout */}
