@@ -42,16 +42,17 @@ export async function GET(request: NextRequest) {
     // Get cached meter values (instant response!)
     const meters = atlasMeterManager.getInputMeters(processorIp, 14)
 
-    // Get source names separately (these don't change often)
-    // We can cache these too eventually, but for now query them
-    const { AtlasTCPClient } = await import('@/lib/atlasClient')
-    const client = new AtlasTCPClient({
-      ipAddress: processorIp,
-      tcpPort: 5321,
-      timeout: 5000
-    })
-
-    await client.connect()
+    // Get source names using the SHARED client from client manager
+    // This reuses the existing connection instead of creating a new one
+    const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
+    const client = await getAtlasClient(
+      `processor-${processorIp}`,
+      {
+        ipAddress: processorIp,
+        tcpPort: 5321,
+        timeout: 5000
+      }
+    )
 
     const namePromises = []
     for (let i = 0; i < 14; i++) {
@@ -65,7 +66,10 @@ export async function GET(request: NextRequest) {
     }
 
     const nameResults = await Promise.all(namePromises)
-    await client.disconnect()
+
+    // Don't disconnect - this is a shared persistent client
+    // Just release our reference so it can be cleaned up later if idle
+    releaseAtlasClient(processorIp, 5321)
 
     // Add names to meter data
     const metersWithNames = meters.map((meter, index) => {

@@ -2,6 +2,7 @@
 // Fire Cube App Discovery and Management
 
 import { ADBClient } from './adb-client';
+import { connectionManager } from '@/services/firetv-connection-manager';
 import { KNOWN_SPORTS_APPS, FireCubeApp, InstalledApp } from './types';
 import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, updateMany } from '@/lib/db-helpers'
 import { db } from '@/db'
@@ -12,12 +13,12 @@ export class AppDiscoveryService {
   /**
    * Discover all installed apps on a Fire Cube
    */
-  async discoverApps(deviceId: string, ipAddress: string): Promise<FireCubeApp[]> {
-    const client = new ADBClient(ipAddress);
+  async discoverApps(deviceId: string, ipAddress: string, port: number = 5555): Promise<FireCubeApp[]> {
     const apps: FireCubeApp[] = [];
 
     try {
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(deviceId, ipAddress, port);
 
       // Get all installed packages
       const packages = await client.getInstalledPackages();
@@ -62,7 +63,7 @@ export class AppDiscoveryService {
       logger.error('App discovery failed:', error);
       return [];
     } finally {
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
     }
   }
 
@@ -209,10 +210,10 @@ export class AppDiscoveryService {
         throw new Error('Device not found');
       }
 
-      const client = new ADBClient(device.ipAddress, device.port);
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port);
       const result = await client.launchApp(packageName);
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
 
       return !!result;
     } catch (error) {
@@ -234,10 +235,10 @@ export class AppDiscoveryService {
         throw new Error('Device not found');
       }
 
-      const client = new ADBClient(device.ipAddress, device.port);
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port);
       const result = await client.stopApp(packageName);
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
 
       return !!result;
     } catch (error) {

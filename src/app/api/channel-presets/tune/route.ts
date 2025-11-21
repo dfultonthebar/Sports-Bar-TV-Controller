@@ -324,14 +324,14 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     if (!targetDevice) {
       logger.warn('[CHANNEL PRESET] Cable box not found or not specified', {
         cableBoxId,
-        availableDevices: irDevices.map(d => ({ id: d.id, name: d.name }))
+        availableDevices: irDevices.map(d => ({ id: d.id, name: d.name, matrixInput: d.matrixInput }))
       })
       return {
         success: false,
         error: cableBoxId ? 'Cable box device not found' : 'Cable box ID not specified',
         details: cableBoxId
-          ? `Cable box with ID ${cableBoxId} not found in system`
-          : 'Please select a specific cable box device to control'
+          ? `Cable box with ID ${cableBoxId} not found in system. Available cable boxes: ${irDevices.map(d => `${d.name} (${d.id})`).join(', ')}`
+          : `Please select a specific cable box device to control. Available cable boxes: ${irDevices.map(d => `${d.name} (Input ${d.matrixInput})`).join(', ')}. Make sure to pass cableBoxId in the request.`
       }
     }
 

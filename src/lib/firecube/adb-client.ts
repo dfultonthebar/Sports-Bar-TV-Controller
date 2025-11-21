@@ -93,19 +93,24 @@ export class ADBClient {
         
         // Reset failure counter on success
         consecutiveFailures = 0
-      } catch (error) {
+      } catch (error: any) {
         consecutiveFailures++
-        logger.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure ${consecutiveFailures}/${MAX_FAILURES_BEFORE_RECONNECT}):`, error)
-        
+        const errorMsg = error?.message || 'Unknown error'
+        const stderr = error?.stderr || ''
+        const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
+        logger.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure ${consecutiveFailures}/${MAX_FAILURES_BEFORE_RECONNECT}): ${fullError}`)
+
         // Only attempt reconnection after multiple consecutive failures
         if (consecutiveFailures >= MAX_FAILURES_BEFORE_RECONNECT) {
           logger.info(`[ADB CLIENT] Attempting reconnection for ${this.deviceAddress} after ${consecutiveFailures} failures`)
-          
+
           try {
             await this.connect()
             consecutiveFailures = 0 // Reset on successful reconnection
-          } catch (reconnectError) {
-            logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}`)
+            logger.info(`[ADB CLIENT] Reconnection successful for ${this.deviceAddress}`)
+          } catch (reconnectError: any) {
+            const reconnectErrMsg = reconnectError?.message || 'Unknown error'
+            logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}: ${reconnectErrMsg}`)
             // Don't reset counter - let health monitor handle this
           }
         }
@@ -213,7 +218,10 @@ export class ADBClient {
       const { stdout } = await execAsync(adbCommand, { timeout: 10000 })
       return stdout.trim()
     } catch (error: any) {
-      logger.error(`[ADB CLIENT] Execute command error:`, error.message)
+      const errorMsg = error.message || 'Unknown error'
+      const stderr = error.stderr || ''
+      const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
+      logger.error(`[ADB CLIENT] Execute command error for ${this.deviceAddress}:`, fullError)
       throw error
     }
   }

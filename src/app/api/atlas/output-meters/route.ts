@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AtlasTCPClient } from '@/lib/atlasClient'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
@@ -52,14 +51,17 @@ export async function GET(request: NextRequest) {
       meters = [...meters, ...groupMeters]
     }
 
-    // Get zone names separately (don't change often)
-    const client = new AtlasTCPClient({
-      ipAddress: processorIp,
-      tcpPort: 5321,
-      timeout: 5000
-    })
-
-    await client.connect()
+    // Get zone names using the SHARED client from client manager
+    // This reuses the existing connection instead of creating a new one
+    const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
+    const client = await getAtlasClient(
+      `processor-${processorIp}`,
+      {
+        ipAddress: processorIp,
+        tcpPort: 5321,
+        timeout: 5000
+      }
+    )
 
     const zoneNamePromises = []
     const zoneMutePromises = []
@@ -86,7 +88,9 @@ export async function GET(request: NextRequest) {
       Promise.all(zoneMutePromises)
     ])
 
-    await client.disconnect()
+    // Don't disconnect - this is a shared persistent client
+    // Just release our reference so it can be cleaned up later if idle
+    releaseAtlasClient(processorIp, 5321)
 
     // Add names and mute state to meter data
     const metersWithNames = meters.map((meter) => {

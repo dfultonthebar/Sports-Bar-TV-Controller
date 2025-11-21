@@ -682,6 +682,17 @@ export default function EnhancedChannelGuideBartenderRemote() {
       )
 
       try {
+        // Find the cable box device for the selected input
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+
+        if (!cableBoxDevice) {
+          setCommandStatus('No cable box configured for this input')
+          logError(new Error('No cable box found for input'), 'game_watch_ir')
+          setLoading(false)
+          setTimeout(() => setCommandStatus(''), 5000)
+          return
+        }
+
         const response = await fetch('/api/channel-presets/tune', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -689,7 +700,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             channelNumber: game.channel.channelNumber,
             deviceType: 'cable',
             presetId: 'manual',
-            cableBoxId: selectedDevice?.id  // Fixed: pass specific cable box ID for sports guide
+            cableBoxId: cableBoxDevice.id  // Fixed: always pass cable box ID
           }),
         })
 
@@ -698,7 +709,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${game.league}`)
           setLastOperationTime(new Date())
-          logButtonClick('game_watch_ir', `${game.league}`, { game: game.league, channel: game.channel.channelNumber })
+          logButtonClick('game_watch_ir', `${game.league}`, { game: game.league, channel: game.channel.channelNumber, cableBoxId: cableBoxDevice.id })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'game_watch_ir')
@@ -864,12 +875,23 @@ export default function EnhancedChannelGuideBartenderRemote() {
       setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber}) via IR...`)
 
       try {
+        // Find the cable box device for the selected input
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+
+        if (!cableBoxDevice) {
+          setCommandStatus('No cable box configured for this input')
+          logError(new Error('No cable box found for input'), 'preset_tune_ir')
+          setLoading(false)
+          setTimeout(() => setCommandStatus(''), 5000)
+          return
+        }
+
         const response = await fetch('/api/channel-presets/tune', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             presetId: preset.id,
-            cableBoxId: selectedDevice?.id  // Fixed: pass specific cable box ID
+            cableBoxId: cableBoxDevice.id  // Fixed: always pass cable box ID
           }),
         })
 
@@ -878,7 +900,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         if (data.success) {
           setCommandStatus(`Now watching: ${preset.name}`)
           setLastOperationTime(new Date())
-          logButtonClick('preset_tune_ir', preset.name, { preset: preset.name })
+          logButtonClick('preset_tune_ir', preset.name, { preset: preset.name, cableBoxId: cableBoxDevice.id })
         } else {
           setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
           logError(new Error(data.error || 'Tune failed'), 'preset_tune_ir')

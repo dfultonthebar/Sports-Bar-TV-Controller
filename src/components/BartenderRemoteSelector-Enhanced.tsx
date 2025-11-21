@@ -27,7 +27,7 @@ interface IRDevice {
   name: string
   brand: string
   deviceType: string
-  inputChannel: number
+  matrixInput?: number  // Fixed: use matrixInput to match database schema
   controlMethod: 'IP' | 'GlobalCache'
   deviceIpAddress?: string
   ipControlPort?: number
@@ -247,7 +247,7 @@ export default function BartenderRemoteSelectorEnhanced() {
                 inputs.map((input) => {
                   const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
                   const fireTVDevice = fireTVDevices.find(d => d.inputChannel === input.channelNumber)
-                  const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
+                  const irDevice = irDevices.find(d => d.matrixInput === input.channelNumber)  // Fixed: use matrixInput
                   const hasDevice = direcTVDevice || fireTVDevice || irDevice
                   const isSelected = selectedInput === input.channelNumber
                   const isHovered = hoveredInput === input.channelNumber

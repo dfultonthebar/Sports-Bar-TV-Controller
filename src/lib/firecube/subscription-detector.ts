@@ -2,6 +2,7 @@
 // Subscription Detection Service for Fire Cube Apps
 
 import { ADBClient } from './adb-client';
+import { connectionManager } from '@/services/firetv-connection-manager';
 import { KNOWN_SPORTS_APPS, SubscriptionCheckResult } from './types';
 import { and, asc, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
 import { db } from '@/db'
@@ -38,10 +39,10 @@ export class SubscriptionDetector {
       };
     }
 
-    const client = new ADBClient(device.ipAddress, device.port);
-
+    let client: ADBClient;
     try {
-      await client.connect();
+      // Use connection manager for persistent connections instead of creating new client
+      client = await connectionManager.getOrCreateConnection(deviceId, device.ipAddress, device.port);
 
       let hasSubscription = false;
       let subscriptionStatus: 'active' | 'expired' | 'trial' | 'unknown' = 'unknown';
@@ -100,7 +101,8 @@ export class SubscriptionDetector {
         method: 'heuristic'
       };
     } finally {
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
+      // await client.disconnect();
     }
   }
 

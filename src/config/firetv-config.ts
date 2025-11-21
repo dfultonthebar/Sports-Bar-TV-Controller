@@ -131,7 +131,7 @@ export const prodFireTVConfig: FireTVConfig = {
   ...defaultFireTVConfig,
   logging: {
     verbose: false,
-    logKeepAlive: false, // Minimize log noise in production
+    logKeepAlive: false, // Disabled to reduce log volume
     logHealthChecks: false, // Disabled to reduce log volume (960 lines/hour → 0)
     logReconnections: true
   }

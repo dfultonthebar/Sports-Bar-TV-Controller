@@ -3,6 +3,7 @@
 
 import cron from 'node-cron';
 import { ADBClient } from './adb-client';
+import { connectionManager } from '@/services/firetv-connection-manager';
 import { and, asc, create, desc, eq, findMany, findUnique, or, update } from '@/lib/db-helpers'
 import { db } from '@/db'
 import { fireCubeDevices, fireCubeKeepAwakeLogs } from '@/db/schema'
@@ -147,10 +148,10 @@ export class KeepAwakeScheduler {
         throw new Error('Device not found');
       }
 
-      const client = new ADBClient(device.ipAddress, device.port);
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port);
       const success = await client.keepAwake(true);
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
 
       await this.logAction(deviceId, 'wake_up', Boolean(success));
 
@@ -178,8 +179,8 @@ export class KeepAwakeScheduler {
         return;
       }
 
-      const client = new ADBClient(device.ipAddress, device.port);
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port);
 
       // Check screen state
       const clientAny = client as any;
@@ -191,7 +192,7 @@ export class KeepAwakeScheduler {
         await this.logAction(deviceId, 'keep_awake', true);
       }
 
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
     } catch (error) {
       // Silently fail for periodic checks
       logger.debug(`Keep-awake check failed for device ${deviceId}`);
@@ -211,11 +212,11 @@ export class KeepAwakeScheduler {
         throw new Error('Device not found');
       }
 
-      const client = new ADBClient(device.ipAddress, device.port);
-      await client.connect();
+      // Use connection manager for persistent connections
+      const client = await connectionManager.getOrCreateConnection(device.id, device.ipAddress, device.port);
       const clientAny = client as any;
       const success = await clientAny.allowSleep?.() || false;
-      await client.disconnect();
+      // Don't disconnect - connection manager handles lifecycle
 
       await this.logAction(deviceId, 'allow_sleep', success);
 
