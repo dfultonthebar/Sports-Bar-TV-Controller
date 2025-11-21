@@ -300,9 +300,9 @@ export default function BartenderRemoteControl() {
 
   const selectInput = async (inputNumber: number) => {
     setSelectedInput(inputNumber)
-    
+
     // Find the corresponding IR device for this input
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
     setSelectedDevice(irDevice || null)
     
     // Find the corresponding DirecTV device for this input

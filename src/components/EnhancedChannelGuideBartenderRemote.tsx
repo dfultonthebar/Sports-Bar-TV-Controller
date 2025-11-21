@@ -54,7 +54,7 @@ interface IRDevice {
   name: string
   brand: string
   deviceType: string
-  inputChannel: number
+  matrixInput: number  // Fixed: was inputChannel, now matches database schema
   controlMethod: 'IP' | 'GlobalCache'
   deviceIpAddress?: string
   ipControlPort?: number
@@ -362,7 +362,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     
     // Find associated device
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
     
     const activeDevice = direcTVDevice || fireTVDevice || irDevice
@@ -867,7 +867,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            presetId: preset.id
+            presetId: preset.id,
+            cableBoxId: selectedDevice?.id  // Fixed: pass specific cable box ID
           }),
         })
 
@@ -937,7 +938,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const getDeviceStatusIcon = (inputNumber: number) => {
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
     
     if (direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive) {
       return <CheckCircle className="w-4 h-4 text-green-500" />

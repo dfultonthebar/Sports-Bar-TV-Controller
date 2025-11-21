@@ -150,7 +150,7 @@ export default function BartenderRemoteSelectorEnhanced() {
     setSelectedInput(inputNumber)
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
 
     const activeDevice = direcTVDevice || fireTVDevice || irDevice
     setSelectedDevice(activeDevice || null)
@@ -187,7 +187,7 @@ export default function BartenderRemoteSelectorEnhanced() {
   const getDeviceStatusIcon = (inputNumber: number) => {
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    const irDevice = irDevices.find(d => d.inputChannel === inputNumber)
+    const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
 
     const isOnline = direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive
 

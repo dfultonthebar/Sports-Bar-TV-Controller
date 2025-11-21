@@ -392,9 +392,9 @@ export default function BartenderRemotePage() {
     
     // Find the corresponding device for this input from all device types
     let device: AllDeviceTypes | null = null
-    
+
     // Check IR devices first
-    device = irDevices.find(d => d.inputChannel === inputNumber && d.isActive) || null
+    device = irDevices.find(d => d.matrixInput === inputNumber && d.isActive) || null  // Fixed: use matrixInput for IR devices
     
     // Check DirecTV devices if no IR device found
     if (!device) {

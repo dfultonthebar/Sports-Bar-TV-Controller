@@ -316,10 +316,30 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
       }
     }
 
-    // Use specified cable box or default to first one
+    // Find the specific cable box device
     const targetDevice = cableBoxId
-      ? irDevices.find(device => device.id === cableBoxId) || irDevices[0]
-      : irDevices[0]
+      ? irDevices.find(device => device.id === cableBoxId)
+      : null
+
+    if (!targetDevice) {
+      logger.warn('[CHANNEL PRESET] Cable box not found or not specified', {
+        cableBoxId,
+        availableDevices: irDevices.map(d => ({ id: d.id, name: d.name }))
+      })
+      return {
+        success: false,
+        error: cableBoxId ? 'Cable box device not found' : 'Cable box ID not specified',
+        details: cableBoxId
+          ? `Cable box with ID ${cableBoxId} not found in system`
+          : 'Please select a specific cable box device to control'
+      }
+    }
+
+    logger.info('[CHANNEL PRESET] Using cable box', {
+      deviceId: targetDevice.id,
+      deviceName: targetDevice.name,
+      matrixInput: targetDevice.matrixInput
+    })
 
     // Get the Global Cache device
     const gcDevice = targetDevice.globalCacheDeviceId
