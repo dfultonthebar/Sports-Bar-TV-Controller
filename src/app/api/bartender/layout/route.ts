@@ -53,9 +53,21 @@ export async function GET(request: NextRequest) {
           zones: [] as any[],
           backgroundImage: null
         }
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       })
     }
-    return NextResponse.json({ layout })
+    return NextResponse.json({ layout }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
   } catch (error) {
     // Return default layout if file doesn't exist
     return NextResponse.json({
@@ -63,6 +75,12 @@ export async function GET(request: NextRequest) {
         name: 'Bar Layout',
         zones: [] as any[],
         backgroundImage: null // Support for layout background image
+      }
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       }
     })
   }

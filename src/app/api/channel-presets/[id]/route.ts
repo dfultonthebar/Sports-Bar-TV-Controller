@@ -115,7 +115,7 @@ export async function DELETE(
       )
     }
 
-    await deleteRecord('channelPresets', id)
+    await deleteRecord('channelPresets', eq(schema.channelPresets.id, id))
 
     return NextResponse.json({ 
       success: true, 
