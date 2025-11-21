@@ -134,9 +134,9 @@ export async function GET(request: NextRequest) {
         features: [
           'Live game data from free APIs',
           'Real-time scores and game status',
-          'Automatic fallback to mock data if APIs unavailable',
           'Channel and broadcast information',
-          'Comprehensive 7-day coverage'
+          'Comprehensive 7-day coverage',
+          'Multi-source data aggregation (ESPN + TheSportsDB)'
         ]
       },
       usage: {
