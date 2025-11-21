@@ -146,19 +146,19 @@ export default function InteractiveBartenderLayout({
                 }}
                 title={`${zoneLabel}${currentInput ? ` - ${currentInput}` : ''}`}
               >
-                {/* Icon Container - Responsive sizing for mobile/tablet/desktop - SQUARE ICONS */}
+                {/* Icon Container - Compact sizing to prevent overlapping */}
                 <div className={`relative backdrop-blur-xl border-2 shadow-xl hover:scale-105 transition-all duration-300
-                  min-w-[44px] sm:min-w-[50px] md:min-w-[60px] lg:min-w-[70px] xl:min-w-[80px] 2xl:min-w-[90px] ${
+                  min-w-[32px] sm:min-w-[36px] md:min-w-[40px] lg:min-w-[44px] xl:min-w-[48px] ${
                   currentInput
                     ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/30'
                     : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'
                 }`}>
-                  {/* TV Icon - Responsive sizing: mobile (32px) → tablet (48px) → desktop (64px) */}
-                  <div className="relative z-10 p-2 sm:p-2.5 md:p-3 lg:p-3.5 xl:p-4 flex flex-col items-center">
-                    <Tv className={`w-8 h-8 sm:w-9 sm:h-9 md:w-12 md:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
-                    {/* Current Input Label - Responsive text sizing */}
+                  {/* TV Icon - Compact sizing to prevent overlap */}
+                  <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
+                    <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
+                    {/* Current Input Label - Compact text */}
                     {currentInput && (
-                      <div className="mt-1 sm:mt-1.5 md:mt-2 px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 bg-black/60 rounded-lg text-[9px] sm:text-[10px] md:text-xs lg:text-sm font-semibold text-white truncate max-w-[70px] sm:max-w-[80px] md:max-w-[90px] lg:max-w-[120px] xl:max-w-[150px]">
+                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
                         {currentInput}
                       </div>
                     )}

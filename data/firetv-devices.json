@@ -10,7 +10,7 @@
       "isOnline": true,
       "addedAt": "2025-10-31T19:15:34.087Z",
       "updatedAt": "2025-10-31T19:15:34.087Z",
-      "lastSeen": "2025-11-19T21:56:49.867Z"
+      "lastSeen": "2025-11-21T16:44:52.838Z"
     },
     {
       "name": "Amazon 2",
@@ -19,10 +19,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 14,
       "id": "firetv_1763577904432_y1leu4lud",
-      "isOnline": false,
+      "isOnline": true,
       "addedAt": "2025-11-19T18:43:40.837Z",
       "updatedAt": "2025-11-19T18:43:40.837Z",
-      "lastSeen": "2025-11-19T21:56:49.852Z"
+      "lastSeen": "2025-11-21T16:43:49.002Z"
     },
     {
       "name": "Amazon 3",
@@ -34,8 +34,7 @@
       "isOnline": true,
       "addedAt": "2025-11-19T19:48:55.626Z",
       "updatedAt": "2025-11-19T19:48:55.626Z",
-      "lastSeen": "2025-11-19T21:26:50.690Z"
+      "lastSeen": "2025-11-21T16:43:49.031Z"
     }
   ]
-}
 }

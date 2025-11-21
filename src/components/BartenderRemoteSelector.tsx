@@ -102,6 +102,13 @@ export default function BartenderRemoteSelector() {
   useEffect(() => {
     loadAllDevices()
     loadChannelPresets()
+
+    // Poll for device status updates every 10 seconds
+    const pollInterval = setInterval(() => {
+      loadAllDevices()
+    }, 10000)
+
+    return () => clearInterval(pollInterval)
   }, [])
 
   const loadAllDevices = async () => {
