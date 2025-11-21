@@ -733,10 +733,32 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
 
         // Only add game if we have a channel number
         if (channelNumber) {
+          // Extract team names from various data formats
+          let homeTeam = listing.data['home team'] || listing.data['team'] || '';
+          let awayTeam = listing.data['visiting team'] || listing.data['opponent'] || '';
+
+          // Handle combined "teams" field (e.g., Soccer: "Pachuca v Pumas UNAM")
+          // or "event" field (e.g., Other Sports: "(1)Nebraska v Iowa")
+          const combinedField = listing.data['teams'] || listing.data['event'];
+          if (!homeTeam && !awayTeam && combinedField) {
+            // Try to split by common separators: " v ", " vs ", " vs. ", " @ ", " - "
+            const separators = [' v ', ' vs ', ' vs. ', ' @ ', ' - '];
+            for (const sep of separators) {
+              if (combinedField.includes(sep)) {
+                const parts = combinedField.split(sep);
+                if (parts.length === 2) {
+                  awayTeam = parts[0].trim();  // First team is typically away
+                  homeTeam = parts[1].trim();  // Second team is typically home
+                  break;
+                }
+              }
+            }
+          }
+
           const game = {
             league: group.group_title,
-            homeTeam: listing.data['home team'] || listing.data['team'] || '',
-            awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+            homeTeam: homeTeam,
+            awayTeam: awayTeam,
             gameTime: listing.time,
             startTime: eventDate.toISOString(),
             channelNumber: channelNumber,
