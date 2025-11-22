@@ -24,7 +24,9 @@ export interface GameInfo {
   league?: string
   startTime: string | Date
   description?: string
-  channelNumber?: string
+  channelNumber?: string  // Legacy field for backwards compatibility
+  cableChannel?: string   // Channel number from cable presets
+  directvChannel?: string // Channel number from DirecTV presets
   channelName?: string
 }
 

@@ -197,8 +197,8 @@ export class DistributionEngine {
     const existingInput = state.inputs.find(input => {
       if (!input.channelNumber) return false
 
-      // Match channel number if available
-      if (game.channelNumber && input.channelNumber === game.channelNumber) {
+      // Match channel number if available (check both cable and DirecTV channels)
+      if (input.channelNumber === game.cableChannel || input.channelNumber === game.directvChannel) {
         return true
       }
 
@@ -254,6 +254,8 @@ export class DistributionEngine {
 
       // Get all available sports inputs (prefer Cable > DirecTV > Fire TV)
       const sportsInputs = await this.stateReader.getSportsInputs()
+      logger.debug(`[DISTRIBUTION] Found ${sportsInputs.length} sports inputs for ${game.homeTeam} vs ${game.awayTeam}`)
+
       const availableInputs = sportsInputs
         .filter(input => input.capabilities.canChangechannel)
         .sort((a, b) => {
@@ -267,9 +269,13 @@ export class DistributionEngine {
           return (deviceTypeOrder[a.deviceType] || 999) - (deviceTypeOrder[b.deviceType] || 999)
         })
 
+      logger.debug(`[DISTRIBUTION] ${availableInputs.length} inputs can change channels`)
+      logger.debug(`[DISTRIBUTION] Game channel number: ${game.channelNumber || 'MISSING'}`)
+      logger.debug(`[DISTRIBUTION] Available outputs: ${availableOutputs.length}`)
+
       // Use round-robin distribution across available inputs
       let inputIndex = 0
-      if (availableInputs.length > 0 && game.channelNumber) {
+      if (availableInputs.length > 0 && (game.cableChannel || game.directvChannel)) {
         for (const output of sortedOutputs) {
           if (assignments.length >= minTVs) break
 
@@ -280,16 +286,42 @@ export class DistributionEngine {
           const selectedInput = availableInputs[inputIndex % availableInputs.length]
           inputIndex++
 
-          assignments.push({
-            outputNumber: output.outputNumber,
-            zoneName: output.zoneName,
-            zoneType: output.zoneType,
-            inputNumber: selectedInput.inputNumber,
-            inputLabel: selectedInput.label,
-            channelNumber: game.channelNumber,
-            requiresChannelChange: true,
-            alreadyTuned: false
-          })
+          // Determine correct channel based on input device type
+          let channelToUse = ''
+          if (selectedInput.deviceType === 'DirecTV' && game.directvChannel) {
+            channelToUse = game.directvChannel
+          } else if (selectedInput.deviceType === 'Cable Box' && game.cableChannel) {
+            channelToUse = game.cableChannel
+          } else {
+            // Fallback: try to match any available channel
+            channelToUse = game.cableChannel || game.directvChannel || ''
+          }
+
+          // Only assign if we have a valid channel for this device type
+          if (channelToUse) {
+            assignments.push({
+              outputNumber: output.outputNumber,
+              zoneName: output.zoneName,
+              zoneType: output.zoneType,
+              inputNumber: selectedInput.inputNumber,
+              inputLabel: selectedInput.label,
+              channelNumber: channelToUse,
+              requiresChannelChange: true,
+              alreadyTuned: false
+            })
+          } else {
+            logger.warn(
+              `[DISTRIBUTION] Skipping ${selectedInput.label} (${selectedInput.deviceType}): ` +
+              `Game channel not available (cable: ${game.cableChannel || 'N/A'}, directv: ${game.directvChannel || 'N/A'})`
+            )
+          }
+        }
+      } else {
+        // Log why assignment was skipped
+        if (availableInputs.length === 0) {
+          logger.warn(`[DISTRIBUTION] Cannot assign ${game.homeTeam} vs ${game.awayTeam}: No inputs with channel change capability`)
+        } else if (!game.cableChannel && !game.directvChannel) {
+          logger.warn(`[DISTRIBUTION] Cannot assign ${game.homeTeam} vs ${game.awayTeam}: Missing channel number in both cable and DirecTV presets`)
         }
       }
     }

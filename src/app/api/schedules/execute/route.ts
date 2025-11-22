@@ -456,9 +456,18 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
       }
     }
 
-    // Check if AI scheduler is enabled
-    const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
-    const aiSchedulerEnabled = schedulerSettings.length > 0 ? schedulerSettings[0].enabled === 1 : true
+    // Check if AI scheduler is enabled (default to true if table doesn't exist)
+    let aiSchedulerEnabled = true;
+    try {
+      const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
+      aiSchedulerEnabled = schedulerSettings.length > 0 ? schedulerSettings[0].enabled === 1 : true
+    } catch (settingsError: any) {
+      logger.warn(`[SCHEDULER] Could not read SmartSchedulerSettings (table may not exist): ${settingsError?.message}`)
+      // Default to enabled
+      aiSchedulerEnabled = true
+    }
+
+    logger.info(`[SCHEDULER] AI scheduler enabled: ${aiSchedulerEnabled}, games found: ${games.length}`)
 
     if (!aiSchedulerEnabled) {
       logger.info('[SCHEDULER] AI Smart Scheduler is DISABLED - skipping intelligent distribution')
@@ -479,6 +488,8 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
         startTime: game.startTime || game.time,
         description: game.description || game.title || '',
         channelNumber: game.channelNumber || game.channel || undefined,
+        cableChannel: game.cableChannel || undefined,
+        directvChannel: game.directvChannel || undefined,
         channelName: game.channelName || game.network || undefined
       }));
 
@@ -647,6 +658,14 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any) {
     logger.error('[SCHEDULER] Error finding games:', error);
     logger.error('[SCHEDULER] Error stack:', error?.stack);
     logger.error('[SCHEDULER] Error message:', error?.message);
+    logger.error('[SCHEDULER] Error type:', typeof error);
+    logger.error('[SCHEDULER] Error toString:', String(error));
+    if (error) {
+      logger.error('[SCHEDULER] Error keys:', Object.keys(error));
+    }
+    // Store error in result
+    result.errors = result.errors || [];
+    result.errors.push(`Game finding error: ${error?.message || String(error)}`);
   }
 
   return result;
@@ -657,6 +676,25 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
 
   try {
     logger.info(`Searching for games for ${homeTeams.length} home teams between ${startTime.toISOString()} and ${endTime.toISOString()} (fillWithSports: ${fillWithSports})`);
+
+    // Load channel presets to validate available channels
+    const channelPresets = await db.select().from(schema.channelPresets).where(eq(schema.channelPresets.isActive, true));
+
+    // Create lookup maps for quick channel validation
+    const cableChannels = new Set(
+      channelPresets
+        .filter(p => p.deviceType === 'cable')
+        .map(p => p.channelNumber.toLowerCase())
+    );
+    const directvChannels = new Set(
+      channelPresets
+        .filter(p => p.deviceType === 'directv')
+        .map(p => p.channelNumber.toLowerCase())
+    );
+
+    logger.info(`[CHANNEL_PRESETS] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets`);
+    logger.info(`[CHANNEL_PRESETS] Cable channels sample: ${Array.from(cableChannels).slice(0, 10).join(', ')}`);
+    logger.info(`[CHANNEL_PRESETS] DirecTV channels sample: ${Array.from(directvChannels).slice(0, 10).join(', ')}`);
 
     // Fetch sports guide data from The Rail Media API
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -698,41 +736,61 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`);
         }
 
-        // Extract channel number based on available lineups (prefer cable, fallback to satellite)
-        let channelNumber = '';
+        // Extract BOTH cable and DirecTV channel numbers and validate against presets
+        let cableChannelNumber = '';
+        let directvChannelNumber = '';
+
+        // Extract cable channels and match against presets
         if (listing.channel_numbers?.CAB) {
-          const cableChannels = listing.channel_numbers.CAB;
-          // Find first provider with non-empty channels
-          for (const providerChannels of Object.values(cableChannels)) {
+          const cabChannels = listing.channel_numbers.CAB;
+          for (const providerChannels of Object.values(cabChannels)) {
             const channels = providerChannels as any;
-            if (Array.isArray(channels) && channels.length > 0) {
-              channelNumber = String(channels[0]);
-              break;
-            } else if (channels && !Array.isArray(channels)) {
-              channelNumber = String(channels);
-              break;
+            const channelList = Array.isArray(channels) ? channels : [channels];
+
+            // Find first channel that exists in our cable presets
+            for (const ch of channelList) {
+              if (ch) {
+                const chStr = String(ch).toLowerCase();
+                if (cableChannels.has(chStr)) {
+                  cableChannelNumber = String(ch);
+                  break;
+                }
+              }
             }
+            if (cableChannelNumber) break;
           }
         }
 
-        // Fallback to satellite if no cable channel found
-        if (!channelNumber && listing.channel_numbers?.SAT) {
+        // Extract satellite/DirecTV channels and match against presets
+        if (listing.channel_numbers?.SAT) {
           const satChannels = listing.channel_numbers.SAT;
-          // Find first provider with non-empty channels
           for (const providerChannels of Object.values(satChannels)) {
             const channels = providerChannels as any;
-            if (Array.isArray(channels) && channels.length > 0) {
-              channelNumber = String(channels[0]);
-              break;
-            } else if (channels && !Array.isArray(channels)) {
-              channelNumber = String(channels);
-              break;
+            const channelList = Array.isArray(channels) ? channels : [channels];
+
+            // Find first channel that exists in our DirecTV presets
+            for (const ch of channelList) {
+              if (ch) {
+                const chStr = String(ch).toLowerCase();
+                if (directvChannels.has(chStr)) {
+                  directvChannelNumber = String(ch);
+                  break;
+                }
+              }
             }
+            if (directvChannelNumber) break;
           }
         }
 
-        // Only add game if we have a channel number
-        if (channelNumber) {
+        // Log channel matching results for debugging
+        if (!cableChannelNumber && !directvChannelNumber) {
+          logger.debug(`[CHANNEL_MATCH] No matches for game: ${listing.data['home team'] || ''} vs ${listing.data['visiting team'] || ''}`);
+        } else {
+          logger.debug(`[CHANNEL_MATCH] Matched game: ${listing.data['home team'] || ''} vs ${listing.data['visiting team'] || ''} - Cable: ${cableChannelNumber || 'N/A'}, DirecTV: ${directvChannelNumber || 'N/A'}`);
+        }
+
+        // Only add game if we have at least one valid channel from our presets
+        if (cableChannelNumber || directvChannelNumber) {
           // Extract team names from various data formats
           let homeTeam = listing.data['home team'] || listing.data['team'] || '';
           let awayTeam = listing.data['visiting team'] || listing.data['opponent'] || '';
@@ -761,7 +819,10 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
             awayTeam: awayTeam,
             gameTime: listing.time,
             startTime: eventDate.toISOString(),
-            channelNumber: channelNumber,
+            cableChannel: cableChannelNumber,
+            directvChannel: directvChannelNumber,
+            // Legacy field for backwards compatibility - prefer cable, fallback to DirecTV
+            channelNumber: cableChannelNumber || directvChannelNumber,
             venue: listing.data['venue'] || listing.data['location'] || ''
           };
 
@@ -989,39 +1050,39 @@ async function changeCableBoxChannel(input: any, channel: string) {
 
 async function changeDirectTVChannel(input: any, channel: string) {
   try {
-    // TODO: DirecTV devices are stored in JSON file, not database
-    // Need to load from /data/directv-devices.json instead
-    logger.error(`DirecTV channel change not implemented - devices stored in JSON file, not DB`);
-    return { success: false, error: 'DirecTV device lookup not implemented' };
+    // Load DirecTV devices from JSON file
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json');
+    const devicesJson = await fs.readFile(devicesPath, 'utf-8');
+    const devicesData = JSON.parse(devicesJson);
 
-    // FIXME: This code references non-existent schema.direcTVDevices table
-    // const direcTVDevice = await db.select()
-    //   .from(schema.direcTVDevices)
-    //   .where(eq(schema.direcTVDevices.name, input.label))
-    //   .limit(1)
-    //   .get();
+    // Find DirecTV device by matching input label
+    const direcTVDevice = devicesData.devices.find((d: any) => d.name === input.label);
 
-    // if (!direcTVDevice) {
-    //   logger.error(`No DirecTV device found for: ${input.label}`);
-    //   return { success: false, error: 'DirecTV device not configured' };
-    // }
+    if (!direcTVDevice) {
+      logger.error(`No DirecTV device found for: ${input.label}`);
+      return { success: false, error: 'DirecTV device not configured' };
+    }
 
-    // // Use the DirecTV tune API
-    // const response = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ channel: parseInt(channel) })
-    // });
+    logger.info(`[DIRECTV] Tuning ${input.label} (${direcTVDevice.ipAddress}) to channel ${channel}`);
 
-    // const result = await response.json();
+    // Use the DirecTV tune API
+    const response = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: parseInt(channel) })
+    });
 
-    // if (result.success) {
-    //   logger.info(`Successfully tuned ${input.label} to channel ${channel}`);
-    //   return { success: true };
-    // } else {
-    //   logger.error(`Failed to tune DirecTV: ${result.error}`);
-    //   return { success: false, error: result.error };
-    // }
+    const result = await response.json();
+
+    if (result.success) {
+      logger.info(`Successfully tuned ${input.label} to channel ${channel}`);
+      return { success: true };
+    } else {
+      logger.error(`Failed to tune DirecTV: ${result.error}`);
+      return { success: false, error: result.error };
+    }
   } catch (error: any) {
     logger.error(`Error tuning DirecTV ${input.label}:`, error);
     return { success: false, error: error.message };
