@@ -54,7 +54,7 @@ class ESPNTeamsAPIService {
     const cacheKey = `espn-teams-${sport}-${league}`;
 
     // Check cache first (7 days)
-    const cached = await cacheManager.get<ESPNTeam[]>(cacheKey);
+    const cached = cacheManager.get<ESPNTeam[]>('sports-data', cacheKey);
     if (cached) {
       logger.debug(`[ESPN TEAMS] Cache hit for ${sport}/${league}`);
       return cached;
@@ -106,7 +106,7 @@ class ESPNTeamsAPIService {
 
       // Cache for 7 days
       try {
-        await cacheManager.set(cacheKey, teams, 7 * 24 * 60 * 60);
+        cacheManager.set('sports-data', cacheKey, teams, 7 * 24 * 60 * 60 * 1000);
         logger.debug(`[ESPN TEAMS] Cached ${teams.length} teams`);
       } catch (cacheError) {
         logger.error(`[ESPN TEAMS] Cache set error:`, cacheError);

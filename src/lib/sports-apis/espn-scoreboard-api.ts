@@ -112,7 +112,7 @@ class ESPNScoreboardAPIService {
     const cacheKey = `espn-scoreboard-${sport}-${league}-${date}`;
 
     // Check cache first (15 minutes for live data)
-    const cached = await cacheManager.get<ESPNGame[]>(cacheKey);
+    const cached = cacheManager.get<ESPNGame[]>('sports-data', cacheKey);
     if (cached) {
       logger.debug(`[ESPN SCOREBOARD] Cache hit for ${sport}/${league} on ${date}`);
       return cached;
@@ -139,7 +139,7 @@ class ESPNScoreboardAPIService {
 
       // Cache for 15 minutes (games update frequently)
       try {
-        await cacheManager.set(cacheKey, games, 15 * 60);
+        cacheManager.set('sports-data', cacheKey, games, 15 * 60 * 1000);
         logger.debug(`[ESPN SCOREBOARD] Cached ${games.length} games`);
       } catch (cacheError) {
         logger.error(`[ESPN SCOREBOARD] Cache set error:`, cacheError);
@@ -165,7 +165,7 @@ class ESPNScoreboardAPIService {
     const cacheKey = `espn-scoreboard-range-${sport}-${league}-${startDate}-${endDate}`;
 
     // Check cache first (1 hour for date ranges)
-    const cached = await cacheManager.get<ESPNGame[]>(cacheKey);
+    const cached = cacheManager.get<ESPNGame[]>('sports-data', cacheKey);
     if (cached) {
       logger.debug(`[ESPN SCOREBOARD] Cache hit for ${sport}/${league} range ${startDate}-${endDate}`);
       return cached;
@@ -192,7 +192,7 @@ class ESPNScoreboardAPIService {
 
       // Cache for 1 hour
       try {
-        await cacheManager.set(cacheKey, games, 60 * 60);
+        cacheManager.set('sports-data', cacheKey, games, 60 * 60 * 1000);
         logger.debug(`[ESPN SCOREBOARD] Cached ${games.length} games for range`);
       } catch (cacheError) {
         logger.error(`[ESPN SCOREBOARD] Cache set error:`, cacheError);
