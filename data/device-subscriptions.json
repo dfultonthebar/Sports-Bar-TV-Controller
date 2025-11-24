@@ -74,11 +74,11 @@
           "type": "premium",
           "status": "active",
           "provider": "DIRECTV",
-          "description": "Receiver ID: 0354 1524 6517 | Card: 0018-1782-1356 | Channel: 11 | The Drew Barrymore Show",
+          "description": "Receiver ID: 0354 1524 6517 | Card: 0018-1782-1356 | Channel: 9558 | To Be Announced",
           "packageName": "Software v0xf3e | API v1.12"
         }
       ],
-      "lastPolled": "2025-11-19T20:42:28.699Z",
+      "lastPolled": "2025-11-24T15:59:26.889Z",
       "pollStatus": "success"
     },
     {
@@ -92,11 +92,11 @@
           "type": "premium",
           "status": "active",
           "provider": "DIRECTV",
-          "description": "Receiver ID: 0354 1448 7302 | Card: 0017-3617-7435 | Channel: 9556 | Upcoming: The NFL Today",
+          "description": "Receiver ID: 0354 1448 7302 | Card: 0017-3617-7435 | Channel: 763 | Upcoming: Jazz @ Warriors (Jazz Broadcast)",
           "packageName": "Software v0xf3e | API v1.12"
         }
       ],
-      "lastPolled": "2025-11-19T20:27:18.009Z",
+      "lastPolled": "2025-11-24T16:01:14.053Z",
       "pollStatus": "success"
     },
     {

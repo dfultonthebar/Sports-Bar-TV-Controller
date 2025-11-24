@@ -12,15 +12,15 @@ import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
 import { logger } from '@/lib/logger'
-import { 
-  Power, 
-  Volume2, 
-  VolumeX, 
-  ChevronUp, 
-  ChevronDown, 
-  Settings, 
-  Tv, 
-  Speaker, 
+import {
+  Power,
+  Volume2,
+  VolumeX,
+  ChevronUp,
+  ChevronDown,
+  Settings,
+  Tv,
+  Speaker,
   Wifi,
   AlertCircle,
   CheckCircle,
@@ -38,7 +38,9 @@ import {
   Star,
   Gamepad2,
   Home,
-  ArrowLeft
+  ArrowLeft,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -47,6 +49,7 @@ interface MatrixInput {
   label: string
   inputType: string
   isActive: boolean
+  isSchedulingEnabled: boolean
 }
 
 interface IRDevice {
@@ -387,6 +390,53 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
 
     setTimeout(() => setCommandStatus(''), 3000)
+  }
+
+  const toggleSchedulingEnabled = async (inputId: string, currentStatus: boolean, event: React.MouseEvent) => {
+    event.stopPropagation() // Prevent input selection when clicking toggle
+
+    const input = inputs.find(i => i.id === inputId)
+    const newStatus = !currentStatus
+
+    try {
+      const response = await fetch('/api/matrix/inputs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inputId,
+          isSchedulingEnabled: newStatus
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to update scheduling status')
+      }
+
+      // Update local state
+      setInputs(inputs.map(inp =>
+        inp.id === inputId
+          ? { ...inp, isSchedulingEnabled: newStatus }
+          : inp
+      ))
+
+      setCommandStatus(
+        `${input?.label || 'Input'}: Scheduling ${newStatus ? 'enabled' : 'disabled'}`
+      )
+      setLastOperationTime(new Date())
+
+      logUserAction('toggle_scheduling', {
+        inputId,
+        inputLabel: input?.label,
+        newStatus,
+        success: true
+      })
+    } catch (error) {
+      logger.error('[BARTENDER_REMOTE] Error toggling scheduling:', error)
+      setCommandStatus(`Failed to update scheduling: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      logError(error as Error, 'toggle_scheduling')
+    }
   }
 
   const loadChannelGuideForInput = async () => {
@@ -1043,7 +1093,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         </div>
       </div>
 
-      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
+      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4 h-fit">
@@ -1056,28 +1106,46 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 const deviceType = getDeviceTypeForInput(input.channelNumber)
 
                 return (
-                  <button
-                    key={input.id}
-                    onClick={() => handleInputSelection(input.channelNumber)}
-                    className={`group relative w-full p-3 rounded-xl text-left transition-all duration-300 ${
-                      selectedInput === input.channelNumber
-                        ? 'backdrop-blur-xl bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400/50 shadow-2xl scale-105'
-                        : 'backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-105 hover:border-white/20'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="flex items-center space-x-2">
-                        {getInputIcon(input.inputType)}
-                        {getDeviceStatusIcon(input.channelNumber)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className={`font-medium truncate ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{getInputLabelWithChannel(input)}</div>
-                        <div className={`text-xs truncate ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
-                          Ch {input.channelNumber} • {deviceType || input.inputType}
+                  <div key={input.id} className="relative">
+                    <button
+                      onClick={() => handleInputSelection(input.channelNumber)}
+                      className={`group relative w-full p-3 rounded-xl text-left transition-all duration-300 ${
+                        selectedInput === input.channelNumber
+                          ? 'backdrop-blur-xl bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400/50 shadow-2xl scale-105'
+                          : 'backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-105 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3 flex-1 overflow-hidden">
+                          <div className="flex items-center space-x-2 flex-shrink-0">
+                            {getInputIcon(input.inputType)}
+                            {getDeviceStatusIcon(input.channelNumber)}
+                          </div>
+                          <div className="flex-1 overflow-hidden">
+                            <div className={`font-medium ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{getInputLabelWithChannel(input)}</div>
+                            <div className={`text-xs ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
+                              Ch {input.channelNumber} • {deviceType || input.inputType}
+                            </div>
+                          </div>
                         </div>
+                        <button
+                          onClick={(e) => toggleSchedulingEnabled(input.id, input.isSchedulingEnabled, e)}
+                          className={`ml-2 p-1 rounded-lg transition-all duration-200 flex-shrink-0 ${
+                            input.isSchedulingEnabled
+                              ? 'text-green-400 hover:bg-green-500/20'
+                              : 'text-slate-500 hover:bg-slate-500/20'
+                          }`}
+                          title={input.isSchedulingEnabled ? 'Scheduling enabled - Click to disable' : 'Scheduling disabled - Click to enable'}
+                        >
+                          {input.isSchedulingEnabled ? (
+                            <ToggleRight className="w-5 h-5" />
+                          ) : (
+                            <ToggleLeft className="w-5 h-5" />
+                          )}
+                        </button>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -1115,7 +1183,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         </div>
 
         {/* Main Panel - Channel Guide */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-2">
           {!showChannelGuide ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
               <Calendar className="w-16 h-16 text-blue-400 mx-auto mb-4 opacity-50" />

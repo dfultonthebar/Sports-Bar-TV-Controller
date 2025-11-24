@@ -170,14 +170,6 @@ export default function Home() {
                   </a>
 
                   <a
-                    href="/cec-monitor"
-                    className="block p-4 bg-gradient-to-br from-cyan-600/40 to-blue-600/40 rounded-lg border-2 border-cyan-400/50 hover:border-cyan-400/70 hover:from-cyan-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
-                  >
-                    <h4 className="font-bold text-cyan-200 mb-1">🔍 CEC Monitor</h4>
-                    <p className="text-cyan-100/90 text-sm">View CEC commands & responses</p>
-                  </a>
-
-                  <a
                     href="/streaming-platforms"
                     className="block p-4 bg-sportsBar-700/60 rounded-lg border border-pink-400/30 hover:bg-sportsBar-600/80 hover:border-pink-400/50 transition-all duration-200"
                   >

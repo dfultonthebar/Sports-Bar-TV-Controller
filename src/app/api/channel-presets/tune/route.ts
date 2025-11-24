@@ -181,7 +181,29 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Upsert the current channel info
+          // Calculate smart override duration based on game schedule
+          const now = new Date()
+
+          // Import smart override calculator
+          const { calculateSmartOverrideDuration } = await import('@/lib/scheduler/smart-override')
+
+          // Calculate intelligent override duration
+          const overrideResult = await calculateSmartOverrideDuration(channelNumberStr)
+          const manualOverrideUntil = new Date(now.getTime() + overrideResult.durationMs)
+
+          // Log smart override details
+          logger.info(`[SMART OVERRIDE] Channel ${channelNumberStr}: ${overrideResult.reason}`)
+          logger.info(`[SMART OVERRIDE] Protection until ${manualOverrideUntil.toISOString()} (${overrideResult.durationMinutes} minutes)`)
+
+          if (overrideResult.gameDetected && overrideResult.gameInfo) {
+            logger.info(
+              `[SMART OVERRIDE] Game: ${overrideResult.gameInfo.league} - ` +
+              `${overrideResult.gameInfo.homeTeam} vs ${overrideResult.gameInfo.awayTeam} ` +
+              `(Period ${overrideResult.gameInfo.period}, ${overrideResult.gameInfo.clock} remaining)`
+            )
+          }
+
+          // Upsert the current channel info with manual override protection
           const existing = await findFirst('inputCurrentChannels', {
             where: eq(schema.inputCurrentChannels.inputNum, inputNum)
           })
@@ -191,8 +213,12 @@ export async function POST(request: NextRequest) {
               channelNumber: channelNumberStr,
               channelName,
               presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
-              lastTuned: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              lastTuned: now.toISOString(),
+              updatedAt: now.toISOString(),
+              // MANUAL OVERRIDE PROTECTION - Protect this input from scheduler for 2 hours
+              manualOverrideUntil: manualOverrideUntil.toISOString(),
+              lastManualChangeBy: 'bartender', // Could be enhanced with session tracking
+              lastManualChangeAt: now.toISOString()
             })
           } else {
             await db.insert(schema.inputCurrentChannels).values({
@@ -200,13 +226,20 @@ export async function POST(request: NextRequest) {
               inputNum,
               inputLabel,
               deviceType: deviceTypeStr,
+              deviceId: cableBoxIdStr || deviceIpStr,
               channelNumber: channelNumberStr,
               channelName,
               presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
-              lastTuned: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              lastTuned: now.toISOString(),
+              updatedAt: now.toISOString(),
+              // MANUAL OVERRIDE PROTECTION - Protect this input from scheduler for 2 hours
+              manualOverrideUntil: manualOverrideUntil.toISOString(),
+              lastManualChangeBy: 'bartender',
+              lastManualChangeAt: now.toISOString()
             })
           }
+
+          logger.info(`[MANUAL OVERRIDE] Input ${inputNum} protected until ${manualOverrideUntil.toISOString()} (${overrideResult.durationMinutes} minutes)`)
 
           logger.debug(`[Channel Tracking] Updated input ${inputNum} to channel ${channelNumberStr}${channelName ? ` (${channelName})` : ''}`)
         }

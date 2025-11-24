@@ -83,6 +83,10 @@ export class DistributionEngine {
     const priorityScores = await this.priorityCalc.calculateMultipleGames(games)
     reasoning.push(`Priority scores calculated (range: ${priorityScores[0]?.finalScore || 0} - ${priorityScores[priorityScores.length - 1]?.finalScore || 0})`)
 
+    // Check if there are any home team games
+    const hasHomeTeamGames = priorityScores.some(score => score.isHomeTeamGame)
+    const totalAvailableOutputs = systemState.totalOutputs
+
     // Track assigned outputs to prevent overlap
     const assignedOutputs = new Set<number>()
     const assignedGames = new Set<string>() // Track game IDs to prevent duplicates
@@ -98,15 +102,29 @@ export class DistributionEngine {
 
       const game = games.find(g => g.id === score.gameId) || games[0]
 
-      // For non-home-team games, use defaults: 1 TV, main/bar zones
-      const minTVs = score.matchedTeam?.minTVsWhenActive || 1
+      // Calculate minimum TVs based on home team status
+      let minTVs: number
+      if (score.isHomeTeamGame) {
+        // HOME TEAM GAMES → 50% MINIMUM
+        minTVs = Math.ceil(totalAvailableOutputs * 0.5)
+        reasoning.push(`🏠 Home team game detected: ${game.homeTeam} vs ${game.awayTeam} → enforcing ${minTVs}/${totalAvailableOutputs} TVs (50% minimum)`)
+      } else if (!hasHomeTeamGames) {
+        // NO HOME TEAM GAMES → FILL ALL TVs WITH BEST GAMES
+        // Distribute all available games across all TVs aggressively
+        minTVs = Math.ceil(totalAvailableOutputs / Math.max(games.length, 1))
+        reasoning.push(`📺 No home team games active → distributing all games to all TVs (${minTVs} TVs per game)`)
+      } else {
+        // Regular priority-based allocation for non-home games when home games exist
+        minTVs = score.matchedTeam?.minTVsWhenActive || 1
+      }
+
       const preferredZones = score.matchedTeam
         ? this.priorityCalc.getPreferredZones(score)
         : ['main', 'bar']
 
       logger.debug(
         `[DISTRIBUTION] Assigning: ${game.homeTeam} vs ${game.awayTeam} ` +
-        `(priority ${score.finalScore}, needs ${minTVs} TVs)`
+        `(priority ${score.finalScore}, needs ${minTVs} TVs, isHomeTeam: ${score.isHomeTeamGame})`
       )
 
       // Find best input/channel for this game
@@ -153,9 +171,97 @@ export class DistributionEngine {
       }
     }
 
-    // Assign default content to idle TVs
+    // TASK 1: FILL ALL REMAINING TVs WITH GAMES (round-robin distribution)
+    const remainingTVs = totalAvailableOutputs - assignedOutputs.size
+    if (remainingTVs > 0 && gameAssignments.length > 0) {
+      logger.info(`[DISTRIBUTION] Filling ${remainingTVs} remaining TVs with games (round-robin)...`)
+      reasoning.push(`📺 Filling ${remainingTVs} remaining TVs to maximize game coverage`)
+
+      // Get all unassigned outputs
+      const unassignedOutputs = systemState.outputs.filter(
+        output => !assignedOutputs.has(output.outputNumber)
+      )
+
+      // Round-robin through games in priority order
+      let gameIndex = 0
+      for (const output of unassignedOutputs) {
+        // Select next game in round-robin fashion
+        const gameAssignment = gameAssignments[gameIndex % gameAssignments.length]
+        const game = gameAssignment.game
+        const score = gameAssignment.priority
+
+        // Find best input for this game
+        const sportsInputs = await this.stateReader.getSportsInputs()
+        const availableInputs = sportsInputs
+          .filter(input => input.capabilities.canChangechannel)
+          .sort((a, b) => {
+            const aUsage = assignedInputs.get(a.inputNumber) || 0
+            const bUsage = assignedInputs.get(b.inputNumber) || 0
+            if (aUsage !== bUsage) return aUsage - bUsage
+
+            const deviceTypeOrder = { cable: 1, directv: 2, firetv: 3, atmosphere: 4 }
+            return (deviceTypeOrder[a.deviceType] || 999) - (deviceTypeOrder[b.deviceType] || 999)
+          })
+
+        if (availableInputs.length > 0 && (game.cableChannel || game.directvChannel)) {
+          // Select input (prefer least used)
+          const selectedInput = availableInputs[0]
+
+          // Determine correct channel based on input device type
+          let channelToUse = ''
+          if (selectedInput.deviceType === 'DirecTV' && game.directvChannel) {
+            channelToUse = game.directvChannel
+            logger.info(`[DISTRIBUTION] DirecTV input ${selectedInput.label} assigned DirecTV channel ${channelToUse} for ${game.homeTeam} vs ${game.awayTeam}`)
+          } else if (selectedInput.deviceType === 'Cable Box' && game.cableChannel) {
+            channelToUse = game.cableChannel
+            logger.debug(`[DISTRIBUTION] Cable Box input ${selectedInput.label} assigned cable channel ${channelToUse}`)
+          } else {
+            channelToUse = game.cableChannel || game.directvChannel || ''
+            logger.warn(`[DISTRIBUTION] Fallback channel selection for ${selectedInput.label} (${selectedInput.deviceType}): ${channelToUse}`)
+          }
+
+          if (channelToUse) {
+            // Add assignment to existing game
+            gameAssignment.assignments.push({
+              outputNumber: output.outputNumber,
+              zoneName: output.zoneName,
+              zoneType: output.zoneType,
+              inputNumber: selectedInput.inputNumber,
+              inputLabel: selectedInput.label,
+              channelNumber: channelToUse,
+              requiresChannelChange: true,
+              alreadyTuned: false
+            })
+
+            // Track assignment
+            assignedOutputs.add(output.outputNumber)
+            assignedInputs.set(selectedInput.inputNumber, (assignedInputs.get(selectedInput.inputNumber) || 0) + 1)
+
+            logger.debug(
+              `[DISTRIBUTION] Added TV ${output.outputNumber} to ${game.homeTeam} vs ${game.awayTeam} ` +
+              `(total: ${gameAssignment.assignments.length} TVs)`
+            )
+          }
+        }
+
+        // Move to next game for next TV
+        gameIndex++
+      }
+
+      const finalRemaining = totalAvailableOutputs - assignedOutputs.size
+      if (finalRemaining === 0) {
+        reasoning.push(`✅ All ${totalAvailableOutputs} TVs assigned to games - 0 idle!`)
+        logger.info(`[DISTRIBUTION] Successfully assigned all ${totalAvailableOutputs} TVs to games`)
+      } else {
+        reasoning.push(`⚠️ ${finalRemaining} TVs could not be assigned to games (missing channel data)`)
+      }
+    }
+
+    // Assign default content to any remaining idle TVs (fallback only)
     const defaults = await this.assignDefaultContent(systemState, assignedOutputs)
-    reasoning.push(`Default content assigned to ${defaults.length} idle TVs`)
+    if (defaults.length > 0) {
+      reasoning.push(`Default content assigned to ${defaults.length} idle TVs`)
+    }
 
     const summary = {
       totalGames: gameAssignments.length,

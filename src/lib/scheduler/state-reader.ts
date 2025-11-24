@@ -11,7 +11,7 @@
 
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, sql } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
 
 export interface InputChannelState {
@@ -202,6 +202,9 @@ export class StateReader {
   private async getAvailableInputs(matrixInputs: any[]): Promise<AvailableInput[]> {
     const availableInputs: AvailableInput[] = []
 
+    // Get manual override status for all inputs
+    const manualOverrides = await this.getManualOverrides()
+
     for (const input of matrixInputs) {
       const deviceType = this.normalizeDeviceType(input.deviceType || 'unknown')
 
@@ -212,17 +215,57 @@ export class StateReader {
         supportsSports: ['cable', 'directv', 'firetv'].includes(deviceType)
       }
 
+      // Check if input has an active manual override
+      const hasManualOverride = manualOverrides.has(input.channelNumber)
+
+      // Check if input is available for scheduling
+      // Must have:
+      // 1. isSchedulingEnabled !== false
+      // 2. NO active manual override (bartender protection)
+      const isAvailable = input.isSchedulingEnabled !== false && !hasManualOverride
+
+      if (hasManualOverride) {
+        logger.info(`[STATE_READER] Input ${input.channelNumber} (${input.label}) is protected by manual override - excluded from scheduling`)
+      }
+
       availableInputs.push({
         inputNumber: input.channelNumber,
         label: input.label,
         deviceType: deviceType === 'unknown' ? 'cable' : deviceType,
         deviceId: input.deviceId || undefined,
-        isAvailable: true, // Could check device online status here
+        isAvailable,
         capabilities
       })
     }
 
     return availableInputs
+  }
+
+  /**
+   * Get set of input numbers that have active manual overrides
+   */
+  private async getManualOverrides(): Promise<Set<number>> {
+    try {
+      const now = new Date().toISOString()
+
+      // Query inputs with active manual overrides (manualOverrideUntil > now)
+      const overriddenInputs = await db
+        .select({ inputNum: schema.inputCurrentChannels.inputNum })
+        .from(schema.inputCurrentChannels)
+        .where(sql`${schema.inputCurrentChannels.manualOverrideUntil} > ${now}`)
+
+      const overrideSet = new Set<number>()
+      overriddenInputs.forEach(row => overrideSet.add(row.inputNum))
+
+      if (overrideSet.size > 0) {
+        logger.info(`[STATE_READER] Found ${overrideSet.size} inputs with active manual overrides: [${Array.from(overrideSet).join(', ')}]`)
+      }
+
+      return overrideSet
+    } catch (error) {
+      logger.error('[STATE_READER] Error fetching manual overrides:', error)
+      return new Set()
+    }
   }
 
   /**
@@ -323,7 +366,7 @@ export class StateReader {
   async getSportsInputs(): Promise<AvailableInput[]> {
     const state = await this.getSystemState()
     return state.availableInputs
-      .filter(input => input.capabilities.supportsSports)
+      .filter(input => input.capabilities.supportsSports && input.isAvailable)
       .sort((a, b) => {
         // Prioritize: cable, directv, firetv
         const order = { cable: 1, directv: 2, firetv: 3, atmosphere: 4 }

@@ -178,6 +178,7 @@ export const matrixInputs = sqliteTable('MatrixInput', {
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   status: text('status').notNull().default('active'),
   powerOn: integer('powerOn', { mode: 'boolean' }).notNull().default(false),
+  isSchedulingEnabled: integer('isSchedulingEnabled', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
@@ -782,14 +783,22 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   inputNum: integer('inputNum').notNull().unique(), // Matrix input number
   inputLabel: text('inputLabel').notNull(), // Matrix input label (e.g., "Cable Box 1")
   deviceType: text('deviceType').notNull(), // "cable" or "directv"
+  deviceId: text('deviceId'), // Reference to the actual device (IR device ID, DirecTV IP, etc.)
   channelNumber: text('channelNumber').notNull(), // Current channel number
   channelName: text('channelName'), // Channel preset name if available
+  showName: text('showName'), // Current show/program name from guide data
   presetId: text('presetId'), // Reference to channel preset if used
   lastTuned: timestamp('lastTuned').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+
+  // Manual Override Protection Fields
+  manualOverrideUntil: timestamp('manualOverrideUntil'), // Timestamp until which this input is protected from auto-scheduling
+  lastManualChangeBy: text('lastManualChangeBy'), // Session ID or user identifier who made the manual change
+  lastManualChangeAt: timestamp('lastManualChangeAt'), // When the manual change was made
 }, (table) => ({
   inputNumIdx: index('InputCurrentChannel_inputNum_idx').on(table.inputNum),
   deviceTypeIdx: index('InputCurrentChannel_deviceType_idx').on(table.deviceType),
+  manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
 }))
 
 // AI Gain Configuration Model
@@ -1133,6 +1142,46 @@ export const securityValidationLogs = sqliteTable('SecurityValidationLog', {
   severityIdx: index('SecurityValidationLog_severity_idx').on(table.severity),
   timestampIdx: index('SecurityValidationLog_timestamp_idx').on(table.timestamp),
   userIdIdx: index('SecurityValidationLog_userId_idx').on(table.userId),
+}))
+
+// ============================================================================
+// NETWORK TV CONTROL MODELS
+// ============================================================================
+
+// Network TV Device Model - For IP-controlled TVs (Samsung, LG, Sony, Roku, etc.)
+export const networkTVDevices = sqliteTable('NetworkTVDevice', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ipAddress: text('ipAddress').notNull().unique(),
+  macAddress: text('macAddress'),
+  brand: text('brand').notNull(), // 'samsung', 'lg', 'sony', 'roku', 'vizio', 'sharp', 'hisense'
+  model: text('model'),
+  port: integer('port').notNull(),
+
+  // Brand-specific authentication credentials (encrypted in production)
+  authToken: text('authToken'), // For Samsung/Vizio
+  clientKey: text('clientKey'), // For LG
+  psk: text('psk'), // Pre-shared key for Sony
+
+  // Status
+  status: text('status').notNull().default('offline'), // 'online', 'offline', 'pairing'
+  lastSeen: timestamp('lastSeen'),
+
+  // Matrix Integration
+  matrixOutputId: text('matrixOutputId').references(() => matrixOutputs.id, { onDelete: 'set null' }),
+
+  // Capabilities
+  supportsPower: integer('supportsPower', { mode: 'boolean' }).notNull().default(true),
+  supportsVolume: integer('supportsVolume', { mode: 'boolean' }).notNull().default(true),
+  supportsInput: integer('supportsInput', { mode: 'boolean' }).notNull().default(true),
+
+  // Timestamps
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  brandIdx: index('NetworkTVDevice_brand_idx').on(table.brand),
+  statusIdx: index('NetworkTVDevice_status_idx').on(table.status),
+  matrixOutputIdIdx: index('NetworkTVDevice_matrixOutputId_idx').on(table.matrixOutputId),
+  ipAddressIdx: index('NetworkTVDevice_ipAddress_idx').on(table.ipAddress),
 }))
 
 // ============================================================================

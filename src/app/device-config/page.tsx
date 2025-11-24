@@ -17,6 +17,7 @@ import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
+import TVNetworkDiscovery from '@/components/tv-network/TVNetworkDiscovery'
 import { logger } from '@/lib/logger'
 import {
   Satellite,
@@ -205,7 +206,7 @@ export default function DeviceConfigPage() {
           </TabsTrigger>
           <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
             <Tv className="w-4 h-4" />
-            CEC Discovery
+            TV Discovery
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
@@ -377,34 +378,7 @@ export default function DeviceConfigPage() {
         </TabsContent>
 
         <TabsContent value="cec-discovery" className="space-y-4">
-          <Card className="bg-[#1e3a5f]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white">
-                <Tv className="w-5 h-5 text-blue-400" />
-                CEC TV Discovery
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription className="text-blue-200">
-                {aiEnhancementsEnabled
-                  ? "Automatically detect TV brands with AI-powered brand recognition and optimization recommendations"
-                  : "Automatically detect TV brands connected to WolfPack outputs via CEC protocol"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>CEC Discovery Removed</CardTitle>
-              <CardDescription>
-                CEC-based TV discovery has been removed from the system. All cable box and TV control now uses IR (infrared) control via Global Cache iTach devices.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <TVNetworkDiscovery />
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">

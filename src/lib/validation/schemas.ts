@@ -665,6 +665,49 @@ export const diagnosticRunSchema = z.object({
 })
 
 // ============================================================================
+// TV DISCOVERY & CONTROL SCHEMAS
+// ============================================================================
+
+/**
+ * TV network scan schema
+ */
+export const tvNetworkScanSchema = z.object({
+  ipRange: z.string().regex(
+    /^(\d{1,3}\.){3}\d{1,3}-(\d{1,3}\.){3}\d{1,3}$/,
+    'IP range must be in format: 192.168.1.1-192.168.1.254'
+  ).optional(),
+  ports: z.array(z.number().int().min(1).max(65535)).optional().default([8060]),
+  timeout: z.number().int().min(1000).max(30000).optional().default(5000)
+})
+
+/**
+ * TV power control schema
+ */
+export const tvPowerControlSchema = z.object({
+  action: z.enum(['on', 'off', 'toggle'], {
+    errorMap: () => ({ message: 'Action must be on, off, or toggle' })
+  })
+})
+
+/**
+ * TV volume control schema
+ */
+export const tvVolumeControlSchema = z.object({
+  action: z.enum(['up', 'down', 'mute', 'set'], {
+    errorMap: () => ({ message: 'Action must be up, down, mute, or set' })
+  }),
+  value: z.number().int().min(0).max(100).optional()
+}).refine((data) => {
+  if (data.action === 'set' && data.value === undefined) {
+    return false
+  }
+  return true
+}, {
+  message: "Value is required when action is 'set'",
+  path: ['value']
+})
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -769,5 +812,10 @@ export const ValidationSchemas = {
 
   // Diagnostics & Testing
   connectionTest: connectionTestSchema,
-  diagnosticRun: diagnosticRunSchema
+  diagnosticRun: diagnosticRunSchema,
+
+  // TV Discovery & Control
+  tvNetworkScan: tvNetworkScanSchema,
+  tvPowerControl: tvPowerControlSchema,
+  tvVolumeControl: tvVolumeControlSchema
 }
