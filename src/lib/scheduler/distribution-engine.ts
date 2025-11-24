@@ -74,10 +74,21 @@ export class DistributionEngine {
 
     // Get current system state
     const systemState = await this.stateReader.getSystemState()
+
+    // Count protected inputs (manual overrides)
+    const protectedInputs = systemState.availableInputs.filter(input => !input.isAvailable)
+    const protectedCount = protectedInputs.length
+
     reasoning.push(
       `System: ${systemState.totalInputs} inputs, ${systemState.totalOutputs} outputs, ` +
       `${systemState.summary.activeGames} active games`
     )
+
+    if (protectedCount > 0) {
+      const protectedLabels = protectedInputs.map(i => `#${i.inputNumber} (${i.label})`).join(', ')
+      reasoning.push(`🔒 ${protectedCount} input(s) protected from scheduling: ${protectedLabels}`)
+      logger.info(`[DISTRIBUTION] ${protectedCount} inputs are protected by manual overrides or disabled`)
+    }
 
     // Calculate priorities for all games
     const priorityScores = await this.priorityCalc.calculateMultipleGames(games)
@@ -194,6 +205,12 @@ export class DistributionEngine {
         const sportsInputs = await this.stateReader.getSportsInputs()
         const availableInputs = sportsInputs
           .filter(input => {
+            // Must be available (not protected by manual override or disabled)
+            if (!input.isAvailable) {
+              logger.debug(`[DISTRIBUTION] Skipping input ${input.inputNumber} (${input.label}) - protected by manual override or disabled`)
+              return false
+            }
+
             // Must be able to change channels
             if (!input.capabilities.canChangechannel) return false
 
@@ -374,6 +391,12 @@ export class DistributionEngine {
 
       const availableInputs = sportsInputs
         .filter(input => {
+          // Must be available (not protected by manual override or disabled)
+          if (!input.isAvailable) {
+            logger.debug(`[DISTRIBUTION] Skipping input ${input.inputNumber} (${input.label}) - protected by manual override or disabled`)
+            return false
+          }
+
           // Must be able to change channels
           if (!input.capabilities.canChangechannel) return false
 
