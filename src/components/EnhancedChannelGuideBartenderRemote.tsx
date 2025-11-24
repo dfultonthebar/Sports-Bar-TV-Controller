@@ -837,15 +837,22 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   const sendChannelCommand = async (channelNumber: string) => {
     const digits = channelNumber.split('')
-    
+
     for (const digit of digits) {
       await sendCommand(digit)
       await new Promise(resolve => setTimeout(resolve, 200))
     }
-    
-    // Send OK/Enter to confirm
-    await new Promise(resolve => setTimeout(resolve, 500))
-    await sendCommand('OK')
+
+    // Only send ENTER for cable boxes (IR devices)
+    // DirecTV changes channels automatically after entering digits
+    const deviceType = getDeviceTypeForInput(selectedInput!)
+    if (deviceType === 'cable') {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await sendCommand('OK')
+    } else if (deviceType === 'satellite') {
+      // DirecTV doesn't need ENTER - just wait for channel to change
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
   }
 
   const launchStreamingApp = async (packageName: string, appName: string) => {

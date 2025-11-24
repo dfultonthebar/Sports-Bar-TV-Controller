@@ -226,29 +226,66 @@ export async function POST(request: NextRequest) {
       logInfo(`[CLEANUP] Filtered out ${removedCount} old programs that started more than 2 hours ago`)
     }
 
+    // Filter by channel presets - only show channels that are configured
+    // Load channel presets from database
+    const { db } = await import('@/db')
+    const { schema } = await import('@/db')
+
+    const presets = await db.select().from(schema.channelPresets)
+    const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
+    const presetChannels = new Set(
+      presets
+        .filter(p => p.deviceType === presetDeviceType)
+        .map(p => p.channelNumber)
+    )
+
+    logInfo(`Loaded ${presetChannels.size} ${presetDeviceType} channel presets`)
+
+    // Filter programs to only include preset channels
+    const presetFilteredPrograms = freshPrograms.filter(program => {
+      const channelNumber = program.channel?.channelNumber || program.channel?.number
+      const isInPreset = channelNumber && presetChannels.has(channelNumber)
+
+      if (!isInPreset) {
+        logInfo(`Filtering out channel ${channelNumber} - not in presets`, {
+          league: program.league,
+          channel: program.channel?.name
+        })
+      }
+
+      return isInPreset
+    })
+
+    const presetRemovedCount = freshPrograms.length - presetFilteredPrograms.length
+    if (presetRemovedCount > 0) {
+      logInfo(`[PRESET FILTER] Filtered out ${presetRemovedCount} programs not in channel presets`)
+    }
+
     const response = {
       success: true,
       inputNumber,
       deviceType,
       deviceId,
-      timeRange: { 
-        start: start.toISOString(), 
-        end: end.toISOString() 
+      timeRange: {
+        start: start.toISOString(),
+        end: end.toISOString()
       },
       lastUpdated: new Date().toISOString(),
       type: deviceType,
       channels: Array.from(channels.values()),
-      programs: freshPrograms,
+      programs: presetFilteredPrograms,
       dataSource: 'The Rail Media API',
       summary: {
-        programCount: freshPrograms.length,
+        programCount: presetFilteredPrograms.length,
         channelCount: channels.size,
-        leagues: [...new Set(freshPrograms.map(p => p.league))]
+        leagues: [...new Set(presetFilteredPrograms.map(p => p.league))],
+        presetFiltered: true,
+        presetChannelCount: presetChannels.size
       }
     }
 
     logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)
-    logInfo(`Returning ${freshPrograms.length} programs for ${deviceType} (filtered ${removedCount} old games)`)
+    logInfo(`Returning ${presetFilteredPrograms.length} programs for ${deviceType} (filtered ${removedCount} old games, ${presetRemovedCount} non-preset channels)`)
 
     return NextResponse.json(response)
 
