@@ -193,7 +193,17 @@ export class DistributionEngine {
         // Find best input for this game
         const sportsInputs = await this.stateReader.getSportsInputs()
         const availableInputs = sportsInputs
-          .filter(input => input.capabilities.canChangechannel)
+          .filter(input => {
+            // Must be able to change channels
+            if (!input.capabilities.canChangechannel) return false
+
+            // Filter by device type matching available channels
+            if (input.deviceType === 'DirecTV' && game.directvChannel) return true
+            if (input.deviceType === 'Cable Box' && game.cableChannel) return true
+
+            // Don't include if no matching channel for this device type
+            return false
+          })
           .sort((a, b) => {
             const aUsage = assignedInputs.get(a.inputNumber) || 0
             const bUsage = assignedInputs.get(b.inputNumber) || 0
@@ -363,7 +373,17 @@ export class DistributionEngine {
       logger.debug(`[DISTRIBUTION] Found ${sportsInputs.length} sports inputs for ${game.homeTeam} vs ${game.awayTeam}`)
 
       const availableInputs = sportsInputs
-        .filter(input => input.capabilities.canChangechannel)
+        .filter(input => {
+          // Must be able to change channels
+          if (!input.capabilities.canChangechannel) return false
+
+          // Filter by device type matching available channels
+          if (input.deviceType === 'DirecTV' && game.directvChannel) return true
+          if (input.deviceType === 'Cable Box' && game.cableChannel) return true
+
+          // Don't include if no matching channel for this device type
+          return false
+        })
         .sort((a, b) => {
           // Sort by usage count (least used first) to distribute games evenly
           const aUsage = assignedInputs.get(a.inputNumber) || 0
