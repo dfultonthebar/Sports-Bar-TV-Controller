@@ -820,6 +820,32 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
     logger.info(`[CHANNEL_PRESETS] Cable channels sample: ${Array.from(cableChannels).slice(0, 10).join(', ')}`);
     logger.info(`[CHANNEL_PRESETS] DirecTV channels sample: ${Array.from(directvChannels).slice(0, 10).join(', ')}`);
 
+    // Create cross-reference maps based on preset names
+    // This allows games to be scheduled on either cable OR DirecTV inputs
+    const cableChannelToName = new Map<string, string>();
+    const directvChannelToName = new Map<string, string>();
+    const nameToCableChannel = new Map<string, string>();
+    const nameToDirectvChannel = new Map<string, string>();
+
+    for (const preset of channelPresets) {
+      const normalizedName = preset.name.toLowerCase().trim();
+      const channelNum = preset.channelNumber.toLowerCase();
+
+      if (preset.deviceType === 'cable') {
+        cableChannelToName.set(channelNum, normalizedName);
+        if (!nameToCableChannel.has(normalizedName)) {
+          nameToCableChannel.set(normalizedName, preset.channelNumber);
+        }
+      } else if (preset.deviceType === 'directv') {
+        directvChannelToName.set(channelNum, normalizedName);
+        if (!nameToDirectvChannel.has(normalizedName)) {
+          nameToDirectvChannel.set(normalizedName, preset.channelNumber);
+        }
+      }
+    }
+
+    logger.info(`[CHANNEL_PRESETS] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`);
+
     // Fetch sports guide data from The Rail Media API
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
       method: 'POST',
@@ -903,6 +929,28 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
               }
             }
             if (directvChannelNumber) break;
+          }
+        }
+
+        // Cross-reference: If we only have one channel type, try to find the equivalent for the other
+        // This allows games to be scheduled on either cable OR DirecTV inputs based on presets
+        if (cableChannelNumber && !directvChannelNumber) {
+          const presetName = cableChannelToName.get(cableChannelNumber.toLowerCase());
+          if (presetName) {
+            const matchingDirectv = nameToDirectvChannel.get(presetName);
+            if (matchingDirectv) {
+              directvChannelNumber = matchingDirectv;
+              logger.debug(`[CHANNEL_CROSSREF] Cross-referenced cable ${cableChannelNumber} (${presetName}) to DirecTV ${directvChannelNumber}`);
+            }
+          }
+        } else if (directvChannelNumber && !cableChannelNumber) {
+          const presetName = directvChannelToName.get(directvChannelNumber.toLowerCase());
+          if (presetName) {
+            const matchingCable = nameToCableChannel.get(presetName);
+            if (matchingCable) {
+              cableChannelNumber = matchingCable;
+              logger.debug(`[CHANNEL_CROSSREF] Cross-referenced DirecTV ${directvChannelNumber} (${presetName}) to cable ${cableChannelNumber}`);
+            }
           }
         }
 
