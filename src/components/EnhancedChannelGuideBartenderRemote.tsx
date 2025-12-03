@@ -38,9 +38,7 @@ import {
   Star,
   Gamepad2,
   Home,
-  ArrowLeft,
-  ToggleLeft,
-  ToggleRight
+  ArrowLeft
 } from 'lucide-react'
 
 interface MatrixInput {
@@ -392,53 +390,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
     setTimeout(() => setCommandStatus(''), 3000)
   }
 
-  const toggleSchedulingEnabled = async (inputId: string, currentStatus: boolean, event: React.MouseEvent) => {
-    event.stopPropagation() // Prevent input selection when clicking toggle
-
-    const input = inputs.find(i => i.id === inputId)
-    const newStatus = !currentStatus
-
-    try {
-      const response = await fetch('/api/matrix/inputs', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          inputId,
-          isSchedulingEnabled: newStatus
-        })
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to update scheduling status')
-      }
-
-      // Update local state
-      setInputs(inputs.map(inp =>
-        inp.id === inputId
-          ? { ...inp, isSchedulingEnabled: newStatus }
-          : inp
-      ))
-
-      setCommandStatus(
-        `${input?.label || 'Input'}: Scheduling ${newStatus ? 'enabled' : 'disabled'}`
-      )
-      setLastOperationTime(new Date())
-
-      logUserAction('toggle_scheduling', {
-        inputId,
-        inputLabel: input?.label,
-        newStatus,
-        success: true
-      })
-    } catch (error) {
-      logger.error('[BARTENDER_REMOTE] Error toggling scheduling:', error)
-      setCommandStatus(`Failed to update scheduling: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      logError(error as Error, 'toggle_scheduling')
-    }
-  }
-
   const loadChannelGuideForInput = async () => {
     if (!selectedInput) return
 
@@ -487,24 +438,31 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   const getDeviceTypeForInput = (inputNumber: number): 'cable' | 'satellite' | 'streaming' | null => {
-    const input = inputs.find(i => i.channelNumber === inputNumber)
+    const input = inputs.find(i => i.channelNumber === inputNumber) as any
     if (!input) return null
-    
+
     // Check for DirecTV device
     if (direcTVDevices.find(d => d.inputChannel === inputNumber)) {
       return 'satellite'
     }
-    
-    // Check for Fire TV device
-    if (fireTVDevices.find(d => d.inputChannel === inputNumber)) {
+
+    // Check for Fire TV device - also check matrix input deviceType as fallback
+    if (fireTVDevices.find(d => d.inputChannel === inputNumber) ||
+        input.deviceType?.toLowerCase().includes('fire')) {
       return 'streaming'
     }
-    
+
     // Check input type for cable
     if (input.inputType.toLowerCase().includes('cable')) {
       return 'cable'
     }
-    
+
+    // Check matrix input deviceType for satellite
+    if (input.deviceType?.toLowerCase().includes('directv') ||
+        input.deviceType?.toLowerCase().includes('satellite')) {
+      return 'satellite'
+    }
+
     // Default to cable for IR devices (most likely cable boxes)
     return 'cable'
   }
@@ -565,32 +523,57 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   const loadFireTVGuideData = async (): Promise<DeviceGuideData> => {
-    const fireTVDevice = fireTVDevices.find(d => d.inputChannel === selectedInput)
-    
-    const response = await fetch('/api/channel-guide', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inputNumber: selectedInput!,
-        deviceType: 'streaming',
-        deviceId: fireTVDevice?.id,
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      })
-    })
-
+    // For Fire TV devices, fetch Big Ten games from the dedicated API
+    const response = await fetch('/api/sports/big-ten')
     const data = await response.json()
-    
+
     if (!data.success) {
-      throw new Error(data.error || 'Failed to load Fire TV guide data')
+      throw new Error(data.error || 'Failed to load Fire TV streaming guide')
     }
 
+    // Transform Big Ten games to our program format
+    const programs: GameListing[] = (data.games || []).map((game: any) => ({
+      id: game.id,
+      league: `Big Ten ${game.sport}`,
+      homeTeam: game.teams.home.name,
+      awayTeam: game.teams.away.name,
+      gameTime: game.startTime,
+      startTime: game.date,
+      endTime: new Date(new Date(game.date).getTime() + 3 * 60 * 60 * 1000).toISOString(),
+      channel: {
+        id: `streaming-${game.broadcast.network}`,
+        name: game.broadcast.network,
+        type: 'streaming' as const,
+        cost: 'subscription' as const,
+        platforms: ['Fire TV'],
+        packageName: 'com.btn2go', // Big Ten Plus app
+        deviceType: 'streaming' as const
+      },
+      description: `${game.teams.away.name} vs ${game.teams.home.name}`,
+      venue: game.venue || '',
+      status: game.status,
+      isSports: true,
+      isLive: game.isLive,
+      homeScore: game.isLive ? parseInt(game.teams.home.score) || null : null,
+      awayScore: game.isLive ? parseInt(game.teams.away.score) || null : null
+    }))
+
+    // Define streaming apps available on Fire TV
+    const streamingApps: StreamingApp[] = [
+      { packageName: 'com.btn2go', displayName: 'Big Ten+', category: 'Sports', sportsContent: true },
+      { packageName: 'com.espn.gtv', displayName: 'ESPN', category: 'Sports', sportsContent: true },
+      { packageName: 'com.peacocktv.peacockandroid', displayName: 'Peacock', category: 'Sports', sportsContent: true },
+      { packageName: 'com.amazon.avod', displayName: 'Prime Video', category: 'Entertainment', sportsContent: true },
+      { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
+      { packageName: 'com.fox.now', displayName: 'Fox Sports', category: 'Sports', sportsContent: true }
+    ]
+
     return {
-      type: data.type,
-      channels: data.channels || [],
-      programs: data.programs || [],
-      apps: data.apps || [],
-      lastUpdated: data.lastUpdated
+      type: 'streaming',
+      channels: [],
+      programs,
+      apps: streamingApps,
+      lastUpdated: data.timestamp || new Date().toISOString()
     }
   }
 
@@ -635,10 +618,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
     filtered = filtered.filter(prog => prog.isSports)
 
     // Map channel numbers from presets if available and filter out channels without presets
+    // Only apply preset filtering for cable/satellite - streaming uses app-based content
     const deviceType = getDeviceTypeForInput(selectedInput!)
     const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType === 'cable' ? 'cable' : null
 
-    if (presetDeviceType) {
+    // Skip preset filtering for streaming devices - they show Big Ten games directly
+    if (presetDeviceType && deviceType !== 'streaming') {
       // Filter and map - only show channels that have a preset configured
       filtered = filtered
         .map(prog => {
@@ -840,18 +825,18 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
     for (const digit of digits) {
       await sendCommand(digit)
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise(resolve => setTimeout(resolve, 50)) // Reduced from 200ms
     }
 
     // Only send ENTER for cable boxes (IR devices)
     // DirecTV changes channels automatically after entering digits
     const deviceType = getDeviceTypeForInput(selectedInput!)
     if (deviceType === 'cable') {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, 100)) // Reduced from 500ms
       await sendCommand('OK')
     } else if (deviceType === 'satellite') {
       // DirecTV doesn't need ENTER - just wait for channel to change
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 300)) // Reduced from 1000ms
     }
   }
 
@@ -1135,21 +1120,6 @@ export default function EnhancedChannelGuideBartenderRemote() {
                             </div>
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => toggleSchedulingEnabled(input.id, input.isSchedulingEnabled, e)}
-                          className={`ml-2 p-1 rounded-lg transition-all duration-200 flex-shrink-0 ${
-                            input.isSchedulingEnabled
-                              ? 'text-green-400 hover:bg-green-500/20'
-                              : 'text-slate-500 hover:bg-slate-500/20'
-                          }`}
-                          title={input.isSchedulingEnabled ? 'Scheduling enabled - Click to disable' : 'Scheduling disabled - Click to enable'}
-                        >
-                          {input.isSchedulingEnabled ? (
-                            <ToggleRight className="w-5 h-5" />
-                          ) : (
-                            <ToggleLeft className="w-5 h-5" />
-                          )}
-                        </button>
                       </div>
                     </button>
                   </div>

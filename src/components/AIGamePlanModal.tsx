@@ -207,17 +207,24 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
   const loadInputs = async () => {
     setInputsLoading(true)
     try {
-      const response = await fetch('/api/matrix/config')
+      // Use Wolf Pack inputs endpoint for accurate input list
+      const response = await fetch('/api/wolfpack/inputs')
       const result = await response.json()
 
-      if (result.inputs) {
-        // Filter to only active inputs that are cable or satellite
-        const sourceInputs = result.inputs.filter((i: MatrixInput) =>
-          i.isActive && (i.inputType === 'cable' || i.inputType === 'satellite' || i.inputType === 'streaming')
-        )
+      if (result.success && result.inputs) {
+        // Filter to only active inputs that can tune channels (Cable Box, DirecTV, Fire TV)
+        const sourceInputs = result.inputs
+          .filter((i: any) => i.isActive && ['Cable Box', 'DirecTV', 'Fire TV'].includes(i.deviceType))
+          .map((i: any) => ({
+            id: i.id,
+            channelNumber: i.channelNumber,
+            label: i.label,
+            inputType: i.deviceType?.toLowerCase().replace(' ', '') || 'unknown', // Normalize for icon display
+            isActive: i.isActive
+          }))
         setInputs(sourceInputs)
 
-        // If no inputs are selected yet, select cable and satellite by default
+        // If no inputs are selected yet, select all by default
         const saved = localStorage.getItem(ALLOWED_INPUTS_KEY)
         if (!saved) {
           setAllowedInputs(new Set(sourceInputs.map((i: MatrixInput) => i.channelNumber)))
@@ -309,12 +316,11 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
 
   // Get icon for input type
   const getInputIcon = (inputType: string) => {
-    switch (inputType) {
-      case 'cable': return <Cable className="w-3 h-3 text-blue-400" />
-      case 'satellite': return <Satellite className="w-3 h-3 text-purple-400" />
-      case 'streaming': return <Play className="w-3 h-3 text-green-400" />
-      default: return <Tv className="w-3 h-3 text-slate-400" />
-    }
+    const type = inputType.toLowerCase()
+    if (type.includes('cable')) return <Cable className="w-3 h-3 text-blue-400" />
+    if (type.includes('directv') || type.includes('satellite')) return <Satellite className="w-3 h-3 text-purple-400" />
+    if (type.includes('fire') || type.includes('streaming')) return <Play className="w-3 h-3 text-green-400" />
+    return <Tv className="w-3 h-3 text-slate-400" />
   }
 
   const loadGamePlan = async () => {
