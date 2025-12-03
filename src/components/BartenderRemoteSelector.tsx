@@ -223,15 +223,33 @@ export default function BartenderRemoteSelector() {
   // Cable boxes are now configured as IR devices in the IR Devices admin panel
 
   const sendChannelCommand = async (channelNumber: string) => {
-    const digits = channelNumber.split('')
+    // For DirecTV, use direct tune API (no OK/ENTER needed)
+    if (selectedDevice && 'receiverType' in selectedDevice) {
+      const direcTV = selectedDevice as DirecTVDevice
+      const baseUrl = `http://${direcTV.ipAddress}:${direcTV.port}`
 
-    for (const digit of digits) {
-      await sendCommand(digit)
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Handle sub-channels like "210-1"
+      let tuneUrl: string
+      if (channelNumber.includes('-')) {
+        const [major, minor] = channelNumber.split('-')
+        tuneUrl = `${baseUrl}/tv/tune?major=${major}&minor=${minor}`
+      } else {
+        tuneUrl = `${baseUrl}/tv/tune?major=${channelNumber}`
+      }
+
+      const response = await fetch(tuneUrl, { method: 'GET' })
+      if (!response.ok) {
+        throw new Error('Failed to tune channel')
+      }
+      return
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500))
-    await sendCommand('OK')
+    // For IR devices, send digits only (no OK/ENTER)
+    const digits = channelNumber.split('')
+    for (const digit of digits) {
+      await sendCommand(digit)
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
   }
 
   const sendCommand = async (command: string) => {
@@ -278,17 +296,16 @@ export default function BartenderRemoteSelector() {
       return
     }
 
-    setLoading(true)
-    setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber})...`)
+    // Don't show loading overlay - tuning is fast with direct API
+    setCommandStatus(`Tuning to ${preset.name}...`)
 
     try {
       await sendChannelCommand(preset.channelNumber)
-      setCommandStatus(`Now watching: ${preset.name}`)
+      setCommandStatus(`✓ ${preset.name}`)
+      setTimeout(() => setCommandStatus(''), 2000)
     } catch (error) {
-      setCommandStatus(`Failed to tune: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setLoading(false)
-      setTimeout(() => setCommandStatus(''), 5000)
+      setCommandStatus(`✗ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setTimeout(() => setCommandStatus(''), 3000)
     }
   }
 
