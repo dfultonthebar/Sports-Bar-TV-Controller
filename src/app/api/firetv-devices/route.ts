@@ -8,8 +8,10 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@/lib/logger'
+import { withFileLock } from '@/lib/file-lock'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
 interface FireTVDevice {
@@ -44,11 +46,39 @@ async function readDevices(): Promise<{ devices: FireTVDevice[] }> {
 
 async function writeDevices(data: { devices: FireTVDevice[] }): Promise<void> {
   try {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
+    await withFileLock(DATA_FILE, async () => {
+      await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
+    })
   } catch (error) {
     logger.error('Error writing devices file:', error)
     throw error
   }
+}
+
+/**
+ * Safely perform a read-modify-write operation with file lock.
+ * This prevents race conditions when multiple processes modify the file.
+ */
+async function modifyDevices(modifier: (data: { devices: FireTVDevice[] }) => { devices: FireTVDevice[] }): Promise<{ devices: FireTVDevice[] }> {
+  return await withFileLock(DATA_FILE, async () => {
+    // Read current data inside the lock
+    let data: { devices: FireTVDevice[] }
+    try {
+      const content = await fs.readFile(DATA_FILE, 'utf-8')
+      data = JSON.parse(content)
+    } catch (error) {
+      logger.error('Error reading devices file:', error)
+      data = { devices: [] }
+    }
+
+    // Apply the modification
+    const modified = modifier(data)
+
+    // Write back inside the lock
+    await fs.writeFile(DATA_FILE, JSON.stringify(modified, null, 2), 'utf-8')
+
+    return modified
+  })
 }
 
 // GET - List all Fire TV devices
@@ -102,17 +132,16 @@ export async function POST(request: NextRequest) {
     logger.info('[FIRETV API] POST request - adding new device')
     const newDevice: FireTVDevice = data as any
 
-    const devicesData = await readDevices()
-
     // Set timestamps
     newDevice.addedAt = new Date().toISOString()
     newDevice.updatedAt = new Date().toISOString()
 
-    // Add device to list
-    devicesData.devices.push(newDevice)
+    // Use atomic read-modify-write to prevent race conditions
+    await modifyDevices((devicesData) => {
+      devicesData.devices.push(newDevice)
+      return devicesData
+    })
 
-    await writeDevices(devicesData)
-    
     logger.info(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
     return NextResponse.json({ success: true, device: newDevice })
   } catch (error: any) {
@@ -142,24 +171,27 @@ export async function PUT(request: NextRequest) {
     logger.info('[FIRETV API] PUT request - updating device')
     const updatedDevice: FireTVDevice = data as any
 
-    const devicesData = await readDevices()
-    const deviceIndex = devicesData.devices.findIndex(d => d.id === updatedDevice.id)
+    // Update timestamp
+    updatedDevice.updatedAt = new Date().toISOString()
 
-    if (deviceIndex === -1) {
+    // Use atomic read-modify-write to prevent race conditions
+    let deviceFound = false
+    await modifyDevices((devicesData) => {
+      const deviceIndex = devicesData.devices.findIndex(d => d.id === updatedDevice.id)
+      if (deviceIndex !== -1) {
+        devicesData.devices[deviceIndex] = updatedDevice
+        deviceFound = true
+      }
+      return devicesData
+    })
+
+    if (!deviceFound) {
       return NextResponse.json(
         { error: 'Device not found' },
         { status: 404 }
       )
     }
 
-    // Update timestamp
-    updatedDevice.updatedAt = new Date().toISOString()
-
-    // Replace device
-    devicesData.devices[deviceIndex] = updatedDevice
-
-    await writeDevices(devicesData)
-    
     logger.info(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
     return NextResponse.json({ success: true, device: updatedDevice })
   } catch (error: any) {
@@ -181,31 +213,34 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
-    
+
     logger.info(`[FIRETV API] DELETE request - removing device: ${deviceId}`)
-    
+
     if (!deviceId) {
       return NextResponse.json(
         { error: 'Device ID required' },
         { status: 400 }
       )
     }
-    
-    const data = await readDevices()
-    const deviceIndex = data.devices.findIndex(d => d.id === deviceId)
-    
-    if (deviceIndex === -1) {
+
+    // Use atomic read-modify-write to prevent race conditions
+    let removedDevice: FireTVDevice | null = null
+    await modifyDevices((data) => {
+      const deviceIndex = data.devices.findIndex(d => d.id === deviceId)
+      if (deviceIndex !== -1) {
+        removedDevice = data.devices[deviceIndex]
+        data.devices.splice(deviceIndex, 1)
+      }
+      return data
+    })
+
+    if (!removedDevice) {
       return NextResponse.json(
         { error: 'Device not found' },
         { status: 404 }
       )
     }
-    
-    const removedDevice = data.devices[deviceIndex]
-    data.devices.splice(deviceIndex, 1)
-    
-    await writeDevices(data)
-    
+
     logger.info(`[FIRETV API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
     return NextResponse.json({ success: true, message: 'Device deleted successfully' })
   } catch (error: any) {

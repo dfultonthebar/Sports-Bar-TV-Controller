@@ -107,13 +107,17 @@ class AtlasClientManager {
       return managed.client
     }
     
-    // Create new client
-    atlasLogger.info('CLIENT_MANAGER', 'Creating new Atlas client', {
+    // Create new client with UDP enabled (only the client manager should enable UDP)
+    atlasLogger.info('CLIENT_MANAGER', 'Creating new Atlas client WITH UDP', {
       key,
       processorId
     })
-    
-    const client = new ExtendedAtlasClient(config, processorId)
+
+    const clientConfig = {
+      ...config,
+      enableUdp: true  // Enable UDP for meter updates
+    }
+    const client = new ExtendedAtlasClient(clientConfig, processorId)
     await client.connect()
     
     managed = {

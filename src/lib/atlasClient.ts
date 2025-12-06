@@ -26,6 +26,7 @@ export interface AtlasConnectionConfig {
   timeout?: number
   maxRetries?: number
   keepAliveInterval?: number
+  enableUdp?: boolean  // Only enable for clients that need UDP meter updates (default: false)
 }
 
 export interface AtlasCommand {
@@ -79,14 +80,16 @@ export class AtlasTCPClient {
       udpPort: config.udpPort || 3131,  // UDP meter port
       timeout: config.timeout || 10000,  // Increased default timeout to 10 seconds
       maxRetries: config.maxRetries || 3,
-      keepAliveInterval: config.keepAliveInterval || 240000 // 4 minutes
+      keepAliveInterval: config.keepAliveInterval || 240000, // 4 minutes
+      enableUdp: config.enableUdp ?? false  // Default: no UDP (only client manager enables UDP)
     }
-    
+
     atlasLogger.info('CLIENT_INIT', 'Atlas TCP client initialized', {
       ipAddress: this.config.ipAddress,
       tcpPort: this.config.tcpPort,
       udpPort: this.config.udpPort,
-      timeout: this.config.timeout
+      timeout: this.config.timeout,
+      enableUdp: this.config.enableUdp
     })
   }
 
@@ -256,11 +259,20 @@ export class AtlasTCPClient {
 
   /**
    * Initialize UDP socket for meter updates
-   * 
-   * CRITICAL FIX: Uses SO_REUSEADDR to allow multiple processes (PM2 cluster workers)
-   * to bind to the same UDP port. This prevents EADDRINUSE errors in cluster mode.
+   *
+   * CRITICAL: Only clients with enableUdp=true should bind to UDP port.
+   * This prevents multiple clients from competing for the same UDP messages.
+   * Only the AtlasClientManager's ExtendedAtlasClient should enable UDP.
    */
   private initializeUdpSocket(): void {
+    // Skip UDP initialization if not enabled (default behavior)
+    if (!this.config.enableUdp) {
+      atlasLogger.debug('UDP', 'UDP socket skipped (enableUdp=false)', {
+        ipAddress: this.config.ipAddress
+      })
+      return
+    }
+
     try {
       if (this.udpSocket) {
         this.udpSocket.close()
@@ -285,11 +297,12 @@ export class AtlasTCPClient {
         port: this.config.udpPort,
         exclusive: false  // Allow port sharing across cluster workers
       })
-      
+
       atlasLogger.info('UDP', 'UDP socket initialized for meter updates', {
         port: this.config.udpPort,
         reuseAddr: true,
-        exclusive: false
+        exclusive: false,
+        ipAddress: this.config.ipAddress
       })
     } catch (error) {
       atlasLogger.error('UDP', 'Failed to initialize UDP socket', error)
@@ -547,8 +560,8 @@ export class AtlasTCPClient {
    * Override this method to implement custom update handling
    */
   protected handleParameterUpdate(param: string, value: any, fullParams: any): void {
-    // Default implementation: just log
-    // Subclasses can override this for custom handling
+    // Default implementation: does nothing
+    // Subclasses (like ExtendedAtlasClient) can override this for custom handling
   }
 
   /**

@@ -6,11 +6,11 @@
       "port": 5555,
       "deviceType": "Fire TV Cube",
       "inputChannel": 13,
-      "id": "firetv_1763842083690_dlejfadp7",
+      "id": "firetv_1764889208258_s1akqme5j",
       "isOnline": true,
-      "addedAt": "2025-11-22T20:06:37.890Z",
-      "updatedAt": "2025-11-22T20:06:37.890Z",
-      "lastSeen": "2025-11-24T16:28:29.686Z"
+      "addedAt": "2025-12-04T23:00:08.455Z",
+      "updatedAt": "2025-12-04T23:00:08.455Z",
+      "lastSeen": "2025-12-06T02:38:12.416Z"
     },
     {
       "name": "Amazon 2",
@@ -18,11 +18,11 @@
       "port": 5555,
       "deviceType": "Fire TV Cube",
       "inputChannel": 14,
-      "id": "firetv_1763842109195_je9raii67",
+      "id": "firetv_1764889234926_isxzuwh21",
       "isOnline": true,
-      "addedAt": "2025-11-22T20:07:03.419Z",
-      "updatedAt": "2025-11-22T20:07:03.420Z",
-      "lastSeen": "2025-11-24T16:28:29.709Z"
+      "addedAt": "2025-12-04T23:00:35.436Z",
+      "updatedAt": "2025-12-04T23:00:35.436Z",
+      "lastSeen": "2025-12-06T02:38:12.416Z"
     },
     {
       "name": "Amazon 3",
@@ -30,11 +30,11 @@
       "port": 5555,
       "deviceType": "Fire TV Cube",
       "inputChannel": 15,
-      "id": "firetv_1763842135692_egfamr0x4",
+      "id": "firetv_1764889262402_vgqlvyeub",
       "isOnline": true,
-      "addedAt": "2025-11-22T20:07:29.910Z",
-      "updatedAt": "2025-11-22T20:07:29.910Z",
-      "lastSeen": "2025-11-24T16:29:29.737Z"
+      "addedAt": "2025-12-04T23:01:02.522Z",
+      "updatedAt": "2025-12-04T23:01:02.522Z",
+      "lastSeen": "2025-12-06T02:38:12.408Z"
     },
     {
       "name": "Amazon 4",
@@ -42,11 +42,11 @@
       "port": 5555,
       "deviceType": "Fire TV Cube",
       "inputChannel": 16,
-      "id": "firetv_1763842163712_c6qz9zle9",
+      "id": "firetv_1764889293768_3qkc8653t",
       "isOnline": true,
-      "addedAt": "2025-11-22T20:07:57.951Z",
-      "updatedAt": "2025-11-22T20:07:57.951Z",
-      "lastSeen": "2025-11-24T16:29:29.757Z"
+      "addedAt": "2025-12-04T23:01:34.198Z",
+      "updatedAt": "2025-12-04T23:01:34.198Z",
+      "lastSeen": "2025-12-06T02:38:12.414Z"
     }
   ]
 }
