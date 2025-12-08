@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger'
 export async function register() {
   // Only run on server side
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    console.log('🚀 [INSTRUMENTATION] Initializing services...')
     logger.info('[INSTRUMENTATION] Initializing services...')
 
     try {

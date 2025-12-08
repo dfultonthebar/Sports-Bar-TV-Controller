@@ -413,44 +413,78 @@ export class SoundtrackYourBrandAPI {
   }
 
   async listStations(accountId?: string): Promise<SoundtrackStation[]> {
-    // Try root-level stations query (similar to nowPlaying)
-    const rootQuery = `
+    // Query playlists from sound zones' playFrom field
+    // This gets all currently assigned playlists across all sound zones
+    const query = `
       query {
-        stations(first: 100) {
-          edges {
-            node {
-              id
-              name
+        me {
+          ... on PublicAPIClient {
+            accounts(first: 10) {
+              edges {
+                node {
+                  id
+                  soundZones(first: 100) {
+                    edges {
+                      node {
+                        playFrom {
+                          __typename
+                          ... on Playlist {
+                            id
+                            name
+                          }
+                          ... on Schedule {
+                            id
+                            name
+                          }
+                          ... on Soundtrack {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
       }
     `
 
-    let result = await this.graphql(rootQuery)
+    const result = await this.graphql(query)
 
-    if (!result.errors && result.data?.stations) {
-      const stationEdges = result.data.stations.edges || []
-      const stations: SoundtrackStation[] = []
-
-      for (const edge of stationEdges) {
-        const station = edge?.node
-        if (!station || !station.id || !station.name) continue
-
-        stations.push({
-          id: station.id,
-          name: station.name
-        })
-      }
-
-      return stations
+    if (result.errors) {
+      logger.error('[Soundtrack] Error fetching playlists:', { data: JSON.stringify(result.errors, null, 2) })
+      return []
     }
 
-    // If root query fails, return empty array
-    // Soundtrack API may not expose station listing - stations might only be
-    // accessible through manual configuration or the web interface
-    logger.info('[Soundtrack] Station listing not available via API')
-    return []
+    const accounts = result.data?.me?.accounts?.edges || []
+    const uniquePlaylists = new Map<string, SoundtrackStation>()
+
+    for (const accountEdge of accounts) {
+      const account = accountEdge?.node
+      if (!account || !account.id) continue
+
+      const soundZones = account.soundZones?.edges || []
+
+      for (const zoneEdge of soundZones) {
+        const zone = zoneEdge?.node
+        if (!zone || !zone.playFrom) continue
+
+        const playFrom = zone.playFrom
+        if (playFrom.id && playFrom.name) {
+          uniquePlaylists.set(playFrom.id, {
+            id: playFrom.id,
+            name: playFrom.name,
+            description: `Type: ${playFrom.__typename}`
+          })
+        }
+      }
+    }
+
+    logger.info(`[Soundtrack] Found ${uniquePlaylists.size} unique playlists`)
+    return Array.from(uniquePlaylists.values())
   }
 
   async updateSoundZone(soundZoneId: string, data: {
@@ -458,37 +492,91 @@ export class SoundtrackYourBrandAPI {
     volume?: number
     playing?: boolean
   }): Promise<SoundtrackSoundZone> {
-    const mutation = `
-      mutation UpdateSoundZone($id: ID!, $input: SoundZoneInput!) {
-        updateSoundZone(id: $id, input: $input) {
-          soundZone {
-            id
-            name
-            currentPlayback {
-              station {
-                id
-                name
-              }
-              playing
-              volume
-            }
+    // According to Soundtrack API v2, use separate mutations for play/pause and station changes
+    // Correct mutation names are 'play' and 'pause' (not 'playSoundZone' or 'pauseSoundZone')
+    // Input types are PlayInput and PauseInput with 'soundZone' field (not 'id')
+
+    const result: any = { soundZone: {} }
+
+    // Handle play/pause state
+    if (data.playing !== undefined) {
+      const playbackMutation = data.playing ? `
+        mutation Play($input: PlayInput!) {
+          play(input: $input) {
+            status
           }
         }
+      ` : `
+        mutation Pause($input: PauseInput!) {
+          pause(input: $input) {
+            status
+          }
+        }
+      `
+
+      const playbackResult = await this.graphql(playbackMutation, {
+        input: { soundZone: soundZoneId }
+      })
+
+      if (playbackResult.errors) {
+        logger.error('[Soundtrack] Play/pause error:', { data: JSON.stringify(playbackResult.errors, null, 2) })
+        throw new Error(playbackResult.errors[0]?.message || 'Failed to control playback')
       }
-    `
-    
-    const input: any = {}
-    if (data.stationId !== undefined) input.stationId = data.stationId
-    if (data.volume !== undefined) input.volume = Math.max(0, Math.min(100, data.volume))
-    if (data.playing !== undefined) input.playing = data.playing
-    
-    const result = await this.graphql(mutation, { id: soundZoneId, input })
-    
-    if (result.errors) {
-      throw new Error(result.errors[0]?.message || 'Failed to update sound zone')
+
+      const mutationName = data.playing ? 'play' : 'pause'
+      const status = playbackResult.data[mutationName].status
+      logger.info(`[Soundtrack] ${data.playing ? 'Play' : 'Pause'} mutation completed with status: ${status}`)
+
+      // Populate result with basic zone info since mutation doesn't return full zone data
+      result.soundZone = {
+        id: soundZoneId,
+        name: 'Sound Zone', // Name will be populated if we fetch full zone data later
+        account: { id: '', name: '' },
+        currentPlayback: {
+          playing: data.playing,
+          volume: 0,
+          station: null
+        }
+      }
     }
-    
-    return result.data.updateSoundZone.soundZone
+
+    // Handle playlist/station change (if needed)
+    if (data.stationId) {
+      const stationMutation = `
+        mutation SetPlayFrom($input: SetPlayFromInput!) {
+          setPlayFrom(input: $input) {
+            clientMutationId
+          }
+        }
+      `
+
+      const stationResult = await this.graphql(stationMutation, {
+        input: {
+          soundZone: soundZoneId,
+          source: data.stationId
+        }
+      })
+
+      if (stationResult.errors) {
+        logger.error('[Soundtrack] Playlist/station change error:', { data: JSON.stringify(stationResult.errors, null, 2) })
+        throw new Error(stationResult.errors[0]?.message || 'Failed to change playlist/station')
+      }
+
+      logger.info(`[Soundtrack] setPlayFrom mutation completed successfully`)
+
+      // Update result to reflect the change
+      result.soundZone.currentPlayback = {
+        ...result.soundZone.currentPlayback,
+        station: { id: data.stationId, name: 'Playlist' }
+      }
+    }
+
+    // Volume changes are not supported by Soundtrack API v2 (controlled via hardware mixer)
+    if (data.volume !== undefined) {
+      logger.warn('[Soundtrack] Volume control not supported via API - use Atlas audio mixer')
+    }
+
+    return result.soundZone
   }
 
   async play(soundZoneId: string, stationId?: string): Promise<void> {

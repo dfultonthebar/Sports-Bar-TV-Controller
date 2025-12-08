@@ -75,21 +75,33 @@ class SchedulerService {
       logger.debug(`[SCHEDULER] Checking ${schedules.length} enabled schedules...`);
 
       for (const schedule of schedules) {
-        const nextExecution = this.calculateNextExecution(schedule);
+        let shouldExecute = false;
 
-        if (!nextExecution) {
-          logger.debug(`[SCHEDULER] No next execution time for schedule: ${schedule.name} (type: ${schedule.scheduleType})`);
-          continue;
-        }
-
-        // Check if it's time to execute (within the last minute)
-        const timeDiff = now.getTime() - nextExecution.getTime();
-        const shouldExecute = timeDiff >= 0 && timeDiff < 60000;
-
+        // Special handling for continuous schedules (like AI Game Monitor)
+        // These run every 5 minutes based on time since last execution
         if (schedule.scheduleType === 'continuous') {
+          const intervalMs = 5 * 60 * 1000; // 5 minutes
           const lastExec = schedule.lastExecuted ? new Date(schedule.lastExecuted) : null;
-          const minutesSinceLastExec = lastExec ? Math.floor((now.getTime() - new Date(lastExec).getTime()) / 60000) : null;
-          logger.debug(`[SCHEDULER] 📺 Continuous schedule "${schedule.name}": Last exec ${minutesSinceLastExec !== null ? minutesSinceLastExec + ' min ago' : 'never'}, next in ${Math.ceil((nextExecution.getTime() - now.getTime()) / 60000)} min`);
+          const timeSinceLastExec = lastExec ? now.getTime() - lastExec.getTime() : Infinity;
+          const minutesSinceLastExec = lastExec ? Math.floor(timeSinceLastExec / 60000) : null;
+
+          // Execute if never run, or if interval has passed
+          shouldExecute = !lastExec || timeSinceLastExec >= intervalMs;
+
+          const nextIn = lastExec ? Math.max(0, Math.ceil((intervalMs - timeSinceLastExec) / 60000)) : 0;
+          logger.debug(`[SCHEDULER] 📺 Continuous schedule "${schedule.name}": Last exec ${minutesSinceLastExec !== null ? minutesSinceLastExec + ' min ago' : 'never'}, ${shouldExecute ? 'EXECUTING NOW' : `next in ${nextIn} min`}`);
+        } else {
+          // For time-based schedules (once, daily, weekly), use calculateNextExecution
+          const nextExecution = this.calculateNextExecution(schedule);
+
+          if (!nextExecution) {
+            logger.debug(`[SCHEDULER] No next execution time for schedule: ${schedule.name} (type: ${schedule.scheduleType})`);
+            continue;
+          }
+
+          // Check if it's time to execute (within the last minute)
+          const timeDiff = now.getTime() - nextExecution.getTime();
+          shouldExecute = timeDiff >= 0 && timeDiff < 60000;
         }
 
         if (shouldExecute) {

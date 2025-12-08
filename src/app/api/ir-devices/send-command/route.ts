@@ -55,7 +55,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
       socket.write(command + '\r')
 
       // For IR commands, we can resolve quickly after sending
-      // iTach usually responds within 100ms
+      // iTach usually responds within 30-50ms
       setTimeout(() => {
         if (!isResolved) {
           isResolved = true
@@ -63,7 +63,7 @@ async function sendITachCommand(iTachAddress: string, command: string): Promise<
           socket.destroy()
           resolve(true)
         }
-      }, 150)
+      }, 50) // Reduced from 150ms for faster response
     })
 
     socket.on('data', (data) => {

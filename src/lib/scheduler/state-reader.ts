@@ -32,6 +32,10 @@ export interface OutputState {
   zoneType?: 'main' | 'bar' | 'viewing-area' | 'side' | 'patio' | 'other'
   currentInput?: number
   currentChannel?: InputChannelState
+  hasManualOverride: boolean // Bartender protection - excludes from AI scheduling
+  manualOverrideUntil?: string
+  isSchedulingEnabled: boolean // Whether this output can be used by AI scheduler (false for audio-only outputs)
+  tvGroupId?: string  // Group ID for TVs that are physically close together - AI avoids same game on grouped TVs
 }
 
 export interface AvailableInput {
@@ -84,6 +88,9 @@ export class StateReader {
     // Build available inputs list
     const availableInputs = await this.getAvailableInputs(matrixInputs)
 
+    // Get output (TV) manual overrides
+    const outputOverrides = await this.getOutputManualOverrides()
+
     // Map outputs with current input/channel info
     const outputs = matrixOutputs.map(output => {
       const route = routes.find(r => r.outputNum === output.channelNumber)
@@ -92,12 +99,32 @@ export class StateReader {
         ? inputs.find(i => i.inputNumber === currentInput)
         : undefined
 
+      // Check if this output has a bartender override
+      const overrideInfo = outputOverrides.get(output.channelNumber)
+      const hasManualOverride = overrideInfo !== undefined
+
+      // Check if output is enabled for scheduling (audio-only outputs are disabled)
+      // Use !! to handle SQLite 0/1 integers properly
+      const isSchedulingEnabled = !!output.isSchedulingEnabled
+
+      if (hasManualOverride) {
+        logger.info(`[STATE_READER] Output ${output.channelNumber} (${output.label}) is protected by bartender override until ${overrideInfo}`)
+      }
+
+      if (!isSchedulingEnabled) {
+        logger.debug(`[STATE_READER] Output ${output.channelNumber} (${output.label}) is excluded from scheduling (audio-only)`)
+      }
+
       return {
         outputNumber: output.channelNumber,
         zoneName: output.label || undefined,
         zoneType: this.inferZoneType(output.label),
         currentInput,
-        currentChannel
+        currentChannel,
+        hasManualOverride,
+        manualOverrideUntil: overrideInfo,
+        isSchedulingEnabled,
+        tvGroupId: output.tvGroupId || undefined  // For preventing same game on adjacent TVs
       }
     })
 
@@ -136,7 +163,7 @@ export class StateReader {
         .from(schema.inputCurrentChannels)
 
       return channelStates.map(state => ({
-        inputNumber: state.inputNumber,
+        inputNumber: state.inputNum,  // Fixed: schema uses inputNum, not inputNumber
         inputLabel: state.inputLabel,
         deviceType: this.normalizeDeviceType(state.deviceType),
         deviceId: state.deviceId || undefined,
@@ -144,7 +171,7 @@ export class StateReader {
         channelName: state.channelName,
         showName: state.showName,
         isLiveEvent: this.isLiveEvent(state.showName, state.channelName),
-        lastUpdated: state.lastUpdated || undefined
+        lastUpdated: state.updatedAt || undefined  // Fixed: schema uses updatedAt, not lastUpdated
       }))
     } catch (error) {
       logger.error('[STATE_READER] Error fetching input channel states:', error)
@@ -220,9 +247,9 @@ export class StateReader {
 
       // Check if input is available for scheduling
       // Must have:
-      // 1. isSchedulingEnabled !== false
+      // 1. isSchedulingEnabled is truthy (handles SQLite 0/1 integers)
       // 2. NO active manual override (bartender protection)
-      const isAvailable = input.isSchedulingEnabled !== false && !hasManualOverride
+      const isAvailable = !!input.isSchedulingEnabled && !hasManualOverride
 
       if (hasManualOverride) {
         logger.info(`[STATE_READER] Input ${input.channelNumber} (${input.label}) is protected by manual override - excluded from scheduling`)
@@ -236,7 +263,16 @@ export class StateReader {
         isAvailable,
         capabilities
       })
+
+      logger.warn(
+        `[STATE_READER] Input ${input.channelNumber} (${input.label}): ` +
+        `deviceType=${deviceType}, canChangeChannel=${capabilities.canChangechannel}, ` +
+        `isAvailable=${isAvailable}, isSchedulingEnabled=${input.isSchedulingEnabled}, ` +
+        `hasManualOverride=${hasManualOverride}`
+      )
     }
+
+    logger.warn(`[STATE_READER] Total available inputs: ${availableInputs.length}, with channel change capability: ${availableInputs.filter(i => i.capabilities.canChangechannel && i.isAvailable).length}`)
 
     return availableInputs
   }
@@ -265,6 +301,41 @@ export class StateReader {
     } catch (error) {
       logger.error('[STATE_READER] Error fetching manual overrides:', error)
       return new Set()
+    }
+  }
+
+  /**
+   * Get map of output numbers with active manual overrides (bartender protection)
+   * Returns Map<outputNumber, manualOverrideUntil>
+   */
+  private async getOutputManualOverrides(): Promise<Map<number, string>> {
+    try {
+      const now = new Date().toISOString()
+
+      // Query outputs with active manual overrides (manualOverrideUntil > now)
+      const overriddenOutputs = await db
+        .select({
+          outputNum: schema.matrixRoutes.outputNum,
+          manualOverrideUntil: schema.matrixRoutes.manualOverrideUntil
+        })
+        .from(schema.matrixRoutes)
+        .where(sql`${schema.matrixRoutes.manualOverrideUntil} > ${now}`)
+
+      const overrideMap = new Map<number, string>()
+      overriddenOutputs.forEach(row => {
+        if (row.manualOverrideUntil) {
+          overrideMap.set(row.outputNum, row.manualOverrideUntil)
+        }
+      })
+
+      if (overrideMap.size > 0) {
+        logger.info(`[STATE_READER] Found ${overrideMap.size} outputs with active bartender overrides: [${Array.from(overrideMap.keys()).join(', ')}]`)
+      }
+
+      return overrideMap
+    } catch (error) {
+      logger.error('[STATE_READER] Error fetching output manual overrides:', error)
+      return new Map()
     }
   }
 
@@ -372,6 +443,40 @@ export class StateReader {
         const order = { cable: 1, directv: 2, firetv: 3, atmosphere: 4 }
         return (order[a.deviceType] || 999) - (order[b.deviceType] || 999)
       })
+  }
+
+  /**
+   * Get available channel numbers for a device type from channel presets
+   */
+  async getAvailableChannels(deviceType: 'cable' | 'directv'): Promise<Set<string>> {
+    try {
+      const presets = await db
+        .select({ channelNumber: schema.channelPresets.channelNumber })
+        .from(schema.channelPresets)
+        .where(
+          and(
+            eq(schema.channelPresets.deviceType, deviceType),
+            eq(schema.channelPresets.isActive, true)
+          )
+        )
+
+      const channels = new Set<string>()
+      presets.forEach(preset => channels.add(preset.channelNumber))
+
+      logger.info(`[STATE_READER] Found ${channels.size} available ${deviceType} channels in presets`)
+      return channels
+    } catch (error) {
+      logger.error(`[STATE_READER] Error fetching ${deviceType} channel presets:`, error)
+      return new Set()
+    }
+  }
+
+  /**
+   * Check if a channel is available for a device type
+   */
+  async isChannelAvailable(channelNumber: string, deviceType: 'cable' | 'directv'): Promise<boolean> {
+    const availableChannels = await this.getAvailableChannels(deviceType)
+    return availableChannels.has(channelNumber)
   }
 }
 

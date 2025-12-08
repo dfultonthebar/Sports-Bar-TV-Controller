@@ -1,21 +1,23 @@
-import { 
-  Home, 
-  Tv, 
-  Volume2, 
-  Settings, 
-  FileText, 
+import {
+  Home,
+  Tv,
+  Volume2,
+  Settings,
+  FileText,
   Calendar,
   GitBranch,
   Sparkles,
   Brain,
   BookOpen,
-  Activity
+  Activity,
+  Trophy
 } from 'lucide-react';
 
 export const navigationItems = [
   { icon: Home, label: 'Dashboard', href: '/' },
   { icon: Tv, label: 'Matrix Control', href: '/matrix-control' },
   { icon: Volume2, label: 'Audio Zones', href: '/audio-zones' },
+  { icon: Trophy, label: 'AI Game Plan', href: '/ai-gameplan' },
   { icon: Calendar, label: 'Sports Guide', href: '/sports-guide' },
   { icon: Calendar, label: 'Smart Scheduler', href: '/scheduler' },
   { icon: Brain, label: 'AI Assistant', href: '/ai-assistant' },

@@ -25,16 +25,10 @@ export async function GET(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Path parameter validation
+  // Path parameter validation (GET requests don't have a body)
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   const { id } = params
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -238,16 +232,10 @@ export async function DELETE(
     return rateLimit.response
   }
 
-
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Path parameter validation
+  // Path parameter validation (DELETE requests don't have a body)
   const params = await paramsPromise
   const paramsValidation = validatePathParams(params, z.object({ id: z.string().min(1) }))
   if (isValidationError(paramsValidation)) return paramsValidation.error
-
 
   const { id } = params
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

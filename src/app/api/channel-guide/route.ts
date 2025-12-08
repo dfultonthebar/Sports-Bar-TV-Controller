@@ -18,6 +18,33 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
+// Streaming station codes to app mapping for Fire TV devices
+const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
+  'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
+  'NHLCI': { appName: 'NHL Center Ice', packages: ['com.nhl.gc', 'com.nhl.gc1415'] },
+  'MLBEI': { appName: 'MLB.TV', packages: ['com.mlb.android', 'com.mlb.atbat'] },
+  'ESPND': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
+  'ESPN+': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
+  'NBCUN': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
+  'PEACOCK': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
+  'PRIME': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
+  'AMZN': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
+  'FOXD': { appName: 'Fox Sports', packages: ['com.foxsports.android', 'com.foxsports.android.foxsportsgo'] },
+  'APPLETV': { appName: 'Apple TV+', packages: ['com.apple.atve.amazon.appletv'] },
+  'MLSDK': { appName: 'MLS Season Pass', packages: ['tv.mls', 'com.apple.atve.amazon.appletv'] },
+  'BSNOR+': { appName: 'Bally Sports', packages: ['com.bfrapp', 'com.ballysports.ftv'] },
+  'B10+': { appName: 'Big Ten+', packages: ['com.foxsports.bigten.android'] },
+  'NFHS': { appName: 'NFHS Network', packages: ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive'] },
+}
+
+// NFHS Network packages for detecting if device has NFHS login
+const NFHS_PACKAGES = ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive']
+
+// Get streaming app info for a station code
+function getStreamingAppInfo(station: string): { appName: string; packages: string[] } | null {
+  return STREAMING_STATION_MAP[station.toUpperCase()] || null
+}
+
 interface DeviceGuideRequest {
   inputNumber: number
   deviceType: 'cable' | 'satellite' | 'streaming'
@@ -90,6 +117,66 @@ export async function POST(request: NextRequest) {
 
     logInfo(`Received ${guide.listing_groups?.length || 0} listing groups from API`)
 
+    // For streaming devices (Fire TV), fetch the device's installed apps AND logged-in subscriptions
+    let deviceInstalledApps: string[] = []
+    let deviceLoggedInPackages: string[] = []  // Packages for services the device is logged into
+
+    if (deviceType === 'streaming' && deviceId) {
+      // Fetch installed apps from Scout
+      try {
+        const scoutResponse = await fetch('http://localhost:3001/api/firestick-scout')
+        if (scoutResponse.ok) {
+          const scoutData = await scoutResponse.json()
+          const device = scoutData.statuses?.find((d: any) => d.deviceId === deviceId)
+          if (device && device.installedApps) {
+            deviceInstalledApps = device.installedApps
+            logInfo(`Fire TV device ${deviceId} has ${deviceInstalledApps.length} installed apps`)
+          }
+        }
+      } catch (error: any) {
+        logError(`Could not fetch Fire TV device apps: ${error.message}`)
+      }
+
+      // Fetch device login status (which subscriptions are logged in)
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { eq, and } = await import('drizzle-orm')
+
+        // Get all services with their packages
+        const services = await db.select().from(schema.streamingServices)
+
+        // Get logins for this device
+        const logins = await db.select()
+          .from(schema.deviceStreamingLogins)
+          .where(and(
+            eq(schema.deviceStreamingLogins.deviceId, deviceId),
+            eq(schema.deviceStreamingLogins.isLoggedIn, true)
+          ))
+
+        // Build list of packages for logged-in services
+        const loggedInServiceIds = new Set(logins.map(l => l.serviceId))
+
+        for (const service of services) {
+          if (loggedInServiceIds.has(service.id)) {
+            const packages = JSON.parse(service.packages || '[]')
+            deviceLoggedInPackages.push(...packages)
+          }
+        }
+
+        // If no logins configured, fall back to installed apps (legacy behavior)
+        if (logins.length === 0) {
+          logInfo(`No subscription logins configured for ${deviceId}, falling back to installed apps`)
+          deviceLoggedInPackages = deviceInstalledApps
+        } else {
+          logInfo(`Fire TV device ${deviceId} has ${logins.length} services logged in (${deviceLoggedInPackages.length} packages)`)
+        }
+      } catch (error: any) {
+        logError(`Could not fetch device logins, using installed apps: ${error.message}`)
+        deviceLoggedInPackages = deviceInstalledApps
+      }
+    }
+
     // Transform The Rail Media API data to our format
     const programs = []
     const channels = new Map()
@@ -139,17 +226,37 @@ export async function POST(request: NextRequest) {
             }
           }
         } else if (deviceType === 'streaming') {
-          // Streaming services - always available
-          const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-          
-          channelInfo = {
-            id: `stream-${firstStation}`,
-            name: firstStation,
-            type: 'streaming',
-            cost: 'subscription',
-            platforms: ['Streaming Services'],
-            channelNumber: firstStation,
-            deviceType: 'streaming'
+          // For streaming/Fire TV devices, check if any station has a streaming app
+          const stationList = listing.stations
+          if (stationList) {
+            const stations: string[] = Array.isArray(stationList)
+              ? stationList
+              : Object.values(stationList).filter((s): s is string => typeof s === 'string')
+
+            for (const station of stations) {
+              const appInfo = getStreamingAppInfo(station)
+              if (appInfo) {
+                // Check if the Fire TV device has this service LOGGED IN (not just installed)
+                // This ensures we only show games for services with active subscriptions
+                const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
+                if (hasLoggedIn) {
+                  channelInfo = {
+                    id: `stream-${appInfo.appName.replace(/\s+/g, '-').toLowerCase()}`,
+                    name: appInfo.appName,
+                    number: station,
+                    type: 'streaming',
+                    cost: 'subscription',
+                    platforms: ['Fire TV', 'Streaming'],
+                    channelNumber: station,
+                    deviceType: 'streaming',
+                    streamingApp: appInfo.appName,
+                    packages: appInfo.packages
+                  }
+                  logInfo(`Matched streaming station ${station} to app ${appInfo.appName} on device ${deviceId}`)
+                  break
+                }
+              }
+            }
           }
         }
 
@@ -211,6 +318,83 @@ export async function POST(request: NextRequest) {
 
     logInfo(`Transformed ${programs.length} programs and ${channels.size} channels`)
 
+    // For streaming devices, check if NFHS Network is logged in and add NFHS games
+    if (deviceType === 'streaming' && deviceId) {
+      const hasNfhsLogin = NFHS_PACKAGES.some(pkg => deviceLoggedInPackages.includes(pkg))
+
+      if (hasNfhsLogin) {
+        logInfo(`Device ${deviceId} has NFHS Network login - fetching NFHS games`)
+
+        try {
+          // Fetch NFHS games from the NFHS API
+          const nfhsResponse = await fetch('http://localhost:3001/api/nfhs')
+          if (nfhsResponse.ok) {
+            const nfhsData = await nfhsResponse.json()
+
+            if (nfhsData.success && nfhsData.games) {
+              logInfo(`Found ${nfhsData.games.length} NFHS games to add`)
+
+              // Add NFHS channel
+              const nfhsChannel = {
+                id: 'stream-nfhs-network',
+                name: 'NFHS Network',
+                number: 'NFHS',
+                type: 'streaming',
+                cost: 'subscription',
+                platforms: ['Fire TV', 'Streaming'],
+                channelNumber: 'NFHS',
+                deviceType: 'streaming',
+                streamingApp: 'NFHS Network',
+                packages: NFHS_PACKAGES
+              }
+              channels.set(nfhsChannel.id, nfhsChannel)
+
+              // Add NFHS games as programs
+              for (const game of nfhsData.games) {
+                // Parse dateTime for sorting and filtering
+                let startTime: Date
+                let endTime: Date
+
+                if (game.dateTime) {
+                  startTime = new Date(game.dateTime)
+                } else {
+                  // Try parsing date + time
+                  startTime = new Date(`${game.date} ${game.time}`)
+                }
+
+                // Assume 2 hour games for high school sports
+                endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000)
+
+                const program = {
+                  id: `nfhs-${game.id}`,
+                  league: 'High School Sports',
+                  homeTeam: game.homeTeam,
+                  awayTeam: game.awayTeam,
+                  gameTime: game.time,
+                  startTime: startTime.toISOString(),
+                  endTime: endTime.toISOString(),
+                  channel: nfhsChannel,
+                  description: `${game.sport} - ${game.homeTeam} vs ${game.awayTeam} at ${game.location}`,
+                  isSports: true,
+                  isLive: game.status === 'live',
+                  venue: game.location,
+                  sport: game.sport,
+                  level: game.level,
+                  eventUrl: game.eventUrl,
+                  status: game.status
+                }
+
+                programs.push(program)
+                logInfo(`Added NFHS game: ${game.sport} - ${game.homeTeam} vs ${game.awayTeam}`)
+              }
+            }
+          }
+        } catch (nfhsError: any) {
+          logError(`Could not fetch NFHS games: ${nfhsError.message}`)
+        }
+      }
+    }
+
     // Filter out games that started more than 2 hours ago to keep the guide fresh
     const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
     const freshPrograms = programs.filter(program => {
@@ -227,38 +411,48 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter by channel presets - only show channels that are configured
-    // Load channel presets from database
+    // Load channel presets from database (skip for streaming - they use installed apps)
     const { db } = await import('@/db')
     const { schema } = await import('@/db')
 
-    const presets = await db.select().from(schema.channelPresets)
-    const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
-    const presetChannels = new Set(
-      presets
-        .filter(p => p.deviceType === presetDeviceType)
-        .map(p => p.channelNumber)
-    )
+    let presetFilteredPrograms = freshPrograms
+    let presetChannels = new Set<string>()
+    let presetRemovedCount = 0
 
-    logInfo(`Loaded ${presetChannels.size} ${presetDeviceType} channel presets`)
+    if (deviceType !== 'streaming') {
+      // For cable/satellite, filter by channel presets
+      const presets = await db.select().from(schema.channelPresets)
+      const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
+      presetChannels = new Set(
+        presets
+          .filter(p => p.deviceType === presetDeviceType)
+          .map(p => p.channelNumber)
+      )
 
-    // Filter programs to only include preset channels
-    const presetFilteredPrograms = freshPrograms.filter(program => {
-      const channelNumber = program.channel?.channelNumber || program.channel?.number
-      const isInPreset = channelNumber && presetChannels.has(channelNumber)
+      logInfo(`Loaded ${presetChannels.size} ${presetDeviceType} channel presets`)
 
-      if (!isInPreset) {
-        logInfo(`Filtering out channel ${channelNumber} - not in presets`, {
-          league: program.league,
-          channel: program.channel?.name
-        })
+      // Filter programs to only include preset channels
+      presetFilteredPrograms = freshPrograms.filter(program => {
+        const channelNumber = program.channel?.channelNumber || program.channel?.number
+        const isInPreset = channelNumber && presetChannels.has(channelNumber)
+
+        if (!isInPreset) {
+          logInfo(`Filtering out channel ${channelNumber} - not in presets`, {
+            league: program.league,
+            channel: program.channel?.name
+          })
+        }
+
+        return isInPreset
+      })
+
+      presetRemovedCount = freshPrograms.length - presetFilteredPrograms.length
+      if (presetRemovedCount > 0) {
+        logInfo(`[PRESET FILTER] Filtered out ${presetRemovedCount} programs not in channel presets`)
       }
-
-      return isInPreset
-    })
-
-    const presetRemovedCount = freshPrograms.length - presetFilteredPrograms.length
-    if (presetRemovedCount > 0) {
-      logInfo(`[PRESET FILTER] Filtered out ${presetRemovedCount} programs not in channel presets`)
+    } else {
+      // For streaming devices, no preset filtering - already filtered by installed apps
+      logInfo(`Streaming device - skipping preset filtering, showing ${freshPrograms.length} programs`)
     }
 
     const response = {

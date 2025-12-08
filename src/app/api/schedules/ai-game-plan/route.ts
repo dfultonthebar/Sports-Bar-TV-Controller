@@ -15,6 +15,36 @@ import { logger } from '@/lib/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
 
+// Streaming station codes to app mapping
+// Maps Rail Media station codes to Fire TV app package names and display names
+const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
+  'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
+  'NHLCI': { appName: 'NHL Center Ice', packages: ['com.nhl.gc', 'com.nhl.gc1415'] },
+  'MLBEI': { appName: 'MLB.TV', packages: ['com.mlb.android', 'com.mlb.atbat'] },
+  'ESPND': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
+  'ESPN+': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
+  'NBCUN': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
+  'PEACOCK': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
+  'PRIME': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
+  'AMZN': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
+  'FOXD': { appName: 'Fox Sports', packages: ['com.foxsports.android', 'com.foxsports.android.foxsportsgo'] },
+  'APPLETV': { appName: 'Apple TV+', packages: ['com.apple.atve.amazon.appletv'] },
+  'MLSDK': { appName: 'MLS Season Pass', packages: ['tv.mls', 'com.apple.atve.amazon.appletv'] },
+  'BSNOR+': { appName: 'Bally Sports', packages: ['com.bfrapp', 'com.ballysports.ftv'] },
+  'B10+': { appName: 'Big Ten+', packages: ['com.foxsports.bigten.android'] },
+}
+
+// Check if a station is streaming-only (no cable/satellite channel)
+function isStreamingStation(station: string): boolean {
+  const streamingOnly = ['NBALP', 'NHLCI', 'MLBEI', 'ESPND', 'ESPN+', 'MLSDK', 'BSNOR+', 'B10+', 'APPLETV', 'PRIME', 'AMZN']
+  return streamingOnly.includes(station.toUpperCase())
+}
+
+// Get streaming app info for a station
+function getStreamingAppInfo(station: string): { appName: string; packages: string[] } | null {
+  return STREAMING_STATION_MAP[station.toUpperCase()] || null
+}
+
 // Map league names to ESPN API parameters
 function mapLeagueToESPN(league: string): { sport: string; league: string } | null {
   const leagueLower = league.toLowerCase()
@@ -118,6 +148,38 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
       }
     }
 
+    // Normalize network names for matching Rail Media station names to preset names
+    // Rail Media uses compact names like "NBATV", presets use names like "NBA TV"
+    const normalizeNetworkName = (name: string): string => {
+      return name
+        .toLowerCase()
+        .replace(/\s+/g, '') // Remove all spaces
+        .replace(/network/gi, '') // Remove "network"
+        .replace(/channel/gi, '') // Remove "channel"
+        .replace(/hd$/i, '') // Remove HD suffix
+        .trim()
+    }
+
+    // Build network name lookup maps (normalized name -> preset channel number)
+    const networkToCableChannel = new Map<string, string>()
+    const networkToDirectvChannel = new Map<string, string>()
+
+    for (const preset of channelPresets) {
+      const normalizedNetwork = normalizeNetworkName(preset.name)
+
+      if (preset.deviceType === 'cable') {
+        if (!networkToCableChannel.has(normalizedNetwork)) {
+          networkToCableChannel.set(normalizedNetwork, preset.channelNumber)
+        }
+      } else if (preset.deviceType === 'directv') {
+        if (!networkToDirectvChannel.has(normalizedNetwork)) {
+          networkToDirectvChannel.set(normalizedNetwork, preset.channelNumber)
+        }
+      }
+    }
+
+    logger.info(`[AI_GAME_PLAN] Network lookup maps: ${networkToCableChannel.size} cable networks, ${networkToDirectvChannel.size} DirecTV networks`)
+
     logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets`)
     logger.info(`[AI_GAME_PLAN] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`)
 
@@ -161,12 +223,47 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
         }
 
-        // Extract BOTH cable and DirecTV channel numbers and validate against presets
+        // Extract BOTH cable and DirecTV channel numbers
+        // PRIMARY METHOD: Use network/station name to look up channel from our presets
+        // FALLBACK: Try direct channel number matching if network name doesn't match
         let cableChannelNumber = ''
         let directvChannelNumber = ''
+        let matchedNetworkName = ''
 
+        // First, try to match by station/network name (most reliable method)
+        // Rail Media provides station names like "ESPN", "NBATV", "FOX", etc.
+        if (listing.stations && Array.isArray(listing.stations)) {
+          for (const station of listing.stations) {
+            const normalizedStation = normalizeNetworkName(station)
+
+            // Look up cable channel by network name
+            if (!cableChannelNumber) {
+              const cableChannel = networkToCableChannel.get(normalizedStation)
+              if (cableChannel) {
+                cableChannelNumber = cableChannel
+                matchedNetworkName = station
+                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to cable channel ${cableChannel}`)
+              }
+            }
+
+            // Look up DirecTV channel by network name
+            if (!directvChannelNumber) {
+              const directvChannel = networkToDirectvChannel.get(normalizedStation)
+              if (directvChannel) {
+                directvChannelNumber = directvChannel
+                matchedNetworkName = station
+                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to DirecTV channel ${directvChannel}`)
+              }
+            }
+
+            // If we found both, stop looking
+            if (cableChannelNumber && directvChannelNumber) break
+          }
+        }
+
+        // FALLBACK: If network name matching didn't work, try direct channel number matching
         // Extract cable channels and match against presets
-        if (listing.channel_numbers?.CAB) {
+        if (!cableChannelNumber && listing.channel_numbers?.CAB) {
           const cabChannels = listing.channel_numbers.CAB
           for (const providerChannels of Object.values(cabChannels)) {
             const channels = providerChannels as any
@@ -186,8 +283,8 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Extract satellite/DirecTV channels and match against presets
-        if (listing.channel_numbers?.SAT) {
+        // Extract satellite/DirecTV channels and match against presets (fallback)
+        if (!directvChannelNumber && listing.channel_numbers?.SAT) {
           const satChannels = listing.channel_numbers.SAT
           for (const providerChannels of Object.values(satChannels)) {
             const channels = providerChannels as any
@@ -231,8 +328,36 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Only add game if we have at least one valid channel from our presets
-        if (cableChannelNumber || directvChannelNumber) {
+        // Check for streaming-only availability
+        // Extract all station codes and check for streaming services
+        let streamingApp: string | null = null
+        let streamingPackages: string[] = []
+        let isStreamingOnly = false
+
+        const stationList = listing.stations
+        if (stationList) {
+          // Handle both array and object formats
+          const stations: string[] = Array.isArray(stationList)
+            ? stationList
+            : Object.values(stationList).filter((s): s is string => typeof s === 'string')
+
+          for (const station of stations) {
+            const appInfo = getStreamingAppInfo(station)
+            if (appInfo) {
+              streamingApp = appInfo.appName
+              streamingPackages = appInfo.packages
+              // Check if this is a streaming-only station (no traditional TV channel)
+              if (isStreamingStation(station)) {
+                isStreamingOnly = !cableChannelNumber && !directvChannelNumber
+              }
+              logger.debug(`[AI_GAME_PLAN] Found streaming option: ${station} -> ${appInfo.appName}`)
+              break // Use first matching streaming app
+            }
+          }
+        }
+
+        // Add game if we have cable/satellite channel OR streaming availability
+        if (cableChannelNumber || directvChannelNumber || streamingApp) {
           // Extract team names from various data formats
           let homeTeam = listing.data['home team'] || listing.data['team'] || ''
           let awayTeam = listing.data['visiting team'] || listing.data['opponent'] || ''
@@ -263,7 +388,11 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
             cableChannel: cableChannelNumber,
             directvChannel: directvChannelNumber,
             channelNumber: cableChannelNumber || directvChannelNumber,
-            venue: listing.data['venue'] || listing.data['location'] || ''
+            venue: listing.data['venue'] || listing.data['location'] || '',
+            // Streaming info
+            streamingApp: streamingApp,
+            streamingPackages: streamingPackages,
+            streamingOnly: isStreamingOnly
           }
 
           allGames.push(game)
@@ -355,6 +484,75 @@ export async function GET(request: NextRequest) {
     const freshGames = await fetchFreshGamesFromRailMedia(homeTeamsList)
 
     logger.info(`[AI_GAME_PLAN] Fetched ${freshGames.length} fresh games from Rail Media API`)
+
+    // Fetch Fire TV device statuses for streaming capability matching
+    let fireTVDevices: any[] = []
+    try {
+      const scoutResponse = await fetch('http://localhost:3001/api/firestick-scout')
+      if (scoutResponse.ok) {
+        const scoutData = await scoutResponse.json()
+        fireTVDevices = scoutData.statuses || []
+        logger.info(`[AI_GAME_PLAN] Fetched ${fireTVDevices.length} Fire TV devices for streaming matching`)
+      }
+    } catch (error: any) {
+      logger.warn(`[AI_GAME_PLAN] Could not fetch Fire TV devices: ${error.message}`)
+    }
+
+    // Fetch device login statuses (which subscriptions are logged in per device)
+    const deviceLoggedInPackages: Record<string, string[]> = {}
+    try {
+      const services = await db.select().from(schema.streamingServices)
+      const logins = await db.select().from(schema.deviceStreamingLogins)
+
+      // Group logins by device
+      for (const login of logins) {
+        if (!login.isLoggedIn) continue
+        const service = services.find(s => s.id === login.serviceId)
+        if (service) {
+          const packages = JSON.parse(service.packages || '[]')
+          if (!deviceLoggedInPackages[login.deviceId]) {
+            deviceLoggedInPackages[login.deviceId] = []
+          }
+          deviceLoggedInPackages[login.deviceId].push(...packages)
+        }
+      }
+      logger.info(`[AI_GAME_PLAN] Fetched login status for ${Object.keys(deviceLoggedInPackages).length} Fire TV devices`)
+    } catch (error: any) {
+      logger.warn(`[AI_GAME_PLAN] Could not fetch device logins: ${error.message}`)
+    }
+
+    // Create a helper to find Fire TV devices that can play a streaming app
+    // Checks BOTH installed apps AND subscription logins
+    const findCompatibleFireTVDevices = (packages: string[]): any[] => {
+      return fireTVDevices.filter(device => {
+        if (!device.installedApps || !device.isOnline) return false
+        // Check if app is installed
+        const hasAppInstalled = packages.some(pkg => device.installedApps.includes(pkg))
+        if (!hasAppInstalled) return false
+
+        // Check if the service is logged in on this device
+        // If no logins configured for this device, fall back to installed apps (legacy behavior)
+        const loggedInPkgs = deviceLoggedInPackages[device.deviceId]
+        if (!loggedInPkgs || loggedInPkgs.length === 0) {
+          return true // No subscription config = allow based on installed apps
+        }
+        return packages.some(pkg => loggedInPkgs.includes(pkg))
+      }).map(device => ({
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+        ipAddress: device.ipAddress
+      }))
+    }
+
+    // Add Fire TV compatibility info to games with streaming options
+    for (const game of freshGames) {
+      if (game.streamingPackages && game.streamingPackages.length > 0) {
+        game.availableFireTVDevices = findCompatibleFireTVDevices(game.streamingPackages)
+        if (game.availableFireTVDevices.length > 0) {
+          logger.debug(`[AI_GAME_PLAN] Game "${game.homeTeam} vs ${game.awayTeam}" can stream on ${game.availableFireTVDevices.length} Fire TV devices via ${game.streamingApp}`)
+        }
+      }
+    }
 
     // Get matrix inputs
     const inputs = await db.select().from(schema.matrixInputs).all()
@@ -550,6 +748,10 @@ export async function GET(request: NextRequest) {
         return (a.league || '').localeCompare(b.league || '')
       })
 
+    // Count streaming games
+    const streamingOnlyGames = freshGames.filter((g: any) => g.streamingOnly).length
+    const gamesWithStreaming = freshGames.filter((g: any) => g.streamingApp).length
+
     return NextResponse.json({
       success: true,
       scheduleName: aiSchedule.name,
@@ -559,6 +761,13 @@ export async function GET(request: NextRequest) {
       games,
       gamesByInput,
       upcomingGames,
+      fireTVDevices: fireTVDevices.map(d => ({
+        deviceId: d.deviceId,
+        deviceName: d.deviceName,
+        ipAddress: d.ipAddress,
+        isOnline: d.isOnline,
+        installedApps: d.installedApps
+      })),
       dataSource: 'The Rail Media API (Fresh)',
       fetchedAt: new Date().toISOString(),
       summary: {
@@ -566,6 +775,9 @@ export async function GET(request: NextRequest) {
         homeTeamGames: freshGames.filter((g: any) => g.isHomeTeamGame).length,
         inputsWithGames: Object.keys(gamesByInput).length,
         upcomingCount: upcomingGames.length,
+        streamingOnlyGames,
+        gamesWithStreaming,
+        fireTVDevicesOnline: fireTVDevices.filter(d => d.isOnline).length,
         leagues: [...new Set(freshGames.map((g: any) => g.league))].filter(Boolean)
       }
     })

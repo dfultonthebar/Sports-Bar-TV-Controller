@@ -14,6 +14,7 @@ import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import GlobalCacheControl from '@/components/globalcache/GlobalCacheControl'
 import { IRDeviceSetup } from '@/components/ir/IRDeviceSetup'
 import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
+import DirecTVChannelFinder from '@/components/DirecTVChannelFinder'
 import { Button } from '@/components/ui/button'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
@@ -179,10 +180,14 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="channel-presets" className="flex items-center gap-2">
             <Star className="w-4 h-4" />
             Channel Presets
+          </TabsTrigger>
+          <TabsTrigger value="channel-finder" className="flex items-center gap-2">
+            <Cable className="w-4 h-4" />
+            Channel Finder
           </TabsTrigger>
           <TabsTrigger value="directv" className="flex items-center gap-2">
             <Satellite className="w-4 h-4" />
@@ -228,7 +233,7 @@ export default function DeviceConfigPage() {
                 )}
               </CardTitle>
               <CardDescription>
-                {aiEnhancementsEnabled 
+                {aiEnhancementsEnabled
                   ? "Configure quick-access channel presets for Cable Box and DirecTV with AI-powered usage analytics and smart reordering"
                   : "Configure quick-access channel presets for Cable Box and DirecTV inputs"
                 }
@@ -236,6 +241,10 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <ChannelPresetsPanel />
+        </TabsContent>
+
+        <TabsContent value="channel-finder" className="space-y-4">
+          <DirecTVChannelFinder />
         </TabsContent>
 
         <TabsContent value="directv" className="space-y-4">

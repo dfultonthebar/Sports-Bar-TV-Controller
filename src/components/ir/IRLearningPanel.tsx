@@ -16,7 +16,9 @@ import {
   AlertCircle,
   Play,
   Download,
-  FlaskConical
+  FlaskConical,
+  Target,
+  StopCircle
 } from 'lucide-react'
 
 interface IRDevice {
@@ -81,6 +83,11 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
   const [testResults, setTestResults] = useState<any>(null)
   const [showTestResults, setShowTestResults] = useState(false)
 
+  // Alignment test mode state - continuously sends Exit command for IR emitter alignment
+  const [alignmentTestRunning, setAlignmentTestRunning] = useState(false)
+  const [alignmentTestCount, setAlignmentTestCount] = useState(0)
+  const [alignmentTestInterval, setAlignmentTestInterval] = useState<NodeJS.Timeout | null>(null)
+
   const categories = ['Power', 'Volume', 'Channel', 'Menu', 'Navigation', 'Other']
 
   useEffect(() => {
@@ -88,6 +95,15 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
     loadGlobalCacheDevices()
     loadTemplates()
   }, [])
+
+  // Cleanup alignment test interval on unmount
+  useEffect(() => {
+    return () => {
+      if (alignmentTestInterval) {
+        clearInterval(alignmentTestInterval)
+      }
+    }
+  }, [alignmentTestInterval])
 
   const loadCommands = async () => {
     setLoading(true)
@@ -409,6 +425,71 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
     }
   }
 
+  // Start alignment test mode - continuously sends Exit command
+  const startAlignmentTest = () => {
+    // Find the Exit command
+    const exitCommand = commands.find(
+      cmd => cmd.functionName.toLowerCase() === 'exit' && cmd.irCode !== 'PLACEHOLDER'
+    )
+
+    if (!exitCommand) {
+      alert('Exit command not found or not learned yet. Please learn the "Exit" command first.')
+      return
+    }
+
+    if (!device.globalCacheDeviceId) {
+      alert('This device is not configured with a Global Cache device.')
+      return
+    }
+
+    setAlignmentTestRunning(true)
+    setAlignmentTestCount(0)
+
+    // Send first command immediately
+    sendAlignmentCommand(exitCommand)
+
+    // Then send every 2 seconds
+    const interval = setInterval(() => {
+      sendAlignmentCommand(exitCommand)
+    }, 2000)
+
+    setAlignmentTestInterval(interval)
+    logger.info('🎯 Started IR alignment test mode - sending Exit command every 2 seconds')
+  }
+
+  const sendAlignmentCommand = async (command: IRCommand) => {
+    try {
+      const response = await fetch('/api/ir/commands/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: device.id,
+          commandId: command.id
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setAlignmentTestCount(prev => prev + 1)
+        logger.debug(`🎯 Alignment test: Exit command sent (${alignmentTestCount + 1})`)
+      } else {
+        logger.warn('🎯 Alignment test: Command failed:', data.error)
+      }
+    } catch (error) {
+      logger.error('🎯 Alignment test error:', error)
+    }
+  }
+
+  const stopAlignmentTest = () => {
+    if (alignmentTestInterval) {
+      clearInterval(alignmentTestInterval)
+      setAlignmentTestInterval(null)
+    }
+    setAlignmentTestRunning(false)
+    logger.info(`🎯 Stopped IR alignment test mode after ${alignmentTestCount} commands`)
+  }
+
   // Group commands by category
   const commandsByCategory = commands.reduce((acc, cmd) => {
     const category = cmd.category || 'Other'
@@ -430,10 +511,32 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Alignment Test Button */}
+          {alignmentTestRunning ? (
+            <Button
+              variant="destructive"
+              onClick={stopAlignmentTest}
+              className="flex items-center gap-2 animate-pulse"
+            >
+              <StopCircle className="w-4 h-4" />
+              Stop Alignment ({alignmentTestCount})
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={startAlignmentTest}
+              disabled={!commands.some(c => c.functionName.toLowerCase() === 'exit' && c.irCode !== 'PLACEHOLDER')}
+              className="flex items-center gap-2"
+              title="Continuously sends Exit command for IR emitter alignment"
+            >
+              <Target className="w-4 h-4" />
+              Alignment Test
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={testAllCommands}
-            disabled={testing || commands.filter(c => c.irCode !== 'PLACEHOLDER').length === 0}
+            disabled={testing || alignmentTestRunning || commands.filter(c => c.irCode !== 'PLACEHOLDER').length === 0}
             className="flex items-center gap-2"
           >
             {testing ? (
@@ -448,7 +551,7 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               </>
             )}
           </Button>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={alignmentTestRunning}>
             Back to Devices
           </Button>
         </div>
@@ -489,6 +592,38 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               <div className="text-sm text-amber-200">
                 No Global Cache device assigned to this IR device. Please edit the device configuration and assign a Global Cache device and port.
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Alignment Test Mode Banner */}
+      {alignmentTestRunning && (
+        <Card className="border-2 border-orange-500/50 bg-orange-500/10 animate-pulse">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Target className="w-6 h-6 text-orange-400 animate-bounce" />
+                <div>
+                  <div className="font-medium text-orange-200">
+                    🎯 Alignment Test Running
+                  </div>
+                  <div className="text-sm text-orange-300 mt-1">
+                    Sending Exit command every 2 seconds • {alignmentTestCount} commands sent
+                  </div>
+                  <div className="text-xs text-orange-400 mt-1">
+                    Adjust the IR emitter position until the cable box responds consistently
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={stopAlignmentTest}
+                className="flex items-center gap-2"
+              >
+                <StopCircle className="w-4 h-4" />
+                Stop Test
+              </Button>
             </div>
           </CardContent>
         </Card>

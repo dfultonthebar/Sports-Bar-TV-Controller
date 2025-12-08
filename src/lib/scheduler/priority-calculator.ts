@@ -45,6 +45,7 @@ export interface PriorityScore {
   finalScore: number
   matchedTeam: TeamMatch | null
   reasoning: string[]
+  isHomeTeamGame: boolean  // True when the HOME team is in our homeTeams list
 }
 
 export class PriorityCalculator {
@@ -124,7 +125,8 @@ export class PriorityCalculator {
           `League base score: ${baseScore}`,
           ...reasoning,
           `Final score: ${baseScore} + ${totalBonus} = ${finalScore} (capped at 70)`
-        ]
+        ],
+        isHomeTeamGame: false  // Not a home team game
       }
     }
 
@@ -188,7 +190,8 @@ export class PriorityCalculator {
       totalBonus,
       finalScore,
       matchedTeam,
-      reasoning
+      reasoning,
+      isHomeTeamGame: homeMatch !== null  // True when the HOME team is in our registered list
     }
   }
 

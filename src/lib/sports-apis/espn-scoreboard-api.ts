@@ -208,24 +208,38 @@ class ESPNScoreboardAPIService {
 
   /**
    * Get today's games for a league
+   * Uses Central Time (America/Chicago) since the bar is in Central timezone
    */
   async getTodaysGames(sport: string, league: string): Promise<ESPNGame[]> {
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    // Use Central Time for date calculation (bar's timezone)
+    // This ensures 6 PM CST still shows today's games, not tomorrow's
+    const today = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Chicago'
+    }).replace(/-/g, '');
+    logger.debug(`[ESPN SCOREBOARD] getTodaysGames using Central Time date: ${today}`);
     return this.getGamesForDate(sport, league, today);
   }
 
   /**
    * Get this week's games for a league (7 day window)
+   * Uses Central Time (America/Chicago) for date calculations
    */
   async getWeekGames(sport: string, league: string): Promise<ESPNGame[]> {
+    // Helper to format date in Central Time
+    const formatDateCentral = (date: Date): string => {
+      return date.toLocaleDateString('en-CA', {
+        timeZone: 'America/Chicago'
+      }).replace(/-/g, '');
+    };
+
     const now = new Date();
     const startDate = new Date(now);
     startDate.setDate(now.getDate() - 1); // Start from yesterday
     const endDate = new Date(now);
     endDate.setDate(now.getDate() + 6); // Next 6 days
 
-    const start = startDate.toISOString().split('T')[0].replace(/-/g, '');
-    const end = endDate.toISOString().split('T')[0].replace(/-/g, '');
+    const start = formatDateCentral(startDate);
+    const end = formatDateCentral(endDate);
 
     return this.getGamesForDateRange(sport, league, start, end);
   }

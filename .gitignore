@@ -112,3 +112,16 @@ next/
 /memory-bank/*
 !/memory-bank/.gitkeep
 rag-data/
+
+# Large log files
+/log/
+
+# FireStick Scout build artifacts
+firestick-scout/.gradle/
+firestick-scout/gradle-dist/
+firestick-scout/gradle.zip
+firestick-scout/app/build/
+firestick-scout/local.properties
+
+# Playwright screenshots (regenerated during testing)
+playwright-screenshots/

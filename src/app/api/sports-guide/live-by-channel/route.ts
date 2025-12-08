@@ -17,6 +17,7 @@ import { logger } from '@/lib/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
+import { fetchDirecTVGuide } from '@/lib/directv-guide-service'
 
 // DirecTV channel mapping for broadcast networks
 const NETWORK_TO_DIRECTV: Record<string, string> = {
@@ -124,26 +125,28 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
 }
 
 // Cable (Spectrum) channel mapping for broadcast networks
+// UPDATED: Matches actual Spectrum Green Bay channel numbers from presets
 const NETWORK_TO_CABLE: Record<string, string> = {
   // ESPN family
   'ESPN': '27',
   'ESPN2': '28',
-  'ESPNU': '195',
-  'ESPNEWS': '196',
+  'ESPNU': '303',
+  'ESPNEWS': '305',
   'ESPN+': '27',
 
   // Fox Sports
-  'FOX': '11',  // Local Fox
+  'FOX': '12',  // Local Fox (WLUK channel 12 on Spectrum)
   'FS1': '75',
   'FS2': '328',
   'FOX Sports 1': '75',
   'FOX Sports 2': '328',
 
-  // CBS/NBC
-  'CBS': '5',  // Local CBS
-  'NBC': '2',  // Local NBC
-  'CBS Sports Network': '329',
-  'CBSSN': '329',
+  // CBS/NBC/ABC
+  'CBS': '6',   // Local CBS (WFRV channel 6 on Spectrum)
+  'NBC': '13',  // Local NBC (channel 13 on Spectrum)
+  'ABC': '3',   // Local ABC (channel 3 on Spectrum)
+  'CBS Sports Network': '322',
+  'CBSSN': '322',
 
   // Turner
   'TNT': '29',
@@ -162,56 +165,47 @@ const NETWORK_TO_CABLE: Record<string, string> = {
   'MLBN': '213',
   'NHL Network': '215',
   'NHLN': '215',
-  'Big Ten Network': '326',
-  'BTN': '326',
-  'SEC Network': '327',
-  'SECN': '327',
-  'ACC Network': '331',
-  'ACCN': '331',
+  'Big Ten Network': '39',
+  'BTN': '39',
+  'SEC Network': '65',
+  'SECN': '65',
+  'ACC Network': '348',
+  'ACCN': '348',
 
   // USA Network (for sports)
   'USA': '26',
   'USA Network': '26',
 
   // Golf
-  'Golf Channel': '78',
-  'GOLF': '78',
+  'Golf Channel': '14',
+  'GOLF': '14',
 
   // Tennis
-  'Tennis Channel': '330',
-  'Tennis': '330',
-  'TENNIS': '330',
+  'Tennis Channel': '327',
+  'Tennis': '327',
+  'TENNIS': '327',
 
   // Racing
   'NBCSN': '159',
   'NBC Sports': '159',
 
   // Soccer
-  'beIN Sports': '623',
-  'beIN SPORTS': '623',
-  'BEIN': '623',
-  'Univision': '61',
-  'TUDN': '435',
-  'Fox Deportes': '463',
-  'FOX Deportes': '463',
-  'Fox Soccer': '619',
-  'FOX Soccer Plus': '619',
+  'beIN Sports': '327',
+  'beIN SPORTS': '327',
+  'BEIN': '327',
 
-  // ESPN Deportes
-  'ESPN Deportes': '197',
+  // CW
+  'CW': '10',
+  'The CW': '10',
 
-  // Pac-12 Network (now defunct but may still appear)
-  'Pac-12 Network': '332',
-  'Pac-12': '332',
-
-  // Local stations (Green Bay area)
-  'TV32': '32',
-  'WACY': '32',
-  'WBAY': '2',
-  'WFRV': '5',
-  'WLUK': '11',
-  'WCWF': '14',
-  'WGBA': '26',
+  // Local stations (Green Bay area on Spectrum)
+  'TV32': '83',
+  'WACY': '83',
+  'WBAY': '3',   // ABC
+  'WFRV': '6',   // CBS
+  'WLUK': '12',  // FOX
+  'WCWF': '10',  // CW
+  'WGBA': '13',  // NBC
 }
 
 // Function to get the appropriate channel mapping based on device type
@@ -228,92 +222,45 @@ for (const [network, channel] of Object.entries(NETWORK_TO_DIRECTV)) {
   DIRECTV_TO_NETWORKS[channel].push(network.toLowerCase())
 }
 
-// Sports to fetch from ESPN
+// Sports to fetch from ESPN - OPTIMIZED for sports bar relevance
+// Reduced from 40+ to 15 core sports for faster response times
 const ESPN_SPORTS = [
-  // Football
+  // Football (HIGH PRIORITY - fall/winter)
   { sport: 'football', league: 'nfl', name: 'NFL' },
   { sport: 'football', league: 'college-football', name: 'College Football' },
 
-  // Basketball
+  // Basketball (HIGH PRIORITY - fall/winter/spring)
   { sport: 'basketball', league: 'nba', name: 'NBA' },
-  { sport: 'basketball', league: 'nba-development', name: 'NBA G League' },
-  { sport: 'basketball', league: 'wnba', name: 'WNBA' },
   { sport: 'basketball', league: 'mens-college-basketball', name: 'College Basketball' },
   { sport: 'basketball', league: 'womens-college-basketball', name: 'Women\'s College Basketball' },
 
-  // Hockey
+  // Hockey (MEDIUM PRIORITY - fall/winter/spring)
   { sport: 'hockey', league: 'nhl', name: 'NHL' },
 
-  // Baseball
+  // Baseball (HIGH PRIORITY - spring/summer)
   { sport: 'baseball', league: 'mlb', name: 'MLB' },
 
-  // Soccer
+  // Soccer (MEDIUM PRIORITY - varies by league)
   { sport: 'soccer', league: 'usa.1', name: 'MLS' },
-  { sport: 'soccer', league: 'usa.nwsl', name: 'NWSL' },
   { sport: 'soccer', league: 'eng.1', name: 'Premier League' },
   { sport: 'soccer', league: 'uefa.champions', name: 'Champions League' },
-  { sport: 'soccer', league: 'esp.1', name: 'La Liga' },
-  { sport: 'soccer', league: 'ger.1', name: 'Bundesliga' },
-  { sport: 'soccer', league: 'ita.1', name: 'Serie A' },
-  { sport: 'soccer', league: 'fra.1', name: 'Ligue 1' },
   { sport: 'soccer', league: 'mex.1', name: 'Liga MX' },
 
-  // Golf
+  // Golf (MEDIUM PRIORITY - spring/summer)
   { sport: 'golf', league: 'pga', name: 'PGA Tour' },
-  { sport: 'golf', league: 'lpga', name: 'LPGA Tour' },
 
-  // Tennis
-  { sport: 'tennis', league: 'atp', name: 'ATP Tennis' },
-  { sport: 'tennis', league: 'wta', name: 'WTA Tennis' },
-
-  // Racing
-  { sport: 'racing', league: 'f1', name: 'Formula 1' },
-  { sport: 'racing', league: 'nascar-cup', name: 'NASCAR Cup' },
-  { sport: 'racing', league: 'indycar', name: 'IndyCar' },
-
-  // Combat Sports
+  // Combat Sports (HIGH PRIORITY for bar crowd)
   { sport: 'mma', league: 'ufc', name: 'UFC' },
   { sport: 'boxing', league: 'boxing', name: 'Boxing' },
 
-  // Rugby
-  { sport: 'rugby', league: 'super-rugby', name: 'Super Rugby' },
-  { sport: 'rugby', league: 'six-nations', name: 'Six Nations' },
-
-  // College Baseball/Softball
-  { sport: 'baseball', league: 'college-baseball', name: 'College Baseball' },
-  { sport: 'softball', league: 'college-softball', name: 'College Softball' },
-
-  // College Volleyball
-  { sport: 'volleyball', league: 'mens-college-volleyball', name: 'Men\'s College Volleyball' },
-  { sport: 'volleyball', league: 'womens-college-volleyball', name: 'Women\'s College Volleyball' },
-
-  // College Lacrosse
-  { sport: 'lacrosse', league: 'mens-college-lacrosse', name: 'Men\'s College Lacrosse' },
-  { sport: 'lacrosse', league: 'womens-college-lacrosse', name: 'Women\'s College Lacrosse' },
-  { sport: 'lacrosse', league: 'pll', name: 'PLL Lacrosse' },
-
-  // College Soccer
-  { sport: 'soccer', league: 'usa.ncaa.m.1', name: 'Men\'s College Soccer' },
-  { sport: 'soccer', league: 'usa.ncaa.w.1', name: 'Women\'s College Soccer' },
-
-  // College Hockey
-  { sport: 'hockey', league: 'mens-college-hockey', name: 'Men\'s College Hockey' },
-  { sport: 'hockey', league: 'womens-college-hockey', name: 'Women\'s College Hockey' },
-
-  // College Wrestling
-  { sport: 'wrestling', league: 'college-wrestling', name: 'College Wrestling' },
-
-  // College Gymnastics
-  { sport: 'gymnastics', league: 'mens-college-gymnastics', name: 'Men\'s College Gymnastics' },
-  { sport: 'gymnastics', league: 'womens-college-gymnastics', name: 'Women\'s College Gymnastics' },
-
-  // Other Pro Sports
-  { sport: 'volleyball', league: 'womens-volleyball', name: 'Pro Volleyball' },
-
-  // Cricket
-  { sport: 'cricket', league: 'icc-world-cup', name: 'Cricket World Cup' },
-  { sport: 'cricket', league: 'ipl', name: 'Indian Premier League' },
+  // Racing (MEDIUM PRIORITY)
+  { sport: 'racing', league: 'nascar-cup', name: 'NASCAR Cup' },
 ]
+
+// Route-level cache for the entire response (30 second TTL)
+// FIXED: Use Map to cache per device type instead of single shared cache
+const routeCacheMap = new Map<string, { data: any; timestamp: number }>()
+const ROUTE_CACHE_TTL = 30 * 1000 // 30 seconds
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
@@ -324,14 +271,27 @@ export async function GET(request: NextRequest) {
   // Validate query parameters
   const queryValidation = validateQueryParams(request, z.object({
     channels: z.string().optional(), // Comma-separated channel numbers
-    deviceType: z.enum(['cable', 'directv']).optional().default('directv')
+    deviceType: z.enum(['cable', 'directv']).optional().default('directv'),
+    includeGuideData: z.coerce.boolean().optional().default(true) // Include DirecTV guide data
   }))
   if (isValidationError(queryValidation)) return queryValidation.error
 
-  const { channels, deviceType } = queryValidation.data
+  const { channels, deviceType, includeGuideData } = queryValidation.data
+
+  // Check route-level cache (keyed by device type and parameters)
+  const cacheKey = `${deviceType}-${includeGuideData}-${channels || 'all'}`
+  const cachedEntry = routeCacheMap.get(cacheKey)
+  if (cachedEntry && Date.now() - cachedEntry.timestamp < ROUTE_CACHE_TTL) {
+    logger.info(`[LIVE_BY_CHANNEL] Returning cached response for ${cacheKey}`)
+    return NextResponse.json({
+      ...cachedEntry.data,
+      cached: true,
+      cacheAge: Math.round((Date.now() - cachedEntry.timestamp) / 1000)
+    })
+  }
 
   try {
-    logger.debug('[LIVE_BY_CHANNEL] Fetching live game data for channels:', channels)
+    logger.info('[LIVE_BY_CHANNEL] Fetching fresh data (cache miss or expired)')
 
     // Parse requested channel numbers
     const channelList = channels?.split(',').map(c => c.trim()).filter(Boolean) || []
@@ -352,70 +312,123 @@ export async function GET(request: NextRequest) {
     // Get the appropriate network-to-channel mapping for this device type
     const networkMapping = getNetworkMapping(deviceType)
 
-    // Fetch games from ESPN for all major sports
-    for (const sportConfig of ESPN_SPORTS) {
-      try {
+    // Fetch games from ESPN for all major sports IN PARALLEL for performance
+    const sportResults = await Promise.allSettled(
+      ESPN_SPORTS.map(async (sportConfig) => {
         const games = await espnScoreboardAPI.getTodaysGames(sportConfig.sport, sportConfig.league)
+        return { sportConfig, games }
+      })
+    )
 
-        for (const game of games) {
-          // Get broadcast networks
-          const networks = espnScoreboardAPI.getAllNetworks(game)
+    // Process results
+    for (const result of sportResults) {
+      if (result.status === 'rejected') {
+        // Error already logged by ESPN API
+        continue
+      }
 
-          // Map each network to channel based on device type
-          for (const network of networks) {
-            let channelNumber = networkMapping[network]
+      const { sportConfig, games } = result.value
 
-            if (!channelNumber) {
-              // Try case-insensitive match
-              const lowerNetwork = network.toLowerCase()
-              for (const [key, value] of Object.entries(networkMapping)) {
-                if (key.toLowerCase() === lowerNetwork) {
-                  channelNumber = value
-                  break
-                }
+      for (const game of games) {
+        // Get broadcast networks
+        const networks = espnScoreboardAPI.getAllNetworks(game)
+
+        // Map each network to channel based on device type
+        for (const network of networks) {
+          let channelNumber = networkMapping[network]
+
+          if (!channelNumber) {
+            // Try case-insensitive match
+            const lowerNetwork = network.toLowerCase()
+            for (const [key, value] of Object.entries(networkMapping)) {
+              if (key.toLowerCase() === lowerNetwork) {
+                channelNumber = value
+                break
               }
             }
-
-            if (!channelNumber) continue
-
-            // Skip if not in our presets
-            if (!presetChannels.has(channelNumber)) continue
-
-            // Skip if specific channels requested and this isn't one
-            if (channelList.length > 0 && !channelList.includes(channelNumber)) continue
-
-            // Only keep the most relevant game for each channel (prefer live games)
-            const existingGame = channelGameMap[channelNumber]
-            if (existingGame) {
-              const existingIsLive = existingGame.liveData?.isLive
-              const newIsLive = espnScoreboardAPI.isLive(game)
-
-              // Keep live game over scheduled game
-              if (existingIsLive && !newIsLive) continue
-
-              // Keep earlier scheduled game
-              if (!existingIsLive && !newIsLive) {
-                const existingTime = new Date(existingGame.startTime).getTime()
-                const newTime = new Date(game.date).getTime()
-                if (existingTime < newTime) continue
-              }
-            }
-
-            channelGameMap[channelNumber] = buildGameData(game, sportConfig.name, channelNumber)
           }
+
+          if (!channelNumber) continue
+
+          // Skip if not in our presets
+          if (!presetChannels.has(channelNumber)) continue
+
+          // Skip if specific channels requested and this isn't one
+          if (channelList.length > 0 && !channelList.includes(channelNumber)) continue
+
+          // Only keep the most relevant game for each channel (prefer live games)
+          const existingGame = channelGameMap[channelNumber]
+          if (existingGame) {
+            const existingIsLive = existingGame.liveData?.isLive
+            const newIsLive = espnScoreboardAPI.isLive(game)
+
+            // Keep live game over scheduled game
+            if (existingIsLive && !newIsLive) continue
+
+            // Keep earlier scheduled game
+            if (!existingIsLive && !newIsLive) {
+              const existingTime = new Date(existingGame.startTime).getTime()
+              const newTime = new Date(game.date).getTime()
+              if (existingTime < newTime) continue
+            }
+          }
+
+          channelGameMap[channelNumber] = buildGameData(game, sportConfig.name, channelNumber)
         }
-      } catch (error: any) {
-        logger.error(`[LIVE_BY_CHANNEL] Error fetching ${sportConfig.name} games:`, error.message)
       }
     }
 
     logger.info(`[LIVE_BY_CHANNEL] Found games for ${Object.keys(channelGameMap).length} channels`)
 
-    return NextResponse.json({
+    // Fetch DirecTV guide data if requested and deviceType is directv
+    let guideData: Record<string, any> = {}
+    if (includeGuideData && deviceType === 'directv') {
+      try {
+        logger.info('[LIVE_BY_CHANNEL] Fetching DirecTV guide data')
+
+        // Get channels to fetch (either specified or all preset channels)
+        const channelsToFetch = channelList.length > 0
+          ? channelList
+          : Array.from(presetChannels)
+
+        const guideResults = await fetchDirecTVGuide({
+          channels: channelsToFetch,
+          timeout: 5000,
+          useCache: true,
+          cacheTTL: 30000 // 30 second cache
+        })
+
+        // Map guide results by channel
+        for (const result of guideResults) {
+          if (result.success && result.programInfo) {
+            guideData[result.channel] = {
+              title: result.programInfo.title,
+              callsign: result.programInfo.callsign,
+              startTime: result.programInfo.startTime,
+              duration: result.programInfo.duration,
+              isOffAir: result.programInfo.isOffAir
+            }
+          }
+        }
+
+        logger.info(`[LIVE_BY_CHANNEL] Fetched guide data for ${Object.keys(guideData).length} channels`)
+      } catch (error: any) {
+        logger.error('[LIVE_BY_CHANNEL] Error fetching DirecTV guide data:', error.message)
+        // Continue without guide data - not critical
+      }
+    }
+
+    const responseData = {
       success: true,
       channels: channelGameMap,
+      guideData: includeGuideData ? guideData : undefined,
       fetchedAt: new Date().toISOString()
-    })
+    }
+
+    // Update route-level cache (keyed by device type and parameters)
+    routeCacheMap.set(cacheKey, { data: responseData, timestamp: Date.now() })
+
+    return NextResponse.json(responseData)
 
   } catch (error: any) {
     logger.error('[LIVE_BY_CHANNEL] Error fetching live game data:', error)

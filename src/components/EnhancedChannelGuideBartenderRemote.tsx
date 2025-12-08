@@ -3,6 +3,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -523,40 +524,29 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   const loadFireTVGuideData = async (): Promise<DeviceGuideData> => {
-    // For Fire TV devices, fetch Big Ten games from the dedicated API
-    const response = await fetch('/api/sports/big-ten')
+    // Find the Fire TV device for this input
+    const fireTVDevice = fireTVDevices.find(d => d.inputChannel === selectedInput)
+    const deviceId = fireTVDevice?.deviceId || fireTVDevice?.id
+
+    // Use unified channel guide API with streaming device type
+    // This fetches games from services the device is logged into (ESPN+, Peacock, NFHS, etc.)
+    const response = await fetch('/api/channel-guide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inputNumber: selectedInput,
+        deviceType: 'streaming',
+        deviceId: deviceId,
+        startTime: new Date().toISOString(),
+        endTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      })
+    })
+
     const data = await response.json()
 
     if (!data.success) {
       throw new Error(data.error || 'Failed to load Fire TV streaming guide')
     }
-
-    // Transform Big Ten games to our program format
-    const programs: GameListing[] = (data.games || []).map((game: any) => ({
-      id: game.id,
-      league: `Big Ten ${game.sport}`,
-      homeTeam: game.teams.home.name,
-      awayTeam: game.teams.away.name,
-      gameTime: game.startTime,
-      startTime: game.date,
-      endTime: new Date(new Date(game.date).getTime() + 3 * 60 * 60 * 1000).toISOString(),
-      channel: {
-        id: `streaming-${game.broadcast.network}`,
-        name: game.broadcast.network,
-        type: 'streaming' as const,
-        cost: 'subscription' as const,
-        platforms: ['Fire TV'],
-        packageName: 'com.btn2go', // Big Ten Plus app
-        deviceType: 'streaming' as const
-      },
-      description: `${game.teams.away.name} vs ${game.teams.home.name}`,
-      venue: game.venue || '',
-      status: game.status,
-      isSports: true,
-      isLive: game.isLive,
-      homeScore: game.isLive ? parseInt(game.teams.home.score) || null : null,
-      awayScore: game.isLive ? parseInt(game.teams.away.score) || null : null
-    }))
 
     // Define streaming apps available on Fire TV
     const streamingApps: StreamingApp[] = [
@@ -565,15 +555,16 @@ export default function EnhancedChannelGuideBartenderRemote() {
       { packageName: 'com.peacocktv.peacockandroid', displayName: 'Peacock', category: 'Sports', sportsContent: true },
       { packageName: 'com.amazon.avod', displayName: 'Prime Video', category: 'Entertainment', sportsContent: true },
       { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
-      { packageName: 'com.fox.now', displayName: 'Fox Sports', category: 'Sports', sportsContent: true }
+      { packageName: 'com.fox.now', displayName: 'Fox Sports', category: 'Sports', sportsContent: true },
+      { packageName: 'com.playon.nfhslive', displayName: 'NFHS Network', category: 'Sports', sportsContent: true }
     ]
 
     return {
       type: 'streaming',
-      channels: [],
-      programs,
+      channels: data.channels || [],
+      programs: data.programs || [],
       apps: streamingApps,
-      lastUpdated: data.timestamp || new Date().toISOString()
+      lastUpdated: data.lastUpdated || new Date().toISOString()
     }
   }
 
@@ -968,7 +959,56 @@ export default function EnhancedChannelGuideBartenderRemote() {
       return
     }
 
-    // Fall back to IR control for non-cable inputs
+    // Handle DirecTV presets using direct tune API (much more reliable than digit-by-digit)
+    if (deviceType === 'satellite' && preset.deviceType === 'directv') {
+      const direcTVDevice = direcTVDevices.find(d => d.inputChannel === selectedInput)
+
+      if (!direcTVDevice) {
+        setCommandStatus('No DirecTV device configured for this input')
+        logError(new Error('No DirecTV device found for input'), 'preset_tune_directv')
+        return
+      }
+
+      setLoading(true)
+      setCommandStatus(`Tuning to ${preset.name} (${preset.channelNumber})...`)
+
+      try {
+        // Use server-side proxy API to avoid CORS issues
+        const response = await fetch(`/api/directv/${direcTVDevice.id}/tune`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: preset.channelNumber })
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+          setCommandStatus(`Now watching: ${preset.name}`)
+          setLastOperationTime(new Date())
+          logButtonClick('preset_tune_directv', preset.name, {
+            preset: preset.name,
+            channel: preset.channelNumber,
+            deviceId: direcTVDevice.id
+          })
+
+          // Refresh current channel data to update input selector
+          await loadCurrentChannels()
+        } else {
+          setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
+          logError(new Error(data.error || 'Tune failed'), 'preset_tune_directv')
+        }
+      } catch (error) {
+        logger.error('Error tuning DirecTV:', error)
+        setCommandStatus('DirecTV tuning failed')
+        logError(error as Error, 'preset_tune_directv')
+      } finally {
+        setLoading(false)
+        setTimeout(() => setCommandStatus(''), 5000)
+      }
+      return
+    }
+
+    // Fall back to digit-by-digit for other device types
     if (!selectedDevice) {
       setCommandStatus('No device selected')
       return
@@ -1174,16 +1214,16 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                   <div className="relative z-10 text-blue-400 font-medium">Open Channel Guide</div>
                 </Button>
-                <Button
-                  onClick={() => setShowAIGamePlan(true)}
-                  className="group relative backdrop-blur-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border-2 border-purple-400/30 hover:border-purple-400/50 hover:scale-105 transition-all duration-300 shadow-xl"
+                <Link
+                  href="/ai-gameplan"
+                  className="group relative backdrop-blur-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl border-2 border-yellow-400/30 hover:border-yellow-400/50 hover:scale-105 transition-all duration-300 shadow-xl px-4 py-2 inline-flex items-center"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                  <div className="relative z-10 text-purple-400 font-medium flex items-center">
+                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10 text-yellow-400 font-medium flex items-center">
                     <Gamepad2 className="w-4 h-4 mr-2" />
                     AI Game Plan
                   </div>
-                </Button>
+                </Link>
               </div>
             </div>
           ) : !selectedInput ? (

@@ -25,6 +25,12 @@ interface SoundtrackStation {
   imageUrl?: string
 }
 
+interface AvailablePlaylist {
+  id: string
+  name: string
+  description?: string
+}
+
 interface SoundtrackPlayer {
   id: string
   name: string
@@ -56,6 +62,8 @@ export default function BartenderMusicControl() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [availablePlaylists, setAvailablePlaylists] = useState<AvailablePlaylist[]>([])
+  const [playlistsLoading, setPlaylistsLoading] = useState(false)
 
   // Load data once on mount
   useEffect(() => {
@@ -93,6 +101,7 @@ export default function BartenderMusicControl() {
         if (bartenderPlayers.length > 0) {
           setSelectedPlayer(bartenderPlayers[0])
           updateNowPlaying(bartenderPlayers[0].id)
+          loadPlaylists() // Load available playlists
         } else {
           setError('No music players are configured for bartender control. Contact management.')
         }
@@ -105,6 +114,21 @@ export default function BartenderMusicControl() {
       setError('Music system not configured. Contact management.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPlaylists = async () => {
+    try {
+      setPlaylistsLoading(true)
+      const response = await fetch('/api/soundtrack/stations')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailablePlaylists(data.stations || [])
+      }
+    } catch (err) {
+      logger.error('Failed to load playlists:', err)
+    } finally {
+      setPlaylistsLoading(false)
     }
   }
 
@@ -122,7 +146,7 @@ export default function BartenderMusicControl() {
 
   const handlePlayPause = async () => {
     if (!selectedPlayer || actionLoading) return
-    
+
     setActionLoading(true)
     try {
       const response = await fetch('/api/soundtrack/players', {
@@ -140,6 +164,33 @@ export default function BartenderMusicControl() {
       }
     } catch (err) {
       logger.error('Failed to toggle playback:', err)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handlePlaylistChange = async (playlistId: string) => {
+    if (!selectedPlayer || actionLoading) return
+
+    setActionLoading(true)
+    try {
+      const response = await fetch('/api/soundtrack/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          stationId: playlistId,
+          playing: true // Auto-start when switching playlist
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedPlayer(data.player)
+        updateNowPlaying(selectedPlayer.id)
+      }
+    } catch (err) {
+      logger.error('Failed to change playlist:', err)
     } finally {
       setActionLoading(false)
     }
@@ -333,23 +384,37 @@ export default function BartenderMusicControl() {
           </button>
         </div>
 
-        {/* Current Playlist Display */}
-        {selectedPlayer.currentStation && (
-          <div className="mt-4 p-4 backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl">
-            <div className="flex items-center text-slate-400 text-sm mb-2">
+        {/* Playlist Selector */}
+        {availablePlaylists.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center text-slate-400 text-sm mb-3">
               <Radio className="w-4 h-4 mr-2" />
-              <span className="font-medium">Current Playlist</span>
+              <span className="font-medium">Switch Playlist</span>
             </div>
-            <div className="text-white font-semibold">{selectedPlayer.currentStation.name}</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {availablePlaylists.map((playlist) => (
+                <button
+                  key={playlist.id}
+                  onClick={() => handlePlaylistChange(playlist.id)}
+                  disabled={actionLoading}
+                  className={`group relative p-4 rounded-xl border-2 transition-all duration-300 text-left ${
+                    actionLoading
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:scale-105 hover:shadow-lg'
+                  }`}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                  <div className="relative z-10">
+                    <div className="font-semibold text-sm text-white mb-1">{playlist.name}</div>
+                    {playlist.description && (
+                      <div className="text-xs text-slate-400">{playlist.description}</div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
-
-        {/* Playlist Management Info */}
-        <div className="mt-4 p-4 backdrop-blur-xl bg-blue-500/10 border border-blue-400/30 rounded-xl">
-          <p className="text-xs text-blue-200">
-            <strong>Note:</strong> To change playlists, visit the <a href="https://business.soundtrackyourbrand.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-100 transition-colors duration-300">Soundtrack Your Brand dashboard</a> and select a different station for this zone.
-          </p>
-        </div>
 
         {/* Refresh Button */}
         <div className="mt-6 text-center">

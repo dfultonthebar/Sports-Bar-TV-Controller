@@ -49,6 +49,7 @@ export type CacheType =
   | 'matrix-config'
   | 'device-config'
   | 'streaming-status'
+  | 'directv-guide'
 
 interface CacheConfig {
   ttl: number // Time to live in milliseconds
@@ -110,6 +111,11 @@ const DEFAULT_CACHE_CONFIGS: Record<CacheType, CacheConfig> = {
   'streaming-status': {
     ttl: 60 * 1000, // 1 minute (streaming status moderately dynamic)
     maxEntries: 150,
+    maxSize: 10 * 1024 * 1024 // 10MB
+  },
+  'directv-guide': {
+    ttl: 30 * 1000, // 30 seconds (DirecTV program guide, needs to be fresh)
+    maxEntries: 200,
     maxSize: 10 * 1024 * 1024 // 10MB
   }
 }

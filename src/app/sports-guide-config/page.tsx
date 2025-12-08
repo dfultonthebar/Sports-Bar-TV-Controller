@@ -880,6 +880,21 @@ export default function SportsGuideConfigPage() {
 
   return (
     <SportsBarLayout>
+      {/* Deprecation Banner */}
+      <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4 mx-4 mt-4 mb-2 flex items-center gap-3">
+        <AlertCircle className="w-6 h-6 text-yellow-400 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-yellow-200 font-medium">This page is being replaced</p>
+          <p className="text-yellow-400/80 text-sm">
+            Use the new <Link href="/ai-gameplan" className="underline hover:text-yellow-300">AI Game Plan</Link> page for automatic game scheduling.
+            Team priorities configured here will still be used.
+          </p>
+        </div>
+        <Link href="/ai-gameplan" className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          Go to AI Game Plan
+        </Link>
+      </div>
+
       <SportsBarHeader
         title="Sports Guide Configuration"
         subtitle="Configure providers, location, teams, and leagues"

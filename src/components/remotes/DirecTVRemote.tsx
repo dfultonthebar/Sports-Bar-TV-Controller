@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Button } from '../ui/button'
 import { 
   ChevronUp, 
@@ -43,10 +43,37 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
   const [lastCommand, setLastCommand] = useState<string>('')
   const [channelInput, setChannelInput] = useState<string>('')
 
+  // Command debouncing to prevent rapid button presses from overwhelming DirecTV boxes
+  const lastCommandTimeRef = useRef<number>(0)
+  const commandQueueRef = useRef<boolean>(false)
+  const COMMAND_DEBOUNCE_MS = 300 // Minimum 300ms between commands for DirecTV stability
+
   const sendCommand = async (command: string, displayName?: string) => {
+    // Debounce rapid button presses to prevent overwhelming DirecTV boxes
+    const now = Date.now()
+    const timeSinceLastCommand = now - lastCommandTimeRef.current
+
+    if (timeSinceLastCommand < COMMAND_DEBOUNCE_MS) {
+      // If a command is already in queue, ignore this one
+      if (commandQueueRef.current) {
+        console.debug(`[DirecTV Remote] Ignoring rapid command: ${command} (debounced)`)
+        return
+      }
+
+      // Queue this command to run after the debounce period
+      commandQueueRef.current = true
+      const waitTime = COMMAND_DEBOUNCE_MS - timeSinceLastCommand
+      console.debug(`[DirecTV Remote] Queuing command: ${command} (waiting ${waitTime}ms)`)
+
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      commandQueueRef.current = false
+    }
+
+    lastCommandTimeRef.current = Date.now()
+
     setLoading(true)
     setLastCommand(displayName || command)
-    
+
     try {
       const response = await fetch('/api/directv-devices/send-command', {
         method: 'POST',
@@ -91,7 +118,7 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
   }
 
   return (
-    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md">
+    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md remote-control-container">
       {/* Header */}
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">DirecTV Remote</h3>

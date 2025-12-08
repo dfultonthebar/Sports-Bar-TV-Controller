@@ -31,20 +31,24 @@ export async function POST(request: NextRequest) {
 
 
   try {
-    const { scheduleId, allowedOutputs } = bodyValidation.data as { scheduleId?: string; allowedOutputs?: number[] };
+    const { scheduleId, allowedOutputs, allowedInputs } = bodyValidation.data as { scheduleId?: string; allowedOutputs?: number[]; allowedInputs?: number[] };
 
-    if (!scheduleId) {
-      return NextResponse.json(
-        { error: 'Schedule ID is required' },
-        { status: 400 }
-      );
+    let schedule;
+
+    if (scheduleId) {
+      // Use provided schedule ID
+      schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, scheduleId)).limit(1).get();
+    } else {
+      // If no scheduleId provided, find the AI Game Monitor (continuous) schedule
+      schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.scheduleType, 'continuous')).limit(1).get();
+      if (schedule) {
+        logger.info(`[SCHEDULE_EXECUTE] No scheduleId provided, using AI Game Monitor schedule: ${schedule.id}`);
+      }
     }
-
-    const schedule = await db.select().from(schema.schedules).where(eq(schema.schedules.id, scheduleId)).limit(1).get();
 
     if (!schedule) {
       return NextResponse.json(
-        { error: 'Schedule not found' },
+        { error: scheduleId ? 'Schedule not found' : 'AI Game Monitor schedule not found' },
         { status: 404 }
       );
     }
@@ -690,6 +694,23 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
                 .get();
 
               if (input) {
+                // Check for manual override protection before changing channel
+                // This protects inputs that bartenders have manually controlled
+                const now = new Date().toISOString()
+                const channelState = await db.select()
+                  .from(schema.inputCurrentChannels)
+                  .where(eq(schema.inputCurrentChannels.inputNum, tvAssignment.inputNumber))
+                  .limit(1)
+                  .get();
+
+                if (channelState?.manualOverrideUntil && channelState.manualOverrideUntil > now) {
+                  logger.warn(
+                    `[AI_SCHEDULER] SKIPPING input ${tvAssignment.inputNumber} (${tvAssignment.inputLabel}) - protected by manual override until ${channelState.manualOverrideUntil}`
+                  );
+                  result.errors.push(`Skipped ${tvAssignment.inputLabel} - protected by bartender override until ${channelState.manualOverrideUntil}`);
+                  continue; // Skip this protected input
+                }
+
                 logger.info(
                   `[AI_SCHEDULER] Tuning input ${tvAssignment.inputNumber} (${tvAssignment.inputLabel}) to channel ${tvAssignment.channelNumber} for ${gameAssignment.game.homeTeam} vs ${gameAssignment.game.awayTeam}`
                 );
@@ -844,7 +865,38 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
       }
     }
 
+    // Normalize network names for matching Rail Media station names to preset names
+    // Rail Media uses compact names like "NBATV", presets use names like "NBA TV"
+    const normalizeNetworkName = (name: string): string => {
+      return name
+        .toLowerCase()
+        .replace(/\s+/g, '') // Remove all spaces
+        .replace(/network/gi, '') // Remove "network"
+        .replace(/channel/gi, '') // Remove "channel"
+        .replace(/hd$/i, '') // Remove HD suffix
+        .trim();
+    };
+
+    // Build network name lookup maps (normalized name -> preset channel number)
+    const networkToCableChannel = new Map<string, string>();
+    const networkToDirectvChannel = new Map<string, string>();
+
+    for (const preset of channelPresets) {
+      const normalizedNetwork = normalizeNetworkName(preset.name);
+
+      if (preset.deviceType === 'cable') {
+        if (!networkToCableChannel.has(normalizedNetwork)) {
+          networkToCableChannel.set(normalizedNetwork, preset.channelNumber);
+        }
+      } else if (preset.deviceType === 'directv') {
+        if (!networkToDirectvChannel.has(normalizedNetwork)) {
+          networkToDirectvChannel.set(normalizedNetwork, preset.channelNumber);
+        }
+      }
+    }
+
     logger.info(`[CHANNEL_PRESETS] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`);
+    logger.info(`[CHANNEL_PRESETS] Network lookup maps: ${networkToCableChannel.size} cable networks, ${networkToDirectvChannel.size} DirecTV networks`);
 
     // Fetch sports guide data from The Rail Media API
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -886,12 +938,47 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`);
         }
 
-        // Extract BOTH cable and DirecTV channel numbers and validate against presets
+        // Extract BOTH cable and DirecTV channel numbers
+        // PRIMARY METHOD: Use network/station name to look up channel from our presets
+        // FALLBACK: Try direct channel number matching if network name doesn't match
         let cableChannelNumber = '';
         let directvChannelNumber = '';
+        let matchedNetworkName = '';
 
+        // First, try to match by station/network name (most reliable method)
+        // Rail Media provides station names like "ESPN", "NBATV", "FOX", etc.
+        if (listing.stations && Array.isArray(listing.stations)) {
+          for (const station of listing.stations) {
+            const normalizedStation = normalizeNetworkName(station);
+
+            // Look up cable channel by network name
+            if (!cableChannelNumber) {
+              const cableChannel = networkToCableChannel.get(normalizedStation);
+              if (cableChannel) {
+                cableChannelNumber = cableChannel;
+                matchedNetworkName = station;
+                logger.debug(`[CHANNEL_MATCH] Matched station "${station}" to cable channel ${cableChannel}`);
+              }
+            }
+
+            // Look up DirecTV channel by network name
+            if (!directvChannelNumber) {
+              const directvChannel = networkToDirectvChannel.get(normalizedStation);
+              if (directvChannel) {
+                directvChannelNumber = directvChannel;
+                matchedNetworkName = station;
+                logger.debug(`[CHANNEL_MATCH] Matched station "${station}" to DirecTV channel ${directvChannel}`);
+              }
+            }
+
+            // If we found both, stop looking
+            if (cableChannelNumber && directvChannelNumber) break;
+          }
+        }
+
+        // FALLBACK: If network name matching didn't work, try direct channel number matching
         // Extract cable channels and match against presets
-        if (listing.channel_numbers?.CAB) {
+        if (!cableChannelNumber && listing.channel_numbers?.CAB) {
           const cabChannels = listing.channel_numbers.CAB;
           for (const providerChannels of Object.values(cabChannels)) {
             const channels = providerChannels as any;
@@ -911,8 +998,8 @@ async function searchForGames(homeTeams: any[], startTime: Date, endTime: Date, 
           }
         }
 
-        // Extract satellite/DirecTV channels and match against presets
-        if (listing.channel_numbers?.SAT) {
+        // Extract satellite/DirecTV channels and match against presets (fallback)
+        if (!directvChannelNumber && listing.channel_numbers?.SAT) {
           const satChannels = listing.channel_numbers.SAT;
           for (const providerChannels of Object.values(satChannels)) {
             const channels = providerChannels as any;

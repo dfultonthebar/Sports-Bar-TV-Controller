@@ -71,6 +71,16 @@ const withPWA = require('next-pwa')({
       }
     },
     {
+      // Exclude SSE streams from service worker - they need direct network access
+      urlPattern: /\/api\/atlas\/meters\/stream/i,
+      handler: 'NetworkOnly'
+    },
+    {
+      // Exclude any other streaming endpoints
+      urlPattern: /\/api\/.*\/stream/i,
+      handler: 'NetworkOnly'
+    },
+    {
       urlPattern: /^https?:\/\/.*\/api\/.*/i,
       handler: 'NetworkFirst',
       options: {

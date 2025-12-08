@@ -55,7 +55,7 @@ export default function ChannelPresetGrid({
   const [liveGames, setLiveGames] = useState<Record<string, LiveGameData>>({})
   const [loadingLiveData, setLoadingLiveData] = useState(false)
 
-  // Load live game data for all channel presets
+  // Load live game data for channel presets
   const loadLiveGameData = useCallback(async (presetList: ChannelPreset[]) => {
     if (presetList.length === 0) return
 
@@ -78,15 +78,69 @@ export default function ChannelPresetGrid({
     }
   }, [deviceType])
 
+  // Load everything when device type changes - single effect to avoid race conditions
   useEffect(() => {
-    loadPresets()
+    let cancelled = false
+
+    const loadData = async () => {
+      // Clear stale data immediately
+      setLiveGames({})
+      setPresets([])
+      setLoading(true)
+      setError(null)
+
+      try {
+        // First, load presets
+        const presetsResponse = await fetch(`/api/channel-presets/by-device?deviceType=${deviceType}`)
+        const presetsData = await presetsResponse.json()
+
+        if (cancelled) return // Component unmounted or device type changed
+
+        if (!presetsData.success) {
+          setError(presetsData.error || 'Failed to load presets')
+          return
+        }
+
+        const loadedPresets = presetsData.presets || []
+        setPresets(loadedPresets)
+        setLoading(false)
+
+        // Then, load live game data with the fresh presets
+        if (loadedPresets.length > 0) {
+          const channelNumbers = loadedPresets.map((p: ChannelPreset) => p.channelNumber).join(',')
+          setLoadingLiveData(true)
+
+          const liveResponse = await fetch(
+            `/api/sports-guide/live-by-channel?channels=${channelNumbers}&deviceType=${deviceType}`
+          )
+          const liveData = await liveResponse.json()
+
+          if (cancelled) return // Component unmounted or device type changed
+
+          if (liveData.success && liveData.channels) {
+            setLiveGames(liveData.channels)
+          }
+          setLoadingLiveData(false)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          logger.error('Error loading channel data:', err)
+          setError('Failed to load channel data')
+          setLoading(false)
+        }
+      }
+    }
+
+    loadData()
+
+    return () => {
+      cancelled = true
+    }
   }, [deviceType])
 
-  // Refresh live game data every 60 seconds
+  // Refresh live game data periodically (every hour)
   useEffect(() => {
     if (presets.length > 0) {
-      loadLiveGameData(presets)
-
       const interval = setInterval(() => {
         loadLiveGameData(presets)
       }, 3600000) // Refresh every 1 hour

@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Button } from '../ui/button'
 import { 
   ChevronUp, 
@@ -43,10 +43,37 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
   const [lastCommand, setLastCommand] = useState<string>('')
   const [channelInput, setChannelInput] = useState<string>('')
 
+  // Command debouncing to prevent rapid button presses from overwhelming devices
+  const lastCommandTimeRef = useRef<number>(0)
+  const commandQueueRef = useRef<boolean>(false)
+  const COMMAND_DEBOUNCE_MS = 300 // Minimum 300ms between commands for stability
+
   // Check if device has learned IR codes
   const hasIRCodes = irCodes && Object.keys(irCodes).length > 0
 
   const sendCommand = async (command: string, displayName?: string) => {
+    // Debounce rapid button presses to prevent overwhelming devices
+    const now = Date.now()
+    const timeSinceLastCommand = now - lastCommandTimeRef.current
+
+    if (timeSinceLastCommand < COMMAND_DEBOUNCE_MS) {
+      // If a command is already in queue, ignore this one
+      if (commandQueueRef.current) {
+        console.debug(`[CableBox Remote] Ignoring rapid command: ${command} (debounced)`)
+        return
+      }
+
+      // Queue this command to run after the debounce period
+      commandQueueRef.current = true
+      const waitTime = COMMAND_DEBOUNCE_MS - timeSinceLastCommand
+      console.debug(`[CableBox Remote] Queuing command: ${command} (waiting ${waitTime}ms)`)
+
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      commandQueueRef.current = false
+    }
+
+    lastCommandTimeRef.current = Date.now()
+
     setLoading(true)
     setLastCommand(displayName || command)
 
@@ -172,7 +199,7 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
   }
 
   return (
-    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md">
+    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md remote-control-container">
       {/* Header */}
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Cable Box Remote</h3>

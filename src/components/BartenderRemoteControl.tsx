@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   Tv, 
   Radio, 
@@ -165,6 +165,7 @@ export default function BartenderRemoteControl() {
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<IRDevice | null>(null)
   const [selectedDirecTVDevice, setSelectedDirecTVDevice] = useState<DirecTVDevice | null>(null)
+  const [inputSearch, setInputSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -196,6 +197,15 @@ export default function BartenderRemoteControl() {
   const [isLoadingSportsGuide, setIsLoadingSportsGuide] = useState(false)
   const [sportsGuideStatus, setSportsGuideStatus] = useState<string>('')
 
+  // Command debouncing to prevent rapid button presses from overwhelming DirecTV boxes
+  const lastCommandTimeRef = useRef<number>(0)
+  const commandQueueRef = useRef<boolean>(false)
+  const COMMAND_DEBOUNCE_MS = 300 // Minimum 300ms between commands for DirecTV stability
+
+  // DirecTV channel tuning lock - prevents rapid preset clicks from causing input bar popup
+  const tuningLockRef = useRef<boolean>(false)
+  const lastTuneTimeRef = useRef<number>(0)
+
   useEffect(() => {
     loadMatrixConfiguration()
     loadIRDevices()
@@ -219,13 +229,8 @@ export default function BartenderRemoteControl() {
     }
   }, [selectedLeagues, showSportsGuide])
 
-  // Auto-load sports guide data on component mount
-  useEffect(() => {
-    if (selectedLeagues.length > 0) {
-      logger.info('🏆 Auto-loading sports guide data on mount')
-      generateSportsGuide()
-    }
-  }, [])
+  // Sports guide is lazy-loaded when the sports guide panel is opened
+  // No need to auto-load on mount - this saves ~2 seconds on initial load
 
   const loadMatrixConfiguration = async () => {
     try {
@@ -323,56 +328,70 @@ export default function BartenderRemoteControl() {
     
     setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} - ${deviceInfo}`)
 
-    // Log the operation
-    try {
-      await fetch('/api/logs/operations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'input_switch',
-          action: 'select_input',
-          device: `Input ${inputNumber}`,
-          details: {
-            inputNumber,
-            irDeviceName: irDevice?.name || 'Not configured',
-            irDeviceBrand: irDevice?.brand || 'Unknown',
-            irControlMethod: irDevice?.controlMethod || 'None',
-            direcTVDeviceName: direcTVDevice?.name || 'Not configured',
-            direcTVDeviceIP: direcTVDevice?.ipAddress || 'None',
-            activeDevice: direcTVDevice ? 'DirecTV' : (irDevice ? 'IR' : 'None')
-          },
-          success: true
-        })
+    // Log the operation - fire-and-forget
+    fetch('/api/logs/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'input_switch',
+        action: 'select_input',
+        device: `Input ${inputNumber}`,
+        details: {
+          inputNumber,
+          irDeviceName: irDevice?.name || 'Not configured',
+          irDeviceBrand: irDevice?.brand || 'Unknown',
+          irControlMethod: irDevice?.controlMethod || 'None',
+          direcTVDeviceName: direcTVDevice?.name || 'Not configured',
+          direcTVDeviceIP: direcTVDevice?.ipAddress || 'None',
+          activeDevice: direcTVDevice ? 'DirecTV' : (irDevice ? 'IR' : 'None')
+        },
+        success: true
       })
-    } catch (error) {
-      logger.error('Failed to log input selection:', error)
-    }
+    }).catch(err => logger.error('Failed to log input selection:', err))
   }
 
   const sendIRCommand = async (command: string) => {
     // Prioritize DirecTV device over IR device for more reliable control
     const activeDevice = selectedDirecTVDevice || selectedDevice
-    
+
     if (!activeDevice) {
       setCommandStatus('No device selected')
-      // Log failed attempt
-      try {
-        await fetch('/api/logs/operations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'error',
-            action: 'Command failed - no device selected',
-            details: { command, selectedInput },
-            success: false,
-            errorMessage: 'No device selected'
-          })
+      // Log failed attempt - fire-and-forget
+      fetch('/api/logs/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'error',
+          action: 'Command failed - no device selected',
+          details: { command, selectedInput },
+          success: false,
+          errorMessage: 'No device selected'
         })
-      } catch (logError) {
-        logger.error('Failed to log error:', logError)
-      }
+      }).catch(err => logger.error('Failed to log error:', err))
       return
     }
+
+    // Debounce rapid button presses to prevent overwhelming DirecTV boxes
+    const now = Date.now()
+    const timeSinceLastCommand = now - lastCommandTimeRef.current
+
+    if (timeSinceLastCommand < COMMAND_DEBOUNCE_MS) {
+      // If a command is already in queue, ignore this one
+      if (commandQueueRef.current) {
+        logger.debug(`[REMOTE] Ignoring rapid command: ${command} (debounced)`)
+        return
+      }
+
+      // Queue this command to run after the debounce period
+      commandQueueRef.current = true
+      const waitTime = COMMAND_DEBOUNCE_MS - timeSinceLastCommand
+      logger.debug(`[REMOTE] Queuing command: ${command} (waiting ${waitTime}ms)`)
+
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      commandQueueRef.current = false
+    }
+
+    lastCommandTimeRef.current = Date.now()
 
     setLoading(true)
     setCommandStatus(`Sending ${command}...`)
@@ -460,7 +479,8 @@ export default function BartenderRemoteControl() {
         const logDevice = selectedDirecTVDevice || selectedDevice
         const deviceType = selectedDirecTVDevice ? 'DirecTV' : 'IR'
 
-        await fetch('/api/logs/operations', {
+        // Fire-and-forget: don't await logging to avoid blocking UI
+        fetch('/api/logs/operations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -485,7 +505,7 @@ export default function BartenderRemoteControl() {
             success,
             errorMessage: success ? undefined : errorMessage
           })
-        })
+        }).catch(err => logger.error('Failed to log device command:', err))
       } catch (logError) {
         logger.error('Failed to log device command:', logError)
       }
@@ -564,39 +584,35 @@ export default function BartenderRemoteControl() {
       setAudioCommandStatus(`✗ Error controlling zone`)
       errorMessage = error instanceof Error ? error.message : 'Unknown error'
     } finally {
-      // Log the audio operation
-      try {
-        const operationType = action === 'volume' ? 'volume_change' : 
-                            action === 'mute' ? 'volume_change' : 
-                            action === 'setSource' ? 'input_switch' : 'audio_zone'
+      // Log the audio operation - fire-and-forget
+      const operationType = action === 'volume' ? 'volume_change' :
+                          action === 'mute' ? 'volume_change' :
+                          action === 'setSource' ? 'input_switch' : 'audio_zone'
 
-        await fetch('/api/logs/operations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: operationType,
-            action: `Audio ${action}`,
-            device: `${selectedProcessor.name} Zone ${zone.zoneNumber}`,
-            details: {
-              processorId: selectedProcessor.id,
-              processorName: selectedProcessor.name,
-              processorModel: selectedProcessor.model,
-              processorIpAddress: selectedProcessor.ipAddress,
-              zoneNumber: zone.zoneNumber,
-              zoneName: zone.name,
-              action,
-              value,
-              previousValue: action === 'volume' ? zone.volume : 
-                           action === 'mute' ? zone.muted : 
-                           action === 'setSource' ? zone.currentSource : null
-            },
-            success,
-            errorMessage: success ? undefined : errorMessage
-          })
+      fetch('/api/logs/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: operationType,
+          action: `Audio ${action}`,
+          device: `${selectedProcessor.name} Zone ${zone.zoneNumber}`,
+          details: {
+            processorId: selectedProcessor.id,
+            processorName: selectedProcessor.name,
+            processorModel: selectedProcessor.model,
+            processorIpAddress: selectedProcessor.ipAddress,
+            zoneNumber: zone.zoneNumber,
+            zoneName: zone.name,
+            action,
+            value,
+            previousValue: action === 'volume' ? zone.volume :
+                         action === 'mute' ? zone.muted :
+                         action === 'setSource' ? zone.currentSource : null
+          },
+          success,
+          errorMessage: success ? undefined : errorMessage
         })
-      } catch (logError) {
-        logger.error('Failed to log audio control:', logError)
-      }
+      }).catch(err => logger.error('Failed to log audio control:', err))
 
       // Clear status after 3 seconds
       setTimeout(() => setAudioCommandStatus(''), 3000)
@@ -730,9 +746,9 @@ export default function BartenderRemoteControl() {
 
     // Switch to the appropriate input first
     await selectInput(targetInput.channelNumber)
-    
-    // Wait a moment for input switch
-    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // Wait a moment for input switch - reduced from 1000ms
+    await new Promise(resolve => setTimeout(resolve, 300))
     
     // Now send the appropriate command based on device type
     if (channel.type === 'cable' || channel.type === 'ota') {
@@ -753,37 +769,33 @@ export default function BartenderRemoteControl() {
       }
     }
 
-    // Log the sports guide action
-    try {
-      await fetch('/api/logs/operations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'sports_guide_action',
-          action: `Watch ${game.league}: ${game.awayTeam} @ ${game.homeTeam}`,
-          device: targetDevice.name,
-          details: {
-            game: {
-              league: game.league,
-              homeTeam: game.homeTeam,
-              awayTeam: game.awayTeam,
-              gameTime: game.gameTime
-            },
-            channel: {
-              name: channel.name,
-              type: channel.type,
-              channelNumber: channel.channelNumber,
-              appCommand: channel.appCommand
-            },
-            targetInput: targetInput.channelNumber,
-            targetDevice: targetDevice.name
+    // Log the sports guide action - fire-and-forget
+    fetch('/api/logs/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'sports_guide_action',
+        action: `Watch ${game.league}: ${game.awayTeam} @ ${game.homeTeam}`,
+        device: targetDevice.name,
+        details: {
+          game: {
+            league: game.league,
+            homeTeam: game.homeTeam,
+            awayTeam: game.awayTeam,
+            gameTime: game.gameTime
           },
-          success: true
-        })
+          channel: {
+            name: channel.name,
+            type: channel.type,
+            channelNumber: channel.channelNumber,
+            appCommand: channel.appCommand
+          },
+          targetInput: targetInput.channelNumber,
+          targetDevice: targetDevice.name
+        },
+        success: true
       })
-    } catch (error) {
-      logger.error('Failed to log sports guide action:', error)
-    }
+    }).catch(err => logger.error('Failed to log sports guide action:', err))
 
     setTimeout(() => setSportsGuideStatus(''), 5000)
   }
@@ -794,12 +806,12 @@ export default function BartenderRemoteControl() {
 
     for (const digit of digits) {
       await sendIRCommand(digit)
-      // Small delay between digits
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Small delay between digits - reduced from 200ms for faster response
+      await new Promise(resolve => setTimeout(resolve, 50))
     }
 
-    // Send enter/OK command to confirm
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // Send enter/OK command to confirm - reduced from 500ms
+    await new Promise(resolve => setTimeout(resolve, 100))
     await sendIRCommand('OK')
   }
 
@@ -810,8 +822,8 @@ export default function BartenderRemoteControl() {
     
     for (const command of commands) {
       await sendIRCommand(command)
-      // Delay between commands
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Delay between commands - reduced from 1000ms for faster response
+      await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
 
@@ -837,7 +849,11 @@ export default function BartenderRemoteControl() {
       return
     }
 
-    setCommandStatus(`Tuning to ${preset.name} (Ch ${preset.channelNumber})...`)
+    // Prevent rapid clicks for DirecTV
+    if (selectedDirecTVDevice && tuningLockRef.current) {
+      setCommandStatus('⏳ Tuning in progress...')
+      return
+    }
 
     try {
       // Send channel change command using the existing sendChannelCommand function
@@ -852,60 +868,104 @@ export default function BartenderRemoteControl() {
         return
       }
 
-      setCommandStatus(`✓ Tuned to ${preset.name} (Ch ${preset.channelNumber})`)
-      
-      // Log the operation
-      try {
-        await fetch('/api/logs/operations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'channel_preset',
-            action: 'Preset Channel Change',
-            device: input.label,
-            details: {
-              presetId: preset.id,
-              presetName: preset.name,
-              channelNumber: preset.channelNumber,
-              deviceType: preset.deviceType,
-              inputNumber: selectedInput
-            },
-            success: true
-          })
-        })
-      } catch (logError) {
-        logger.error('Failed to log preset usage:', logError)
-      }
+      setCommandStatus(`✓ ${preset.name}`)
 
-      // Clear status after 3 seconds
-      setTimeout(() => setCommandStatus(''), 3000)
+      // Log the operation - fire-and-forget
+      fetch('/api/logs/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'channel_preset',
+          action: 'Preset Channel Change',
+          device: input.label,
+          details: {
+            presetId: preset.id,
+            presetName: preset.name,
+            channelNumber: preset.channelNumber,
+            deviceType: preset.deviceType,
+            inputNumber: selectedInput
+          },
+          success: true
+        })
+      }).catch(err => logger.error('Failed to log preset usage:', err))
+
+      // Clear status quickly - tuning is instant now
+      setTimeout(() => setCommandStatus(''), 1500)
     } catch (error) {
       logger.error('Error tuning to preset:', error)
-      setCommandStatus(`✗ Failed to tune to ${preset.name}`)
-      setTimeout(() => setCommandStatus(''), 3000)
+      setCommandStatus(`✗ ${preset.name} failed`)
+      setTimeout(() => setCommandStatus(''), 2000)
     }
   }
 
-  // Helper function for DirecTV channel changes
+  // Helper function for DirecTV channel changes with debounce and reliability
   const sendDirecTVChannelChange = async (channelNumber: string) => {
     if (!selectedDirecTVDevice) return
 
-    const digits = channelNumber.split('')
-    const baseUrl = `http://${selectedDirecTVDevice.ipAddress}:${selectedDirecTVDevice.port}`
-
-    for (const digit of digits) {
-      await fetch(`${baseUrl}/remote/processKey?key=${digit}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      await new Promise(resolve => setTimeout(resolve, 250))
+    // Prevent rapid-fire tuning - wait at least 1 second between tunes
+    const now = Date.now()
+    const timeSinceLastTune = now - lastTuneTimeRef.current
+    if (timeSinceLastTune < 1000) {
+      await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLastTune))
     }
 
-    await new Promise(resolve => setTimeout(resolve, 100))
-    await fetch(`${baseUrl}/remote/processKey?key=enter`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    })
+    // Check if already tuning
+    if (tuningLockRef.current) {
+      logger.info('[DirecTV] Skipping tune - already in progress')
+      return
+    }
+
+    tuningLockRef.current = true
+    lastTuneTimeRef.current = Date.now()
+
+    try {
+      // Use server-side API to avoid CORS issues with direct DirecTV fetch
+      const response = await fetch(`/api/directv/${selectedDirecTVDevice.id}/tune`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channelNumber })
+      })
+
+      // Check if tune was successful
+      if (response.ok) {
+        const json = await response.json()
+        if (json.success) {
+          return // Success!
+        }
+      }
+
+      // If server-side tune failed, use digit-by-digit as fallback
+      logger.info(`[DirecTV] Direct tune may have failed, using digit fallback for ${channelNumber}`)
+      await sendDirecTVDigitByDigit(channelNumber)
+    } finally {
+      tuningLockRef.current = false
+    }
+  }
+
+  // Fallback: send channel digits one by one via server-side API (more reliable for long channels)
+  const sendDirecTVDigitByDigit = async (channelNumber: string) => {
+    if (!selectedDirecTVDevice) return
+
+    // Split into characters, handling dash for sub-channels
+    const chars = channelNumber.split('')
+
+    for (const char of chars) {
+      // Map dash to the correct DirecTV key code
+      const key = char === '-' ? 'dash' : char
+      // Use server-side API to avoid CORS issues
+      await fetch('/api/directv-devices/send-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: selectedDirecTVDevice.id,
+          command: key,
+          ipAddress: selectedDirecTVDevice.ipAddress,
+          port: selectedDirecTVDevice.port
+        })
+      })
+      await new Promise(resolve => setTimeout(resolve, 150)) // 150ms between digits
+    }
+    // No SELECT/ENTER needed - DirecTV auto-tunes after digits
   }
 
   // Determine the device type for the selected input
@@ -926,7 +986,7 @@ export default function BartenderRemoteControl() {
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
+    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4 remote-control-container">
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
@@ -1082,8 +1142,26 @@ export default function BartenderRemoteControl() {
               <Tv className="mr-2 w-5 h-5" />
               TV Inputs
             </h2>
+            {/* Quick search filter */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search inputs..."
+                value={inputSearch}
+                onChange={(e) => setInputSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {inputs.map((input) => {
+              {inputs
+                .filter(input =>
+                  !inputSearch ||
+                  input.label.toLowerCase().includes(inputSearch.toLowerCase()) ||
+                  input.inputType.toLowerCase().includes(inputSearch.toLowerCase()) ||
+                  String(input.channelNumber).includes(inputSearch)
+                )
+                .map((input) => {
                 const direcTVDevice = direcTVDevices.find(d => d.inputChannel === input.channelNumber)
                 const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
                 

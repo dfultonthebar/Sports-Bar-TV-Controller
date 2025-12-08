@@ -18,6 +18,62 @@ export const fireTVDevices = sqliteTable('FireTVDevice', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
 
+// Streaming Services Master List
+export const streamingServices = sqliteTable('StreamingService', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull().unique(),  // ESPN+, Peacock, NBA League Pass, etc.
+  stationCodes: text('stationCodes').notNull(),  // JSON array: ["ESPND", "ESPN+"]
+  packages: text('packages').notNull(),  // JSON array: ["com.espn.gtv", "com.espn.score_center"]
+  logoUrl: text('logoUrl'),
+  category: text('category').notNull().default('sports'),  // sports, live_tv, streaming
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+})
+
+// Bar's Streaming Subscriptions (what services the bar pays for)
+export const streamingSubscriptions = sqliteTable('StreamingSubscription', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: text('serviceId').notNull().references(() => streamingServices.id, { onDelete: 'cascade' }),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  notes: text('notes'),  // e.g., "Annual subscription", "Shared with other location"
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// Fire TV Device Logins (which services are logged in on which device)
+export const deviceStreamingLogins = sqliteTable('DeviceStreamingLogin', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  deviceId: text('deviceId').notNull(),  // Fire TV device ID (e.g., "amazon-1")
+  serviceId: text('serviceId').notNull().references(() => streamingServices.id, { onDelete: 'cascade' }),
+  isLoggedIn: integer('isLoggedIn', { mode: 'boolean' }).notNull().default(true),
+  lastVerified: timestamp('lastVerified'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  deviceServiceIdx: uniqueIndex('device_service_idx').on(table.deviceId, table.serviceId),
+}))
+
+// NFHS Network Games (High School Sports)
+export const nfhsGames = sqliteTable('NFHSGame', {
+  id: text('id').primaryKey(),
+  schoolSlug: text('schoolSlug').notNull(),
+  sport: text('sport').notNull(),
+  level: text('level'),
+  homeTeam: text('homeTeam').notNull(),
+  awayTeam: text('awayTeam'),
+  opponent: text('opponent'),
+  date: text('date').notNull(),
+  time: text('time'),
+  dateTime: text('dateTime'),
+  location: text('location'),
+  status: text('status').notNull().default('upcoming'),
+  eventUrl: text('eventUrl'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  schoolIdx: index('idx_nfhs_school').on(table.schoolSlug),
+  statusIdx: index('idx_nfhs_status').on(table.status),
+}))
+
 // Schedule Model
 export const schedules = sqliteTable('Schedule', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -193,6 +249,7 @@ export const matrixOutputs = sqliteTable('MatrixOutput', {
   label: text('label').notNull(),
   resolution: text('resolution').notNull().default('1080p'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  isSchedulingEnabled: integer('isSchedulingEnabled', { mode: 'boolean' }).notNull().default(true), // Exclude audio-only outputs from AI scheduling
   status: text('status').notNull().default('active'),
   audioOutput: text('audioOutput'),
   powerOn: integer('powerOn', { mode: 'boolean' }).notNull().default(false),
@@ -202,7 +259,9 @@ export const matrixOutputs = sqliteTable('MatrixOutput', {
   dailyTurnOff: integer('dailyTurnOff', { mode: 'boolean' }).notNull().default(false),
   tvBrand: text('tvBrand'),
   tvModel: text('tvModel'),
+  cecAddress: text('cecAddress'),
   lastDiscovery: timestamp('lastDiscovery'),
+  tvGroupId: text('tvGroupId'),  // Group ID for TVs that are physically close together (e.g., "group-1", "front-wall")
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
@@ -773,6 +832,10 @@ export const matrixRoutes = sqliteTable('MatrixRoute', {
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+  // Bartender manual override protection (protects TV routing from AI scheduler)
+  manualOverrideUntil: timestamp('manualOverrideUntil'), // When override expires
+  lastManualChangeBy: text('lastManualChangeBy'), // Who made the change (bartender ID)
+  lastManualChangeAt: timestamp('lastManualChangeAt'), // When the manual change was made
 }, (table) => ({
   outputNumIdx: index('MatrixRoute_outputNum_idx').on(table.outputNum),
 }))
@@ -1501,3 +1564,215 @@ export const tournamentBrackets = sqliteTable('tournament_brackets', {
   statusCurrentRoundIdx: index('TournamentBracket_status_currentRound_idx').on(table.status, table.currentRound),
   leagueIdx: index('TournamentBracket_league_idx').on(table.league),
 }))
+
+// ============================================
+// AI GAME PLAN TABLES
+// ============================================
+
+// AI Venue Profile - Store bar/venue settings for AI scheduling
+export const aiVenueProfiles = sqliteTable('ai_venue_profiles', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Bar Hours
+  openTime: text('openTime').notNull().default('11:00'), // 24hr format
+  closeTime: text('closeTime').notNull().default('02:00'), // 24hr format (next day if < openTime)
+  timezone: text('timezone').notNull().default('America/New_York'),
+
+  // Filler Content Settings
+  fillerChannels: text('fillerChannels'), // JSON array of channel numbers for when no good games
+  fillerApps: text('fillerApps'), // JSON array of streaming apps for filler content
+  defaultFillerMode: text('defaultFillerMode').notNull().default('sports_network'), // 'sports_network', 'highlights', 'atmosphere', 'off'
+
+  // Auto-run Settings
+  autoRunEnabled: integer('autoRunEnabled', { mode: 'boolean' }).default(false),
+  autoRunTime: text('autoRunTime').default('09:00'), // Time to auto-generate daily plan
+
+  // Priority Settings
+  alwaysShowLocalTeams: integer('alwaysShowLocalTeams', { mode: 'boolean' }).default(true),
+  nationalGameBoost: integer('nationalGameBoost').default(20), // Priority boost for prime time national games
+  playoffBoost: integer('playoffBoost').default(30), // Priority boost for playoff games
+
+  // Conflict Resolution
+  conflictStrategy: text('conflictStrategy').default('priority'), // 'priority', 'round_robin', 'manual'
+
+  // Metadata
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// AI TV Availability - Track which TVs/inputs are available for AI scheduling
+export const aiTvAvailability = sqliteTable('ai_tv_availability', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // References
+  matrixOutputId: text('matrixOutputId'), // Reference to MatrixOutput (TV)
+  matrixInputId: text('matrixInputId'), // Reference to MatrixInput (source)
+
+  // Display Info
+  tvName: text('tvName').notNull(), // "Bar TV 1", "Patio TV"
+  inputLabel: text('inputLabel'), // "DirecTV 1", "Cable Box 2"
+  deviceType: text('deviceType'), // 'directv', 'cable', 'firetv', 'roku'
+
+  // Availability
+  availableForAI: integer('availableForAI', { mode: 'boolean' }).default(true),
+  priorityRank: integer('priorityRank').default(50), // 1-100, higher = use first
+
+  // Zone/Group
+  tvZone: text('tvZone'), // "Bar", "Patio", "Private Room"
+  tvGroup: text('tvGroup'), // For grouping TVs that should show same content
+
+  // Restrictions
+  allowedLeagues: text('allowedLeagues'), // JSON array of allowed leagues, null = all
+  blockedLeagues: text('blockedLeagues'), // JSON array of blocked leagues
+  sportsOnly: integer('sportsOnly', { mode: 'boolean' }).default(true),
+
+  // Notes
+  notes: text('notes'), // Admin notes about this TV
+
+  // Metadata
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  matrixOutputIdx: index('AiTvAvailability_matrixOutputId_idx').on(table.matrixOutputId),
+  availableForAIIdx: index('AiTvAvailability_availableForAI_idx').on(table.availableForAI),
+  tvZoneIdx: index('AiTvAvailability_tvZone_idx').on(table.tvZone),
+}))
+
+// AI Game Plan Executions - Track plan executions for history/debugging
+export const aiGamePlanExecutions = sqliteTable('ai_game_plan_executions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Execution Info
+  executedAt: timestamp('executedAt').notNull().default(timestampNow()),
+  executedBy: text('executedBy'), // 'auto', 'manual', user ID
+
+  // Plan Summary
+  gamesScheduled: integer('gamesScheduled').default(0),
+  tvsControlled: integer('tvsControlled').default(0),
+  homeTeamGamesFound: integer('homeTeamGamesFound').default(0),
+
+  // Full Plan Data
+  planData: text('planData'), // JSON with full plan details
+
+  // Execution Results
+  success: integer('success', { mode: 'boolean' }).default(true),
+  errors: text('errors'), // JSON array of any errors during execution
+
+  // Timing
+  generationTimeMs: integer('generationTimeMs'), // How long to generate plan
+  executionTimeMs: integer('executionTimeMs'), // How long to execute on TVs
+})
+
+// Bartender Overrides - Track manual TV changes to prevent AI from overriding
+// CRITICAL: This protects bartender decisions - never let AI flip a game the bartender chose
+export const bartenderOverrides = sqliteTable('bartender_overrides', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // TV Identification
+  tvId: text('tvId').notNull(), // Matrix output ID or device ID
+  tvName: text('tvName').notNull(), // Human-readable TV name for UI
+
+  // Lock Status
+  lockedUntil: timestamp('lockedUntil').notNull(), // When the 4-hour lock expires
+  lockType: text('lockType').notNull().default('manual'), // 'manual' (4hr), 'permanent' (security cam), 'game_end_buffer' (10min)
+
+  // Current Content Info
+  currentGameId: text('currentGameId'), // ESPN game ID if showing a game
+  currentChannel: text('currentChannel'), // Channel number or app name
+  currentInput: text('currentInput'), // Matrix input or device
+
+  // Game End Buffer
+  gameEndTime: timestamp('gameEndTime'), // When the game is expected to end
+  gameEndBufferUntil: timestamp('gameEndBufferUntil'), // 10 minutes after game ends
+
+  // Override Info
+  overriddenBy: text('overriddenBy').default('bartender'), // Who created the lock
+  overrideReason: text('overrideReason'), // Optional note about why
+
+  // Auto-unlock conditions
+  unlockOnDeviceCrash: integer('unlockOnDeviceCrash', { mode: 'boolean' }).default(true), // Release lock if device goes offline
+
+  // Metadata
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  tvIdIdx: index('BartenderOverrides_tvId_idx').on(table.tvId),
+  lockedUntilIdx: index('BartenderOverrides_lockedUntil_idx').on(table.lockedUntil),
+  lockTypeIdx: index('BartenderOverrides_lockType_idx').on(table.lockType),
+}))
+
+// FireStick Live Status - Real-time status from FireStick Scout agents
+// Reports what app is open, what game is showing, scores, etc.
+export const firestickLiveStatus = sqliteTable('firestick_live_status', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Device Identification
+  deviceId: text('deviceId').notNull().unique(), // Fire TV device ID from our system
+  deviceName: text('deviceName').notNull(), // Human-readable name (e.g., "Fire Stick TV-12")
+  ipAddress: text('ipAddress'), // Device IP for direct communication
+
+  // Current App Status
+  currentApp: text('currentApp'), // Package name (e.g., "com.peacocktv.peacock")
+  currentAppName: text('currentAppName'), // Friendly name (e.g., "Peacock")
+  appCategory: text('appCategory'), // 'streaming', 'sports', 'news', 'other'
+
+  // Current Game/Content (from OCR when sports app is open)
+  currentGame: text('currentGame'), // e.g., "Penguins vs Capitals"
+  homeTeam: text('homeTeam'),
+  awayTeam: text('awayTeam'),
+  homeScore: text('homeScore'),
+  awayScore: text('awayScore'),
+  gameStatus: text('gameStatus'), // "3rd 4:21", "Final", "Halftime"
+  league: text('league'), // "NHL", "NFL", "NBA", etc.
+
+  // Capabilities (what apps are installed and logged in)
+  installedApps: text('installedApps'), // JSON array of installed streaming app package names
+  loggedInApps: text('loggedInApps'), // JSON array of apps where user is logged in
+
+  // Connection Status
+  isOnline: integer('isOnline', { mode: 'boolean' }).default(false),
+  lastHeartbeat: timestamp('lastHeartbeat'), // Last time we heard from the scout
+  scoutVersion: text('scoutVersion'), // Version of the scout APK
+
+  // Metadata
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  deviceIdIdx: index('FirestickLiveStatus_deviceId_idx').on(table.deviceId),
+  currentAppIdx: index('FirestickLiveStatus_currentApp_idx').on(table.currentApp),
+  isOnlineIdx: index('FirestickLiveStatus_isOnline_idx').on(table.isOnline),
+}))
+
+// FireStick App Registry - Known streaming apps and their deep-link patterns
+export const firestickAppRegistry = sqliteTable('firestick_app_registry', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // App Identification
+  packageName: text('packageName').notNull().unique(), // e.g., "com.peacocktv.peacock"
+  appName: text('appName').notNull(), // e.g., "Peacock"
+  appCategory: text('appCategory').notNull().default('streaming'), // 'streaming', 'sports', 'live_tv'
+
+  // Deep Link Patterns
+  deepLinkPattern: text('deepLinkPattern'), // e.g., "peacock://live/sports/{sport}/{gameId}"
+  searchDeepLink: text('searchDeepLink'), // e.g., "peacock://search?q={query}"
+  homeDeepLink: text('homeDeepLink'), // e.g., "peacock://home"
+
+  // Sports Capabilities
+  hasSportsContent: integer('hasSportsContent', { mode: 'boolean' }).default(false),
+  supportedLeagues: text('supportedLeagues'), // JSON array: ["NFL", "NHL", "EPL"]
+  requiresSubscription: integer('requiresSubscription', { mode: 'boolean' }).default(true),
+
+  // ADB Commands
+  launchCommand: text('launchCommand'), // ADB command to launch app
+  forceStopCommand: text('forceStopCommand'), // ADB command to force stop
+
+  // UI Detection (for OCR)
+  scoreRegexPattern: text('scoreRegexPattern'), // Regex to extract scores from OCR text
+  gameStatusRegexPattern: text('gameStatusRegexPattern'), // Regex to extract game status
+
+  // Metadata
+  logoUrl: text('logoUrl'),
+  isActive: integer('isActive', { mode: 'boolean' }).default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})

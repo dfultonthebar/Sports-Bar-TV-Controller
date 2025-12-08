@@ -21,6 +21,25 @@ export enum LogCategory {
   CACHE = 'CACHE',
 }
 
+// Log level priority for filtering (lower = more verbose)
+const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
+  [LogLevel.DEBUG]: 0,
+  [LogLevel.INFO]: 1,
+  [LogLevel.WARN]: 2,
+  [LogLevel.ERROR]: 3,
+  [LogLevel.SUCCESS]: 1, // Same as INFO
+}
+
+// Get minimum log level from environment (default to INFO in production)
+function getMinLogLevel(): LogLevel {
+  const envLevel = process.env.LOG_LEVEL?.toUpperCase()
+  if (envLevel && Object.values(LogLevel).includes(envLevel as LogLevel)) {
+    return envLevel as LogLevel
+  }
+  // Default: DEBUG in development, INFO in production
+  return process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.INFO
+}
+
 interface LogOptions {
   category?: LogCategory
   level?: LogLevel
@@ -30,6 +49,17 @@ interface LogOptions {
 }
 
 class Logger {
+  private minLogLevel: LogLevel
+
+  constructor() {
+    this.minLogLevel = getMinLogLevel()
+  }
+
+  // Check if a log level should be output
+  private shouldLog(level: LogLevel): boolean {
+    return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[this.minLogLevel]
+  }
+
   private colors = {
     [LogLevel.DEBUG]: '\x1b[36m',    // Cyan
     [LogLevel.INFO]: '\x1b[34m',     // Blue
@@ -95,8 +125,13 @@ class Logger {
     message: string,
     options?: LogOptions
   ) {
+    // Skip logging if below minimum level
+    if (!this.shouldLog(level)) {
+      return
+    }
+
     const formattedMessage = this.formatMessage(level, options?.category, message, options)
-    
+
     // Choose console method based on level
     const consoleMethod = level === LogLevel.ERROR ? console.error :
                          level === LogLevel.WARN ? console.warn :

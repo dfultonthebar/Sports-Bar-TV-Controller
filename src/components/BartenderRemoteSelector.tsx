@@ -223,23 +223,20 @@ export default function BartenderRemoteSelector() {
   // Cable boxes are now configured as IR devices in the IR Devices admin panel
 
   const sendChannelCommand = async (channelNumber: string) => {
-    // For DirecTV, use direct tune API (no OK/ENTER needed)
+    // For DirecTV, use server-side proxy API (direct fetch blocked by CORS)
     if (selectedDevice && 'receiverType' in selectedDevice) {
       const direcTV = selectedDevice as DirecTVDevice
-      const baseUrl = `http://${direcTV.ipAddress}:${direcTV.port}`
 
-      // Handle sub-channels like "210-1"
-      let tuneUrl: string
-      if (channelNumber.includes('-')) {
-        const [major, minor] = channelNumber.split('-')
-        tuneUrl = `${baseUrl}/tv/tune?major=${major}&minor=${minor}`
-      } else {
-        tuneUrl = `${baseUrl}/tv/tune?major=${channelNumber}`
-      }
+      // Use the server-side API which proxies to the DirecTV device
+      const response = await fetch(`/api/directv/${direcTV.id}/tune`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channelNumber })
+      })
 
-      const response = await fetch(tuneUrl, { method: 'GET' })
       if (!response.ok) {
-        throw new Error('Failed to tune channel')
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to tune channel')
       }
       return
     }
@@ -534,6 +531,7 @@ export default function BartenderRemoteSelector() {
                 {/* Channel Presets for Cable */}
                 <div className="w-full mt-4">
                   <ChannelPresetGrid
+                    key={`cable-${selectedDevice?.id || 'none'}`}
                     deviceType="cable"
                     onPresetClick={handlePresetClick}
                     maxVisible={6}
@@ -553,6 +551,7 @@ export default function BartenderRemoteSelector() {
                 {/* Channel Presets for DirecTV */}
                 <div className="w-full mt-4">
                   <ChannelPresetGrid
+                    key={`directv-${selectedDevice?.id || 'none'}`}
                     deviceType="directv"
                     onPresetClick={handlePresetClick}
                     maxVisible={6}

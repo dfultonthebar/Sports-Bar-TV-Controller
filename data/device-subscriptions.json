@@ -224,6 +224,51 @@
       ],
       "lastPolled": "2025-11-21T18:40:59.000Z",
       "pollStatus": "success"
+    },
+    {
+      "deviceId": "firetv_1764889208258_s1akqme5j",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 1",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.playon.nfhslive",
+          "name": "NFHS Network",
+          "type": "sports",
+          "status": "active",
+          "provider": "NFHS",
+          "packageName": "com.playon.nfhslive",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 1"
+        }
+      ],
+      "lastPolled": "2025-12-05T19:26:47.723Z",
+      "pollStatus": "success"
     }
   ]
 }

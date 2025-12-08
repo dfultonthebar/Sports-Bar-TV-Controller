@@ -317,6 +317,96 @@ class ESPNAPIService {
     }
   }
 
+  // Big Ten Conference teams for filtering
+  private readonly BIG_TEN_TEAMS = [
+    'Illinois', 'Indiana', 'Iowa', 'Maryland', 'Michigan', 'Michigan State',
+    'Minnesota', 'Nebraska', 'Northwestern', 'Ohio State', 'Oregon',
+    'Penn State', 'Purdue', 'Rutgers', 'UCLA', 'USC', 'Washington', 'Wisconsin'
+  ]
+
+  // ESPN Conference ID for Big Ten
+  private readonly BIG_TEN_CONFERENCE_ID = '7'
+
+  /**
+   * Check if a game involves a Big Ten team
+   */
+  private isBigTenGame(game: ESPNGame): boolean {
+    const competitors = game.competitions?.[0]?.competitors || []
+    return competitors.some(competitor => {
+      const team = competitor.team
+      // Check by conference ID or team name
+      if ((team as any).conferenceId === this.BIG_TEN_CONFERENCE_ID) return true
+      // Fallback to name matching
+      return this.BIG_TEN_TEAMS.some(bigTenTeam =>
+        team.displayName?.includes(bigTenTeam) ||
+        team.location?.includes(bigTenTeam)
+      )
+    })
+  }
+
+  /**
+   * Get Big Ten Basketball games (using ESPN conference group filter)
+   * Group 7 = Big Ten Conference for basketball
+   */
+  async getBigTenBasketballGames(date?: string): Promise<ESPNGame[]> {
+    try {
+      const dateParam = date ? `&dates=${date.replace(/-/g, '')}` : ''
+      const url = `${this.baseUrl}/basketball/mens-college-basketball/scoreboard?groups=7${dateParam}`
+
+      const response = await this.fetchWithTimeout(url)
+      if (!response.ok) {
+        throw new Error(`ESPN API error: ${response.status}`)
+      }
+
+      const data: ESPNScheduleResponse = await response.json()
+      const games = data.events || []
+      logger.info(`[ESPN API] Found ${games.length} Big Ten basketball games`)
+      return games
+    } catch (error) {
+      logger.error('Error fetching Big Ten Basketball games from ESPN:', error)
+      return []
+    }
+  }
+
+  /**
+   * Get Big Ten Football games (using ESPN conference group filter)
+   * Group 5 = Big Ten Conference for football
+   */
+  async getBigTenFootballGames(date?: string): Promise<ESPNGame[]> {
+    try {
+      const dateParam = date ? `&dates=${date.replace(/-/g, '')}` : ''
+      const url = `${this.baseUrl}/football/college-football/scoreboard?groups=5${dateParam}`
+
+      const response = await this.fetchWithTimeout(url)
+      if (!response.ok) {
+        throw new Error(`ESPN API error: ${response.status}`)
+      }
+
+      const data: ESPNScheduleResponse = await response.json()
+      const games = data.events || []
+      logger.info(`[ESPN API] Found ${games.length} Big Ten football games`)
+      return games
+    } catch (error) {
+      logger.error('Error fetching Big Ten Football games from ESPN:', error)
+      return []
+    }
+  }
+
+  /**
+   * Get all Big Ten games (basketball + football) for a date
+   */
+  async getBigTenGames(date?: string): Promise<{ sport: string; games: ESPNGame[] }[]> {
+    const [basketball, football] = await Promise.all([
+      this.getBigTenBasketballGames(date),
+      this.getBigTenFootballGames(date)
+    ])
+
+    return [
+      { sport: 'Basketball', games: basketball },
+      { sport: 'Football', games: football }
+    ].filter(item => item.games.length > 0)
+  }
+
   /**
    * Get MLS games
    */

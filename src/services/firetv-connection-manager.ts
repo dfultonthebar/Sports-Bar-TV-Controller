@@ -11,6 +11,8 @@ import path from 'path'
 import { getFireTVConfig } from '@/config/firetv-config'
 
 import { logger } from '@/lib/logger'
+import { withFileLock } from '@/lib/file-lock'
+
 const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 const config = getFireTVConfig()
 
@@ -435,22 +437,25 @@ class FireTVConnectionManager {
 
   /**
    * Update device online status in database
+   * Uses file lock to prevent race conditions during concurrent updates
    */
   private async updateDeviceStatus(deviceId: string, isOnline: boolean): Promise<void> {
     try {
-      const data = await fs.readFile(DATA_FILE, 'utf-8')
-      const parsed = JSON.parse(data)
-      
-      const device = parsed.devices.find((d: FireTVDevice) => d.id === deviceId)
-      
-      if (device) {
-        device.isOnline = isOnline
-        device.lastSeen = new Date().toISOString()
-        
-        await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8')
-        
-        logger.info(`[CONNECTION MANAGER] Updated device ${deviceId} status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`)
-      }
+      await withFileLock(DATA_FILE, async () => {
+        const data = await fs.readFile(DATA_FILE, 'utf-8')
+        const parsed = JSON.parse(data)
+
+        const device = parsed.devices.find((d: FireTVDevice) => d.id === deviceId)
+
+        if (device) {
+          device.isOnline = isOnline
+          device.lastSeen = new Date().toISOString()
+
+          await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8')
+
+          logger.info(`[CONNECTION MANAGER] Updated device ${deviceId} status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`)
+        }
+      })
     } catch (error) {
       logger.error('[CONNECTION MANAGER] Error updating device status:', error)
     }

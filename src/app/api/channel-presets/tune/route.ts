@@ -280,47 +280,68 @@ export async function POST(request: NextRequest) {
 // Helper function to send DirecTV channel change via IP
 async function sendDirecTVChannelChange(deviceIp: string, channelNumber: string) {
   try {
-    const digits = channelNumber.split('')
     const baseUrl = `http://${deviceIp}:8080`
 
-    // Send each digit with a small delay
-    for (const digit of digits) {
-      const response = await fetch(`${baseUrl}/remote/processKey?key=${digit}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
+    // Use DirecTV's direct tune API - much cleaner than digit-by-digit
+    // This avoids sending ENTER key which can trigger the INFO screen
+    const tuneUrl = `${baseUrl}/tv/tune?major=${channelNumber}`
 
-      if (!response.ok) {
-        throw new Error(`Failed to send digit ${digit}`)
-      }
+    logger.info(`[DIRECTV] Direct tuning to channel ${channelNumber} via ${tuneUrl}`)
 
-      // Small delay between digits
-      await new Promise(resolve => setTimeout(resolve, 250))
-    }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
 
-    // Send ENTER key to confirm
-    await new Promise(resolve => setTimeout(resolve, 100))
-    const enterResponse = await fetch(`${baseUrl}/remote/processKey?key=enter`, {
+    const response = await fetch(tuneUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      signal: controller.signal
     })
 
-    if (!enterResponse.ok) {
-      throw new Error('Failed to send ENTER key')
+    clearTimeout(timeout)
+
+    // DirecTV returns JSON with status info
+    const responseText = await response.text()
+
+    try {
+      const jsonResponse = JSON.parse(responseText)
+
+      // Check if DirecTV returned success in the JSON body
+      if (jsonResponse.status && jsonResponse.status.code === 200) {
+        logger.info(`[DIRECTV] Successfully tuned to channel ${channelNumber}`)
+        return {
+          success: true,
+          message: `DirecTV tuned to channel ${channelNumber}`
+        }
+      } else {
+        logger.error(`[DIRECTV] Tune failed - status: ${JSON.stringify(jsonResponse.status)}`)
+        return {
+          success: false,
+          error: `DirecTV error: ${jsonResponse.status?.msg || 'Unknown error'}`,
+          details: jsonResponse
+        }
+      }
+    } catch (parseError) {
+      // Not JSON - check HTTP status
+      if (response.ok) {
+        return {
+          success: true,
+          message: `DirecTV tuned to channel ${channelNumber}`
+        }
+      }
+      throw new Error(`Unexpected response: ${responseText}`)
+    }
+  } catch (error: any) {
+    logger.error('DirecTV channel change error:', error)
+
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        error: 'DirecTV timeout - device may be offline',
+        details: 'Request timed out after 5 seconds'
+      }
     }
 
-    return { 
-      success: true, 
-      message: `DirecTV tuned to channel ${channelNumber}` 
-    }
-  } catch (error) {
-    logger.error('DirecTV channel change error:', error)
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'Failed to change DirecTV channel',
       details: error instanceof Error ? error.message : 'Unknown error'
     }

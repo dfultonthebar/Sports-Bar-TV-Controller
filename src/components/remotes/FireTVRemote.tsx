@@ -37,38 +37,37 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
   const [lastCommand, setLastCommand] = useState<string>('')
 
   const sendCommand = async (command: string, displayName?: string) => {
-    setLoading(true)
+    // Don't block UI - fire and forget for faster D-pad response
     setLastCommand(displayName || command)
-    
-    try {
-      const response = await fetch('/api/firetv-devices/send-command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId,
-          command,
-          ipAddress,
-          port
-        })
+
+    // Send command without blocking
+    fetch('/api/firetv-devices/send-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId,
+        command,
+        ipAddress,
+        port
       })
-
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        setStatus({ type: 'success', message: `${displayName || command} sent` })
-      } else {
-        setStatus({ type: 'error', message: data.message || 'Command failed' })
-      }
-    } catch (error) {
-      setStatus({ type: 'error', message: 'Failed to send command' })
-    } finally {
-      setLoading(false)
-      setTimeout(() => setStatus({ type: null, message: '' }), 2000)
-    }
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          setStatus({ type: 'success', message: `${displayName || command} sent` })
+        } else {
+          setStatus({ type: 'error', message: data.message || 'Command failed' })
+        }
+        setTimeout(() => setStatus({ type: null, message: '' }), 1500)
+      })
+      .catch(() => {
+        setStatus({ type: 'error', message: 'Failed to send command' })
+        setTimeout(() => setStatus({ type: null, message: '' }), 1500)
+      })
   }
 
   return (
-    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md relative">
+    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md relative remote-control-container">
       {/* Header */}
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Fire TV Remote</h3>

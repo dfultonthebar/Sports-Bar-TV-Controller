@@ -85,7 +85,7 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
     logger.info(`Sending DirecTV command to: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`)
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 seconds - allows for network latency during rapid commands
 
     const response = await fetch(url, {
       method: 'GET',
@@ -144,8 +144,7 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
       } else if (response.status === 500 || response.status === 503) {
         // Server errors - might be transient, retry
         if (retryCount < maxRetries) {
-          logger.info(`Server error ${response.status}, retrying in 2 seconds...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          logger.info(`Server error ${response.status}, retrying immediately...`)
           return sendDirecTVCommand(ip, port, command, retryCount + 1)
         }
         throw new Error(`HTTP ${response.status}: DirecTV receiver error - ${response.statusText}`)
@@ -179,8 +178,7 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
       } else if (error.message.includes('fetch failed')) {
         // Generic fetch failure - could be network issue
         if (retryCount < maxRetries) {
-          logger.info(`Fetch failed, retrying in 2 seconds...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          logger.info(`Fetch failed, retrying immediately...`)
           return sendDirecTVCommand(ip, port, command, retryCount + 1)
         }
         errorMessage = `Failed to connect to ${ip}:${port}. ` +
