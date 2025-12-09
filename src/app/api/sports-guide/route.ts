@@ -80,16 +80,18 @@ export async function POST(request: NextRequest) {
   logInfo(`Rate limit check passed: ${rateLimitCheck.result.remaining} requests remaining`)
 
   try {
-    // Parse request body (optional) - Input validation
+    // Parse request body (optional) - Body is optional for this endpoint
     let body: any = {}
     try {
-      const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-      if (isValidationError(bodyValidation)) return bodyValidation.error
-      const { data } = bodyValidation
-      body = data
-      logDebug(`Request body received:`, body)
+      const text = await request.text()
+      if (text && text.trim()) {
+        body = JSON.parse(text)
+        logDebug(`Request body received:`, body)
+      } else {
+        logInfo(`No request body provided - using defaults`)
+      }
     } catch (e) {
-      logInfo(`No request body provided - using defaults`)
+      logInfo(`No valid request body - using defaults`)
     }
     
     // Default to 7 days if not specified
