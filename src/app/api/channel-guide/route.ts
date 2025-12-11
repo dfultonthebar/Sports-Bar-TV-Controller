@@ -109,13 +109,200 @@ export async function POST(request: NextRequest) {
     const end = endTime ? new Date(endTime as string | number | Date) : new Date(Date.now() + 24 * 60 * 60 * 1000)
     const days = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000))
 
-    logInfo(`Fetching ${days} days of guide data from The Rail Media API`)
+    logInfo(`Fetching ${days} days of guide data`)
 
-    // Fetch data from The Rail Media API
-    const api = getSportsGuideApi()
-    const guide = await api.fetchDateRangeGuide(days)
+    // Use The Rail Media API for all device types (cable, satellite, streaming)
+    // The API returns SAT and CAB channel numbers that we'll use appropriately
+    let programs: any[] = []
+    const channels = new Map()
 
-    logInfo(`Received ${guide.listing_groups?.length || 0} listing groups from API`)
+    if (deviceType === 'cable' || deviceType === 'satellite') {
+      // Use The Rail Media API for cable/satellite - it has comprehensive SAT/CAB channel data
+      logInfo(`Using The Rail Media API for ${deviceType} guide data`)
+
+      // FIRST: Load channel presets and build a station name -> user channel mapping
+      // This is critical because Rail API returns national channel numbers, but users
+      // configure their own local channel numbers in presets
+      const { db: dbPresets } = await import('@/db')
+      const { schema: schemaPresets } = await import('@/db')
+
+      const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
+      const presets = await dbPresets.select().from(schemaPresets.channelPresets)
+        .where(require('drizzle-orm').eq(schemaPresets.channelPresets.deviceType, presetDeviceType))
+
+      logInfo(`Loaded ${presets.length} ${presetDeviceType} channel presets`)
+
+      // Build station name -> channel mapping (normalized names)
+      // Map common variations: ESPN, ESPN2, FS1, Fox Sports 1, B10, Big Ten Network, etc.
+      const stationToPreset = new Map<string, { channelNumber: string; name: string }>()
+
+      const stationAliases: Record<string, string[]> = {
+        'ESPN': ['ESPN', 'ESPN HD'],
+        'ESPN2': ['ESPN2', 'ESPN 2', 'ESPN2 HD'],
+        'ESPNU': ['ESPNU', 'ESPN U', 'ESPN University'],
+        'ESPND': ['ESPND', 'ESPN Deportes', 'ESPN News'],
+        'SEC': ['SEC', 'SEC Network', 'SECN'],
+        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN'],
+        'ACC': ['ACC', 'ACC Network', 'ACCN'],
+        'FS1': ['FS1', 'Fox Sports 1', 'FOX Sports 1'],
+        'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
+        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS'],
+        'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
+        'TNT': ['TNT', 'TNT HD'],
+        'TBS': ['TBS', 'TBS HD'],
+        'TRUTV': ['TRUTV', 'TruTV', 'truTV', 'USA'],
+        'USA': ['USA', 'USA Network', 'TRUTV'],
+        'NBATV': ['NBATV', 'NBA TV', 'NBA Television'],
+        'NFLNET': ['NFLNET', 'NFL Network', 'NFLN'],
+        'MLBN': ['MLBN', 'MLB Network', 'MLB Television'],
+        'NHLNet': ['NHLNet', 'NHL Network', 'NHLN'],
+        'GOLF': ['GOLF', 'Golf Channel', 'Golf'],
+        'TENNIS': ['TENNIS', 'Tennis Channel', 'Tennis'],
+        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
+        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin'],
+        'BSNOR+': ['BSNOR+', 'Bally Sports North', 'Fox Sports North'],
+      }
+
+      // Normalize station names for matching
+      function normalizeStation(name: string): string {
+        return name.toUpperCase()
+          .replace(/\s+/g, '')
+          .replace(/-/g, '')
+          .replace(/HD$/i, '')
+          .replace(/NETWORK$/i, '')
+          .replace(/CHANNEL$/i, '')
+      }
+
+      // Build preset lookup
+      for (const preset of presets) {
+        const normalizedName = normalizeStation(preset.name)
+        stationToPreset.set(normalizedName, {
+          channelNumber: preset.channelNumber,
+          name: preset.name
+        })
+
+        // Also add by variations in preset name
+        for (const [standard, aliases] of Object.entries(stationAliases)) {
+          for (const alias of aliases) {
+            if (normalizeStation(alias) === normalizedName) {
+              stationToPreset.set(standard.toUpperCase(), {
+                channelNumber: preset.channelNumber,
+                name: preset.name
+              })
+            }
+          }
+        }
+      }
+
+      logInfo(`Built station lookup with ${stationToPreset.size} entries`)
+
+      // NOW: Fetch guide data from Rail API
+      const api = getSportsGuideApi()
+      const guide = await api.fetchDateRangeGuide(days)
+      logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups`)
+
+      // The lineup key to use for this device type
+      const lineupKey = deviceType === 'satellite' ? 'SAT' : 'CAB'
+      logInfo(`Using lineup key: ${lineupKey}`)
+
+      let matchedCount = 0
+      let unmatchedStations = new Set<string>()
+
+      for (const group of guide.listing_groups || []) {
+        for (const listing of group.listings || []) {
+          // Get channel numbers for this device type
+          const channelNumbers = listing.channel_numbers?.[lineupKey]
+          if (!channelNumbers) continue
+
+          // Get all stations and try to match them to presets
+          for (const [station, channelNums] of Object.entries(channelNumbers)) {
+            const numArray = channelNums as (number | string)[]
+            if (!numArray || numArray.length === 0) continue
+
+            // Try to find this station in user's presets
+            const normalizedStation = station.toUpperCase()
+            let presetMatch = stationToPreset.get(normalizedStation)
+
+            // Try aliases if direct match fails
+            if (!presetMatch) {
+              for (const [standard, aliases] of Object.entries(stationAliases)) {
+                if (aliases.some(a => normalizeStation(a) === normalizedStation)) {
+                  presetMatch = stationToPreset.get(standard.toUpperCase())
+                  if (presetMatch) break
+                }
+              }
+            }
+
+            // If no preset match, track and skip
+            if (!presetMatch) {
+              unmatchedStations.add(station)
+              continue
+            }
+
+            matchedCount++
+            const userChannelNumber = presetMatch.channelNumber
+
+            // Create channel info using USER's channel number
+            const channelInfo = {
+              id: `${deviceType}-${userChannelNumber}`,
+              name: presetMatch.name,
+              number: userChannelNumber,
+              type: deviceType,
+              cost: 'subscription',
+              platforms: [deviceType === 'satellite' ? 'DirecTV' : 'Cable'],
+              channelNumber: userChannelNumber,
+              deviceType: deviceType,
+              station: station,
+              presetName: presetMatch.name
+            }
+            channels.set(channelInfo.id, channelInfo)
+
+            // Parse the date properly
+            let eventDate: Date
+            if (listing.date) {
+              const currentYear = new Date().getFullYear()
+              const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
+              eventDate = new Date(dateWithYear)
+
+              if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+                eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
+              }
+            } else {
+              eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
+            }
+
+            // Calculate end time (3 hours after start for most games)
+            const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+
+            // Create program entry
+            const programId = `rail-${deviceType}-${userChannelNumber}-${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
+
+            programs.push({
+              id: programId,
+              league: group.group_title,
+              homeTeam: listing.data['home team'] || listing.data['team'] || '',
+              awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+              gameTime: listing.time,
+              startTime: eventDate.toISOString(),
+              endTime: endTime.toISOString(),
+              channel: channelInfo,
+              description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
+              isSports: true,
+              isLive: false,
+              venue: listing.data['venue'] || listing.data['location'] || '',
+              date: listing.date,
+              station: station
+            })
+          }
+        }
+      }
+
+      logInfo(`Processed ${programs.length} programs from Rail API for ${deviceType}`)
+      logInfo(`Matched ${matchedCount} station listings to presets`)
+      if (unmatchedStations.size > 0) {
+        logInfo(`Unmatched stations (consider adding to presets): ${[...unmatchedStations].slice(0, 20).join(', ')}`)
+      }
+    }
 
     // For streaming devices (Fire TV), fetch the device's installed apps AND logged-in subscriptions
     let deviceInstalledApps: string[] = []
@@ -177,55 +364,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Transform The Rail Media API data to our format
-    const programs = []
-    const channels = new Map()
+    // For streaming devices, use The Rail Media API
+    if (deviceType === 'streaming') {
+      logInfo(`Device logged in packages: ${deviceLoggedInPackages.join(', ')}`)
 
-    for (const group of guide.listing_groups || []) {
-      for (const listing of group.listings || []) {
-        // Extract channel info based on device type - STRICT FILTERING
-        let channelInfo: any = null
-        
-        // CRITICAL: Only create channels that match the requested device type
-        if (deviceType === 'satellite') {
-          // DirecTV/Satellite - ONLY if SAT channels exist
-          if (listing.channel_numbers?.SAT) {
-            const satChannels = listing.channel_numbers.SAT
-            const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-            const firstChannel = Object.values(satChannels)[0] as any
-            const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
-            
-            channelInfo = {
-              id: `sat-${firstStation}`,
-              name: firstStation,
-              number: String(channelNumber),
-              type: 'satellite',
-              cost: 'subscription',
-              platforms: ['DirecTV', 'Dish Network'],
-              channelNumber: String(channelNumber),
-              deviceType: 'satellite'
-            }
-          }
-        } else if (deviceType === 'cable') {
-          // Cable - ONLY if CAB channels exist
-          if (listing.channel_numbers?.CAB) {
-            const cableChannels = listing.channel_numbers.CAB
-            const firstStation = listing.stations ? Object.values(listing.stations)[0] : 'Unknown'
-            const firstChannel = Object.values(cableChannels)[0] as any
-            const channelNumber = Array.isArray(firstChannel) ? firstChannel[0] : firstChannel
-            
-            channelInfo = {
-              id: `cable-${firstStation}`,
-              name: firstStation,
-              number: String(channelNumber),
-              type: 'cable',
-              cost: 'subscription',
-              platforms: ['Cable'],
-              channelNumber: String(channelNumber),
-              deviceType: 'cable'
-            }
-          }
-        } else if (deviceType === 'streaming') {
+      const api = getSportsGuideApi()
+      const guide = await api.fetchDateRangeGuide(days)
+      logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups for streaming`)
+
+      for (const group of guide.listing_groups || []) {
+        for (const listing of group.listings || []) {
+          // Extract channel info for streaming devices
+          let channelInfo: any = null
+
           // For streaming/Fire TV devices, check if any station has a streaming app
           const stationList = listing.stations
           if (stationList) {
@@ -237,7 +388,6 @@ export async function POST(request: NextRequest) {
               const appInfo = getStreamingAppInfo(station)
               if (appInfo) {
                 // Check if the Fire TV device has this service LOGGED IN (not just installed)
-                // This ensures we only show games for services with active subscriptions
                 const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
                 if (hasLoggedIn) {
                   channelInfo = {
@@ -258,65 +408,56 @@ export async function POST(request: NextRequest) {
               }
             }
           }
-        }
 
-        // CRITICAL: Skip this listing if no matching channel was found for the device type
-        if (!channelInfo) {
-          logInfo(`Skipping listing - no ${deviceType} channel available`, {
-            groupTitle: group.group_title,
-            time: listing.time,
-            availableLineups: Object.keys(listing.channel_numbers || {})
-          })
-          continue
-        }
-
-        // Add channel to map
-        channels.set(channelInfo.id, channelInfo)
-
-        // Create program entry with proper date parsing
-        const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
-        
-        // Parse the date properly - API returns dates like "Oct 27" without year
-        // We need to add the current year to make it valid
-        let eventDate: Date
-        if (listing.date) {
-          // Parse the date and add current year if missing
-          const currentYear = new Date().getFullYear()
-          const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
-          eventDate = new Date(dateWithYear)
-          
-          // If the parsed date is invalid or in the past (more than 1 day ago), try next year
-          if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
-            eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
+          // Skip this listing if no matching channel was found
+          if (!channelInfo) {
+            continue
           }
-        } else {
-          // Fallback to today if no date provided
-          eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
-        }
-        
-        // Calculate end time (3 hours after start for sports events)
-        const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
-        
-        const program = {
-          id: programId,
-          league: group.group_title,
-          homeTeam: listing.data['home team'] || listing.data['team'] || '',
-          awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
-          gameTime: listing.time,
-          startTime: eventDate.toISOString(),
-          endTime: endTime.toISOString(),
-          channel: channelInfo,
-          description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
-          isSports: true,
-          isLive: false,
-          venue: listing.data['venue'] || listing.data['location'] || ''
-        }
 
-        programs.push(program)
+          // Add channel to map
+          channels.set(channelInfo.id, channelInfo)
+
+          // Create program entry with proper date parsing
+          const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
+
+          // Parse the date properly
+          let eventDate: Date
+          if (listing.date) {
+            const currentYear = new Date().getFullYear()
+            const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
+            eventDate = new Date(dateWithYear)
+
+            if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+              eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
+            }
+          } else {
+            eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
+          }
+
+          // Calculate end time (3 hours after start)
+          const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+
+          const program = {
+            id: programId,
+            league: group.group_title,
+            homeTeam: listing.data['home team'] || listing.data['team'] || '',
+            awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+            gameTime: listing.time,
+            startTime: eventDate.toISOString(),
+            endTime: endTime.toISOString(),
+            channel: channelInfo,
+            description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
+            isSports: true,
+            isLive: false,
+            venue: listing.data['venue'] || listing.data['location'] || ''
+          }
+
+          programs.push(program)
+        }
       }
     }
 
-    logInfo(`Transformed ${programs.length} programs and ${channels.size} channels`)
+    logInfo(`Processed ${programs.length} programs and ${channels.size} channels`)
 
     // For streaming devices, check if NFHS Network is logged in and add NFHS games
     if (deviceType === 'streaming' && deviceId) {

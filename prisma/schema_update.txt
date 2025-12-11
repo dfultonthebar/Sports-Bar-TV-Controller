@@ -1,3 +1,0 @@
-# Add to MatrixOutput model:
-  selectedVideoInput  Int?              // Selected video input for this matrix output (for audio routing)
-  videoInputLabel     String?           // Label of the selected video input

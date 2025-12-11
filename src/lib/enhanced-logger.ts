@@ -2,7 +2,6 @@
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { createHash } from 'crypto'
-import { jobQueue } from './job-queue'
 
 import { logger } from '@/lib/logger'
 // Enhanced log types with more granular tracking
@@ -281,26 +280,9 @@ export class EnhancedLogger {
   }
 
   private async triggerAIAnalysis(logEntry: EnhancedLogEntry) {
-    // Use background job queue to prevent blocking
-    // AI analysis is now asynchronous and won't slow down logging
-    try {
-      jobQueue.addJob(
-        'ai-log-analysis',
-        { logEntry },
-        {
-          priority: logEntry.level === 'critical' ? 'high' : 'normal',
-          maxAttempts: 2,
-          metadata: {
-            logId: logEntry.id,
-            category: logEntry.category,
-            level: logEntry.level
-          }
-        }
-      )
-    } catch (error) {
-      // Silently fail - AI analysis is not critical to logging
-      logger.error('Failed to queue AI analysis:', error)
-    }
+    // AI analysis has been removed - job queue was unused
+    // This is now a no-op placeholder for future implementation
+    return
   }
 
   private async analyzeLogEntry(logEntry: EnhancedLogEntry): Promise<any> {
