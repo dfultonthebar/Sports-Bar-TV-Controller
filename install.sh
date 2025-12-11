@@ -301,9 +301,18 @@ install_system_dependencies() {
         ca-certificates \
         gnupg \
         >> "$LOG_FILE" 2>&1
-    
+
+    log_and_print "Installing hardware control dependencies..."
+    # Hardware control packages for TV/device management
+    # - adb: Android Debug Bridge for Fire TV/Fire Cube control
+    # - cec-utils: HDMI-CEC control for TVs and cable boxes
+    sudo apt-get install -y \
+        adb \
+        cec-utils \
+        >> "$LOG_FILE" 2>&1
+
     print_success "All system dependencies installed"
-    print_info "Installed: build tools, Python 3, SQLite libraries, and core utilities"
+    print_info "Installed: build tools, Python 3, SQLite libraries, ADB, CEC utilities, and core utilities"
 }
 
 #############################################################################
@@ -523,6 +532,67 @@ download_ollama_models() {
         echo "  ✓ Quick Queries (mistral)"
         echo ""
     fi
+}
+
+#############################################################################
+# PHASE 1 (continued): Install Tailscale Remote Access
+#############################################################################
+# Tailscale provides secure remote access to the system even with dynamic
+# WAN IP addresses. This is essential for remote management of the sports bar
+# TV controller system.
+#
+# Features:
+# - Mesh VPN that works behind NAT/firewalls
+# - SSH access via Tailscale network
+# - No port forwarding required
+# - Works with dynamic IP addresses
+#############################################################################
+
+install_tailscale() {
+    print_header "PHASE 1: Installing Tailscale Remote Access"
+
+    if check_command tailscale; then
+        print_success "Tailscale is already installed"
+        local ts_version=$(tailscale --version | head -1)
+        print_info "Tailscale version: $ts_version"
+    else
+        log_and_print "Installing Tailscale..."
+        curl -fsSL https://tailscale.com/install.sh | sh >> "$LOG_FILE" 2>&1
+
+        if check_command tailscale; then
+            print_success "Tailscale installed successfully"
+        else
+            print_warning "Tailscale installation may have failed - continuing with installation"
+            return 0
+        fi
+    fi
+
+    # Enable Tailscale service
+    log_and_print "Enabling Tailscale service..."
+    sudo systemctl enable tailscaled >> "$LOG_FILE" 2>&1 || true
+    sudo systemctl start tailscaled >> "$LOG_FILE" 2>&1 || true
+
+    # Check if already authenticated
+    if tailscale status 2>/dev/null | grep -q "Tailscale is stopped"; then
+        print_warning "Tailscale is installed but not authenticated"
+        print_info ""
+        print_info "To complete Tailscale setup after installation:"
+        print_info "  1. Run: sudo tailscale up --ssh"
+        print_info "  2. Open the URL shown in your browser"
+        print_info "  3. Authenticate with your Tailscale account"
+        print_info ""
+        print_info "Once authenticated, you can SSH to this machine from"
+        print_info "any device on your Tailscale network."
+        print_info ""
+    elif tailscale status 2>/dev/null | grep -q "100."; then
+        local ts_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
+        print_success "Tailscale is connected"
+        print_info "Tailscale IP: $ts_ip"
+    else
+        print_info "Tailscale installed - run 'sudo tailscale up --ssh' to authenticate"
+    fi
+
+    print_success "Tailscale setup complete"
 }
 
 #############################################################################
@@ -1022,6 +1092,26 @@ print_final_instructions() {
     echo -e "  App status: ${YELLOW}pm2 status${NC}"
     echo ""
     
+    echo -e "${CYAN}Remote Access (Tailscale):${NC}"
+    if check_command tailscale; then
+        if tailscale status 2>/dev/null | grep -q "100."; then
+            local ts_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
+            echo -e "  Tailscale IP: ${YELLOW}$ts_ip${NC}"
+            echo -e "  SSH via Tailscale: ${YELLOW}ssh ubuntu@$ts_ip${NC}"
+        else
+            echo -e "  Status: ${YELLOW}Installed but not authenticated${NC}"
+            echo -e "  Setup: ${YELLOW}sudo tailscale up --ssh${NC}"
+        fi
+    else
+        echo -e "  Status: ${YELLOW}Not installed${NC}"
+    fi
+    echo ""
+
+    echo -e "${CYAN}Hardware Control:${NC}"
+    echo -e "  Fire TV (ADB): ${YELLOW}adb connect <device-ip>:5555${NC}"
+    echo -e "  HDMI-CEC: ${YELLOW}cec-client -l${NC} (list CEC devices)"
+    echo ""
+
     echo -e "${CYAN}Important Notes:${NC}"
     echo -e "  • PM2 is installed in: ${YELLOW}$HOME/.npm-global/bin${NC}"
     echo -e "  • If 'pm2' command not found, run: ${YELLOW}source ~/.profile${NC}"
@@ -1112,10 +1202,11 @@ main() {
     check_system_requirements
     
     # PHASE 1: Install ALL system dependencies and runtimes FIRST
-    install_system_dependencies  # System packages, build tools, SQLite libraries
+    install_system_dependencies  # System packages, build tools, SQLite libraries, ADB, CEC
     install_nodejs              # Node.js runtime (required by npm)
     install_ollama              # Ollama AI runtime (system service)
-    
+    install_tailscale           # Tailscale remote access (mesh VPN)
+
     # User setup (if needed for system-wide installation)
     create_service_user
     
