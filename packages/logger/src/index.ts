@@ -400,5 +400,8 @@ class Logger {
 // Export singleton instance
 export const logger = new Logger()
 
+// Export the Logger class type for typing
+export type { Logger }
+
 // Export for direct usage
 export default logger

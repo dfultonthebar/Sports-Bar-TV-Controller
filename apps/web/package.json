@@ -87,6 +87,7 @@
   },
   "dependencies": {
     "@sports-bar/config": "*",
+    "@sports-bar/data": "*",
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
     "@anthropic-ai/sdk": "^0.71.2",
