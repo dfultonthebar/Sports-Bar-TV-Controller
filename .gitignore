@@ -104,6 +104,7 @@ yarn.lock
 # Build artifacts and temporary files
 benchmark-reports/
 next/
+**/dist/
 *.tgz
 *.tar.gz
 !**/backups/*.tar.gz
