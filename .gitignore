@@ -125,3 +125,6 @@ firestick-scout/local.properties
 
 # Playwright screenshots (regenerated during testing)
 playwright-screenshots/
+
+# Turborepo
+.turbo
