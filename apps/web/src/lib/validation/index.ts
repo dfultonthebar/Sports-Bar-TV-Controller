@@ -1,22 +1,12 @@
 /**
- * Validation Module
+ * Validation Module Bridge
  *
- * Central export point for all validation utilities
- *
- * Combines:
- * - Common schemas from @sports-bar/config/validation (shared across packages)
- * - App-specific schemas from ./schemas (with local dependencies)
- * - Validation middleware from ./middleware
+ * Re-exports from @sports-bar/validation package for backward compatibility.
+ * This allows existing imports from '@/lib/validation' to continue working.
  */
 
-// Export common schemas from package first (local schemas will override duplicates)
+// Re-export everything from the validation package
+export * from '@sports-bar/validation'
+
+// Also re-export common schemas from @sports-bar/config for backward compatibility
 export * from '@sports-bar/config/validation'
-
-// Export app-specific schemas (overrides package schemas with same names)
-export * from './schemas'
-
-// Export validation middleware
-export * from './middleware'
-
-// Re-export commonly used Zod utilities
-export { z, type ZodSchema, type ZodError } from 'zod'

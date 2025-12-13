@@ -7,7 +7,7 @@
 import { z, ZodError, ZodSchema } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================

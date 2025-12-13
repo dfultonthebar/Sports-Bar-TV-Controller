@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import { isValidCronExpression } from '@/lib/cron-utils'
+import { isValidCronExpression } from './cron-validation'
 
 // ============================================================================
 // COMMON PRIMITIVES
