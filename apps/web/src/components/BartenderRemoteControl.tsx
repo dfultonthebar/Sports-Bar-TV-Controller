@@ -1413,7 +1413,7 @@ export default function BartenderRemoteControl() {
                   </div>
                   <div className="flex space-x-1">
                     <button
-                      onClick={() => adjustZoneVolume(selectedAudioZone, -5)}
+                      onClick={() => adjustZoneVolume(selectedAudioZone, -2)}
                       className="flex-1 p-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-all"
                     >
                       <ChevronDown className="w-4 h-4 mx-auto" />
@@ -1421,15 +1421,15 @@ export default function BartenderRemoteControl() {
                     <button
                       onClick={() => toggleZoneMute(selectedAudioZone)}
                       className={`flex-1 p-2 rounded text-sm transition-all ${
-                        selectedAudioZone.muted 
-                          ? 'bg-orange-600 hover:bg-orange-500' 
+                        selectedAudioZone.muted
+                          ? 'bg-orange-600 hover:bg-orange-500'
                           : 'bg-slate-600 hover:bg-slate-500'
                       } text-white`}
                     >
                       {selectedAudioZone.muted ? <Volume2 className="w-4 h-4 mx-auto" /> : <VolumeX className="w-4 h-4 mx-auto" />}
                     </button>
                     <button
-                      onClick={() => adjustZoneVolume(selectedAudioZone, 5)}
+                      onClick={() => adjustZoneVolume(selectedAudioZone, 2)}
                       className="flex-1 p-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm transition-all"
                     >
                       <ChevronUp className="w-4 h-4 mx-auto" />
