@@ -1,0 +1,23 @@
+{
+  "name": "@sports-bar/circuit-breaker",
+  "version": "1.0.0",
+  "description": "Circuit breaker utility for resilient API calls in Sports Bar TV Controller",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/logger": "*",
+    "opossum": "^9.0.0"
+  },
+  "devDependencies": {
+    "@sports-bar/config": "*",
+    "@types/opossum": "^8.1.9",
+    "typescript": "^5.9.2"
+  }
+}
