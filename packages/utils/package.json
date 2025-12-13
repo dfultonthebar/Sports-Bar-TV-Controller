@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@sports-bar/logger": "*",
-    "cron-parser": "^5.4.0"
+    "cron-parser": "^5.4.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@sports-bar/config": "*",

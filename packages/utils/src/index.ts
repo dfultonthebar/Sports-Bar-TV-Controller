@@ -37,3 +37,34 @@ export {
 
 // File locking
 export { withFileLock } from './file-lock'
+
+// Path utilities
+export {
+  getProjectRoot,
+  getDataDir,
+  getDataPath,
+  getRagDataDir,
+  getLogsDir,
+  getMemoryBankDir,
+  getDocsDir,
+  DataFiles,
+  resetPathCache
+} from './paths'
+
+// AI Knowledge base
+export {
+  loadKnowledgeBase,
+  searchKnowledgeBase,
+  getKnowledgeBaseStats,
+  buildContext,
+  buildContextFromDocs,
+  type DocumentChunk
+} from './ai-knowledge'
+
+// Text extraction
+export {
+  extractTextFromFile,
+  cleanExtractedText,
+  extractAndCleanText,
+  type TextExtractionResult
+} from './text-extractor'
