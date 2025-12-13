@@ -95,6 +95,7 @@
     "@sports-bar/database": "*",
     "@sports-bar/directv": "*",
     "@sports-bar/firecube": "*",
+    "@sports-bar/ir-control": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/rate-limiting": "*",
     "@sports-bar/sports-apis": "*",
