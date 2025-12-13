@@ -10,10 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { validatePIN } from '@/lib/auth/pin'
-import { createSession } from '@/lib/auth/session'
-import { logAuditAction } from '@/lib/auth/audit'
-import { AUTH_CONFIG } from '@/lib/auth/config'
+import { validatePIN, createSession, logAuditAction, AUTH_CONFIG } from '@/lib/auth'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'

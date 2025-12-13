@@ -10,11 +10,12 @@
 
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
-import { db } from '@/db'
-import { authApiKeys, locations } from '@/db/schema'
+import { db, schema } from '@sports-bar/database'
 import { eq, and } from 'drizzle-orm'
 import { AUTH_CONFIG } from './config'
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
+
+const { authApiKeys, locations } = schema
 
 export interface ApiKeyData {
   id: string

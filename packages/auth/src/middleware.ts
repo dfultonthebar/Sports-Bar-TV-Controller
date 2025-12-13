@@ -14,7 +14,7 @@ import { validateSession } from './session'
 import { validateApiKey } from './api-key'
 import { logAuditAction } from './audit'
 import { AUTH_CONFIG, type UserRole, AccessLevel, getEndpointAccessLevel } from './config'
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
 
 export interface AuthResult {
   allowed: boolean

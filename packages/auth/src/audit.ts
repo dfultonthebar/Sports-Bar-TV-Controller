@@ -8,11 +8,12 @@
  * - Authentication events
  */
 
-import { db } from '@/db'
-import { auditLogs } from '@/db/schema'
-import { eq, and, gte, lte, desc } from 'drizzle-orm'
+import { db, schema } from '@sports-bar/database'
+import { eq, lte, desc } from 'drizzle-orm'
 import { AUTH_CONFIG } from './config'
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
+
+const { auditLogs } = schema
 
 export interface AuditLogEntry {
   id: string

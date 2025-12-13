@@ -9,9 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { destroySession } from '@/lib/auth/session'
-import { logAuditAction } from '@/lib/auth/audit'
-import { AUTH_CONFIG } from '@/lib/auth/config'
+import { destroySession, logAuditAction, AUTH_CONFIG } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

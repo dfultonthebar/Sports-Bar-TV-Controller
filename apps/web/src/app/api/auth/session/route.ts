@@ -7,8 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { validateSession, extendSession, getSessionStats } from '@/lib/auth/session'
-import { AUTH_CONFIG } from '@/lib/auth/config'
+import { validateSession, extendSession, getSessionStats, AUTH_CONFIG } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

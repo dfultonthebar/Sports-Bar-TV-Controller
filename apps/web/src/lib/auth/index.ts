@@ -1,12 +1,8 @@
 /**
- * Authentication Library Index
+ * Authentication Library Bridge
  *
- * Central export for all authentication utilities
+ * Re-exports from @sports-bar/auth package for backward compatibility.
+ * This allows existing imports from '@/lib/auth' to continue working.
  */
 
-export * from './config'
-export * from './pin'
-export * from './session'
-export * from './api-key'
-export * from './audit'
-export * from './middleware'
+export * from '@sports-bar/auth'

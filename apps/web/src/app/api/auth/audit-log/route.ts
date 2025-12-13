@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuditLogs, getAuditLogStats, exportAuditLogs } from '@/lib/auth/audit'
-import { requireAuth } from '@/lib/auth/middleware'
+import { getAuditLogs, getAuditLogStats, exportAuditLogs, requireAuth } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

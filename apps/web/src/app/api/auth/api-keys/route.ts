@@ -7,9 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createApiKey, listApiKeys, revokeApiKey, deleteApiKey } from '@/lib/auth/api-key'
-import { requireAuth } from '@/lib/auth/middleware'
-import { logAuditAction } from '@/lib/auth/audit'
+import { createApiKey, listApiKeys, revokeApiKey, deleteApiKey, requireAuth, logAuditAction } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

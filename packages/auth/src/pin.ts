@@ -8,11 +8,12 @@
  */
 
 import bcrypt from 'bcryptjs'
-import { db } from '@/db'
-import { authPins, locations } from '@/db/schema'
+import { db, schema } from '@sports-bar/database'
 import { eq, and } from 'drizzle-orm'
 import { AUTH_CONFIG, type UserRole } from './config'
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
+
+const { authPins, locations } = schema
 
 /**
  * Hash a PIN using bcrypt

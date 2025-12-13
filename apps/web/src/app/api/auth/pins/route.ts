@@ -7,9 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createPIN, listPINs, deletePIN, deactivatePIN } from '@/lib/auth/pin'
-import { requireAuth } from '@/lib/auth/middleware'
-import { logAuditAction } from '@/lib/auth/audit'
+import { createPIN, listPINs, deletePIN, deactivatePIN, requireAuth, logAuditAction } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

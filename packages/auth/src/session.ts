@@ -9,11 +9,12 @@
  * - Cleaning up expired sessions
  */
 
-import { db } from '@/db'
-import { sessions } from '@/db/schema'
-import { eq, and, lt, gt } from 'drizzle-orm'
+import { db, schema } from '@sports-bar/database'
+import { eq, and, gt } from 'drizzle-orm'
 import { AUTH_CONFIG, type UserRole } from './config'
-import { logger } from '@/lib/logger'
+import { logger } from '@sports-bar/logger'
+
+const { sessions } = schema
 
 export interface SessionData {
   sessionId: string
