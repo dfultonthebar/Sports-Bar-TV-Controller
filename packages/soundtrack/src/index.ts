@@ -1,6 +1,9 @@
 /**
- * Soundtrack Your Brand Bridge - Re-exports from @sports-bar/soundtrack
+ * @sports-bar/soundtrack - Soundtrack Your Brand API Integration
+ *
+ * Commercial music streaming service integration for sports bars.
  */
+
 export {
   SoundtrackYourBrandAPI,
   getSoundtrackAPI,
@@ -10,4 +13,4 @@ export {
   type SoundtrackStation,
   type SoundtrackSoundZone,
   type NowPlaying
-} from '@sports-bar/soundtrack'
+} from './soundtrack-your-brand'
