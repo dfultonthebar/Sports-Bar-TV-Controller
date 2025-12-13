@@ -25,3 +25,15 @@ export { liveSportsService, type UnifiedGame, type ChannelMapping } from './live
 
 // Enhanced Live Sports Service
 export { enhancedLiveSportsService, type EnhancedUnifiedGame, type EnhancedSportsDataResponse } from './enhanced-live-sports-service'
+
+// Sports Guide API (The Rail Media)
+export {
+  SportsGuideApi,
+  SportsGuideApiError,
+  createSportsGuideApiFromEnv,
+  getSportsGuideApi,
+  type SportsGuideListing,
+  type SportsGuideListingGroup,
+  type SportsGuideResponse,
+  type SportsGuideApiConfig
+} from './sports-guide-api'

@@ -20,6 +20,7 @@
   "devDependencies": {
     "@sports-bar/config": "*",
     "@types/node": "^24.5.2",
+    "opossum": "^8.1.4",
     "typescript": "^5.9.2"
   }
 }
