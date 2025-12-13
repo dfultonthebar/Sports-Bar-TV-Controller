@@ -92,6 +92,7 @@
     "@sports-bar/config": "*",
     "@sports-bar/data": "*",
     "@sports-bar/database": "*",
+    "@sports-bar/directv": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/rate-limiting": "*",
     "@sports-bar/sports-apis": "*",
