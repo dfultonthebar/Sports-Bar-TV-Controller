@@ -19,5 +19,13 @@ export {
   createRateLimitHeaders,
   createRateLimitResponse,
   addRateLimitHeaders,
-  type RateLimitCheckResult
+  type RateLimitCheckResult,
+  // Request throttling for external APIs
+  RequestThrottler,
+  ThrottleConfigs,
+  espnThrottler,
+  sportsDBThrottler,
+  ollamaThrottler,
+  defaultThrottler,
+  type ThrottleConfig
 } from '@sports-bar/rate-limiting'

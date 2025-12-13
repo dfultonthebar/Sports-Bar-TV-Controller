@@ -29,3 +29,14 @@ export {
   addRateLimitHeaders,
   type RateLimitCheckResult
 } from './middleware'
+
+// Request throttling for external APIs
+export {
+  RequestThrottler,
+  ThrottleConfigs,
+  espnThrottler,
+  sportsDBThrottler,
+  ollamaThrottler,
+  defaultThrottler,
+  type ThrottleConfig
+} from './request-throttler'
