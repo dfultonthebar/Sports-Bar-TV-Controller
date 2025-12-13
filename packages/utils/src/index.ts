@@ -4,6 +4,8 @@
  * Common utilities used across the application:
  * - Encryption/decryption helpers
  * - Cron expression utilities
+ * - File utilities and locking
+ * - Config change tracking
  */
 
 // Encryption
@@ -21,3 +23,17 @@ export {
   listCronPresets,
   CRON_PRESETS
 } from './cron-utils'
+
+// File utilities
+export {
+  generateUniqueFilename,
+  saveFile,
+  saveUploadedFile,
+  deleteFile,
+  getFileExtension,
+  isValidFileType,
+  ensureDirectoryExists
+} from './file-utils'
+
+// File locking
+export { withFileLock } from './file-lock'
