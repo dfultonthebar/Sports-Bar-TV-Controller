@@ -86,6 +86,7 @@
     "vitest": "^4.0.7"
   },
   "dependencies": {
+    "@sports-bar/atlas": "*",
     "@sports-bar/auth": "*",
     "@sports-bar/cache-manager": "*",
     "@sports-bar/circuit-breaker": "*",
