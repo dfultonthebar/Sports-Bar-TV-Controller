@@ -87,6 +87,7 @@
   },
   "dependencies": {
     "@sports-bar/auth": "*",
+    "@sports-bar/cache-manager": "*",
     "@sports-bar/config": "*",
     "@sports-bar/data": "*",
     "@sports-bar/database": "*",
