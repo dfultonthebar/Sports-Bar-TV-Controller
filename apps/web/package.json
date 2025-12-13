@@ -97,6 +97,7 @@
     "@sports-bar/logger": "*",
     "@sports-bar/rate-limiting": "*",
     "@sports-bar/sports-apis": "*",
+    "@sports-bar/streaming": "*",
     "@sports-bar/validation": "*",
     "@anthropic-ai/sdk": "^0.71.2",
     "@radix-ui/react-dialog": "^1.1.15",
