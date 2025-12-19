@@ -1,0 +1,32 @@
+{
+  "name": "@sports-bar/config",
+  "version": "1.0.0",
+  "description": "Shared configuration and validation schemas for Sports Bar TV Controller",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tsconfig/base.json": "./src/tsconfig/base.json",
+    "./tsconfig/next.json": "./src/tsconfig/next.json",
+    "./tsconfig/library.json": "./src/tsconfig/library.json",
+    "./validation": {
+      "types": "./src/validation/index.ts",
+      "default": "./src/validation/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}

@@ -4,7 +4,7 @@ module.exports = {
     name: 'sports-bar-tv-controller',
     script: 'node_modules/next/dist/bin/next',
     args: 'start',
-    cwd: '/home/ubuntu/Sports-Bar-TV-Controller',
+    cwd: '/home/ubuntu/Sports-Bar-TV-Controller/apps/web',
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,

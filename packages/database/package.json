@@ -1,0 +1,36 @@
+{
+  "name": "@sports-bar/database",
+  "version": "1.0.0",
+  "description": "Drizzle ORM database layer for Sports Bar TV Controller",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema": {
+      "types": "./src/schema.ts",
+      "default": "./src/schema.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.5.2",
+    "drizzle-kit": "^0.31.5",
+    "typescript": "^5.9.2"
+  }
+}

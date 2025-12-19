@@ -11,6 +11,7 @@
 
 # next.js
 /.next/
+**/.next/
 /out/
 
 # production
@@ -103,6 +104,7 @@ yarn.lock
 # Build artifacts and temporary files
 benchmark-reports/
 next/
+**/dist/
 *.tgz
 *.tar.gz
 !**/backups/*.tar.gz
@@ -125,3 +127,7 @@ firestick-scout/local.properties
 
 # Playwright screenshots (regenerated during testing)
 playwright-screenshots/
+.playwright-mcp/
+
+# Turborepo
+.turbo
