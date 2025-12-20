@@ -74,3 +74,10 @@ export {
   calculateFileHash,
   calculateContentHash
 } from './file-hash'
+
+// Cache service
+export {
+  cacheService,
+  CacheTTL,
+  CacheKeys
+} from './cache-service'
