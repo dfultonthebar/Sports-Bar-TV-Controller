@@ -68,3 +68,38 @@ export {
   calculateSmartOverrideDuration,
   type SmartOverrideResult
 } from './smart-override'
+
+// Smart Input Allocator - Game to input source allocation
+export {
+  smartInputAllocator,
+  type InputSource,
+  type GameSchedule,
+  type AllocationRequest,
+  type AllocationResult
+} from './smart-input-allocator'
+
+// Conflict Detector - Scheduling conflict detection
+export {
+  conflictDetector,
+  type SchedulingConflict,
+  type ConflictDetectionResult
+} from './conflict-detector'
+
+// Tournament Detector - Playoff/tournament detection
+export {
+  tournamentDetector,
+  type DetectedTournament
+} from './tournament-detector'
+
+// ESPN Sync Service - Game schedule synchronization
+export {
+  espnSyncService,
+  type SyncConfig,
+  type SyncResult
+} from './espn-sync-service'
+
+// Auto-Reallocator - Automatic input source reallocation
+export { autoReallocator } from './auto-reallocator'
+
+// Auto-Reallocator Worker - Background reallocation worker
+export { autoReallocatorWorker } from './auto-reallocator-worker'
