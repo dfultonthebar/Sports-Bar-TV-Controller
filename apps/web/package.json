@@ -98,6 +98,7 @@
     "@sports-bar/ir-control": "*",
     "@sports-bar/layout-detection": "*",
     "@sports-bar/logger": "*",
+    "@sports-bar/memory-bank": "*",
     "@sports-bar/rag-server": "*",
     "@sports-bar/rate-limiting": "*",
     "@sports-bar/scheduler": "*",
