@@ -44,3 +44,9 @@ export {
   commandScheduler,
   CommandScheduler,
 } from './command-scheduler'
+
+// Sports Schedule Sync - Fetches game schedules from TheSportsDB
+export {
+  SportsScheduleSyncService,
+  getSportsScheduleSyncService,
+} from './sports-schedule-sync'
