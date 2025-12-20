@@ -101,3 +101,11 @@ export {
   documentSearch,
   type DocumentSearchResult,
 } from './enhanced-document-search'
+
+// Enhanced AI Client - Ollama integration with health checks
+export {
+  EnhancedAIClient,
+  type ScriptGenerationRequest,
+  type FeatureDesignRequest,
+  type AIResponse,
+} from './enhanced-ai-client'
