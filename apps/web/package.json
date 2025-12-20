@@ -108,6 +108,7 @@
     "@sports-bar/sports-apis": "*",
     "@sports-bar/streaming": "*",
     "@sports-bar/tv-guide": "*",
+    "@sports-bar/tv-network-control": "*",
     "@sports-bar/wolfpack": "*",
     "@sports-bar/utils": "*",
     "@sports-bar/ui-utils": "*",
