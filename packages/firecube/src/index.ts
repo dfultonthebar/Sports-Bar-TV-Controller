@@ -24,3 +24,9 @@ export { ADBClient, type ADBConnectionOptions } from './adb-client'
 
 // Discovery
 export { FireCubeDiscovery } from './discovery'
+
+// Sideload Service
+export { SideloadService } from './sideload-service'
+
+// Sports Content Detector
+export { SportsContentDetector } from './sports-content-detector'
