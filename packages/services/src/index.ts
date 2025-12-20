@@ -31,3 +31,10 @@ export {
   type IRDBCodeResponse,
   type IRDBAccountResponse,
 } from './ir-database'
+
+// AI Sports Context - Provides game context for AI
+export {
+  AISportsContextProvider,
+  getAISportsContextProvider,
+  type SportsContext,
+} from './ai-sports-context'

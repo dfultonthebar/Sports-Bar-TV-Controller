@@ -68,3 +68,9 @@ export {
   extractAndCleanText,
   type TextExtractionResult
 } from './text-extractor'
+
+// File hashing
+export {
+  calculateFileHash,
+  calculateContentHash
+} from './file-hash'

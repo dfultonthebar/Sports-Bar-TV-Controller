@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@sports-bar/data": "*",
+    "@sports-bar/database": "*",
     "@sports-bar/logger": "*"
   },
   "devDependencies": {
