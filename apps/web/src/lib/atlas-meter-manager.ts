@@ -3,5 +3,5 @@
  */
 export {
   AtlasMeterManager,
-  createMeterManager
+  atlasMeterManager
 } from '@sports-bar/atlas'

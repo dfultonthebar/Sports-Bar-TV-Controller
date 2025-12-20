@@ -70,7 +70,7 @@ export { atlasLogger } from './atlas-logger'
 // Meter Manager
 export {
   AtlasMeterManager,
-  createMeterManager
+  atlasMeterManager
 } from './atlas-meter-manager'
 
 // Realtime Meter Service

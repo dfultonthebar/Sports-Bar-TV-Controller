@@ -23,7 +23,7 @@ export default function AudioControlTabs() {
     try {
       const response = await fetch('/api/audio-processor')
       const data = await response.json()
-      if (data.success && data.processors && data.processors.length > 0) {
+      if (data.processors && data.processors.length > 0) {
         // Get the first active processor or just the first one
         const processor = data.processors.find((p: any) => p.isActive) || data.processors[0]
         setActiveProcessor(processor)
