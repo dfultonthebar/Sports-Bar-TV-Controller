@@ -98,3 +98,26 @@ export {
 
 // Models Config
 export * from './atlas-models-config'
+
+// Control Service (comprehensive TCP/UDP connection management)
+export {
+  AtlasControlService,
+  getAtlasControlService,
+  disconnectAtlasControlService,
+  disconnectAllServices,
+  type AtlasControlConfig,
+  type AtlasCommand,
+  type MeterUpdate
+} from './atlas-control-service'
+
+// Meter Service (audio level monitoring)
+export {
+  AtlasMeterService,
+  atlasMeterService
+} from './atlas-meter-service'
+
+// AI Gain Service (automatic gain adjustment)
+export {
+  AIGainService,
+  aiGainService
+} from './ai-gain-service'
