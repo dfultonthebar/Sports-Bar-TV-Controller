@@ -64,3 +64,33 @@ export {
   getHealthCheckScheduler,
   startHealthCheckScheduler,
 } from './health-check-scheduler'
+
+// Q&A Uploader - Parse and upload Q&A documents
+export {
+  parseQAContent,
+  saveUploadedQAs,
+  processUploadedFile,
+  type UploadedQA,
+  type ParseResult,
+} from './qa-uploader'
+
+// Q&A Generator - Auto-generate Q&A pairs using Ollama
+export {
+  generateQAsFromRepository,
+  getQAGenerationStatus,
+  getGenerationJobStatus,
+  getAllQAEntries,
+  searchQAEntries,
+  updateQAEntry,
+  deleteQAEntry,
+  getQAStatistics,
+  type QAGenerationOptions,
+  type GeneratedQA,
+} from './qa-generator'
+
+// Q&A Generator Processor - Claude API-based Q&A generation
+export {
+  processQAGenerationJob,
+  type QAGenerationOptions as ProcessorQAGenerationOptions,
+  type GeneratedQA as ProcessorGeneratedQA,
+} from './qa-generator-processor'

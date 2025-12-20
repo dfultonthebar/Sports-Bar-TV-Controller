@@ -30,7 +30,7 @@ export function isValidCronExpression(expression: string): boolean {
     CronExpressionParser.parse(expression)
     return true
   } catch (error) {
-    logger.debug('[CRON] Invalid cron expression:', { expression, error })
+    logger.debug(`[CRON] Invalid cron expression: ${expression}`, { error })
     return false
   }
 }
