@@ -103,3 +103,6 @@ export { autoReallocator } from './auto-reallocator'
 
 // Auto-Reallocator Worker - Background reallocation worker
 export { autoReallocatorWorker } from './auto-reallocator-worker'
+
+// Scheduler Service - Background schedule executor
+export { schedulerService } from './scheduler-service'
