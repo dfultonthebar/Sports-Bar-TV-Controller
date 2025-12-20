@@ -17,7 +17,11 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 3001,
-      ADB_VENDOR_KEYS: '/home/ubuntu/.android'
+      ADB_VENDOR_KEYS: '/home/ubuntu/.android',
+      // Sports Guide API (The Rail Media)
+      SPORTS_GUIDE_API_KEY: '12548RK0000000d2bb701f55b82bfa192e680985919',
+      SPORTS_GUIDE_USER_ID: '258351',
+      SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1'
     },
     // Use PM2's default log location for better log rotation support
     // Custom logs still work through the app's logger system
