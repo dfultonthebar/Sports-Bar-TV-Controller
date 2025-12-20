@@ -94,3 +94,10 @@ export {
   type QAGenerationOptions as ProcessorQAGenerationOptions,
   type GeneratedQA as ProcessorGeneratedQA,
 } from './qa-generator-processor'
+
+// Enhanced Document Search - Fuzzy search with keyword extraction
+export {
+  EnhancedDocumentSearch,
+  documentSearch,
+  type DocumentSearchResult,
+} from './enhanced-document-search'
