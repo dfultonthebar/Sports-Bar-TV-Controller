@@ -20,3 +20,6 @@ export {
   WolfpackPatternMatcher,
   type WolfpackTrainingPattern
 } from './wolfpack-ai-training-data'
+
+// Matrix Control
+export { routeMatrix } from './matrix-control'

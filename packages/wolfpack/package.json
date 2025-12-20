@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@sports-bar/database": "*",
     "@sports-bar/logger": "*"
   },
   "devDependencies": {
