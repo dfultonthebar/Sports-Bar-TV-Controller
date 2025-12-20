@@ -38,3 +38,9 @@ export {
   getAISportsContextProvider,
   type SportsContext,
 } from './ai-sports-context'
+
+// Command Scheduler - Scheduled command execution service
+export {
+  commandScheduler,
+  CommandScheduler,
+} from './command-scheduler'
