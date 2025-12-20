@@ -1,12 +1,13 @@
 /**
- * RAG Server - Main Export
+ * RAG Server - Bridge File
  *
- * Centralized exports for the RAG documentation system
+ * Re-exports from @sports-bar/rag-server package.
+ * This maintains backwards compatibility with existing imports.
  */
 
 // Configuration
-export { RAGConfig, determineQueryComplexity, extractTechTags } from './config';
-export type { RAGConfigType } from './config';
+export { RAGConfig, determineQueryComplexity, extractTechTags } from '@sports-bar/rag-server';
+export type { RAGConfigType } from '@sports-bar/rag-server';
 
 // Document Processing
 export {
@@ -15,8 +16,8 @@ export {
   chunkDocument,
   processDocument,
   processDocuments,
-} from './doc-processor';
-export type { DocumentChunk, ProcessedDocument } from './doc-processor';
+} from '@sports-bar/rag-server';
+export type { DocumentChunk, ProcessedDocument } from '@sports-bar/rag-server';
 
 // LLM Client
 export {
@@ -26,8 +27,8 @@ export {
   streamLLM,
   testOllamaConnection,
   getAvailableModels,
-} from './llm-client';
-export type { LLMOptions, LLMResponse, EmbeddingResponse } from './llm-client';
+} from '@sports-bar/rag-server';
+export type { LLMOptions, LLMResponse, EmbeddingResponse } from '@sports-bar/rag-server';
 
 // Vector Store
 export {
@@ -40,8 +41,8 @@ export {
   getVectorStoreStats,
   removeDocument,
   listIndexedDocuments,
-} from './vector-store';
-export type { VectorEntry, VectorStoreData, SearchResult } from './vector-store';
+} from '@sports-bar/rag-server';
+export type { VectorEntry, VectorStoreData, SearchResult } from '@sports-bar/rag-server';
 
 // Query Engine
 export {
@@ -49,8 +50,8 @@ export {
   queryDocsStream,
   findRelatedDocs,
   retrieveContext,
-} from './query-engine';
-export type { QueryOptions, QueryResult } from './query-engine';
+} from '@sports-bar/rag-server';
+export type { QueryOptions, QueryResult } from '@sports-bar/rag-server';
 
 // Auto-Indexer
 export {
@@ -59,5 +60,5 @@ export {
   getAutoIndexer,
   startAutoIndexer,
   stopAutoIndexer,
-} from './auto-indexer';
-export type { AutoIndexerOptions } from './auto-indexer';
+} from '@sports-bar/rag-server';
+export type { AutoIndexerOptions } from '@sports-bar/rag-server';
