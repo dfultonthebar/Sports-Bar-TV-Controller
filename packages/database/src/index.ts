@@ -56,3 +56,14 @@ export {
 } from './helpers'
 
 export type { DbHelperLogger } from './helpers'
+
+// Transaction wrapper utilities
+export {
+  withTransaction,
+  batchTransaction,
+  withOptimisticLock,
+  transactionHelpers,
+  TransactionMonitor,
+  type TransactionOptions,
+  type TransactionResult,
+} from './transaction-wrapper'
