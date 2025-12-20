@@ -1,7 +1,10 @@
 /**
- * Bridge file for backwards compatibility
- * Re-exports from @sports-bar/security package
+ * @sports-bar/security
+ *
+ * Security utilities for the Sports Bar TV Controller.
+ * Provides encryption, hashing, and security validation functions.
  */
+
 export {
   encrypt,
   decrypt,
@@ -12,4 +15,4 @@ export {
   compareHash,
   validateEncryptionSetup,
   type EncryptedData,
-} from '@sports-bar/security'
+} from './encryption'
