@@ -99,6 +99,7 @@
     "@sports-bar/layout-detection": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/rate-limiting": "*",
+    "@sports-bar/scheduler": "*",
     "@sports-bar/soundtrack": "*",
     "@sports-bar/sports-apis": "*",
     "@sports-bar/streaming": "*",
