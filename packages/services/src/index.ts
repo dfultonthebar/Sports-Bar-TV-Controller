@@ -50,3 +50,17 @@ export {
   SportsScheduleSyncService,
   getSportsScheduleSyncService,
 } from './sports-schedule-sync'
+
+// Automated Health Check - Comprehensive system health checks
+export {
+  AutomatedHealthCheckService,
+  getAutomatedHealthCheckService,
+  type HealthCheckResult,
+} from './automated-health-check'
+
+// Health Check Scheduler - Automatic daily and pre-game checks
+export {
+  HealthCheckScheduler,
+  getHealthCheckScheduler,
+  startHealthCheckScheduler,
+} from './health-check-scheduler'

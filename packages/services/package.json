@@ -11,7 +11,8 @@
   "dependencies": {
     "@sports-bar/data": "*",
     "@sports-bar/database": "*",
-    "@sports-bar/logger": "*"
+    "@sports-bar/logger": "*",
+    "@sports-bar/soundtrack": "*"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
