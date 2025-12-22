@@ -14,7 +14,6 @@
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
-    "@sports-bar/config": "*",
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2"
   }
