@@ -407,4 +407,4 @@ export type { Logger }
 export default logger
 
 // NOTE: Enhanced logger is server-only (uses fs)
-// Import directly from '@sports-bar/logger/src/enhanced-logger' for server-side use
+// Import directly from '@sports-bar/logger/enhanced-logger' for server-side use

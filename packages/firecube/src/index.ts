@@ -71,3 +71,10 @@ export {
   type AppDiscoveryLogger,
   type InstalledApp
 } from './app-discovery'
+
+// Subscription Polling (simple ADB-based)
+export {
+  pollRealFireTVSubscriptions,
+  type Subscription as FireTVSubscription,
+  type FireTVDeviceInfo
+} from './subscription-polling'

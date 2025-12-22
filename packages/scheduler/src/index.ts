@@ -7,6 +7,7 @@
  * - DistributionEngine: Assigns games to TVs based on priority and zones
  * - StateReader: Captures current system state for scheduling decisions
  * - PriorityCalculator: Calculates game priority scores with bonuses
+ * - GamePriorityUpdater: Bulk priority calculation with database updates
  * - TeamNameMatcher: Fuzzy matching for team names from guide data
  * - FireTVContentDetector: Detects streaming-exclusive games
  * - SmartOverride: Calculates intelligent override durations
@@ -43,6 +44,16 @@ export {
   type GameInfo,
   type PriorityScore
 } from './priority-calculator'
+
+// Game Priority Updater - Bulk priority updates with database
+export {
+  GamePriorityUpdater,
+  getGamePriorityUpdater,
+  resetGamePriorityUpdater,
+  gamePriorityUpdater,
+  type PriorityFactors,
+  type PriorityConfig
+} from './game-priority-updater'
 
 // Team Name Matcher - Fuzzy matching
 export {

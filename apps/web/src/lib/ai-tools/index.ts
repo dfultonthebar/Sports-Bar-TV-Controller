@@ -2,23 +2,35 @@
  * AI Tools Bridge
  * Re-exports from @sports-bar/ai-tools package for backward compatibility
  *
- * NOTE: This bridge file maintains compatibility with existing imports.
- * New code should import directly from @sports-bar/ai-tools
+ * This bridge maintains compatibility with existing imports while delegating
+ * all core functionality to the @sports-bar/ai-tools package.
+ *
+ * Architecture:
+ * - Core tools (file-system, code-execution) → @sports-bar/ai-tools package
+ * - Web-app-specific integrations (security-logger) → Remains in apps/web
+ * - Bridge files maintain import compatibility
  */
 
 // Re-export everything from the package
 export * from '@sports-bar/ai-tools';
 
-// Note: The following files are no longer in this directory:
-// - types.ts → now in @sports-bar/ai-tools
-// - logger.ts → now in @sports-bar/ai-tools
-// - file-system-tools.ts → now in @sports-bar/ai-tools
-// - code-execution-tools.ts → now in @sports-bar/ai-tools
-// - security/config.ts → now in @sports-bar/ai-tools
-// - security/validator.ts → now in @sports-bar/ai-tools
-// - security/enhanced-validator.ts → now in @sports-bar/ai-tools (without DB logging)
-// - security/sandbox.ts → now in @sports-bar/ai-tools
-// - security/isolated-vm-wrapper.ts → now in @sports-bar/ai-tools
-
-// The security-logger.ts remains here as it has database dependencies
-// and is specific to the web app
+/**
+ * Files converted to bridge pattern:
+ *
+ * ✅ file-system-tools.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
+ * ✅ code-execution-tools.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
+ * ✅ index.ts (this file) - Re-exports package exports
+ *
+ * Files migrated to package:
+ * - types.ts → @sports-bar/ai-tools/types
+ * - logger.ts → @sports-bar/ai-tools/logger
+ * - security/config.ts → @sports-bar/ai-tools/security/config
+ * - security/validator.ts → @sports-bar/ai-tools/security/validator
+ * - security/enhanced-validator.ts → @sports-bar/ai-tools/security/enhanced-validator
+ * - security/sandbox.ts → @sports-bar/ai-tools/security/sandbox
+ * - security/isolated-vm-wrapper.ts → @sports-bar/ai-tools/security/isolated-vm-wrapper
+ * - local-ai-analyzer.ts → @sports-bar/ai-tools/local-ai-analyzer
+ *
+ * Web-app-specific files (remain in apps/web):
+ * - security/security-logger.ts - Database integration for security audit logs
+ */

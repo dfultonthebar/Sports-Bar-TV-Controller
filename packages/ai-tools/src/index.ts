@@ -186,6 +186,7 @@ export * from './file-system-tools';
 export * from './code-execution-tools';
 export * from './security/config';
 export * from './security/validator';
+export * from './security/enhanced-validator';
 export * from './security/sandbox';
 export * from './logger';
 export * from './local-ai-analyzer';

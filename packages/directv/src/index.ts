@@ -45,3 +45,11 @@ export {
   type DirecTVGuideResult,
   type DirecTVGuideOptions
 } from './directv-guide-service'
+
+// Subscription Service
+export {
+  pollRealDirecTVSubscriptions,
+  determinePackageType,
+  type Subscription,
+  type DirecTVDeviceInfo
+} from './subscription-service'

@@ -1,10 +1,11 @@
 /**
  * Security Logger
  * Persists security validation events to database for audit and monitoring
+ *
+ * NOTE: This module is currently stubbed out because the securityValidationLogs table
+ * does not exist in the schema. To enable this feature, add the table to schema.ts
+ * and implement the database operations.
  */
-
-import { db } from '@/db';
-import { securityValidationLogs } from '@/db/schema';
 
 import { logger } from '@/lib/logger'
 export interface SecurityLogEntry {
@@ -26,34 +27,19 @@ export interface SecurityLogEntry {
 /**
  * Log a security validation event to the database
  * This runs asynchronously and does not block the validation process
+ *
+ * STUBBED: Currently logs to console only. Implement database logging when table is added.
  */
 export async function logSecurityEvent(entry: SecurityLogEntry): Promise<void> {
   try {
     // Determine severity if not provided
     const severity = entry.severity || (entry.allowed ? 'info' : 'warning');
 
-    // Truncate long content to avoid database bloat
-    const truncateContent = (content: string | undefined, maxLength = 1000): string | undefined => {
-      if (!content) return undefined;
-      return content.length > maxLength ? content.substring(0, maxLength) + '...' : content;
-    };
+    // For now, just log to console
+    const logMessage = `[SecurityValidation] ${entry.validationType} ${entry.operationType || ''} - ${entry.allowed ? 'ALLOWED' : 'BLOCKED'}${entry.blockedReason ? ': ' + entry.blockedReason : ''}`;
+    logger.debug(logMessage);
 
-    // Insert log entry
-    await db.insert(securityValidationLogs).values({
-      validationType: entry.validationType,
-      operationType: entry.operationType || null,
-      allowed: entry.allowed,
-      blockedReason: entry.blockedReason || null,
-      blockedPatterns: entry.blockedPatterns ? JSON.stringify(entry.blockedPatterns) : null,
-      requestPath: truncateContent(entry.requestPath || '') || null,
-      requestContent: truncateContent(entry.requestContent || '', 2000) || null,
-      sanitizedInput: entry.sanitizedInput ? JSON.stringify(entry.sanitizedInput) : null,
-      severity: severity,
-      ipAddress: entry.ipAddress || null,
-      userId: entry.userId || null,
-      sessionId: entry.sessionId || null,
-      metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
-    });
+    // TODO: Implement database logging when securityValidationLogs table is added to schema
   } catch (error) {
     // Log error but don't throw - we don't want logging failures to break validation
     logger.error('Failed to log security event:', error);
@@ -87,65 +73,14 @@ export interface SecurityLogQuery {
 
 /**
  * Retrieve security logs from database
+ *
+ * STUBBED: Returns empty array. Implement when table is added.
  */
 export async function getSecurityLogs(query: SecurityLogQuery = {}) {
   try {
-    const { sql, and, eq, gte, lte, desc } = await import('drizzle-orm');
-
-    // Build where conditions
-    const conditions = [];
-
-    if (query.validationType) {
-      conditions.push(eq(securityValidationLogs.validationType, query.validationType));
-    }
-
-    if (query.allowed !== undefined) {
-      conditions.push(eq(securityValidationLogs.allowed, query.allowed));
-    }
-
-    if (query.severity) {
-      conditions.push(eq(securityValidationLogs.severity, query.severity));
-    }
-
-    if (query.userId) {
-      conditions.push(eq(securityValidationLogs.userId, query.userId));
-    }
-
-    if (query.startDate) {
-      conditions.push(gte(securityValidationLogs.timestamp, query.startDate.toISOString()));
-    }
-
-    if (query.endDate) {
-      conditions.push(lte(securityValidationLogs.timestamp, query.endDate.toISOString()));
-    }
-
-    // Build query
-    let dbQuery = db
-      .select()
-      .from(securityValidationLogs)
-      .orderBy(desc(securityValidationLogs.timestamp));
-
-    if (conditions.length > 0) {
-      dbQuery = dbQuery.where(and(...conditions)) as any;
-    }
-
-    if (query.limit) {
-      dbQuery = dbQuery.limit(query.limit) as any;
-    }
-
-    if (query.offset) {
-      dbQuery = dbQuery.offset(query.offset) as any;
-    }
-
-    const logs = await dbQuery;
-
-    // Parse JSON fields
-    return logs.map(log => ({
-      ...log,
-      blockedPatterns: log.blockedPatterns ? JSON.parse(log.blockedPatterns) : null,
-      sanitizedInput: log.sanitizedInput ? JSON.parse(log.sanitizedInput) : null,
-      metadata: log.metadata ? JSON.parse(log.metadata) : null,
-    }));
+    // TODO: Implement database query when securityValidationLogs table is added to schema
+    logger.warn('[SecurityLogger] getSecurityLogs called but table does not exist. Returning empty array.');
+    return [];
   } catch (error) {
     logger.error('Failed to query security logs:', error);
     throw error;
@@ -154,58 +89,19 @@ export async function getSecurityLogs(query: SecurityLogQuery = {}) {
 
 /**
  * Get security log statistics
+ *
+ * STUBBED: Returns zero stats. Implement when table is added.
  */
 export async function getSecurityLogStats(days: number = 7) {
   try {
-    const { sql, and, gte, count } = await import('drizzle-orm');
-
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    // Total events
-    const totalResult = await db
-      .select({ count: count() })
-      .from(securityValidationLogs)
-      .where(gte(securityValidationLogs.timestamp, startDate.toISOString()));
-
-    // Blocked events
-    const blockedResult = await db
-      .select({ count: count() })
-      .from(securityValidationLogs)
-      .where(
-        and(
-          gte(securityValidationLogs.timestamp, startDate.toISOString()),
-          sql`${securityValidationLogs.allowed} = 0`
-        )
-      );
-
-    // Critical events
-    const criticalResult = await db
-      .select({ count: count() })
-      .from(securityValidationLogs)
-      .where(
-        and(
-          gte(securityValidationLogs.timestamp, startDate.toISOString()),
-          sql`${securityValidationLogs.severity} = 'critical'`
-        )
-      );
-
-    // Group by validation type
-    const byTypeResult = await db
-      .select({
-        validationType: securityValidationLogs.validationType,
-        count: count(),
-      })
-      .from(securityValidationLogs)
-      .where(gte(securityValidationLogs.timestamp, startDate.toISOString()))
-      .groupBy(securityValidationLogs.validationType);
-
+    // TODO: Implement database query when securityValidationLogs table is added to schema
+    logger.warn('[SecurityLogger] getSecurityLogStats called but table does not exist. Returning zero stats.');
     return {
       period: `Last ${days} days`,
-      total: totalResult[0]?.count || 0,
-      blocked: blockedResult[0]?.count || 0,
-      critical: criticalResult[0]?.count || 0,
-      byType: byTypeResult,
+      total: 0,
+      blocked: 0,
+      critical: 0,
+      byType: [],
     };
   } catch (error) {
     logger.error('Failed to get security log stats:', error);
