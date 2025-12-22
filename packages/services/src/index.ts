@@ -109,3 +109,13 @@ export {
   type FeatureDesignRequest,
   type AIResponse,
 } from './enhanced-ai-client'
+
+// Sports Guide Ollama Helper - AI-powered sports guide analysis
+export {
+  getSportsGuideLogs,
+  getSportsGuideErrorLogs,
+  queryOllamaWithContext,
+  analyzeSportsGuideLogs,
+  getSportsGuideRecommendations,
+  testOllamaConnection,
+} from './sports-guide-ollama-helper'

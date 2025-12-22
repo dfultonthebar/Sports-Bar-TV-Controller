@@ -14,6 +14,7 @@
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/soundtrack": "*",
+    "@sports-bar/sports-apis": "*",
     "@sports-bar/utils": "*"
   },
   "devDependencies": {

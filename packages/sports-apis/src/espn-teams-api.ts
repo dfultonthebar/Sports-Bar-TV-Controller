@@ -281,7 +281,7 @@ class ESPNTeamsAPIService {
     } catch (error: any) {
       logger.error(`[ESPN TEAMS] Error in getTeamsWithDivisions for ${sport}/${league}:`, error);
       logger.error(`[ESPN TEAMS] Error stack:`, error.stack);
-      return { teams, groups: [] };
+      return { teams: [], groups: [] };
     }
   }
 
