@@ -1,21 +1,22 @@
-// Initialize Fire Cube Keep-Awake Scheduler on Server Startup
+/**
+ * Initialize Fire Cube Keep-Awake Scheduler on Server Startup
+ */
 
-import { getKeepAwakeScheduler } from './keep-awake-scheduler';
-
+import { getKeepAwakeScheduler } from './scheduler-bridge'
 import { logger } from '@/lib/logger'
+
 export async function initializeFireCubeScheduler() {
   try {
-    logger.info('Initializing Fire Cube keep-awake scheduler...');
-    const scheduler = getKeepAwakeScheduler();
-    await scheduler.initializeSchedules();
-    logger.info('Fire Cube keep-awake scheduler initialized successfully');
+    logger.info('[FIRECUBE] Initializing keep-awake scheduler...')
+    const scheduler = getKeepAwakeScheduler()
+    await scheduler.initializeSchedules()
+    logger.info('[FIRECUBE] Keep-awake scheduler initialized successfully')
   } catch (error) {
-    logger.error('Failed to initialize Fire Cube scheduler:', error);
+    logger.error('[FIRECUBE] Failed to initialize scheduler:', { error })
   }
 }
 
-// Auto-initialize if this module is imported
+// Auto-initialize if this module is imported on server-side
 if (typeof window === 'undefined') {
-  // Server-side only
-  initializeFireCubeScheduler().catch(console.error);
+  initializeFireCubeScheduler().catch(console.error)
 }

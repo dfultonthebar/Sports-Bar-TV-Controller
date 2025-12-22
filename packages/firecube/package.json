@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sports-bar/database": "*",
-    "@sports-bar/logger": "*"
+    "@sports-bar/logger": "*",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@sports-bar/config": "*",

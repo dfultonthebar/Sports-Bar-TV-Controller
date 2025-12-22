@@ -30,3 +30,33 @@ export { SideloadService } from './sideload-service'
 
 // Sports Content Detector
 export { SportsContentDetector } from './sports-content-detector'
+
+// Scheduler Types and Interfaces
+export {
+  type FireCubeDevice,
+  type FireCubeApp,
+  type KeepAwakeLog,
+  type ConnectionManagerAdapter,
+  type FireCubeDeviceRepository,
+  type FireCubeAppRepository,
+  type KeepAwakeLogRepository,
+  type FireCubeRepository,
+  type KnownSportsApp,
+  type SubscriptionCheckResult,
+  type KeepAwakeStatus,
+  KNOWN_SPORTS_APPS
+} from './scheduler-types'
+
+// Keep-Awake Scheduler
+export {
+  KeepAwakeScheduler,
+  createKeepAwakeScheduler,
+  type KeepAwakeSchedulerConfig
+} from './keep-awake-scheduler'
+
+// Subscription Detector
+export {
+  SubscriptionDetector,
+  createSubscriptionDetector,
+  type SubscriptionDetectorConfig
+} from './subscription-detector'
