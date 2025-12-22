@@ -16,10 +16,6 @@
     "./validation": {
       "types": "./src/validation/index.ts",
       "default": "./src/validation/index.ts"
-    },
-    "./config-change-tracker": {
-      "types": "./src/config-change-tracker.ts",
-      "default": "./src/config-change-tracker.ts"
     }
   },
   "scripts": {
@@ -27,6 +23,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@sports-bar/utils": "*",
     "zod": "^3.25.76"
   },
   "devDependencies": {
