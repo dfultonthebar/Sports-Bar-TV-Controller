@@ -188,5 +188,6 @@ export * from './security/config';
 export * from './security/validator';
 export * from './security/enhanced-validator';
 export * from './security/sandbox';
+export * from './security/isolated-vm-wrapper';
 export * from './logger';
 export * from './local-ai-analyzer';

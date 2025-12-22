@@ -1,6 +1,6 @@
 /**
  * Bridge file for ConfigChangeTracker (SERVER-ONLY)
- * Re-exports from @sports-bar/config package with app-specific adapters
+ * Re-exports from @sports-bar/utils package with app-specific adapters
  *
  * NOTE: This module uses Node.js 'fs' and should only be imported in server-side code
  */
@@ -11,7 +11,7 @@ import {
   type ConfigChangeEvent,
   type AutoSyncClient,
   type AutoSyncConfig
-} from '@sports-bar/config'
+} from '@sports-bar/utils'
 import { EnhancedLogger } from './enhanced-logger'
 import { logger } from '@/lib/logger'
 

@@ -19,6 +19,8 @@ export * from '@sports-bar/ai-tools';
  *
  * ✅ file-system-tools.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
  * ✅ code-execution-tools.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
+ * ✅ types.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
+ * ✅ logger.ts - Now a thin bridge re-exporting from @sports-bar/ai-tools
  * ✅ index.ts (this file) - Re-exports package exports
  *
  * Files migrated to package:

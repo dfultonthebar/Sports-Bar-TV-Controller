@@ -43,15 +43,20 @@ export {
   calculateBackoffDelay,
 } from './firetv-config'
 
-// Configuration Change Tracking
+// Configuration Change Tracking (DEPRECATED - moved to @sports-bar/utils)
+// Re-export for backwards compatibility
 export {
   ConfigChangeTracker,
   createConfigChangeTracker,
   type ConfigChangeEvent,
-  type Logger,
-  type EnhancedLogger,
+  type ConfigLogger,
+  type ConfigEnhancedLogger,
   type EnhancedLogEntry,
   type AutoSyncConfig,
   type AutoSyncClient,
   type ConfigChangeTrackerOptions,
-} from './config-change-tracker'
+} from '@sports-bar/utils'
+
+// Backwards compatibility aliases
+export type { ConfigLogger as Logger } from '@sports-bar/utils'
+export type { ConfigEnhancedLogger as EnhancedLogger } from '@sports-bar/utils'

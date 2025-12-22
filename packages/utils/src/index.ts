@@ -91,3 +91,23 @@ export {
   type GitSyncDatabaseAdapter,
   type GitSyncConfig
 } from './git-sync'
+
+// Enhanced logger
+export {
+  Logger,
+  LogLevel,
+  createLogger
+} from './enhanced-logger'
+
+// Config change tracking
+export {
+  ConfigChangeTracker,
+  createConfigChangeTracker,
+  type ConfigChangeEvent,
+  type ConfigLogger,
+  type EnhancedLogger as ConfigEnhancedLogger,
+  type EnhancedLogEntry,
+  type AutoSyncConfig,
+  type AutoSyncClient,
+  type ConfigChangeTrackerOptions
+} from './config-change-tracker'
