@@ -42,3 +42,16 @@ export {
   getFireTVConfig,
   calculateBackoffDelay,
 } from './firetv-config'
+
+// Configuration Change Tracking
+export {
+  ConfigChangeTracker,
+  createConfigChangeTracker,
+  type ConfigChangeEvent,
+  type Logger,
+  type EnhancedLogger,
+  type EnhancedLogEntry,
+  type AutoSyncConfig,
+  type AutoSyncClient,
+  type ConfigChangeTrackerOptions,
+} from './config-change-tracker'

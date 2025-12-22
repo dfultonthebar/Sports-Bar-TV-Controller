@@ -108,8 +108,10 @@ export interface FireCubeRepository {
 export interface KnownSportsApp {
   packageName: string
   appName: string
+  category?: string
   subscriptionCheckMethod: 'shared_prefs' | 'login_file' | 'api'
   subscriptionIndicators: string[]
+  iconUrl?: string
 }
 
 /**
@@ -142,37 +144,49 @@ export const KNOWN_SPORTS_APPS: KnownSportsApp[] = [
   {
     packageName: 'com.espn.score_center',
     appName: 'ESPN',
+    category: 'Sports',
     subscriptionCheckMethod: 'shared_prefs',
-    subscriptionIndicators: ['espn_plus_subscriber', 'premium_user']
+    subscriptionIndicators: ['espn_plus_subscriber', 'premium_user'],
+    iconUrl: '/icons/espn.png'
   },
   {
     packageName: 'com.bamnetworks.mobile.android.gameday.atbat',
     appName: 'MLB.TV',
+    category: 'Sports',
     subscriptionCheckMethod: 'login_file',
-    subscriptionIndicators: []
+    subscriptionIndicators: [],
+    iconUrl: '/icons/mlb.png'
   },
   {
     packageName: 'com.nfhs.network',
     appName: 'NFHS Network',
+    category: 'Sports',
     subscriptionCheckMethod: 'login_file',
-    subscriptionIndicators: []
+    subscriptionIndicators: [],
+    iconUrl: '/icons/nfhs.png'
   },
   {
     packageName: 'com.foxsports.android',
     appName: 'FOX Sports',
+    category: 'Sports',
     subscriptionCheckMethod: 'shared_prefs',
-    subscriptionIndicators: ['logged_in', 'subscriber']
+    subscriptionIndicators: ['logged_in', 'subscriber'],
+    iconUrl: '/icons/foxsports.png'
   },
   {
     packageName: 'com.nbaimd.gametime.nba2011',
     appName: 'NBA',
+    category: 'Sports',
     subscriptionCheckMethod: 'login_file',
-    subscriptionIndicators: []
+    subscriptionIndicators: [],
+    iconUrl: '/icons/nba.png'
   },
   {
     packageName: 'com.gotv.nflgamecenter.us.lite',
     appName: 'NFL+',
+    category: 'Sports',
     subscriptionCheckMethod: 'login_file',
-    subscriptionIndicators: []
+    subscriptionIndicators: [],
+    iconUrl: '/icons/nfl.png'
   }
 ]

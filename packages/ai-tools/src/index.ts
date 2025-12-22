@@ -188,3 +188,4 @@ export * from './security/config';
 export * from './security/validator';
 export * from './security/sandbox';
 export * from './logger';
+export * from './local-ai-analyzer';

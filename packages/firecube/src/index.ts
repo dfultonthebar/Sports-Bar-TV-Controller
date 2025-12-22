@@ -60,3 +60,14 @@ export {
   createSubscriptionDetector,
   type SubscriptionDetectorConfig
 } from './subscription-detector'
+
+// App Discovery Service
+export {
+  AppDiscoveryService,
+  createAppDiscoveryService,
+  type AppDiscoveryConfig,
+  type AppDiscoveryRepository,
+  type AppDiscoveryDeviceRepository,
+  type AppDiscoveryLogger,
+  type InstalledApp
+} from './app-discovery'

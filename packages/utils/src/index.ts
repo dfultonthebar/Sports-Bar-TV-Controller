@@ -81,3 +81,13 @@ export {
   CacheTTL,
   CacheKeys
 } from './cache-service'
+
+// Git sync
+export {
+  syncTodosToGitHub,
+  generateTodoListMarkdown,
+  type Todo,
+  type GitSyncLogger,
+  type GitSyncDatabaseAdapter,
+  type GitSyncConfig
+} from './git-sync'
