@@ -8,7 +8,7 @@
 import { and, asc, create, desc, eq, or } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@/lib/logger'
-import { extractManualContent, splitContentIntoChunks, extractKeySections } from './extractContent'
+import { extractManualContent, splitContentIntoChunks, extractKeySections } from '@sports-bar/tv-docs'
 
 // Using singleton prisma from @/lib/prisma
 

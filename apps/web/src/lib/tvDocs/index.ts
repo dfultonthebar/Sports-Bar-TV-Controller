@@ -10,10 +10,8 @@ import { schema } from '@/db'
 import { db } from '@/db'
 import { like } from 'drizzle-orm'
 import { logger } from '@/lib/logger'
-import { searchTVManual, validateManualUrl } from './searchManual'
-import { downloadTVManual, getManualPath } from './downloadManual'
+import { searchTVManual, validateManualUrl, downloadTVManual, getManualPath, TVManualFetchOptions, TVManualFetchResult, TVDocumentationRecord } from '@sports-bar/tv-docs'
 import { generateQAFromManual } from './generateQA'
-import { TVManualFetchOptions, TVManualFetchResult, TVDocumentationRecord } from './types'
 
 /**
  * Fetch TV manual and generate Q&A pairs

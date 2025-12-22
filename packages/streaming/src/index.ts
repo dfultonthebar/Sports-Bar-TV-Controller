@@ -47,3 +47,13 @@ export {
   type NFHSSchool,
   type NFHSSearchResult
 } from './api-integrations/nfhs-api'
+
+// Unified Streaming API
+export {
+  UnifiedStreamingAPI,
+  unifiedStreamingApi,
+  type UnifiedEvent,
+  type ServiceStatus,
+  type FireTVAdapter,
+  type InstalledStreamingApp
+} from './unified-streaming-api'

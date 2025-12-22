@@ -1,0 +1,24 @@
+{
+  "name": "@sports-bar/tv-docs",
+  "version": "1.0.0",
+  "description": "TV documentation utilities for searching, downloading, and extracting manual content",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "pdf-parse": "^1.1.1"
+  },
+  "peerDependencies": {
+    "@sports-bar/logger": "*"
+  },
+  "keywords": [
+    "tv",
+    "documentation",
+    "manuals",
+    "pdf"
+  ],
+  "author": "",
+  "license": "ISC"
+}
