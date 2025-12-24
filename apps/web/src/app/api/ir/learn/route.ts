@@ -136,6 +136,7 @@ async function startLearningSession(
     let dataBuffer = ''
     let resolved = false
     let learningEnabled = false
+    const MAX_BUFFER_SIZE = 64 * 1024 // 64KB max
 
     logger.info('🔌 [IR LEARN] Connecting to Global Cache device...')
     logger.info('   Address:', { data: `${ipAddress}:${port}` })
@@ -163,7 +164,22 @@ async function startLearningSession(
     client.on('data', (data) => {
       const response = data.toString()
       dataBuffer += response
-      
+
+      // Prevent unbounded buffer growth
+      if (dataBuffer.length > MAX_BUFFER_SIZE) {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeoutId)
+          logger.error('[IR-LEARN] Buffer overflow - exceeded 64KB limit')
+          client.destroy()
+          resolve({
+            success: false,
+            error: 'IR code too large or malformed data received'
+          })
+          return
+        }
+      }
+
       logger.info('📥 [IR LEARN] Received data:', { data: response.trim() })
 
       // Check for "IR Learner Enabled" response

@@ -131,6 +131,7 @@ export class CacheManager {
   }
   private cleanupInterval: NodeJS.Timeout | null = null
   private cleanupIntervalMs = 60 * 1000 // Run cleanup every minute
+  private inFlightRequests = new Map<string, Promise<any>>() // Fetch coalescing
 
   constructor() {
     this.startCleanupInterval()
@@ -467,15 +468,35 @@ export class CacheManager {
     fetcher: () => Promise<T>,
     customTTL?: number
   ): Promise<T> {
-    const cached = this.get<T>(type, key)
+    const cacheKey = this.getCacheKey(type, key)
 
+    // Check cache first
+    const cached = this.get<T>(type, key)
     if (cached !== null) {
       return cached
     }
 
-    const value = await fetcher()
-    this.set(type, key, value, customTTL)
-    return value
+    // Check if request already in flight
+    if (this.inFlightRequests.has(cacheKey)) {
+      return this.inFlightRequests.get(cacheKey) as Promise<T>
+    }
+
+    // Create the fetch promise
+    const fetchPromise = fetcher()
+      .then(value => {
+        this.set(type, key, value, customTTL)
+        this.inFlightRequests.delete(cacheKey)
+        return value
+      })
+      .catch(error => {
+        this.inFlightRequests.delete(cacheKey)
+        throw error
+      })
+
+    // Track the in-flight request
+    this.inFlightRequests.set(cacheKey, fetchPromise)
+
+    return fetchPromise
   }
 
   /**

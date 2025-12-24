@@ -446,6 +446,8 @@ export function createDbHelpers(deps: DbHelperDependencies) {
 
   /**
    * Upsert record with logging
+   * Uses a transaction to prevent race conditions
+   * Includes retry logic for constraint violations from concurrent requests
    */
   async function upsert<T extends TableName>(
     tableName: T,
@@ -458,40 +460,56 @@ export function createDbHelpers(deps: DbHelperDependencies) {
 
     logger.database.query('upsert', displayName, { where, createData, updateData })
 
-    try {
-      const existing = await db.select().from(table).where(where).limit(1).get()
+    // Use a retry mechanism for constraint violations from concurrent requests
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Wrap in transaction to make atomic and prevent race conditions
+        const result = await db.transaction(async (tx: typeof db) => {
+          const existing = await tx.select().from(table).where(where).limit(1).get()
 
-      if (existing) {
-        const dataWithTimestamp = { ...updateData }
-        if ('updatedAt' in table) {
-          dataWithTimestamp.updatedAt = new Date().toISOString()
-        }
+          if (existing) {
+            const dataWithTimestamp = { ...updateData }
+            if ('updatedAt' in table) {
+              dataWithTimestamp.updatedAt = new Date().toISOString()
+            }
 
-        const sanitizedData = sanitizeData(dataWithTimestamp)
-        const result = await db.update(table).set(sanitizedData).where(where).returning().get()
+            const sanitizedData = sanitizeData(dataWithTimestamp)
+            const result = await tx.update(table).set(sanitizedData).where(where).returning().get()
 
-        logger.database.success('upsert (update)', displayName, { id: result?.id })
+            logger.database.success('upsert (update)', displayName, { id: result?.id })
+
+            return result
+          } else {
+            const dataWithTimestamp = { ...createData }
+            if ('updatedAt' in table && !dataWithTimestamp.updatedAt) {
+              dataWithTimestamp.updatedAt = new Date().toISOString()
+            }
+
+            const sanitizedData = sanitizeData(dataWithTimestamp)
+            const result = await tx.insert(table).values(sanitizedData).returning().get()
+
+            logger.database.success('upsert (create)', displayName, { id: result?.id })
+
+            return result
+          }
+        })
 
         // Serialize result to remove circular references
         return serializeDrizzleResult(result)
-      } else {
-        const dataWithTimestamp = { ...createData }
-        if ('updatedAt' in table && !dataWithTimestamp.updatedAt) {
-          dataWithTimestamp.updatedAt = new Date().toISOString()
+      } catch (error: any) {
+        // If constraint violation (likely race condition), retry
+        if (error.code === 'SQLITE_CONSTRAINT' && attempt < maxRetries - 1) {
+          logger.database.warn('upsert', displayName, `Constraint violation on attempt ${attempt + 1}, retrying...`)
+          continue
         }
-
-        const sanitizedData = sanitizeData(dataWithTimestamp)
-        const result = await db.insert(table).values(sanitizedData).returning().get()
-
-        logger.database.success('upsert (create)', displayName, { id: result?.id })
-
-        // Serialize result to remove circular references
-        return serializeDrizzleResult(result)
+        logger.database.error('upsert', displayName, error)
+        throw error
       }
-    } catch (error) {
-      logger.database.error('upsert', displayName, error)
-      throw error
     }
+
+    // Should never reach here due to throw in catch block
+    throw new Error('Upsert failed after max retries')
   }
 
   /**

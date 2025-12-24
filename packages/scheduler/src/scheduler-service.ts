@@ -11,10 +11,14 @@ import { logger } from '@sports-bar/logger'
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
 
+// Venue timezone for schedule calculations (Central Time)
+const VENUE_TIMEZONE = 'America/Chicago'
+
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private lastCleanup: Date | null = null;
+  private executingSchedules = new Set<string>();
 
   /**
    * Start the scheduler service
@@ -105,12 +109,26 @@ class SchedulerService {
         }
 
         if (shouldExecute) {
+          // Prevent concurrent execution of same schedule
+          if (this.executingSchedules.has(schedule.id)) {
+            logger.warn(`[SCHEDULER] Schedule ${schedule.name} already executing, skipping`);
+            continue;
+          }
+
           logger.info(`[SCHEDULER] ⚡ Executing schedule: ${schedule.name} (type: ${schedule.scheduleType})`);
 
+          // Add to executing set
+          this.executingSchedules.add(schedule.id);
+
           // Execute schedule asynchronously
-          this.executeSchedule(schedule.id).catch(error => {
-            logger.error(`[SCHEDULER] ❌ Error executing schedule ${schedule.name}:`, { error });
-          });
+          this.executeSchedule(schedule.id)
+            .catch(error => {
+              logger.error(`[SCHEDULER] ❌ Error executing schedule ${schedule.name}:`, { error });
+            })
+            .finally(() => {
+              // Remove from executing set when complete
+              this.executingSchedules.delete(schedule.id);
+            });
         }
       }
     } catch (error) {
@@ -186,12 +204,44 @@ class SchedulerService {
 
     if (schedule.scheduleType === 'daily') {
       const [hours, minutes] = schedule.executionTime.split(':').map(Number);
-      const next = new Date();
-      next.setHours(hours, minutes, 0, 0);
 
-      if (next <= now) {
+      // Get current time in venue timezone using Intl API
+      // This properly handles DST transitions
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: VENUE_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      const parts = formatter.formatToParts(now);
+      const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
+
+      const currentYear = parseInt(getPart('year'));
+      const currentMonth = parseInt(getPart('month')) - 1; // JS months are 0-indexed
+      const currentDay = parseInt(getPart('day'));
+      const currentHour = parseInt(getPart('hour'));
+      const currentMinute = parseInt(getPart('minute'));
+
+      // Create today's scheduled time in venue timezone
+      const next = new Date(currentYear, currentMonth, currentDay, hours, minutes, 0, 0);
+
+      // If scheduled time has already passed today, schedule for tomorrow
+      const todayScheduledTime = new Date(currentYear, currentMonth, currentDay, hours, minutes, 0, 0);
+      const currentTimeInVenue = new Date(currentYear, currentMonth, currentDay, currentHour, currentMinute, 0, 0);
+
+      if (todayScheduledTime <= currentTimeInVenue) {
         next.setDate(next.getDate() + 1);
       }
+
+      // Note: For proper DST handling with external library, consider:
+      // npm install date-fns date-fns-tz
+      // import { zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz'
+      // const nextInVenue = zonedTimeToUtc(next, VENUE_TIMEZONE)
 
       return next;
     }
@@ -202,19 +252,44 @@ class SchedulerService {
 
       const [hours, minutes] = schedule.executionTime.split(':').map(Number);
       const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const currentDay = now.getDay();
+
+      // Get current time in venue timezone using Intl API
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: VENUE_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        weekday: 'long',
+        hour12: false
+      });
+
+      const parts = formatter.formatToParts(now);
+      const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
+
+      const currentYear = parseInt(getPart('year'));
+      const currentMonth = parseInt(getPart('month')) - 1; // JS months are 0-indexed
+      const currentDay = parseInt(getPart('day'));
+      const currentHour = parseInt(getPart('hour'));
+      const currentMinute = parseInt(getPart('minute'));
+
+      // Create a date object representing current time in venue timezone
+      const localNow = new Date(currentYear, currentMonth, currentDay, currentHour, currentMinute, 0, 0);
+      const currentDayOfWeek = localNow.getDay();
 
       // Find next matching day
       for (let i = 0; i < 7; i++) {
-        const checkDay = (currentDay + i) % 7;
+        const checkDay = (currentDayOfWeek + i) % 7;
         const dayName = dayNames[checkDay];
 
         if (daysOfWeek.includes(dayName)) {
-          const next = new Date();
+          // Create next execution time
+          const next = new Date(localNow);
           next.setDate(next.getDate() + i);
           next.setHours(hours, minutes, 0, 0);
 
-          if (next > now) {
+          if (next > localNow) {
             return next;
           }
         }

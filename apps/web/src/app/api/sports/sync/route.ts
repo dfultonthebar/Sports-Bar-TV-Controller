@@ -5,6 +5,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { cacheManager } from '@sports-bar/cache-manager'
 
 /**
  * POST /api/sports/sync
@@ -27,6 +28,10 @@ export async function POST(request: NextRequest) {
 
     const syncService = getSportsScheduleSyncService()
     const result = await syncService.syncAllTeamsSchedules()
+
+    // Clear sports-data cache to force fresh data
+    cacheManager.clearType('sports-data')
+    logger.info('[Sports Sync API] Cleared sports-data cache after sync')
 
     return NextResponse.json({
       success: true,

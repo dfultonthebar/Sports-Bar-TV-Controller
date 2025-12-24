@@ -14,6 +14,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { withTransaction } from '@/lib/db/transaction-wrapper'
 
 export const dynamic = 'force-dynamic'
 
@@ -305,36 +306,38 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'bulkSetDeviceLogins' && deviceId && logins) {
-      // Bulk update device logins
-      for (const login of logins) {
-        const existing = await db.select()
-          .from(schema.deviceStreamingLogins)
-          .where(and(
-            eq(schema.deviceStreamingLogins.deviceId, deviceId),
-            eq(schema.deviceStreamingLogins.serviceId, login.serviceId)
-          ))
-          .limit(1)
-
-        if (existing.length > 0) {
-          await db.update(schema.deviceStreamingLogins)
-            .set({
-              isLoggedIn: login.isLoggedIn,
-              lastVerified: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            })
+      // Bulk update device logins - use transaction for atomicity
+      await withTransaction(async (tx) => {
+        for (const login of logins) {
+          const existing = await tx.select()
+            .from(schema.deviceStreamingLogins)
             .where(and(
               eq(schema.deviceStreamingLogins.deviceId, deviceId),
               eq(schema.deviceStreamingLogins.serviceId, login.serviceId)
             ))
-        } else if (login.isLoggedIn) {
-          await db.insert(schema.deviceStreamingLogins).values({
-            deviceId,
-            serviceId: login.serviceId,
-            isLoggedIn: true,
-            lastVerified: new Date().toISOString()
-          })
+            .limit(1)
+
+          if (existing.length > 0) {
+            await tx.update(schema.deviceStreamingLogins)
+              .set({
+                isLoggedIn: login.isLoggedIn,
+                lastVerified: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              })
+              .where(and(
+                eq(schema.deviceStreamingLogins.deviceId, deviceId),
+                eq(schema.deviceStreamingLogins.serviceId, login.serviceId)
+              ))
+          } else if (login.isLoggedIn) {
+            await tx.insert(schema.deviceStreamingLogins).values({
+              deviceId,
+              serviceId: login.serviceId,
+              isLoggedIn: true,
+              lastVerified: new Date().toISOString()
+            })
+          }
         }
-      }
+      })
 
       logger.info(`[STREAMING] Bulk updated ${logins.length} logins for device ${deviceId}`)
       return NextResponse.json({ success: true, action: 'bulkDeviceLoginsUpdated' })

@@ -85,7 +85,7 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
     logger.info(`Sending DirecTV command to: ${url} (attempt ${retryCount + 1}/${maxRetries + 1})`)
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 seconds - allows for network latency during rapid commands
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 seconds - hardware timeout increased for reliability
 
     const response = await fetch(url, {
       method: 'GET',

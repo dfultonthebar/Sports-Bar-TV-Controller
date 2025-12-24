@@ -33,6 +33,7 @@ interface CacheEntry<T> {
 class SimpleCache {
   private cache: Map<string, CacheEntry<any>> = new Map()
   private cleanupInterval: NodeJS.Timeout | null = null
+  private maxEntries = 1000 // LRU eviction when limit reached
 
   constructor() {
     // Clean up expired entries every 5 minutes
@@ -64,6 +65,14 @@ class SimpleCache {
    * Set data in cache with TTL (in milliseconds)
    */
   set<T>(key: string, data: T, ttl: number = 300000): void {
+    // Evict oldest entry if at capacity
+    if (this.cache.size >= this.maxEntries) {
+      const oldestKey = this.cache.keys().next().value
+      if (oldestKey) {
+        this.cache.delete(oldestKey)
+      }
+    }
+
     this.cache.set(key, {
       data,
       timestamp: Date.now(),

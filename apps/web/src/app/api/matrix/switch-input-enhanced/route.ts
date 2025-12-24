@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       const connectionTimeout = setTimeout(() => {
         client.destroy()
         reject(new Error('Connection timeout'))
-      }, 5000)
+      }, 10000)
 
       client.connect(wolfPackPort, wolfPackHost, () => {
         clearTimeout(connectionTimeout)
@@ -152,7 +152,8 @@ export async function POST(request: NextRequest) {
 
       client.on('error', (error) => {
         clearTimeout(connectionTimeout)
-        
+        client.destroy() // Ensure socket cleanup on error
+
         enhancedLogger.error(
           'hardware',
           'wolf-pack-matrix',

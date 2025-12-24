@@ -19,6 +19,9 @@ export class ADBClient {
   private isConnected: boolean = false
   private keepAliveTimer: NodeJS.Timeout | null = null
   private options: ADBConnectionOptions
+  private reconnectAttempts: number = 0
+  private maxReconnectAttempts: number = 5
+  private baseReconnectDelay: number = 1000
 
   constructor(ipAddress: string, port: number = 5555, options: ADBConnectionOptions = {}) {
     this.ipAddress = ipAddress
@@ -36,38 +39,39 @@ export class ADBClient {
   async connect(): Promise<boolean> {
     try {
       logger.info(`[ADB CLIENT] Connecting to ${this.deviceAddress}...`)
-      
+
       const connectCommand = `adb connect ${this.deviceAddress}`
       const { stdout, stderr } = await execAsync(connectCommand, {
         timeout: this.options.connectionTimeout
       })
-      
+
       logger.info(`[ADB CLIENT] Connect stdout: ${stdout}`)
       if (stderr) logger.info(`[ADB CLIENT] Connect stderr: ${stderr}`)
-      
+
       if (stdout.includes('connected') || stdout.includes('already connected')) {
         logger.info(`[ADB CLIENT] Connection result: SUCCESS`)
         this.isConnected = true
-        
+        this.reconnectAttempts = 0 // Reset reconnect counter on successful connection
+
         // Start keep-alive mechanism
         this.startKeepAlive()
-        
+
         return true
       }
-      
+
       logger.info(`[ADB CLIENT] Connection result: FAILED`)
       this.isConnected = false
       return false
     } catch (error: any) {
       logger.error(`[ADB CLIENT] Connection error:`, error.message)
-      
+
       // Check if ADB command is not found
-      if (error.message && (error.message.includes('adb') && 
-          (error.message.includes('not found') || 
+      if (error.message && (error.message.includes('adb') &&
+          (error.message.includes('not found') ||
            error.message.includes('command not found')))) {
         throw new Error('ADB command-line tool not installed. Please install with: sudo apt-get install adb')
       }
-      
+
       this.isConnected = false
       throw error
     }
@@ -90,7 +94,7 @@ export class ADBClient {
         // Send a lightweight command to keep connection alive
         await this.executeShellCommand('echo keepalive')
         logger.info(`[ADB CLIENT] Keep-alive ping successful for ${this.deviceAddress}`)
-        
+
         // Reset failure counter on success
         consecutiveFailures = 0
       } catch (error: any) {
@@ -102,17 +106,28 @@ export class ADBClient {
 
         // Only attempt reconnection after multiple consecutive failures
         if (consecutiveFailures >= MAX_FAILURES_BEFORE_RECONNECT) {
-          logger.info(`[ADB CLIENT] Attempting reconnection for ${this.deviceAddress} after ${consecutiveFailures} failures`)
-
-          try {
-            await this.connect()
-            consecutiveFailures = 0 // Reset on successful reconnection
-            logger.info(`[ADB CLIENT] Reconnection successful for ${this.deviceAddress}`)
-          } catch (reconnectError: any) {
-            const reconnectErrMsg = reconnectError?.message || 'Unknown error'
-            logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}: ${reconnectErrMsg}`)
-            // Don't reset counter - let health monitor handle this
+          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            logger.error(`[ADB CLIENT] Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.deviceAddress}`)
+            return // Stop trying
           }
+
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+          const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts)
+          this.reconnectAttempts++
+
+          logger.info(`[ADB CLIENT] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+
+          setTimeout(async () => {
+            try {
+              await this.connect()
+              this.reconnectAttempts = 0 // Reset on success
+              consecutiveFailures = 0
+              logger.info(`[ADB CLIENT] Reconnection successful for ${this.deviceAddress}`)
+            } catch (reconnectError: any) {
+              const reconnectErrMsg = reconnectError?.message || 'Unknown error'
+              logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}: ${reconnectErrMsg}`)
+            }
+          }, delay)
         }
       }
     }, this.options.keepAliveInterval)

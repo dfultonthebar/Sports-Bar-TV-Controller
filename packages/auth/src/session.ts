@@ -10,7 +10,7 @@
  */
 
 import { db, schema } from '@sports-bar/database'
-import { eq, and, gt } from 'drizzle-orm'
+import { eq, and, gt, lt } from 'drizzle-orm'
 import { AUTH_CONFIG, type UserRole } from './config'
 import { logger } from '@sports-bar/logger'
 
@@ -71,7 +71,11 @@ export async function createSession(
  * Validate a session and return session data if valid
  * Automatically extends session if it's close to expiry
  */
-export async function validateSession(sessionId: string): Promise<SessionData | null> {
+export async function validateSession(
+  sessionId: string,
+  requestIp?: string,
+  requestUserAgent?: string
+): Promise<SessionData | null> {
   try {
     const session = await db
       .select()
@@ -103,6 +107,18 @@ export async function validateSession(sessionId: string): Promise<SessionData | 
         .set({ isActive: false })
         .where(eq(sessions.id, sessionId))
 
+      return null
+    }
+
+    // Validate IP address matches (session fixation prevention)
+    if (requestIp && sessionData.ipAddress && sessionData.ipAddress !== requestIp) {
+      logger.warn(`Session IP mismatch - Session: ${sessionData.ipAddress}, Request: ${requestIp}`)
+      return null
+    }
+
+    // Validate user agent matches (session fixation prevention)
+    if (requestUserAgent && sessionData.userAgent && sessionData.userAgent !== requestUserAgent) {
+      logger.warn('Session user agent mismatch')
       return null
     }
 
@@ -214,7 +230,7 @@ export async function cleanupExpiredSessions(): Promise<{ cleaned: number; error
       .where(
         and(
           eq(sessions.isActive, true as any),
-          gt(sessions.expiresAt, now.toISOString())
+          lt(sessions.expiresAt, now.toISOString())
         )
       )
       .returning()

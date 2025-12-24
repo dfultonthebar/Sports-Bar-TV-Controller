@@ -228,22 +228,23 @@ export class AtlasTCPClient {
 
         // Handle connection close
         this.tcpSocket.on('close', () => {
+          this.responseBuffer = ''  // Clear buffer on disconnect to prevent stale data
           atlasLogger.connectionClosed(this.config.ipAddress, this.config.tcpPort)
           this.connected = false
-          
+
           // Stop keep-alive
           if (this.keepAliveTimer) {
             clearInterval(this.keepAliveTimer)
             this.keepAliveTimer = null
           }
-          
+
           // Reject all pending responses
           this.pendingResponses.forEach(({ reject, timeout }) => {
             clearTimeout(timeout)
             reject(new Error('Connection closed'))
           })
           this.pendingResponses.clear()
-          
+
           // Attempt reconnection
           this.handleReconnection()
         })

@@ -169,21 +169,27 @@ class Logger {
         data: params,
       })
     },
-    
+
     success: (operation: string, table: string, result?: any) => {
       this.logWithData(LogLevel.SUCCESS, `DB Success: ${operation} on ${table}`, {
         category: LogCategory.DATABASE,
         data: result ? { rowCount: Array.isArray(result) ? result.length : 1 } : undefined,
       })
     },
-    
+
+    warn: (operation: string, table: string, message: string) => {
+      this.logWithData(LogLevel.WARN, `DB Warning: ${operation} on ${table} - ${message}`, {
+        category: LogCategory.DATABASE,
+      })
+    },
+
     error: (operation: string, table: string, error: Error | unknown) => {
       this.logWithData(LogLevel.ERROR, `DB Error: ${operation} on ${table}`, {
         category: LogCategory.DATABASE,
         error,
       })
     },
-    
+
     connection: (status: 'connected' | 'disconnected', dbPath?: string) => {
       this.logWithData(
         status === 'connected' ? LogLevel.SUCCESS : LogLevel.WARN,

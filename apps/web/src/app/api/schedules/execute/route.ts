@@ -474,18 +474,24 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
       where: inArray(schema.homeTeams.id, homeTeamIds)
     });
 
-    // Get today's date range
+    // Get current time and extend window for games that may span midnight
     const now = new Date();
+
+    // End of current day
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Start time should include currently live games (games that started up to 4 hours ago)
-    const startOfWindow = new Date(now.getTime() - (4 * 60 * 60 * 1000)); // 4 hours ago
+    // Start time should include games that started yesterday but may still be running
+    // Extended from 4 hours to 6 hours to handle late-night games spanning midnight
+    const startOfWindow = new Date(now.getTime() - (6 * 60 * 60 * 1000)); // 6 hours ago
+
+    // Also look ahead to tomorrow for games starting soon after midnight
+    const endOfWindow = new Date(now.getTime() + (4 * 60 * 60 * 1000)); // 4 hours ahead
 
     // Search for games in channel guide data
     // This would integrate with your existing TV guide APIs
     const fillWithSports = schedule.fillWithSports !== false; // Default true if not set
-    const games = await searchForGames(homeTeamsList, startOfWindow, endOfDay, fillWithSports);
+    const games = await searchForGames(homeTeamsList, startOfWindow, endOfWindow, fillWithSports);
 
     result.games = games;
     result.gamesFound = games.length;
@@ -1171,7 +1177,7 @@ async function changeChannel(input: any, channel: string) {
         return { success: true, message: 'Device type does not support channel changing' };
     }
   } catch (error: any) {
-    logger.error(`Error changing channel for input ${inputId}:`, error);
+    logger.error(`Error changing channel for input ${input?.id || 'unknown'}:`, error);
     return { success: false, error: error.message };
   }
 }

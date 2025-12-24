@@ -365,7 +365,36 @@ class SmartInputAllocator {
         allocationQuality: this.calculateAllocationQuality(inputSource, game),
       };
 
-      await db.insert(schema.inputSourceAllocations).values(allocationData);
+      // Wrap the allocation insert in a retry loop to handle race conditions
+      const maxRetries = 3;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          await db.insert(schema.inputSourceAllocations).values(allocationData);
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          if (error.code === 'SQLITE_CONSTRAINT' && attempt < maxRetries - 1) {
+            // Race condition - another request allocated this input, retry with different input
+            logger.warn(`[ALLOCATOR] Allocation race detected on attempt ${attempt + 1}, retrying...`);
+            // Re-check for idle inputs and update inputSource if needed
+            const game = await this.getGame(request.gameId);
+            if (!game) throw new Error('Game not found during retry');
+
+            const inputSources = await this.getInputSources();
+            const capableInputs = this.findCapableInputs(game, inputSources, request.preferredNetwork);
+            const idleInputs = await this.findIdleInputs(capableInputs, game.scheduledStart, game.estimatedEnd);
+
+            if (idleInputs.length === 0) {
+              throw new Error('No idle inputs available after race condition');
+            }
+
+            // Select a different input source
+            const newInput = this.selectBestInput(idleInputs);
+            allocationData.inputSourceId = newInput.id;
+            continue;
+          }
+          throw error;
+        }
+      }
 
       // If preempting, mark old allocation as preempted
       if (options?.preempts) {

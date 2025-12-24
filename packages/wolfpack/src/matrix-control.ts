@@ -169,7 +169,8 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
 async function sendUDPCommand(ipAddress: string, port: number, command: string): Promise<boolean> {
   const dgram = require('dgram')
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
+    let resolved = false // Flag to prevent double resolution
     const client = dgram.createSocket('udp4')
 
     const commandWithLineEnding = command + '\r\n'
@@ -179,7 +180,10 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
       if (err) {
         logger.error('UDP send error:', { error: err.message })
         client.close()
-        resolve(false)
+        if (!resolved) {
+          resolved = true
+          resolve(false)
+        }
         return
       }
 
@@ -187,9 +191,13 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
     })
 
     client.on('message', (data: Buffer, rinfo: { address: string; port: number }) => {
+      if (resolved) return // Prevent double resolution
+      resolved = true
+
       const response = data.toString().trim()
       logger.debug(`Wolf Pack UDP response from ${rinfo.address}:${rinfo.port}: ${response}`)
 
+      clearTimeout(timeoutId)
       client.close()
 
       if (response.includes('OK')) {
@@ -201,13 +209,20 @@ async function sendUDPCommand(ipAddress: string, port: number, command: string):
     })
 
     client.on('error', (err: Error) => {
+      if (resolved) return // Prevent double resolution
+      resolved = true
+
       logger.error('UDP error:', { error: err.message })
+      clearTimeout(timeoutId)
       client.close()
       resolve(false)
     })
 
     // Timeout after 5 seconds
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      if (resolved) return // Prevent double resolution
+      resolved = true
+
       logger.error('UDP response timeout')
       client.close()
       resolve(false)

@@ -85,7 +85,7 @@ export async function pollRealDirecTVSubscriptions(
       return await fetch(versionUrl, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(10000) // 10 seconds - hardware timeout increased for reliability
       })
     })
 
@@ -154,7 +154,7 @@ export async function pollRealDirecTVSubscriptions(
         return await fetch(tunedUrl, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(10000) // 10 seconds - hardware timeout increased for reliability
         })
       })
 

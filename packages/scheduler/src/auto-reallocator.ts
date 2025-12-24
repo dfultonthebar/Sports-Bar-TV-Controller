@@ -231,7 +231,7 @@ class AutoReallocator {
       for (const { allocation, game } of pendingAllocations) {
         // Check if game should start now
         const shouldActivate =
-          now >= allocation.allocatedAt && // Past scheduled start time
+          now >= game.scheduledStart && // Past game's actual start time (not allocation time)
           game.status !== 'cancelled' &&
           game.status !== 'postponed';
 

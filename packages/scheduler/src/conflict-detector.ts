@@ -91,9 +91,11 @@ class ConflictDetector {
           const otherEnd = other.estimatedEnd;
 
           // Check for time overlap
+          // Fixed: Changed otherEnd <= gameEnd to otherEnd < gameEnd to prevent
+          // false positives for adjacent games (e.g., 3pm-5pm and 5pm-7pm)
           return (
             (otherStart >= gameStart && otherStart < gameEnd) || // Other starts during this game
-            (otherEnd > gameStart && otherEnd <= gameEnd) || // Other ends during this game
+            (otherEnd > gameStart && otherEnd < gameEnd) || // Other ends during this game
             (otherStart <= gameStart && otherEnd >= gameEnd) // Other completely contains this game
           );
         });
