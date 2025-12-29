@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -9,7 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)
@@ -37,26 +37,26 @@ export async function POST(request: NextRequest) {
     }
     
     const projectRoot = path.resolve(process.cwd())
-    
+
     // Check if there are any changes to commit
-    const { stdout: statusOutput } = await execAsync('git status --porcelain', { cwd: projectRoot })
+    const { stdout: statusOutput } = await execFileAsync('git', ['status', '--porcelain'], { cwd: projectRoot })
     const hasChanges = statusOutput.trim().length > 0
-    
+
     if (!hasChanges) {
       return NextResponse.json(
         { success: false, error: 'No changes to commit' },
         { status: 400 }
       )
     }
-    
+
     // Add all changes
-    await execAsync('git add .', { cwd: projectRoot })
-    
+    await execFileAsync('git', ['add', '.'], { cwd: projectRoot })
+
     // Commit changes
-    await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: projectRoot })
-    
+    await execFileAsync('git', ['commit', '-m', message], { cwd: projectRoot })
+
     // Push to origin
-    const { stdout: pushOutput } = await execAsync('git push origin main', { cwd: projectRoot })
+    const { stdout: pushOutput } = await execFileAsync('git', ['push', 'origin', 'main'], { cwd: projectRoot })
     
     return NextResponse.json({ 
       success: true, 

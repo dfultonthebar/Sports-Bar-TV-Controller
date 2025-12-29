@@ -1,0 +1,22 @@
+{
+  "devices": [
+    {
+      "deviceId": "directv_1766189546950",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 1",
+      "subscriptions": [
+        {
+          "id": "directv-connected",
+          "name": "DirecTV Receiver Connected",
+          "type": "premium",
+          "status": "active",
+          "provider": "DIRECTV",
+          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 1 | Inogen Portable Oxygen - No More Tanks!",
+          "packageName": "Software v0xf3e | API v1.12"
+        }
+      ],
+      "lastPolled": "2025-12-20T00:12:36.448Z",
+      "pollStatus": "success"
+    }
+  ]
+}

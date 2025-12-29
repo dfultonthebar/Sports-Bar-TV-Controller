@@ -15,7 +15,7 @@ This project uses **Turborepo** with npm workspaces. The codebase is organized a
 │   ├── auth/            # Authentication utilities
 │   ├── cache-manager/   # Caching with TTL support
 │   ├── circuit-breaker/ # Opossum circuit breaker wrapper
-│   ├── config/          # Shared configuration
+│   ├── config/          # Shared configuration (validation, rate limits, config tracking)
 │   ├── data/            # Static data files
 │   ├── database/        # Drizzle ORM database layer
 │   ├── directv/         # DirecTV IP control
@@ -40,6 +40,43 @@ import { logger } from '@sports-bar/logger'
 import { cn } from '@sports-bar/ui-utils'
 import { wolfpackService } from '@sports-bar/wolfpack'
 ```
+
+### Key Package: @sports-bar/config
+
+**Location:** `packages/config/`
+**Purpose:** Centralized configuration management, validation schemas, rate limiting policies, and configuration change tracking.
+
+**Exports:**
+```typescript
+// Validation schemas (re-exported from @sports-bar/validation)
+import { z, uuidSchema, deviceIdSchema } from '@sports-bar/config/validation'
+
+// Rate limiting policies
+import { RATE_LIMIT_POLICIES, getRateLimitForEndpoint } from '@sports-bar/config'
+
+// Fire TV configuration
+import { getFireTVConfig, calculateBackoffDelay } from '@sports-bar/config'
+
+// Configuration change tracking
+import {
+  ConfigChangeTracker,
+  createConfigChangeTracker,
+  type ConfigChangeEvent
+} from '@sports-bar/config'
+```
+
+**ConfigChangeTracker:**
+- Monitors configuration files for changes using file system watchers
+- Calculates checksums to detect modifications
+- Integrates with auto-sync system for GitHub commits
+- Uses dependency injection pattern for logger and HTTP client
+- Framework-agnostic implementation (no Next.js dependencies)
+
+**Bridge Pattern:** Apps use bridge files (`apps/web/src/lib/config-change-tracker.ts`) that:
+1. Import the core implementation from `@sports-bar/config`
+2. Provide app-specific adapters (logger, auto-sync client)
+3. Export a configured singleton instance
+4. Maintain backward compatibility with existing imports
 
 ## Build & Development Commands
 

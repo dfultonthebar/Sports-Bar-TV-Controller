@@ -16,7 +16,7 @@ class LogPatternAnalyzer:
             'performance': r'slow.*response|high.*latency|timeout',
             'configuration': r'config.*error|setting.*invalid|parameter.*missing'
         }
-        
+
         self.severity_keywords = {
             'critical': ['critical', 'fatal', 'emergency', 'system failure', 'crash'],
             'high': ['error', 'exception', 'failed', 'unable', 'denied'],
@@ -66,7 +66,7 @@ class LogPatternAnalyzer:
 
     def _calculate_overall_severity(self, logs):
         severity_counts = Counter()
-        
+
         for log in logs:
             level = log.get('level', '').lower()
             severity_counts[level] += 1
@@ -76,7 +76,7 @@ class LogPatternAnalyzer:
             return 'low'
 
         error_rate = (severity_counts['error'] + severity_counts['critical']) / total_logs
-        
+
         if error_rate > 0.2:
             return 'critical'
         elif error_rate > 0.1:
@@ -108,7 +108,7 @@ class LogPatternAnalyzer:
 
     def _identify_patterns(self, logs):
         patterns = []
-        
+
         # Time-based patterns
         hour_distribution = defaultdict(int)
         for log in logs:
@@ -139,7 +139,7 @@ class LogPatternAnalyzer:
 
     def _generate_recommendations(self, logs):
         recommendations = []
-        
+
         error_logs = [log for log in logs if log.get('level') in ['error', 'critical']]
         error_rate = len(error_logs) / len(logs) if logs else 0
 
@@ -169,7 +169,7 @@ class LogPatternAnalyzer:
 
     def _detect_anomalies(self, logs):
         anomalies = []
-        
+
         # Detect rapid succession of errors
         error_times = []
         for log in logs:
@@ -208,7 +208,7 @@ class LogPatternAnalyzer:
 
     def _extract_insights(self, logs):
         insights = []
-        
+
         # User behavior insights
         user_logs = [log for log in logs if log.get('category') == 'user_interaction']
         if user_logs:
@@ -220,7 +220,7 @@ class LogPatternAnalyzer:
         # System health insights
         total_operations = len([log for log in logs if log.get('success') is not None])
         successful_operations = len([log for log in logs if log.get('success') is True])
-        
+
         if total_operations > 0:
             success_rate = (successful_operations / total_operations) * 100
             if success_rate > 95:
@@ -246,10 +246,10 @@ class LogPatternAnalyzer:
                 timestamps.append(timestamp)
             except:
                 continue
-        
+
         if len(timestamps) < 2:
             return 0
-        
+
         timestamps.sort()
         time_span = timestamps[-1] - timestamps[0]
         return time_span.total_seconds() / 3600  # Convert to hours
@@ -271,12 +271,12 @@ def main():
         # Read input from stdin
         input_data = sys.stdin.read()
         logs_data = json.loads(input_data)
-        
+
         analyzer = LogPatternAnalyzer()
         result = analyzer.analyze_logs(logs_data)
-        
+
         print(json.dumps(result, indent=2))
-        
+
     except Exception as e:
         error_result = {
             'severity': 'medium',

@@ -1,0 +1,84 @@
+{
+  "devices": [
+    {
+      "id": "directv_1766189546950",
+      "name": "Direct TV 1",
+      "ipAddress": "192.168.5.121",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 5,
+      "isOnline": true,
+      "addedAt": "2025-12-20T00:12:27.798Z"
+    },
+    {
+      "id": "directv_1766249271909",
+      "name": "Direct TV 2",
+      "ipAddress": "192.168.5.122",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 6,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:46:26.767Z"
+    },
+    {
+      "id": "directv_1766249308485",
+      "name": "Direct TV 3",
+      "ipAddress": "192.168.5.123",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 7,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:47:03.346Z"
+    },
+    {
+      "id": "directv_1766249342075",
+      "name": "Direct TV 4",
+      "ipAddress": "192.168.5.124",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 8,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:47:36.924Z"
+    },
+    {
+      "id": "directv_1766249377565",
+      "name": "Direct TV 5",
+      "ipAddress": "192.168.5.125",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 9,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:48:12.450Z"
+    },
+    {
+      "id": "directv_1766249419248",
+      "name": "Direct TV 6",
+      "ipAddress": "192.168.5.126",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 10,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:48:54.642Z"
+    },
+    {
+      "id": "directv_1766249457436",
+      "name": "Direct TV 7",
+      "ipAddress": "192.168.5.127",
+      "port": 8080,
+      "receiverType": "h24/100",
+      "inputChannel": 11,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:49:32.293Z"
+    },
+    {
+      "id": "directv_1766249509916",
+      "name": "Direct TV 8",
+      "ipAddress": "192.168.5.128",
+      "port": 8080,
+      "receiverType": "Genie HD DVR",
+      "inputChannel": 12,
+      "isOnline": true,
+      "addedAt": "2025-12-20T16:50:24.759Z"
+    }
+  ]
+}

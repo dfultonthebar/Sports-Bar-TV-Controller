@@ -1,7 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -10,7 +9,6 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-const execAsync = promisify(exec)
 
 interface ExecuteRequest {
   command?: string
@@ -35,18 +33,19 @@ export async function POST(request: NextRequest) {
     const { command, scriptPath, args = [] as any[], workingDirectory, timeout = 30000 } = bodyValidation.data as ExecuteRequest
 
     if (!command && !scriptPath) {
-      return NextResponse.json({ 
-        error: 'Either command or scriptPath is required' 
+      return NextResponse.json({
+        error: 'Either command or scriptPath is required'
       }, { status: 400 })
     }
 
-    let execCommand: string
-    let cwd = workingDirectory || process.cwd()
+    const cwd = workingDirectory || process.cwd()
+    let interpreter: string
+    let execArgs: string[]
 
     if (scriptPath) {
       // Execute a script file
       const fullScriptPath = path.resolve(cwd, scriptPath)
-      
+
       // Check if script exists
       if (!fs.existsSync(fullScriptPath)) {
         return NextResponse.json({
@@ -54,41 +53,78 @@ export async function POST(request: NextRequest) {
         }, { status: 404 })
       }
 
-      // Determine how to execute based on file extension
+      // Determine interpreter based on file extension
       const ext = path.extname(scriptPath)
       if (ext === '.sh') {
-        execCommand = `bash "${fullScriptPath}" ${args.join(' ')}`
+        interpreter = 'bash'
       } else if (ext === '.py') {
-        execCommand = `python3 "${fullScriptPath}" ${args.join(' ')}`
+        interpreter = 'python3'
       } else if (ext === '.js') {
-        execCommand = `node "${fullScriptPath}" ${args.join(' ')}`
+        interpreter = 'node'
       } else {
-        execCommand = `"${fullScriptPath}" ${args.join(' ')}`
+        // For unknown extensions, try executing directly
+        interpreter = fullScriptPath
+        execArgs = args
+      }
+
+      if (ext === '.sh' || ext === '.py' || ext === '.js') {
+        execArgs = [fullScriptPath, ...args]
       }
     } else {
-      // Execute raw command
-      execCommand = command!
+      // For raw commands, use sh -c to maintain compatibility
+      interpreter = 'sh'
+      execArgs = ['-c', command!]
     }
 
-    logger.info(`Executing: ${execCommand} in ${cwd}`)
+    logger.info(`Executing: ${interpreter} ${execArgs.join(' ')} in ${cwd}`)
 
-    const { stdout, stderr } = await execAsync(execCommand, { 
-      cwd,
-      timeout,
-      maxBuffer: 1024 * 1024 // 1MB buffer
+    // Use spawn for safe execution with timeout
+    const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve, reject) => {
+      const proc = spawn(interpreter, execArgs, {
+        cwd,
+        timeout
+      })
+
+      let stdout = ''
+      let stderr = ''
+
+      proc.stdout.on('data', (data) => {
+        stdout += data.toString()
+      })
+
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      proc.on('error', (error) => {
+        reject(error)
+      })
+
+      proc.on('close', (code) => {
+        resolve({ stdout, stderr, code })
+      })
+
+      // Handle timeout
+      setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill('SIGTERM')
+          reject(new Error(`Command timed out after ${timeout}ms`))
+        }
+      }, timeout)
     })
 
     return NextResponse.json({
       success: true,
-      stdout: stdout || '',
-      stderr: stderr || '',
-      command: execCommand,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      code: result.code,
+      command: scriptPath ? `${interpreter} ${scriptPath}` : command,
       workingDirectory: cwd
     })
 
   } catch (error: any) {
     logger.error('Execution error:', error)
-    
+
     return NextResponse.json({
       success: false,
       error: error.message || 'Command execution failed',
