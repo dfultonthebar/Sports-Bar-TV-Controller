@@ -214,10 +214,13 @@ export const matrixConfigs = sqliteTable('MatrixConfig', {
 export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
+  model: text('model').notNull().default('WP-36X36'), // Wolf Pack model (WP-4X4, WP-8X8, WP-16X16, WP-18X18, WP-36X36, WP-64X64)
   ipAddress: text('ipAddress').notNull(),
   tcpPort: integer('tcpPort').notNull().default(23),
   udpPort: integer('udpPort').notNull().default(4000),
   protocol: text('protocol').notNull().default('TCP'),
+  inputCount: integer('inputCount').notNull().default(36),
+  outputCount: integer('outputCount').notNull().default(36),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),

@@ -1,11 +1,32 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
-import { Power, PowerOff } from 'lucide-react'
+import { Power, PowerOff, Monitor } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 import { logger } from '@sports-bar/logger'
+
+// Wolf Pack Matrix Models - HDTVSupply
+const WOLFPACK_MODELS = [
+  // Fixed Size Matrices (Non-Modular)
+  { value: 'WP-4X4', label: '4x4 HDMI Matrix', inputs: 4, outputs: 4, series: 'Fixed', resolution: '4K@60Hz' },
+  { value: 'WP-4X6', label: '4x6 HDMI Matrix w/Video Wall', inputs: 4, outputs: 6, series: 'Fixed', resolution: '4K@60Hz' },
+  { value: 'WP-8X4', label: '8x4 HDMI Matrix w/Scaling', inputs: 8, outputs: 4, series: 'Fixed', resolution: '4K@60Hz' },
+  { value: 'WP-8X8', label: '8x8 HDMI Matrix w/Video Wall', inputs: 8, outputs: 8, series: 'Fixed', resolution: '4K@30Hz' },
+  { value: 'WP-8X18', label: '8x18 HDMI Matrix w/Dual Monitors', inputs: 8, outputs: 18, series: 'Fixed', resolution: '4K@30Hz' },
+  // Modular Chassis - 18x18
+  { value: 'WP-18X18', label: '18x18 Modular Chassis (4U)', inputs: 18, outputs: 18, series: 'Modular-18', resolution: '4K@30Hz' },
+  { value: 'WP-16X16-18', label: '16x16 in 18x18 Chassis', inputs: 16, outputs: 16, series: 'Modular-18', resolution: '4K@30Hz' },
+  { value: 'WP-8X8-18', label: '8x8 in 18x18 Chassis w/Touchscreen', inputs: 8, outputs: 8, series: 'Modular-18', resolution: '4K@30Hz' },
+  // Modular Chassis - 36x36
+  { value: 'WP-36X36', label: '36x36 Modular Chassis (8U)', inputs: 36, outputs: 36, series: 'Modular-36', resolution: '4K@30Hz' },
+  { value: 'WP-32X32-36', label: '32x32 in 36x36 Chassis', inputs: 32, outputs: 32, series: 'Modular-36', resolution: '4K@30Hz' },
+  { value: 'WP-24X24-36', label: '24x24 in 36x36 Chassis', inputs: 24, outputs: 24, series: 'Modular-36', resolution: '4K@30Hz' },
+  // Large Enterprise
+  { value: 'WP-64X64', label: '64x64 Modular Matrix', inputs: 64, outputs: 64, series: 'Enterprise', resolution: '4K@30Hz' },
+  { value: 'WP-80X80', label: '80x80 Modular Matrix', inputs: 80, outputs: 80, series: 'Enterprise', resolution: '4K@30Hz' },
+]
 interface MatrixInput {
   channelNumber: number
   label: string
@@ -35,6 +56,7 @@ interface MatrixOutput {
 interface MatrixConfig {
   id?: string
   name: string
+  model: string
   ipAddress: string
   port: number
   tcpPort?: number
@@ -45,42 +67,54 @@ interface MatrixConfig {
   outputs: MatrixOutput[]
 }
 
+// Helper to get model configuration
+const getModelConfig = (model: string) => {
+  return WOLFPACK_MODELS.find(m => m.value === model) || WOLFPACK_MODELS.find(m => m.value === 'WP-36X36')!
+}
+
+// Helper to generate default inputs for a model
+const generateDefaultInputs = (count: number): MatrixInput[] => {
+  return Array.from({ length: count }, (_, i) => ({
+    channelNumber: i + 1,
+    label: `Input ${i + 1}`,
+    inputType: 'HDMI',
+    deviceType: 'Other',
+    status: 'active',
+    isActive: true,
+    powerOn: false,
+    isCecPort: false
+  }))
+}
+
+// Helper to generate default outputs for a model
+const generateDefaultOutputs = (count: number): MatrixOutput[] => {
+  return Array.from({ length: count }, (_, i) => ({
+    channelNumber: i + 1,
+    label: `TV ${String(i + 1).padStart(2, '0')}`,
+    resolution: '1080p',
+    status: 'active',
+    audioOutput: undefined,
+    isActive: true,
+    powerOn: false
+  }))
+}
+
 type TabType = 'routing' | 'inputs' | 'outputs'
 
 export default function MatrixControl() {
+  const defaultModel = getModelConfig('WP-36X36')
   const [configs, setConfigs] = useState<MatrixConfig[]>([])
   const [currentConfig, setCurrentConfig] = useState<MatrixConfig>({
     name: 'Wolf Pack Matrix',
+    model: 'WP-36X36',
     ipAddress: '',
     port: 23,
     tcpPort: 23,
     udpPort: 4000,
     protocol: 'TCP',
     isActive: true,
-    inputs: Array.from({ length: 36 }, (_, i) => ({
-      channelNumber: i + 1,
-      label: i < 17 ? `Input ${i + 1}` : 
-             i < 32 ? `Additional Input ${i - 16}` :
-             `Matrix ${i - 31}`,
-      inputType: 'HDMI',
-      deviceType: 'Other',
-      status: 'active',
-      isActive: true,
-      powerOn: false,
-      isCecPort: false
-    })),
-    outputs: Array.from({ length: 36 }, (_, i) => ({
-      channelNumber: i + 1,
-      label: i < 4 ? `TV ${String(i + 1).padStart(2, '0')}` :
-             i < 29 ? `TV ${String(i - 3 + 4).padStart(2, '0')}` :
-             i < 32 ? `Additional TV ${i - 23}` :
-             i >= 32 ? `Matrix ${i - 31}` : `Additional Output ${i - 31}`,
-      resolution: '1080p',
-      status: 'active',
-      audioOutput: i < 4 ? `Matrix ${i + 1}` : undefined,
-      isActive: true,
-      powerOn: false
-    }))
+    inputs: generateDefaultInputs(defaultModel.inputs),
+    outputs: generateDefaultOutputs(defaultModel.outputs)
   })
   const [loading, setLoading] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
@@ -217,6 +251,64 @@ export default function MatrixControl() {
     setCurrentConfig({ ...currentConfig, outputs: newOutputs })
   }
 
+  // Handle model change - resize inputs/outputs to match model
+  const handleModelChange = (modelValue: string) => {
+    const modelConfig = getModelConfig(modelValue)
+    const currentInputCount = currentConfig.inputs.length
+    const currentOutputCount = currentConfig.outputs.length
+
+    let newInputs = [...currentConfig.inputs]
+    let newOutputs = [...currentConfig.outputs]
+
+    // Adjust inputs
+    if (modelConfig.inputs > currentInputCount) {
+      // Add new inputs
+      for (let i = currentInputCount; i < modelConfig.inputs; i++) {
+        newInputs.push({
+          channelNumber: i + 1,
+          label: `Input ${i + 1}`,
+          inputType: 'HDMI',
+          deviceType: 'Other',
+          status: 'active',
+          isActive: true,
+          powerOn: false,
+          isCecPort: false
+        })
+      }
+    } else if (modelConfig.inputs < currentInputCount) {
+      // Trim inputs to model size
+      newInputs = newInputs.slice(0, modelConfig.inputs)
+    }
+
+    // Adjust outputs
+    if (modelConfig.outputs > currentOutputCount) {
+      // Add new outputs
+      for (let i = currentOutputCount; i < modelConfig.outputs; i++) {
+        newOutputs.push({
+          channelNumber: i + 1,
+          label: `TV ${String(i + 1).padStart(2, '0')}`,
+          resolution: '1080p',
+          status: 'active',
+          audioOutput: undefined,
+          isActive: true,
+          powerOn: false
+        })
+      }
+    } else if (modelConfig.outputs < currentOutputCount) {
+      // Trim outputs to model size
+      newOutputs = newOutputs.slice(0, modelConfig.outputs)
+    }
+
+    setCurrentConfig({
+      ...currentConfig,
+      model: modelValue,
+      inputs: newInputs,
+      outputs: newOutputs
+    })
+
+    toast.success(`Model changed to ${modelConfig.label} (${modelConfig.inputs}x${modelConfig.outputs})`)
+  }
+
   const handleVideoInputSelection = async (videoInputNumber: number) => {
     if (!selectedMatrixOutput) return
 
@@ -317,7 +409,72 @@ export default function MatrixControl() {
               className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
             />
           </div>
-          
+
+          <div>
+            <label className="block text-sm font-medium mb-2 text-slate-200">Model</label>
+            <select
+              value={currentConfig.model}
+              onChange={(e) => handleModelChange(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
+            >
+              <optgroup label="Fixed Size Matrices">
+                {WOLFPACK_MODELS.filter(m => m.series === 'Fixed').map(model => (
+                  <option key={model.value} value={model.value}>{model.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="18x18 Modular Chassis">
+                {WOLFPACK_MODELS.filter(m => m.series === 'Modular-18').map(model => (
+                  <option key={model.value} value={model.value}>{model.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="36x36 Modular Chassis">
+                {WOLFPACK_MODELS.filter(m => m.series === 'Modular-36').map(model => (
+                  <option key={model.value} value={model.value}>{model.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Enterprise">
+                {WOLFPACK_MODELS.filter(m => m.series === 'Enterprise').map(model => (
+                  <option key={model.value} value={model.value}>{model.label}</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        {/* Model Info Display */}
+        {(() => {
+          const selectedModel = getModelConfig(currentConfig.model)
+          const seriesBadgeColor: Record<string, string> = {
+            'Fixed': 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+            'Modular-18': 'bg-green-500/20 text-green-300 border-green-500/50',
+            'Modular-36': 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+            'Enterprise': 'bg-orange-500/20 text-orange-300 border-orange-500/50'
+          }
+          return (
+            <div className="flex items-center space-x-3 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg mb-6">
+              <Monitor className="w-5 h-5 text-indigo-400" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-indigo-300">
+                  {selectedModel.inputs} inputs × {selectedModel.outputs} outputs
+                  <Badge className={`ml-2 ${seriesBadgeColor[selectedModel.series]}`}>
+                    {selectedModel.series}
+                  </Badge>
+                  <span className="ml-2 text-xs text-indigo-400/70">
+                    {selectedModel.resolution}
+                  </span>
+                </p>
+                <p className="text-xs text-indigo-300/70">
+                  {selectedModel.series === 'Fixed' && 'Non-modular fixed-size HDMI matrix with video wall support.'}
+                  {selectedModel.series === 'Modular-18' && '18-slot modular chassis (4U) - Configure 8x8 to 18x18 matrices.'}
+                  {selectedModel.series === 'Modular-36' && '36-slot modular chassis (8U) - Configure 24x24 to 36x36 matrices.'}
+                  {selectedModel.series === 'Enterprise' && 'Large enterprise modular matrix for 64+ endpoints.'}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <label className="block text-sm font-medium mb-2 text-slate-200">IP Address</label>
             <input
@@ -415,7 +572,7 @@ export default function MatrixControl() {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Inputs (1-36)
+              Inputs (1-{currentConfig.inputs.length})
             </button>
             <button
               onClick={() => setActiveTab('outputs')}
@@ -425,7 +582,7 @@ export default function MatrixControl() {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Outputs (1-36)
+              Outputs (1-{currentConfig.outputs.length})
             </button>
           </div>
         </div>

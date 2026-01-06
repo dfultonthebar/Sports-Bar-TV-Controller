@@ -129,17 +129,19 @@ export async function POST(request: NextRequest) {
         await tx.update(schema.matrixConfigurations)
           .set({
             name: config.name,
+            model: config.model || 'WP-36X36',
             ipAddress: config.ipAddress,
             tcpPort: config.tcpPort || 23,
             udpPort: config.udpPort || 4000,
             protocol: config.protocol || 'TCP',
+            inputCount: Array.isArray(inputs) ? inputs.length : 36,
+            outputCount: Array.isArray(outputs) ? outputs.length : 36,
             isActive: config.isActive !== false,
-            cecInputChannel: config.cecInputChannel || null,
             updatedAt: now
           })
           .where(eq(schema.matrixConfigurations.id, configId))
           .run()
-        
+
         savedConfig = await tx.select()
           .from(schema.matrixConfigurations)
           .where(eq(schema.matrixConfigurations.id, configId))
@@ -151,12 +153,14 @@ export async function POST(request: NextRequest) {
           .values({
             id: configId,
             name: config.name,
+            model: config.model || 'WP-36X36',
             ipAddress: config.ipAddress,
             tcpPort: config.tcpPort || 23,
             udpPort: config.udpPort || 4000,
             protocol: config.protocol || 'TCP',
+            inputCount: Array.isArray(inputs) ? inputs.length : 36,
+            outputCount: Array.isArray(outputs) ? outputs.length : 36,
             isActive: config.isActive !== false,
-            cecInputChannel: config.cecInputChannel || null,
             createdAt: now,
             updatedAt: now
           })
