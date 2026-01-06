@@ -1,0 +1,274 @@
+{
+  "devices": [
+    {
+      "deviceId": "directv_1759187217790",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 1",
+      "subscriptions": [
+        {
+          "id": "directv-connected",
+          "name": "DirecTV Receiver Connected",
+          "type": "premium",
+          "status": "active",
+          "provider": "DIRECTV",
+          "description": "Receiver ID: 0354 1450 5525 | Card: 0018-3267-7643 | Channel: 9561 | To Be Announced",
+          "packageName": "Software v0xf3e | API v1.12"
+        }
+      ],
+      "lastPolled": "2025-11-17T15:43:59.324Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "firetv_1761938203848_7f8sp833s",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 1",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.playon.nfhslive",
+          "name": "NFHS Network",
+          "type": "sports",
+          "status": "active",
+          "provider": "NFHS",
+          "packageName": "com.playon.nfhslive",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 1"
+        }
+      ],
+      "lastPolled": "2025-11-21T18:23:06.181Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "directv_1759187265011",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 2",
+      "subscriptions": [
+        {
+          "id": "directv-connected",
+          "name": "DirecTV Receiver Connected",
+          "type": "premium",
+          "status": "active",
+          "provider": "DIRECTV",
+          "description": "Receiver ID: 0354 1524 6517 | Card: 0018-1782-1356 | Channel: 9558 | To Be Announced",
+          "packageName": "Software v0xf3e | API v1.12"
+        }
+      ],
+      "lastPolled": "2025-11-24T15:59:26.889Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "directv_1759187398411",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 3",
+      "subscriptions": [
+        {
+          "id": "directv-connected",
+          "name": "DirecTV Receiver Connected",
+          "type": "premium",
+          "status": "active",
+          "provider": "DIRECTV",
+          "description": "Receiver ID: 0354 1448 7302 | Card: 0017-3617-7435 | Channel: 763 | Upcoming: Jazz @ Warriors (Jazz Broadcast)",
+          "packageName": "Software v0xf3e | API v1.12"
+        }
+      ],
+      "lastPolled": "2025-11-24T16:01:14.053Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "firetv_1763577904432_y1leu4lud",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 2",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 2"
+        },
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 2"
+        },
+        {
+          "id": "firetv-com.playon.nfhslive",
+          "name": "NFHS Network",
+          "type": "sports",
+          "status": "active",
+          "provider": "NFHS",
+          "packageName": "com.playon.nfhslive",
+          "description": "Installed on Amazon 2"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 2"
+        }
+      ],
+      "lastPolled": "2025-11-19T19:15:49.741Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "firetv_1763581819225_xbgsm3c4e",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 3",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 3"
+        },
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 3"
+        },
+        {
+          "id": "firetv-com.playon.nfhslive",
+          "name": "NFHS Network",
+          "type": "sports",
+          "status": "active",
+          "provider": "NFHS",
+          "packageName": "com.playon.nfhslive",
+          "description": "Installed on Amazon 3"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 3"
+        }
+      ],
+      "lastPolled": "2025-11-19T19:49:05.941Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "directv_1759187444390",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 4",
+      "subscriptions": [],
+      "lastPolled": "2025-11-19T20:27:31.636Z",
+      "pollStatus": "error",
+      "error": "Unable to connect to DirecTV receiver"
+    },
+    {
+      "deviceId": "firetv_1763749343167_32nym6f7h",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 4",
+      "subscriptions": [
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 4"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 4"
+        }
+      ],
+      "lastPolled": "2025-11-21T18:40:59.000Z",
+      "pollStatus": "success"
+    },
+    {
+      "deviceId": "firetv_1764889208258_s1akqme5j",
+      "deviceType": "firetv",
+      "deviceName": "Amazon 1",
+      "subscriptions": [
+        {
+          "id": "firetv-com.hulu.plus",
+          "name": "Hulu",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Hulu",
+          "packageName": "com.hulu.plus",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.espn.gtv",
+          "name": "ESPN",
+          "type": "sports",
+          "status": "active",
+          "provider": "Disney",
+          "packageName": "com.espn.gtv",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.playon.nfhslive",
+          "name": "NFHS Network",
+          "type": "sports",
+          "status": "active",
+          "provider": "NFHS",
+          "packageName": "com.playon.nfhslive",
+          "description": "Installed on Amazon 1"
+        },
+        {
+          "id": "firetv-com.netflix.ninja",
+          "name": "Netflix",
+          "type": "streaming",
+          "status": "active",
+          "provider": "Netflix",
+          "packageName": "com.netflix.ninja",
+          "description": "Installed on Amazon 1"
+        }
+      ],
+      "lastPolled": "2025-12-05T19:26:47.723Z",
+      "pollStatus": "success"
+    }
+  ]
+}

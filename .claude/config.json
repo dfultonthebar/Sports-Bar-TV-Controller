@@ -1,0 +1,9 @@
+{
+  "model": "claude-sonnet-4-5-20250929",
+  "description": "Sports Bar TV Controller - AI-powered AV system management",
+  "context": {
+    "tech_stack": ["Next.js 14", "React 18", "TypeScript", "Drizzle ORM", "Ollama AI"],
+    "hardware": ["Wolf Pack HDMI matrices", "Pulse-Eight USB CEC", "Global Cache iTach"],
+    "database": "SQLite via Drizzle ORM"
+  }
+}

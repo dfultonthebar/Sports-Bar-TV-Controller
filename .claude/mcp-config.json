@@ -1,0 +1,53 @@
+{
+  "description": "MCP Server Configuration for Sports Bar TV Controller",
+  "servers": {
+    "sqlite": {
+      "name": "SQLite Database",
+      "description": "Direct access to production SQLite database for queries and analysis",
+      "command": "python3 -m mcp_server_sqlite /home/ubuntu/sports-bar-data/production.db",
+      "capabilities": [
+        "Query database tables",
+        "Inspect schema",
+        "Analyze data",
+        "Generate reports"
+      ]
+    },
+    "database": {
+      "name": "Multi-Database Server",
+      "description": "Community database server with support for SQLite, PostgreSQL, SQL Server",
+      "command": "npx mcp-database-server",
+      "capabilities": [
+        "Execute SQL queries",
+        "Database introspection",
+        "Multi-database support"
+      ]
+    },
+    "filesystem": {
+      "name": "Filesystem Access",
+      "description": "Secure file operations for project and data directories",
+      "command": "npx -y @modelcontextprotocol/server-filesystem /home/ubuntu/Sports-Bar-TV-Controller /home/ubuntu/sports-bar-data",
+      "capabilities": [
+        "Read files",
+        "Write files",
+        "List directories",
+        "File search"
+      ]
+    },
+    "puppeteer": {
+      "name": "Browser Automation",
+      "description": "Web scraping and UI testing with Puppeteer",
+      "command": "npx @modelcontextprotocol/server-puppeteer",
+      "capabilities": [
+        "Browser automation",
+        "Screenshot capture",
+        "Web scraping",
+        "UI testing"
+      ]
+    }
+  },
+  "usage": {
+    "sqlite": "For database queries, use: @sqlite query SELECT * FROM devices",
+    "filesystem": "For file ops, use: @filesystem read /path/to/file",
+    "puppeteer": "For browser, use: @puppeteer navigate https://example.com"
+  }
+}

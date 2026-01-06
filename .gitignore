@@ -1,0 +1,134 @@
+
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules/
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+**/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# local configuration files
+config/*.local.json
+config/*.local.js
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# uploads
+/uploads/*
+!/uploads/.gitkeep
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# logs
+*.log
+/logs/*
+!/logs/.gitkeep
+
+# AI style analysis
+/ai-style-reports/*
+!/ai-style-reports/.gitkeep
+/ai-style-backups/*
+!/ai-style-backups/.gitkeep
+
+# Database
+prisma/*.db
+prisma/*.db-journal
+data/*.db
+data/*.db-journal
+
+# Prisma migration artifacts (using Drizzle ORM now)
+*.prisma-backup
+prisma/
+schema.prisma
+migrate-*-to-drizzle.*
+*prisma-migration*
+
+# User data files (subscriptions, credentials, device configs)
+data/*.json
+!data/*.template.json
+data/scene-logs/
+data/atlas-configs/*.json
+!data/atlas-configs/*.template.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pm2
+ecosystem.config.js
+
+# backup files
+*.bak
+*.backup
+*.backup.*
+core
+
+# Git files
+FETCH_HEAD
+
+# Use npm only, ignore yarn
+yarn.lock
+
+# Build artifacts and temporary files
+benchmark-reports/
+next/
+**/dist/
+*.tgz
+*.tar.gz
+!**/backups/*.tar.gz
+.env.backup*
+
+# Memory Bank snapshots
+/memory-bank/*
+!/memory-bank/.gitkeep
+rag-data/
+
+# Large log files
+/log/
+
+# FireStick Scout build artifacts
+firestick-scout/.gradle/
+firestick-scout/gradle-dist/
+firestick-scout/gradle.zip
+firestick-scout/app/build/
+firestick-scout/local.properties
+
+# Playwright screenshots (regenerated during testing)
+playwright-screenshots/
+.playwright-mcp/
+
+# Turborepo
+.turbo

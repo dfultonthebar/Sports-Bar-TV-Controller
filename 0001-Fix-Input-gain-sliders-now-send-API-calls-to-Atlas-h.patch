@@ -1,0 +1,63 @@
+From b84b759cec737a3d5c325b8166ee6bc3fcd9e4e2 Mon Sep 17 00:00:00 2001
+From: AI Agent <ai-agent@abacus.ai>
+Date: Sun, 19 Oct 2025 06:14:26 +0000
+Subject: [PATCH] Fix: Input gain sliders now send API calls to Atlas hardware
+
+- Modified updateInput() function to make API call when gainDb is changed
+- Sends POST request to /api/audio-processor/[id]/input-gain endpoint
+- Updates local state immediately for responsive UI
+- Logs success/failure and shows error messages to user
+- Fixes issue where slider changes were only updating local state
+---
+ src/components/AtlasProgrammingInterface.tsx | 32 +++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/src/components/AtlasProgrammingInterface.tsx b/src/components/AtlasProgrammingInterface.tsx
+index bbe7554..3f15fa6 100644
+--- a/src/components/AtlasProgrammingInterface.tsx
++++ b/src/components/AtlasProgrammingInterface.tsx
+@@ -243,10 +243,40 @@ export default function AtlasProgrammingInterface() {
+     }))
+   }
+ 
+-  const updateInput = (inputId: number, updates: Partial<InputConfig>) => {
++  const updateInput = async (inputId: number, updates: Partial<InputConfig>) => {
++    // Update local state immediately for responsive UI
+     setInputs(prev => prev.map(input => 
+       input.id === inputId ? { ...input, ...updates } : input
+     ))
++
++    // If gain is being updated, send it to the Atlas hardware
++    if (updates.gainDb !== undefined && selectedProcessor) {
++      try {
++        const input = inputs.find(i => i.id === inputId)
++        if (!input) return
++
++        const response = await fetch(`/api/audio-processor/${selectedProcessor.id}/input-gain`, {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify({
++            inputNumber: input.physicalInput,
++            gain: updates.gainDb,
++            reason: 'manual_adjustment'
++          })
++        })
++
++        if (!response.ok) {
++          const error = await response.json()
++          console.error('Failed to set input gain:', error)
++          showMessage(`Failed to set gain for ${input.name}: ${error.error || 'Unknown error'}`, 'error')
++        } else {
++          console.log(`Successfully set gain for Input ${input.physicalInput} to ${updates.gainDb}dB`)
++        }
++      } catch (error) {
++        console.error('Error setting input gain:', error)
++        showMessage('Failed to communicate with Atlas processor', 'error')
++      }
++    }
+   }
+ 
+   const updateOutput = (outputId: number, updates: Partial<OutputConfig>) => {
+-- 
+2.39.5
+

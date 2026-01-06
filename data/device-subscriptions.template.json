@@ -1,0 +1,58 @@
+{
+  "devices": [
+    {
+      "deviceId": "directv_1759187217790",
+      "deviceType": "directv",
+      "deviceName": "Direct TV 1",
+      "subscriptions": [
+        {
+          "id": "directv-choice",
+          "name": "DIRECTV CHOICE™",
+          "type": "premium",
+          "status": "active",
+          "provider": "DIRECTV",
+          "packageName": "CHOICE",
+          "cost": 84.99,
+          "description": "105+ channels including ESPN, Fox Sports 1, and regional sports networks",
+          "logoUrl": "/images/directv-logo.png"
+        },
+        {
+          "id": "sports-pack",
+          "name": "Sports Pack",
+          "type": "sports",
+          "status": "active",
+          "provider": "DIRECTV",
+          "packageName": "SPORTS",
+          "cost": 14.99,
+          "description": "NFL RedZone, NBA TV, NHL Network, and more sports channels",
+          "logoUrl": "/images/sports-pack-logo.png"
+        },
+        {
+          "id": "nfl-sunday-ticket",
+          "name": "NFL Sunday Ticket",
+          "type": "sports",
+          "status": "active",
+          "provider": "DIRECTV",
+          "packageName": "NFL_ST",
+          "subscriptionDate": "2024-09-01",
+          "expirationDate": "2025-02-28",
+          "cost": 293.94,
+          "description": "Every out-of-market NFL game, every Sunday",
+          "logoUrl": "/images/nfl-sunday-ticket-logo.png"
+        },
+        {
+          "id": "regional-sports",
+          "name": "Regional Sports Networks",
+          "type": "sports",
+          "status": "active",
+          "provider": "DIRECTV",
+          "packageName": "RSN",
+          "description": "Local team coverage and regional sports programming",
+          "logoUrl": "/images/rsn-logo.png"
+        }
+      ],
+      "lastPolled": "2025-09-30T01:39:35.860Z",
+      "pollStatus": "success"
+    }
+  ]
+}

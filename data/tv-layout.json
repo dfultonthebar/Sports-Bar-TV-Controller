@@ -1,0 +1,273 @@
+{
+  "name": "Bar Layout",
+  "imageUrl": "/api/uploads/layouts/layout_1763671093016.png",
+  "originalFileUrl": "/api/uploads/layouts/layout_1763671093016.png",
+  "zones": [
+    {
+      "id": "tv1",
+      "outputNumber": 1,
+      "x": 79.28324324324326,
+      "y": 6.1453625280109385,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 1",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv2",
+      "outputNumber": 2,
+      "x": 89.39270270270269,
+      "y": 6.248440502867565,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 2",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv3",
+      "outputNumber": 3,
+      "x": 87.76108108108109,
+      "y": 58.977838505070466,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 3",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv4",
+      "outputNumber": 4,
+      "x": 74.66810810810811,
+      "y": 58.57476053021383,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 4",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv5",
+      "outputNumber": 5,
+      "x": 89.47648648648648,
+      "y": 38.388495195411906,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 5",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv8",
+      "outputNumber": 8,
+      "x": 79.07189189189188,
+      "y": 18.2630096091762,
+      "width": 5.5,
+      "height": 11.94,
+      "label": "TV 8",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv9",
+      "outputNumber": 9,
+      "x": 79.28216216216218,
+      "y": 27.256894678871213,
+      "width": 5.5,
+      "height": 11.94,
+      "label": "TV 9",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv6",
+      "outputNumber": 6,
+      "x": 89.51432432432432,
+      "y": 27.823064301720517,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 6",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv7",
+      "outputNumber": 7,
+      "x": 88.95702702702702,
+      "y": 18.776101257168907,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 7",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv10",
+      "outputNumber": 10,
+      "x": 79.3791891891892,
+      "y": 38.26768810057351,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 10",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv11",
+      "outputNumber": 11,
+      "x": 67.16648648648649,
+      "y": 24.359165558889437,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 11",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv12",
+      "outputNumber": 12,
+      "x": 48.402972972972975,
+      "y": 52.35232557256258,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 12",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv13",
+      "outputNumber": 13,
+      "x": 31.762702702702697,
+      "y": 24.891436438907668,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 13",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv14",
+      "outputNumber": 14,
+      "x": 39.34540540540541,
+      "y": 16.15755136921265,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 14",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv15",
+      "outputNumber": 15,
+      "x": 39.12594594594596,
+      "y": 32.40069770974969,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 15",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv16",
+      "outputNumber": 16,
+      "x": 48.47324324324323,
+      "y": 40.92300960917618,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 16",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv18",
+      "outputNumber": 18,
+      "x": 56.34864864864864,
+      "y": 15.955184777241818,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 18",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv17",
+      "outputNumber": 17,
+      "x": 54.036216216216204,
+      "y": 33.07526681605834,
+      "width": 10.21,
+      "height": 5.5,
+      "label": "TV 17",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv19",
+      "outputNumber": 19,
+      "x": 12.988918918918909,
+      "y": 19.109015154392473,
+      "width": 10.21,
+      "height": 5.5,
+      "label": "TV 19",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv20",
+      "outputNumber": 20,
+      "x": 14.901351351351352,
+      "y": 36.70674427437427,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 20",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv21",
+      "outputNumber": 21,
+      "x": 25.675675675675674,
+      "y": 41.408303771506695,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 21",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv22",
+      "outputNumber": 22,
+      "x": 3.2251351351351403,
+      "y": 58.55837213718712,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 22",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv23",
+      "outputNumber": 23,
+      "x": 20.95702702702704,
+      "y": 58.558372137187135,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 23",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv24",
+      "outputNumber": 24,
+      "x": 28.83297297297297,
+      "y": 65.35912453948117,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 24",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    }
+  ],
+  "imageWidth": 9834,
+  "imageHeight": 6834
+}

@@ -1,0 +1,1223 @@
+{
+  "test_name": "Graystone Layout Import Test",
+  "vision_analysis": {
+    "method": "fallback",
+    "total_tvs_detected": 25,
+    "detections": [
+      {
+        "number": 1,
+        "label": "TV 01",
+        "position": {
+          "x": 15.0,
+          "y": 15.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 2,
+        "label": "TV 02",
+        "position": {
+          "x": 32.5,
+          "y": 15.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 3,
+        "label": "TV 03",
+        "position": {
+          "x": 50.0,
+          "y": 15.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 4,
+        "label": "TV 04",
+        "position": {
+          "x": 67.5,
+          "y": 15.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 5,
+        "label": "TV 05",
+        "position": {
+          "x": 85.0,
+          "y": 15.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 6,
+        "label": "TV 06",
+        "position": {
+          "x": 15.0,
+          "y": 32.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 7,
+        "label": "TV 07",
+        "position": {
+          "x": 32.5,
+          "y": 32.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 8,
+        "label": "TV 08",
+        "position": {
+          "x": 50.0,
+          "y": 32.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 9,
+        "label": "TV 09",
+        "position": {
+          "x": 67.5,
+          "y": 32.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 10,
+        "label": "TV 10",
+        "position": {
+          "x": 85.0,
+          "y": 32.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 11,
+        "label": "TV 11",
+        "position": {
+          "x": 15.0,
+          "y": 50.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 12,
+        "label": "TV 12",
+        "position": {
+          "x": 32.5,
+          "y": 50.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 13,
+        "label": "TV 13",
+        "position": {
+          "x": 50.0,
+          "y": 50.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 14,
+        "label": "TV 14",
+        "position": {
+          "x": 67.5,
+          "y": 50.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 15,
+        "label": "TV 15",
+        "position": {
+          "x": 85.0,
+          "y": 50.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 16,
+        "label": "TV 16",
+        "position": {
+          "x": 15.0,
+          "y": 67.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 17,
+        "label": "TV 17",
+        "position": {
+          "x": 32.5,
+          "y": 67.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 18,
+        "label": "TV 18",
+        "position": {
+          "x": 50.0,
+          "y": 67.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 19,
+        "label": "TV 19",
+        "position": {
+          "x": 67.5,
+          "y": 67.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 20,
+        "label": "TV 20",
+        "position": {
+          "x": 85.0,
+          "y": 67.5
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 21,
+        "label": "TV 21",
+        "position": {
+          "x": 15.0,
+          "y": 85.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 22,
+        "label": "TV 22",
+        "position": {
+          "x": 32.5,
+          "y": 85.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 23,
+        "label": "TV 23",
+        "position": {
+          "x": 50.0,
+          "y": 85.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 24,
+        "label": "TV 24",
+        "position": {
+          "x": 67.5,
+          "y": 85.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      },
+      {
+        "number": 25,
+        "label": "TV 25",
+        "position": {
+          "x": 85.0,
+          "y": 85.0
+        },
+        "confidence": 50,
+        "description": "Fallback position (AI vision not configured)"
+      }
+    ]
+  },
+  "wolfpack_outputs": {
+    "total_outputs": 25,
+    "outputs": [
+      {
+        "id": "output-1",
+        "channelNumber": 1,
+        "label": "TV 01",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 1"
+      },
+      {
+        "id": "output-2",
+        "channelNumber": 2,
+        "label": "TV 02",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 2"
+      },
+      {
+        "id": "output-3",
+        "channelNumber": 3,
+        "label": "TV 03",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 3"
+      },
+      {
+        "id": "output-4",
+        "channelNumber": 4,
+        "label": "TV 04",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 4"
+      },
+      {
+        "id": "output-5",
+        "channelNumber": 5,
+        "label": "TV 05",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 5"
+      },
+      {
+        "id": "output-6",
+        "channelNumber": 6,
+        "label": "TV 06",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 6"
+      },
+      {
+        "id": "output-7",
+        "channelNumber": 7,
+        "label": "TV 07",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 7"
+      },
+      {
+        "id": "output-8",
+        "channelNumber": 8,
+        "label": "TV 08",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 8"
+      },
+      {
+        "id": "output-9",
+        "channelNumber": 9,
+        "label": "TV 09",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 9"
+      },
+      {
+        "id": "output-10",
+        "channelNumber": 10,
+        "label": "TV 10",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 10"
+      },
+      {
+        "id": "output-11",
+        "channelNumber": 11,
+        "label": "TV 11",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 11"
+      },
+      {
+        "id": "output-12",
+        "channelNumber": 12,
+        "label": "TV 12",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 12"
+      },
+      {
+        "id": "output-13",
+        "channelNumber": 13,
+        "label": "TV 13",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 13"
+      },
+      {
+        "id": "output-14",
+        "channelNumber": 14,
+        "label": "TV 14",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 14"
+      },
+      {
+        "id": "output-15",
+        "channelNumber": 15,
+        "label": "TV 15",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 15"
+      },
+      {
+        "id": "output-16",
+        "channelNumber": 16,
+        "label": "TV 16",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 16"
+      },
+      {
+        "id": "output-17",
+        "channelNumber": 17,
+        "label": "TV 17",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 17"
+      },
+      {
+        "id": "output-18",
+        "channelNumber": 18,
+        "label": "TV 18",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 18"
+      },
+      {
+        "id": "output-19",
+        "channelNumber": 19,
+        "label": "TV 19",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 19"
+      },
+      {
+        "id": "output-20",
+        "channelNumber": 20,
+        "label": "TV 20",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 20"
+      },
+      {
+        "id": "output-21",
+        "channelNumber": 21,
+        "label": "TV 21",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 21"
+      },
+      {
+        "id": "output-22",
+        "channelNumber": 22,
+        "label": "TV 22",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 22"
+      },
+      {
+        "id": "output-23",
+        "channelNumber": 23,
+        "label": "TV 23",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 23"
+      },
+      {
+        "id": "output-24",
+        "channelNumber": 24,
+        "label": "TV 24",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 24"
+      },
+      {
+        "id": "output-25",
+        "channelNumber": 25,
+        "label": "TV 25",
+        "status": "active",
+        "isActive": true,
+        "audioOutput": "Audio 25"
+      }
+    ]
+  },
+  "matching": {
+    "successful_matches": 25,
+    "unmatched_tvs": 0,
+    "unmatched_outputs": 0,
+    "matches": [
+      {
+        "tv": {
+          "number": 1,
+          "label": "TV 01",
+          "position": {
+            "x": 15.0,
+            "y": 15.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-1",
+          "channelNumber": 1,
+          "label": "TV 01",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 1"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 2,
+          "label": "TV 02",
+          "position": {
+            "x": 32.5,
+            "y": 15.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-2",
+          "channelNumber": 2,
+          "label": "TV 02",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 2"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 3,
+          "label": "TV 03",
+          "position": {
+            "x": 50.0,
+            "y": 15.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-3",
+          "channelNumber": 3,
+          "label": "TV 03",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 3"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 4,
+          "label": "TV 04",
+          "position": {
+            "x": 67.5,
+            "y": 15.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-4",
+          "channelNumber": 4,
+          "label": "TV 04",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 4"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 5,
+          "label": "TV 05",
+          "position": {
+            "x": 85.0,
+            "y": 15.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-5",
+          "channelNumber": 5,
+          "label": "TV 05",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 5"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 6,
+          "label": "TV 06",
+          "position": {
+            "x": 15.0,
+            "y": 32.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-6",
+          "channelNumber": 6,
+          "label": "TV 06",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 6"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 7,
+          "label": "TV 07",
+          "position": {
+            "x": 32.5,
+            "y": 32.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-7",
+          "channelNumber": 7,
+          "label": "TV 07",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 7"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 8,
+          "label": "TV 08",
+          "position": {
+            "x": 50.0,
+            "y": 32.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-8",
+          "channelNumber": 8,
+          "label": "TV 08",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 8"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 9,
+          "label": "TV 09",
+          "position": {
+            "x": 67.5,
+            "y": 32.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-9",
+          "channelNumber": 9,
+          "label": "TV 09",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 9"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 10,
+          "label": "TV 10",
+          "position": {
+            "x": 85.0,
+            "y": 32.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-10",
+          "channelNumber": 10,
+          "label": "TV 10",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 10"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 11,
+          "label": "TV 11",
+          "position": {
+            "x": 15.0,
+            "y": 50.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-11",
+          "channelNumber": 11,
+          "label": "TV 11",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 11"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 12,
+          "label": "TV 12",
+          "position": {
+            "x": 32.5,
+            "y": 50.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-12",
+          "channelNumber": 12,
+          "label": "TV 12",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 12"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 13,
+          "label": "TV 13",
+          "position": {
+            "x": 50.0,
+            "y": 50.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-13",
+          "channelNumber": 13,
+          "label": "TV 13",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 13"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 14,
+          "label": "TV 14",
+          "position": {
+            "x": 67.5,
+            "y": 50.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-14",
+          "channelNumber": 14,
+          "label": "TV 14",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 14"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 15,
+          "label": "TV 15",
+          "position": {
+            "x": 85.0,
+            "y": 50.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-15",
+          "channelNumber": 15,
+          "label": "TV 15",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 15"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 16,
+          "label": "TV 16",
+          "position": {
+            "x": 15.0,
+            "y": 67.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-16",
+          "channelNumber": 16,
+          "label": "TV 16",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 16"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 17,
+          "label": "TV 17",
+          "position": {
+            "x": 32.5,
+            "y": 67.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-17",
+          "channelNumber": 17,
+          "label": "TV 17",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 17"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 18,
+          "label": "TV 18",
+          "position": {
+            "x": 50.0,
+            "y": 67.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-18",
+          "channelNumber": 18,
+          "label": "TV 18",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 18"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 19,
+          "label": "TV 19",
+          "position": {
+            "x": 67.5,
+            "y": 67.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-19",
+          "channelNumber": 19,
+          "label": "TV 19",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 19"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 20,
+          "label": "TV 20",
+          "position": {
+            "x": 85.0,
+            "y": 67.5
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-20",
+          "channelNumber": 20,
+          "label": "TV 20",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 20"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 21,
+          "label": "TV 21",
+          "position": {
+            "x": 15.0,
+            "y": 85.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-21",
+          "channelNumber": 21,
+          "label": "TV 21",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 21"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 22,
+          "label": "TV 22",
+          "position": {
+            "x": 32.5,
+            "y": 85.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-22",
+          "channelNumber": 22,
+          "label": "TV 22",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 22"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 23,
+          "label": "TV 23",
+          "position": {
+            "x": 50.0,
+            "y": 85.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-23",
+          "channelNumber": 23,
+          "label": "TV 23",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 23"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 24,
+          "label": "TV 24",
+          "position": {
+            "x": 67.5,
+            "y": 85.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-24",
+          "channelNumber": 24,
+          "label": "TV 24",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 24"
+        },
+        "match_type": "exact_number"
+      },
+      {
+        "tv": {
+          "number": 25,
+          "label": "TV 25",
+          "position": {
+            "x": 85.0,
+            "y": 85.0
+          },
+          "confidence": 50,
+          "description": "Fallback position (AI vision not configured)"
+        },
+        "output": {
+          "id": "output-25",
+          "channelNumber": 25,
+          "label": "TV 25",
+          "status": "active",
+          "isActive": true,
+          "audioOutput": "Audio 25"
+        },
+        "match_type": "exact_number"
+      }
+    ]
+  },
+  "layout_zones": [
+    {
+      "id": "zone-1",
+      "outputNumber": 1,
+      "x": 15.0,
+      "y": 15.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 01"
+    },
+    {
+      "id": "zone-2",
+      "outputNumber": 2,
+      "x": 32.5,
+      "y": 15.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 02"
+    },
+    {
+      "id": "zone-3",
+      "outputNumber": 3,
+      "x": 50.0,
+      "y": 15.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 03"
+    },
+    {
+      "id": "zone-4",
+      "outputNumber": 4,
+      "x": 67.5,
+      "y": 15.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 04"
+    },
+    {
+      "id": "zone-5",
+      "outputNumber": 5,
+      "x": 85.0,
+      "y": 15.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 05"
+    },
+    {
+      "id": "zone-6",
+      "outputNumber": 6,
+      "x": 15.0,
+      "y": 32.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 06"
+    },
+    {
+      "id": "zone-7",
+      "outputNumber": 7,
+      "x": 32.5,
+      "y": 32.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 07"
+    },
+    {
+      "id": "zone-8",
+      "outputNumber": 8,
+      "x": 50.0,
+      "y": 32.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 08"
+    },
+    {
+      "id": "zone-9",
+      "outputNumber": 9,
+      "x": 67.5,
+      "y": 32.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 09"
+    },
+    {
+      "id": "zone-10",
+      "outputNumber": 10,
+      "x": 85.0,
+      "y": 32.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 10"
+    },
+    {
+      "id": "zone-11",
+      "outputNumber": 11,
+      "x": 15.0,
+      "y": 50.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 11"
+    },
+    {
+      "id": "zone-12",
+      "outputNumber": 12,
+      "x": 32.5,
+      "y": 50.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 12"
+    },
+    {
+      "id": "zone-13",
+      "outputNumber": 13,
+      "x": 50.0,
+      "y": 50.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 13"
+    },
+    {
+      "id": "zone-14",
+      "outputNumber": 14,
+      "x": 67.5,
+      "y": 50.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 14"
+    },
+    {
+      "id": "zone-15",
+      "outputNumber": 15,
+      "x": 85.0,
+      "y": 50.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 15"
+    },
+    {
+      "id": "zone-16",
+      "outputNumber": 16,
+      "x": 15.0,
+      "y": 67.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 16"
+    },
+    {
+      "id": "zone-17",
+      "outputNumber": 17,
+      "x": 32.5,
+      "y": 67.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 17"
+    },
+    {
+      "id": "zone-18",
+      "outputNumber": 18,
+      "x": 50.0,
+      "y": 67.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 18"
+    },
+    {
+      "id": "zone-19",
+      "outputNumber": 19,
+      "x": 67.5,
+      "y": 67.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 19"
+    },
+    {
+      "id": "zone-20",
+      "outputNumber": 20,
+      "x": 85.0,
+      "y": 67.5,
+      "width": 8,
+      "height": 6,
+      "label": "TV 20"
+    },
+    {
+      "id": "zone-21",
+      "outputNumber": 21,
+      "x": 15.0,
+      "y": 85.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 21"
+    },
+    {
+      "id": "zone-22",
+      "outputNumber": 22,
+      "x": 32.5,
+      "y": 85.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 22"
+    },
+    {
+      "id": "zone-23",
+      "outputNumber": 23,
+      "x": 50.0,
+      "y": 85.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 23"
+    },
+    {
+      "id": "zone-24",
+      "outputNumber": 24,
+      "x": 67.5,
+      "y": 85.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 24"
+    },
+    {
+      "id": "zone-25",
+      "outputNumber": 25,
+      "x": 85.0,
+      "y": 85.0,
+      "width": 8,
+      "height": 6,
+      "label": "TV 25"
+    }
+  ]
+}

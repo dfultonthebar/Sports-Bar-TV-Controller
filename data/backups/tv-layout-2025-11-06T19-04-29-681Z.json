@@ -1,0 +1,258 @@
+{
+  "name": "Bar Layout",
+  "imageUrl": "/api/uploads/layouts/53260130-e0f5-4c30-b981-3ff7e72bf5b0_professional.png",
+  "originalFileUrl": "/api/uploads/layouts/53260130-e0f5-4c30-b981-3ff7e72bf5b0.png",
+  "fileType": "image/png",
+  "zones": [
+    {
+      "id": "tv1",
+      "outputNumber": 1,
+      "x": 85.88,
+      "y": 9.63,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 1",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv2",
+      "outputNumber": 2,
+      "x": 91.78,
+      "y": 9.63,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 2",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv5",
+      "outputNumber": 5,
+      "x": 84.49729729729731,
+      "y": 43.431969476528394,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 5",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv3",
+      "outputNumber": 3,
+      "x": 92.59756756756757,
+      "y": 73.14708423646783,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 3",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv4",
+      "outputNumber": 4,
+      "x": 78.36513513513513,
+      "y": 72.38696665577956,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 4",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv8",
+      "outputNumber": 8,
+      "x": 77.51945945945945,
+      "y": 26.228794797945312,
+      "width": 5.5,
+      "height": 12.97,
+      "label": "TV 8",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv9",
+      "outputNumber": 9,
+      "x": 77.10702702702702,
+      "y": 34.210029395172064,
+      "width": 5.5,
+      "height": 12.97,
+      "label": "TV 9",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv6",
+      "outputNumber": 6,
+      "x": 84.47351351351352,
+      "y": 34.590676088957515,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 6",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv7",
+      "outputNumber": 7,
+      "x": 84.4210810810811,
+      "y": 26.609441491730756,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 7",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv10",
+      "outputNumber": 10,
+      "x": 77.21,
+      "y": 43.62064669378545,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 10",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv11",
+      "outputNumber": 11,
+      "x": 68.88054054054054,
+      "y": 32.788971168977696,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 11",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv12",
+      "outputNumber": 12,
+      "x": 53.40837837837838,
+      "y": 62.81226342824906,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 12",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv13",
+      "outputNumber": 13,
+      "x": 36.47324324324324,
+      "y": 32.40756020071855,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 13",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv14",
+      "outputNumber": 14,
+      "x": 43.76405405405404,
+      "y": 24.106031651771126,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 14",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv15",
+      "outputNumber": 15,
+      "x": 43.542702702702705,
+      "y": 41.588736007601184,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 15",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv16",
+      "outputNumber": 16,
+      "x": 53.25108108108108,
+      "y": 54.94920633035423,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 16",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv17",
+      "outputNumber": 17,
+      "x": 62.27243243243244,
+      "y": 49.58814810415986,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 17",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv18",
+      "outputNumber": 18,
+      "x": 61.0018918918919,
+      "y": 42.95688411176104,
+      "width": 11.53,
+      "height": 5.5,
+      "label": "TV 18",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv19",
+      "outputNumber": 19,
+      "x": 60.83297297297297,
+      "y": 24.572798182843904,
+      "width": 11.53,
+      "height": 5.5,
+      "label": "TV 19",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv20",
+      "outputNumber": 20,
+      "x": 18.175135135135136,
+      "y": 26.89124023872443,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 20",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv21",
+      "outputNumber": 21,
+      "x": 22.086756756756756,
+      "y": 52.585208586953314,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 21",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv22",
+      "outputNumber": 22,
+      "x": 29.6981081081081,
+      "y": 53.49535556281363,
+      "width": 5.5,
+      "height": 5.75,
+      "label": "TV 22",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv23",
+      "outputNumber": 23,
+      "x": 2.0016216216216236,
+      "y": 73.29841266070844,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 23",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv24",
+      "outputNumber": 24,
+      "x": 21.881081081081078,
+      "y": 72.62664895038452,
+      "width": 5.5,
+      "height": 5.71,
+      "label": "TV 24",
+      "confidence": 0.95
+    },
+    {
+      "id": "tv25",
+      "outputNumber": 25,
+      "x": 27.618243243243256,
+      "y": 81.14255173847205,
+      "width": 7.432432432432428,
+      "height": 19.95308649306689,
+      "label": "TV 25",
+      "confidence": 1
+    }
+  ]
+}

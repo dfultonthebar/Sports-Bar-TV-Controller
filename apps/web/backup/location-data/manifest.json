@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "createdAt": "2026-01-06T04:03:19.690Z",
+  "location": {
+    "id": "default-location",
+    "name": "Graystone ",
+    "city": "DePere",
+    "state": "WI"
+  },
+  "tables": [],
+  "totalRows": 0
+}

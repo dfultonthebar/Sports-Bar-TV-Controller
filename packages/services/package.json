@@ -1,0 +1,24 @@
+{
+  "name": "@sports-bar/services",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@sports-bar/data": "*",
+    "@sports-bar/database": "*",
+    "@sports-bar/logger": "*",
+    "@sports-bar/soundtrack": "*",
+    "@sports-bar/sports-apis": "*",
+    "@sports-bar/utils": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}

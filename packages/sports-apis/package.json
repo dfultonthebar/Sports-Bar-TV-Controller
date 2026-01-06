@@ -1,0 +1,26 @@
+{
+  "name": "@sports-bar/sports-apis",
+  "version": "1.0.0",
+  "description": "Sports API integrations for Sports Bar TV Controller (ESPN, TheSportsDB, NFL Sunday Ticket)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "echo 'Build handled by consuming apps'",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/cache-manager": "*",
+    "@sports-bar/circuit-breaker": "*",
+    "@sports-bar/logger": "*",
+    "@sports-bar/rate-limiting": "*"
+  },
+  "devDependencies": {
+    "@sports-bar/config": "*",
+    "@types/node": "^24.5.2",
+    "opossum": "^8.1.4",
+    "typescript": "^5.9.2"
+  }
+}

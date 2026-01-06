@@ -1,0 +1,27 @@
+
+{
+  "name": "ai-code-assistant",
+  "version": "1.0.0",
+  "description": "Local AI-powered code assistant for Sports Bar TV Controller",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ai",
+    "code-assistant",
+    "ollama",
+    "deepseek-coder",
+    "typescript"
+  ],
+  "author": "Sports Bar TV Controller Team",
+  "license": "PRIVATE",
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "peerDependencies": {
+    "next": "^14.0.0",
+    "react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

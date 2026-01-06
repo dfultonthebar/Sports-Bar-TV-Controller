@@ -1,0 +1,25 @@
+{
+  "name": "@sports-bar/directv",
+  "version": "1.0.0",
+  "description": "DirecTV SHEF API client and discovery for Sports Bar TV Controller",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "echo 'Build handled by consuming apps'",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/cache-manager": "*",
+    "@sports-bar/logger": "*",
+    "axios": "^1.12.2",
+    "node-ssdp": "^4.0.1"
+  },
+  "devDependencies": {
+    "@sports-bar/config": "*",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}

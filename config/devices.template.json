@@ -1,0 +1,21 @@
+
+{
+  "wolfpack": {
+    "inputs": [],
+    "outputs": [],
+    "audioZones": []
+  },
+  "globalCache": {
+    "devices": []
+  },
+  "directv": {
+    "receivers": []
+  },
+  "firetv": {
+    "devices": []
+  },
+  "cec": {
+    "tvs": []
+  },
+  "customDevices": []
+}

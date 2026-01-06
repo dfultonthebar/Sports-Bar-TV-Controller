@@ -1,0 +1,10 @@
+
+{
+  "homeTeams": [],
+  "favoriteLeagues": ["NFL", "NBA", "MLB", "NHL"],
+  "autoMonitor": true,
+  "notifications": {
+    "enabled": false,
+    "channels": []
+  }
+}
