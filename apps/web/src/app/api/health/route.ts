@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { db, schema } from '@/db'
-import { sql } from 'drizzle-orm'
+import { sql, eq } from 'drizzle-orm'
 import { existsSync, statSync } from 'fs'
 import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -343,11 +343,40 @@ async function checkFireTVStatus(): Promise<any> {
  * Check audio system status
  */
 async function checkAudioStatus(): Promise<any> {
-  // Audio system verification would require specific hardware checks
-  // For now, return unknown status
-  return {
-    status: 'unknown',
-    reason: 'Unable to verify audio system status'
+  try {
+    // Check for configured audio processors in database
+    const processors = await db.select({
+      id: schema.audioProcessors.id,
+      name: schema.audioProcessors.name,
+      ipAddress: schema.audioProcessors.ipAddress,
+      status: schema.audioProcessors.status
+    }).from(schema.audioProcessors).limit(5)
+
+    if (processors.length === 0) {
+      return {
+        status: 'unknown',
+        reason: 'No audio processors configured'
+      }
+    }
+
+    const online = processors.filter(p => p.status === 'online').length
+    const total = processors.length
+
+    return {
+      status: online > 0 ? 'healthy' : 'degraded',
+      processors: total,
+      online,
+      devices: processors.map(p => ({
+        name: p.name,
+        ip: p.ipAddress,
+        status: p.status
+      }))
+    }
+  } catch (error: any) {
+    return {
+      status: 'unknown',
+      reason: `Unable to verify audio system: ${error.message}`
+    }
   }
 }
 
@@ -399,17 +428,31 @@ async function checkSportsGuideStatus(): Promise<any> {
  */
 async function checkSoundtrackStatus(): Promise<any> {
   try {
-    const soundtrackToken = process.env.SOUNDTRACK_API_TOKEN
+    // Check for Soundtrack config in database
+    const [config] = await db.select({
+      id: schema.soundtrackConfigs.id,
+      accountName: schema.soundtrackConfigs.accountName,
+      isActive: schema.soundtrackConfigs.isActive,
+      lastSync: schema.soundtrackConfigs.lastSync
+    }).from(schema.soundtrackConfigs).where(eq(schema.soundtrackConfigs.isActive, true)).limit(1)
 
-    if (!soundtrackToken) {
+    if (!config) {
       return {
         status: 'unknown',
-        error: 'Soundtrack API token not configured'
+        error: 'Soundtrack not configured'
       }
     }
 
+    // Count active players
+    const players = await db.select({
+      id: schema.soundtrackPlayers.id
+    }).from(schema.soundtrackPlayers).where(eq(schema.soundtrackPlayers.isActive, true))
+
     return {
-      status: 'healthy'
+      status: 'healthy',
+      account: config.accountName,
+      players: players.length,
+      lastSync: config.lastSync
     }
   } catch (error: any) {
     return {

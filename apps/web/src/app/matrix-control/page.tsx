@@ -29,7 +29,7 @@ export default function MatrixControlPage() {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="wolfpack" className="flex items-center gap-2">
                 <Zap className="w-4 h-4" />
-                Atlas Wolf Pack
+                Wolf Pack
               </TabsTrigger>
               <TabsTrigger value="crestron" className="flex items-center gap-2">
                 <Grid3X3 className="w-4 h-4" />
