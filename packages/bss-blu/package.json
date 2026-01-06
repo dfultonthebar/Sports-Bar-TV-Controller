@@ -1,0 +1,30 @@
+{
+  "name": "@sports-bar/bss-blu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BSS Soundweb London BLU series audio processor control library using HiQnet protocol",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'Build handled by consuming apps'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/logger": "*"
+  },
+  "devDependencies": {
+    "@sports-bar/config": "*",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "bss",
+    "soundweb",
+    "london",
+    "blu",
+    "audio",
+    "hiqnet",
+    "dante",
+    "cobranet"
+  ]
+}

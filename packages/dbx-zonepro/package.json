@@ -1,0 +1,29 @@
+{
+  "name": "@sports-bar/dbx-zonepro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "dbx ZonePRO audio processor control library using HiQnet protocol",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'Build handled by consuming apps'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/logger": "*",
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "@sports-bar/config": "*",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "dbx",
+    "zonepro",
+    "audio",
+    "hiqnet",
+    "rs232",
+    "serial"
+  ]
+}
