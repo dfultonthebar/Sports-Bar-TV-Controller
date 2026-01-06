@@ -1,0 +1,214 @@
+
+'use client'
+
+import React, { useState } from 'react'
+import { Button } from '../ui/button'
+import { 
+  ChevronUp, 
+  ChevronDown, 
+  ChevronLeft, 
+  ChevronRight,
+  Circle,
+  Home,
+  ArrowLeft,
+  Menu,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+  Loader2,
+  CheckCircle,
+  AlertCircle
+} from 'lucide-react'
+
+interface FireTVRemoteProps {
+  deviceId: string
+  deviceName: string
+  ipAddress: string
+  port: number
+  onClose?: () => void
+}
+
+export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, onClose }: FireTVRemoteProps) {
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
+  const [lastCommand, setLastCommand] = useState<string>('')
+
+  const sendCommand = async (command: string, displayName?: string) => {
+    // Don't block UI - fire and forget for faster D-pad response
+    setLastCommand(displayName || command)
+
+    // Send command without blocking
+    fetch('/api/firetv-devices/send-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId,
+        command,
+        ipAddress,
+        port
+      })
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          setStatus({ type: 'success', message: `${displayName || command} sent` })
+        } else {
+          setStatus({ type: 'error', message: data.message || 'Command failed' })
+        }
+        setTimeout(() => setStatus({ type: null, message: '' }), 1500)
+      })
+      .catch(() => {
+        setStatus({ type: 'error', message: 'Failed to send command' })
+        setTimeout(() => setStatus({ type: null, message: '' }), 1500)
+      })
+  }
+
+  return (
+    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md relative remote-control-container">
+      {/* Header */}
+      <div className="text-center mb-4">
+        <h3 className="text-xl font-bold text-white mb-1">Fire TV Remote</h3>
+        <p className="text-sm text-slate-400">{deviceName}</p>
+      </div>
+
+      {/* Remote Control Layout */}
+      <div className="space-y-4">
+        {/* Top Row: Home, Back, Menu */}
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            onClick={() => sendCommand('HOME', 'Home')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Home className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('BACK', 'Back')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('MENU', 'Menu')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+        </div>
+
+        {/* Navigation Pad */}
+        <div className="bg-slate-800 rounded-lg p-4">
+          <div className="grid grid-cols-3 gap-2">
+            {/* Up - Full row */}
+            <div className="col-span-3 flex justify-center">
+              <Button
+                onClick={() => sendCommand('UP', 'Up')}
+                    className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+              >
+                <ChevronUp className="w-6 h-6" />
+              </Button>
+            </div>
+
+            {/* Left, OK, Right - Middle row */}
+            <Button
+              onClick={() => sendCommand('LEFT', 'Left')}
+                className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </Button>
+            <Button
+              onClick={() => sendCommand('OK', 'Select')}
+                className="bg-blue-600 hover:bg-blue-700 text-white p-3 relative"
+            >
+              <Circle className="w-8 h-8" fill="currentColor" />
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold">OK</span>
+            </Button>
+            <Button
+              onClick={() => sendCommand('RIGHT', 'Right')}
+                className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </Button>
+
+            {/* Down - Full row */}
+            <div className="col-span-3 flex justify-center">
+              <Button
+                onClick={() => sendCommand('DOWN', 'Down')}
+                    className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+              >
+                <ChevronDown className="w-6 h-6" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Playback Controls */}
+        <div className="grid grid-cols-4 gap-2">
+          <Button
+            onClick={() => sendCommand('REWIND', 'Rewind')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <SkipBack className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('PLAY_PAUSE', 'Play/Pause')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Play className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('PAUSE', 'Pause')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Pause className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('FAST_FORWARD', 'Fast Forward')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <SkipForward className="w-5 h-5" />
+          </Button>
+        </div>
+
+        {/* Volume Controls */}
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            onClick={() => sendCommand('VOL_UP', 'Volume Up')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Volume2 className="w-5 h-5" />
+            <span className="ml-1 text-xs">+</span>
+          </Button>
+          <Button
+            onClick={() => sendCommand('MUTE', 'Mute')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <VolumeX className="w-5 h-5" />
+          </Button>
+          <Button
+            onClick={() => sendCommand('VOL_DOWN', 'Volume Down')}
+            className="bg-slate-700 hover:bg-slate-600 text-white p-3"
+          >
+            <Volume2 className="w-5 h-5" />
+            <span className="ml-1 text-xs">-</span>
+          </Button>
+        </div>
+
+        {/* Close Button */}
+        {onClose && (
+          <Button
+            onClick={onClose}
+            variant="outline"
+            className="w-full mt-4"
+          >
+            Close Remote
+          </Button>
+        )}
+      </div>
+
+      {/* Removed loading overlay - too intrusive for bartender remote */}
+    </div>
+  )
+}

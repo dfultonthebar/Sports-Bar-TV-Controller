@@ -10,14 +10,17 @@ This project uses **Turborepo** with npm workspaces. The codebase is organized a
 /
 ├── apps/
 │   └── web/              # Next.js 15 application (main app)
-├── packages/             # 20 shared packages
+├── packages/             # 24+ shared packages
 │   ├── atlas/           # AtlasIED audio processor control
 │   ├── auth/            # Authentication utilities
+│   ├── bss-blu/         # BSS Soundweb London BLU audio processors (HiQnet)
 │   ├── cache-manager/   # Caching with TTL support
 │   ├── circuit-breaker/ # Opossum circuit breaker wrapper
 │   ├── config/          # Shared configuration (validation, rate limits, config tracking)
+│   ├── crestron/        # Crestron DM matrix switcher control (Telnet/CIP)
 │   ├── data/            # Static data files
 │   ├── database/        # Drizzle ORM database layer
+│   ├── dbx-zonepro/     # dbx ZonePRO audio processors (RS-232/TCP)
 │   ├── directv/         # DirecTV IP control
 │   ├── firecube/        # Amazon Fire TV/Cube ADB control
 │   ├── ir-control/      # Global Cache IR blaster control
@@ -163,6 +166,9 @@ npm run test:coverage       # Generate coverage report
 **Key Packages:**
 - `@sports-bar/atlas` - AtlasIED audio processor control
 - `@sports-bar/wolfpack` - Atlas Wolf Pack matrix control
+- `@sports-bar/crestron` - Crestron DM matrix switcher control
+- `@sports-bar/bss-blu` - BSS Soundweb London audio processors
+- `@sports-bar/dbx-zonepro` - dbx ZonePRO audio processors
 - `@sports-bar/directv` - DirecTV IP control
 - `@sports-bar/firecube` - Amazon Fire TV ADB control
 - `@sports-bar/ir-control` - IR blaster control (iTach IP2IR)
@@ -266,6 +272,102 @@ logger.debug('[COMPONENT] Debug info')
 - `apps/web/src/lib/cec-commands.ts` - CEC user control code mappings
 - `apps/web/src/components/remotes/CableBoxRemote.tsx` - Smart routing (CEC vs IR)
 - `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
+
+#### 6. Crestron Matrix Switcher Control
+**Package:** `packages/crestron/`
+**Purpose:** Control Crestron DigitalMedia (DM) matrix switchers for video routing
+
+**Supported Models (18 total across 4 series):**
+- **DM-MD Series:** DM-MD8X8, DM-MD16X16, DM-MD32X32, DM-MD64X64, DM-MD128X128
+- **HD-MD Series:** HD-MD8X8, HD-MD8X4, HD-MD6X2, HD-MD4X2, HD-MD4X1
+- **DMPS Series:** DMPS3-4K-350-C, DMPS3-4K-250-C, DMPS3-4K-150-C
+- **NVX Series:** DM-NVX-350, DM-NVX-351, DM-NVX-352, DM-NVX-360, DM-NVX-363
+
+**Control Protocols:**
+- Telnet (port 23) - Primary, simplest for routing
+- CTP (port 41795) - Crestron Terminal Protocol
+- CIP (port 41794) - Crestron Internet Protocol
+
+**Key Commands:**
+```
+SETAVROUTE input output    # Route input to output (video + audio)
+SETVIDEOROUTE input output # Route video only
+SETAUDIOROUTE input output # Route audio only (audio breakaway)
+DUMPDMROUTEI              # Get current routing state
+```
+
+**Output Slot Offset:** DM matrices use offset numbering:
+- 8x8/16x16: Output slots start at 17
+- 32x32: Output slots start at 33
+- 64x64: Output slots start at 65
+
+**API Routes:**
+- `GET/POST /api/crestron/matrices` - List/create matrices
+- `GET/PUT/DELETE /api/crestron/matrices/[id]` - Individual matrix CRUD
+- `POST /api/crestron/matrices/[id]/test` - Connection test
+
+**UI Location:** Matrix Control page → "Crestron DM" tab
+**Component:** `apps/web/src/components/CrestronMatrixManager.tsx`
+
+**Database Table:** `CrestronMatrix` (id, name, model, ipAddress, port, status, inputs, outputs)
+
+#### 7. Audio Processor Control
+**Packages:** `packages/bss-blu/`, `packages/dbx-zonepro/`, `packages/atlas/`
+
+**BSS Soundweb London (HiQnet Protocol):**
+- Models: BLU-50, BLU-100, BLU-120, BLU-160, BLU-320, BLU-800, BLU-806, BLU-806DA
+- Protocol: HiQnet over TCP (port 1023)
+- Features: Dante/CobraNet support on some models
+- Control: Zone volume, mute, source selection
+
+**dbx ZonePRO (RS-232/TCP):**
+- Models: 640, 640m, 641, 641m, 1260, 1260m, 1261, 1261m
+- Protocol: RS-232 (serial) or TCP (port 3804)
+- Control: Zone volume, mute, source routing
+
+**UI Location:** Device Config page → Audio Processors section
+**Component:** `apps/web/src/components/AudioProcessorManager.tsx`
+
+#### 8. Wolf Pack Multi-View Card Control (Future Implementation)
+**Purpose:** Control HDTVSupply Multi-View output cards installed in Wolf Pack matrix slots
+**Compatibility:** Wolf Pack matrices ONLY (8x8, 16x16, 36x36)
+
+**Hardware:** 4K60 Quad-View Output Card - plugs into Wolf Pack output card slots
+
+**Display Modes (8 total):**
+| Mode | Description | Hex Command Byte |
+|------|-------------|------------------|
+| 0 | Single Window | `32 00` |
+| 1 | 2-Window Split | `32 01` |
+| 2 | PIP Left Top | `32 02` |
+| 3 | PIP Right Bottom | `32 03` |
+| 4 | 3-Window (1 top, 2 bottom) | `32 04` |
+| 5 | 3-Window Alt | `32 05` |
+| 6 | 3-Window PIP x2 | `32 06` |
+| 7 | 4-Window Quad | `32 07` |
+
+**Control Protocol:**
+- RS-232 via USB adapter: 115200 baud, 8-bit, 1 stop, no parity
+- Serial port assignment: `/dev/ttyUSB0`, `/dev/ttyUSB1`, etc.
+- Commands terminate with period (`.`)
+- Response: "OK" or "ERR"
+
+**Hex Command Format:**
+```
+EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00
+```
+
+**Configuration Requirements:**
+- **Slot Assignment:** Specify which Wolf Pack output slots (e.g., 21-24) the card occupies
+- **Serial Port:** Assign USB serial port (e.g., `/dev/ttyUSB0`) for RS-232 control
+- **Input Mapping:** Which Wolf Pack inputs feed the 4 multi-view windows
+
+**Implementation Status:** Planned - requires:
+- Database table: `WolfpackMultiViewCard` (name, startSlot, endSlot, serialPort, currentMode, inputAssignments)
+- Package: `packages/multiview/` for serial communication and mode control
+- API routes for mode switching and input assignment
+- UI component in Matrix Control page for slot/serial port configuration
+- Integration with existing Wolf Pack matrix routing display
 
 ### API Route Patterns
 

@@ -1,0 +1,18 @@
+{
+  "name": "@sports-bar/crestron",
+  "version": "1.0.0",
+  "description": "Crestron DigitalMedia matrix switcher control library",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "echo 'Build handled by consuming apps'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sports-bar/logger": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

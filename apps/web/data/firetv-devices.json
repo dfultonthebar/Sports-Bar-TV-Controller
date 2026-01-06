@@ -1,0 +1,49 @@
+{
+  "devices": [
+    {
+      "id": "firetv_1766189480138_z2re817al",
+      "name": "Amazon 1",
+      "inputChannel": 13,
+      "ipAddress": "192.168.5.131",
+      "updatedAt": "2025-12-20T17:16:33.737Z",
+      "isOnline": true,
+      "lastSeen": "2026-01-06T20:38:03.353Z"
+    },
+    {
+      "name": "Amazon 2",
+      "ipAddress": "192.168.5.132",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 14,
+      "id": "firetv_1766189968243_oog36hftf",
+      "isOnline": true,
+      "addedAt": "2025-12-20T00:19:28.349Z",
+      "updatedAt": "2025-12-20T00:19:28.349Z",
+      "lastSeen": "2026-01-06T20:38:03.353Z"
+    },
+    {
+      "name": "Amazon 3",
+      "ipAddress": "192.168.5.133",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 15,
+      "id": "firetv_1766190361206_0uhjr5zbo",
+      "isOnline": true,
+      "addedAt": "2025-12-20T00:26:01.315Z",
+      "updatedAt": "2025-12-20T00:26:01.315Z",
+      "lastSeen": "2026-01-06T20:38:03.345Z"
+    },
+    {
+      "name": "Amazon 4",
+      "ipAddress": "192.168.5.134",
+      "port": 5555,
+      "deviceType": "Fire TV Cube",
+      "inputChannel": 16,
+      "id": "firetv_1766251506613_v6p6es4k7",
+      "isOnline": true,
+      "addedAt": "2025-12-20T17:23:41.086Z",
+      "updatedAt": "2025-12-20T17:23:41.086Z",
+      "lastSeen": "2026-01-06T20:38:03.351Z"
+    }
+  ]
+}

@@ -304,13 +304,21 @@ export const systemSettings = sqliteTable('SystemSettings', {
 })
 
 // Audio Processor Model
+// Supports both AtlasIED and dbx ZonePRO processors
 export const audioProcessors = sqliteTable('AudioProcessor', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   model: text('model').notNull(),
+  // Processor type: 'atlas' for AtlasIED, 'dbx-zonepro' for dbx ZonePRO
+  processorType: text('processorType').notNull().default('atlas'),
   ipAddress: text('ipAddress').notNull(),
   port: integer('port').notNull().default(80),
   tcpPort: integer('tcpPort').notNull().default(5321),
+  // Connection type for dbx: 'ethernet' or 'rs232'
+  connectionType: text('connectionType').notNull().default('ethernet'),
+  // RS-232 settings (for dbx ZonePRO non-m models)
+  serialPort: text('serialPort'),
+  baudRate: integer('baudRate').default(57600),
   username: text('username'),
   password: text('password'),
   zones: integer('zones').notNull().default(4),
@@ -324,6 +332,7 @@ export const audioProcessors = sqliteTable('AudioProcessor', {
 }))
 
 // Audio Zone Model
+// Supports mono and stereo configurations for dbx ZonePRO
 export const audioZones = sqliteTable('AudioZone', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
@@ -334,6 +343,11 @@ export const audioZones = sqliteTable('AudioZone', {
   volume: integer('volume').notNull().default(50),
   muted: integer('muted', { mode: 'boolean' }).notNull().default(false),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  // Stereo/Mono configuration (primarily for dbx ZonePRO)
+  // 'mono' = single channel, 'stereo-left' = left of pair, 'stereo-right' = right of pair
+  channelMode: text('channelMode').notNull().default('mono'),
+  // Links stereo pairs together (ID of the paired zone)
+  pairedZoneId: text('pairedZoneId'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 }, (table) => ({
@@ -438,6 +452,40 @@ export const wolfpackMatrixStates = sqliteTable('WolfpackMatrixState', {
   matrixOutputIdx: index('WolfpackMatrixState_matrixOutputNumber_idx').on(table.matrixOutputNumber),
   routedAtIdx: index('WolfpackMatrixState_routedAt_idx').on(table.routedAt),
 }))
+
+// Crestron Matrix Model
+export const crestronMatrices = sqliteTable('CrestronMatrix', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  model: text('model').notNull(), // DM-MD8X8, DM-MD16X16, etc.
+  ipAddress: text('ipAddress').notNull(),
+  port: integer('port').notNull().default(23),
+  username: text('username'),
+  password: text('password'),
+  description: text('description'),
+  status: text('status').default('unknown'), // online, offline, unknown
+  lastSeen: timestamp('lastSeen'),
+  inputs: integer('inputs').notNull().default(8),
+  outputs: integer('outputs').notNull().default(8),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// Wolf Pack Multi-View Card Model
+export const wolfpackMultiViewCards = sqliteTable('WolfpackMultiViewCard', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  startSlot: integer('startSlot').notNull(), // First of 4 consecutive slots (e.g., 21)
+  endSlot: integer('endSlot').notNull(), // Last slot (startSlot + 3, e.g., 24)
+  serialPort: text('serialPort').notNull(), // USB serial device, e.g., "/dev/ttyUSB0"
+  baudRate: integer('baudRate').notNull().default(115200),
+  currentMode: integer('currentMode').notNull().default(0), // 0-7 display modes
+  inputAssignments: text('inputAssignments'), // JSON: { "window1": 5, "window2": 6, ... }
+  status: text('status').default('unknown'), // online, offline, unknown
+  lastSeen: timestamp('lastSeen'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
 
 // Sports Guide Configuration Model
 export const sportsGuideConfigurations = sqliteTable('SportsGuideConfiguration', {

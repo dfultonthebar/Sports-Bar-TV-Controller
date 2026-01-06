@@ -1,0 +1,20 @@
+{
+  "zones": {
+    "main": {
+      "name": "Main Bar Area",
+      "speakers": [
+        "main_left",
+        "main_right"
+      ],
+      "processor_ip": "192.168.1.104"
+    },
+    "patio": {
+      "name": "Outdoor Patio",
+      "speakers": [
+        "patio_left",
+        "patio_right"
+      ],
+      "processor_ip": "192.168.1.105"
+    }
+  }
+}
