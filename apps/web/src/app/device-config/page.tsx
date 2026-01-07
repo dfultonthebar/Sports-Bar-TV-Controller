@@ -33,8 +33,11 @@ import {
   Music2,
   Tv,
   Star,
-  Cable
+  Cable,
+  Lightbulb
 } from 'lucide-react'
+import DMXControllerManager from '@/components/dmx/DMXControllerManager'
+import { CommercialLightingManager } from '@/components/commercial-lighting'
 
 export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
@@ -180,7 +183,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-11">
           <TabsTrigger value="channel-presets" className="flex items-center gap-2">
             <Star className="w-4 h-4" />
             Channel Presets
@@ -204,6 +207,14 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="ir" className="flex items-center gap-2">
             <Radio className="w-4 h-4" />
             IR Devices
+          </TabsTrigger>
+          <TabsTrigger value="dmx" className="flex items-center gap-2">
+            <Lightbulb className="w-4 h-4" />
+            DMX Lighting
+          </TabsTrigger>
+          <TabsTrigger value="commercial-lighting" className="flex items-center gap-2">
+            <Lightbulb className="w-4 h-4" />
+            Commercial
           </TabsTrigger>
           <TabsTrigger value="soundtrack" className="flex items-center gap-2">
             <Music2 className="w-4 h-4" />
@@ -369,6 +380,95 @@ export default function DeviceConfigPage() {
             </CardContent>
           </Card>
           <IRDeviceSetup />
+        </TabsContent>
+
+        <TabsContent value="dmx" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-purple-600" />
+                DMX Lighting Control
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {aiEnhancementsEnabled
+                  ? "Configure DMX lighting controllers with AI-powered scene recommendations and automatic game event triggers"
+                  : "Configure USB DMX adapters (Enttec, PKnight), Art-Net controllers, and Maestro DMX with preset access"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-6 p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <p className="text-sm text-purple-200 font-medium">
+                      Supported DMX Hardware
+                    </p>
+                    <ul className="text-sm text-purple-300 list-disc list-inside space-y-1">
+                      <li><strong>USB:</strong> Enttec DMX USB Pro, Enttec Open DMX, PKnight CR011R</li>
+                      <li><strong>Art-Net:</strong> Enttec ODE, DMXking, Generic Art-Net devices</li>
+                      <li><strong>Maestro DMX:</strong> Built-in presets and function buttons via Art-Net</li>
+                    </ul>
+                    <p className="text-xs text-purple-400 mt-2">
+                      Multi-adapter support: Use multiple adapters to expand beyond 512 channels per universe
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <DMXControllerManager />
+        </TabsContent>
+
+        <TabsContent value="commercial-lighting" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-amber-600" />
+                Commercial Lighting Control
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {aiEnhancementsEnabled
+                  ? "Configure Lutron and Philips Hue systems with AI-powered scene recommendations and energy optimization"
+                  : "Configure commercial lighting systems: Lutron (RadioRA 2/3, Caseta, HomeWorks) and Philips Hue"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-6 p-4 bg-amber-900/30 rounded-lg border border-amber-500/30">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <p className="text-sm text-amber-200 font-medium">
+                      Supported Commercial Lighting Systems
+                    </p>
+                    <ul className="text-sm text-amber-300 list-disc list-inside space-y-1">
+                      <li><strong>Lutron RadioRA 2/3:</strong> Telnet (LIP) or LEAP API integration</li>
+                      <li><strong>Lutron HomeWorks QS:</strong> Telnet (LIP) integration</li>
+                      <li><strong>Lutron Caseta:</strong> LEAP API integration</li>
+                      <li><strong>Philips Hue:</strong> REST API v2 with local bridge discovery</li>
+                    </ul>
+                    <p className="text-xs text-amber-400 mt-2">
+                      Note: This is separate from DMX stage lighting. Use the DMX tab for entertainment lighting.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <CommercialLightingManager />
         </TabsContent>
 
         <TabsContent value="soundtrack" className="space-y-4">

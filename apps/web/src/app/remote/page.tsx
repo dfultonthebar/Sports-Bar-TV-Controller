@@ -21,7 +21,8 @@ import {
   Speaker,
   Calendar,
   Music2,
-  Gamepad2
+  Gamepad2,
+  Lightbulb
 } from 'lucide-react'
 import Image from 'next/image'
 import SportsGuide from '@/components/SportsGuide'
@@ -32,6 +33,8 @@ import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
+import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
+import { CommercialLightingRemote } from '@/components/commercial-lighting'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -154,7 +157,7 @@ export default function BartenderRemotePage() {
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting'>('video')
 
   // Routing matrix state
   const [routingStatus, setRoutingStatus] = useState<string>('')
@@ -860,6 +863,13 @@ export default function BartenderRemotePage() {
             </div>
           </div>
         )}
+
+        {activeTab === 'lighting' && (
+          <div className="max-w-7xl mx-auto pt-4 space-y-4">
+            <CommercialLightingRemote />
+            <DMXLightingRemote />
+          </div>
+        )}
       </div>
 
       {/* Bottom Tab Navigation */}
@@ -939,6 +949,18 @@ export default function BartenderRemotePage() {
           >
             <Gamepad2 className="w-4 h-4" />
             <span className="text-xs font-medium">Remote</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('lighting')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'lighting'
+                ? 'bg-purple-500/30 text-purple-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Lightbulb className="w-4 h-4" />
+            <span className="text-xs font-medium">Lighting</span>
           </button>
 
           <button

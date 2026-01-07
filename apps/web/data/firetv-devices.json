@@ -7,7 +7,7 @@
       "ipAddress": "192.168.5.131",
       "updatedAt": "2025-12-20T17:16:33.737Z",
       "isOnline": true,
-      "lastSeen": "2026-01-06T21:13:06.698Z"
+      "lastSeen": "2026-01-07T01:42:29.574Z"
     },
     {
       "name": "Amazon 2",
@@ -19,7 +19,7 @@
       "isOnline": true,
       "addedAt": "2025-12-20T00:19:28.349Z",
       "updatedAt": "2025-12-20T00:19:28.349Z",
-      "lastSeen": "2026-01-06T21:13:06.698Z"
+      "lastSeen": "2026-01-07T01:42:29.574Z"
     },
     {
       "name": "Amazon 3",
@@ -31,7 +31,7 @@
       "isOnline": true,
       "addedAt": "2025-12-20T00:26:01.315Z",
       "updatedAt": "2025-12-20T00:26:01.315Z",
-      "lastSeen": "2026-01-06T21:13:06.695Z"
+      "lastSeen": "2026-01-07T01:42:29.565Z"
     },
     {
       "name": "Amazon 4",
@@ -43,7 +43,7 @@
       "isOnline": true,
       "addedAt": "2025-12-20T17:23:41.086Z",
       "updatedAt": "2025-12-20T17:23:41.086Z",
-      "lastSeen": "2026-01-06T21:13:06.679Z"
+      "lastSeen": "2026-01-07T01:42:29.572Z"
     }
   ]
 }

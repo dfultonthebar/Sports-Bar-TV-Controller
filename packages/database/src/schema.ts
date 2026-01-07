@@ -1827,3 +1827,343 @@ export const firestickAppRegistry = sqliteTable('firestick_app_registry', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
+
+// ============================================================================
+// DMX LIGHTING CONTROL
+// ============================================================================
+
+// DMX Controller (USB or Art-Net adapter)
+export const dmxControllers = sqliteTable('DMXController', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  controllerType: text('controllerType').notNull(), // 'usb', 'artnet', 'maestro'
+
+  // USB-specific fields
+  serialPort: text('serialPort'),                   // e.g., '/dev/ttyUSB0', 'COM3'
+  baudRate: integer('baudRate').default(250000),
+  adapterModel: text('adapterModel'),               // 'enttec-pro', 'enttec-open', 'pknight-cr011r'
+
+  // Art-Net/Maestro specific fields
+  ipAddress: text('ipAddress'),
+  artnetPort: integer('artnetPort').default(6454),
+  artnetSubnet: integer('artnetSubnet').default(0),
+  artnetNet: integer('artnetNet').default(0),
+
+  // Universe assignment (which universes this adapter handles)
+  universeStart: integer('universeStart').notNull().default(0),
+  universeCount: integer('universeCount').notNull().default(1),
+
+  // Maestro-specific
+  maestroPresetCount: integer('maestroPresetCount'),
+  maestroFunctionCount: integer('maestroFunctionCount'),
+
+  // Status
+  description: text('description'),
+  status: text('status').notNull().default('offline'), // 'online', 'offline', 'error'
+  lastSeen: timestamp('lastSeen'),
+  lastError: text('lastError'),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  typeIdx: index('DMXController_controllerType_idx').on(table.controllerType),
+  statusIdx: index('DMXController_status_idx').on(table.status),
+}))
+
+// DMX Zone (area grouping for fixtures)
+export const dmxZones = sqliteTable('DMXZone', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  isActiveIdx: index('DMXZone_isActive_idx').on(table.isActive),
+}))
+
+// DMX Fixture (individual light or device)
+export const dmxFixtures = sqliteTable('DMXFixture', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  controllerId: text('controllerId').notNull().references(() => dmxControllers.id, { onDelete: 'cascade' }),
+  zoneId: text('zoneId').references(() => dmxZones.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+
+  // Fixture type and info
+  fixtureType: text('fixtureType').notNull(),       // 'led-par', 'moving-head', 'strobe', 'fog-machine', etc.
+  manufacturer: text('manufacturer'),
+  model: text('model'),
+
+  // DMX addressing
+  universe: integer('universe').notNull().default(0),
+  startAddress: integer('startAddress').notNull(),   // 1-512
+  channelCount: integer('channelCount').notNull(),   // Number of channels
+
+  // Channel mapping (JSON object)
+  // e.g., {"red":1, "green":2, "blue":3, "white":4, "dimmer":5, "strobe":6}
+  channelMap: text('channelMap').notNull(),
+
+  // Fixture capabilities (JSON array)
+  // e.g., ["rgb", "white", "dimmer", "strobe", "pan", "tilt"]
+  capabilities: text('capabilities'),
+
+  // Current state (JSON object)
+  currentState: text('currentState'),
+
+  // Status
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  displayOrder: integer('displayOrder').notNull().default(0),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  controllerIdx: index('DMXFixture_controllerId_idx').on(table.controllerId),
+  zoneIdx: index('DMXFixture_zoneId_idx').on(table.zoneId),
+  addressIdx: index('DMXFixture_universe_startAddress_idx').on(table.universe, table.startAddress),
+  typeIdx: index('DMXFixture_fixtureType_idx').on(table.fixtureType),
+}))
+
+// DMX Scene (lighting preset/scene)
+export const dmxScenes = sqliteTable('DMXScene', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+  category: text('category').notNull().default('general'), // 'general', 'game-day', 'celebration', 'ambient'
+
+  // Scene configuration (JSON array of fixture states)
+  // [{ fixtureId: "xxx", state: { red: 255, green: 0, blue: 0, dimmer: 255 } }]
+  sceneData: text('sceneData').notNull(),
+
+  // Transition settings
+  fadeTimeMs: integer('fadeTimeMs').notNull().default(500),
+
+  // Maestro integration (optional - use Maestro's built-in preset instead)
+  maestroControllerId: text('maestroControllerId').references(() => dmxControllers.id, { onDelete: 'set null' }),
+  maestroPresetNumber: integer('maestroPresetNumber'),
+
+  // Display settings
+  displayOrder: integer('displayOrder').notNull().default(0),
+  isFavorite: integer('isFavorite', { mode: 'boolean' }).notNull().default(false),
+  bartenderVisible: integer('bartenderVisible', { mode: 'boolean' }).notNull().default(true),
+  iconName: text('iconName'),                       // Lucide icon name
+  iconColor: text('iconColor'),                     // Hex color for icon
+
+  // Usage tracking
+  usageCount: integer('usageCount').notNull().default(0),
+  lastUsed: timestamp('lastUsed'),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  categoryIdx: index('DMXScene_category_idx').on(table.category),
+  favoriteIdx: index('DMXScene_isFavorite_idx').on(table.isFavorite),
+  bartenderIdx: index('DMXScene_bartenderVisible_idx').on(table.bartenderVisible),
+}))
+
+// DMX Game Event Trigger (automatic lighting for game events)
+export const dmxGameEventTriggers = sqliteTable('DMXGameEventTrigger', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+
+  // Event matching
+  eventType: text('eventType').notNull(),           // 'goal', 'touchdown', 'home-run', 'score-change', etc.
+  sportFilter: text('sportFilter'),                 // 'nfl', 'nba', 'nhl', 'mlb' (null = all)
+  teamFilter: text('teamFilter'),                   // JSON array of team IDs (null = all)
+  homeTeamOnly: integer('homeTeamOnly', { mode: 'boolean' }).notNull().default(true),
+
+  // Effect to trigger
+  effectType: text('effectType').notNull(),         // 'scene', 'strobe', 'color-burst', 'chase', 'maestro-preset'
+  sceneId: text('sceneId').references(() => dmxScenes.id, { onDelete: 'set null' }),
+  maestroControllerId: text('maestroControllerId').references(() => dmxControllers.id, { onDelete: 'set null' }),
+  maestroPresetNumber: integer('maestroPresetNumber'),
+  effectConfig: text('effectConfig'),               // JSON for effect parameters
+
+  // Timing
+  durationMs: integer('durationMs').notNull().default(5000),
+  cooldownMs: integer('cooldownMs').notNull().default(30000), // Prevent rapid re-triggering
+  lastTriggered: timestamp('lastTriggered'),
+
+  // State
+  isEnabled: integer('isEnabled', { mode: 'boolean' }).notNull().default(true),
+  priority: integer('priority').notNull().default(0), // Higher = takes precedence
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventTypeIdx: index('DMXGameEventTrigger_eventType_idx').on(table.eventType),
+  enabledIdx: index('DMXGameEventTrigger_isEnabled_idx').on(table.isEnabled),
+}))
+
+// DMX Execution Log (audit trail for lighting changes)
+export const dmxExecutionLogs = sqliteTable('DMXExecutionLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  controllerId: text('controllerId').references(() => dmxControllers.id, { onDelete: 'cascade' }),
+
+  // Execution details
+  actionType: text('actionType').notNull(),         // 'scene_recall', 'fixture_control', 'effect', 'game_event', 'maestro_preset'
+  actionId: text('actionId'),                       // Scene ID, trigger ID, etc.
+  actionName: text('actionName'),
+
+  // Result
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+
+  // Metadata
+  triggeredBy: text('triggeredBy'),                 // 'bartender', 'manager', 'scheduler', 'game_event'
+  metadata: text('metadata'),                       // JSON additional context
+
+  executedAt: timestamp('executedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  controllerIdx: index('DMXExecutionLog_controllerId_idx').on(table.controllerId),
+  actionTypeIdx: index('DMXExecutionLog_actionType_idx').on(table.actionType),
+  executedAtIdx: index('DMXExecutionLog_executedAt_idx').on(table.executedAt),
+}))
+
+// ============================================================================
+// COMMERCIAL LIGHTING TABLES (Lutron, Philips Hue, etc.)
+// ============================================================================
+
+// Commercial Lighting System (Lutron, Hue bridges, etc.)
+export const commercialLightingSystems = sqliteTable('CommercialLightingSystem', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  systemType: text('systemType').notNull(),         // 'lutron-radiora2', 'lutron-radiora3', 'lutron-caseta', 'lutron-homeworks', 'philips-hue'
+
+  // Connection configuration
+  ipAddress: text('ipAddress').notNull(),
+  port: integer('port'),
+  username: text('username'),                       // For Lutron Telnet
+  password: text('password'),                       // For Lutron Telnet (should be encrypted)
+  applicationKey: text('applicationKey'),           // For Hue
+  certificate: text('certificate'),                 // For LEAP API
+
+  // Status
+  status: text('status').notNull().default('offline'), // 'online', 'offline', 'error'
+  lastSeen: timestamp('lastSeen'),
+  firmwareVersion: text('firmwareVersion'),
+  lastError: text('lastError'),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  systemTypeIdx: index('CommercialLightingSystem_systemType_idx').on(table.systemType),
+  statusIdx: index('CommercialLightingSystem_status_idx').on(table.status),
+}))
+
+// Commercial Lighting Zone (room/area grouping)
+export const commercialLightingZones = sqliteTable('CommercialLightingZone', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  systemId: text('systemId').notNull().references(() => commercialLightingSystems.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  externalId: text('externalId'),                   // Lutron integration ID or Hue room ID
+  zoneType: text('zoneType'),                       // 'room', 'area', 'zone'
+
+  // Current state
+  currentLevel: integer('currentLevel').notNull().default(0),
+  isOn: integer('isOn', { mode: 'boolean' }).notNull().default(false),
+
+  // Display
+  displayOrder: integer('displayOrder').notNull().default(0),
+  bartenderVisible: integer('bartenderVisible', { mode: 'boolean' }).notNull().default(true),
+  iconName: text('iconName'),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  systemIdIdx: index('CommercialLightingZone_systemId_idx').on(table.systemId),
+  bartenderVisibleIdx: index('CommercialLightingZone_bartenderVisible_idx').on(table.bartenderVisible),
+}))
+
+// Commercial Lighting Device (individual dimmer, switch, light)
+export const commercialLightingDevices = sqliteTable('CommercialLightingDevice', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  systemId: text('systemId').notNull().references(() => commercialLightingSystems.id, { onDelete: 'cascade' }),
+  zoneId: text('zoneId').references(() => commercialLightingZones.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  externalId: text('externalId').notNull(),         // Lutron integration ID or Hue light ID
+  deviceType: text('deviceType').notNull(),         // 'dimmer', 'switch', 'color-light', 'white-light', 'plug', 'keypad', 'sensor'
+
+  // Capabilities
+  capabilities: text('capabilities'),               // JSON: ["dimming", "color", "temperature"]
+  minLevel: integer('minLevel').notNull().default(0),
+  maxLevel: integer('maxLevel').notNull().default(100),
+
+  // Current state
+  currentLevel: integer('currentLevel').notNull().default(0),
+  isOn: integer('isOn', { mode: 'boolean' }).notNull().default(false),
+  colorHex: text('colorHex'),                       // For Hue color lights
+  colorTemp: integer('colorTemp'),                  // For tunable white (mirek)
+
+  // Display
+  displayOrder: integer('displayOrder').notNull().default(0),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  systemIdIdx: index('CommercialLightingDevice_systemId_idx').on(table.systemId),
+  zoneIdIdx: index('CommercialLightingDevice_zoneId_idx').on(table.zoneId),
+  deviceTypeIdx: index('CommercialLightingDevice_deviceType_idx').on(table.deviceType),
+}))
+
+// Commercial Lighting Scene
+export const commercialLightingScenes = sqliteTable('CommercialLightingScene', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  systemId: text('systemId').references(() => commercialLightingSystems.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  externalId: text('externalId'),                   // Lutron scene button or Hue scene ID
+
+  // For Lutron: which keypad button triggers the scene
+  triggerDeviceId: text('triggerDeviceId'),         // Keypad integration ID
+  triggerButtonId: integer('triggerButtonId'),      // Button number
+
+  // For custom scenes (not system-native)
+  sceneData: text('sceneData'),                     // JSON: device states
+
+  // Display
+  category: text('category').notNull().default('general'), // 'general', 'game-day', 'celebration', 'ambient', 'cleaning', 'closed'
+  bartenderVisible: integer('bartenderVisible', { mode: 'boolean' }).notNull().default(true),
+  isFavorite: integer('isFavorite', { mode: 'boolean' }).notNull().default(false),
+  iconName: text('iconName'),
+  iconColor: text('iconColor'),
+
+  // Usage tracking
+  usageCount: integer('usageCount').notNull().default(0),
+  lastUsed: timestamp('lastUsed'),
+
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  systemIdIdx: index('CommercialLightingScene_systemId_idx').on(table.systemId),
+  categoryIdx: index('CommercialLightingScene_category_idx').on(table.category),
+  bartenderVisibleIdx: index('CommercialLightingScene_bartenderVisible_idx').on(table.bartenderVisible),
+}))
+
+// Commercial Lighting Execution Log
+export const commercialLightingLogs = sqliteTable('CommercialLightingLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  systemId: text('systemId').references(() => commercialLightingSystems.id, { onDelete: 'cascade' }),
+
+  // Execution details
+  actionType: text('actionType').notNull(),         // 'scene_recall', 'level_change', 'power_toggle', 'color_change'
+  targetId: text('targetId'),                       // Device or zone ID
+  targetName: text('targetName'),
+  value: text('value'),                             // JSON or simple value
+
+  // Result
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+
+  // Metadata
+  triggeredBy: text('triggeredBy'),                 // 'bartender', 'manager', 'scheduler', 'automation'
+  metadata: text('metadata'),                       // JSON additional context
+
+  executedAt: timestamp('executedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  systemIdIdx: index('CommercialLightingLog_systemId_idx').on(table.systemId),
+  actionTypeIdx: index('CommercialLightingLog_actionType_idx').on(table.actionType),
+  executedAtIdx: index('CommercialLightingLog_executedAt_idx').on(table.executedAt),
+}))
