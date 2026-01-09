@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Tv,
   Radio,
@@ -156,6 +156,11 @@ export default function BartenderRemotePage() {
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
 
+  // Lighting visibility settings
+  const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
+  const [commercialLightingEnabled, setCommercialLightingEnabled] = useState(false)
+  const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
+
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting'>('video')
 
@@ -173,6 +178,20 @@ export default function BartenderRemotePage() {
 
 
 
+  // Fetch lighting visibility settings
+  const fetchLightingSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings/lighting')
+      const result = await response.json()
+      if (result.success && result.data) {
+        setDmxLightingEnabled(result.data.dmxLightingEnabled)
+        setCommercialLightingEnabled(result.data.commercialLightingEnabled)
+      }
+    } catch (error) {
+      logger.error('Failed to fetch lighting settings:', error)
+    }
+  }, [])
+
   useEffect(() => {
     loadInputs()
     loadIRDevices()
@@ -180,6 +199,7 @@ export default function BartenderRemotePage() {
     loadFireTVDevices()
     loadTVLayout()
     loadAudioProcessor()
+    fetchLightingSettings()
     // Also fetch matrix data on initial load
     fetchMatrixData()
     loadCurrentChannels()
@@ -197,7 +217,7 @@ export default function BartenderRemotePage() {
     return () => {
       clearInterval(statusInterval)
     }
-  }, [])
+  }, [fetchLightingSettings])
 
   useEffect(() => {
     // Re-fetch matrix data when layout zones change (but skip initial empty state)
@@ -864,10 +884,10 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
-        {activeTab === 'lighting' && (
+        {activeTab === 'lighting' && lightingEnabled && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
-            <CommercialLightingRemote />
-            <DMXLightingRemote />
+            {commercialLightingEnabled && <CommercialLightingRemote />}
+            {dmxLightingEnabled && <DMXLightingRemote />}
           </div>
         )}
       </div>
@@ -951,17 +971,19 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Remote</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('lighting')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'lighting'
-                ? 'bg-purple-500/30 text-purple-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-            }`}
-          >
-            <Lightbulb className="w-4 h-4" />
-            <span className="text-xs font-medium">Lighting</span>
-          </button>
+          {lightingEnabled && (
+            <button
+              onClick={() => setActiveTab('lighting')}
+              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+                activeTab === 'lighting'
+                  ? 'bg-purple-500/30 text-purple-300'
+                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+              }`}
+            >
+              <Lightbulb className="w-4 h-4" />
+              <span className="text-xs font-medium">Lighting</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('power')}

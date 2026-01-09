@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,8 @@ import { IRDeviceSetup } from '@/components/ir/IRDeviceSetup'
 import ChannelPresetsPanel from '@/components/settings/ChannelPresetsPanel'
 import DirecTVChannelFinder from '@/components/DirecTVChannelFinder'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 import TVNetworkDiscovery from '@/components/tv-network/TVNetworkDiscovery'
@@ -46,17 +48,65 @@ export default function DeviceConfigPage() {
   const [aiActionLoading, setAiActionLoading] = useState<string | null>(null)
   const [aiActionResult, setAiActionResult] = useState<any>(null)
 
+  // Lighting visibility settings
+  const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
+  const [commercialLightingEnabled, setCommercialLightingEnabled] = useState(false)
+  const [lightingSettingsLoading, setLightingSettingsLoading] = useState(false)
+
+  // Fetch lighting settings
+  const fetchLightingSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings/lighting')
+      const result = await response.json()
+      if (result.success && result.data) {
+        setDmxLightingEnabled(result.data.dmxLightingEnabled)
+        setCommercialLightingEnabled(result.data.commercialLightingEnabled)
+      }
+    } catch (error) {
+      logger.error('Failed to fetch lighting settings:', error)
+    }
+  }, [])
+
+  // Update lighting setting
+  const updateLightingSetting = async (setting: 'dmx' | 'commercial', enabled: boolean) => {
+    setLightingSettingsLoading(true)
+    try {
+      const body = setting === 'dmx'
+        ? { dmxLightingEnabled: enabled }
+        : { commercialLightingEnabled: enabled }
+
+      const response = await fetch('/api/settings/lighting', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      const result = await response.json()
+      if (result.success && result.data) {
+        setDmxLightingEnabled(result.data.dmxLightingEnabled)
+        setCommercialLightingEnabled(result.data.commercialLightingEnabled)
+      }
+    } catch (error) {
+      logger.error('Failed to update lighting setting:', error)
+    } finally {
+      setLightingSettingsLoading(false)
+    }
+  }
+
   // Load AI toggle state from localStorage on mount
   useEffect(() => {
     // Mark component as mounted to prevent hydration issues
     setMounted(true)
-    
+
     // Load localStorage value only on client side
     const savedState = localStorage.getItem('deviceConfigAiEnabled')
     if (savedState !== null) {
       setAiEnhancementsEnabled(savedState === 'true')
     }
-  }, [])
+
+    // Fetch lighting settings from database
+    fetchLightingSettings()
+  }, [fetchLightingSettings])
 
   // Save AI toggle state to localStorage when it changes
   const toggleAiEnhancements = () => {
@@ -403,6 +453,30 @@ export default function DeviceConfigPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Enable Toggle for Bartender Remote Visibility */}
+              <div className="mb-6 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Lightbulb className="w-5 h-5 text-green-400" />
+                    <div>
+                      <Label htmlFor="dmx-enabled" className="text-sm font-medium text-green-200">
+                        Enable on Bartender Remote
+                      </Label>
+                      <p className="text-xs text-green-400">
+                        When enabled, DMX Lighting controls will appear on the Bartender Remote page
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="dmx-enabled"
+                    checked={dmxLightingEnabled}
+                    disabled={lightingSettingsLoading}
+                    onCheckedChange={(checked) => updateLightingSetting('dmx', checked)}
+                    className="data-[state=checked]:bg-green-600"
+                  />
+                </div>
+              </div>
+
               <div className="mb-6 p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
                 <div className="flex items-start gap-3">
                   <Lightbulb className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
@@ -447,6 +521,30 @@ export default function DeviceConfigPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Enable Toggle for Bartender Remote Visibility */}
+              <div className="mb-6 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Lightbulb className="w-5 h-5 text-green-400" />
+                    <div>
+                      <Label htmlFor="commercial-enabled" className="text-sm font-medium text-green-200">
+                        Enable on Bartender Remote
+                      </Label>
+                      <p className="text-xs text-green-400">
+                        When enabled, Commercial Lighting controls will appear on the Bartender Remote page
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="commercial-enabled"
+                    checked={commercialLightingEnabled}
+                    disabled={lightingSettingsLoading}
+                    onCheckedChange={(checked) => updateLightingSetting('commercial', checked)}
+                    className="data-[state=checked]:bg-green-600"
+                  />
+                </div>
+              </div>
+
               <div className="mb-6 p-4 bg-amber-900/30 rounded-lg border border-amber-500/30">
                 <div className="flex items-start gap-3">
                   <Lightbulb className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />

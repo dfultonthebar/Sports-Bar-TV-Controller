@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { update } from '@/lib/db-helpers'
-import { globalCacheDevices, irDevices, irCommands } from '@/db/schema'
 import net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateRequestBody, isValidationError } from '@/lib/validation'
+
+// Use schema references for tables
+const { globalCacheDevices, irDevices } = schema
 /**
  * POST /api/ir/learn
  * Start IR learning session for a specific command
@@ -65,6 +66,24 @@ export async function POST(request: NextRequest) {
     logger.info('   IP:', { data: globalCacheDevice.ipAddress })
     logger.info('   Port:', { data: globalCacheDevice.port })
 
+    // Get the IR device to find the configured emitter port
+    const irDevice = await db.select()
+      .from(irDevices)
+      .where(eq(irDevices.id, deviceId as string))
+      .limit(1)
+      .get()
+
+    if (!irDevice) {
+      logger.info('❌ [IR LEARN API] IR device not found')
+      return NextResponse.json(
+        { success: false, error: 'IR device not found' },
+        { status: 404 }
+      )
+    }
+
+    const emitterPort = irDevice.globalCachePortNumber || 1
+    logger.info('   Emitter Port:', { data: emitterPort })
+
     // Start learning session
     const result = await startLearningSession(
       globalCacheDevice.ipAddress,
@@ -75,12 +94,24 @@ export async function POST(request: NextRequest) {
       logger.info('✅ [IR LEARN API] IR code learned successfully')
       logger.info('   Code length:', { data: result.learnedCode.length })
 
-      // Update the command with the learned IR code
+      // Fix the port in the learned code to match the configured emitter port
+      // The IR learner reports the code with its own port (e.g., 2:1), but we need
+      // to send to the emitter port (e.g., 1:1, 1:2, 1:3)
+      let fixedCode = result.learnedCode
+      const portMatch = result.learnedCode.match(/^sendir,(\d+):(\d+),/)
+      if (portMatch) {
+        const originalPort = `${portMatch[1]}:${portMatch[2]}`
+        const targetPort = `1:${emitterPort}`
+        fixedCode = result.learnedCode.replace(`sendir,${originalPort},`, `sendir,${targetPort},`)
+        logger.info('   Port fix: ' + originalPort + ' -> ' + targetPort)
+      }
+
+      // Update the command with the fixed IR code
       const updatedCommand = await update(
         'irCommands',
         eq(schema.irCommands.id, commandId as string),
         {
-          irCode: result.learnedCode,
+          irCode: fixedCode,
           updatedAt: new Date().toISOString()
         }
       )
