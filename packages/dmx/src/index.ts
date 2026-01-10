@@ -47,6 +47,46 @@ export type {
   AdapterRegistration,
 } from './dmx-connection-manager'
 
+// Scene Engine
+export {
+  SceneEngine,
+  getSceneEngine,
+} from './scene-engine'
+
+export type {
+  SceneFixtureData,
+  SceneData,
+} from './scene-engine'
+
+// Effect Engine
+export {
+  EffectEngine,
+  getEffectEngine,
+} from './effect-engine'
+
+export type {
+  EffectFixture,
+  StrobeConfig,
+  ChaseConfig,
+  ColorBurstConfig,
+  RainbowConfig,
+  PulseConfig,
+} from './effect-engine'
+
+// Game Event Reactor
+export {
+  GameEventReactor,
+  getGameEventReactor,
+} from './game-event-reactor'
+
+export type {
+  SportType,
+  GameEvent,
+  TriggerEffectType,
+  TriggerConfig,
+  FixtureRegistry,
+} from './game-event-reactor'
+
 // Type definitions for fixtures and scenes
 export interface DMXFixtureState {
   red?: number          // 0-255
