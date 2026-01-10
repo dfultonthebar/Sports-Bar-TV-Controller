@@ -28,7 +28,7 @@ interface ProcessorMeterCache {
 /**
  * Singleton manager for Atlas meter subscriptions
  */
-class AtlasMeterManager {
+export class AtlasMeterManager {
   private static instance: AtlasMeterManager
   private caches: Map<string, ProcessorMeterCache> = new Map()
   private updateCallbacks: Map<string, MeterUpdateCallback> = new Map()

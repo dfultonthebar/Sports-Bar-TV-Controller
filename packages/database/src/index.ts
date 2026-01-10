@@ -50,6 +50,7 @@ export {
   gt,
   lt,
   ne,
+  not,
   sql,
   isNotNull,
   isNull,

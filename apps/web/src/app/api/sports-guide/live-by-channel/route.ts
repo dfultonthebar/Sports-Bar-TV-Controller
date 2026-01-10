@@ -251,10 +251,10 @@ const ESPN_SPORTS = [
 
   // Combat Sports (HIGH PRIORITY for bar crowd)
   { sport: 'mma', league: 'ufc', name: 'UFC' },
-  { sport: 'boxing', league: 'boxing', name: 'Boxing' },
+  // Note: boxing/boxing and racing/nascar-cup return 400 from ESPN API - not supported
 
-  // Racing (MEDIUM PRIORITY)
-  { sport: 'racing', league: 'nascar-cup', name: 'NASCAR Cup' },
+  // Racing - F1 only (NASCAR not supported by ESPN scoreboard API)
+  { sport: 'racing', league: 'f1', name: 'Formula 1' },
 ]
 
 // Route-level cache for the entire response (30 second TTL)

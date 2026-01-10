@@ -167,3 +167,6 @@ export function getRealtimeMeterService(): AtlasRealtimeMeterService {
   }
   return meterServiceInstance
 }
+
+// Alias for backward compatibility
+export const createRealtimeMeterService = getRealtimeMeterService

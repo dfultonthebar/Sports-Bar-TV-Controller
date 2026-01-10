@@ -341,7 +341,7 @@ export const transactionHelpers = {
       const result = createOp(tx)
 
       // Log the action - use schema from closure
-      const auditTable = (schema as any).auditLogs || (schema as any).configChangeTracking
+      const auditTable = (schema as any).auditLogs
 
       if (auditTable) {
         tx.insert(auditTable).values({
@@ -373,7 +373,7 @@ export const transactionHelpers = {
       const result = updateOp(tx)
 
       // Log the change
-      const auditTable = (schema as any).auditLogs || (schema as any).configChangeTracking
+      const auditTable = (schema as any).auditLogs
 
       if (auditTable) {
         tx.insert(auditTable).values({
@@ -405,7 +405,7 @@ export const transactionHelpers = {
       const result = deleteOp(tx)
 
       // Log the deletion
-      const auditTable = (schema as any).auditLogs || (schema as any).configChangeTracking
+      const auditTable = (schema as any).auditLogs
 
       if (auditTable) {
         tx.insert(auditTable).values({

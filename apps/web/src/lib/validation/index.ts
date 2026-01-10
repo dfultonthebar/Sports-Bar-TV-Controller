@@ -6,7 +6,5 @@
  */
 
 // Re-export everything from the validation package
+// Note: @sports-bar/config/validation is NOT re-exported to avoid conflicting star exports
 export * from '@sports-bar/validation'
-
-// Also re-export common schemas from @sports-bar/config for backward compatibility
-export * from '@sports-bar/config/validation'
