@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@sports-bar/logger": "*",
-    "node-cron": "^3.0.3"
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
     "@sports-bar/config": "*",

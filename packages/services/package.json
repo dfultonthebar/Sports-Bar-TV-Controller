@@ -9,7 +9,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.52.0",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@sports-bar/data": "*",
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
