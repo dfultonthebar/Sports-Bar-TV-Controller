@@ -249,9 +249,9 @@ export const RateLimitConfigs = {
   },
 
   // Hardware control endpoints (matrix, CEC, FireTV, audio processor, atlas)
-  // Limit to 60 requests per minute to prevent hardware flooding
+  // Higher limit for local application - bartender remote polls frequently
   HARDWARE: {
-    maxRequests: 60,
+    maxRequests: 200,
     windowMs: 60 * 1000, // 1 minute
     identifier: 'hardware'
   },
