@@ -116,10 +116,7 @@ const nextConfig = {
     // Temporarily ignore TypeScript errors during build
     ignoreBuildErrors: true,
   },
-  eslint: {
-    // Temporarily ignore ESLint errors during build
-    ignoreDuringBuilds: true,
-  },
+  // Note: eslint config removed in Next.js 16 - run ESLint separately
   // Fix lockfile detection warning by explicitly setting the root directory
   // output: 'standalone',  // Temporarily disabled due to build issues
   // Point to monorepo root for proper file tracing in turborepo

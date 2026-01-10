@@ -9,7 +9,7 @@ This project uses **Turborepo** with npm workspaces. The codebase is organized a
 ```
 /
 ├── apps/
-│   └── web/              # Next.js 15 application (main app)
+│   └── web/              # Next.js 16 application (main app)
 ├── packages/             # 24+ shared packages
 │   ├── atlas/           # AtlasIED audio processor control
 │   ├── auth/            # Authentication utilities
@@ -152,12 +152,18 @@ npm run test:coverage       # Generate coverage report
 
 ## High-Level Architecture
 
-### Next.js 15 App Router Architecture
-**Framework:** Next.js 15.5.6 with App Router (not Pages Router)
+### Next.js 16 App Router Architecture
+**Framework:** Next.js 16.1.1 with App Router (not Pages Router)
 - All routes in `apps/web/src/app/*` follow App Router conventions
 - API routes: `apps/web/src/app/api/**` with route.ts files
 - Pages: `apps/web/src/app/**/page.tsx` files
 - Layouts: `apps/web/src/app/**/layout.tsx` files
+
+**Next.js 16 Breaking Changes (from v15):**
+- Turbopack is now the default bundler; use `--webpack` flag for webpack-dependent packages like `next-pwa`
+- `eslint` config in next.config.js is removed; run ESLint separately
+- The `next lint` command is removed; use `eslint .` directly
+- Request APIs (`cookies()`, `headers()`, `params`) are now fully async (synchronous access removed)
 
 ### Core Systems
 
