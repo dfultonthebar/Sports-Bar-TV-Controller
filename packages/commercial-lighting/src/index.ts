@@ -21,6 +21,19 @@ export {
 } from './clients/lutron-lip-client'
 
 export {
+  LutronLEAPClient,
+  type LEAPConfig,
+  type LEAPDevice,
+  type LEAPZone,
+  type LEAPScene,
+  type LEAPArea,
+  type LEAPButtonGroup,
+  type LEAPButton,
+  type LEAPEvent,
+  type LEAPStatus,
+} from './clients/lutron-leap-client'
+
+export {
   HueClient,
   type HueClientConfig,
   type HueBridge,
