@@ -93,6 +93,18 @@ interface FireTVDevice {
   adbEnabled?: boolean
 }
 
+interface EverPassDevice {
+  id: string
+  name: string
+  cecDevicePath: string
+  inputChannel: number
+  deviceModel?: string
+  isOnline: boolean
+  lastSeen?: string
+  addedAt: string
+  updatedAt?: string
+}
+
 interface ChannelInfo {
   id: string
   name: string
@@ -129,6 +141,14 @@ interface GameListing {
   quarter?: string | null
   isAutoScheduled?: boolean
   allocatedInput?: string | null
+  // Scheduled tune data
+  isScheduledTune?: boolean
+  scheduledOnInputs?: Array<{
+    inputLabel: string
+    inputSourceId: string
+    deviceType: string
+    allocationId: string
+  }>
 }
 
 interface StreamingApp {
@@ -172,8 +192,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
   const [direcTVDevices, setDirecTVDevices] = useState<DirecTVDevice[]>([])
   const [fireTVDevices, setFireTVDevices] = useState<FireTVDevice[]>([])
+  const [everPassDevices, setEverPassDevices] = useState<EverPassDevice[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
-  const [selectedDevice, setSelectedDevice] = useState<IRDevice | DirecTVDevice | FireTVDevice | null>(null)
+  const [selectedDevice, setSelectedDevice] = useState<IRDevice | DirecTVDevice | FireTVDevice | EverPassDevice | null>(null)
   
   // Channel Guide State
   const [showChannelGuide, setShowChannelGuide] = useState(false)
@@ -189,6 +210,10 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   // Live Game Status State
   const [liveGameData, setLiveGameData] = useState<Map<string, any>>(new Map())
+
+  // Scheduled Game Allocations State
+  const [scheduledAllocations, setScheduledAllocations] = useState<any[]>([])
+  const [schedulingGame, setSchedulingGame] = useState<string | null>(null) // game id being scheduled
 
   // UI State
   const [loading, setLoading] = useState(false)
@@ -209,11 +234,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
     loadChannelPresets()
     loadCurrentChannels()
     loadLiveGameData()
+    loadScheduledAllocations()
 
     // Auto-refresh channel data and live game data every 30 seconds
     const interval = setInterval(() => {
       loadCurrentChannels()
       loadLiveGameData()
+      loadScheduledAllocations()
     }, 30000)
 
     // Check for midnight crossing every minute to refresh guide
@@ -298,6 +325,154 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
   }
 
+  const loadScheduledAllocations = async () => {
+    try {
+      const response = await fetch('/api/schedules/bartender-schedule?status=pending')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.schedules) {
+          setScheduledAllocations(data.schedules)
+          logger.debug('[SCHEDULED-ALLOCATIONS] Loaded', data.schedules.length, 'pending schedules')
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading scheduled allocations:', error)
+    }
+  }
+
+  const handleScheduleGame = async (game: GameListing, event: React.MouseEvent) => {
+    event.stopPropagation() // Don't trigger the game click (Watch)
+
+    if (!selectedInput || !selectedDevice) {
+      setCommandStatus('No device selected')
+      return
+    }
+
+    const deviceType = getDeviceTypeForInput(selectedInput)
+    if (!deviceType) {
+      setCommandStatus('Unknown device type')
+      return
+    }
+
+    // Determine device ID
+    let deviceId = ''
+    if ('matrixInput' in selectedDevice) {
+      // IR Device (cable box)
+      deviceId = selectedDevice.id
+    } else {
+      deviceId = selectedDevice.id
+    }
+
+    setSchedulingGame(game.id)
+    setCommandStatus(`Scheduling ${game.homeTeam} vs ${game.awayTeam}...`)
+
+    try {
+      const response = await fetch('/api/schedules/bartender-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: deviceId,
+          deviceType: deviceType === 'satellite' ? 'directv' : deviceType,
+          deviceName: selectedDevice.name,
+          channelNumber: game.channel.channelNumber || game.channel.number,
+          channelName: game.channel.name,
+          gameInfo: {
+            homeTeam: game.homeTeam,
+            awayTeam: game.awayTeam,
+            league: game.league,
+            startTime: game.startTime,
+            endTime: game.endTime,
+          },
+          tuneAt: game.startTime, // Tune at game start time
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setCommandStatus(`Scheduled: ${data.message}`)
+        logButtonClick('schedule_game', `${game.league}`, {
+          game: `${game.awayTeam} @ ${game.homeTeam}`,
+          channel: game.channel.channelNumber,
+          tuneAt: game.startTime
+        })
+
+        // Refresh scheduled allocations
+        await loadScheduledAllocations()
+      } else {
+        setCommandStatus(`Schedule failed: ${data.error}`)
+        logError(new Error(data.error), 'schedule_game')
+      }
+    } catch (error) {
+      logger.error('Error scheduling game:', error)
+      setCommandStatus('Failed to schedule')
+      logError(error as Error, 'schedule_game')
+    } finally {
+      setSchedulingGame(null)
+      setTimeout(() => setCommandStatus(''), 5000)
+    }
+  }
+
+  const handleCancelSchedule = async (allocationId: string, event: React.MouseEvent) => {
+    event.stopPropagation()
+
+    try {
+      const response = await fetch(`/api/schedules/bartender-schedule?id=${allocationId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setCommandStatus('Schedule cancelled')
+        await loadScheduledAllocations()
+      } else {
+        setCommandStatus(`Cancel failed: ${data.error}`)
+      }
+    } catch (error) {
+      logger.error('Error cancelling schedule:', error)
+      setCommandStatus('Failed to cancel schedule')
+    } finally {
+      setTimeout(() => setCommandStatus(''), 3000)
+    }
+  }
+
+  // Get scheduled inputs for a game (for cross-input visibility)
+  const getScheduledInputsForGame = (game: GameListing): Array<{ inputLabel: string; allocationId: string; deviceType: string }> => {
+    // Find allocations that match this game by team names and approximate time
+    const gameStartTime = new Date(game.startTime).getTime()
+
+    return scheduledAllocations.filter(alloc => {
+      const allocStartTime = new Date(alloc.tuneAt).getTime()
+      const timeDiff = Math.abs(gameStartTime - allocStartTime)
+      const withinHour = timeDiff < 60 * 60 * 1000
+
+      return withinHour &&
+        alloc.homeTeam === game.homeTeam &&
+        alloc.awayTeam === game.awayTeam
+    }).map(alloc => ({
+      inputLabel: alloc.inputLabel,
+      allocationId: alloc.id,
+      deviceType: alloc.deviceType
+    }))
+  }
+
+  // Check if this game is scheduled on the current input
+  const isScheduledOnCurrentInput = (game: GameListing): string | null => {
+    const scheduled = getScheduledInputsForGame(game)
+    const currentInputDevice = selectedDevice
+
+    if (!currentInputDevice) return null
+
+    const matchingAlloc = scheduled.find(s => {
+      // Match by input label or device
+      const currentLabel = inputs.find(i => i.channelNumber === selectedInput)?.label
+      return s.inputLabel === currentLabel
+    })
+
+    return matchingAlloc?.allocationId || null
+  }
+
   // Get input label with current channel info
   const getInputLabelWithChannel = (input: MatrixInput): string => {
     const channelInfo = currentChannels[input.channelNumber]
@@ -313,45 +488,35 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const loadAllDeviceConfigurations = async () => {
     try {
       startPerformanceTimer('load_devices')
-      
-      const [matrixResponse, irResponse, direcTVResponse, fireTVResponse] = await Promise.allSettled([
-        fetch('/api/matrix/config'),
-        fetch('/api/ir-devices'),
-        fetch('/api/directv-devices'),
-        fetch('/api/firetv-devices')
-      ])
 
-      // Load matrix inputs
-      if (matrixResponse.status === 'fulfilled') {
-        const matrixData = await matrixResponse.value.json()
-        if (matrixData.inputs) {
-          const customInputs = matrixData.inputs.filter((input: MatrixInput) => 
+      // Use combined endpoint for better performance (single request instead of 4)
+      const response = await fetch('/api/devices/all')
+      const result = await response.json()
+
+      if (result.success && result.data) {
+        // Load matrix inputs
+        if (result.data.matrix?.inputs) {
+          const customInputs = result.data.matrix.inputs.filter((input: MatrixInput) =>
             input.label && !input.label.match(/^Input \d+$/) && input.isActive
           )
           setInputs(customInputs)
         }
-      }
 
-      // Load IR devices
-      if (irResponse.status === 'fulfilled') {
-        const irData = await irResponse.value.json()
-        setIRDevices(irData.devices || [])
-      }
+        // Load IR devices
+        setIRDevices(result.data.irDevices || [])
 
-      // Load DirecTV devices
-      if (direcTVResponse.status === 'fulfilled') {
-        const direcTVData = await direcTVResponse.value.json()
-        setDirecTVDevices(direcTVData.devices || [])
-      }
+        // Load DirecTV devices
+        setDirecTVDevices(result.data.direcTVDevices || [])
 
-      // Load Fire TV devices
-      if (fireTVResponse.status === 'fulfilled') {
-        const fireTVData = await fireTVResponse.value.json()
-        setFireTVDevices(fireTVData.devices || [])
+        // Load Fire TV devices
+        setFireTVDevices(result.data.fireTVDevices || [])
+
+        // Load EverPass devices
+        setEverPassDevices(result.data.everPassDevices || [])
       }
 
       const loadTime = endPerformanceTimer('load_devices')
-      logUserAction('devices_loaded', { loadTime })
+      logUserAction('devices_loaded', { loadTime, serverTime: result.meta?.loadTimeMs })
     } catch (error) {
       logError(error as Error, 'load_devices')
     }
@@ -361,17 +526,18 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const oldInput = selectedInput
     setSelectedInput(inputNumber)
     setSelectedDevice(null)
-    
+
     // Find associated device
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
-    
-    const activeDevice = direcTVDevice || fireTVDevice || irDevice
+    const everPassDevice = everPassDevices.find(d => d.inputChannel === inputNumber)
+
+    const activeDevice = direcTVDevice || fireTVDevice || everPassDevice || irDevice
     setSelectedDevice(activeDevice || null)
-    
+
     const input = inputs.find(i => i.channelNumber === inputNumber)
-    const deviceType = direcTVDevice ? 'DirecTV' : fireTVDevice ? 'Fire TV' : irDevice ? 'IR Device' : 'None'
+    const deviceType = direcTVDevice ? 'DirecTV' : fireTVDevice ? 'Fire TV' : everPassDevice ? 'EverPass' : irDevice ? 'IR Device' : 'None'
     
     setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} (${deviceType})`)
     setLastOperationTime(new Date())
@@ -450,6 +616,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
     // Check for Fire TV device - also check matrix input deviceType as fallback
     if (fireTVDevices.find(d => d.inputChannel === inputNumber) ||
         input.deviceType?.toLowerCase().includes('fire')) {
+      return 'streaming'
+    }
+
+    // Check for EverPass device (CEC streaming box)
+    if (everPassDevices.find(d => d.inputChannel === inputNumber) ||
+        input.deviceType?.toLowerCase().includes('everpass')) {
       return 'streaming'
     }
 
@@ -1057,12 +1229,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const getDeviceStatusIcon = (inputNumber: number) => {
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === inputNumber)
+    const everPassDevice = everPassDevices.find(d => d.inputChannel === inputNumber)
     const irDevice = irDevices.find(d => d.matrixInput === inputNumber)  // Fixed: use matrixInput for IR devices
-    
-    if (direcTVDevice?.isOnline || fireTVDevice?.isOnline || irDevice?.isActive) {
+
+    if (direcTVDevice?.isOnline || fireTVDevice?.isOnline || everPassDevice?.isOnline || irDevice?.isActive) {
       return <CheckCircle className="w-4 h-4 text-green-500" />
     }
-    
+
     return <AlertCircle className="w-4 h-4 text-slate-500" />
   }
 
@@ -1347,6 +1520,23 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 </span>
                               )}
 
+                              {/* Scheduled Tune Indicator - Show on other inputs */}
+                              {(() => {
+                                const scheduledInputs = getScheduledInputsForGame(game)
+                                const currentLabel = inputs.find(i => i.channelNumber === selectedInput)?.label
+                                const otherInputs = scheduledInputs.filter(s => s.inputLabel !== currentLabel)
+
+                                if (otherInputs.length > 0) {
+                                  return (
+                                    <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-orange-500/20 text-orange-400 border border-orange-400/30 rounded-full px-2 py-0.5">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>Scheduled on {otherInputs.map(s => s.inputLabel).join(', ')}</span>
+                                    </span>
+                                  )
+                                }
+                                return null
+                              })()}
+
                               {/* Time Remaining (for live games) */}
                               {game.isLive && game.timeRemaining && (
                                 <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-red-500/20 text-red-400 border border-red-400/30 rounded-full px-2 py-0.5 animate-pulse">
@@ -1398,7 +1588,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
                           </div>
 
 
-                          <div className="ml-4">
+                          <div className="ml-4 flex flex-col space-y-2">
+                            {/* Watch Button */}
                             <button className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2">
                               <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                               <div className="relative z-10 flex items-center space-x-1 text-green-300 font-medium text-sm">
@@ -1406,6 +1597,46 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 <span>Watch</span>
                               </div>
                             </button>
+
+                            {/* Schedule Button - Only show for future games */}
+                            {!game.isLive && (() => {
+                              const currentScheduleId = isScheduledOnCurrentInput(game)
+                              const gameStart = new Date(game.startTime)
+                              const isFutureGame = gameStart > new Date()
+
+                              if (!isFutureGame) return null
+
+                              if (currentScheduleId) {
+                                // Already scheduled on this input - show Cancel button
+                                return (
+                                  <button
+                                    onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
+                                    className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                    <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>Cancel</span>
+                                    </div>
+                                  </button>
+                                )
+                              } else {
+                                // Not scheduled - show Schedule button
+                                return (
+                                  <button
+                                    onClick={(e) => handleScheduleGame(game, e)}
+                                    disabled={schedulingGame === game.id}
+                                    className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2 disabled:opacity-50"
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                    <div className="relative z-10 flex items-center space-x-1 text-blue-300 font-medium text-sm">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>{schedulingGame === game.id ? '...' : 'Schedule'}</span>
+                                    </div>
+                                  </button>
+                                )
+                              }
+                            })()}
                           </div>
                         </div>
                       </div>

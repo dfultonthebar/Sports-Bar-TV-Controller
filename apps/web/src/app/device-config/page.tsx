@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import DirecTVController from '@/components/DirecTVController'
 import FireTVController from '@/components/FireTVController'
+import EverPassController from '@/components/EverPassController'
 import EnhancedDirecTVController from '@/components/EnhancedDirecTVController'
 import SubscriptionDashboard from '@/components/SubscriptionDashboard'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
@@ -36,7 +37,8 @@ import {
   Tv,
   Star,
   Cable,
-  Lightbulb
+  Lightbulb,
+  PlayCircle
 } from 'lucide-react'
 import DMXControllerManager from '@/components/dmx/DMXControllerManager'
 import { CommercialLightingManager } from '@/components/commercial-lighting'
@@ -233,7 +235,7 @@ export default function DeviceConfigPage() {
 
       {/* Device Tabs */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-11">
+        <TabsList className="grid w-full grid-cols-12">
           <TabsTrigger value="channel-presets" className="flex items-center gap-2">
             <Star className="w-4 h-4" />
             Channel Presets
@@ -249,6 +251,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="firetv" className="flex items-center gap-2">
             <MonitorPlay className="w-4 h-4" />
             Fire TV
+          </TabsTrigger>
+          <TabsTrigger value="everpass" className="flex items-center gap-2">
+            <PlayCircle className="w-4 h-4" />
+            EverPass
           </TabsTrigger>
           <TabsTrigger value="globalcache" className="flex items-center gap-2">
             <Radio className="w-4 h-4" />
@@ -362,6 +368,49 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <FireTVController />
+        </TabsContent>
+
+        <TabsContent value="everpass" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PlayCircle className="w-5 h-5 text-blue-600" />
+                EverPass Configuration
+                {aiEnhancementsEnabled && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Brain className="w-3 h-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {aiEnhancementsEnabled
+                  ? "Configure EverPass streaming devices with intelligent content scheduling and performance monitoring"
+                  : "Configure and control EverPass streaming boxes via HDMI-CEC"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+                <div className="flex items-start gap-3">
+                  <PlayCircle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <p className="text-sm text-blue-200 font-medium">
+                      CEC Control via Pulse-Eight USB Adapter
+                    </p>
+                    <p className="text-sm text-blue-300">
+                      EverPass devices are controlled via HDMI-CEC using Pulse-Eight USB adapters.
+                      Navigate the EverPass on-screen guide, control playback, and manage power.
+                    </p>
+                    <p className="text-xs text-blue-400 mt-2">
+                      Hardware Required: Pulse-Eight CEC USB Adapter connected to the same HDMI chain as EverPass
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <EverPassController />
         </TabsContent>
 
         <TabsContent value="globalcache" className="space-y-4">
