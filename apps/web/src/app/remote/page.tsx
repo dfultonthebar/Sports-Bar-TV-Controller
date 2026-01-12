@@ -164,6 +164,9 @@ export default function BartenderRemotePage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting'>('video')
 
+  // System time state - initialize with null to avoid hydration mismatch
+  const [currentTime, setCurrentTime] = useState<string | null>(null)
+
   // Routing matrix state
   const [routingStatus, setRoutingStatus] = useState<string>('')
   const [loadingRoutes, setLoadingRoutes] = useState(false)
@@ -190,6 +193,25 @@ export default function BartenderRemotePage() {
     } catch (error) {
       logger.error('Failed to fetch lighting settings:', error)
     }
+  }, [])
+
+  // Update system time every second - only runs on client after hydration
+  useEffect(() => {
+    const formatTime = () => new Date().toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    })
+
+    // Set initial time after mount
+    setCurrentTime(formatTime())
+
+    const timeInterval = setInterval(() => {
+      setCurrentTime(formatTime())
+    }, 1000)
+
+    return () => clearInterval(timeInterval)
   }, [])
 
   useEffect(() => {
@@ -703,9 +725,16 @@ export default function BartenderRemotePage() {
       <div className="sports-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-100 mb-2">
-              🏈 Bartender Remote Control
-            </h1>
+            <div className="flex items-center justify-center gap-4 mb-2">
+              <h1 className="text-2xl font-bold text-slate-100">
+                🏈 Bartender Remote Control
+              </h1>
+              <div className="px-3 py-1 bg-slate-800/80 border border-slate-700 rounded-lg">
+                <span className="text-lg font-mono font-semibold text-emerald-400">
+                  {currentTime || '--:--:-- --'}
+                </span>
+              </div>
+            </div>
             <div className="flex items-center justify-center space-x-4">
               {/* Matrix connection status removed - technical info not needed for bartenders */}
               {commandStatus && (
