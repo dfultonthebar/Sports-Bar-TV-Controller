@@ -98,14 +98,22 @@ export default function BartenderRemoteSelector() {
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [hoveredInput, setHoveredInput] = useState<number | null>(null)
+  const [currentChannels, setCurrentChannels] = useState<Record<number, {
+    channelNumber: string
+    channelName: string | null
+    deviceType: string
+    inputLabel: string
+  }>>({})
 
   useEffect(() => {
     loadAllDevices()
     loadChannelPresets()
+    loadCurrentChannels()
 
     // Poll for device status updates every 10 seconds
     const pollInterval = setInterval(() => {
       loadAllDevices()
+      loadCurrentChannels()
     }, 10000)
 
     return () => clearInterval(pollInterval)
@@ -219,10 +227,24 @@ export default function BartenderRemoteSelector() {
     }
   }
 
+  const loadCurrentChannels = async () => {
+    try {
+      const response = await fetch('/api/matrix/current-channels')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.channels) {
+          setCurrentChannels(data.channels)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading current channels:', error)
+    }
+  }
+
   // DEPRECATED: CEC cable box loading removed
   // Cable boxes are now configured as IR devices in the IR Devices admin panel
 
-  const sendChannelCommand = async (channelNumber: string) => {
+  const sendChannelCommand = async (channelNumber: string, presetId?: string) => {
     // For DirecTV, use server-side proxy API (direct fetch blocked by CORS)
     if (selectedDevice && 'receiverType' in selectedDevice) {
       const direcTV = selectedDevice as DirecTVDevice
@@ -241,7 +263,28 @@ export default function BartenderRemoteSelector() {
       return
     }
 
-    // For IR devices, send digits only (no OK/ENTER)
+    // For IR devices (cable boxes), use the channel-presets/tune API
+    // This ensures channel tracking is updated in inputCurrentChannels
+    if (selectedDevice && 'matrixInput' in selectedDevice) {
+      const response = await fetch('/api/channel-presets/tune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelNumber,
+          deviceType: 'cable',
+          cableBoxId: selectedDevice.id,
+          presetId: presetId || 'manual'
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to tune channel')
+      }
+      return
+    }
+
+    // Fallback: send digits directly (for any other device type)
     const digits = channelNumber.split('')
     for (const digit of digits) {
       await sendCommand(digit)
@@ -297,8 +340,10 @@ export default function BartenderRemoteSelector() {
     setCommandStatus(`Tuning to ${preset.name}...`)
 
     try {
-      await sendChannelCommand(preset.channelNumber)
+      await sendChannelCommand(preset.channelNumber, preset.id)
       setCommandStatus(`✓ ${preset.name}`)
+      // Refresh current channels to update the input label
+      await loadCurrentChannels()
       setTimeout(() => setCommandStatus(''), 2000)
     } catch (error) {
       setCommandStatus(`✗ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -453,7 +498,9 @@ export default function BartenderRemoteSelector() {
                           <div className={`font-semibold truncate transition-colors ${
                             isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'
                           }`}>
-                            {input.label}
+                            {currentChannels[input.channelNumber]?.channelName
+                              ? `${input.label} - ${currentChannels[input.channelNumber].channelName}`
+                              : input.label}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -461,7 +508,9 @@ export default function BartenderRemoteSelector() {
                                 ? 'bg-white/20 text-white'
                                 : 'bg-white/10 text-slate-400 group-hover:text-slate-300'
                             }`}>
-                              Ch {input.channelNumber}
+                              {currentChannels[input.channelNumber]?.channelNumber
+                                ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
+                                : `Input ${input.channelNumber}`}
                             </span>
                             <span className="text-xs text-slate-400 group-hover:text-slate-300">
                               {direcTVDevice ? 'DirecTV' :

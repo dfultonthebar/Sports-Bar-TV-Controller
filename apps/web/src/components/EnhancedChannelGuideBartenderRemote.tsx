@@ -1329,7 +1329,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                           <div className="flex-1 overflow-hidden">
                             <div className={`font-medium ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{getInputLabelWithChannel(input)}</div>
                             <div className={`text-xs ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
-                              Ch {input.channelNumber} • {deviceType || input.inputType}
+                              {currentChannels[input.channelNumber]?.channelNumber
+                                ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
+                                : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
                             </div>
                           </div>
                         </div>

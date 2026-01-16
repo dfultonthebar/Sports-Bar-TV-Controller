@@ -68,9 +68,16 @@ curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controll
 - ✅ Application build and deployment
 - ✅ Optional systemd service configuration
 
-**Installation Time:** 5-10 minutes (depending on internet speed)
+**Installation Time:** 15-30 minutes (depending on internet speed and AI model downloads)
 
-**Access your application at:** http://localhost:3000
+**Access your application at:** http://localhost:3001
+
+**After installation, run the setup helper:**
+```bash
+./scripts/post-install-setup.sh
+```
+
+**Deploying to new systems?** See [New System Deployment Checklist](docs/NEW_SYSTEM_DEPLOYMENT_CHECKLIST.md)
 
 ---
 
@@ -84,10 +91,13 @@ curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controll
 - **Network:** Active internet connection for installation
 
 ### Recommended for Production
-- **CPU:** Intel NUC13ANHi5 or equivalent (4+ cores)
-- **RAM:** 16GB+ for optimal AI performance
-- **Disk:** SSD with 50GB+ free space
+- **CPU:** GMKtec NucBox G5 (Intel N97) or Intel NUC13
+- **RAM:** 12GB+ (16GB+ for optimal AI performance)
+- **Disk:** SSD with 256GB+
 - **Network:** Gigabit Ethernet
+- **USB:** 3+ USB 3.2 ports for CEC adapters
+
+**New System Deployment?** See [NEW_SYSTEM_DEPLOYMENT_CHECKLIST.md](docs/NEW_SYSTEM_DEPLOYMENT_CHECKLIST.md)
 
 ### Supported Hardware
 - **Matrix Switchers:** Wolf Pack HDMI matrices
