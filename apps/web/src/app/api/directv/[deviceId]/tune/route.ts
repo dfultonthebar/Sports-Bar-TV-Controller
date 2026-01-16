@@ -92,12 +92,15 @@ async function updateInputCurrentChannel(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+  // Await params (required in Next.js 16+)
+  const { deviceId } = await params
 
   // Validate request body - accepts number or string for sub-channels like "210-1"
   const bodyValidation = await validateRequestBody(
@@ -112,7 +115,6 @@ export async function POST(
   if (!bodyValidation.success) return bodyValidation.error
 
   const { channel: channelInput } = bodyValidation.data
-  const { deviceId } = params
 
   // Parse channel - handle both "210" and "210-1" formats
   let major: number

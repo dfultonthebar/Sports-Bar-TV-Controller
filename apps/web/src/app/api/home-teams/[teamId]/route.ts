@@ -12,14 +12,15 @@ import { validateRequestBody, validatePathParams, isValidationError } from '@/li
 // GET - Get single home team by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
+  { params }: { params: Promise<{ teamId: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_READ);
   if (!rateLimit.allowed) {
     return rateLimit.response;
   }
 
-  const { teamId } = params;
+  // Await params (required in Next.js 16+)
+  const { teamId } = await params;
   logger.api.request('GET', `/api/home-teams/${teamId}`);
 
   try {
@@ -60,14 +61,15 @@ export async function GET(
 // PUT - Update home team
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
+  { params }: { params: Promise<{ teamId: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE);
   if (!rateLimit.allowed) {
     return rateLimit.response;
   }
 
-  const { teamId } = params;
+  // Await params (required in Next.js 16+)
+  const { teamId } = await params;
   logger.api.request('PUT', `/api/home-teams/${teamId}`);
 
   // Validation schema for update (all fields optional except ID)
@@ -159,14 +161,15 @@ export async function PUT(
 // DELETE - Delete home team
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
+  { params }: { params: Promise<{ teamId: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE);
   if (!rateLimit.allowed) {
     return rateLimit.response;
   }
 
-  const { teamId } = params;
+  // Await params (required in Next.js 16+)
+  const { teamId } = await params;
   logger.api.request('DELETE', `/api/home-teams/${teamId}`);
 
   try {

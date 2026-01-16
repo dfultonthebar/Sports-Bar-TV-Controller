@@ -695,3 +695,106 @@ const result = await queryDocs({
 - RAG Quick Start: `/RAG_QUICK_START.md`
 - Soundtrack Integration: `/docs/SOUNDTRACK_INTEGRATION_GUIDE.md`
 - Authentication: `/docs/authentication/AUTHENTICATION_GUIDE.md`
+
+## UI Styling Guide - Location Tab Style (Dark Theme)
+
+When creating new dashboard components, follow the **Location tab** styling patterns. This approach uses bordered divs with dark backgrounds throughout - **no white backgrounds or Card components**.
+
+### Core Principles
+- **NO Card components** - Use bordered divs instead
+- **NO white backgrounds** - All backgrounds are dark slate variants
+- **Consistent borders** - Use `border-slate-700` for sections
+- **Semi-transparent backgrounds** - Use opacity modifiers like `bg-slate-800/50`
+
+### Section Container Pattern
+```tsx
+// Main section wrapper - matching Location tab style
+<div className="rounded-lg border border-slate-700 p-6">
+  <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+    <IconName className="h-5 w-5 text-blue-400" />
+    Section Title
+  </h3>
+  {/* Content */}
+</div>
+```
+
+### Summary Stats Pattern
+```tsx
+// Stats row with dark backgrounds
+<div className="grid grid-cols-4 gap-4 mb-6">
+  <div className="rounded-lg bg-slate-800/50 p-4 flex items-center gap-3">
+    <IconName className="h-8 w-8 text-blue-400" />
+    <div>
+      <p className="text-xs text-slate-400">Label</p>
+      <p className="text-2xl font-bold text-white">Value</p>
+    </div>
+  </div>
+</div>
+```
+
+### Form Inputs Pattern
+```tsx
+// Select dropdowns
+<SelectTrigger className="bg-slate-800 border-slate-600">
+
+// Text inputs
+<Input className="bg-slate-800 border-slate-600" placeholder="..." />
+
+// Buttons
+<Button variant="outline" className="border-slate-600 hover:bg-slate-700">
+```
+
+### Color-Coded Badges
+```tsx
+const COMPONENT_COLORS: Record<string, string> = {
+  'scheduler-service': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'auto-reallocator': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  'distribution-engine': 'bg-green-500/20 text-green-400 border-green-500/30',
+}
+
+const OPERATION_COLORS: Record<string, string> = {
+  'tune': 'bg-green-500/20 text-green-400 border-green-500/30',
+  'recover': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  'check': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  'startup': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+}
+```
+
+### Level Badges with Icons
+- **Error:** `bg-red-500/20 text-red-400` with XCircle icon
+- **Warning:** `bg-amber-500/20 text-amber-400` with AlertTriangle icon
+- **Info:** `bg-blue-500/20 text-blue-400` with Activity icon
+- **Debug:** `bg-slate-500/20 text-slate-400` with Search icon
+
+### Table Styling
+```tsx
+// Table header
+<thead className="bg-slate-800">
+  <tr><th className="text-left p-3 text-slate-300 font-medium">...</th></tr>
+</thead>
+
+// Alternating rows
+<tr className={index % 2 === 0 ? "bg-slate-800/30" : "bg-slate-800/50"}>
+
+// Error/warning row backgrounds
+className="bg-red-950/30"   // Error rows
+className="bg-amber-950/20" // Warning rows
+```
+
+### Filter Labels Pattern
+```tsx
+<div className="space-y-2">
+  <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
+    <Calendar className="h-3 w-3" /> Time Range
+  </label>
+  <Select>
+    <SelectTrigger className="bg-slate-800 border-slate-600">
+      <SelectValue placeholder="Select..." />
+    </SelectTrigger>
+    ...
+  </Select>
+</div>
+```
+
+### Reference Component
+See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implementation of this styling pattern.

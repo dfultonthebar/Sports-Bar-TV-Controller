@@ -3,28 +3,41 @@ import { NextRequest, NextResponse } from 'next/server'
 import { and, asc, desc, eq, or, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { logger } from '@sports-bar/logger'
+import { schedulerLogger } from '@sports-bar/scheduler'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { operationLogger } from '@sports-bar/data'
 
 
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+  const correlationId = schedulerLogger.generateCorrelationId()
+
+  logger.info(`[TUNE API] ##########################################`)
+  logger.info(`[TUNE API] POST /api/channel-presets/tune called [${correlationId}]`)
+
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
+    logger.warn(`[TUNE API] Rate limit exceeded`)
     return rateLimit.response
   }
 
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
-  if (isValidationError(bodyValidation)) return bodyValidation.error
+  if (isValidationError(bodyValidation)) {
+    logger.error(`[TUNE API] Validation failed`)
+    return bodyValidation.error
+  }
 
 
   try {
     const { data: body } = bodyValidation
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId } = body
+    logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -79,25 +92,68 @@ export async function POST(request: NextRequest) {
     let result: any = { success: false }
 
     if (deviceTypeStr === 'directv') {
-      // DirecTV uses IP control
-      if (!deviceIpStr) {
+      // DirecTV uses IP control - need either deviceIp or directTVId to look up the IP
+      let targetIp = deviceIpStr
+      const directTVIdStr = directTVId ? String(directTVId) : undefined
+
+      // If directTVId is provided but no IP, look up the IP from the devices file
+      if (!targetIp && directTVIdStr) {
+        try {
+          const { readFile } = await import('fs/promises')
+          const { join } = await import('path')
+          const direcTvData = JSON.parse(
+            await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
+          )
+          const direcTvDevice = direcTvData.devices?.find((d: any) => d.id === directTVIdStr)
+
+          if (direcTvDevice?.ipAddress) {
+            targetIp = direcTvDevice.ipAddress
+            logger.info(`[TUNE API] Resolved DirecTV ID ${directTVIdStr} to IP ${targetIp}`)
+          }
+        } catch (fileError) {
+          logger.error('[TUNE API] Could not load DirecTV devices to resolve ID:', fileError)
+        }
+      }
+
+      if (!targetIp) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Device IP address required for DirecTV control'
+            error: 'Device IP address required for DirecTV control. Provide deviceIp or directTVId.'
           },
           { status: 400 }
         )
       }
 
       // Send DirecTV channel change command
-      result = await sendDirecTVChannelChange(deviceIpStr, channelNumberStr)
+      result = await sendDirecTVChannelChange(targetIp, channelNumberStr)
     } else if (deviceTypeStr === 'cable') {
       // Cable Box uses IR control via Global Cache
       result = await sendCableBoxChannelChange(channelNumberStr, cableBoxIdStr)
     }
 
     if (result.success) {
+      const durationMs = Date.now() - startTime
+
+      // Log successful tune to scheduler logs
+      await schedulerLogger.log({
+        correlationId,
+        component: 'bartender-remote',
+        operation: 'tune',
+        level: 'info',
+        message: `Tuned to channel ${channelNumberStr} on ${deviceTypeStr}`,
+        channelNumber: channelNumberStr,
+        deviceType: deviceTypeStr as 'cable' | 'directv',
+        deviceId: cableBoxIdStr || deviceIpStr || undefined,
+        success: true,
+        durationMs,
+        metadata: {
+          presetId: presetId || null,
+          cableBoxId: cableBoxIdStr || null,
+          deviceIp: deviceIpStr || null,
+        }
+      })
+
       // Track usage if presetId is provided (but not for manual entries)
       if (presetId && presetId !== 'manual') {
         try {
@@ -150,15 +206,22 @@ export async function POST(request: NextRequest) {
             inputNum = irDevice.matrixInput
             inputLabel = irDevice.matrixInputLabel || irDevice.name
           }
-        } else if (deviceTypeStr === 'directv' && deviceIpStr) {
+        } else if (deviceTypeStr === 'directv') {
           // For DirecTV, try to load from JSON file to get input channel
+          // Can look up by IP address or device ID
+          const directTVIdForTracking = directTVId ? String(directTVId) : undefined
           try {
             const { readFile } = await import('fs/promises')
             const { join } = await import('path')
             const direcTvData = JSON.parse(
               await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
             )
-            const direcTvDevice = direcTvData.devices?.find((d: any) => d.ipAddress === deviceIpStr)
+            // Find device by ID first, then by IP
+            const direcTvDevice = directTVIdForTracking
+              ? direcTvData.devices?.find((d: any) => d.id === directTVIdForTracking)
+              : deviceIpStr
+                ? direcTvData.devices?.find((d: any) => d.ipAddress === deviceIpStr)
+                : null
 
             if (direcTvDevice?.inputChannel) {
               inputNum = direcTvDevice.inputChannel
@@ -248,6 +311,21 @@ export async function POST(request: NextRequest) {
         // Don't fail the request if channel tracking fails
       }
 
+      // Log successful operation for AI learning
+      await operationLogger.logOperation({
+        type: 'channel_change',
+        device: cableBoxIdStr || deviceIpStr || deviceTypeStr,
+        action: `Tuned to channel ${channelNumberStr}`,
+        details: {
+          channelNumber: channelNumberStr,
+          deviceType: deviceTypeStr,
+          presetId: presetId || null,
+          channel: result.cableBoxName || 'Unknown',
+        },
+        user: 'bartender',
+        success: true,
+      })
+
       return NextResponse.json({
         success: true,
         message: `Channel changed to ${channelNumber}`,
@@ -255,9 +333,30 @@ export async function POST(request: NextRequest) {
         channelNumber
       })
     } else {
+      const durationMs = Date.now() - startTime
+
+      // Log failed tune to scheduler logs
+      await schedulerLogger.log({
+        correlationId,
+        component: 'bartender-remote',
+        operation: 'tune',
+        level: 'error',
+        message: `Failed to tune channel ${channelNumberStr} on ${deviceTypeStr}: ${result.error}`,
+        channelNumber: channelNumberStr,
+        deviceType: deviceTypeStr as 'cable' | 'directv',
+        deviceId: cableBoxIdStr || deviceIpStr || undefined,
+        success: false,
+        durationMs,
+        errorMessage: result.error || 'Failed to change channel',
+        metadata: {
+          presetId: presetId || null,
+          details: result.details,
+        }
+      })
+
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: result.error || 'Failed to change channel',
           details: result.details
         },
@@ -265,10 +364,25 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
+    const durationMs = Date.now() - startTime
+
+    // Log exception to scheduler logs
+    await schedulerLogger.log({
+      correlationId,
+      component: 'bartender-remote',
+      operation: 'tune',
+      level: 'error',
+      message: `Tune exception: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      success: false,
+      durationMs,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+    })
+
     logger.error('Error tuning channel:', error)
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Failed to tune channel',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
@@ -430,7 +544,9 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
       }
     })
 
+    logger.info(`[CHANNEL TUNE] ========================================`)
     logger.info(`[CHANNEL TUNE] Tuning ${targetDevice.name} to channel ${channelNumber} via IR`)
+    logger.info(`[CHANNEL TUNE] Channel number type: ${typeof channelNumber}, value: "${channelNumber}", length: ${channelNumber.length}`)
     logger.info(`[CHANNEL TUNE] Sending ${channelNumber.length} digits: ${channelNumber.split('').join(', ')}`)
 
     // Send each digit via IR

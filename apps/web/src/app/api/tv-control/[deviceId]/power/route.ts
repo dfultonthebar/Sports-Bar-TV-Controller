@@ -6,6 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { operationLogger } from '@sports-bar/data'
 
 /**
  * TV Power Control API
@@ -16,19 +17,21 @@ import { eq } from 'drizzle-orm'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
 
+  // Await params (required in Next.js 16+)
+  const { deviceId } = await params
+
   // Validate request body
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.tvPowerControl)
   if (!bodyValidation.success) return bodyValidation.error
 
   const { action } = bodyValidation.data
-  const { deviceId } = params
 
   try {
     logger.info(`[TV-CONTROL] Power ${action} for device ${deviceId}`)
@@ -92,6 +95,20 @@ export async function POST(
         .where(eq(schema.networkTVDevices.id, deviceId))
 
       logger.info(`[TV-CONTROL] Power ${action} successful for ${device.brand} TV ${deviceId}`)
+
+      // Log operation for AI learning
+      await operationLogger.logOperation({
+        type: 'power_control',
+        device: `${device.brand} TV (${deviceId})`,
+        action: `Power ${action}`,
+        details: {
+          deviceId,
+          brand: device.brand,
+          action,
+        },
+        user: 'bartender',
+        success: true,
+      })
     }
 
     return NextResponse.json({

@@ -117,3 +117,12 @@ export { autoReallocatorWorker } from './auto-reallocator-worker'
 
 // Scheduler Service - Background schedule executor
 export { schedulerService } from './scheduler-service'
+
+// Scheduler Logger - Centralized logging with database persistence
+export {
+  schedulerLogger,
+  type SchedulerComponent,
+  type SchedulerOperation,
+  type LogLevel,
+  type SchedulerLogEntry
+} from './scheduler-logger'

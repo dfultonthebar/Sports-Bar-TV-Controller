@@ -6,6 +6,7 @@
 
 import { db, schema, eq, and, lte, gte, or, inArray } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { schedulerLogger } from './scheduler-logger'
 
 interface ReallocationStats {
   allocationsChecked: number;
@@ -35,6 +36,9 @@ class AutoReallocator {
    * Main reallocation check - scans for ended games and frees allocations
    */
   async performReallocationCheck(): Promise<ReallocationStats> {
+    const correlationId = schedulerLogger.generateCorrelationId();
+    const startTime = Date.now();
+
     const stats: ReallocationStats = {
       allocationsChecked: 0,
       allocationsCompleted: 0,
@@ -44,6 +48,13 @@ class AutoReallocator {
     };
 
     try {
+      await schedulerLogger.info(
+        'auto-reallocator',
+        'check',
+        'Starting reallocation check',
+        correlationId
+      );
+
       logger.info('[AUTO-REALLOCATOR] Starting reallocation check');
 
       // Step 1: Find all active allocations
@@ -74,6 +85,7 @@ class AutoReallocator {
         const shouldEnd = this.shouldEndAllocation(game, allocation, now);
 
         if (shouldEnd.shouldEnd) {
+          const endStartTime = Date.now();
           try {
             await this.endAllocation(allocation.id, inputSource.id, game, inputSource.name, shouldEnd.reason);
             stats.allocationsCompleted++;
@@ -91,10 +103,39 @@ class AutoReallocator {
               success: true,
             });
 
+            await schedulerLogger.info(
+              'auto-reallocator',
+              'reallocate',
+              `Ended allocation for ${game.awayTeamName} @ ${game.homeTeamName}`,
+              correlationId,
+              {
+                gameId: game.id,
+                inputSourceId: inputSource.id,
+                allocationId: allocation.id,
+                durationMs: Date.now() - endStartTime,
+                metadata: { reason: shouldEnd.reason },
+              }
+            );
+
             logger.info(
               `[AUTO-REALLOCATOR] Ended allocation ${allocation.id} for ${game.awayTeamName} @ ${game.homeTeamName} (${shouldEnd.reason})`
             );
           } catch (error: any) {
+            await schedulerLogger.error(
+              'auto-reallocator',
+              'reallocate',
+              `Error ending allocation for ${game.awayTeamName} @ ${game.homeTeamName}`,
+              correlationId,
+              error,
+              {
+                gameId: game.id,
+                inputSourceId: inputSource.id,
+                allocationId: allocation.id,
+                durationMs: Date.now() - endStartTime,
+                metadata: { reason: shouldEnd.reason },
+              }
+            );
+
             logger.error(`[AUTO-REALLOCATOR] Error ending allocation ${allocation.id}:`, { error });
             stats.errors++;
 
@@ -114,8 +155,19 @@ class AutoReallocator {
       }
 
       // Step 3: Check for pending allocations that can now be activated
-      const pendingCount = await this.activatePendingAllocations();
+      const pendingCount = await this.activatePendingAllocations(correlationId);
       stats.pendingAllocationsTriggered = pendingCount;
+
+      await schedulerLogger.info(
+        'auto-reallocator',
+        'check',
+        `Reallocation check complete: ${stats.allocationsCompleted} ended, ${stats.inputSourcesFreed} freed, ${stats.pendingAllocationsTriggered} pending activated`,
+        correlationId,
+        {
+          durationMs: Date.now() - startTime,
+          metadata: stats,
+        }
+      );
 
       logger.info(
         `[AUTO-REALLOCATOR] Reallocation check complete: ${stats.allocationsCompleted} ended, ${stats.inputSourcesFreed} freed, ${stats.pendingAllocationsTriggered} pending activated`
@@ -123,6 +175,15 @@ class AutoReallocator {
 
       return stats;
     } catch (error: any) {
+      await schedulerLogger.error(
+        'auto-reallocator',
+        'check',
+        'Error during reallocation check',
+        correlationId,
+        error,
+        { durationMs: Date.now() - startTime }
+      );
+
       logger.error('[AUTO-REALLOCATOR] Error during reallocation check:', { error });
       stats.errors++;
       return stats;
@@ -172,7 +233,7 @@ class AutoReallocator {
   private async endAllocation(
     allocationId: string,
     inputSourceId: string,
-    game: any,
+    _game: any, // kept for signature compatibility
     inputSourceName: string,
     reason: string
   ): Promise<void> {
@@ -204,7 +265,9 @@ class AutoReallocator {
   /**
    * Activate pending allocations that were waiting for inputs to free
    */
-  private async activatePendingAllocations(): Promise<number> {
+  private async activatePendingAllocations(correlationId?: string): Promise<number> {
+    const localCorrelationId = correlationId || schedulerLogger.generateCorrelationId();
+
     try {
       // Get all pending allocations
       const pendingAllocations = await db
@@ -229,6 +292,13 @@ class AutoReallocator {
       let activatedCount = 0;
 
       for (const { allocation, game } of pendingAllocations) {
+        // Skip bartender-scheduled allocations - they are handled by the Scheduler
+        // which sends the actual tune command before marking as active
+        if (allocation.scheduledBy === 'bartender') {
+          logger.debug(`[AUTO-REALLOCATOR] Skipping bartender-scheduled allocation ${allocation.id} - handled by Scheduler`);
+          continue;
+        }
+
         // Check if game should start now
         const shouldActivate =
           now >= game.scheduledStart && // Past game's actual start time (not allocation time)
@@ -263,6 +333,19 @@ class AutoReallocator {
               .where(eq(schema.inputSources.id, allocation.inputSourceId));
 
             activatedCount++;
+
+            await schedulerLogger.info(
+              'auto-reallocator',
+              'allocate',
+              `Activated pending allocation for ${game.awayTeamName} @ ${game.homeTeamName}`,
+              localCorrelationId,
+              {
+                gameId: game.id,
+                inputSourceId: allocation.inputSourceId,
+                allocationId: allocation.id,
+              }
+            );
+
             logger.info(
               `[AUTO-REALLOCATOR] Activated pending allocation ${allocation.id} for ${game.awayTeamName} @ ${game.homeTeamName}`
             );
@@ -272,6 +355,14 @@ class AutoReallocator {
 
       return activatedCount;
     } catch (error: any) {
+      await schedulerLogger.error(
+        'auto-reallocator',
+        'allocate',
+        'Error activating pending allocations',
+        localCorrelationId,
+        error
+      );
+
       logger.error('[AUTO-REALLOCATOR] Error activating pending allocations:', { error });
       return 0;
     }

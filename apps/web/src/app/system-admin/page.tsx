@@ -21,7 +21,9 @@ import {
   Power,
   ListTodo,
   LayoutGrid,
-  MapPin
+  MapPin,
+  Calendar,
+  BarChart3,
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,6 +38,8 @@ import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 import LocationSettings from '@/components/LocationSettings'
+import { SchedulerLogsDashboard } from '@/components/SchedulerLogsDashboard'
+import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 
 import { logger } from '@sports-bar/logger'
 interface Backup {
@@ -394,7 +398,7 @@ export default function SystemAdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="power" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
@@ -410,6 +414,10 @@ export default function SystemAdminPage() {
             <TabsTrigger value="logs" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <FileText className="w-4 h-4 mr-2" />
               Logs
+            </TabsTrigger>
+            <TabsTrigger value="scheduler" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Calendar className="w-4 h-4 mr-2" />
+              Scheduler
             </TabsTrigger>
             <TabsTrigger value="backup" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <HardDrive className="w-4 h-4 mr-2" />
@@ -502,7 +510,19 @@ export default function SystemAdminPage() {
 
           {/* Logs Tab */}
           <TabsContent value="logs" className="space-y-6">
-            <LogAnalyticsDashboard />
+            <SystemLogsViewer />
+            <div className="border-t border-slate-700 pt-6">
+              <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-blue-400" />
+                Log Analytics
+              </h3>
+              <LogAnalyticsDashboard />
+            </div>
+          </TabsContent>
+
+          {/* Scheduler Tab */}
+          <TabsContent value="scheduler" className="space-y-6">
+            <SchedulerLogsDashboard />
           </TabsContent>
 
           {/* Backup/Restore Tab */}

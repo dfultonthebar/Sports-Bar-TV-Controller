@@ -1,9 +1,9 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { logger } from '@sports-bar/logger'
-import { 
+import {
   Upload,
   FileImage,
   Brain,
@@ -13,8 +13,13 @@ import {
   CheckCircle,
   AlertCircle,
   Zap,
-  Tv
+  Tv,
+  Edit3,
+  Eye,
+  Settings,
+  Layers
 } from 'lucide-react'
+import { LayoutEditor, LayoutSwitcher, LayoutManager, type LayoutInfo, type LayoutSummary } from './layout'
 // Removed next/image import - using regular img tag to avoid validation issues with uploaded files
 
 interface TVLayoutZone {
@@ -25,6 +30,7 @@ interface TVLayoutZone {
   width: number
   height: number
   label?: string
+  confidence?: number
 }
 
 interface TVLayout {
@@ -44,35 +50,150 @@ interface MatrixInput {
   isActive: boolean
 }
 
+interface MatrixOutput {
+  channelNumber: number
+  label: string
+}
+
 export default function LayoutConfiguration() {
+  // Multi-layout state
+  const [allLayouts, setAllLayouts] = useState<LayoutInfo[]>([])
+  const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null)
+  const [showLayoutManager, setShowLayoutManager] = useState(false)
+
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
-    zones: [] as any[]
+    zones: [] as TVLayoutZone[]
   })
   const [inputs, setInputs] = useState<MatrixInput[]>([])
+  const [outputs, setOutputs] = useState<MatrixOutput[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string>('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string>('')
   const [aiAnalysis, setAIAnalysis] = useState<any>(null)
   const [aiInputMapping, setAIInputMapping] = useState<{[key: number]: string}>({})
+  const [isEditMode, setIsEditMode] = useState(false)
+
+  // Load all layouts on mount
+  const loadAllLayouts = useCallback(async () => {
+    try {
+      const response = await fetch('/api/layouts')
+      if (response.ok) {
+        const data = await response.json()
+        setAllLayouts(data.layouts || [])
+
+        // If we have layouts but no current selection, select the default or first
+        if (data.layouts?.length > 0 && !currentLayoutId) {
+          const defaultLayout = data.layouts.find((l: LayoutInfo) => l.isDefault) || data.layouts[0]
+          setCurrentLayoutId(defaultLayout.id)
+          setTVLayout({
+            id: defaultLayout.id,
+            name: defaultLayout.name,
+            imageUrl: defaultLayout.imageUrl || undefined,
+            originalFileUrl: defaultLayout.originalFileUrl || undefined,
+            zones: defaultLayout.zones || []
+          })
+        }
+      }
+    } catch (error) {
+      logger.error('[LayoutConfig] Error loading layouts:', error)
+    }
+  }, [currentLayoutId])
 
   useEffect(() => {
+    loadAllLayouts()
     loadTVLayout()
     loadMatrixInputs()
+    loadMatrixOutputs()
   }, [])
+
+  // Handle layout switch
+  const handleLayoutChange = useCallback(async (layoutId: string) => {
+    try {
+      const response = await fetch(`/api/layouts/${layoutId}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.layout) {
+          setCurrentLayoutId(layoutId)
+          setTVLayout({
+            id: data.layout.id,
+            name: data.layout.name,
+            imageUrl: data.layout.imageUrl || undefined,
+            originalFileUrl: data.layout.originalFileUrl || undefined,
+            zones: data.layout.zones || []
+          })
+          setAIAnalysis(null)
+          setAIInputMapping({})
+        }
+      }
+    } catch (error) {
+      logger.error('[LayoutConfig] Error switching layout:', error)
+    }
+  }, [])
+
+  // Get layout summaries for the switcher
+  const layoutSummaries: LayoutSummary[] = allLayouts.map(layout => ({
+    id: layout.id,
+    name: layout.name,
+    description: layout.description || undefined,
+    isDefault: layout.isDefault,
+    zoneCount: layout.zones?.length || 0
+  }))
 
   const loadTVLayout = async () => {
     try {
+      // First try to load from new API
+      const layoutsResponse = await fetch('/api/layouts')
+      if (layoutsResponse.ok) {
+        const layoutsData = await layoutsResponse.json()
+        if (layoutsData.layouts?.length > 0) {
+          // We have layouts in the new system
+          return
+        }
+      }
+
+      // Fall back to legacy API if no new layouts exist
       const response = await fetch('/api/bartender/layout')
       if (response.ok) {
         const data = await response.json()
         if (data.layout) {
           setTVLayout(data.layout)
+
+          // Migrate to new system if layout exists
+          if (data.layout.imageUrl || data.layout.zones?.length > 0) {
+            await migrateToNewLayoutSystem(data.layout)
+          }
         }
       }
     } catch (error) {
       logger.error('Error loading TV layout:', error)
+    }
+  }
+
+  // Migrate existing layout to new multi-layout system
+  const migrateToNewLayoutSystem = async (layout: TVLayout) => {
+    try {
+      const response = await fetch('/api/layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: layout.name || 'Main Bar',
+          imageUrl: layout.imageUrl,
+          originalFileUrl: layout.originalFileUrl,
+          zones: layout.zones || [],
+          isDefault: true
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentLayoutId(data.layout.id)
+        await loadAllLayouts()
+        logger.info('[LayoutConfig] Migrated existing layout to new system')
+      }
+    } catch (error) {
+      logger.error('[LayoutConfig] Error migrating layout:', error)
     }
   }
 
@@ -83,7 +204,7 @@ export default function LayoutConfiguration() {
         const data = await response.json()
         if (data.configs?.length > 0) {
           const activeConfig = data.configs[0]
-          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) => 
+          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) =>
             input.isActive
           ) || []
           setInputs(matrixInputs)
@@ -91,6 +212,25 @@ export default function LayoutConfiguration() {
       }
     } catch (error) {
       logger.error('Error loading matrix inputs:', error)
+    }
+  }
+
+  const loadMatrixOutputs = async () => {
+    try {
+      const response = await fetch('/api/matrix/config')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.configs?.length > 0) {
+          const activeConfig = data.configs[0]
+          const matrixOutputs = activeConfig.outputs?.map((output: any) => ({
+            channelNumber: output.channelNumber,
+            label: output.label || `Output ${output.channelNumber}`
+          })) || []
+          setOutputs(matrixOutputs)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading matrix outputs:', error)
     }
   }
 
@@ -294,18 +434,124 @@ export default function LayoutConfiguration() {
     }
   }
 
+  const handleEditSave = async (updatedLayout: TVLayout) => {
+    try {
+      // Save to new multi-layout API if we have a currentLayoutId
+      if (currentLayoutId) {
+        const response = await fetch(`/api/layouts/${currentLayoutId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updatedLayout.name,
+            imageUrl: updatedLayout.imageUrl,
+            originalFileUrl: updatedLayout.originalFileUrl,
+            zones: updatedLayout.zones
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to save layout')
+        }
+
+        await loadAllLayouts()
+      } else {
+        // Fall back to legacy API
+        const response = await fetch('/api/bartender/layout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ layout: updatedLayout })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to save layout')
+        }
+      }
+
+      setTVLayout(updatedLayout)
+      setIsEditMode(false)
+      setUploadStatus('Layout saved successfully!')
+      setTimeout(() => setUploadStatus(''), 3000)
+    } catch (error) {
+      logger.error('Error saving layout:', error)
+      throw error
+    }
+  }
+
+  // Handle creating a new layout
+  const handleCreateNewLayout = () => {
+    setShowLayoutManager(true)
+  }
+
+  // Handle layout selection from manager
+  const handleLayoutSelectFromManager = (layout: LayoutInfo) => {
+    handleLayoutChange(layout.id)
+    setShowLayoutManager(false)
+  }
+
+  // Render edit mode
+  if (isEditMode) {
+    return (
+      <div className="h-[800px]">
+        <LayoutEditor
+          layout={tvLayout}
+          onSave={handleEditSave}
+          onCancel={() => setIsEditMode(false)}
+          matrixOutputs={outputs}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="bg-slate-800 or bg-slate-900 rounded-2xl shadow-lg border border-slate-200">
+    <div className="bg-slate-800 rounded-2xl shadow-lg border border-slate-700">
       <div className="p-6">
-        <div className="flex items-center space-x-3 mb-6">
-          <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-xl p-2.5 shadow-lg">
-            <FileImage className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-xl p-2.5 shadow-lg">
+              <FileImage className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Layout Configuration</h2>
+              <p className="text-sm text-slate-400">Upload floor plan and configure TV zones with AI assistance</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Layout Configuration</h2>
-            <p className="text-sm text-slate-500">Upload floor plan and configure TV zones with AI assistance</p>
+
+          {/* Layout Switcher and Manager Toggle */}
+          <div className="flex items-center gap-3">
+            {allLayouts.length > 0 && (
+              <LayoutSwitcher
+                layouts={layoutSummaries}
+                currentLayoutId={currentLayoutId}
+                onLayoutChange={handleLayoutChange}
+                onCreateNew={handleCreateNewLayout}
+                showCreateButton={true}
+              />
+            )}
+            <button
+              onClick={() => setShowLayoutManager(!showLayoutManager)}
+              className={`p-2 rounded-lg transition-colors ${
+                showLayoutManager
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              title="Manage Layouts"
+            >
+              <Layers className="w-5 h-5" />
+            </button>
           </div>
         </div>
+
+        {/* Layout Manager Panel */}
+        {showLayoutManager && (
+          <div className="mb-6">
+            <LayoutManager
+              layouts={allLayouts}
+              onLayoutsChange={loadAllLayouts}
+              onLayoutSelect={handleLayoutSelectFromManager}
+              selectedLayoutId={currentLayoutId}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Upload & Configuration Panel */}
@@ -389,9 +635,19 @@ export default function LayoutConfiguration() {
                     </div>
                   )}
                 </div>
+
+                {/* Edit Zones Button */}
+                <button
+                  onClick={() => setIsEditMode(true)}
+                  className="mt-3 w-full px-3 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-all flex items-center justify-center space-x-2"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Edit Zones</span>
+                </button>
+
                 <button
                   onClick={clearLayout}
-                  className="mt-3 w-full px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-all flex items-center justify-center space-x-2"
+                  className="mt-2 w-full px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-all flex items-center justify-center space-x-2"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Clear Layout</span>
@@ -432,7 +688,7 @@ export default function LayoutConfiguration() {
                 </h3>
                 <div className="space-y-2 text-sm">
                   {Object.entries(aiInputMapping).map(([outputNum, inputLabel]) => (
-                    <div key={outputNum} className="flex items-center justify-between bg-slate-800 or bg-slate-900 rounded-lg p-2">
+                    <div key={outputNum} className="flex items-center justify-between bg-white rounded-lg p-2">
                       <span className="text-slate-600">Output {outputNum}:</span>
                       <span className="font-medium text-purple-700">{inputLabel}</span>
                     </div>
@@ -458,7 +714,7 @@ export default function LayoutConfiguration() {
               </div>
 
               {tvLayout.imageUrl ? (
-                <div className="relative w-full h-96 border border-slate-200 rounded-lg overflow-hidden bg-slate-800 or bg-slate-900">
+                <div className="relative w-full h-96 border border-slate-200 rounded-lg overflow-hidden bg-slate-100">
                   {(tvLayout.imageUrl.toLowerCase().endsWith('.pdf') && tvLayout.fileType === 'application/pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 p-6">
                       <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
@@ -528,7 +784,7 @@ export default function LayoutConfiguration() {
                     {tvLayout.zones.map((zone) => (
                       <div
                         key={zone.id}
-                        className="p-2 rounded border border-slate-200 bg-slate-800 or bg-slate-900 text-xs"
+                        className="p-2 rounded border border-slate-200 bg-white text-xs"
                       >
                         <div className="font-medium text-slate-700">TV {zone.outputNumber}</div>
                         <div className="text-slate-500 truncate" title={zone.label}>{zone.label}</div>

@@ -1551,6 +1551,9 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   // Status
   status: text('status').notNull().default('pending'), // 'pending', 'active', 'completed', 'preempted', 'cancelled'
 
+  // Source tracking
+  scheduledBy: text('scheduled_by').default('ai'), // 'bartender', 'ai' - who created this schedule
+
   // Preemption Tracking
   preemptedByAllocationId: text('preempted_by_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
   preemptedReason: text('preempted_reason'),
@@ -2166,4 +2169,110 @@ export const commercialLightingLogs = sqliteTable('CommercialLightingLog', {
   systemIdIdx: index('CommercialLightingLog_systemId_idx').on(table.systemId),
   actionTypeIdx: index('CommercialLightingLog_actionType_idx').on(table.actionType),
   executedAtIdx: index('CommercialLightingLog_executedAt_idx').on(table.executedAt),
+}))
+
+// ============================================================================
+// BARTENDER LAYOUT TABLES (Multi-layout support for different bar areas)
+// ============================================================================
+
+// Bartender Layout (floor plans with TV zone configurations)
+export const bartenderLayouts = sqliteTable('BartenderLayout', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  description: text('description'),
+  
+  // Floor plan image
+  imageUrl: text('imageUrl'),
+  originalFileUrl: text('originalFileUrl'),
+  
+  // TV zone configuration (JSON array of Zone objects)
+  // Each zone: { id, outputNumber, x, y, width, height, label, confidence }
+  zones: text('zones').notNull().default('[]'),
+  
+  // Layout settings
+  isDefault: integer('isDefault', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  
+  // Metadata
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  isDefaultIdx: index('BartenderLayout_isDefault_idx').on(table.isDefault),
+  isActiveIdx: index('BartenderLayout_isActive_idx').on(table.isActive),
+  displayOrderIdx: index('BartenderLayout_displayOrder_idx').on(table.displayOrder),
+}))
+
+// ============================================================================
+// SCHEDULER LOGGING TABLES (Comprehensive scheduler operation tracking)
+// ============================================================================
+
+// Scheduler Log - Track all scheduler operations with correlation IDs
+export const schedulerLogs = sqliteTable('SchedulerLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  correlationId: text('correlationId').notNull(), // Groups related operations
+
+  // Operation classification
+  component: text('component').notNull(), // 'scheduler-service', 'auto-reallocator', 'distribution-engine', etc.
+  operation: text('operation').notNull(), // 'tune', 'allocate', 'reallocate', 'recover', 'distribute'
+  level: text('level').notNull(), // 'debug', 'info', 'warn', 'error'
+  message: text('message').notNull(),
+
+  // Context references
+  gameId: text('gameId'),
+  inputSourceId: text('inputSourceId'),
+  allocationId: text('allocationId'),
+  channelNumber: text('channelNumber'),
+  deviceType: text('deviceType'), // 'cable', 'directv', 'firetv'
+  deviceId: text('deviceId'),
+
+  // Outcome tracking
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  durationMs: integer('durationMs'), // Operation duration in milliseconds
+  errorMessage: text('errorMessage'),
+  errorStack: text('errorStack'),
+
+  // Additional metadata as JSON
+  metadata: text('metadata'),
+
+  createdAt: integer('createdAt').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  correlationIdIdx: index('SchedulerLog_correlationId_idx').on(table.correlationId),
+  componentIdx: index('SchedulerLog_component_idx').on(table.component),
+  operationIdx: index('SchedulerLog_operation_idx').on(table.operation),
+  levelIdx: index('SchedulerLog_level_idx').on(table.level),
+  createdAtIdx: index('SchedulerLog_createdAt_idx').on(table.createdAt),
+  successIdx: index('SchedulerLog_success_idx').on(table.success),
+  gameIdIdx: index('SchedulerLog_gameId_idx').on(table.gameId),
+}))
+
+// Scheduler Metrics - Aggregated statistics for reporting
+export const schedulerMetrics = sqliteTable('SchedulerMetrics', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Metric classification
+  metricType: text('metricType').notNull(), // 'tune', 'allocation', 'reallocation', 'distribution'
+  period: text('period').notNull(), // 'hourly', 'daily'
+  periodStart: integer('periodStart').notNull(), // Unix timestamp of period start
+
+  // Counters
+  successCount: integer('successCount').notNull().default(0),
+  failureCount: integer('failureCount').notNull().default(0),
+  totalCount: integer('totalCount').notNull().default(0),
+
+  // Timing stats (in milliseconds)
+  totalDurationMs: integer('totalDurationMs').notNull().default(0),
+  minDurationMs: integer('minDurationMs'),
+  maxDurationMs: integer('maxDurationMs'),
+  avgDurationMs: integer('avgDurationMs'),
+
+  // Component breakdown (JSON)
+  componentBreakdown: text('componentBreakdown'), // {"scheduler-service": 10, "auto-reallocator": 5}
+
+  createdAt: integer('createdAt').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updatedAt').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  metricTypeIdx: index('SchedulerMetrics_metricType_idx').on(table.metricType),
+  periodStartIdx: index('SchedulerMetrics_periodStart_idx').on(table.periodStart),
+  metricTypePeriodStartIdx: uniqueIndex('SchedulerMetrics_type_period_start_idx').on(table.metricType, table.period, table.periodStart),
 }))
