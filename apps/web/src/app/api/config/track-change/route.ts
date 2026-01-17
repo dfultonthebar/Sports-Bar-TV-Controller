@@ -14,10 +14,10 @@ export async function POST(request: NextRequest) {
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.object({
-    type: z.string(),
+    type: z.enum(['matrix', 'audio', 'ir', 'tv', 'directv', 'general']),
     file: z.string(),
     changes: z.unknown().optional(),
-    action: z.string().optional()
+    action: z.enum(['created', 'modified', 'deleted']).optional()
   }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 

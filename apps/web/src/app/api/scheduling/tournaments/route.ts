@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
               gamesScheduled,
               gamesInProgress,
               gamesCompleted,
-              updated_at: sql`(strftime('%s', 'now'))`,
+              updatedAt: sql`(strftime('%s', 'now'))`,
             })
             .where(eq(schema.tournamentBrackets.id, bracket.id))
         }
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
       tournamentEnd: data.tournamentEnd || null,
       status: data.status || 'upcoming',
       lastSynced: sql`(strftime('%s', 'now'))`,
-      updated_at: sql`(strftime('%s', 'now'))`,
+      updatedAt: sql`(strftime('%s', 'now'))`,
     }
 
     let bracket
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
         .insert(schema.tournamentBrackets)
         .values({
           ...bracketData,
-          created_at: sql`(strftime('%s', 'now'))`,
+          createdAt: sql`(strftime('%s', 'now'))`,
         })
         .returning()
 

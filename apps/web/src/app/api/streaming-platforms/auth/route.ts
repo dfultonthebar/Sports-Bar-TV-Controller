@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     
     if (!authResult.success) {
       return NextResponse.json(
-        { success: false, error: authResult.response || "Unauthorized" || 'Authentication failed' },
+        { success: false, error: authResult.error || 'Authentication failed' },
         { status: 401 }
       )
     }
@@ -214,6 +214,12 @@ export async function DELETE(request: NextRequest) {
   if (!rateLimit.allowed) {
     return rateLimit.response
   }
+
+  // Input validation for DELETE request
+  const bodyValidation = await validateRequestBody(request, z.object({
+    platformId: z.string()
+  }))
+  if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {
     const { platformId } = bodyValidation.data

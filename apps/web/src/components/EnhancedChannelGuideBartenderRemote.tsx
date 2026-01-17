@@ -118,6 +118,7 @@ interface ChannelInfo {
   appCommand?: string
   packageName?: string
   deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
+  _presetMapped?: boolean  // Flag to indicate this was mapped from a preset
 }
 
 interface GameListing {
@@ -317,7 +318,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             gameMap.set(`${game.awayTeam}-${game.homeTeam}`, game)
           })
           setLiveGameData(gameMap)
-          logger.debug('[LIVE-GAME-DATA] Loaded live data for', data.games.length, 'games')
+          logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${data.games.length} games`)
         }
       }
     } catch (error) {
@@ -332,7 +333,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         const data = await response.json()
         if (data.success && data.schedules) {
           setScheduledAllocations(data.schedules)
-          logger.debug('[SCHEDULED-ALLOCATIONS] Loaded', data.schedules.length, 'pending schedules')
+          logger.debug(`[SCHEDULED-ALLOCATIONS] Loaded ${data.schedules.length} pending schedules`)
         }
       }
     } catch (error) {
@@ -698,7 +699,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const loadFireTVGuideData = async (): Promise<DeviceGuideData> => {
     // Find the Fire TV device for this input
     const fireTVDevice = fireTVDevices.find(d => d.inputChannel === selectedInput)
-    const deviceId = fireTVDevice?.deviceId || fireTVDevice?.id
+    const deviceId = fireTVDevice?.id
 
     // Use unified channel guide API with streaming device type
     // This fetches games from services the device is logged into (ESPN+, Peacock, NFHS, etc.)
@@ -789,7 +790,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     if (presetDeviceType && deviceType !== 'streaming') {
       // Filter and map - only show channels that have a preset configured
       filtered = filtered
-        .map(prog => {
+        .map((prog): GameListing | null => {
           // Find matching preset by channel name or number
           const matchingPreset = channelPresets.find(preset =>
             preset.deviceType === presetDeviceType &&
@@ -1692,7 +1693,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       {/* Remote Control Popup */}
       {showRemotePopup && selectedDevice && selectedInput && (
         <RemoteControlPopup
-          device={selectedDevice}
+          device={selectedDevice as any}
           deviceType={getDeviceTypeForInput(selectedInput)!}
           onClose={() => setShowRemotePopup(false)}
         />

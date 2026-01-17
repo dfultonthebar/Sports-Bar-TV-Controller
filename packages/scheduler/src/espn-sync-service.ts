@@ -245,6 +245,8 @@ class ESPNSyncService {
 
   /**
    * Link ESPN teams to our home teams table
+   * Note: This requires homeTeams to have an espnTeamId column (not yet implemented)
+   * For now, we match by team name
    */
   async linkTeamsToHomeTeams(): Promise<void> {
     logger.info('[ESPN SYNC] Linking ESPN teams to home teams...');
@@ -259,17 +261,18 @@ class ESPNSyncService {
       let linkedCount = 0;
 
       for (const game of unlinkedGames) {
-        // Try to find matching home teams by ESPN ID
+        // Try to find matching home teams by team name
+        // TODO: Add espnTeamId column to homeTeams schema for better matching
         const homeTeam = await db
           .select()
           .from(schema.homeTeams)
-          .where(eq(schema.homeTeams.espnTeamId, game.homeTeamEspnId))
+          .where(eq(schema.homeTeams.teamName, game.homeTeamName || ''))
           .limit(1);
 
         const awayTeam = await db
           .select()
           .from(schema.homeTeams)
-          .where(eq(schema.homeTeams.espnTeamId, game.awayTeamEspnId))
+          .where(eq(schema.homeTeams.teamName, game.awayTeamName || ''))
           .limit(1);
 
         if (homeTeam.length > 0 || awayTeam.length > 0) {
@@ -377,8 +380,8 @@ class ESPNSyncService {
           )
         );
 
-      logger.info(`[ESPN SYNC] Cleaned up ${deleted.rowsAffected} old games`);
-      return deleted.rowsAffected || 0;
+      logger.info(`[ESPN SYNC] Cleaned up ${deleted.changes} old games`);
+      return deleted.changes || 0;
     } catch (error: any) {
       logger.error('[ESPN SYNC] Error cleaning up old games:', { error });
       return 0;

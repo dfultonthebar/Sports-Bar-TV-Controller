@@ -10,7 +10,7 @@
  */
 
 import { logger } from '@sports-bar/logger'
-import { espnScoreboardAPI, ESPNGame } from '@sports-bar/sports-apis'
+import { espnScoreboardAPI, ESPNScoreboardGame as ESPNGame } from '@sports-bar/sports-apis'
 import { db, schema, eq } from '@sports-bar/database'
 
 // Sport-specific configurations
@@ -246,12 +246,13 @@ async function isGameOnChannel(
 
 /**
  * Calculate override duration for a detected game
+ * Returns base result without gameDetected/gameInfo (those are added by caller)
  */
 function calculateGameBasedOverride(
   game: ESPNGame,
   config: SportConfig,
   now: Date
-): SmartOverrideResult | null {
+): Omit<SmartOverrideResult, 'gameDetected' | 'gameInfo'> | null {
   const gameStart = new Date(game.date)
 
   // Game hasn't started yet

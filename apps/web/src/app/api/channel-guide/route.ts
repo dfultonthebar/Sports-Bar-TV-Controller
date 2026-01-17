@@ -77,8 +77,15 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation - define expected schema for channel guide request
+  const channelGuideSchema = z.object({
+    inputNumber: z.number(),
+    deviceType: z.enum(['cable', 'satellite', 'streaming']),
+    deviceId: z.string().optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional()
+  })
+  const bodyValidation = await validateRequestBody(request, channelGuideSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
@@ -86,8 +93,7 @@ export async function POST(request: NextRequest) {
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
 
   try {
-    const { data } = bodyValidation
-    const { inputNumber, deviceType, deviceId, startTime, endTime } = data
+    const { inputNumber, deviceType, deviceId, startTime, endTime } = bodyValidation.data
     logInfo(`Request params:`, {
       inputNumber,
       deviceType,

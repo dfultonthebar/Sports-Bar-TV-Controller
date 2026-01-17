@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   // Authentication required - ADMIN only
   const authResult = await requireAuth(request, 'ADMIN', {
     auditAction: 'file_system_execute',
-    requirePin: false
+    
   })
   if (!authResult.allowed) {
     return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -69,21 +69,26 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodySchema = z.object({
+    type: z.enum(['operation', 'error']),
+    component: z.string().optional(),
+    operation: z.string().optional(),
+    success: z.boolean().optional(),
+    details: z.record(z.unknown()).optional(),
+    code: z.string().optional(),
+    message: z.string().optional(),
+    stack: z.string().optional()
+  })
+  const bodyValidation = await validateRequestBody(request, bodySchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const logData = bodyValidation.data
-    
+
     if (logData.type === 'operation') {
-      await operationLogger.logOperation(logData)
+      await operationLogger.logOperation(logData as any)
     } else if (logData.type === 'error') {
-      await operationLogger.logError(logData)
+      await operationLogger.logError(logData as any)
     } else {
       return NextResponse.json(
         { error: 'Invalid log type' },

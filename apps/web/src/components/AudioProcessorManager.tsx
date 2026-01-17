@@ -257,6 +257,8 @@ export default function AudioProcessorManager() {
       serialPort: processor.serialPort || '/dev/ttyUSB0',
       baudRate: processor.baudRate || 57600,
       zones: processor.zones,
+      inputs: processor.inputs || 10,
+      outputs: processor.outputs || 8,
       description: processor.description || '',
       username: processor.username || '',
       password: ''

@@ -240,7 +240,7 @@ async function executeSchedule(schedule: any, allowedOutputs?: number[]) {
                 await db.update(schema.audioZones)
                   .set({
                     volume: zone.volume,
-                    muted: zone.muted === true ? 1 : 0,
+                    muted: zone.muted === true,
                     currentSource: zone.source,
                     updatedAt: new Date().toISOString()
                   })
@@ -548,7 +548,7 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
     // Check if AI scheduler is enabled (default to true if table doesn't exist)
     let aiSchedulerEnabled = true;
     try {
-      const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
+      const schedulerSettings = await db.all(sql`SELECT enabled FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`) as { enabled: number }[]
       aiSchedulerEnabled = schedulerSettings.length > 0 ? schedulerSettings[0].enabled === 1 : true
     } catch (settingsError: any) {
       logger.warn(`[SCHEDULER] Could not read SmartSchedulerSettings (table may not exist): ${settingsError?.message}`)
@@ -592,10 +592,10 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
         distributionPlan = await distributionEngine.createDistributionPlan(gameInfos, { allowedOutputs, allowedInputs });
         logger.info('[AI_SCHEDULER] Distribution plan created successfully');
       } catch (distError: any) {
-        logger.error('[AI_SCHEDULER] Distribution engine error:', distError);
-        logger.error('[AI_SCHEDULER] Distribution error message:', distError?.message);
-        logger.error('[AI_SCHEDULER] Distribution error stack:', distError?.stack);
-        logger.error('[AI_SCHEDULER] Distribution error type:', typeof distError);
+        logger.error('[AI_SCHEDULER] Distribution engine error:', { error: distError });
+        logger.error(`[AI_SCHEDULER] Distribution error message: ${distError?.message}`);
+        logger.error(`[AI_SCHEDULER] Distribution error stack: ${distError?.stack}`);
+        logger.error(`[AI_SCHEDULER] Distribution error type: ${typeof distError}`);
         if (distError === undefined) {
           logger.error('[AI_SCHEDULER] Error is undefined!');
         } else if (distError === null) {
@@ -801,15 +801,15 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
     }
 
   } catch (error: any) {
-    logger.error('[SCHEDULER] Error finding games:', error);
-    logger.error('[SCHEDULER] Error stack:', error?.stack);
-    logger.error('[SCHEDULER] Error message:', error?.message);
-    logger.error('[SCHEDULER] Error type:', typeof error);
-    logger.error('[SCHEDULER] Error toString:', String(error));
+    logger.error('[SCHEDULER] Error finding games:', { error });
+    logger.error(`[SCHEDULER] Error stack: ${error?.stack}`);
+    logger.error(`[SCHEDULER] Error message: ${error?.message}`);
+    logger.error(`[SCHEDULER] Error type: ${typeof error}`);
+    logger.error(`[SCHEDULER] Error toString: ${String(error)}`);
     if (error) {
       try {
-        logger.error('[SCHEDULER] Error keys:', Object.keys(error));
-        logger.error('[SCHEDULER] Error JSON:', JSON.stringify(error, null, 2));
+        logger.error(`[SCHEDULER] Error keys: ${Object.keys(error).join(', ')}`);
+        logger.error(`[SCHEDULER] Error JSON: ${JSON.stringify(error, null, 2)}`);
       } catch (e) {
         logger.error('[SCHEDULER] Error is not serializable');
       }

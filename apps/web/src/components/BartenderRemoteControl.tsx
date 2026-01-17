@@ -43,6 +43,7 @@ interface IRDevice {
   brand: string
   deviceType: string
   inputChannel: number
+  matrixInput?: number
   controlMethod: 'IP' | 'GlobalCache'
   // For IP control
   deviceIpAddress?: string

@@ -62,9 +62,6 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'MLBN': '213',
   'NHL Network': '215',
   'NHLN': '215',
-  'Golf Channel': '218',
-  'Golf': '218',
-  'Tennis Channel': '217',
   'Big Ten Network': '610',
   'BTN': '610',
   'SEC Network': '611',
@@ -91,9 +88,6 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   // Racing
   'NBCSN': '220',
   'NBC Sports': '220',
-  'FS1': '219',
-  'FS2': '618',
-  'USA': '242',
 
   // Soccer
   'beIN Sports': '620',
@@ -103,9 +97,6 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'FOX Soccer Plus': '619',
   'Univision': '402',
   'TUDN': '464',
-
-  // Combat Sports
-  'ESPN+': '206',
 
   // Local stations (Green Bay area)
   'TV32': '32',
@@ -121,7 +112,6 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'Prime Video': '9550',
   'Apple TV+': '9528',
   'Paramount+': '247',  // Often simulcasts CBS games
-  'Peacock': '206',
 }
 
 // Cable (Spectrum) channel mapping for broadcast networks

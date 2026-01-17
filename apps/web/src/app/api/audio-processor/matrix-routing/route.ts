@@ -53,7 +53,10 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    matrixOutputNumber: z.number(),
+    atlasInputLabel: z.string().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 

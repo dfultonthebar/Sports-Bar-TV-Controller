@@ -29,20 +29,15 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    processorId: z.string(),
+    testOnly: z.boolean().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
 
 
   try {
     const { processorId, testOnly } = bodyValidation.data
-
-    if (!processorId) {
-      return NextResponse.json({ error: 'Processor ID is required' }, { status: 400 })
-    }
 
     // Fetch the processor from database
     const processor = await db

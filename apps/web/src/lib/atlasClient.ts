@@ -6,6 +6,6 @@ export {
   createAtlasClient,
   executeAtlasCommand,
   type AtlasConnectionConfig,
-  type AtlasCommand,
+  type AtlasControlCommand as AtlasCommand,
   type AtlasResponse
 } from '@sports-bar/atlas'

@@ -202,7 +202,6 @@ export async function POST(request: NextRequest) {
               isActive: input.isActive !== false,
               status: input.status || 'active',
               powerOn: input.powerOn || false,
-              isCecPort: input.isCecPort || false,
               createdAt: now,
               updatedAt: now
             })
@@ -213,7 +212,11 @@ export async function POST(request: NextRequest) {
       // Save outputs - preserve CEC discovery data from existing records
       if (outputs && Array.isArray(outputs) && outputs.length > 0) {
         for (const output of outputs as any[]) {
-          const existing = existingOutputMap.get(output.channelNumber)
+          const existing = existingOutputMap.get(output.channelNumber) as {
+            tvBrand?: string | null;
+            tvModel?: string | null;
+            lastDiscovery?: string | null;
+          } | undefined
 
           await tx.insert(schema.matrixOutputs)
             .values({

@@ -55,28 +55,28 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    processorId: z.string(),
+    zoneNumber: z.number(),
+    name: z.string(),
+    description: z.string().optional(),
+    currentSource: z.string().optional(),
+    volume: z.number().optional(),
+    muted: z.boolean().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {
-    const data = bodyValidation.data
-    const { processorId, zoneNumber, name, description, currentSource, volume, muted } = data
-
-    if (!processorId || !zoneNumber || !name) {
-      return NextResponse.json(
-        { error: 'Processor ID, zone number, and name are required' },
-        { status: 400 }
-      )
-    }
+    const { processorId, zoneNumber, name, description, currentSource, volume, muted } = bodyValidation.data
 
     const zone = await db.insert(audioZones).values({
-        processorId: processorId,
+        processorId,
         zoneNumber,
         name,
         description,
         currentSource,
-        volume: volume || 50,
-        muted: muted || false,
+        volume: volume ?? 50,
+        muted: muted ?? false,
         enabled: true
       }).returning().get()
 

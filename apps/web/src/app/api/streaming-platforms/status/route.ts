@@ -140,20 +140,16 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // Input validation - define expected schema for platform status check
+  const platformStatusSchema = z.object({
+    platformId: z.string()
+  })
+  const bodyValidation = await validateRequestBody(request, platformStatusSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 
   try {
     const { platformId } = bodyValidation.data
-
-    if (!platformId) {
-      return NextResponse.json(
-        { success: false, error: 'Platform ID is required' },
-        { status: 400 }
-      )
-    }
 
     logger.info(`🔍 Checking status for specific platform: ${platformId}`)
 

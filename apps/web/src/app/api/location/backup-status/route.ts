@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         }
       } catch (error) {
         // Branch might not exist yet, that's ok
-        logger.debug('[LOCATION] Branch not found or no commits:', gitBranch)
+        logger.debug(`[LOCATION] Branch not found or no commits: ${gitBranch}`)
       }
     }
 

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     // Filter by league
     if (league) {
       apps = apps.filter(app => {
-        const leagues = app.supportedLeagues as string[]
+        const leagues = app.supportedLeagues as unknown as string[]
         return leagues.some(l => l.toLowerCase().includes(league.toLowerCase()))
       })
     }

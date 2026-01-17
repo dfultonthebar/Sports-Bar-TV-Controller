@@ -187,10 +187,12 @@ export async function POST(request: NextRequest) {
     })
 
     logger.info('[LIGHTING] Device control', {
-      deviceId,
-      deviceName: device.name,
-      level: targetLevel,
-      success,
+      data: {
+        deviceId,
+        deviceName: device.name,
+        brightnessLevel: targetLevel,
+        success,
+      }
     })
 
     return NextResponse.json({

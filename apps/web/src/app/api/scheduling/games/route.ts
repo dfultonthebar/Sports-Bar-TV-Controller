@@ -49,11 +49,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (startDate) {
-      conditions.push(gte(schema.gameSchedules.scheduledStart, new Date(startDate)));
+      // Convert ISO date string to Unix timestamp (seconds)
+      conditions.push(gte(schema.gameSchedules.scheduledStart, Math.floor(new Date(startDate).getTime() / 1000)));
     }
 
     if (endDate) {
-      conditions.push(lte(schema.gameSchedules.scheduledStart, new Date(endDate)));
+      // Convert ISO date string to Unix timestamp (seconds)
+      conditions.push(lte(schema.gameSchedules.scheduledStart, Math.floor(new Date(endDate).getTime() / 1000)));
     }
 
     if (priorityOnly) {

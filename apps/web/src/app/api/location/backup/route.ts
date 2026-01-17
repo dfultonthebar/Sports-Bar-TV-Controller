@@ -242,9 +242,9 @@ ${Object.keys(tableData).map(t => `- ${t}: ${tableData[t].length} rows`).join('\
 
     try {
       await execFileAsync('git', ['push', 'origin', branch], { cwd })
-      logger.info('[LOCATION BACKUP] Pushed backup to GitHub on branch:', branch)
+      logger.info(`[LOCATION BACKUP] Pushed backup to GitHub on branch: ${branch}`)
     } catch (pushError: any) {
-      logger.warn('[LOCATION BACKUP] Push failed, backup saved locally:', pushError.message)
+      logger.warn(`[LOCATION BACKUP] Push failed, backup saved locally: ${pushError.message}`)
       return NextResponse.json({
         success: true,
         message: `Backup saved locally! Push manually with: git push origin ${branch}`,

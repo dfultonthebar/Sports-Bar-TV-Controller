@@ -65,7 +65,7 @@ export class TeamNameMatcher {
       const teams = await db
         .select()
         .from(schema.homeTeams)
-        .where(eq(schema.homeTeams.isActive, 1))
+        .where(eq(schema.homeTeams.isActive, true))
 
       this.homeTeams = teams.map(team => ({
         id: team.id,
@@ -73,7 +73,7 @@ export class TeamNameMatcher {
         sport: team.sport,
         league: team.league,
         priority: team.priority,
-        isPrimary: team.isPrimary === 1,
+        isPrimary: team.isPrimary === true,
         aliases: team.aliases ? JSON.parse(team.aliases) : null,
         cityAbbreviations: team.cityAbbreviations ? JSON.parse(team.cityAbbreviations) : null,
         teamAbbreviations: team.teamAbbreviations ? JSON.parse(team.teamAbbreviations) : null,
@@ -204,8 +204,8 @@ export class TeamNameMatcher {
         .where(
           and(
             eq(schema.teamNameMatches.guideTeamName, guideName),
-            eq(schema.teamNameMatches.isValidated, 1),
-            eq(schema.teamNameMatches.isCorrect, 1)
+            eq(schema.teamNameMatches.isValidated, true),
+            eq(schema.teamNameMatches.isCorrect, true)
           )
         )
         .orderBy(sql`${schema.teamNameMatches.matchCount} DESC`)
@@ -431,7 +431,7 @@ export class TeamNameMatcher {
           matchMethod: method,
           sport: match.sport,
           league: match.league,
-          isValidated: 0,
+          isValidated: false,
           isCorrect: null,
           matchCount: 1,
           lastMatchedAt: new Date().toISOString(),

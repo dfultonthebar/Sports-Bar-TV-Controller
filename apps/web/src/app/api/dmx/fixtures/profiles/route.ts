@@ -172,7 +172,7 @@ async function searchFixtures(query: string): Promise<OFLFixture[]> {
   )
 
   if (!response.ok) {
-    logger.error('[DMX] OFL search failed:', response.status)
+    logger.error(`[DMX] OFL search failed: ${response.status}`)
     return []
   }
 
@@ -186,7 +186,7 @@ async function getManufacturers(): Promise<OFLManufacturer[]> {
   })
 
   if (!response.ok) {
-    logger.error('[DMX] OFL manufacturers failed:', response.status)
+    logger.error(`[DMX] OFL manufacturers failed: ${response.status}`)
     return []
   }
 
@@ -208,7 +208,7 @@ async function getManufacturerFixtures(manufacturerKey: string): Promise<OFLFixt
   )
 
   if (!response.ok) {
-    logger.error('[DMX] OFL manufacturer fixtures failed:', response.status)
+    logger.error(`[DMX] OFL manufacturer fixtures failed: ${response.status}`)
     return []
   }
 

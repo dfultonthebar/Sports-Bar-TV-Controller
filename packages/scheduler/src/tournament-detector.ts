@@ -70,7 +70,8 @@ class TournamentDetector {
         const gameStatus = this.determineStatus(game.status);
         if (gameStatus === 'in_progress' || tournament.status === 'in_progress') {
           tournament.status = 'in_progress';
-        } else if (gameStatus === 'completed' && tournament.status !== 'in_progress') {
+        } else if (gameStatus === 'completed') {
+          // Only set to completed if not already in_progress (handled above)
           tournament.status = 'completed';
         }
       }

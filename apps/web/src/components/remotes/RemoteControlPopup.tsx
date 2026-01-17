@@ -49,7 +49,19 @@ interface FireTVDevice {
   adbEnabled?: boolean
 }
 
-type Device = IRDevice | DirecTVDevice | FireTVDevice
+interface EverPassDevice {
+  id: string
+  name: string
+  cecDevicePath: string
+  inputChannel: number
+  deviceModel?: string
+  isOnline: boolean
+  lastSeen?: string
+  addedAt: string
+  updatedAt?: string
+}
+
+type Device = IRDevice | DirecTVDevice | FireTVDevice | EverPassDevice
 
 interface RemoteControlPopupProps {
   device: Device

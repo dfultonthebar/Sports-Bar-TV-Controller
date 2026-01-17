@@ -18,7 +18,7 @@ export {
   createAtlasClient,
   executeAtlasCommand,
   type AtlasConnectionConfig,
-  type AtlasCommand,
+  type AtlasCommand as AtlasClientCommand,
   type AtlasResponse
 } from './atlasClient'
 
@@ -106,7 +106,7 @@ export {
   disconnectAtlasControlService,
   disconnectAllServices,
   type AtlasControlConfig,
-  type AtlasCommand,
+  type AtlasCommand as AtlasControlCommand,
   type MeterUpdate
 } from './atlas-control-service'
 

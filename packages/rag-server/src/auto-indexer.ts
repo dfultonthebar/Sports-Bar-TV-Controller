@@ -3,7 +3,7 @@
  * Automatically re-indexes documentation when files change
  */
 
-import chokidar from 'chokidar';
+import chokidar, { FSWatcher } from 'chokidar';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '@sports-bar/logger';
@@ -22,7 +22,7 @@ export interface AutoIndexerOptions {
 }
 
 export class RAGAutoIndexer {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: FSWatcher | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
   private pendingChanges = new Set<string>();
   private isIndexing = false;

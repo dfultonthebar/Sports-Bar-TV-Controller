@@ -23,12 +23,15 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodySchema = z.object({
+    imageUrl: z.string(),
+    enableOCR: z.boolean().optional()
+  })
+  const bodyValidation = await validateRequestBody(request, bodySchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-
   try {
-    const { imageUrl } = bodyValidation.data
+    const { imageUrl, enableOCR } = bodyValidation.data
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -42,9 +45,6 @@ export async function POST(request: NextRequest) {
     const filepath = join(process.cwd(), 'public', 'uploads', 'layouts', filename!)
 
     logger.info(`[Layout Detection] Processing: ${filepath}`)
-
-    // Check if full OCR requested (default: skip OCR for speed)
-    const enableOCR = bodyValidation.data.enableOCR === true
 
     logger.info(`[Layout Detection] OCR mode: ${enableOCR ? 'ENABLED (slow, 2-4 min)' : 'DISABLED (fast, 8 sec)'}`)
 

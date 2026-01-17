@@ -59,7 +59,9 @@ export async function POST(
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    action: z.enum(['start', 'stop'])
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
@@ -70,7 +72,7 @@ export async function POST(
     const processorId = params.id
     const { action } = bodyValidation.data
 
-    if (!action || !['start', 'stop'].includes(action)) {
+    if (!action) {
       return NextResponse.json(
         { error: 'Action must be "start" or "stop"' },
         { status: 400 }

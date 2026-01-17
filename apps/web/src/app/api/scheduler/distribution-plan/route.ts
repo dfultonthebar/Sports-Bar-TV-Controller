@@ -28,20 +28,24 @@ import { validateRequestBody, ValidationSchemas, z } from '@/lib/validation'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import { logger } from '@sports-bar/logger'
 
+import type { GameInfo } from '@sports-bar/scheduler'
+
+const gameSchema = z.object({
+  id: z.string().optional(),
+  homeTeam: z.string().min(1),
+  awayTeam: z.string().min(1),
+  sport: z.string().optional(),
+  league: z.string().optional(),
+  startTime: z.string(),
+  description: z.string().optional(),
+  channelNumber: z.string().optional(),
+  cableChannel: z.string().optional(),
+  directvChannel: z.string().optional(),
+  channelName: z.string().optional()
+})
+
 const distributionPlanSchema = z.object({
-  games: z.array(
-    z.object({
-      id: z.string().optional(),
-      homeTeam: z.string().min(1),
-      awayTeam: z.string().min(1),
-      sport: z.string().optional(),
-      league: z.string().optional(),
-      startTime: z.string(),
-      description: z.string().optional(),
-      channelNumber: z.string().optional(),
-      channelName: z.string().optional()
-    })
-  ).min(1),
+  games: z.array(gameSchema).min(1),
   execute: z.boolean().optional().default(false)
 })
 
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     logger.info(`[API] Creating distribution plan for ${games.length} games (execute: ${execute})`)
 
     const engine = getDistributionEngine()
-    const plan = await engine.createDistributionPlan(games)
+    const plan = await engine.createDistributionPlan(games as GameInfo[])
 
     // Validate plan
     const validation = engine.validatePlan(plan)

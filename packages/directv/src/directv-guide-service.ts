@@ -269,7 +269,7 @@ export async function fetchDirecTVGuide(
   if (useCache) {
     for (const channel of channels) {
       const cacheKey = `directv-guide-${device.id}-${channel}`
-      const cached = cacheManager.get('directv-guide', cacheKey)
+      const cached = cacheManager.get<DirecTVProgramInfo>('directv-guide', cacheKey)
 
       if (cached) {
         logger.debug(`[DIRECTV_GUIDE] Cache hit for channel ${channel}`)

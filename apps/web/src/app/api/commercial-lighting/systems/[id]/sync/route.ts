@@ -105,14 +105,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               systemId: id,
               name: device.name,
               externalId: device.integrationId.toString(),
-              deviceType: device.type === 'DIMMER' ? 'dimmer' : 'switch',
+              deviceType: device.type === 'dimmer' ? 'dimmer' : 'switch',
             })
           }
 
           syncedDevices.push({
             externalId: device.integrationId.toString(),
             name: device.name,
-            deviceType: device.type === 'DIMMER' ? 'dimmer' : 'switch',
+            deviceType: device.type === 'dimmer' ? 'dimmer' : 'switch',
           })
         }
 

@@ -88,6 +88,16 @@ export interface ESPNGame {
       market: string
       names: string[]
     }>
+    venue?: {
+      id: string
+      fullName: string
+      address?: {
+        city: string
+        state: string
+        country?: string
+      }
+      indoor?: boolean
+    }
   }>
   links: Array<{
     language: string

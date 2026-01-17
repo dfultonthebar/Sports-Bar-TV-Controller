@@ -79,9 +79,9 @@ export async function GET(request: NextRequest) {
 
         // Filter out games that started more than 2 hours ago
         const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
-        const filteredApps = installedEvents.map(app => {
-          if (app.events && Array.isArray(app.events)) {
-            const freshEvents = app.events.filter(event => {
+        const filteredApps = installedEvents.map(appData => {
+          if (appData.events && Array.isArray(appData.events)) {
+            const freshEvents = appData.events.filter(event => {
               if (event.startTime) {
                 const gameStart = new Date(event.startTime)
                 return gameStart >= twoHoursAgo
@@ -89,14 +89,14 @@ export async function GET(request: NextRequest) {
               return true // Keep events without startTime
             })
 
-            const removedCount = app.events.length - freshEvents.length
+            const removedCount = appData.events.length - freshEvents.length
             if (removedCount > 0) {
-              logger.info(`[CLEANUP] Filtered out ${removedCount} old events from ${app.appName}`)
+              logger.info(`[CLEANUP] Filtered out ${removedCount} old events from ${appData.app.name}`)
             }
 
-            return { ...app, events: freshEvents }
+            return { ...appData, events: freshEvents }
           }
-          return app
+          return appData
         })
 
         return NextResponse.json({

@@ -176,7 +176,13 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    deviceId: z.string(),
+    command: z.string(),
+    deviceIpAddress: z.string(),
+    ipControlPort: z.number().optional(),
+    brand: z.string()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {

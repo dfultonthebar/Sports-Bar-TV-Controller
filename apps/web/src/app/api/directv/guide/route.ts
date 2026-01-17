@@ -43,7 +43,7 @@ import { z } from 'zod'
 import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import {
   fetchDirecTVGuide,
   getDirecTVDevice,
@@ -91,8 +91,10 @@ export async function GET(request: NextRequest) {
       const presets = await db
         .select()
         .from(schema.channelPresets)
-        .where(eq(schema.channelPresets.deviceType, 'directv'))
-        .where(eq(schema.channelPresets.isActive, true))
+        .where(and(
+          eq(schema.channelPresets.deviceType, 'directv'),
+          eq(schema.channelPresets.isActive, true)
+        ))
 
       channelList = presets.map(p => p.channelNumber)
       logger.info(`[DIRECTV_GUIDE_API] Found ${channelList.length} active DirecTV presets`)

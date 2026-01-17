@@ -57,23 +57,18 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    processorId: z.string(),
+    inputNumber: z.number(),
+    parameterName: z.string(),
+    inputName: z.string().optional(),
+    warningThreshold: z.number().optional(),
+    dangerThreshold: z.number().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
-
   try {
-    const data = bodyValidation.data
-    const { processorId, inputNumber, parameterName, inputName, warningThreshold, dangerThreshold } = data
-
-    if (!processorId || inputNumber === undefined || !parameterName) {
-      return NextResponse.json(
-        { error: 'Processor ID, input number, and parameter name are required' },
-        { status: 400 }
-      )
-    }
+    const { processorId, inputNumber, parameterName, inputName, warningThreshold, dangerThreshold } = bodyValidation.data
 
     // Get processor info
     const processor = await findFirst('audioProcessors', {

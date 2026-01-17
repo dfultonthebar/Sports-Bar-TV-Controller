@@ -2,10 +2,10 @@
  * Bridge file for backwards compatibility
  * Re-exports from @sports-bar/tv-network-control package
  */
-export {
+export type {
   TVBrand,
   TVDeviceConfig,
   TVControlCommand,
   TVDeviceStatus,
-  type CommandResult,
+  CommandResult,
 } from '@sports-bar/tv-network-control'

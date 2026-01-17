@@ -105,7 +105,11 @@ export async function POST(
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    inputNumber: z.number(),
+    gain: z.number(),
+    reason: z.string().optional().default('manual_override')
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   // Path parameter validation
@@ -123,8 +127,7 @@ export async function POST(
     processorId = params.id
 
     // Use validated data
-    const requestBody = bodyValidation.data
-    const { inputNumber, gain, reason = 'manual_override' } = requestBody
+    const { inputNumber, gain, reason } = bodyValidation.data
 
     logger.api.request('POST', `/api/audio-processor/${processorId}/input-gain`, { 
       inputNumber, 
@@ -132,40 +135,14 @@ export async function POST(
       reason 
     })
 
-    // Validate required fields
-    if (inputNumber === undefined || gain === undefined) {
-      logger.api.response('POST', `/api/audio-processor/${processorId}/input-gain`, 400)
-      atlasLogger.warn('INPUT_GAIN', 'Missing required fields', { inputNumber, gain })
-      return NextResponse.json(
-        { 
-          error: 'Input number and gain value are required',
-          received: { inputNumber, gain }
-        },
-        { status: 400 }
-      )
-    }
-
-    // Validate input number
-    if (typeof inputNumber !== 'number' || inputNumber < 1) {
+    // Validate input number is positive
+    if (inputNumber < 1) {
       logger.api.response('POST', `/api/audio-processor/${processorId}/input-gain`, 400)
       atlasLogger.warn('INPUT_GAIN', 'Invalid input number', { inputNumber })
       return NextResponse.json(
-        { 
+        {
           error: 'Input number must be a positive integer',
           received: inputNumber
-        },
-        { status: 400 }
-      )
-    }
-
-    // Validate gain value
-    if (typeof gain !== 'number' || isNaN(gain)) {
-      logger.api.response('POST', `/api/audio-processor/${processorId}/input-gain`, 400)
-      atlasLogger.warn('INPUT_GAIN', 'Invalid gain value', { gain })
-      return NextResponse.json(
-        { 
-          error: 'Gain must be a valid number',
-          received: gain
         },
         { status: 400 }
       )

@@ -5,7 +5,7 @@
  * Uses dependency injection for database and connection management.
  */
 
-import cron from 'node-cron'
+import cron, { ScheduledTask } from 'node-cron'
 import { ADBClient } from './adb-client'
 import {
   ConnectionManagerAdapter,
@@ -22,7 +22,7 @@ export interface KeepAwakeSchedulerConfig {
 }
 
 export class KeepAwakeScheduler {
-  private scheduledTasks: Map<string, cron.ScheduledTask> = new Map()
+  private scheduledTasks: Map<string, ScheduledTask> = new Map()
   private repository: FireCubeRepository
   private connectionManager: ConnectionManagerAdapter
 

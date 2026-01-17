@@ -77,6 +77,7 @@ interface MatrixInput {
   label: string
   inputType: string
   isActive: boolean
+  deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming' | 'Cable Box' | 'DirecTV' | 'Fire TV' | 'Other'
 }
 
 interface Configuration {
@@ -630,8 +631,8 @@ export default function SportsGuideConfigPage() {
             const sourcesData = await sourcesRes.json();
 
             if (sourcesData.success && sourcesData.sources) {
-              const sourceMap = new Map(
-                sourcesData.sources.map((s: any) => [s.index, s.name])
+              const sourceMap = new Map<number, string>(
+                sourcesData.sources.map((s: any) => [s.index as number, s.name as string])
               );
               setAudioSourceNames(sourceMap);
               logger.info('[AUDIO] Source names loaded:', { count: sourceMap.size, sources: Array.from(sourceMap.entries()) });
@@ -686,16 +687,17 @@ export default function SportsGuideConfigPage() {
       enabled: true,
       scheduleType: 'daily',
       executionTime: '09:00',
-      daysOfWeek: [] as any[],
+      daysOfWeek: [] as string[],
       powerOnTVs: true,
       powerOffTVs: false,
-      selectedOutputs: [] as any[],
+      selectedOutputs: [] as string[],
       setDefaultChannels: false,
       defaultChannelMap: {},
+      inputDefaultChannels: {},
       autoFindGames: false,
       monitorHomeTeams: false,
       fillWithSports: true,
-      homeTeamIds: [] as any[],
+      homeTeamIds: [] as string[],
       preferredProviders: ['cable', 'streaming', 'satellite'],
       executionOrder: 'outputs_first',
       delayBetweenCommands: 2000,

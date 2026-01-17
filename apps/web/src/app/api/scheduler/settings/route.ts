@@ -109,36 +109,30 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('[API] Updating smart scheduler settings:', updates)
 
-    // Build update query
-    const setStatements: string[] = []
-    const values: any[] = []
+    // Build update object
+    const updateFields: Record<string, number | string> = {}
 
     if (updates.enabled !== undefined) {
-      setStatements.push('enabled = ?')
-      values.push(updates.enabled ? 1 : 0)
+      updateFields.enabled = updates.enabled ? 1 : 0
     }
 
     if (updates.useFireTV !== undefined) {
-      setStatements.push('useFireTV = ?')
-      values.push(updates.useFireTV ? 1 : 0)
+      updateFields.useFireTV = updates.useFireTV ? 1 : 0
     }
 
     if (updates.useFuzzyMatching !== undefined) {
-      setStatements.push('useFuzzyMatching = ?')
-      values.push(updates.useFuzzyMatching ? 1 : 0)
+      updateFields.useFuzzyMatching = updates.useFuzzyMatching ? 1 : 0
     }
 
     if (updates.minMatchConfidence !== undefined) {
-      setStatements.push('minMatchConfidence = ?')
-      values.push(updates.minMatchConfidence)
+      updateFields.minMatchConfidence = updates.minMatchConfidence
     }
 
     if (updates.logDistributionPlans !== undefined) {
-      setStatements.push('logDistributionPlans = ?')
-      values.push(updates.logDistributionPlans ? 1 : 0)
+      updateFields.logDistributionPlans = updates.logDistributionPlans ? 1 : 0
     }
 
-    if (setStatements.length === 0) {
+    if (Object.keys(updateFields).length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -149,17 +143,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Add timestamp
-    setStatements.push('updatedAt = ?')
-    values.push(new Date().toISOString())
+    updateFields.updatedAt = new Date().toISOString()
 
-    // Update settings using direct SQL execution
-    const query = `UPDATE SmartSchedulerSettings SET ${setStatements.join(', ')} WHERE id = ?`
-    values.push('default')
+    // Build SET clause with proper SQL escaping
+    const setClause = Object.entries(updateFields)
+      .map(([key, value]) => {
+        if (typeof value === 'number') {
+          return `${key} = ${value}`
+        }
+        // Escape single quotes in string values
+        return `${key} = '${String(value).replace(/'/g, "''")}'`
+      })
+      .join(', ')
 
-    logger.debug(`[API] Executing query: ${query}`, values)
+    const query = `UPDATE SmartSchedulerSettings SET ${setClause} WHERE id = 'default'`
+    logger.debug(`[API] Executing query: ${query}`)
 
-    // Execute update
-    await db.run(sql.raw(query), values)
+    // Execute update using raw SQL
+    await db.run(sql.raw(query))
 
     // Get updated settings
     const result = await db.all(sql`SELECT * FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`) as SchedulerSettingsRow[]

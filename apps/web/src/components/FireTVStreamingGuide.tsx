@@ -54,6 +54,7 @@ interface StreamingEvent {
   streamingApp: string
   appPackage: string
   deepLink?: string
+  broadcast?: string | string[]
 }
 
 interface AppEvents {

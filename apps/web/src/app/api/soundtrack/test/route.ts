@@ -15,7 +15,9 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    apiKey: z.string()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
 

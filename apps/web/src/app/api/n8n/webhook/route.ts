@@ -41,19 +41,25 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodySchema = z.object({
+    action: z.string(),
+    data: z.record(z.unknown()),
+    workflowId: z.string().optional(),
+    executionId: z.string().optional(),
+    metadata: z.record(z.unknown()).optional()
+  })
+  const bodyValidation = await validateRequestBody(request, bodySchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-
   const startTime = Date.now()
-  
+
   try {
     logger.api.request('POST', '/api/n8n/webhook')
-    
+
     // Verify n8n webhook signature/token (if configured)
     const authHeader = request.headers.get('authorization')
     const webhookToken = process.env.N8N_WEBHOOK_TOKEN
-    
+
     if (webhookToken && authHeader !== `Bearer ${webhookToken}`) {
       logger.api.response('POST', '/api/n8n/webhook', 401, { error: 'Unauthorized' })
       return NextResponse.json(
@@ -61,8 +67,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    
-    const payload: N8nWebhookPayload = bodyValidation.data
+
+    const payload: N8nWebhookPayload = bodyValidation.data as N8nWebhookPayload
     
     logger.debug('n8n webhook payload received', payload)
     

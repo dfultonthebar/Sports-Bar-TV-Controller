@@ -553,14 +553,14 @@ export default function BartenderRemoteSelector() {
                 <h3 className="text-xl font-medium text-white mb-2">No Device Selected</h3>
                 <p className="text-slate-400">Select an input from the left panel to show its remote control</p>
               </div>
-            ) : deviceType === 'cable' && selectedDevice ? (
+            ) : deviceType === 'cable' && selectedDevice && 'iTachAddress' in selectedDevice ? (
               <>
                 {/* IR Cable Box Remote */}
                 <div className="w-full flex justify-center">
                   <CableBoxRemote
                     deviceId={selectedDevice.id}
                     deviceName={selectedDevice.name}
-                    iTachAddress={selectedDevice.iTachAddress || ''}
+                    iTachAddress={(selectedDevice as IRDevice).iTachAddress || ''}
                     irCodes={
                       // Convert commands array to irCodes format for compatibility
                       'commands' in selectedDevice && selectedDevice.commands

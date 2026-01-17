@@ -104,12 +104,20 @@ export async function POST(
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodyValidation = await validateRequestBody(request, z.object({
+    inputNumber: z.number(),
+    aiEnabled: z.boolean().optional(),
+    inputType: z.enum(['mic', 'line']).optional(),
+    targetLevel: z.number().optional(),
+    fastModeThreshold: z.number().optional(),
+    silenceThreshold: z.number().optional(),
+    silenceDuration: z.number().optional(),
+    fastModeStep: z.number().optional(),
+    slowModeStep: z.number().optional(),
+    minGain: z.number().optional(),
+    maxGain: z.number().optional()
+  }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
 
   // Path parameter validation
   const params = await context.params
@@ -119,10 +127,9 @@ export async function POST(
 
   try {
     const processorId = params.id
-    const data = bodyValidation.data
-    const { 
-      inputNumber, 
-      aiEnabled, 
+    const {
+      inputNumber,
+      aiEnabled,
       inputType,
       targetLevel,
       fastModeThreshold,
@@ -132,22 +139,7 @@ export async function POST(
       slowModeStep,
       minGain,
       maxGain
-    } = data
-
-    if (inputNumber === undefined) {
-      return NextResponse.json(
-        { error: 'Input number is required' },
-        { status: 400 }
-      )
-    }
-
-    // Validate input type
-    if (inputType && !['mic', 'line'].includes(inputType)) {
-      return NextResponse.json(
-        { error: 'Input type must be "mic" or "line"' },
-        { status: 400 }
-      )
-    }
+    } = bodyValidation.data
 
     // Find or create the input meter
     let inputMeter = await findFirst('audioInputMeters', {

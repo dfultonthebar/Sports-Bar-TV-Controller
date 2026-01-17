@@ -10,13 +10,37 @@ import {
   createConfigChangeTracker,
   type ConfigChangeEvent,
   type AutoSyncClient,
-  type AutoSyncConfig
+  type AutoSyncConfig,
+  type ConfigEnhancedLogger as EnhancedLoggerInterface
 } from '@sports-bar/utils'
-import { EnhancedLogger } from './enhanced-logger'
+import { EnhancedLogger as EnhancedLoggerImpl } from './enhanced-logger'
 import { logger } from '@sports-bar/logger'
 
 // Re-export types
 export type { ConfigChangeEvent }
+
+/**
+ * Adapter to make EnhancedLogger compatible with the utils package interface
+ */
+class EnhancedLoggerAdapter implements EnhancedLoggerInterface {
+  private impl: EnhancedLoggerImpl
+
+  constructor() {
+    this.impl = new EnhancedLoggerImpl()
+  }
+
+  async log(entry: { level: 'info' | 'warn' | 'error' | 'debug'; category: string; source: string; action: string; message: string; details?: any; success?: boolean }): Promise<void> {
+    await this.impl.log({
+      level: entry.level,
+      category: entry.category as any,
+      source: entry.source,
+      action: entry.action,
+      message: entry.message,
+      details: entry.details,
+      success: entry.success ?? true
+    })
+  }
+}
 
 /**
  * Auto-sync client adapter for the web app
@@ -65,7 +89,7 @@ class WebAppAutoSyncClient implements AutoSyncClient {
  */
 const tracker = createConfigChangeTracker({
   logger,
-  enhancedLogger: new EnhancedLogger(),
+  enhancedLogger: new EnhancedLoggerAdapter(),
   autoSyncClient: new WebAppAutoSyncClient(),
   projectRoot: '/home/ubuntu/Sports-Bar-TV-Controller/apps/web',
   configFiles: [

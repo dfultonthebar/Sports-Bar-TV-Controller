@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       id: `impl_${Date.now()}`,
       name: suggestion.title,
       description: suggestion.description,
-      deviceTypes: suggestion.devices.map((device: string) => {
+      deviceTypes: (suggestion.devices as any[] || []).map((device: string) => {
         if (device.includes('DirecTV')) return 'DirectTV'
         if (device.includes('Fire TV')) return 'Fire TV'
         return 'IR Device'

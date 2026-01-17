@@ -153,10 +153,12 @@ export async function POST(request: NextRequest) {
     })
 
     logger.info('[LIGHTING] Zone control', {
-      zoneId,
-      zoneName: zone.name,
-      level: clampedLevel,
-      success,
+      data: {
+        zoneId,
+        zoneName: zone.name,
+        brightnessLevel: clampedLevel,
+        success,
+      }
     })
 
     return NextResponse.json({

@@ -83,13 +83,12 @@ export async function POST(request: NextRequest) {
 
 
   // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  const bodySchema = z.object({
+    action: z.enum(['create', 'restore']),
+    filename: z.string().optional()
+  })
+  const bodyValidation = await validateRequestBody(request, bodySchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
-
-  // Query parameter validation
-  const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
-  if (isValidationError(queryValidation)) return queryValidation.error
-
 
   try {
     const { action, filename } = bodyValidation.data
