@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
     auditAction: 'file_system_execute',
     requirePin: false
   })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)

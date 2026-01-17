@@ -33,6 +33,9 @@ export interface HueLight {
   color?: { xy: { x: number; y: number }; gamut_type: string }
   dynamics?: { status: string; speed: number }
   type: string
+  // Convenience properties (populated by client)
+  name?: string
+  capabilities?: string[]
 }
 
 export interface HueRoom {
@@ -42,6 +45,9 @@ export interface HueRoom {
   children: Array<{ rid: string; rtype: string }>
   services: Array<{ rid: string; rtype: string }>
   type: string
+  // Convenience properties (populated by client)
+  name?: string
+  lights?: string[]
 }
 
 export interface HueScene {
@@ -67,6 +73,8 @@ export interface HueScene {
   auto_dynamic: boolean
   status: { active: string }
   type: string
+  // Convenience property (populated by client)
+  name?: string
 }
 
 export interface HueLightState {

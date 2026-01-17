@@ -14,8 +14,8 @@ const execFileAsync = promisify(execFile)
 export async function POST(request: NextRequest) {
   // Authentication required - ADMIN only
   const authResult = await requireAuth(request, 'ADMIN', { auditAction: 'git_commit_push' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.GIT)

@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     
     if (!authResult.success) {
       return NextResponse.json(
-        { success: false, error: authResult.error || 'Authentication failed' },
+        { success: false, error: authResult.response || "Unauthorized" || 'Authentication failed' },
         { status: 401 }
       )
     }

@@ -60,8 +60,8 @@ function decrypt(hash: string): string {
 export async function GET(request: NextRequest) {
   // Authentication required - STAFF can view status
   const authResult = await requireAuth(request, 'STAFF', { auditAction: 'ir_credentials_read' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
@@ -110,8 +110,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Authentication required - ADMIN only for credential management
   const authResult = await requireAuth(request, 'ADMIN', { auditAction: 'ir_credentials_write' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)

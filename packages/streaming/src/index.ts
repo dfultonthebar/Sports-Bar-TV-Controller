@@ -25,9 +25,7 @@ export {
   espnApi,
   isESPNApiAvailable,
   type ESPNEvent,
-  type ESPNScoreboard,
-  type ESPNTeam,
-  type ESPNCompetitor
+  type ESPNScoreboard
 } from './api-integrations/espn-api'
 
 // MLB API
@@ -43,9 +41,7 @@ export {
 export {
   nfhsApi,
   isNFHSApiAvailable,
-  type NFHSEvent,
-  type NFHSSchool,
-  type NFHSSearchResult
+  type NFHSEvent
 } from './api-integrations/nfhs-api'
 
 // Unified Streaming API

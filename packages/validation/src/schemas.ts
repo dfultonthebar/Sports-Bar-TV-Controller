@@ -658,7 +658,11 @@ export const connectionTestSchema = z.object({
   ipAddress: ipAddressSchema.optional(),
   port: portSchema.optional(),
   protocol: protocolSchema.optional().default('TCP'),
-  timeout: z.number().int().min(1000).max(30000).optional().default(5000)
+  timeout: z.number().int().min(1000).max(30000).optional().default(5000),
+  processorId: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  autoDetectCredentials: z.boolean().optional()
 })
 
 /**

@@ -28,6 +28,17 @@ const settingsSchema = z.object({
   logDistributionPlans: z.boolean().optional()
 })
 
+interface SchedulerSettingsRow {
+  id: string
+  enabled: number
+  useFireTV: number
+  useFuzzyMatching: number
+  minMatchConfidence: number
+  logDistributionPlans: number
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
 export async function GET(request: NextRequest) {
   // Rate limiting
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
@@ -37,7 +48,7 @@ export async function GET(request: NextRequest) {
     logger.info('[API] Getting smart scheduler settings')
 
     // Get settings from database
-    const result = await db.all(sql`SELECT * FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
+    const result = await db.all(sql`SELECT * FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`) as SchedulerSettingsRow[]
 
     if (result.length === 0) {
       // Create default settings
@@ -151,7 +162,7 @@ export async function POST(request: NextRequest) {
     await db.run(sql.raw(query), values)
 
     // Get updated settings
-    const result = await db.all(sql`SELECT * FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`)
+    const result = await db.all(sql`SELECT * FROM SmartSchedulerSettings WHERE id = 'default' LIMIT 1`) as SchedulerSettingsRow[]
 
     if (result.length === 0) {
       throw new Error('Settings not found after update')

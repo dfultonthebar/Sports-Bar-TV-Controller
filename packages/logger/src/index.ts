@@ -46,6 +46,8 @@ interface LogOptions {
   data?: any
   error?: Error | unknown
   timestamp?: boolean
+  // Allow arbitrary additional context data
+  [key: string]: any
 }
 
 class Logger {

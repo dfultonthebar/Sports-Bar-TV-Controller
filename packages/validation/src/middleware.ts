@@ -15,11 +15,13 @@ import { logger } from '@sports-bar/logger'
 export interface ValidationResult<T> {
   success: true
   data: T
+  error?: undefined
 }
 
 export interface ValidationError {
   success: false
   error: NextResponse
+  data?: undefined
 }
 
 export type ValidatedResult<T> = ValidationResult<T> | ValidationError

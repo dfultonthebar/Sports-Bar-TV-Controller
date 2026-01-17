@@ -23,6 +23,7 @@ export interface LutronDevice {
   integrationId: number
   name: string
   deviceType: 'dimmer' | 'switch' | 'keypad' | 'sensor' | 'shade'
+  type?: 'dimmer' | 'switch' | 'keypad' | 'sensor' | 'shade' // Alias for deviceType
   zoneId?: string
   currentLevel?: number
   isOn?: boolean
@@ -541,6 +542,22 @@ export class LutronLIPClient extends EventEmitter {
       clearInterval(this.keepAliveTimer)
       this.keepAliveTimer = null
     }
+  }
+
+  // Stub methods for compatibility
+  async getZones(): Promise<LutronDevice[]> {
+    lightingLogger.debug('getZones called - returning empty array (not implemented)')
+    return []
+  }
+
+  async getScenes(): Promise<any[]> {
+    lightingLogger.debug('getScenes called - returning empty array (not implemented)')
+    return []
+  }
+
+  async getSystemInfo(): Promise<any> {
+    lightingLogger.debug('getSystemInfo called - returning empty object (not implemented)')
+    return { connected: this.isConnected() }
   }
 
   private cleanup(): void {

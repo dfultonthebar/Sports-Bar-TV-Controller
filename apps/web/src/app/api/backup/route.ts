@@ -27,8 +27,8 @@ function isValidBackupFilename(filename: string): boolean {
 export async function GET(request: NextRequest) {
   // Authentication required - STAFF can view backups
   const authResult = await requireAuth(request, 'STAFF', { auditAction: 'backup_list' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
@@ -80,8 +80,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Authentication required - ADMIN only for backup operations
   const authResult = await requireAuth(request, 'ADMIN', { auditAction: 'backup_operation' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)

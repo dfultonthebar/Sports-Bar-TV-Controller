@@ -36,8 +36,8 @@ function isAllowedPath(targetPath: string): boolean {
 export async function GET(request: NextRequest) {
   // Authentication required - STAFF can read, ADMIN for write
   const authResult = await requireAuth(request, 'STAFF', { auditAction: 'file_system_read' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
@@ -86,8 +86,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Authentication required - ADMIN only for write operations
   const authResult = await requireAuth(request, 'ADMIN', { auditAction: 'file_system_write' })
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 })
+  if (!authResult.allowed) {
+    return authResult.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const rateLimit = await withRateLimit(request, RateLimitConfigs.FILE_OPS)
