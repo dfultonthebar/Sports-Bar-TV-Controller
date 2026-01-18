@@ -18,7 +18,8 @@ import {
   Hash,
   Tag
 } from 'lucide-react'
-import type { Zone } from './DraggableZone'
+import type { Zone, Room } from './DraggableZone'
+import { Home } from 'lucide-react'
 
 interface ZonePropertiesPanelProps {
   selectedZone: Zone | null
@@ -28,6 +29,7 @@ interface ZonePropertiesPanelProps {
   onAddZone: () => void
   onClose: () => void
   matrixOutputs?: Array<{ channelNumber: number; label: string }>
+  rooms?: Room[]
 }
 
 export default function ZonePropertiesPanel({
@@ -37,10 +39,12 @@ export default function ZonePropertiesPanel({
   onDeleteZone,
   onAddZone,
   onClose,
-  matrixOutputs = []
+  matrixOutputs = [],
+  rooms = []
 }: ZonePropertiesPanelProps) {
   const [label, setLabel] = useState('')
   const [outputNumber, setOutputNumber] = useState(1)
+  const [room, setRoom] = useState('')
   const [x, setX] = useState(0)
   const [y, setY] = useState(0)
   const [width, setWidth] = useState(5)
@@ -51,6 +55,7 @@ export default function ZonePropertiesPanel({
     if (selectedZone) {
       setLabel(selectedZone.label || '')
       setOutputNumber(selectedZone.outputNumber)
+      setRoom(selectedZone.room || '')
       setX(Math.round(selectedZone.x * 10) / 10)
       setY(Math.round(selectedZone.y * 10) / 10)
       setWidth(Math.round(selectedZone.width * 10) / 10)
@@ -71,6 +76,10 @@ export default function ZonePropertiesPanel({
       case 'outputNumber':
         updates.outputNumber = Number(value)
         setOutputNumber(Number(value))
+        break
+      case 'room':
+        updates.room = value as string
+        setRoom(value as string)
         break
       case 'x':
         updates.x = Math.max(0, Math.min(100 - width, Number(value)))
@@ -162,6 +171,37 @@ export default function ZonePropertiesPanel({
                 ))}
               </select>
             </div>
+
+            {/* Room */}
+            {rooms.length > 0 && (
+              <div className="space-y-2">
+                <label className="flex items-center text-sm font-medium text-slate-300">
+                  <Home className="w-4 h-4 mr-2" />
+                  Room
+                </label>
+                <select
+                  value={room}
+                  onChange={(e) => handleUpdate('room', e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No Room Assigned</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                {room && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: rooms.find(r => r.id === room)?.color }}
+                    />
+                    {rooms.find(r => r.id === room)?.name}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Position */}
             <div className="space-y-2">

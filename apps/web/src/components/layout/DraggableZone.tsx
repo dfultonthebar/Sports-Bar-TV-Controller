@@ -10,6 +10,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Tv, GripVertical } from 'lucide-react'
 
+export interface Room {
+  id: string
+  name: string
+  color: string
+}
+
 export interface Zone {
   id: string
   outputNumber: number
@@ -18,6 +24,7 @@ export interface Zone {
   width: number // percentage
   height: number // percentage
   label?: string
+  room?: string // room id
   confidence?: number
 }
 
@@ -28,6 +35,7 @@ interface DraggableZoneProps {
   onUpdate: (zone: Zone) => void
   containerRef: React.RefObject<HTMLDivElement>
   showResizeHandles?: boolean
+  rooms?: Room[]
 }
 
 type DragMode = 'none' | 'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se'
@@ -38,8 +46,12 @@ export default function DraggableZone({
   onSelect,
   onUpdate,
   containerRef,
-  showResizeHandles = true
+  showResizeHandles = true,
+  rooms = []
 }: DraggableZoneProps) {
+  // Get room color for this zone
+  const roomInfo = rooms.find(r => r.id === zone.room)
+  const roomColor = roomInfo?.color || '#3B82F6' // default blue
   const [dragMode, setDragMode] = useState<DragMode>('none')
   const [isDragging, setIsDragging] = useState(false)
   const startPosRef = useRef({ x: 0, y: 0 })
@@ -201,26 +213,38 @@ export default function DraggableZone({
       <div
         className={`w-full h-full flex flex-col items-center justify-center rounded-lg border-2 border-dashed transition-all ${
           isSelected
-            ? 'bg-blue-500/30 border-blue-400'
-            : 'bg-slate-700/50 border-slate-500 hover:bg-slate-600/50 hover:border-slate-400'
+            ? 'border-white'
+            : 'border-opacity-60 hover:border-opacity-100'
         }`}
+        style={{
+          backgroundColor: isSelected ? `${roomColor}40` : `${roomColor}25`,
+          borderColor: isSelected ? roomColor : `${roomColor}99`
+        }}
         onMouseDown={(e) => handleDragStart(e, 'move')}
         onTouchStart={(e) => handleDragStart(e, 'move')}
       >
         {/* TV Icon */}
-        <Tv className={`w-6 h-6 sm:w-8 sm:h-8 ${isSelected ? 'text-blue-300' : 'text-slate-300'}`} />
+        <Tv className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
 
         {/* Label */}
-        <div className={`mt-1 px-2 py-0.5 rounded text-xs font-semibold truncate max-w-full ${
-          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-200'
-        }`}>
+        <div
+          className="mt-1 px-2 py-0.5 rounded text-xs font-semibold truncate max-w-full text-white"
+          style={{ backgroundColor: roomColor }}
+        >
           {zone.label || `TV ${zone.outputNumber}`}
         </div>
+
+        {/* Room Badge */}
+        {roomInfo && (
+          <div className="mt-0.5 text-[10px] text-white/80 truncate max-w-full px-1">
+            {roomInfo.name}
+          </div>
+        )}
 
         {/* Drag indicator */}
         {isSelected && (
           <div className="absolute top-1 left-1/2 -translate-x-1/2">
-            <GripVertical className="w-4 h-4 text-blue-400/60" />
+            <GripVertical className="w-4 h-4 text-white/60" />
           </div>
         )}
       </div>

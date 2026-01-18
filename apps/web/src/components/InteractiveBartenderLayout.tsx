@@ -6,11 +6,18 @@
  * Modern, professional TV layout with:
  * - Click TV to show input selector
  * - Real-time source display
+ * - Room-based filtering
  * - Clean, modern appearance
  */
 
 import { useState } from 'react'
-import { Monitor, X, Tv, Hash, Play } from 'lucide-react'
+import { Monitor, X, Tv, Home } from 'lucide-react'
+
+interface Room {
+  id: string
+  name: string
+  color: string
+}
 
 interface Zone {
   id: string
@@ -20,6 +27,7 @@ interface Zone {
   width: number
   height: number
   label?: string
+  room?: string
   confidence?: number
 }
 
@@ -29,6 +37,7 @@ interface TVLayout {
   imageUrl?: string
   professionalImageUrl?: string
   zones: Zone[]
+  rooms?: Room[]
 }
 
 interface MatrixInput {
@@ -58,6 +67,19 @@ export default function InteractiveBartenderLayout({
   currentChannels = {}
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
+  const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('all')
+
+  const rooms = layout.rooms || []
+
+  // Filter zones by room
+  const filteredZones = selectedRoomFilter === 'all'
+    ? layout.zones
+    : layout.zones.filter(z => z.room === selectedRoomFilter)
+
+  // Get room info for a zone
+  const getRoomInfo = (zone: Zone): Room | undefined => {
+    return rooms.find(r => r.id === zone.room)
+  }
 
   const handleZoneClick = (zone: Zone) => {
     setSelectedZone(zone)
@@ -125,14 +147,57 @@ export default function InteractiveBartenderLayout({
           </p>
         </div>
 
+        {/* Room Filter Tabs */}
+        {rooms.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setSelectedRoomFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                selectedRoomFilter === 'all'
+                  ? 'bg-white/20 text-white border border-white/30'
+                  : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+              }`}
+            >
+              <Home className="w-4 h-4 inline mr-2" />
+              All Rooms ({layout.zones.length})
+            </button>
+            {rooms.map((room) => {
+              const roomZoneCount = layout.zones.filter(z => z.room === room.id).length
+              return (
+                <button
+                  key={room.id}
+                  onClick={() => setSelectedRoomFilter(room.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                    selectedRoomFilter === room.id
+                      ? 'text-white border'
+                      : 'text-slate-400 border border-white/10 hover:bg-white/10'
+                  }`}
+                  style={{
+                    backgroundColor: selectedRoomFilter === room.id ? `${room.color}30` : undefined,
+                    borderColor: selectedRoomFilter === room.id ? room.color : undefined
+                  }}
+                >
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: room.color }}
+                  />
+                  {room.name} ({roomZoneCount})
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Layout Container - Responsive sizing for all devices */}
         <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
           {/* Background image hidden - only used for zone positioning during setup */}
 
           {/* Interactive TV Zones */}
-          {layout.zones.map((zone) => {
+          {filteredZones.map((zone) => {
             const currentInput = getCurrentInputLabel(zone.outputNumber)
             const zoneLabel = zone.label || `TV ${zone.outputNumber}`
+            const roomInfo = getRoomInfo(zone)
+            const roomColor = roomInfo?.color
 
             return (
               <button
@@ -144,15 +209,28 @@ export default function InteractiveBartenderLayout({
                   top: `${zone.y + zone.height / 2}%`,
                   transform: 'translate(-50%, -50%)',
                 }}
-                title={`${zoneLabel}${currentInput ? ` - ${currentInput}` : ''}`}
+                title={`${zoneLabel}${roomInfo ? ` (${roomInfo.name})` : ''}${currentInput ? ` - ${currentInput}` : ''}`}
               >
                 {/* Icon Container - Compact sizing to prevent overlapping */}
-                <div className={`relative backdrop-blur-xl border-2 shadow-xl hover:scale-105 transition-all duration-300
-                  min-w-[32px] sm:min-w-[36px] md:min-w-[40px] lg:min-w-[44px] xl:min-w-[48px] ${
-                  currentInput
-                    ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/30'
-                    : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'
-                }`}>
+                <div
+                  className={`relative backdrop-blur-xl border-2 shadow-xl hover:scale-105 transition-all duration-300
+                    min-w-[32px] sm:min-w-[36px] md:min-w-[40px] lg:min-w-[44px] xl:min-w-[48px] ${
+                    currentInput
+                      ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20'
+                      : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 hover:from-green-500/20 hover:to-emerald-500/20'
+                  }`}
+                  style={{
+                    borderColor: roomColor ? `${roomColor}80` : (currentInput ? 'rgb(74 222 128 / 0.3)' : 'rgb(255 255 255 / 0.1)')
+                  }}
+                >
+                  {/* Room Color Indicator */}
+                  {roomInfo && (
+                    <div
+                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm"
+                      style={{ backgroundColor: roomColor }}
+                      title={roomInfo.name}
+                    />
+                  )}
                   {/* TV Icon - Compact sizing to prevent overlap */}
                   <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
                     <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />

@@ -20,7 +20,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react'
-import DraggableZone, { type Zone } from './DraggableZone'
+import DraggableZone, { type Zone, type Room } from './DraggableZone'
 import ZonePropertiesPanel from './ZonePropertiesPanel'
 import LayoutZoomControls from './LayoutZoomControls'
 import { logger } from '@sports-bar/logger'
@@ -31,6 +31,7 @@ interface TVLayout {
   imageUrl?: string
   originalFileUrl?: string
   zones: Zone[]
+  rooms?: Room[]
 }
 
 interface LayoutEditorProps {
@@ -52,11 +53,18 @@ export default function LayoutEditor({
   // Working copy of zones for editing
   const [zones, setZones] = useState<Zone[]>([...layout.zones])
   const [originalZones] = useState<Zone[]>([...layout.zones])
+  const [rooms] = useState<Room[]>(layout.rooms || [])
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
+  const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('all')
   const [isSaving, setIsSaving] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(true)
   const [hasChanges, setHasChanges] = useState(false)
+
+  // Filter zones by room
+  const filteredZones = selectedRoomFilter === 'all'
+    ? zones
+    : zones.filter(z => z.room === selectedRoomFilter)
 
   // Zoom and pan state
   const [zoom, setZoom] = useState(1)
@@ -396,6 +404,47 @@ export default function LayoutEditor({
         </div>
       </div>
 
+      {/* Room Filter Tabs */}
+      {rooms.length > 0 && (
+        <div className="bg-slate-800/50 border-b border-slate-700 px-4 py-2 flex items-center gap-2">
+          <span className="text-sm text-slate-400 mr-2">Filter by Room:</span>
+          <button
+            onClick={() => setSelectedRoomFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              selectedRoomFilter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            All ({zones.length})
+          </button>
+          {rooms.map(room => {
+            const count = zones.filter(z => z.room === room.id).length
+            return (
+              <button
+                key={room.id}
+                onClick={() => setSelectedRoomFilter(room.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  selectedRoomFilter === room.id
+                    ? 'text-white'
+                    : 'text-slate-300 hover:opacity-80'
+                }`}
+                style={{
+                  backgroundColor: selectedRoomFilter === room.id ? room.color : `${room.color}40`,
+                  borderColor: room.color
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: room.color }}
+                />
+                {room.name} ({count})
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Layout Canvas */}
@@ -447,7 +496,7 @@ export default function LayoutEditor({
               )}
 
               {/* Draggable Zones */}
-              {zones.map(zone => (
+              {filteredZones.map(zone => (
                 <DraggableZone
                   key={zone.id}
                   zone={zone}
@@ -456,11 +505,12 @@ export default function LayoutEditor({
                   onUpdate={handleZoneUpdate}
                   containerRef={containerRef}
                   showResizeHandles={!isPanning}
+                  rooms={rooms}
                 />
               ))}
 
               {/* Empty State */}
-              {zones.length === 0 && (
+              {filteredZones.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center text-slate-400">
                     <Grid3X3 className="w-16 h-16 mx-auto mb-4 opacity-30" />
@@ -508,6 +558,7 @@ export default function LayoutEditor({
               onAddZone={handleAddZone}
               onClose={() => setShowPropertiesPanel(false)}
               matrixOutputs={matrixOutputs}
+              rooms={rooms}
             />
           </div>
         )}
