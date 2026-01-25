@@ -1,15 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Volume2, Activity, ChevronDown, ChevronUp, Speaker, Mic } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Volume2, Activity, ChevronDown, ChevronUp, Speaker, Mic, Radio } from 'lucide-react'
 import { Switch } from './ui/switch'
 import AtlasGroupsControl from './AtlasGroupsControl'
 import WolfpackMatrixOutputControl from './WolfpackMatrixOutputControl'
 import AtlasRealtimeMeters from './AtlasRealtimeMeters'
+import HTDZoneControl from './HTDZoneControl'
+import { logger } from '@sports-bar/logger'
 
 // LocalStorage keys for persisting meter toggle settings
 const METERS_OUTPUT_KEY = 'bartender-audio-meters-output-enabled'
 const METERS_INPUT_KEY = 'bartender-audio-meters-input-enabled'
+
+interface HTDDevice {
+  id: string
+  name: string
+  model: string
+  zones: number
+  sources: number
+  status: 'online' | 'offline' | 'error'
+}
 
 interface BartenderRemoteAudioPanelProps {
   processorIp: string
@@ -30,13 +41,53 @@ export default function BartenderRemoteAudioPanel({
   const [outputMetersEnabled, setOutputMetersEnabled] = useState(true)
   const [inputMetersEnabled, setInputMetersEnabled] = useState(true)
 
+  // HTD state
+  const [htdEnabled, setHtdEnabled] = useState(false)
+  const [htdDevices, setHtdDevices] = useState<HTDDevice[]>([])
+  const [selectedHtdDevice, setSelectedHtdDevice] = useState<HTDDevice | null>(null)
+  const [htdExpanded, setHtdExpanded] = useState(true)
+
+  // Fetch HTD settings and devices
+  const fetchHTDSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings/audio')
+      const result = await response.json()
+      if (result.success && result.data) {
+        setHtdEnabled(result.data.htdEnabled ?? false)
+
+        // If HTD is enabled, fetch devices
+        if (result.data.htdEnabled) {
+          fetchHTDDevices()
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to fetch HTD settings:', { error })
+    }
+  }, [])
+
+  const fetchHTDDevices = async () => {
+    try {
+      const response = await fetch('/api/htd')
+      const data = await response.json()
+      if (data.devices && data.devices.length > 0) {
+        setHtdDevices(data.devices)
+        setSelectedHtdDevice(data.devices[0])
+      }
+    } catch (error) {
+      logger.error('Failed to fetch HTD devices:', { error })
+    }
+  }
+
   // Load saved meter toggle preferences from localStorage
   useEffect(() => {
     const savedOutput = localStorage.getItem(METERS_OUTPUT_KEY)
     const savedInput = localStorage.getItem(METERS_INPUT_KEY)
     if (savedOutput !== null) setOutputMetersEnabled(savedOutput === 'true')
     if (savedInput !== null) setInputMetersEnabled(savedInput === 'true')
-  }, [])
+
+    // Fetch HTD settings
+    fetchHTDSettings()
+  }, [fetchHTDSettings])
 
   // Save output meter preference
   const handleOutputToggle = (enabled: boolean) => {
@@ -141,6 +192,57 @@ export default function BartenderRemoteAudioPanel({
             />
           </div>
         </div>
+
+        {/* HTD Whole-House Audio Panel - Only shown when enabled in settings */}
+        {htdEnabled && htdDevices.length > 0 && (
+          <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            <button
+              onClick={() => setHtdExpanded(!htdExpanded)}
+              className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+            >
+              <h3 className="text-lg font-bold flex items-center bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <Radio className="mr-3 w-5 h-5 text-indigo-400" />
+                HTD Whole-House Audio
+              </h3>
+              {htdExpanded ? (
+                <ChevronUp className="w-5 h-5 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-400" />
+              )}
+            </button>
+            {htdExpanded && (
+              <div className="px-4 pb-4 space-y-4">
+                {/* Device selector if multiple devices */}
+                {htdDevices.length > 1 && (
+                  <div className="flex items-center space-x-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                    <span className="text-sm text-slate-400">Device:</span>
+                    <select
+                      value={selectedHtdDevice?.id || ''}
+                      onChange={(e) => {
+                        const device = htdDevices.find(d => d.id === e.target.value)
+                        if (device) setSelectedHtdDevice(device)
+                      }}
+                      className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-100"
+                    >
+                      {htdDevices.map(device => (
+                        <option key={device.id} value={device.id}>{device.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* HTD Zone Control - Compact mode for bartender remote */}
+                {selectedHtdDevice && (
+                  <HTDZoneControl
+                    device={selectedHtdDevice}
+                    onRefresh={fetchHTDDevices}
+                    compact={true}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

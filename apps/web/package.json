@@ -100,6 +100,7 @@
     "@sports-bar/database": "*",
     "@sports-bar/directv": "*",
     "@sports-bar/firecube": "*",
+    "@sports-bar/htd": "*",
     "@sports-bar/ir-control": "*",
     "@sports-bar/layout-detection": "*",
     "@sports-bar/logger": "*",

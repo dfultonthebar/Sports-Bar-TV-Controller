@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sliders, Volume2, Disc, Settings, Brain, Cpu } from 'lucide-react'
+import { Sliders, Volume2, Disc, Settings, Brain, Cpu, Speaker } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import AtlasProgrammingInterface from '@/components/AtlasProgrammingInterface'
 import AtlasAIMonitor from '@/components/AtlasAIMonitor'
@@ -10,14 +10,29 @@ import AudioZoneControl from '@/components/AudioZoneControl'
 import SoundtrackControl from '@/components/SoundtrackControl'
 import SoundtrackConfiguration from '@/components/SoundtrackConfiguration'
 import AudioProcessorManager from '@/components/AudioProcessorManager'
+import HTDManager from '@/components/HTDManager'
+import HTDZoneControl from '@/components/HTDZoneControl'
 
 import { logger } from '@sports-bar/logger'
+
+interface HTDDevice {
+  id: string
+  name: string
+  model: string
+  zones: number
+  sources: number
+  status: 'online' | 'offline' | 'error'
+}
+
 export default function AudioControlTabs() {
   const [activeProcessor, setActiveProcessor] = useState<any>(null)
   const [loadingProcessor, setLoadingProcessor] = useState(true)
+  const [htdDevices, setHtdDevices] = useState<HTDDevice[]>([])
+  const [selectedHtdDevice, setSelectedHtdDevice] = useState<HTDDevice | null>(null)
 
   useEffect(() => {
     fetchActiveProcessor()
+    fetchHTDDevices()
   }, [])
 
   const fetchActiveProcessor = async () => {
@@ -36,10 +51,24 @@ export default function AudioControlTabs() {
     }
   }
 
+  const fetchHTDDevices = async () => {
+    try {
+      const response = await fetch('/api/htd')
+      const data = await response.json()
+      if (data.devices && data.devices.length > 0) {
+        setHtdDevices(data.devices)
+        // Select first device by default
+        setSelectedHtdDevice(data.devices[0])
+      }
+    } catch (error) {
+      logger.error('Error fetching HTD devices:', error)
+    }
+  }
+
   return (
     <div className="card p-6">
       <Tabs defaultValue="zones" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-slate-800/50">
+        <TabsList className="grid w-full grid-cols-5 bg-slate-800/50">
           <TabsTrigger
             value="zones"
             className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
@@ -53,6 +82,13 @@ export default function AudioControlTabs() {
           >
             <Cpu className="w-4 h-4" />
             <span>Processors</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="htd"
+            className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+          >
+            <Speaker className="w-4 h-4" />
+            <span>HTD Audio</span>
           </TabsTrigger>
           <TabsTrigger
             value="atlas"
@@ -95,6 +131,89 @@ export default function AudioControlTabs() {
               </div>
             </div>
             <AudioProcessorManager />
+          </div>
+        </TabsContent>
+
+        {/* HTD Audio Tab */}
+        <TabsContent value="htd" className="mt-6">
+          <div className="space-y-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <Speaker className="w-6 h-6 text-indigo-400" />
+              <div>
+                <h2 className="text-2xl font-bold text-slate-100">HTD Whole-House Audio</h2>
+                <p className="text-slate-300 text-sm">Configure and control HTD multi-zone audio systems</p>
+              </div>
+            </div>
+
+            <Tabs defaultValue="control" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 bg-slate-800/30">
+                <TabsTrigger
+                  value="control"
+                  className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+                >
+                  <Sliders className="w-4 h-4" />
+                  <span>Zone Control</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="configuration"
+                  className="flex items-center space-x-2 data-[state=active]:bg-slate-700 data-[state=active]:text-slate-100"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Configuration</span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="control" className="mt-6">
+                {htdDevices.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Device Selector */}
+                    {htdDevices.length > 1 && (
+                      <div className="flex items-center space-x-3">
+                        <span className="text-sm text-slate-400">Device:</span>
+                        <select
+                          value={selectedHtdDevice?.id || ''}
+                          onChange={(e) => {
+                            const device = htdDevices.find(d => d.id === e.target.value)
+                            if (device) setSelectedHtdDevice(device)
+                          }}
+                          className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100"
+                        >
+                          {htdDevices.map(device => (
+                            <option key={device.id} value={device.id}>{device.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Zone Control */}
+                    {selectedHtdDevice && (
+                      <HTDZoneControl
+                        device={selectedHtdDevice}
+                        onRefresh={fetchHTDDevices}
+                        showToneControls={true}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 border-2 border-dashed border-slate-700 rounded-lg">
+                    <Speaker className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-400">No HTD devices configured</p>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Go to the Configuration tab to add an HTD device
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="configuration" className="mt-6">
+                <HTDManager
+                  onDeviceCountChange={(count) => {
+                    if (count > 0) fetchHTDDevices()
+                  }}
+                  showBartenderToggle={true}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </TabsContent>
 

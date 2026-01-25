@@ -1,0 +1,28 @@
+{
+  "name": "@sports-bar/htd",
+  "version": "1.0.0",
+  "description": "HTD whole-house audio system control (MC-66, MCA-66, Lync 6/12)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@sports-bar/logger": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "htd",
+    "home-theater-direct",
+    "whole-house-audio",
+    "lync",
+    "mca-66"
+  ],
+  "author": "",
+  "license": "MIT"
+}

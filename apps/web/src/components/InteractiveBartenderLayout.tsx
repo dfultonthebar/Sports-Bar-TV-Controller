@@ -10,13 +10,14 @@
  * - Clean, modern appearance
  */
 
-import { useState } from 'react'
-import { Monitor, X, Tv, Home } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Monitor, X, Tv } from 'lucide-react'
 
 interface Room {
   id: string
   name: string
   color: string
+  imageUrl?: string
 }
 
 interface Zone {
@@ -67,12 +68,22 @@ export default function InteractiveBartenderLayout({
   currentChannels = {}
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
-  const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('all')
 
   const rooms = layout.rooms || []
 
-  // Filter zones by room
-  const filteredZones = selectedRoomFilter === 'all'
+  // Default to Main Bar room if it exists, otherwise first room
+  const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('')
+
+  // Set default room when layout loads - prefer "Main Bar"
+  useEffect(() => {
+    if (rooms.length > 0 && !selectedRoomFilter) {
+      const mainBar = rooms.find(r => r.name.toLowerCase().includes('main bar'))
+      setSelectedRoomFilter(mainBar?.id || rooms[0].id)
+    }
+  }, [rooms, selectedRoomFilter])
+
+  // Filter zones by room (no 'all' option when rooms are defined)
+  const filteredZones = !selectedRoomFilter || selectedRoomFilter === 'all' || rooms.length === 0
     ? layout.zones
     : layout.zones.filter(z => z.room === selectedRoomFilter)
 
@@ -115,8 +126,14 @@ export default function InteractiveBartenderLayout({
     return input.label
   }
 
-  // Use professional image if available, otherwise fallback to original
-  const imageUrl = layout.professionalImageUrl || layout.imageUrl
+  // Get the current image to display based on room filter
+  // When a room is selected, show its specific image if available
+  const selectedRoom = selectedRoomFilter !== 'all'
+    ? rooms.find(r => r.id === selectedRoomFilter)
+    : null
+  const imageUrl = selectedRoom?.imageUrl
+    || layout.professionalImageUrl
+    || layout.imageUrl
 
   if (!imageUrl) {
     return (
@@ -147,20 +164,9 @@ export default function InteractiveBartenderLayout({
           </p>
         </div>
 
-        {/* Room Filter Tabs */}
+        {/* Room Filter Tabs - Only show defined rooms */}
         {rooms.length > 0 && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setSelectedRoomFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                selectedRoomFilter === 'all'
-                  ? 'bg-white/20 text-white border border-white/30'
-                  : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
-              }`}
-            >
-              <Home className="w-4 h-4 inline mr-2" />
-              All Rooms ({layout.zones.length})
-            </button>
             {rooms.map((room) => {
               const roomZoneCount = layout.zones.filter(z => z.room === room.id).length
               return (
@@ -190,7 +196,15 @@ export default function InteractiveBartenderLayout({
 
         {/* Layout Container - Responsive sizing for all devices */}
         <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
-          {/* Background image hidden - only used for zone positioning during setup */}
+          {/* Background Floor Plan Image */}
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt="Floor plan"
+              className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none"
+              draggable={false}
+            />
+          )}
 
           {/* Interactive TV Zones */}
           {filteredZones.map((zone) => {
