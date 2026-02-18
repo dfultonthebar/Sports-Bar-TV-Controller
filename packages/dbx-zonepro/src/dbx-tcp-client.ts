@@ -44,11 +44,9 @@ export interface DbxClientEvents {
 /**
  * TCP client for dbx ZonePRO m-model processors
  *
- * Uses connect-per-command pattern: opens a fresh TCP connection for each
- * command, sends the frame, and closes. This is reliable because:
- * - dbx ZonePRO is one-way (no feedback to read)
- * - Persistent connections can go stale without detection
- * - Each command completes independently
+ * Uses serialized connect-per-command pattern: opens a fresh TCP connection
+ * for each command, sends the frame, and closes. Commands are queued so only
+ * one TCP connection is open at a time (dbx only handles one at a time).
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
@@ -56,6 +54,9 @@ export class DbxTcpClient extends EventEmitter {
   private routerObjects: HiQnetAddress[]
   private sequenceNumber: number = 0
   private _initialized: boolean = false
+  // Command queue - dbx only handles one TCP connection at a time
+  private sendQueue: Array<{ frame: Buffer; resolve: (v: any) => void; reject: (e: any) => void }> = []
+  private sending: boolean = false
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -73,7 +74,7 @@ export class DbxTcpClient extends EventEmitter {
       device: this.deviceAddress,
     }))
 
-    logger.info('[DBX-TCP] Client initialized (connect-per-command mode)', {
+    logger.info('[DBX-TCP] Client initialized (serialized connect-per-command)', {
       data: {
         ipAddress: this.config.ipAddress,
         port: this.config.port,
@@ -128,10 +129,39 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Open TCP, send frame, resolve immediately after write, close async
-   * Optimized for minimum latency on one-way protocol
+   * Queue a frame to send. Only one TCP connection at a time.
    */
   private sendFrame(frame: Buffer): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.sendQueue.push({ frame, resolve, reject })
+      this.processQueue()
+    })
+  }
+
+  /**
+   * Process the send queue serially - one TCP connection at a time
+   */
+  private async processQueue(): Promise<void> {
+    if (this.sending || this.sendQueue.length === 0) return
+    this.sending = true
+
+    while (this.sendQueue.length > 0) {
+      const { frame, resolve, reject } = this.sendQueue.shift()!
+      try {
+        await this.sendFrameNow(frame)
+        resolve({ success: true })
+      } catch (err) {
+        reject(err)
+      }
+    }
+
+    this.sending = false
+  }
+
+  /**
+   * Open TCP, send frame, wait for write to flush, close
+   */
+  private sendFrameNow(frame: Buffer): Promise<void> {
     return new Promise((resolve, reject) => {
       const socket = new Socket()
       socket.setNoDelay(true)
@@ -139,7 +169,7 @@ export class DbxTcpClient extends EventEmitter {
       const timer = setTimeout(() => {
         socket.destroy()
         reject(new Error('Connection timeout'))
-      }, 2000) // 2s timeout (LAN should connect in <5ms)
+      }, 2000)
 
       socket.on('connect', () => {
         clearTimeout(timer)
@@ -148,10 +178,11 @@ export class DbxTcpClient extends EventEmitter {
             socket.destroy()
             reject(err)
           } else {
-            // Resolve IMMEDIATELY - don't wait for socket close
-            resolve({ success: true })
-            // Destroy socket async after small delay to let data flush
-            setTimeout(() => socket.destroy(), 50)
+            // Small delay to let data flush before closing
+            setTimeout(() => {
+              socket.destroy()
+              resolve()
+            }, 20)
           }
         })
       })
