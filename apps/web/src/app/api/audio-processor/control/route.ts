@@ -148,7 +148,8 @@ async function executeDbxCommand(processor: any, command: ControlCommand): Promi
   switch (command.action) {
     case 'volume': {
       const volume = command.value as number
-      await service.setVolume(zoneIndex, volume, { type: 'percent' })
+      // UI sends raw dbx values (0-415), not percentages
+      await service.setVolume(zoneIndex, volume, { type: 'raw' })
       return { zone: command.zone, volume, timestamp: new Date() }
     }
     case 'mute': {

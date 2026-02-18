@@ -15,14 +15,12 @@ import { logger } from '@sports-bar/logger'
 import { DBX_NETWORK_CONFIG, percentToVolume } from './config'
 import {
   type HiQnetAddress,
-  TcpFrameBuffer,
   buildVolumeSetFrame,
   buildMuteSetFrame,
   buildSourceSetFrame,
   buildRecallSceneFrame,
   buildGetFrame,
   DEFAULT_ROUTER_OBJECTS,
-  parseTcpFrame,
 } from './dbx-protocol'
 
 export interface DbxTcpClientConfig {
@@ -45,18 +43,19 @@ export interface DbxClientEvents {
 
 /**
  * TCP client for dbx ZonePRO m-model processors
+ *
+ * Uses connect-per-command pattern: opens a fresh TCP connection for each
+ * command, sends the frame, and closes. This is reliable because:
+ * - dbx ZonePRO is one-way (no feedback to read)
+ * - Persistent connections can go stale without detection
+ * - Each command completes independently
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
   private deviceAddress: number
   private routerObjects: HiQnetAddress[]
-  private socket: Socket | null = null
-  private connected: boolean = false
-  private connecting: boolean = false
-  private frameBuffer: TcpFrameBuffer = new TcpFrameBuffer()
   private sequenceNumber: number = 0
-  private reconnectTimer: NodeJS.Timeout | null = null
-  private reconnectAttempts: number = 0
+  private _initialized: boolean = false
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -74,7 +73,7 @@ export class DbxTcpClient extends EventEmitter {
       device: this.deviceAddress,
     }))
 
-    logger.info('[DBX-TCP] Client initialized', {
+    logger.info('[DBX-TCP] Client initialized (connect-per-command mode)', {
       data: {
         ipAddress: this.config.ipAddress,
         port: this.config.port,
@@ -105,172 +104,46 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Connect to the dbx ZonePRO processor
+   * "Connect" - validates reachability on first call
+   * With connect-per-command, this just marks the client as initialized
    */
   async connect(): Promise<void> {
-    if (this.connected) {
-      return
-    }
-    if (this.connecting) {
-      return
-    }
+    if (this._initialized) return
 
-    this.connecting = true
+    // Test connectivity once
+    logger.info('[DBX-TCP] Testing connectivity...', {
+      data: { ipAddress: this.config.ipAddress, port: this.config.port },
+    })
 
-    return new Promise((resolve, reject) => {
-      logger.info('[DBX-TCP] Connecting...', {
+    try {
+      await this.sendOneShot(Buffer.alloc(0), true) // Just test connection
+      this._initialized = true
+      logger.info('[DBX-TCP] Connectivity confirmed', {
         data: { ipAddress: this.config.ipAddress, port: this.config.port },
       })
-
-      if (this.socket) {
-        try { this.socket.destroy() } catch { /* ignore */ }
-        this.socket = null
-      }
-
-      this.socket = new Socket()
-      this.socket.setTimeout(this.config.connectionTimeout)
-      this.socket.setNoDelay(true)
-      this.socket.setKeepAlive(true, 30000)
-
-      const connectionTimeout = setTimeout(() => {
-        this.connecting = false
-        const error = new Error('Connection timeout')
-        logger.error('[DBX-TCP] Connection timeout', { error })
-        this.socket?.destroy()
-        reject(error)
-      }, this.config.connectionTimeout)
-
-      this.socket.on('connect', () => {
-        clearTimeout(connectionTimeout)
-        this.connected = true
-        this.connecting = false
-        this.reconnectAttempts = 0
-        this.socket?.setTimeout(0)
-
-        logger.info('[DBX-TCP] Connected successfully', {
-          data: { ipAddress: this.config.ipAddress, port: this.config.port },
-        })
-
-        // No ping needed over TCP - TCP has its own keepalive
-        this.emit('connected')
-        resolve()
+      this.emit('connected')
+    } catch (error) {
+      // Mark as initialized anyway - commands will retry per-call
+      this._initialized = true
+      logger.warn('[DBX-TCP] Initial connectivity test failed, will retry per-command', {
+        data: { error: error instanceof Error ? error.message : String(error) },
       })
-
-      this.socket.on('data', (data) => {
-        this.handleData(data)
-      })
-
-      this.socket.on('error', (error) => {
-        clearTimeout(connectionTimeout)
-        this.connecting = false
-        logger.error('[DBX-TCP] Socket error', { error })
-        this.emit('error', error)
-        if (!this.connected) {
-          reject(error)
-        }
-      })
-
-      this.socket.on('close', () => {
-        const wasConnected = this.connected
-        this.connected = false
-        this.connecting = false
-        this.frameBuffer.clear()
-
-        if (wasConnected) {
-          logger.info('[DBX-TCP] Disconnected', {
-            data: { ipAddress: this.config.ipAddress },
-          })
-          this.emit('disconnected')
-          if (this.config.autoReconnect) {
-            this.scheduleReconnect()
-          }
-        }
-      })
-
-      this.socket.on('timeout', () => {
-        logger.warn('[DBX-TCP] Socket timeout')
-        this.socket?.destroy()
-      })
-
-      this.socket.connect(this.config.port, this.config.ipAddress)
-    })
+    }
   }
 
   /**
-   * Disconnect from the processor
+   * Disconnect (no-op for connect-per-command)
    */
   disconnect(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
-    if (this.socket) {
-      this.socket.destroy()
-      this.socket = null
-    }
-    this.connected = false
-    this.connecting = false
-    logger.info('[DBX-TCP] Disconnected by request')
+    this._initialized = false
+    logger.info('[DBX-TCP] Client disconnected')
   }
 
   /**
-   * Check if connected
+   * Always returns true once initialized (connect-per-command)
    */
   isConnected(): boolean {
-    return this.connected && this.socket !== null && !this.socket.destroyed
-  }
-
-  /**
-   * Handle incoming data (for any responses the ZonePRO might send)
-   */
-  private handleData(data: Buffer): void {
-    logger.debug('[DBX-TCP] Received data', { data: { length: data.length, hex: data.toString('hex') } })
-    this.frameBuffer.append(data)
-
-    let frame
-    while ((frame = this.frameBuffer.extractFrame()) !== null) {
-      if (frame && frame.valid) {
-        logger.info('[DBX-TCP] Received valid frame', {
-          data: {
-            messageId: `0x${frame.header.messageId.toString(16)}`,
-            sequenceNumber: frame.header.sequenceNumber,
-          },
-        })
-        this.emit('response', frame)
-      }
-    }
-  }
-
-  /**
-   * Schedule reconnection attempt
-   */
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return
-
-    this.reconnectAttempts++
-    if (this.reconnectAttempts > DBX_NETWORK_CONFIG.MAX_RECONNECT_ATTEMPTS) {
-      logger.error('[DBX-TCP] Max reconnection attempts reached')
-      this.emit('error', new Error('Max reconnection attempts reached'))
-      return
-    }
-
-    const delay = Math.min(
-      DBX_NETWORK_CONFIG.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1),
-      30000
-    )
-
-    logger.info('[DBX-TCP] Scheduling reconnection', {
-      data: { attempt: this.reconnectAttempts, delay },
-    })
-
-    this.reconnectTimer = setTimeout(async () => {
-      this.reconnectTimer = null
-      try {
-        await this.connect()
-      } catch (error) {
-        logger.error('[DBX-TCP] Reconnection failed', { error })
-      }
-    }, delay)
+    return this._initialized
   }
 
   /**
@@ -282,26 +155,79 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Send a raw buffer over TCP
+   * Open a fresh TCP connection, send frame, and close
+   * This is the core send method - each call gets its own connection
+   */
+  private async sendOneShot(frame: Buffer, testOnly: boolean = false): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const socket = new Socket()
+      socket.setTimeout(this.config.connectionTimeout)
+      socket.setNoDelay(true)
+
+      const cleanup = () => {
+        try { socket.destroy() } catch { /* ignore */ }
+      }
+
+      const connectionTimeout = setTimeout(() => {
+        cleanup()
+        reject(new Error(`Connection timeout to ${this.config.ipAddress}:${this.config.port}`))
+      }, this.config.connectionTimeout)
+
+      socket.on('connect', () => {
+        clearTimeout(connectionTimeout)
+
+        if (testOnly) {
+          cleanup()
+          resolve({ success: true, test: true })
+          return
+        }
+
+        logger.info('[DBX-TCP] Connected, sending frame', {
+          data: {
+            ipAddress: this.config.ipAddress,
+            length: frame.length,
+            hex: frame.toString('hex'),
+          },
+        })
+
+        socket.write(frame, (writeError) => {
+          // Close after sending - one-way protocol, no response expected
+          cleanup()
+
+          if (writeError) {
+            logger.error('[DBX-TCP] Write error', { error: writeError })
+            reject(writeError)
+          } else {
+            logger.info('[DBX-TCP] Frame sent successfully', {
+              data: { length: frame.length },
+            })
+            resolve({ success: true })
+          }
+        })
+      })
+
+      socket.on('error', (error) => {
+        clearTimeout(connectionTimeout)
+        cleanup()
+        logger.error('[DBX-TCP] Socket error', { error })
+        reject(error)
+      })
+
+      socket.on('timeout', () => {
+        clearTimeout(connectionTimeout)
+        cleanup()
+        reject(new Error('Socket timeout'))
+      })
+
+      socket.connect(this.config.port, this.config.ipAddress)
+    })
+  }
+
+  /**
+   * Send a frame with connect-per-command pattern
    */
   private async sendFrame(frame: Buffer): Promise<any> {
-    if (!this.connected || !this.socket) {
-      throw new Error('Not connected to dbx ZonePRO')
-    }
-
-    return new Promise((resolve, reject) => {
-      logger.debug('[DBX-TCP] Sending frame', {
-        data: { length: frame.length, hex: frame.toString('hex') },
-      })
-
-      this.socket!.write(frame, (error) => {
-        if (error) {
-          reject(error)
-        } else {
-          resolve({ success: true })
-        }
-      })
-    })
+    return this.sendOneShot(frame)
   }
 
   /**
