@@ -53,15 +53,17 @@ export const CONTROLLER_ADDRESS: HiQnetAddress = {
 
 // Default ZonePRO Router Object IDs
 // These MUST be configured per installation via ZonePRO Designer (Ctrl+Shift+O)
-// Confirmed from ZonePRO Designer on 1260m:
-//   12z1: b0=31(0x1F), b1=0, b2=5, b3=1(VD) → vd:0x01, object:0x05001F
+// Designer shows: b0(Index), b1(Row), b2(Col), b3(VD)
+// HiQnet wire mapping: VD=b2, Object=(b3<<16)|(b1<<8)|b0
+//   12z1: b0=31, b1=0, b2=5, b3=1 → vd:0x05, object:0x01001F
+//   12z2: b0=32, b1=1, b2=5, b3=1 → vd:0x05, object:0x010120
 export const DEFAULT_ROUTER_OBJECTS: HiQnetAddress[] = [
-  { device: 0x0001, vd: 0x01, object: 0x05001F }, // Ch1 Router (12z1, confirmed: b0=31,b1=0,b2=5)
-  { device: 0x0001, vd: 0x01, object: 0x050120 }, // Ch2 Router (12z2, confirmed: b0=32,b1=1,b2=5)
-  { device: 0x0001, vd: 0x01, object: 0x050221 }, // Ch3 Router (estimated)
-  { device: 0x0001, vd: 0x01, object: 0x050322 }, // Ch4 Router (estimated)
-  { device: 0x0001, vd: 0x01, object: 0x050423 }, // Ch5 Router (estimated)
-  { device: 0x0001, vd: 0x01, object: 0x050524 }, // Ch6 Router (estimated)
+  { device: 0x0001, vd: 0x05, object: 0x01001F }, // Ch1 Router (12z1, confirmed from Designer + working frame)
+  { device: 0x0001, vd: 0x05, object: 0x010120 }, // Ch2 Router (12z2, confirmed from Designer)
+  { device: 0x0001, vd: 0x05, object: 0x010221 }, // Ch3 Router (estimated)
+  { device: 0x0001, vd: 0x05, object: 0x010322 }, // Ch4 Router (estimated)
+  { device: 0x0001, vd: 0x05, object: 0x010423 }, // Ch5 Router (estimated)
+  { device: 0x0001, vd: 0x05, object: 0x010524 }, // Ch6 Router (estimated)
 ]
 
 // HiQnet data type constants
