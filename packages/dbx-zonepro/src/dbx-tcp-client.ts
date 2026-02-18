@@ -188,6 +188,18 @@ export class DbxTcpClient extends EventEmitter {
       await this.connect()
     }
 
+    // Check for stale connection: if send buffer has backed up,
+    // the dbx has stopped reading and the connection is dead
+    if (this.socket && this.socket.writableLength > 100) {
+      logger.info('[DBX-TCP] Send buffer backed up, reconnecting', {
+        data: { buffered: this.socket.writableLength },
+      })
+      this.socket.destroy()
+      this.socket = null
+      this._connected = false
+      await this.connect()
+    }
+
     return new Promise((resolve, reject) => {
       if (!this.socket) {
         reject(new Error('No socket available'))
