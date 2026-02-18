@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findUnique, update, eq } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
+import { getDbxControlService } from '@/lib/dbxControlService'
 import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -59,42 +60,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    atlasLogger.info('CONTROL', `Executing ${command.action} command on processor ${processor.name}`, {
-      processorId,
-      ipAddress: processor.ipAddress,
-      tcpPort: processor.tcpPort,
-      command
+    logger.info(`[AUDIO-CONTROL] Executing ${command.action} command on ${processor.processorType} processor ${processor.name}`, {
+      data: { processorId, ipAddress: processor.ipAddress, tcpPort: processor.tcpPort, command }
     })
 
     let result;
-    switch (command.action) {
-      case 'volume':
-        result = await setZoneVolume(processor, command.zone!, command.value as number)
-        break
-      case 'output-volume':
-        result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
-        break
-      case 'mute':
-        result = await setZoneMute(processor, command.zone!, command.value as boolean)
-        break
-      case 'source':
-        result = await setZoneSource(processor, command.zone!, command.value as string)
-        break
-      case 'scene':
-        result = await recallScene(processor, command.sceneId!)
-        break
-      case 'message':
-        result = await playMessage(processor, command.messageId!, command.zones)
-        break
-      case 'combine':
-        result = await combineRooms(processor, command.zones!)
-        break
-      default:
-        logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Unknown action' })
-        return NextResponse.json(
-          { error: `Unknown command action: ${command.action}` },
-          { status: 400 }
-        )
+
+    // Route to the correct processor backend
+    if (processor.processorType === 'dbx-zonepro') {
+      result = await executeDbxCommand(processor, command)
+    } else {
+      // Default to Atlas for 'atlas' and any other type
+      switch (command.action) {
+        case 'volume':
+          result = await setZoneVolume(processor, command.zone!, command.value as number)
+          break
+        case 'output-volume':
+          result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
+          break
+        case 'mute':
+          result = await setZoneMute(processor, command.zone!, command.value as boolean)
+          break
+        case 'source':
+          result = await setZoneSource(processor, command.zone!, command.value as string)
+          break
+        case 'scene':
+          result = await recallScene(processor, command.sceneId!)
+          break
+        case 'message':
+          result = await playMessage(processor, command.messageId!, command.zones)
+          break
+        case 'combine':
+          result = await combineRooms(processor, command.zones!)
+          break
+        default:
+          logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Unknown action' })
+          return NextResponse.json(
+            { error: `Unknown command action: ${command.action}` },
+            { status: 400 }
+          )
+      }
     }
 
     // Update last seen timestamp using Drizzle
@@ -120,6 +125,66 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// dbx ZonePRO control functions
+
+/**
+ * Execute a command on a dbx ZonePRO processor
+ * Uses the DbxControlService from @sports-bar/dbx-zonepro package
+ */
+async function executeDbxCommand(processor: any, command: ControlCommand): Promise<any> {
+  const service = await getDbxControlService({
+    deviceId: processor.id,
+    model: processor.model || '1260m',
+    ipAddress: processor.ipAddress,
+    port: processor.tcpPort || 3804,
+  })
+
+  // dbx zones are 0-based in the service, UI sends 1-based
+  const zoneIndex = command.zone ? command.zone - 1 : 0
+
+  switch (command.action) {
+    case 'volume': {
+      const volume = command.value as number
+      await service.setVolume(zoneIndex, volume, { type: 'percent' })
+      return { zone: command.zone, volume, timestamp: new Date() }
+    }
+    case 'mute': {
+      const muted = command.value as boolean
+      await service.setMute(zoneIndex, muted)
+      return { zone: command.zone, muted, timestamp: new Date() }
+    }
+    case 'source': {
+      let sourceIndex: number
+      if (typeof command.value === 'number') {
+        sourceIndex = command.value
+      } else if (typeof command.value === 'string') {
+        // Parse source strings like "Source 1" or "input_1" or direct numbers
+        const val = command.value as string
+        if (val.startsWith('Source ')) {
+          sourceIndex = parseInt(val.replace('Source ', '')) - 1
+        } else if (val.startsWith('input_')) {
+          sourceIndex = parseInt(val.split('_')[1]) - 1
+        } else if (!isNaN(parseInt(val))) {
+          sourceIndex = parseInt(val)
+        } else {
+          sourceIndex = 0
+        }
+      } else {
+        sourceIndex = 0
+      }
+      await service.setSource(zoneIndex, sourceIndex)
+      return { zone: command.zone, source: command.value, sourceIndex, timestamp: new Date() }
+    }
+    case 'scene': {
+      const sceneNumber = command.sceneId || 1
+      await service.recallScene(sceneNumber)
+      return { sceneId: sceneNumber, timestamp: new Date() }
+    }
+    default:
+      throw new Error(`Unsupported dbx command action: ${command.action}`)
   }
 }
 

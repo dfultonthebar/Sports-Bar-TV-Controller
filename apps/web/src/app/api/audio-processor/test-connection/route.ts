@@ -187,6 +187,96 @@ export async function POST(request: NextRequest) {
     // Sanitize processorId
     const sanitizedProcessorId = sanitizeProcessorId(processorId)
 
+    // Check processor type - route to appropriate test
+    // If we have a processorId, look up the processor type
+    let processorType = 'atlas'
+    if (sanitizedProcessorId) {
+      try {
+        const proc = await import('@/lib/db-helpers').then(m => m.findUnique('audioProcessors', eq(schema.audioProcessors.id, sanitizedProcessorId)))
+        if (proc) {
+          processorType = proc.processorType || 'atlas'
+        }
+      } catch {
+        // Fall through to atlas
+      }
+    }
+
+    // dbx ZonePRO uses TCP on port 3804, not HTTP
+    if (processorType === 'dbx-zonepro') {
+      const tcpPort = port || 3804
+      logger.info(`Testing TCP connection to dbx ZonePRO at ${cleanedIp}:${tcpPort}`)
+
+      try {
+        const net = require('net')
+        const connected = await new Promise<boolean>((resolve) => {
+          const socket = net.createConnection({ host: cleanedIp, port: tcpPort }, () => {
+            socket.end()
+            resolve(true)
+          })
+          socket.setTimeout(5000)
+          socket.on('timeout', () => { socket.destroy(); resolve(false) })
+          socket.on('error', () => { resolve(false) })
+        })
+
+        if (connected) {
+          if (sanitizedProcessorId) {
+            try {
+              await update('audioProcessors',
+                eq(schema.audioProcessors.id, sanitizedProcessorId),
+                { status: 'online' as const, lastSeen: new Date().toISOString(), ipAddress: cleanedIp }
+              )
+            } catch (dbError) {
+              logger.error('Failed to update processor in database:', dbError)
+            }
+          }
+
+          return NextResponse.json({
+            connected: true,
+            authenticated: true,
+            message: `Successfully connected to dbx ZonePRO via TCP on port ${tcpPort}`,
+            protocol: 'tcp',
+            port: tcpPort,
+            ipCleaned: cleanedIp !== ipAddress,
+            cleanedIp
+          })
+        } else {
+          if (sanitizedProcessorId) {
+            try {
+              await update('audioProcessors',
+                eq(schema.audioProcessors.id, sanitizedProcessorId),
+                { status: 'offline' as const, ipAddress: cleanedIp }
+              )
+            } catch (dbError) {
+              logger.error('Failed to update processor status in database:', dbError)
+            }
+          }
+
+          return NextResponse.json({
+            connected: false,
+            message: `Unable to connect to dbx ZonePRO at ${cleanedIp}:${tcpPort}`,
+            error: 'connection_failed',
+            protocol: 'tcp',
+            port: tcpPort,
+            troubleshooting: {
+              steps: [
+                '1. Verify the ZonePRO is powered on and connected to the network',
+                `2. Check that the IP address is correct: ${cleanedIp}`,
+                `3. Ensure TCP port ${tcpPort} is accessible`,
+                `4. Try: nc -zv ${cleanedIp} ${tcpPort}`,
+                '5. Check that the ZonePRO has the "m" (Ethernet) suffix model'
+              ]
+            }
+          })
+        }
+      } catch (error: any) {
+        return NextResponse.json({
+          connected: false,
+          message: 'TCP connection test failed',
+          error: error.message
+        }, { status: 500 })
+      }
+    }
+
     logger.info(`Testing connection to AtlasIED Atmosphere at ${cleanedIp}:${port || 80}`)
 
     // If auto-detect credentials is enabled, try common credential combinations
