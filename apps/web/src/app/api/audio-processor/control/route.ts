@@ -70,9 +70,12 @@ export async function POST(request: NextRequest) {
     if (processor.processorType === 'dbx-zonepro') {
       // Fire-and-forget for dbx (one-way protocol, no feedback)
       // Don't await - return immediately for fast UI response
-      executeDbxCommand(processor, command).catch(err =>
-        logger.error('[AUDIO-CONTROL] dbx command failed:', err)
-      )
+      const dbxStart = Date.now()
+      executeDbxCommand(processor, command)
+        .then(() => logger.info(`[AUDIO-CONTROL] dbx command completed in ${Date.now() - dbxStart}ms`))
+        .catch(err =>
+          logger.error(`[AUDIO-CONTROL] dbx command failed after ${Date.now() - dbxStart}ms: ${err?.message || err}`)
+        )
       return NextResponse.json({
         success: true,
         result: { action: command.action, zone: command.zone },
