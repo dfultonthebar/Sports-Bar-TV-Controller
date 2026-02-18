@@ -33,13 +33,10 @@ export async function routeWolfpackToMatrix(
   try {
     logger.info(`Routing Wolfpack input ${wolfpackInputNumber} (${inputLabel}) to Matrix output ${matrixOutputNumber}`)
 
-    // Wolfpack Matrix outputs are typically channels 33-36 (or configured range)
-    // This maps to Matrix 1-4 outputs
-    const wolfpackMatrixOutput = 32 + matrixOutputNumber // 33, 34, 35, 36
-
     // Build the routing command using correct Wolfpack protocol
     // Format: "[input]X[output]." (period required, \r\n added by sendWolfpackCommand)
-    const command = `${wolfpackInputNumber}X${wolfpackMatrixOutput}.`
+    // Output number is used directly - no offset needed for single-card matrices
+    const command = `${wolfpackInputNumber}X${matrixOutputNumber}.`
 
     logger.info(`Sending command to Wolfpack: ${command}`)
 

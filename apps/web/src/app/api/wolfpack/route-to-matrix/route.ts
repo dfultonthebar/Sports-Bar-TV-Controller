@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
 
   // Input validation - custom schema for wolfpack routing
   const wolfpackRoutingSchema = z.object({
-    wolfpackInputNumber: z.number().int().min(1).max(32),
-    matrixOutputNumber: z.number().int().min(1).max(4)
+    wolfpackInputNumber: z.number().int().min(1).max(36),
+    matrixOutputNumber: z.number().int().min(1).max(36)
   })
 
   const bodyValidation = await validateRequestBody(request, wolfpackRoutingSchema)
@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (matrixOutputNumber < 1 || matrixOutputNumber > 4) {
+    if (matrixOutputNumber < 1 || matrixOutputNumber > 36) {
       logger.api.response('POST', '/api/wolfpack/route-to-matrix', 400, { error: 'Invalid output number' })
       return NextResponse.json(
-        { error: 'matrixOutputNumber must be between 1 and 4' },
+        { error: 'matrixOutputNumber must be between 1 and 36' },
         { status: 400 }
       )
     }
