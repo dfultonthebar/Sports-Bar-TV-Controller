@@ -221,6 +221,7 @@ export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   protocol: text('protocol').notNull().default('TCP'),
   inputCount: integer('inputCount').notNull().default(36),
   outputCount: integer('outputCount').notNull().default(36),
+  outputOffset: integer('outputOffset').notNull().default(0),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),

@@ -11,6 +11,7 @@ interface MatrixConfiguration {
   tcpPort: number
   udpPort: number
   protocol: string
+  outputOffset?: number
 }
 
 interface RoutingResult {
@@ -35,8 +36,10 @@ export async function routeWolfpackToMatrix(
 
     // Build the routing command using correct Wolfpack protocol
     // Format: "[input]X[output]." (period required, \r\n added by sendWolfpackCommand)
-    // Output number is used directly - no offset needed for single-card matrices
-    const command = `${wolfpackInputNumber}X${matrixOutputNumber}.`
+    // outputOffset handles multi-card matrices (e.g., Graystone uses +32 for audio outputs 33-36)
+    const offset = config.outputOffset || 0
+    const wolfpackOutput = offset + matrixOutputNumber
+    const command = `${wolfpackInputNumber}X${wolfpackOutput}.`
 
     logger.info(`Sending command to Wolfpack: ${command}`)
 
