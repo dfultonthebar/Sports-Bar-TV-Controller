@@ -21,7 +21,7 @@ const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-a
 const launchAppSchema = z.object({
   deviceId: ValidationSchemas.deviceId,
   ipAddress: ValidationSchemas.ipAddress,
-  appId: ValidationSchemas.appId,
+  appId: z.string().min(1).max(200),
   port: ValidationSchemas.port.default(5555),
   deepLink: ValidationSchemas.deepLink.optional(),
   activityName: z.string().min(1).max(200).optional()

@@ -14,6 +14,7 @@ export interface Room {
   id: string
   name: string
   color: string
+  imageUrl?: string // Optional per-room floor plan image
 }
 
 export interface Zone {

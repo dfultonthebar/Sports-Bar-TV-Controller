@@ -307,6 +307,16 @@ export class ADBClient {
   async launchApp(packageName: string): Promise<string> {
     try {
       logger.info(`[ADB CLIENT] Launching app ${packageName} on ${this.deviceAddress}`)
+      // Resolve launcher activity then start it - more reliable than monkey on Fire TV
+      const activityLine = await this.executeShellCommand(
+        `cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER ${packageName} 2>/dev/null | tail -1`
+      )
+      const activity = activityLine.trim()
+      if (activity && activity.includes('/')) {
+        return await this.executeShellCommand(`am start -n ${activity}`)
+      }
+      // Fallback: try monkey command
+      logger.warn(`[ADB CLIENT] Could not resolve activity for ${packageName}, trying monkey`)
       return await this.executeShellCommand(`monkey -p ${packageName} -c android.intent.category.LAUNCHER 1`)
     } catch (error) {
       logger.error(`[ADB CLIENT] Launch app error:`, error)

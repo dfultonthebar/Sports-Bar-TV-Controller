@@ -18,7 +18,9 @@ import {
   ChevronLeft,
   Grid3X3,
   Eye,
-  EyeOff
+  EyeOff,
+  Upload,
+  Image
 } from 'lucide-react'
 import DraggableZone, { type Zone, type Room } from './DraggableZone'
 import ZonePropertiesPanel from './ZonePropertiesPanel'
@@ -53,13 +55,16 @@ export default function LayoutEditor({
   // Working copy of zones for editing
   const [zones, setZones] = useState<Zone[]>([...layout.zones])
   const [originalZones] = useState<Zone[]>([...layout.zones])
-  const [rooms] = useState<Room[]>(layout.rooms || [])
+  const [rooms, setRooms] = useState<Room[]>(layout.rooms || [])
+  const [originalRooms] = useState<Room[]>(layout.rooms || [])
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('all')
   const [isSaving, setIsSaving] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(true)
   const [hasChanges, setHasChanges] = useState(false)
+  const [uploadingRoom, setUploadingRoom] = useState<string | null>(null)
+  const roomFileInputRef = useRef<HTMLInputElement>(null)
 
   // Filter zones by room
   const filteredZones = selectedRoomFilter === 'all'
@@ -83,8 +88,55 @@ export default function LayoutEditor({
   // Track changes
   useEffect(() => {
     const zonesChanged = JSON.stringify(zones) !== JSON.stringify(originalZones)
-    setHasChanges(zonesChanged)
-  }, [zones, originalZones])
+    const roomsChanged = JSON.stringify(rooms) !== JSON.stringify(originalRooms)
+    setHasChanges(zonesChanged || roomsChanged)
+  }, [zones, originalZones, rooms, originalRooms])
+
+  // Get the current image to display based on room filter
+  const currentImageUrl = selectedRoomFilter === 'all'
+    ? layout.imageUrl
+    : rooms.find(r => r.id === selectedRoomFilter)?.imageUrl || layout.imageUrl
+
+  // Handle room image upload
+  const handleRoomImageUpload = async (roomId: string, file: File) => {
+    setUploadingRoom(roomId)
+    try {
+      const formData = new FormData()
+      formData.append('layout', file)
+      formData.append('name', `Room: ${rooms.find(r => r.id === roomId)?.name || roomId}`)
+      formData.append('autoDetect', 'false')
+
+      const response = await fetch('/api/bartender/layout/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+      if (data.success && data.layout?.imageUrl) {
+        // Update the room with the new image URL
+        setRooms(prev => prev.map(room =>
+          room.id === roomId ? { ...room, imageUrl: data.layout.imageUrl } : room
+        ))
+        logger.info(`[LayoutEditor] Uploaded image for room ${roomId}: ${data.layout.imageUrl}`)
+      } else {
+        alert('Failed to upload room image: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      logger.error('[LayoutEditor] Room image upload failed:', error)
+      alert('Failed to upload room image')
+    } finally {
+      setUploadingRoom(null)
+    }
+  }
+
+  const handleRoomFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && selectedRoomFilter !== 'all') {
+      handleRoomImageUpload(selectedRoomFilter, file)
+    }
+    // Reset the input so the same file can be selected again
+    e.target.value = ''
+  }
 
   // Reset zoom and pan
   const handleZoomReset = useCallback(() => {
@@ -291,7 +343,8 @@ export default function LayoutEditor({
     try {
       await onSave({
         ...layout,
-        zones
+        zones,
+        rooms // Include updated rooms with their images
       })
     } catch (error) {
       logger.error('[LayoutEditor] Save failed:', error)
@@ -420,6 +473,7 @@ export default function LayoutEditor({
           </button>
           {rooms.map(room => {
             const count = zones.filter(z => z.room === room.id).length
+            const hasImage = !!room.imageUrl
             return (
               <button
                 key={room.id}
@@ -439,9 +493,38 @@ export default function LayoutEditor({
                   style={{ backgroundColor: room.color }}
                 />
                 {room.name} ({count})
+                {hasImage && <Image className="w-3 h-3 opacity-60" />}
               </button>
             )
           })}
+
+          {/* Room Image Upload - only show when a specific room is selected */}
+          {selectedRoomFilter !== 'all' && (
+            <>
+              <div className="h-6 w-px bg-slate-600 mx-2" />
+              <input
+                ref={roomFileInputRef}
+                type="file"
+                accept="image/*,.svg"
+                onChange={handleRoomFileSelect}
+                className="hidden"
+              />
+              <button
+                onClick={() => roomFileInputRef.current?.click()}
+                disabled={uploadingRoom !== null}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                <Upload className={`w-4 h-4 ${uploadingRoom ? 'animate-spin' : ''}`} />
+                {uploadingRoom ? 'Uploading...' : 'Upload Room Image'}
+              </button>
+              {rooms.find(r => r.id === selectedRoomFilter)?.imageUrl && (
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <Image className="w-3 h-3" />
+                  Room has custom image
+                </span>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -471,10 +554,10 @@ export default function LayoutEditor({
               }}
               onClick={handleContainerClick}
             >
-              {/* Background Image */}
-              {layout.imageUrl && (
+              {/* Background Image - Shows room-specific image when a room is selected */}
+              {currentImageUrl && (
                 <img
-                  src={layout.imageUrl}
+                  src={currentImageUrl}
                   alt="Floor plan"
                   className="absolute inset-0 w-full h-full object-contain layout-background opacity-50"
                   draggable={false}

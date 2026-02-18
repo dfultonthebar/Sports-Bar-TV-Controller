@@ -1,0 +1,300 @@
+{
+  "processorId": "b3650929-2fb1-47cd-88b2-b210822d948b",
+  "inputs": [
+    {
+      "id": 1,
+      "name": "Matrix 1",
+      "type": "atlas_configured",
+      "physicalInput": 1,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 2,
+      "name": "Matrix 2",
+      "type": "atlas_configured",
+      "physicalInput": 2,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 3,
+      "name": "Matrix 3",
+      "type": "atlas_configured",
+      "physicalInput": 3,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 4,
+      "name": "Matrix 4",
+      "type": "atlas_configured",
+      "physicalInput": 4,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 5,
+      "name": "Mic 1",
+      "type": "atlas_configured",
+      "physicalInput": 5,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 6,
+      "name": "Mic 2",
+      "type": "atlas_configured",
+      "physicalInput": 6,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 7,
+      "name": "Spotify",
+      "type": "atlas_configured",
+      "physicalInput": 7,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 8,
+      "name": "Niagara BlueTooth",
+      "type": "line",
+      "physicalInput": 8,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    },
+    {
+      "id": 9,
+      "name": "Red bird Bluetooth",
+      "type": "atlas_configured",
+      "physicalInput": 9,
+      "stereoMode": "mono",
+      "gainDb": 0,
+      "phantom": false,
+      "lowcut": false,
+      "compressor": false,
+      "gate": false,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "routing": []
+    }
+  ],
+  "outputs": [
+    {
+      "id": 1,
+      "name": "Bar Main",
+      "type": "zone",
+      "physicalOutput": 1,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 2,
+      "name": "Bar Sub",
+      "type": "zone",
+      "physicalOutput": 2,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 3,
+      "name": "Dining Room",
+      "type": "zone",
+      "physicalOutput": 3,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 4,
+      "name": "Red Bird Room",
+      "type": "zone",
+      "physicalOutput": 4,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 5,
+      "name": "Niagara Room",
+      "type": "zone",
+      "physicalOutput": 5,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 6,
+      "name": "Outside",
+      "type": "zone",
+      "physicalOutput": 6,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 7,
+      "name": "Bath",
+      "type": "zone",
+      "physicalOutput": 7,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    },
+    {
+      "id": 8,
+      "name": "Bar Sub 2",
+      "type": "zone",
+      "physicalOutput": 8,
+      "levelDb": -10,
+      "muted": false,
+      "delay": 0,
+      "eq": {
+        "band1": 0,
+        "band2": 0,
+        "band3": 0
+      },
+      "compressor": false,
+      "limiter": true
+    }
+  ],
+  "scenes": [],
+  "messages": [],
+  "lastUpdated": "2026-01-26T18:53:30.929Z"
+}

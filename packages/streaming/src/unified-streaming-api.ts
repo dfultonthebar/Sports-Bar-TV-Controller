@@ -82,6 +82,10 @@ class UnifiedStreamingAPI {
   public static getInstance(firetvAdapter?: FireTVAdapter): UnifiedStreamingAPI {
     if (!UnifiedStreamingAPI.instance) {
       UnifiedStreamingAPI.instance = new UnifiedStreamingAPI(firetvAdapter)
+    } else if (firetvAdapter && !UnifiedStreamingAPI.instance.firetvAdapter) {
+      // Update adapter if provided and not already set (fixes singleton race condition)
+      UnifiedStreamingAPI.instance.firetvAdapter = firetvAdapter
+      logger.info('[UNIFIED API] FireTV adapter configured')
     }
     return UnifiedStreamingAPI.instance
   }

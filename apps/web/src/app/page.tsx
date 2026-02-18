@@ -3,13 +3,11 @@
 
 import { useState, useEffect } from 'react'
 import StreamingPlatformsWidget from '@/components/StreamingPlatformsWidget'
-import LayoutConfiguration from '@/components/LayoutConfiguration'
 import { BulkOperations } from '@/components/BulkOperations'
 import { QuickActions } from '@/components/QuickActions'
 import { Settings, Music } from 'lucide-react'
 
 export default function Home() {
-  const [showLayoutConfig, setShowLayoutConfig] = useState(false)
   const [currentTime, setCurrentTime] = useState<string>('')
   
   // Only render time on client side to avoid hydration mismatch
@@ -193,21 +191,6 @@ export default function Home() {
                     <p className="text-amber-200/80 text-sm">TV & device configuration</p>
                   </a>
                   
-                  <button 
-                    onClick={() => setShowLayoutConfig(!showLayoutConfig)}
-                    className="block p-4 bg-sportsBar-700/60 rounded-lg border border-accent-orange/30 hover:bg-sportsBar-600/80 hover:border-accent-orange/50 transition-all duration-200 text-left w-full"
-                  >
-                    <h4 className="font-medium text-orange-300 mb-1 flex items-center">
-                      📐 Layout Config
-                      {showLayoutConfig ? (
-                        <span className="ml-2 text-xs bg-orange-800/60 text-orange-200 px-2 py-1 rounded">Open</span>
-                      ) : (
-                        <Settings className="ml-2 w-3 h-3" />
-                      )}
-                    </h4>
-                    <p className="text-orange-200/80 text-sm">Floor plan & TV zone setup</p>
-                  </button>
-                  
 
                   
                   <a 
@@ -228,12 +211,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Layout Configuration Section */}
-        {showLayoutConfig && (
-          <div className="mb-8">
-            <LayoutConfiguration />
-          </div>
-        )}
 
         {/* Streaming Platforms Widget */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

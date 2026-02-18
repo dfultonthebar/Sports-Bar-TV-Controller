@@ -35,9 +35,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate unique filename
+    // Generate unique filename - preserve original extension
     const timestamp = Date.now()
-    const filename = `layout_${timestamp}.png`
+    const originalName = file.name || 'layout.png'
+    const extension = originalName.includes('.')
+      ? originalName.substring(originalName.lastIndexOf('.'))
+      : '.png'
+    const filename = `layout_${timestamp}${extension}`
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'layouts')
     const filepath = join(uploadDir, filename)
 
