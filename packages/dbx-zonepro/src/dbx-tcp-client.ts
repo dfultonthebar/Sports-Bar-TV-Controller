@@ -4,9 +4,9 @@
  * TCP/Ethernet client for dbx ZonePRO m-models (640m, 641m, 1260m, 1261m).
  * Implements HiQnet v1.0 protocol over TCP (port 3804).
  *
- * IMPORTANT: TCP connections do NOT use RS-232 framing (no start byte,
- * no frame count, no CRC checksum). TCP handles its own reliability.
- * Keep-alive pings are also NOT needed over TCP.
+ * Uses a persistent TCP connection. The dbx only accepts one connection
+ * at a time and becomes unresponsive to new connections after rapid
+ * connect/disconnect cycles. Keeping one socket open avoids this.
  */
 
 import { Socket } from 'net'
@@ -44,19 +44,19 @@ export interface DbxClientEvents {
 /**
  * TCP client for dbx ZonePRO m-model processors
  *
- * Uses serialized connect-per-command pattern: opens a fresh TCP connection
- * for each command, sends the frame, and closes. Commands are queued so only
- * one TCP connection is open at a time (dbx only handles one at a time).
+ * Uses a persistent TCP connection. Commands are written directly to
+ * the socket. dbx ZonePRO is one-way (no feedback), so we fire and forget.
+ * If the socket disconnects, we reconnect on the next command.
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
   private deviceAddress: number
   private routerObjects: HiQnetAddress[]
   private sequenceNumber: number = 0
-  private _initialized: boolean = false
-  // Command queue - dbx only handles one TCP connection at a time
-  private sendQueue: Array<{ frame: Buffer; resolve: (v: any) => void; reject: (e: any) => void }> = []
-  private sending: boolean = false
+  private socket: Socket | null = null
+  private _connected: boolean = false
+  private connecting: boolean = false
+  private connectPromise: Promise<void> | null = null
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -74,7 +74,7 @@ export class DbxTcpClient extends EventEmitter {
       device: this.deviceAddress,
     }))
 
-    logger.info('[DBX-TCP] Client initialized (serialized connect-per-command)', {
+    logger.info('[DBX-TCP] Client initialized (persistent connection mode)', {
       data: {
         ipAddress: this.config.ipAddress,
         port: this.config.port,
@@ -105,22 +105,72 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Connect - just marks client as ready (no test connection needed)
+   * Connect to the dbx ZonePRO - opens persistent TCP connection
    */
   async connect(): Promise<void> {
-    this._initialized = true
-    logger.info('[DBX-TCP] Client ready', {
-      data: { ipAddress: this.config.ipAddress, port: this.config.port },
+    if (this._connected && this.socket) return
+    if (this.connecting && this.connectPromise) return this.connectPromise
+
+    this.connecting = true
+    this.connectPromise = new Promise<void>((resolve, reject) => {
+      const socket = new Socket()
+      socket.setNoDelay(true)
+      socket.setKeepAlive(true, 30000) // TCP keepalive every 30s
+
+      const timer = setTimeout(() => {
+        socket.destroy()
+        this.connecting = false
+        this.connectPromise = null
+        reject(new Error('Connection timeout'))
+      }, 3000)
+
+      socket.on('connect', () => {
+        clearTimeout(timer)
+        this.socket = socket
+        this._connected = true
+        this.connecting = false
+        this.connectPromise = null
+        logger.info('[DBX-TCP] Connected', {
+          data: { ipAddress: this.config.ipAddress, port: this.config.port },
+        })
+        this.emit('connected')
+        resolve()
+      })
+
+      socket.on('close', () => {
+        this._connected = false
+        this.socket = null
+        this.emit('disconnected')
+      })
+
+      socket.on('error', (error) => {
+        clearTimeout(timer)
+        this._connected = false
+        this.socket = null
+        this.connecting = false
+        this.connectPromise = null
+        this.emit('error', error)
+        reject(error)
+      })
+
+      socket.connect(this.config.port, this.config.ipAddress)
     })
-    this.emit('connected')
+
+    return this.connectPromise
   }
 
   disconnect(): void {
-    this._initialized = false
+    if (this.socket) {
+      this.socket.destroy()
+      this.socket = null
+    }
+    this._connected = false
+    this.connecting = false
+    this.connectPromise = null
   }
 
   isConnected(): boolean {
-    return this._initialized
+    return this._connected && this.socket !== null
   }
 
   private getNextSequence(): number {
@@ -129,81 +179,32 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Queue a frame to send. Only one TCP connection at a time.
+   * Ensure connected, then write frame to persistent socket
+   * Reconnects automatically if the socket has dropped
    */
-  private sendFrame(frame: Buffer): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.sendQueue.push({ frame, resolve, reject })
-      this.processQueue()
-    })
-  }
-
-  /**
-   * Process the send queue serially - one TCP connection at a time
-   * Adds inter-command delay so the dbx can accept the next connection
-   */
-  private async processQueue(): Promise<void> {
-    if (this.sending || this.sendQueue.length === 0) return
-    this.sending = true
-
-    while (this.sendQueue.length > 0) {
-      const { frame, resolve, reject } = this.sendQueue.shift()!
-      try {
-        await this.sendFrameNow(frame)
-        resolve({ success: true })
-        // Wait for dbx to fully close the TCP session before next command
-        if (this.sendQueue.length > 0) {
-          await new Promise(r => setTimeout(r, 50))
-        }
-      } catch (err) {
-        reject(err)
-      }
+  private async sendFrame(frame: Buffer): Promise<any> {
+    // Reconnect if needed
+    if (!this._connected || !this.socket) {
+      await this.connect()
     }
 
-    this.sending = false
-  }
-
-  /**
-   * Open TCP, send frame, gracefully close, resolve when fully closed
-   */
-  private sendFrameNow(frame: Buffer): Promise<void> {
     return new Promise((resolve, reject) => {
-      const socket = new Socket()
-      socket.setNoDelay(true)
-      let settled = false
+      if (!this.socket) {
+        reject(new Error('No socket available'))
+        return
+      }
 
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true
-          socket.destroy()
-          reject(new Error('Connection timeout'))
+      this.socket.write(frame, (err) => {
+        if (err) {
+          // Socket probably died - mark as disconnected for next retry
+          this._connected = false
+          this.socket?.destroy()
+          this.socket = null
+          reject(err)
+        } else {
+          resolve({ success: true })
         }
-      }, 2000)
-
-      socket.on('connect', () => {
-        clearTimeout(timer)
-        socket.write(frame, (err) => {
-          if (err) {
-            if (!settled) { settled = true; socket.destroy(); reject(err) }
-          } else {
-            // Graceful close: send FIN, wait for socket to fully close
-            socket.end(() => {
-              if (!settled) { settled = true; resolve() }
-            })
-            // Safety: if end() doesn't fire callback, force destroy
-            setTimeout(() => {
-              if (!settled) { settled = true; socket.destroy(); resolve() }
-            }, 100)
-          }
-        })
       })
-
-      socket.on('error', (error) => {
-        clearTimeout(timer)
-        if (!settled) { settled = true; socket.destroy(); reject(error) }
-      })
-
-      socket.connect(this.config.port, this.config.ipAddress)
     })
   }
 
@@ -237,7 +238,6 @@ export class DbxTcpClient extends EventEmitter {
    * @param sceneNumber - Scene number to recall
    */
   async recallScene(sceneNumber: number): Promise<any> {
-    // Scene recall targets the device, not a specific object
     const destAddress: HiQnetAddress = {
       device: this.deviceAddress,
       vd: 0x00,
@@ -255,11 +255,6 @@ export class DbxTcpClient extends EventEmitter {
    */
   async getStateVariable(zone: number, svId: number): Promise<any> {
     const destAddress = this.getRouterAddress(zone)
-
-    logger.info('[DBX-TCP] Getting state variable', {
-      data: { zone, svId: `0x${svId.toString(16)}` },
-    })
-
     const frame = buildGetFrame(destAddress, svId, this.getNextSequence())
     return this.sendFrame(frame)
   }
