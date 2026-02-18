@@ -140,6 +140,7 @@ export class DbxTcpClient extends EventEmitter {
 
   /**
    * Process the send queue serially - one TCP connection at a time
+   * Adds inter-command delay so the dbx can accept the next connection
    */
   private async processQueue(): Promise<void> {
     if (this.sending || this.sendQueue.length === 0) return
@@ -150,6 +151,10 @@ export class DbxTcpClient extends EventEmitter {
       try {
         await this.sendFrameNow(frame)
         resolve({ success: true })
+        // Wait for dbx to fully close the TCP session before next command
+        if (this.sendQueue.length > 0) {
+          await new Promise(r => setTimeout(r, 50))
+        }
       } catch (err) {
         reject(err)
       }
