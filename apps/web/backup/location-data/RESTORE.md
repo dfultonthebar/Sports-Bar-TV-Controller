@@ -1,8 +1,8 @@
 # Location Backup Restore Instructions
 
-## Location: Graystone 
-## Backup Date: 2026-01-06T05:08:06.865Z
-## Location ID: default-location
+## Location: Lucky's 1313
+## Backup Date: 2026-02-18T20:00:37.485Z
+## Location ID: 39172208-7751-4182-af6a-129307c3e42e
 
 ## To restore this backup:
 
