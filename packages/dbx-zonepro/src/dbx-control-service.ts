@@ -460,39 +460,42 @@ export class DbxControlService extends EventEmitter {
 
 // Service registry for managing multiple processors
 const serviceRegistry: Map<string, DbxControlService> = new Map()
+// Pending creation promises to prevent race conditions
+const pendingCreation: Map<string, Promise<DbxControlService>> = new Map()
 
 /**
  * Get or create a control service for a device
+ * Uses pending promise map to prevent duplicate creation from concurrent calls
  */
 export async function getDbxControlService(
   config: DbxControlServiceConfig
 ): Promise<DbxControlService> {
-  // Check if service already exists
+  // Check if service already exists and is connected
   if (serviceRegistry.has(config.deviceId)) {
     const existing = serviceRegistry.get(config.deviceId)!
     if (existing.isConnected()) {
       return existing
     }
-    // Service exists but not connected, reconnect
     await existing.connect()
     return existing
   }
 
-  // Create new service
-  const service = new DbxControlService(config)
-  await service.connect()
+  // Check if creation is already in progress (concurrent call race)
+  if (pendingCreation.has(config.deviceId)) {
+    return pendingCreation.get(config.deviceId)!
+  }
 
-  // Store in registry
-  serviceRegistry.set(config.deviceId, service)
+  // Create new service (store promise to prevent duplicate creation)
+  const createPromise = (async () => {
+    const service = new DbxControlService(config)
+    await service.connect()
+    serviceRegistry.set(config.deviceId, service)
+    pendingCreation.delete(config.deviceId)
+    return service
+  })()
 
-  // Clean up on disconnect (if not auto-reconnecting)
-  service.once('error', () => {
-    if (!config.autoReconnect) {
-      serviceRegistry.delete(config.deviceId)
-    }
-  })
-
-  return service
+  pendingCreation.set(config.deviceId, createPromise)
+  return createPromise
 }
 
 /**

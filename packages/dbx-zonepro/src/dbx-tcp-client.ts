@@ -159,38 +159,43 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Open TCP, send frame, wait for write to flush, close
+   * Open TCP, send frame, gracefully close, resolve when fully closed
    */
   private sendFrameNow(frame: Buffer): Promise<void> {
     return new Promise((resolve, reject) => {
       const socket = new Socket()
       socket.setNoDelay(true)
+      let settled = false
 
       const timer = setTimeout(() => {
-        socket.destroy()
-        reject(new Error('Connection timeout'))
+        if (!settled) {
+          settled = true
+          socket.destroy()
+          reject(new Error('Connection timeout'))
+        }
       }, 2000)
 
       socket.on('connect', () => {
         clearTimeout(timer)
         socket.write(frame, (err) => {
           if (err) {
-            socket.destroy()
-            reject(err)
+            if (!settled) { settled = true; socket.destroy(); reject(err) }
           } else {
-            // Small delay to let data flush before closing
+            // Graceful close: send FIN, wait for socket to fully close
+            socket.end(() => {
+              if (!settled) { settled = true; resolve() }
+            })
+            // Safety: if end() doesn't fire callback, force destroy
             setTimeout(() => {
-              socket.destroy()
-              resolve()
-            }, 20)
+              if (!settled) { settled = true; socket.destroy(); resolve() }
+            }, 100)
           }
         })
       })
 
       socket.on('error', (error) => {
         clearTimeout(timer)
-        socket.destroy()
-        reject(error)
+        if (!settled) { settled = true; socket.destroy(); reject(error) }
       })
 
       socket.connect(this.config.port, this.config.ipAddress)
