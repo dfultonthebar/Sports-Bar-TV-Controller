@@ -41,6 +41,10 @@ export interface DbxControlServiceConfig {
   port?: number // TCP port override (default: 3804)
   baudRate?: number // Serial baud rate override (default: 57600)
   autoReconnect?: boolean // Auto-reconnect on disconnect (default: true)
+
+  // HiQnet addressing (from ZonePRO Designer)
+  deviceAddress?: number // ZonePRO's HiQnet node address (default: 0x0001)
+  routerObjects?: import('./dbx-protocol').HiQnetAddress[] // Router Object addresses per zone
 }
 
 export interface ZoneState {
@@ -131,6 +135,8 @@ export class DbxControlService extends EventEmitter {
           ipAddress: this.config.ipAddress!,
           port: this.config.port,
           autoReconnect: this.config.autoReconnect ?? true,
+          deviceAddress: this.config.deviceAddress,
+          routerObjects: this.config.routerObjects,
         }
 
         this.client = new DbxTcpClient(tcpConfig)

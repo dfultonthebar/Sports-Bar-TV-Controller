@@ -34,6 +34,18 @@ export {
 
 // Protocol
 export {
+  // New TCP-correct exports
+  buildTcpFrame,
+  buildMultiParamSetPayload,
+  buildGetFrame,
+  parseTcpFrame,
+  TcpFrameBuffer,
+  HIQNET_DATA_TYPE,
+  CONTROLLER_ADDRESS,
+  DEFAULT_ROUTER_OBJECTS,
+  type HiQnetAddress,
+  type HiQnetHeader,
+  // Legacy exports (backward compat)
   calculateCRC8,
   buildFrame,
   buildMultiSVSetPayload,
@@ -46,8 +58,6 @@ export {
   buildRecallSceneFrame,
   parseFrame,
   FrameBuffer,
-  type HiQnetHeader,
-  type StateVariableSet,
 } from './dbx-protocol'
 
 // TCP Client (for m-models with Ethernet)

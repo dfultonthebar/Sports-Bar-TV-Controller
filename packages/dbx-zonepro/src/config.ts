@@ -53,10 +53,12 @@ export const DBX_PROTOCOL = {
   // Volume/Gain range
   // dbx uses 0-415 scale for volume
   // 0 = -infinity (mute)
-  // 415 = 0dB (unity gain)
+  // 215 = 0dB (unity gain)
+  // 415 = +20dB (maximum)
   VOLUME_MIN: 0,
   VOLUME_MAX: 415,
-  VOLUME_UNITY: 415, // 0dB
+  VOLUME_UNITY: 215, // 0dB
+  VOLUME_MAX_DB: 20, // +20dB at value 415
 
   // Mute values
   MUTE_ON: 1,
@@ -205,22 +207,28 @@ export function supportsEthernet(model: string): boolean {
 
 /**
  * Convert dB value to dbx volume scale (0-415)
- * @param db - Decibel value (-infinity to 0dB)
+ * Scale: 0 = -inf, 215 = 0dB, 415 = +20dB
+ * @param db - Decibel value (-infinity to +20dB)
  * @returns Volume value (0-415)
  */
 export function dbToVolume(db: number): number {
   if (db <= -80) {
     return 0 // Mute/minimum
   }
-  if (db >= 0) {
-    return 415 // Unity gain
+  if (db >= 20) {
+    return 415 // Maximum (+20dB)
   }
-  // Linear interpolation: -80dB = 0, 0dB = 415
-  return Math.round(((db + 80) / 80) * 415)
+  if (db <= 0) {
+    // -80dB to 0dB maps to 0-215
+    return Math.round(((db + 80) / 80) * 215)
+  }
+  // 0dB to +20dB maps to 215-415
+  return Math.round(215 + (db / 20) * 200)
 }
 
 /**
  * Convert dbx volume scale (0-415) to dB
+ * Scale: 0 = -inf, 215 = 0dB, 415 = +20dB
  * @param volume - Volume value (0-415)
  * @returns Decibel value
  */
@@ -229,10 +237,14 @@ export function volumeToDb(volume: number): number {
     return -80 // Practical minimum (treat as -infinity)
   }
   if (volume >= 415) {
-    return 0 // Unity gain
+    return 20 // Maximum (+20dB)
   }
-  // Linear interpolation
-  return (volume / 415) * 80 - 80
+  if (volume <= 215) {
+    // 0-215 maps to -80dB to 0dB
+    return (volume / 215) * 80 - 80
+  }
+  // 215-415 maps to 0dB to +20dB
+  return ((volume - 215) / 200) * 20
 }
 
 /**

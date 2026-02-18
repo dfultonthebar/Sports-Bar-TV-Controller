@@ -1,224 +1,246 @@
 /**
- * HiQnet v1.0 Protocol Implementation for dbx ZonePRO
+ * HiQnet v1.0 Protocol Implementation for dbx ZonePRO (TCP)
  *
- * This module implements the binary protocol used by dbx ZonePRO processors.
- * The protocol is based on HiQnet (Harman's network protocol) version 1.0.
+ * IMPORTANT: TCP and RS-232 use DIFFERENT framing!
+ * - RS-232: Frame Start (0x64) + Frame Count + Message + CRC checksum
+ * - TCP: Just the raw HiQnet message (no FS, FC, or CRC)
  *
- * Frame Structure:
- * - Start byte: 0x64 ('d')
- * - Length: 2 bytes (big-endian, includes everything after length)
- * - Header: Device addressing and message info
- * - Payload: Command-specific data
- * - Checksum: CCITT-8 CRC
+ * TCP Header Structure (25 bytes minimum):
+ * - Version: 1 byte (0x01 for ZonePRO)
+ * - Header Length: 1 byte (0x19 = 25)
+ * - Message Length: 4 bytes (ULONG, big-endian) - total from version through payload
+ * - Source Address: 6 bytes (device:2 + VD:1 + object:3)
+ * - Dest Address: 6 bytes (device:2 + VD:1 + object:3)
+ * - Message ID: 2 bytes
+ * - Flags: 2 bytes
+ * - Hop Count: 1 byte (0x05)
+ * - Sequence Number: 2 bytes
  *
- * Note: All multi-byte values are big-endian.
+ * MultiParamSet (0x0100) payload:
+ * - Num SVs: 2 bytes
+ * - Per SV: SV_ID (2 bytes) + Data Type (1 byte) + Value (variable)
+ * NOTE: Object ID is in the header dest address, NOT in the payload!
+ *
+ * HiQnet Data Types:
+ * - 0 = BYTE (signed, 1 byte)
+ * - 1 = UBYTE (unsigned, 1 byte)
+ * - 2 = WORD (signed, 2 bytes)
+ * - 3 = UWORD (unsigned, 2 bytes)
+ * - 4 = LONG (signed, 4 bytes)
+ * - 5 = ULONG (unsigned, 4 bytes)
+ *
+ * Router Object State Variables:
+ * - SV 0x0000 = Input Source Selection (UBYTE)
+ * - SV 0x0001 = Master Fader/Volume (UWORD, 0-415)
+ * - SV 0x0002 = Master Mute (UBYTE, 0=unmute, 1=mute)
  */
 
 import { DBX_PROTOCOL } from './config'
 
+// HiQnet 6-byte fully qualified address
+export interface HiQnetAddress {
+  device: number  // Device address (16-bit)
+  vd: number      // Virtual Device (8-bit)
+  object: number  // Object address (24-bit, 3 bytes)
+}
+
+// Default source address for third-party controllers
+export const CONTROLLER_ADDRESS: HiQnetAddress = {
+  device: 0x0033,
+  vd: 0x00,
+  object: 0x000000,
+}
+
+// Default ZonePRO Router Object IDs (from ZonePRO 640 default config)
+// These MUST be configured per installation via ZonePRO Designer (Ctrl+Shift+O)
+export const DEFAULT_ROUTER_OBJECTS: HiQnetAddress[] = [
+  { device: 0x0001, vd: 0x01, object: 0x05001E }, // Ch1 Router
+  { device: 0x0001, vd: 0x01, object: 0x05011F }, // Ch2 Router
+  { device: 0x0001, vd: 0x01, object: 0x050220 }, // Ch3 Router
+  { device: 0x0001, vd: 0x01, object: 0x050321 }, // Ch4 Router
+  { device: 0x0001, vd: 0x01, object: 0x050422 }, // Ch5 Router
+  { device: 0x0001, vd: 0x01, object: 0x050523 }, // Ch6 Router
+]
+
+// HiQnet data type constants
+export const HIQNET_DATA_TYPE = {
+  BYTE: 0,    // signed 8-bit
+  UBYTE: 1,   // unsigned 8-bit
+  WORD: 2,    // signed 16-bit
+  UWORD: 3,   // unsigned 16-bit
+  LONG: 4,    // signed 32-bit
+  ULONG: 5,   // unsigned 32-bit
+} as const
+
+// TCP header constants
+const HIQNET_VERSION = 0x01
+const HIQNET_HEADER_LENGTH = 25 // 0x19
+const HIQNET_HOP_COUNT = 0x05
+
 // HiQnet message header structure
 export interface HiQnetHeader {
-  version: number // Protocol version (typically 1)
-  headerLength: number // Length of header
-  messageLength: number // Total message length
-  sourceAddress: number // Source device address (32-bit)
-  destinationAddress: number // Destination device address (32-bit)
-  messageId: number // Message type ID (16-bit)
-  flags: number // Message flags (16-bit)
-  hopCount: number // Network hop count
-  sequenceNumber: number // Message sequence number (16-bit)
-}
-
-// State variable set command structure
-export interface StateVariableSet {
-  objectId: number // Object ID (32-bit)
-  stateVariableId: number // State variable ID (16-bit)
-  dataType: number // Data type (8-bit)
-  value: number // Value to set
+  version: number
+  headerLength: number
+  messageLength: number
+  sourceAddress: HiQnetAddress
+  destinationAddress: HiQnetAddress
+  messageId: number
+  flags: number
+  hopCount: number
+  sequenceNumber: number
 }
 
 /**
- * Calculate CCITT-8 CRC checksum
- *
- * This is the standard 8-bit CRC used in HiQnet protocol.
- * Polynomial: x^8 + x^2 + x + 1 (0x07)
- *
- * @param data - Buffer to calculate CRC for
- * @returns 8-bit CRC value
+ * Write a 6-byte HiQnet address to a buffer
  */
-export function calculateCRC8(data: Buffer): number {
-  const polynomial = 0x07
-  let crc = 0x00
-
-  for (let i = 0; i < data.length; i++) {
-    crc ^= data[i]
-    for (let j = 0; j < 8; j++) {
-      if (crc & 0x80) {
-        crc = ((crc << 1) ^ polynomial) & 0xff
-      } else {
-        crc = (crc << 1) & 0xff
-      }
-    }
-  }
-
-  return crc
+function writeAddress(buf: Buffer, offset: number, addr: HiQnetAddress): number {
+  buf.writeUInt16BE(addr.device, offset)
+  offset += 2
+  buf.writeUInt8(addr.vd, offset)
+  offset += 1
+  // Write 3-byte object address (24-bit, big-endian)
+  buf.writeUInt8((addr.object >> 16) & 0xFF, offset)
+  buf.writeUInt8((addr.object >> 8) & 0xFF, offset + 1)
+  buf.writeUInt8(addr.object & 0xFF, offset + 2)
+  offset += 3
+  return offset
 }
 
 /**
- * Build a HiQnet frame with proper header and checksum
+ * Read a 6-byte HiQnet address from a buffer
+ */
+function readAddress(buf: Buffer, offset: number): { addr: HiQnetAddress; newOffset: number } {
+  const device = buf.readUInt16BE(offset)
+  offset += 2
+  const vd = buf.readUInt8(offset)
+  offset += 1
+  const object = (buf.readUInt8(offset) << 16) | (buf.readUInt8(offset + 1) << 8) | buf.readUInt8(offset + 2)
+  offset += 3
+  return { addr: { device, vd, object }, newOffset: offset }
+}
+
+/**
+ * Build a HiQnet TCP frame (no RS-232 framing)
  *
  * @param messageId - Message ID (from DBX_PROTOCOL.MESSAGE_ID)
+ * @param destAddress - Destination HiQnet address (device + VD + object)
  * @param payload - Command payload data
  * @param sequenceNumber - Message sequence number
- * @returns Complete frame buffer ready to send
+ * @param sourceAddress - Source address (defaults to controller 0x0033)
+ * @returns Buffer ready to send over TCP
  */
-export function buildFrame(
+export function buildTcpFrame(
   messageId: number,
+  destAddress: HiQnetAddress,
   payload: Buffer,
-  sequenceNumber: number = 0
+  sequenceNumber: number = 0,
+  sourceAddress: HiQnetAddress = CONTROLLER_ADDRESS
 ): Buffer {
-  // Header structure (simplified for ZonePRO):
-  // - Version: 1 byte (0x01)
-  // - Header length: 1 byte
-  // - Message length: 2 bytes (big-endian)
-  // - Source address: 4 bytes (we use 0x00000000)
-  // - Destination address: 4 bytes (typically 0x00000001 for ZonePRO)
-  // - Message ID: 2 bytes (big-endian)
-  // - Flags: 2 bytes (0x0000)
-  // - Hop count: 1 byte (0x00)
-  // - Sequence number: 2 bytes (big-endian)
-
-  const headerLength = 21 // Fixed header size for HiQnet v1.0
-  const messageLength = headerLength + payload.length
-
-  // Allocate buffer for complete frame
-  // Frame: Start byte (1) + Length (2) + Message + CRC (1)
-  const frameLength = 1 + 2 + messageLength + 1
-  const frame = Buffer.alloc(frameLength)
+  const messageLength = HIQNET_HEADER_LENGTH + payload.length
+  const frame = Buffer.alloc(messageLength)
 
   let offset = 0
 
-  // Start byte
-  frame.writeUInt8(DBX_PROTOCOL.FRAME_START_BYTE, offset++)
-
-  // Message length (big-endian, 16-bit)
-  frame.writeUInt16BE(messageLength, offset)
-  offset += 2
-
-  // Protocol version
-  frame.writeUInt8(0x01, offset++)
+  // Version
+  frame.writeUInt8(HIQNET_VERSION, offset++)
 
   // Header length
-  frame.writeUInt8(headerLength, offset++)
+  frame.writeUInt8(HIQNET_HEADER_LENGTH, offset++)
 
-  // Message length (repeated in header)
-  frame.writeUInt16BE(messageLength, offset)
-  offset += 2
-
-  // Source address (32-bit, big-endian) - 0x00000000 for host
-  frame.writeUInt32BE(0x00000000, offset)
+  // Message length (32-bit ULONG, big-endian)
+  frame.writeUInt32BE(messageLength, offset)
   offset += 4
 
-  // Destination address (32-bit, big-endian) - 0x00000001 for ZonePRO
-  frame.writeUInt32BE(0x00000001, offset)
-  offset += 4
+  // Source address (6 bytes)
+  offset = writeAddress(frame, offset, sourceAddress)
 
-  // Message ID (16-bit, big-endian)
+  // Destination address (6 bytes)
+  offset = writeAddress(frame, offset, destAddress)
+
+  // Message ID (16-bit)
   frame.writeUInt16BE(messageId, offset)
   offset += 2
 
-  // Flags (16-bit) - 0x0000 for normal messages
+  // Flags (16-bit)
   frame.writeUInt16BE(0x0000, offset)
   offset += 2
 
   // Hop count
-  frame.writeUInt8(0x00, offset++)
+  frame.writeUInt8(HIQNET_HOP_COUNT, offset++)
 
-  // Sequence number (16-bit, big-endian)
-  frame.writeUInt16BE(sequenceNumber & 0xffff, offset)
+  // Sequence number (16-bit)
+  frame.writeUInt16BE(sequenceNumber & 0xFFFF, offset)
   offset += 2
 
   // Copy payload
   payload.copy(frame, offset)
-  offset += payload.length
-
-  // Calculate CRC over message portion (after length bytes)
-  const messageData = frame.slice(3, offset)
-  const crc = calculateCRC8(messageData)
-  frame.writeUInt8(crc, offset)
 
   return frame
 }
 
 /**
- * Build MultiSVSet payload for setting a single state variable
+ * Build MultiParamSet payload for setting state variables
+ * NOTE: Object ID is NOT in the payload - it's in the header destination address
  *
- * Used for setting volume, mute, source selection, etc.
- *
- * @param objectId - Object ID for the zone/input
- * @param stateVariableId - State variable ID (e.g., volume, mute)
+ * @param svId - State Variable ID
  * @param value - Value to set
- * @param dataType - Data type (0x01 for uint8, 0x02 for uint16, 0x04 for uint32)
+ * @param dataType - HiQnet data type (use HIQNET_DATA_TYPE constants)
  * @returns Payload buffer
  */
-export function buildMultiSVSetPayload(
-  objectId: number,
-  stateVariableId: number,
+export function buildMultiParamSetPayload(
+  svId: number,
   value: number,
-  dataType: number = 0x02 // Default to uint16
+  dataType: number = HIQNET_DATA_TYPE.UWORD
 ): Buffer {
-  // MultiSVSet payload structure:
-  // - Count: 2 bytes (number of SVs to set)
-  // - For each SV:
-  //   - Object ID: 4 bytes
-  //   - State Variable ID: 2 bytes
-  //   - Data type: 1 byte
-  //   - Value: variable length based on data type
-
   let valueLength: number
   switch (dataType) {
-    case 0x01:
-      valueLength = 1 // uint8
+    case HIQNET_DATA_TYPE.BYTE:
+    case HIQNET_DATA_TYPE.UBYTE:
+      valueLength = 1
       break
-    case 0x02:
-      valueLength = 2 // uint16
+    case HIQNET_DATA_TYPE.WORD:
+    case HIQNET_DATA_TYPE.UWORD:
+      valueLength = 2
       break
-    case 0x04:
-      valueLength = 4 // uint32
+    case HIQNET_DATA_TYPE.LONG:
+    case HIQNET_DATA_TYPE.ULONG:
+      valueLength = 4
       break
     default:
-      valueLength = 2 // Default to uint16
+      valueLength = 2
   }
 
-  const payloadLength = 2 + 4 + 2 + 1 + valueLength
-  const payload = Buffer.alloc(payloadLength)
-
+  // Payload: NumSVs (2) + SV_ID (2) + DataType (1) + Value (variable)
+  const payload = Buffer.alloc(2 + 2 + 1 + valueLength)
   let offset = 0
 
-  // Count of state variables (1)
+  // Number of SVs
   payload.writeUInt16BE(1, offset)
   offset += 2
 
-  // Object ID (32-bit, big-endian)
-  payload.writeUInt32BE(objectId, offset)
-  offset += 4
-
-  // State Variable ID (16-bit, big-endian)
-  payload.writeUInt16BE(stateVariableId, offset)
+  // SV ID
+  payload.writeUInt16BE(svId, offset)
   offset += 2
 
   // Data type
   payload.writeUInt8(dataType, offset++)
 
-  // Value based on data type
+  // Value
   switch (dataType) {
-    case 0x01:
-      payload.writeUInt8(value & 0xff, offset)
+    case HIQNET_DATA_TYPE.BYTE:
+    case HIQNET_DATA_TYPE.UBYTE:
+      payload.writeUInt8(value & 0xFF, offset)
       break
-    case 0x02:
-      payload.writeUInt16BE(value & 0xffff, offset)
+    case HIQNET_DATA_TYPE.WORD:
+      payload.writeInt16BE(value & 0xFFFF, offset)
       break
-    case 0x04:
+    case HIQNET_DATA_TYPE.UWORD:
+      payload.writeUInt16BE(value & 0xFFFF, offset)
+      break
+    case HIQNET_DATA_TYPE.LONG:
+      payload.writeInt32BE(value, offset)
+      break
+    case HIQNET_DATA_TYPE.ULONG:
       payload.writeUInt32BE(value, offset)
       break
   }
@@ -227,275 +249,196 @@ export function buildMultiSVSetPayload(
 }
 
 /**
- * Build Get parameter payload
+ * Build Volume Set frame for a zone's Router object
  *
- * @param objectId - Object ID for the zone/input
- * @param stateVariableId - State variable ID to get
- * @returns Payload buffer
- */
-export function buildGetPayload(objectId: number, stateVariableId: number): Buffer {
-  // Get payload structure:
-  // - Count: 2 bytes
-  // - Object ID: 4 bytes
-  // - State Variable ID: 2 bytes
-
-  const payload = Buffer.alloc(8)
-
-  let offset = 0
-
-  // Count of state variables to get (1)
-  payload.writeUInt16BE(1, offset)
-  offset += 2
-
-  // Object ID (32-bit, big-endian)
-  payload.writeUInt32BE(objectId, offset)
-  offset += 4
-
-  // State Variable ID (16-bit, big-endian)
-  payload.writeUInt16BE(stateVariableId, offset)
-
-  return payload
-}
-
-/**
- * Build Recall Scene/Preset payload
- *
- * @param sceneNumber - Scene number to recall (0-based or 1-based depending on device)
- * @returns Payload buffer
- */
-export function buildRecallScenePayload(sceneNumber: number): Buffer {
-  // Recall scene payload:
-  // - Scene number: 2 bytes (big-endian)
-
-  const payload = Buffer.alloc(2)
-  payload.writeUInt16BE(sceneNumber & 0xffff, 0)
-
-  return payload
-}
-
-/**
- * Build Ping/Keep-alive frame
- *
- * @param sequenceNumber - Sequence number for tracking
- * @returns Complete ping frame
- */
-export function buildPingFrame(sequenceNumber: number = 0): Buffer {
-  // Ping has no payload
-  const emptyPayload = Buffer.alloc(0)
-  return buildFrame(DBX_PROTOCOL.MESSAGE_ID.PING, emptyPayload, sequenceNumber)
-}
-
-/**
- * Build Volume Set frame
- *
- * @param zone - Zone number (0-based)
- * @param volume - Volume value (0-415)
- * @param stereo - If true, set both left and right channels
+ * @param destAddress - Router object's HiQnet address
+ * @param volume - Volume value (0-415, where 215 = 0dB, 415 = +20dB)
  * @param sequenceNumber - Sequence number
- * @returns Complete frame buffer
+ * @returns TCP frame buffer
  */
 export function buildVolumeSetFrame(
-  zone: number,
+  destAddress: HiQnetAddress,
   volume: number,
-  stereo: boolean = true,
   sequenceNumber: number = 0
 ): Buffer {
-  // Clamp volume to valid range
   const clampedVolume = Math.max(0, Math.min(415, Math.round(volume)))
 
-  // Zone object IDs (typical ZonePRO addressing)
-  // Zone 1 = 0x00010001, Zone 2 = 0x00010002, etc.
-  const baseObjectId = 0x00010000 + zone + 1
+  // SV 0x0001 = Master Fader, Data Type 3 = UWORD
+  const payload = buildMultiParamSetPayload(0x0001, clampedVolume, HIQNET_DATA_TYPE.UWORD)
 
-  // State variable ID for volume (SV 0x0001 = Master Fader in HiQnet Router Object)
-  const volumeSVId = 0x0001
-
-  if (stereo) {
-    // Build payload for stereo pair (left and right channels)
-    // Left channel object ID: base
-    // Right channel object ID: base + 0x00100000
-
-    const leftObjectId = baseObjectId
-    const rightObjectId = baseObjectId + 0x00100000
-
-    // Build combined payload for both channels
-    const payload = Buffer.alloc(2 + (4 + 2 + 1 + 2) * 2) // Count + 2 SVs
-
-    let offset = 0
-
-    // Count of state variables (2 - left and right)
-    payload.writeUInt16BE(2, offset)
-    offset += 2
-
-    // Left channel
-    payload.writeUInt32BE(leftObjectId, offset)
-    offset += 4
-    payload.writeUInt16BE(volumeSVId, offset)
-    offset += 2
-    payload.writeUInt8(0x02, offset++) // uint16 data type
-    payload.writeUInt16BE(clampedVolume, offset)
-    offset += 2
-
-    // Right channel
-    payload.writeUInt32BE(rightObjectId, offset)
-    offset += 4
-    payload.writeUInt16BE(volumeSVId, offset)
-    offset += 2
-    payload.writeUInt8(0x02, offset++) // uint16 data type
-    payload.writeUInt16BE(clampedVolume, offset)
-
-    return buildFrame(DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET, payload, sequenceNumber)
-  } else {
-    // Single channel (mono)
-    const payload = buildMultiSVSetPayload(baseObjectId, volumeSVId, clampedVolume, 0x02)
-    return buildFrame(DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET, payload, sequenceNumber)
-  }
+  return buildTcpFrame(
+    DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET,
+    destAddress,
+    payload,
+    sequenceNumber
+  )
 }
 
 /**
- * Build Mute Set frame
+ * Build Mute Set frame for a zone's Router object
  *
- * @param zone - Zone number (0-based)
+ * @param destAddress - Router object's HiQnet address
  * @param muted - true for mute, false for unmute
  * @param sequenceNumber - Sequence number
- * @returns Complete frame buffer
+ * @returns TCP frame buffer
  */
 export function buildMuteSetFrame(
-  zone: number,
+  destAddress: HiQnetAddress,
   muted: boolean,
   sequenceNumber: number = 0
 ): Buffer {
-  // Zone object ID
-  const objectId = 0x00010000 + zone + 1
-
-  // State variable ID for mute (SV 0x0002 = Master Mute in HiQnet Router Object)
-  const muteSVId = 0x0002
-
-  const payload = buildMultiSVSetPayload(
-    objectId,
-    muteSVId,
+  // SV 0x0002 = Master Mute, Data Type 1 = UBYTE
+  const payload = buildMultiParamSetPayload(
+    0x0002,
     muted ? DBX_PROTOCOL.MUTE_ON : DBX_PROTOCOL.MUTE_OFF,
-    0x01 // uint8 for mute state
+    HIQNET_DATA_TYPE.UBYTE
   )
 
-  return buildFrame(DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET, payload, sequenceNumber)
+  return buildTcpFrame(
+    DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET,
+    destAddress,
+    payload,
+    sequenceNumber
+  )
 }
 
 /**
- * Build Source Selection frame
+ * Build Source Selection frame for a zone's Router object
  *
- * @param zone - Zone number (0-based)
- * @param sourceIndex - Source index (0-based)
+ * @param destAddress - Router object's HiQnet address
+ * @param sourceIndex - Source index (0=none, 1=first input, 2=second, etc.)
  * @param sequenceNumber - Sequence number
- * @returns Complete frame buffer
+ * @returns TCP frame buffer
  */
 export function buildSourceSetFrame(
-  zone: number,
+  destAddress: HiQnetAddress,
   sourceIndex: number,
   sequenceNumber: number = 0
 ): Buffer {
-  // Zone object ID
-  const objectId = 0x00010000 + zone + 1
+  // SV 0x0000 = Input Source Selection, Data Type 1 = UBYTE
+  const payload = buildMultiParamSetPayload(0x0000, sourceIndex, HIQNET_DATA_TYPE.UBYTE)
 
-  // State variable ID for source selection (SV 0x0000 = Input Source in HiQnet Router Object)
-  const sourceSVId = 0x0000
-
-  const payload = buildMultiSVSetPayload(objectId, sourceSVId, sourceIndex, 0x01) // uint8
-
-  return buildFrame(DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET, payload, sequenceNumber)
+  return buildTcpFrame(
+    DBX_PROTOCOL.MESSAGE_ID.MULTI_SV_SET,
+    destAddress,
+    payload,
+    sequenceNumber
+  )
 }
 
 /**
  * Build Recall Scene frame
  *
- * @param sceneNumber - Scene number to recall (1-based typically)
+ * @param destAddress - Device address for scene recall
+ * @param sceneNumber - Scene number to recall (1-based)
  * @param sequenceNumber - Sequence number
- * @returns Complete frame buffer
+ * @returns TCP frame buffer
  */
 export function buildRecallSceneFrame(
+  destAddress: HiQnetAddress,
   sceneNumber: number,
   sequenceNumber: number = 0
 ): Buffer {
-  const payload = buildRecallScenePayload(sceneNumber)
-  return buildFrame(DBX_PROTOCOL.MESSAGE_ID.RECALL_SCENE, payload, sequenceNumber)
+  const payload = Buffer.alloc(2)
+  payload.writeUInt16BE(sceneNumber & 0xFFFF, 0)
+
+  return buildTcpFrame(
+    DBX_PROTOCOL.MESSAGE_ID.RECALL_SCENE,
+    destAddress,
+    payload,
+    sequenceNumber
+  )
 }
 
 /**
- * Parse a received HiQnet frame
+ * Build a MultiParamGet frame to read a state variable
  *
- * @param data - Received data buffer
- * @returns Parsed frame or null if invalid
+ * @param destAddress - Object's HiQnet address
+ * @param svId - State Variable ID to read
+ * @param sequenceNumber - Sequence number
+ * @returns TCP frame buffer
  */
-export function parseFrame(data: Buffer): {
+export function buildGetFrame(
+  destAddress: HiQnetAddress,
+  svId: number,
+  sequenceNumber: number = 0
+): Buffer {
+  // Get payload: NumSVs (2) + SV_ID (2)
+  const payload = Buffer.alloc(4)
+  payload.writeUInt16BE(1, 0)   // 1 SV to get
+  payload.writeUInt16BE(svId, 2)
+
+  return buildTcpFrame(
+    DBX_PROTOCOL.MESSAGE_ID.GET,
+    destAddress,
+    payload,
+    sequenceNumber
+  )
+}
+
+/**
+ * Parse a received HiQnet TCP frame
+ *
+ * @param data - Received data buffer (raw TCP, no RS-232 framing)
+ * @returns Parsed frame or null if invalid/incomplete
+ */
+export function parseTcpFrame(data: Buffer): {
   header: HiQnetHeader
   payload: Buffer
   valid: boolean
 } | null {
-  if (data.length < 4) {
-    return null // Too short
+  // Minimum: version(1) + hdrlen(1) + msglen(4) = 6 bytes to read length
+  if (data.length < 6) {
+    return null
   }
 
-  // Check start byte
-  if (data[0] !== DBX_PROTOCOL.FRAME_START_BYTE) {
-    return null // Invalid start byte
+  const version = data.readUInt8(0)
+  const headerLength = data.readUInt8(1)
+  const messageLength = data.readUInt32BE(2)
+
+  // Check if we have the complete message
+  if (data.length < messageLength) {
+    return null
   }
 
-  // Read message length
-  const messageLength = data.readUInt16BE(1)
-
-  // Check if we have complete frame
-  if (data.length < 3 + messageLength + 1) {
-    return null // Incomplete frame
+  // Minimum header is 25 bytes
+  if (headerLength < 25) {
+    return { header: {} as HiQnetHeader, payload: Buffer.alloc(0), valid: false }
   }
 
-  // Extract message data (after start byte and length)
-  const messageData = data.slice(3, 3 + messageLength)
+  let offset = 6
 
-  // Verify CRC
-  const receivedCRC = data[3 + messageLength]
-  const calculatedCRC = calculateCRC8(messageData)
+  // Source address (6 bytes)
+  const { addr: sourceAddress, newOffset: afterSrc } = readAddress(data, offset)
+  offset = afterSrc
 
-  if (receivedCRC !== calculatedCRC) {
-    return {
-      header: {} as HiQnetHeader,
-      payload: Buffer.alloc(0),
-      valid: false,
-    }
-  }
+  // Destination address (6 bytes)
+  const { addr: destinationAddress, newOffset: afterDst } = readAddress(data, offset)
+  offset = afterDst
 
-  // Parse header
-  let offset = 0
-
-  const version = messageData.readUInt8(offset++)
-  const headerLength = messageData.readUInt8(offset++)
-  const msgLength = messageData.readUInt16BE(offset)
+  // Message ID
+  const messageId = data.readUInt16BE(offset)
   offset += 2
 
-  const sourceAddress = messageData.readUInt32BE(offset)
-  offset += 4
-
-  const destinationAddress = messageData.readUInt32BE(offset)
-  offset += 4
-
-  const messageId = messageData.readUInt16BE(offset)
+  // Flags
+  const flags = data.readUInt16BE(offset)
   offset += 2
 
-  const flags = messageData.readUInt16BE(offset)
+  // Hop count
+  const hopCount = data.readUInt8(offset++)
+
+  // Sequence number
+  const sequenceNumber = data.readUInt16BE(offset)
   offset += 2
 
-  const hopCount = messageData.readUInt8(offset++)
-
-  const sequenceNumber = messageData.readUInt16BE(offset)
-  offset += 2
-
-  // Extract payload (everything after header)
-  const payload = messageData.slice(headerLength)
+  // Payload is everything after header
+  const payload = data.subarray(headerLength, messageLength)
 
   return {
     header: {
       version,
       headerLength,
-      messageLength: msgLength,
+      messageLength,
       sourceAddress,
       destinationAddress,
       messageId,
@@ -509,88 +452,145 @@ export function parseFrame(data: Buffer): {
 }
 
 /**
- * Frame buffer class for accumulating received data
- *
- * Handles partial frames and extracts complete messages.
+ * TCP Frame buffer for accumulating received data
+ * TCP frames have no start byte delimiter - uses message length field
  */
-export class FrameBuffer {
+export class TcpFrameBuffer {
   private buffer: Buffer = Buffer.alloc(0)
 
-  /**
-   * Add received data to buffer
-   */
   append(data: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, data])
   }
 
-  /**
-   * Try to extract a complete frame
-   *
-   * @returns Parsed frame or null if no complete frame available
-   */
-  extractFrame(): ReturnType<typeof parseFrame> {
-    // Look for start byte
-    const startIndex = this.buffer.indexOf(DBX_PROTOCOL.FRAME_START_BYTE)
-    if (startIndex === -1) {
-      this.buffer = Buffer.alloc(0) // No start byte, discard all
+  extractFrame(): ReturnType<typeof parseTcpFrame> {
+    // Need at least 6 bytes to read the message length
+    if (this.buffer.length < 6) {
       return null
     }
 
-    // Discard data before start byte
-    if (startIndex > 0) {
-      this.buffer = this.buffer.slice(startIndex)
-    }
+    // Read message length (4 bytes at offset 2)
+    const messageLength = this.buffer.readUInt32BE(2)
 
-    // Check if we have enough data for length field
-    if (this.buffer.length < 3) {
+    // Sanity check
+    if (messageLength > 65535 || messageLength < 25) {
+      // Invalid length - discard first byte and try again
+      this.buffer = this.buffer.subarray(1)
       return null
     }
 
-    // Read message length
-    const messageLength = this.buffer.readUInt16BE(1)
-
-    // Check if we have complete frame
-    const frameLength = 3 + messageLength + 1 // start + length + message + crc
-    if (this.buffer.length < frameLength) {
+    // Check if we have the complete frame
+    if (this.buffer.length < messageLength) {
       return null
     }
 
     // Extract frame data
-    const frameData = this.buffer.slice(0, frameLength)
+    const frameData = this.buffer.subarray(0, messageLength)
+    this.buffer = this.buffer.subarray(messageLength)
 
-    // Remove frame from buffer
-    this.buffer = this.buffer.slice(frameLength)
-
-    // Parse and return
-    return parseFrame(frameData)
+    return parseTcpFrame(frameData)
   }
 
-  /**
-   * Clear the buffer
-   */
   clear(): void {
     this.buffer = Buffer.alloc(0)
   }
 
-  /**
-   * Get current buffer size
-   */
   get size(): number {
     return this.buffer.length
   }
 }
 
+// ============================================================
+// Legacy exports for backward compatibility (RS-232 framing)
+// ============================================================
+
+/** Calculate CCITT-8 CRC checksum (RS-232 only) */
+export function calculateCRC8(data: Buffer): number {
+  const polynomial = 0x07
+  let crc = 0x00
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i]
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x80) {
+        crc = ((crc << 1) ^ polynomial) & 0xff
+      } else {
+        crc = (crc << 1) & 0xff
+      }
+    }
+  }
+  return crc
+}
+
+// Keep old FrameBuffer as alias for RS-232 use
+export const FrameBuffer = TcpFrameBuffer
+
+// Legacy buildFrame - now calls buildTcpFrame with default address
+export function buildFrame(
+  messageId: number,
+  payload: Buffer,
+  sequenceNumber: number = 0
+): Buffer {
+  return buildTcpFrame(
+    messageId,
+    DEFAULT_ROUTER_OBJECTS[0],
+    payload,
+    sequenceNumber
+  )
+}
+
+// Legacy buildMultiSVSetPayload
+export function buildMultiSVSetPayload(
+  _objectId: number,
+  stateVariableId: number,
+  value: number,
+  dataType: number = HIQNET_DATA_TYPE.UWORD
+): Buffer {
+  return buildMultiParamSetPayload(stateVariableId, value, dataType)
+}
+
+// Legacy buildGetPayload
+export function buildGetPayload(_objectId: number, stateVariableId: number): Buffer {
+  const payload = Buffer.alloc(4)
+  payload.writeUInt16BE(1, 0)
+  payload.writeUInt16BE(stateVariableId, 2)
+  return payload
+}
+
+// Legacy buildRecallScenePayload
+export function buildRecallScenePayload(sceneNumber: number): Buffer {
+  const payload = Buffer.alloc(2)
+  payload.writeUInt16BE(sceneNumber & 0xFFFF, 0)
+  return payload
+}
+
+// No ping needed over TCP
+export function buildPingFrame(_sequenceNumber: number = 0): Buffer {
+  return Buffer.alloc(0)
+}
+
+export function parseFrame(data: Buffer) {
+  return parseTcpFrame(data)
+}
+
 export default {
+  buildTcpFrame,
+  buildMultiParamSetPayload,
+  buildVolumeSetFrame,
+  buildMuteSetFrame,
+  buildSourceSetFrame,
+  buildRecallSceneFrame,
+  buildGetFrame,
+  parseTcpFrame,
+  TcpFrameBuffer,
+  HIQNET_DATA_TYPE,
+  CONTROLLER_ADDRESS,
+  DEFAULT_ROUTER_OBJECTS,
+  // Legacy
   calculateCRC8,
+  FrameBuffer,
   buildFrame,
   buildMultiSVSetPayload,
   buildGetPayload,
   buildRecallScenePayload,
   buildPingFrame,
-  buildVolumeSetFrame,
-  buildMuteSetFrame,
-  buildSourceSetFrame,
-  buildRecallSceneFrame,
   parseFrame,
-  FrameBuffer,
 }
