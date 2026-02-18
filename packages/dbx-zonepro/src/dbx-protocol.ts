@@ -56,8 +56,8 @@ export const CONTROLLER_ADDRESS: HiQnetAddress = {
 // Confirmed from ZonePRO Designer on 1260m:
 //   12z1: b0=31(0x1F), b1=0, b2=5, b3=1(VD) → vd:0x01, object:0x05001F
 export const DEFAULT_ROUTER_OBJECTS: HiQnetAddress[] = [
-  { device: 0x0001, vd: 0x01, object: 0x05001F }, // Ch1 Router (12z1, confirmed from Designer)
-  { device: 0x0001, vd: 0x01, object: 0x050120 }, // Ch2 Router (12z2, estimated +0x0101)
+  { device: 0x0001, vd: 0x01, object: 0x05001F }, // Ch1 Router (12z1, confirmed: b0=31,b1=0,b2=5)
+  { device: 0x0001, vd: 0x01, object: 0x050120 }, // Ch2 Router (12z2, confirmed: b0=32,b1=1,b2=5)
   { device: 0x0001, vd: 0x01, object: 0x050221 }, // Ch3 Router (estimated)
   { device: 0x0001, vd: 0x01, object: 0x050322 }, // Ch4 Router (estimated)
   { device: 0x0001, vd: 0x01, object: 0x050423 }, // Ch5 Router (estimated)

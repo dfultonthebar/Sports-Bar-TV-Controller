@@ -68,38 +68,47 @@ export async function POST(request: NextRequest) {
 
     // Route to the correct processor backend
     if (processor.processorType === 'dbx-zonepro') {
-      result = await executeDbxCommand(processor, command)
-    } else {
-      // Default to Atlas for 'atlas' and any other type
-      switch (command.action) {
-        case 'volume':
-          result = await setZoneVolume(processor, command.zone!, command.value as number)
-          break
-        case 'output-volume':
-          result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
-          break
-        case 'mute':
-          result = await setZoneMute(processor, command.zone!, command.value as boolean)
-          break
-        case 'source':
-          result = await setZoneSource(processor, command.zone!, command.value as string)
-          break
-        case 'scene':
-          result = await recallScene(processor, command.sceneId!)
-          break
-        case 'message':
-          result = await playMessage(processor, command.messageId!, command.zones)
-          break
-        case 'combine':
-          result = await combineRooms(processor, command.zones!)
-          break
-        default:
-          logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Unknown action' })
-          return NextResponse.json(
-            { error: `Unknown command action: ${command.action}` },
-            { status: 400 }
-          )
-      }
+      // Fire-and-forget for dbx (one-way protocol, no feedback)
+      // Don't await - return immediately for fast UI response
+      executeDbxCommand(processor, command).catch(err =>
+        logger.error('[AUDIO-CONTROL] dbx command failed:', err)
+      )
+      return NextResponse.json({
+        success: true,
+        result: { action: command.action, zone: command.zone },
+        message: `${command.action} command sent`
+      })
+    }
+
+    // Atlas and other processor types
+    switch (command.action) {
+      case 'volume':
+        result = await setZoneVolume(processor, command.zone!, command.value as number)
+        break
+      case 'output-volume':
+        result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
+        break
+      case 'mute':
+        result = await setZoneMute(processor, command.zone!, command.value as boolean)
+        break
+      case 'source':
+        result = await setZoneSource(processor, command.zone!, command.value as string)
+        break
+      case 'scene':
+        result = await recallScene(processor, command.sceneId!)
+        break
+      case 'message':
+        result = await playMessage(processor, command.messageId!, command.zones)
+        break
+      case 'combine':
+        result = await combineRooms(processor, command.zones!)
+        break
+      default:
+        logger.api.response('POST', '/api/audio-processor/control', 400, { error: 'Unknown action' })
+        return NextResponse.json(
+          { error: `Unknown command action: ${command.action}` },
+          { status: 400 }
+        )
     }
 
     // Update last seen timestamp using Drizzle

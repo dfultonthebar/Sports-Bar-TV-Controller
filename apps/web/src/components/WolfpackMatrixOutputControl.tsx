@@ -25,6 +25,7 @@ interface WolfpackMatrixOutputControlProps {
 export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMatrixOutputControlProps) {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [routings, setRoutings] = useState<MatrixRouting[]>([])
+  const [audioOutputCount, setAudioOutputCount] = useState(4)
   const [selectedOutput, setSelectedOutput] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [routing, setRouting] = useState(false)
@@ -43,10 +44,13 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
         const data = await response.json()
         if (data.configs?.length > 0) {
           const activeConfig = data.configs[0]
-          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) => 
+          const matrixInputs = activeConfig.inputs?.filter((input: MatrixInput) =>
             input.isActive
           ) || []
           setInputs(matrixInputs)
+          if (activeConfig.audioOutputCount) {
+            setAudioOutputCount(activeConfig.audioOutputCount)
+          }
         }
       }
     } catch (error) {
@@ -159,7 +163,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
 
       {/* Matrix Outputs */}
       <div className="space-y-3">
-        {[1, 2, 3, 4].map((outputNumber) => {
+        {Array.from({ length: audioOutputCount }, (_, i) => i + 1).map((outputNumber) => {
           const currentRouting = getCurrentRouting(outputNumber)
           const isSelected = selectedOutput === outputNumber
 
