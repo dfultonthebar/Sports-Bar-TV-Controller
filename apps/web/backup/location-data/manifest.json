@@ -1,12 +1,37 @@
 {
   "version": "1.0",
-  "createdAt": "2026-02-18T20:00:37.483Z",
+  "createdAt": "2026-02-18T20:03:50.927Z",
   "location": {
     "id": "39172208-7751-4182-af6a-129307c3e42e",
     "name": "Lucky's 1313",
     "city": "Madison",
     "state": "WI"
   },
-  "tables": [],
-  "totalRows": 0
+  "tables": [
+    {
+      "name": "Location",
+      "rowCount": 1
+    },
+    {
+      "name": "GlobalCacheDevice",
+      "rowCount": 2
+    },
+    {
+      "name": "GlobalCachePort",
+      "rowCount": 6
+    },
+    {
+      "name": "IRDevice",
+      "rowCount": 4
+    },
+    {
+      "name": "IRCommand",
+      "rowCount": 124
+    },
+    {
+      "name": "ChannelPreset",
+      "rowCount": 108
+    }
+  ],
+  "totalRows": 245
 }
