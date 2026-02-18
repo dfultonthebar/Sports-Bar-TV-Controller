@@ -307,8 +307,8 @@ export function buildVolumeSetFrame(
   // Zone 1 = 0x00010001, Zone 2 = 0x00010002, etc.
   const baseObjectId = 0x00010000 + zone + 1
 
-  // State variable ID for volume (typically 0x0000 for main level)
-  const volumeSVId = 0x0000
+  // State variable ID for volume (SV 0x0001 = Master Fader in HiQnet Router Object)
+  const volumeSVId = 0x0001
 
   if (stereo) {
     // Build payload for stereo pair (left and right channels)
@@ -368,8 +368,8 @@ export function buildMuteSetFrame(
   // Zone object ID
   const objectId = 0x00010000 + zone + 1
 
-  // State variable ID for mute (typically 0x0001)
-  const muteSVId = 0x0001
+  // State variable ID for mute (SV 0x0002 = Master Mute in HiQnet Router Object)
+  const muteSVId = 0x0002
 
   const payload = buildMultiSVSetPayload(
     objectId,
@@ -397,8 +397,8 @@ export function buildSourceSetFrame(
   // Zone object ID
   const objectId = 0x00010000 + zone + 1
 
-  // State variable ID for source selection (typically 0x0002)
-  const sourceSVId = 0x0002
+  // State variable ID for source selection (SV 0x0000 = Input Source in HiQnet Router Object)
+  const sourceSVId = 0x0000
 
   const payload = buildMultiSVSetPayload(objectId, sourceSVId, sourceIndex, 0x01) // uint8
 

@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
     }
 
     const zones = await findMany('audioZones', {
-      where: eq(schema.audioZones.processorId, processorId),
+      where: and(
+        eq(schema.audioZones.processorId, processorId),
+        eq(schema.audioZones.enabled, true)
+      ),
       orderBy: asc(schema.audioZones.zoneNumber),
       limit: 1000
     })
