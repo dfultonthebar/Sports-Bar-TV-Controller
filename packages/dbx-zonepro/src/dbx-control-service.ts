@@ -247,17 +247,6 @@ export class DbxControlService extends EventEmitter {
         break
     }
 
-    logger.info('[DBX-CONTROL] Setting volume', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        rawVolume,
-        percent: volumeToPercent(rawVolume),
-        db: volumeToDb(rawVolume),
-        stereo,
-      },
-    })
-
     await this.client!.setVolume(zone, rawVolume, stereo)
 
     // Update local state
@@ -319,14 +308,6 @@ export class DbxControlService extends EventEmitter {
     this.validateZone(zone)
     this.ensureConnected()
 
-    logger.info('[DBX-CONTROL] Setting mute', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        muted,
-      },
-    })
-
     await this.client!.setMute(zone, muted)
 
     // Update local state
@@ -367,14 +348,6 @@ export class DbxControlService extends EventEmitter {
     this.validateZone(zone)
     this.validateSource(sourceIndex)
     this.ensureConnected()
-
-    logger.info('[DBX-CONTROL] Setting source', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        sourceIndex,
-      },
-    })
 
     await this.client!.setSource(zone, sourceIndex)
 

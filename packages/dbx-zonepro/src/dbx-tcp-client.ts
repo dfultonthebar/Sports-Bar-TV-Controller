@@ -104,130 +104,66 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * "Connect" - validates reachability on first call
-   * With connect-per-command, this just marks the client as initialized
+   * Connect - just marks client as ready (no test connection needed)
    */
   async connect(): Promise<void> {
-    if (this._initialized) return
-
-    // Test connectivity once
-    logger.info('[DBX-TCP] Testing connectivity...', {
+    this._initialized = true
+    logger.info('[DBX-TCP] Client ready', {
       data: { ipAddress: this.config.ipAddress, port: this.config.port },
     })
-
-    try {
-      await this.sendOneShot(Buffer.alloc(0), true) // Just test connection
-      this._initialized = true
-      logger.info('[DBX-TCP] Connectivity confirmed', {
-        data: { ipAddress: this.config.ipAddress, port: this.config.port },
-      })
-      this.emit('connected')
-    } catch (error) {
-      // Mark as initialized anyway - commands will retry per-call
-      this._initialized = true
-      logger.warn('[DBX-TCP] Initial connectivity test failed, will retry per-command', {
-        data: { error: error instanceof Error ? error.message : String(error) },
-      })
-    }
+    this.emit('connected')
   }
 
-  /**
-   * Disconnect (no-op for connect-per-command)
-   */
   disconnect(): void {
     this._initialized = false
-    logger.info('[DBX-TCP] Client disconnected')
   }
 
-  /**
-   * Always returns true once initialized (connect-per-command)
-   */
   isConnected(): boolean {
     return this._initialized
   }
 
-  /**
-   * Get next sequence number
-   */
   private getNextSequence(): number {
     this.sequenceNumber = (this.sequenceNumber + 1) & 0xFFFF
     return this.sequenceNumber
   }
 
   /**
-   * Open a fresh TCP connection, send frame, and close
-   * This is the core send method - each call gets its own connection
+   * Open TCP, send frame, resolve immediately after write, close async
+   * Optimized for minimum latency on one-way protocol
    */
-  private async sendOneShot(frame: Buffer, testOnly: boolean = false): Promise<any> {
+  private sendFrame(frame: Buffer): Promise<any> {
     return new Promise((resolve, reject) => {
       const socket = new Socket()
-      socket.setTimeout(this.config.connectionTimeout)
       socket.setNoDelay(true)
 
-      const cleanup = () => {
-        try { socket.destroy() } catch { /* ignore */ }
-      }
-
-      const connectionTimeout = setTimeout(() => {
-        cleanup()
-        reject(new Error(`Connection timeout to ${this.config.ipAddress}:${this.config.port}`))
-      }, this.config.connectionTimeout)
+      const timer = setTimeout(() => {
+        socket.destroy()
+        reject(new Error('Connection timeout'))
+      }, 2000) // 2s timeout (LAN should connect in <5ms)
 
       socket.on('connect', () => {
-        clearTimeout(connectionTimeout)
-
-        if (testOnly) {
-          cleanup()
-          resolve({ success: true, test: true })
-          return
-        }
-
-        logger.info('[DBX-TCP] Connected, sending frame', {
-          data: {
-            ipAddress: this.config.ipAddress,
-            length: frame.length,
-            hex: frame.toString('hex'),
-          },
-        })
-
-        socket.write(frame, (writeError) => {
-          // Close after sending - one-way protocol, no response expected
-          cleanup()
-
-          if (writeError) {
-            logger.error('[DBX-TCP] Write error', { error: writeError })
-            reject(writeError)
+        clearTimeout(timer)
+        socket.write(frame, (err) => {
+          if (err) {
+            socket.destroy()
+            reject(err)
           } else {
-            logger.info('[DBX-TCP] Frame sent successfully', {
-              data: { length: frame.length },
-            })
+            // Resolve IMMEDIATELY - don't wait for socket close
             resolve({ success: true })
+            // Destroy socket async after small delay to let data flush
+            setTimeout(() => socket.destroy(), 50)
           }
         })
       })
 
       socket.on('error', (error) => {
-        clearTimeout(connectionTimeout)
-        cleanup()
-        logger.error('[DBX-TCP] Socket error', { error })
+        clearTimeout(timer)
+        socket.destroy()
         reject(error)
-      })
-
-      socket.on('timeout', () => {
-        clearTimeout(connectionTimeout)
-        cleanup()
-        reject(new Error('Socket timeout'))
       })
 
       socket.connect(this.config.port, this.config.ipAddress)
     })
-  }
-
-  /**
-   * Send a frame with connect-per-command pattern
-   */
-  private async sendFrame(frame: Buffer): Promise<any> {
-    return this.sendOneShot(frame)
   }
 
   /**
@@ -239,55 +175,18 @@ export class DbxTcpClient extends EventEmitter {
   async setVolume(zone: number, volume: number, _stereo: boolean = true, usePercent: boolean = false): Promise<any> {
     const actualVolume = usePercent ? percentToVolume(volume) : volume
     const destAddress = this.getRouterAddress(zone)
-
-    logger.info('[DBX-TCP] Setting volume', {
-      data: {
-        zone,
-        volume: actualVolume,
-        dest: `${destAddress.device.toString(16)}:${destAddress.vd.toString(16)}:${destAddress.object.toString(16)}`,
-      },
-    })
-
     const frame = buildVolumeSetFrame(destAddress, actualVolume, this.getNextSequence())
     return this.sendFrame(frame)
   }
 
-  /**
-   * Set mute state for a zone
-   * @param zone - Zone number (0-based)
-   * @param muted - true to mute, false to unmute
-   */
   async setMute(zone: number, muted: boolean): Promise<any> {
     const destAddress = this.getRouterAddress(zone)
-
-    logger.info('[DBX-TCP] Setting mute', {
-      data: {
-        zone,
-        muted,
-        dest: `${destAddress.device.toString(16)}:${destAddress.vd.toString(16)}:${destAddress.object.toString(16)}`,
-      },
-    })
-
     const frame = buildMuteSetFrame(destAddress, muted, this.getNextSequence())
     return this.sendFrame(frame)
   }
 
-  /**
-   * Set source for a zone
-   * @param zone - Zone number (0-based)
-   * @param sourceIndex - Source index (0=none, 1=first input, etc.)
-   */
   async setSource(zone: number, sourceIndex: number): Promise<any> {
     const destAddress = this.getRouterAddress(zone)
-
-    logger.info('[DBX-TCP] Setting source', {
-      data: {
-        zone,
-        sourceIndex,
-        dest: `${destAddress.device.toString(16)}:${destAddress.vd.toString(16)}:${destAddress.object.toString(16)}`,
-      },
-    })
-
     const frame = buildSourceSetFrame(destAddress, sourceIndex, this.getNextSequence())
     return this.sendFrame(frame)
   }
