@@ -4,10 +4,11 @@
  * TCP/Ethernet client for dbx ZonePRO m-models (640m, 641m, 1260m, 1261m).
  * Implements HiQnet v1.0 protocol over TCP (port 3804).
  *
- * Uses connect-per-command pattern: connect → send → disconnect.
- * The dbx stops reading from persistent/long-lived connections, so each
- * command gets a fresh TCP session. Commands are serialized through a
- * queue to prevent rapid reconnection which can lock up the dbx.
+ * Uses a persistent connection with idle timeout. The dbx only accepts
+ * one TCP connection at a time, and TIME_WAIT sockets from rapid
+ * connect/disconnect block new connections. Keeping the socket open
+ * avoids this. If the send buffer backs up (dbx stopped reading),
+ * the connection is torn down and rebuilt.
  */
 
 import { Socket } from 'net'
@@ -42,21 +43,25 @@ export interface DbxClientEvents {
   response: (response: any) => void
 }
 
+// Idle timeout before closing persistent connection (ms)
+const IDLE_TIMEOUT = 30_000
+
 /**
  * TCP client for dbx ZonePRO m-model processors
  *
- * Uses connect-per-command with a serialized queue.
- * Each command: connect → send → brief pause → disconnect.
- * Queue ensures only one TCP session at a time.
+ * Keeps a persistent TCP socket. Commands write directly to it.
+ * If the socket is dead or send buffer backed up, reconnects automatically.
+ * Socket closes after IDLE_TIMEOUT of no commands.
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
   private deviceAddress: number
   private routerObjects: HiQnetAddress[]
   private sequenceNumber: number = 0
+  private socket: Socket | null = null
   private _connected: boolean = false
-  private commandQueue: Array<{ frame: Buffer; resolve: (v: any) => void; reject: (e: Error) => void }> = []
-  private processing: boolean = false
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private connectPromise: Promise<void> | null = null
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -74,7 +79,7 @@ export class DbxTcpClient extends EventEmitter {
       device: this.deviceAddress,
     }))
 
-    logger.info('[DBX-TCP] Client initialized (connect-per-command mode)', {
+    logger.info('[DBX-TCP] Client initialized (persistent mode)', {
       data: {
         ipAddress: this.config.ipAddress,
         port: this.config.port,
@@ -105,13 +110,14 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * No-op for API compatibility - connection is per-command now
+   * No-op for API compatibility - real connection happens on first command
    */
   async connect(): Promise<void> {
     this._connected = true
   }
 
   disconnect(): void {
+    this.closeSocket()
     this._connected = false
   }
 
@@ -125,84 +131,128 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Queue a frame for sending. Commands are serialized so only one
-   * TCP session is active at a time.
+   * Close the socket and clear timers
    */
-  private async sendFrame(frame: Buffer): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.commandQueue.push({ frame, resolve, reject })
-      this.processQueue()
-    })
+  private closeSocket(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    if (this.socket) {
+      this.socket.removeAllListeners()
+      this.socket.destroy()
+      this.socket = null
+    }
+    this.connectPromise = null
   }
 
   /**
-   * Process the command queue - one command at a time.
-   * Each command: connect → send → 200ms pause → disconnect
+   * Reset the idle timer - closes socket after IDLE_TIMEOUT of no commands
    */
-  private async processQueue(): Promise<void> {
-    if (this.processing) return
-    this.processing = true
+  private resetIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+    }
+    this.idleTimer = setTimeout(() => {
+      logger.info('[DBX-TCP] Idle timeout, closing connection')
+      this.closeSocket()
+    }, IDLE_TIMEOUT)
+  }
 
-    while (this.commandQueue.length > 0) {
-      const cmd = this.commandQueue.shift()!
+  /**
+   * Get or create a TCP connection to the dbx
+   */
+  private async ensureSocket(): Promise<Socket> {
+    // If socket exists and send buffer is healthy, reuse it
+    if (this.socket && !this.socket.destroyed && this.socket.writableLength < 100) {
+      return this.socket
+    }
 
-      try {
-        await this.connectSendDisconnect(cmd.frame)
-        cmd.resolve({ success: true })
-      } catch (err: any) {
-        cmd.reject(err)
-      }
+    // If socket exists but stale (send buffer backed up), tear it down
+    if (this.socket) {
+      logger.info('[DBX-TCP] Socket stale or destroyed, reconnecting', {
+        data: {
+          destroyed: this.socket.destroyed,
+          writableLength: this.socket.writableLength,
+        },
+      })
+      this.closeSocket()
+    }
 
-      // Brief pause between commands to let dbx recover
-      if (this.commandQueue.length > 0) {
-        await new Promise(r => setTimeout(r, 200))
+    // If a connect is already in progress, wait for it
+    if (this.connectPromise) {
+      await this.connectPromise
+      if (this.socket && !this.socket.destroyed) {
+        return this.socket
       }
     }
 
-    this.processing = false
-  }
-
-  /**
-   * Single atomic operation: connect → send → pause → disconnect
-   */
-  private connectSendDisconnect(frame: Buffer): Promise<void> {
-    return new Promise((resolve, reject) => {
+    // Open new connection
+    this.connectPromise = new Promise<void>((resolve, reject) => {
       const socket = new Socket()
       socket.setNoDelay(true)
 
       const timer = setTimeout(() => {
         socket.destroy()
+        this.connectPromise = null
         reject(new Error('Connection timeout'))
-      }, 3000)
+      }, 5000)
 
       socket.on('connect', () => {
         clearTimeout(timer)
+        this.socket = socket
+        this.connectPromise = null
+        logger.info('[DBX-TCP] Connected')
+        this.emit('connected')
+        resolve()
+      })
 
-        logger.info('[DBX-TCP] Sending frame', {
-          data: { length: frame.length, hex: frame.toString('hex') },
-        })
-
-        socket.write(frame, (err) => {
-          if (err) {
-            socket.destroy()
-            reject(err)
-            return
-          }
-
-          // Give the dbx 200ms to read the data before closing
-          setTimeout(() => {
-            socket.destroy()
-            resolve()
-          }, 200)
-        })
+      socket.on('close', () => {
+        if (this.socket === socket) {
+          this.socket = null
+        }
+        this.emit('disconnected')
       })
 
       socket.on('error', (error) => {
         clearTimeout(timer)
+        logger.error('[DBX-TCP] Socket error', { error })
+        if (this.socket === socket) {
+          this.socket = null
+        }
+        this.connectPromise = null
+        this.emit('error', error)
         reject(error)
       })
 
       socket.connect(this.config.port, this.config.ipAddress)
+    })
+
+    await this.connectPromise
+    return this.socket!
+  }
+
+  /**
+   * Send a frame over the persistent connection
+   */
+  private async sendFrame(frame: Buffer): Promise<any> {
+    const socket = await this.ensureSocket()
+    this.resetIdleTimer()
+
+    logger.info('[DBX-TCP] Sending frame', {
+      data: { length: frame.length, hex: frame.toString('hex') },
+    })
+
+    return new Promise((resolve, reject) => {
+      socket.write(frame, (err) => {
+        if (err) {
+          logger.error('[DBX-TCP] Write error', { error: err })
+          this.closeSocket()
+          reject(err)
+        } else {
+          resolve({ success: true })
+        }
+      })
     })
   }
 
