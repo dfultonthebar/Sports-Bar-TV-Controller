@@ -8,10 +8,9 @@
  * at a time and becomes unresponsive to new connections after rapid
  * connect/disconnect cycles. Keeping one socket open avoids this.
  *
- * Protocol requirements:
- * - Send Resync_Request (0xF0) after connecting to sync the protocol state
- * - Send PING (0xF0 0x8C) every second when idle to keep connection active
- * - Without resync, the dbx enters a slow self-correcting state (~30s delay)
+ * IMPORTANT: TCP uses raw HiQnet frames (version 0x01 header).
+ * Do NOT send RS-232 sync bytes (0xF0, 0x8C) over TCP - they corrupt
+ * the protocol stream. Keepalive uses a proper HiQnet DiscoInfo frame.
  */
 
 import { Socket } from 'net'
@@ -20,18 +19,15 @@ import { logger } from '@sports-bar/logger'
 import { DBX_NETWORK_CONFIG, percentToVolume } from './config'
 import {
   type HiQnetAddress,
+  buildTcpFrame,
   buildVolumeSetFrame,
   buildMuteSetFrame,
   buildSourceSetFrame,
   buildRecallSceneFrame,
   buildGetFrame,
+  CONTROLLER_ADDRESS,
   DEFAULT_ROUTER_OBJECTS,
 } from './dbx-protocol'
-
-// Protocol sync bytes
-const RESYNC_REQUEST = 0xF0
-const RESYNC_ACK = 0x8C
-const PING_BYTES = Buffer.from([RESYNC_REQUEST, RESYNC_ACK])
 
 export interface DbxTcpClientConfig {
   ipAddress: string
@@ -54,9 +50,8 @@ export interface DbxClientEvents {
 /**
  * TCP client for dbx ZonePRO m-model processors
  *
- * Uses a persistent TCP connection with protocol resync and keepalive ping.
- * Commands are written directly to the socket. dbx ZonePRO is one-way
- * (no feedback), so we fire and forget.
+ * Uses a persistent TCP connection with HiQnet-level keepalive.
+ * Commands are written directly to the socket.
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
@@ -67,7 +62,7 @@ export class DbxTcpClient extends EventEmitter {
   private _connected: boolean = false
   private connecting: boolean = false
   private connectPromise: Promise<void> | null = null
-  private pingInterval: ReturnType<typeof setInterval> | null = null
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null
   private lastSendTime: number = 0
 
   constructor(config: DbxTcpClientConfig) {
@@ -86,7 +81,7 @@ export class DbxTcpClient extends EventEmitter {
       device: this.deviceAddress,
     }))
 
-    logger.info('[DBX-TCP] Client initialized (persistent connection mode)', {
+    logger.info('[DBX-TCP] Client initialized', {
       data: {
         ipAddress: this.config.ipAddress,
         port: this.config.port,
@@ -118,7 +113,7 @@ export class DbxTcpClient extends EventEmitter {
 
   /**
    * Connect to the dbx ZonePRO - opens persistent TCP connection
-   * Sends resync byte and starts keepalive ping timer
+   * Starts HiQnet heartbeat timer to keep connection alive
    */
   async connect(): Promise<void> {
     if (this._connected && this.socket) return
@@ -147,34 +142,42 @@ export class DbxTcpClient extends EventEmitter {
         this._connected = true
         this.connecting = false
         this.connectPromise = null
+        this.lastSendTime = Date.now()
         logger.info('[DBX-TCP] Connected', {
           data: { ipAddress: this.config.ipAddress, port: this.config.port, connectMs: Date.now() - connectStart },
         })
 
-        // Send resync request to put dbx in known state
-        this.sendResync()
-
-        // Start keepalive ping timer
-        this.startPingTimer()
+        // Start HiQnet heartbeat (proper DiscoInfo frame, not RS-232 sync bytes)
+        this.startHeartbeat()
 
         this.emit('connected')
         resolve()
       })
 
+      socket.on('data', (data) => {
+        // Log any data received from dbx (usually silent, but may respond to DiscoInfo)
+        logger.debug('[DBX-TCP] Received data', {
+          data: { length: data.length, hex: data.toString('hex').substring(0, 60) },
+        })
+        this.emit('data', data)
+      })
+
       socket.on('close', () => {
+        logger.info('[DBX-TCP] Connection closed')
         this._connected = false
         this.socket = null
-        this.stopPingTimer()
+        this.stopHeartbeat()
         this.emit('disconnected')
       })
 
       socket.on('error', (error) => {
         clearTimeout(timer)
+        logger.error('[DBX-TCP] Socket error', { error })
         this._connected = false
         this.socket = null
         this.connecting = false
         this.connectPromise = null
-        this.stopPingTimer()
+        this.stopHeartbeat()
         this.emit('error', error)
         reject(error)
       })
@@ -186,61 +189,57 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Send Resync_Request (0xF0) to sync protocol state
-   * Without this, the dbx enters a slow self-correcting state (~30s delay)
+   * Start HiQnet heartbeat - sends a DiscoInfo frame every 10s when idle
+   * This keeps the connection active at the HiQnet protocol level.
+   * Uses proper HiQnet frames, NOT RS-232 sync bytes.
    */
-  private sendResync(): void {
-    if (!this.socket) return
-    const resyncBuf = Buffer.from([RESYNC_REQUEST])
-    this.socket.write(resyncBuf, (err) => {
-      if (err) {
-        logger.error('[DBX-TCP] Resync send failed', { error: err })
-      } else {
-        logger.info('[DBX-TCP] Resync sent (0xF0)')
-        this.lastSendTime = Date.now()
-      }
-    })
-  }
+  private startHeartbeat(): void {
+    this.stopHeartbeat()
 
-  /**
-   * Start keepalive ping timer - sends PING (0xF0 0x8C) every 1s when idle
-   */
-  private startPingTimer(): void {
-    this.stopPingTimer()
-    this.pingInterval = setInterval(() => {
+    // Build a minimal HiQnet DiscoInfo frame (Message ID 0x0000) as heartbeat
+    const heartbeatFrame = buildTcpFrame(
+      0x0000, // DiscoInfo - discovery/keepalive
+      { device: this.deviceAddress, vd: 0x00, object: 0x000000 },
+      Buffer.alloc(0), // Empty payload for ping
+      0,
+      CONTROLLER_ADDRESS
+    )
+
+    this.heartbeatInterval = setInterval(() => {
       if (!this._connected || !this.socket) {
-        this.stopPingTimer()
+        this.stopHeartbeat()
         return
       }
 
-      // Only send ping if no message was sent in the last second
-      if (Date.now() - this.lastSendTime >= 1000) {
-        this.socket.write(PING_BYTES, (err) => {
+      // Only send heartbeat if no message was sent in the last 10s
+      if (Date.now() - this.lastSendTime >= 10000) {
+        this.socket.write(heartbeatFrame, (err) => {
           if (err) {
-            logger.error('[DBX-TCP] Ping failed, connection dead', { error: err })
+            logger.error('[DBX-TCP] Heartbeat failed, connection dead', { error: err })
             this._connected = false
             this.socket?.destroy()
             this.socket = null
-            this.stopPingTimer()
+            this.stopHeartbeat()
+          } else {
+            this.lastSendTime = Date.now()
           }
         })
-        this.lastSendTime = Date.now()
       }
-    }, 1000)
+    }, 10000)
   }
 
   /**
-   * Stop keepalive ping timer
+   * Stop heartbeat timer
    */
-  private stopPingTimer(): void {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval)
-      this.pingInterval = null
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
     }
   }
 
   disconnect(): void {
-    this.stopPingTimer()
+    this.stopHeartbeat()
     if (this.socket) {
       this.socket.destroy()
       this.socket = null
@@ -275,7 +274,7 @@ export class DbxTcpClient extends EventEmitter {
       logger.info('[DBX-TCP] Send buffer backed up, reconnecting', {
         data: { buffered: this.socket.writableLength },
       })
-      this.stopPingTimer()
+      this.stopHeartbeat()
       this.socket.destroy()
       this.socket = null
       this._connected = false
@@ -298,7 +297,7 @@ export class DbxTcpClient extends EventEmitter {
           this._connected = false
           this.socket?.destroy()
           this.socket = null
-          this.stopPingTimer()
+          this.stopHeartbeat()
           reject(err)
         } else {
           this.lastSendTime = Date.now()
