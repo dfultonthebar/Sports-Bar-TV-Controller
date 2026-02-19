@@ -43,7 +43,7 @@ export interface DbxControlServiceConfig {
   autoReconnect?: boolean // Auto-reconnect on disconnect (default: true)
 
   // HiQnet addressing (from ZonePRO Designer)
-  deviceAddress?: number // ZonePRO's HiQnet node address (default: 0x0001)
+  deviceAddress?: number // ZonePRO's HiQnet node address (default: 0x001E = Node 30)
   routerObjects?: import('./dbx-protocol').HiQnetAddress[] // Router Object addresses per zone
 }
 

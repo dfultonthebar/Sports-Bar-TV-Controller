@@ -58,12 +58,12 @@ export const CONTROLLER_ADDRESS: HiQnetAddress = {
 //   12z1: b0=31, b1=0, b2=5, b3=1 → vd:0x05, object:0x01001F
 //   12z2: b0=32, b1=1, b2=5, b3=1 → vd:0x05, object:0x010120
 export const DEFAULT_ROUTER_OBJECTS: HiQnetAddress[] = [
-  { device: 0x0001, vd: 0x05, object: 0x01001F }, // Ch1 Router (12z1, confirmed from Designer + working frame)
-  { device: 0x0001, vd: 0x05, object: 0x010120 }, // Ch2 Router (12z2, confirmed from Designer)
-  { device: 0x0001, vd: 0x05, object: 0x010221 }, // Ch3 Router (estimated)
-  { device: 0x0001, vd: 0x05, object: 0x010322 }, // Ch4 Router (estimated)
-  { device: 0x0001, vd: 0x05, object: 0x010423 }, // Ch5 Router (estimated)
-  { device: 0x0001, vd: 0x05, object: 0x010524 }, // Ch6 Router (estimated)
+  { device: 0x001E, vd: 0x05, object: 0x01001F }, // Ch1 Router (12z1, confirmed from Designer + working frame, Node 30)
+  { device: 0x001E, vd: 0x05, object: 0x010120 }, // Ch2 Router (12z2, confirmed from Designer, Node 30)
+  { device: 0x001E, vd: 0x05, object: 0x010221 }, // Ch3 Router (estimated, Node 30)
+  { device: 0x001E, vd: 0x05, object: 0x010322 }, // Ch4 Router (estimated, Node 30)
+  { device: 0x001E, vd: 0x05, object: 0x010423 }, // Ch5 Router (estimated, Node 30)
+  { device: 0x001E, vd: 0x05, object: 0x010524 }, // Ch6 Router (estimated, Node 30)
 ]
 
 // HiQnet data type constants
