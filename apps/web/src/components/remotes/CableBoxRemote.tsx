@@ -111,14 +111,12 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
     if (timeSinceLastCommand < COMMAND_DEBOUNCE_MS) {
       // If a command is already in queue, ignore this one
       if (commandQueueRef.current) {
-        console.debug(`[CableBox Remote] Ignoring rapid command: ${command} (debounced)`)
         return
       }
 
       // Queue this command to run after the debounce period
       commandQueueRef.current = true
       const waitTime = COMMAND_DEBOUNCE_MS - timeSinceLastCommand
-      console.debug(`[CableBox Remote] Queuing command: ${command} (waiting ${waitTime}ms)`)
 
       await new Promise(resolve => setTimeout(resolve, waitTime))
       commandQueueRef.current = false
@@ -129,53 +127,56 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
     setLoading(true)
     setLastCommand(displayName || command)
 
+    // Safety timeout: auto-clear loading after 4 seconds to prevent stuck UI
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+      setStatus({ type: 'error', message: 'Command timed out' })
+      setTimeout(() => setStatus({ type: null, message: '' }), 2000)
+    }, 4000)
+
     try {
       // Use IR control only (all cable boxes now use IR)
       const learnedCode = findIRCode(command)
 
-      if (learnedCode && iTachAddress) {
-        // Use learned IR code
-        const response = await fetch('/api/ir-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId,
-            command: learnedCode,
-            iTachAddress,
-            isRawCode: true // Flag to indicate this is a raw IR code, not a command name
-          })
-        })
+      // Use AbortController to prevent fetch from hanging indefinitely
+      const controller = new AbortController()
+      const fetchTimeout = setTimeout(() => controller.abort(), 3000)
 
-        const data = await response.json()
+      const body = learnedCode && iTachAddress ? {
+        deviceId,
+        command: learnedCode,
+        iTachAddress,
+        isRawCode: true
+      } : {
+        deviceId,
+        command,
+        iTachAddress
+      }
 
-        if (response.ok || data.success) {
-          setStatus({ type: 'success', message: `${displayName || command} sent` })
-        } else {
-          setStatus({ type: 'error', message: data.error || 'Command failed' })
-        }
+      const response = await fetch('/api/ir-devices/send-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      })
+
+      clearTimeout(fetchTimeout)
+
+      const data = await response.json()
+
+      if (response.ok || data.success) {
+        setStatus({ type: 'success', message: `${displayName || command} sent` })
       } else {
-        // Use generic IR endpoint (with pre-programmed codes)
-        const response = await fetch('/api/ir-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId,
-            command,
-            iTachAddress
-          })
-        })
-
-        const data = await response.json()
-
-        if (response.ok || data.success) {
-          setStatus({ type: 'success', message: `${displayName || command} sent` })
-        } else {
-          setStatus({ type: 'error', message: data.error || 'Command failed' })
-        }
+        setStatus({ type: 'error', message: data.error || 'Command failed' })
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Failed to send command' })
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setStatus({ type: 'error', message: 'Command timed out' })
+      } else {
+        setStatus({ type: 'error', message: 'Failed to send command' })
+      }
     } finally {
+      clearTimeout(safetyTimer)
       setLoading(false)
       setTimeout(() => setStatus({ type: null, message: '' }), 2000)
     }
@@ -269,7 +270,7 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
   }
 
   return (
-    <div className="bg-slate-900 rounded-lg p-6 w-full max-w-md remote-control-container">
+    <div className="relative bg-slate-900 rounded-lg p-6 w-full max-w-md remote-control-container">
       {/* Header */}
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold text-white mb-1">Cable Box Remote</h3>
