@@ -7,6 +7,11 @@
  * Uses a persistent TCP connection. The dbx only accepts one connection
  * at a time and becomes unresponsive to new connections after rapid
  * connect/disconnect cycles. Keeping one socket open avoids this.
+ *
+ * Protocol requirements:
+ * - Send Resync_Request (0xF0) after connecting to sync the protocol state
+ * - Send PING (0xF0 0x8C) every second when idle to keep connection active
+ * - Without resync, the dbx enters a slow self-correcting state (~30s delay)
  */
 
 import { Socket } from 'net'
@@ -22,6 +27,11 @@ import {
   buildGetFrame,
   DEFAULT_ROUTER_OBJECTS,
 } from './dbx-protocol'
+
+// Protocol sync bytes
+const RESYNC_REQUEST = 0xF0
+const RESYNC_ACK = 0x8C
+const PING_BYTES = Buffer.from([RESYNC_REQUEST, RESYNC_ACK])
 
 export interface DbxTcpClientConfig {
   ipAddress: string
@@ -44,9 +54,9 @@ export interface DbxClientEvents {
 /**
  * TCP client for dbx ZonePRO m-model processors
  *
- * Uses a persistent TCP connection. Commands are written directly to
- * the socket. dbx ZonePRO is one-way (no feedback), so we fire and forget.
- * If the socket disconnects, we reconnect on the next command.
+ * Uses a persistent TCP connection with protocol resync and keepalive ping.
+ * Commands are written directly to the socket. dbx ZonePRO is one-way
+ * (no feedback), so we fire and forget.
  */
 export class DbxTcpClient extends EventEmitter {
   private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
@@ -57,6 +67,8 @@ export class DbxTcpClient extends EventEmitter {
   private _connected: boolean = false
   private connecting: boolean = false
   private connectPromise: Promise<void> | null = null
+  private pingInterval: ReturnType<typeof setInterval> | null = null
+  private lastSendTime: number = 0
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -106,16 +118,21 @@ export class DbxTcpClient extends EventEmitter {
 
   /**
    * Connect to the dbx ZonePRO - opens persistent TCP connection
+   * Sends resync byte and starts keepalive ping timer
    */
   async connect(): Promise<void> {
     if (this._connected && this.socket) return
     if (this.connecting && this.connectPromise) return this.connectPromise
 
     this.connecting = true
+    const connectStart = Date.now()
+    logger.info('[DBX-TCP] Connecting...', {
+      data: { ipAddress: this.config.ipAddress, port: this.config.port },
+    })
     this.connectPromise = new Promise<void>((resolve, reject) => {
       const socket = new Socket()
       socket.setNoDelay(true)
-      socket.setKeepAlive(true, 30000) // TCP keepalive every 30s
+      socket.setKeepAlive(true, 5000)
 
       const timer = setTimeout(() => {
         socket.destroy()
@@ -131,8 +148,15 @@ export class DbxTcpClient extends EventEmitter {
         this.connecting = false
         this.connectPromise = null
         logger.info('[DBX-TCP] Connected', {
-          data: { ipAddress: this.config.ipAddress, port: this.config.port },
+          data: { ipAddress: this.config.ipAddress, port: this.config.port, connectMs: Date.now() - connectStart },
         })
+
+        // Send resync request to put dbx in known state
+        this.sendResync()
+
+        // Start keepalive ping timer
+        this.startPingTimer()
+
         this.emit('connected')
         resolve()
       })
@@ -140,6 +164,7 @@ export class DbxTcpClient extends EventEmitter {
       socket.on('close', () => {
         this._connected = false
         this.socket = null
+        this.stopPingTimer()
         this.emit('disconnected')
       })
 
@@ -149,6 +174,7 @@ export class DbxTcpClient extends EventEmitter {
         this.socket = null
         this.connecting = false
         this.connectPromise = null
+        this.stopPingTimer()
         this.emit('error', error)
         reject(error)
       })
@@ -159,7 +185,62 @@ export class DbxTcpClient extends EventEmitter {
     return this.connectPromise
   }
 
+  /**
+   * Send Resync_Request (0xF0) to sync protocol state
+   * Without this, the dbx enters a slow self-correcting state (~30s delay)
+   */
+  private sendResync(): void {
+    if (!this.socket) return
+    const resyncBuf = Buffer.from([RESYNC_REQUEST])
+    this.socket.write(resyncBuf, (err) => {
+      if (err) {
+        logger.error('[DBX-TCP] Resync send failed', { error: err })
+      } else {
+        logger.info('[DBX-TCP] Resync sent (0xF0)')
+        this.lastSendTime = Date.now()
+      }
+    })
+  }
+
+  /**
+   * Start keepalive ping timer - sends PING (0xF0 0x8C) every 1s when idle
+   */
+  private startPingTimer(): void {
+    this.stopPingTimer()
+    this.pingInterval = setInterval(() => {
+      if (!this._connected || !this.socket) {
+        this.stopPingTimer()
+        return
+      }
+
+      // Only send ping if no message was sent in the last second
+      if (Date.now() - this.lastSendTime >= 1000) {
+        this.socket.write(PING_BYTES, (err) => {
+          if (err) {
+            logger.error('[DBX-TCP] Ping failed, connection dead', { error: err })
+            this._connected = false
+            this.socket?.destroy()
+            this.socket = null
+            this.stopPingTimer()
+          }
+        })
+        this.lastSendTime = Date.now()
+      }
+    }, 1000)
+  }
+
+  /**
+   * Stop keepalive ping timer
+   */
+  private stopPingTimer(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval)
+      this.pingInterval = null
+    }
+  }
+
   disconnect(): void {
+    this.stopPingTimer()
     if (this.socket) {
       this.socket.destroy()
       this.socket = null
@@ -194,11 +275,16 @@ export class DbxTcpClient extends EventEmitter {
       logger.info('[DBX-TCP] Send buffer backed up, reconnecting', {
         data: { buffered: this.socket.writableLength },
       })
+      this.stopPingTimer()
       this.socket.destroy()
       this.socket = null
       this._connected = false
       await this.connect()
     }
+
+    logger.info('[DBX-TCP] Sending frame', {
+      data: { length: frame.length, hex: frame.toString('hex') },
+    })
 
     return new Promise((resolve, reject) => {
       if (!this.socket) {
@@ -208,12 +294,14 @@ export class DbxTcpClient extends EventEmitter {
 
       this.socket.write(frame, (err) => {
         if (err) {
-          // Socket probably died - mark as disconnected for next retry
+          logger.error('[DBX-TCP] Write error, reconnecting', { error: err })
           this._connected = false
           this.socket?.destroy()
           this.socket = null
+          this.stopPingTimer()
           reject(err)
         } else {
+          this.lastSendTime = Date.now()
           resolve({ success: true })
         }
       })
