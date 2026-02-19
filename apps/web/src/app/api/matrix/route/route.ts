@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   try {
 
     // Validate input parameters
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 32 || outputNum > 32) {
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 36 || outputNum > 36) {
       return NextResponse.json(
         { error: 'Invalid input or output channel' },
         { status: 400 }

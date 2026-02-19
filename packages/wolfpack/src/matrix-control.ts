@@ -12,7 +12,7 @@ import { randomUUID } from 'crypto'
 export async function routeMatrix(inputNum: number, outputNum: number): Promise<boolean> {
   try {
     // Validate input parameters
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 32 || outputNum > 32) {
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 36 || outputNum > 36) {
       logger.error(`Invalid input (${inputNum}) or output (${outputNum}) channel`)
       return false
     }

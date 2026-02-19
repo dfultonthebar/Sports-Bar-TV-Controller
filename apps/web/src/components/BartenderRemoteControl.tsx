@@ -181,10 +181,7 @@ export default function BartenderRemoteControl() {
     { id: 'input2', name: 'Input 2', isActive: true },
     { id: 'input3', name: 'Input 3', isActive: true },
     { id: 'input4', name: 'Input 4', isActive: true },
-    { id: 'matrix1', name: 'Matrix Audio 1', isActive: true },
-    { id: 'matrix2', name: 'Matrix Audio 2', isActive: true },
-    { id: 'matrix3', name: 'Matrix Audio 3', isActive: true },
-    { id: 'matrix4', name: 'Matrix Audio 4', isActive: true },
+    { id: 'matrix_audio', name: 'Matrix Audio', isActive: true },
     { id: 'streaming', name: 'Streaming Input', isActive: true },
     { id: 'microphone', name: 'Microphone', isActive: true },
   ])
@@ -621,30 +618,29 @@ export default function BartenderRemoteControl() {
   }
 
   const setZoneSource = async (zone: AudioZone, source: string) => {
-    // Matrix Audio sources: route Wolf Pack matrix, then switch dbx source
-    const matrixAudioMatch = source.match(/^Matrix Audio (\d+)$/)
+    // Matrix Audio sources: route Wolf Pack input to audio output, then switch dbx source
+    const matrixAudioMatch = source.match(/^Matrix Audio/)
     if (matrixAudioMatch) {
       if (!selectedInput) {
         setAudioCommandStatus('Select a TV input first')
         setTimeout(() => setAudioCommandStatus(''), 3000)
         return
       }
-      const matrixAudioNum = parseInt(matrixAudioMatch[1])
-      const audioOutput = 25 + matrixAudioNum  // Matrix Audio 1 → output 26, etc.
-      setAudioCommandStatus(`Routing input ${selectedInput} → audio output ${audioOutput}...`)
+      setAudioCommandStatus(`Routing input ${selectedInput} → Matrix Audio...`)
       try {
-        const response = await fetch('/api/matrix/route', {
+        // Route via wolfpack-to-matrix API (applies outputOffset from config)
+        // matrixOutputNumber 1 = the matrix audio output (offset handles actual port)
+        const response = await fetch('/api/wolfpack/route-to-matrix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            input: selectedInput,
-            output: audioOutput,
-            source: 'bartender',
+            wolfpackInputNumber: selectedInput,
+            matrixOutputNumber: 1,
           }),
         })
         const result = await response.json()
         if (result.success) {
-          setAudioCommandStatus(`Routed input ${selectedInput} → ${source}`)
+          setAudioCommandStatus(`Routed input ${selectedInput} → Matrix Audio`)
         } else {
           setAudioCommandStatus(`Failed: ${result.error}`)
         }

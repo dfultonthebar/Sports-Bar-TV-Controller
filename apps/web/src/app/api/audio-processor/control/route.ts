@@ -184,11 +184,12 @@ async function executeDbxCommand(processor: any, command: ControlCommand): Promi
         } else if (val.startsWith('Input ')) {
           // "Input 1" → ML1 (index 1), "Input 2" → ML2 (index 2), etc.
           sourceIndex = parseInt(val.replace('Input ', ''))
-        } else if (val.startsWith('Matrix Audio ')) {
+        } else if (val.startsWith('Matrix Audio')) {
+          // "Matrix Audio" → S2 (index 8) - single matrix audio output
           // "Matrix Audio 1" → S2 (index 8), "Matrix Audio 2" → S3 (index 9)
-          // Matrix audio sources map to S-inputs starting at S2 (index 8)
-          const matrixNum = parseInt(val.replace('Matrix Audio ', ''))
-          sourceIndex = 7 + matrixNum  // Matrix Audio 1 → 8, Matrix Audio 2 → 9
+          const numMatch = val.match(/\d+$/)
+          const matrixNum = numMatch ? parseInt(numMatch[0]) : 1
+          sourceIndex = 7 + matrixNum  // Matrix Audio → 8, Matrix Audio 2 → 9
         } else if (val === 'Streaming Input') {
           sourceIndex = 10  // S4 - Spotify/streaming
         } else if (val === 'Microphone') {
