@@ -623,7 +623,7 @@ export default function MatrixControl() {
                       <th className="bg-slate-800 border border-slate-700 p-3 text-slate-200 font-semibold sticky left-0 z-10">
                         Out \ In
                       </th>
-                      {currentConfig.inputs.slice(0, 32).filter(input => input.isActive && !input.isCecPort).map((input) => (
+                      {currentConfig.inputs.filter(input => input.isActive && !input.isCecPort).map((input) => (
                         <th key={input.channelNumber} className="bg-slate-800 border border-slate-700 p-2 text-slate-200 text-xs min-w-[80px]">
                           <div className="flex flex-col items-center gap-1">
                             <span className="font-bold text-green-400">IN {input.channelNumber}</span>
@@ -636,7 +636,7 @@ export default function MatrixControl() {
                     </tr>
                   </thead>
                   <tbody>
-                    {currentConfig.outputs.slice(0, 32).filter(output => output.isActive).map((output) => {
+                    {currentConfig.outputs.filter(output => output.isActive).map((output) => {
                       const currentInput = currentRoutes.get(output.channelNumber)
 
                       return (
@@ -647,14 +647,14 @@ export default function MatrixControl() {
                               <span className="text-slate-300 text-xs truncate max-w-[110px]" title={output.label}>
                                 {output.label}
                               </span>
-                              {output.channelNumber <= 32 && output.tvModel && (
+                              {output.tvModel && (
                                 <span className="text-blue-400 text-[10px] truncate max-w-[110px]" title={`${output.tvBrand || ''} ${output.tvModel}`.trim()}>
                                   {output.tvBrand ? `${output.tvBrand} ` : ''}{output.tvModel}
                                 </span>
                               )}
                             </div>
                           </td>
-                          {currentConfig.inputs.slice(0, 32).filter(input => input.isActive && !input.isCecPort).map((input) => {
+                          {currentConfig.inputs.filter(input => input.isActive && !input.isCecPort).map((input) => {
                             const isRouted = currentInput === input.channelNumber
 
                             return (
