@@ -28,18 +28,21 @@ function rawVolumeToDb(raw: number): number {
   return ((raw - 215) / 200) * 20
 }
 
-// dbx ZonePRO 1260m input labels
+// dbx ZonePRO 1260m Router source indices (confirmed via HiQnet testing)
+// Index 0 = None, 1-6 = ML1-ML6 (mic/line), 7-12 = S1-S6 (stereo)
 const DEFAULT_INPUT_LABELS: Record<number, string> = {
-  0: 'ML1 - Front XLR',
-  1: 'ML2 - Back XLR',
-  2: 'ML3 - DJ Left',
-  3: 'ML4 - DJ Right',
-  4: 'ML5 - Wireless Mic',
-  5: 'ML6 - Unused',
-  6: 'S1 - Jukebox',
-  7: 'S2 - Matrix TV1',
-  8: 'S3 - Matrix TV2',
-  9: 'S4 - Spotify',
+  0: 'None',
+  1: 'ML1 - Front XLR',
+  2: 'ML2 - Back XLR',
+  3: 'ML3 - DJ',
+  4: 'ML4 - DJ Right',
+  5: 'ML5 - Wireless Mic',
+  6: 'ML6',
+  7: 'S1 - Jukebox',
+  8: 'S2 - Matrix TV1',
+  9: 'S3 - Matrix TV2',
+  10: 'S4 - Spotify',
+  11: 'S5',
 }
 
 interface DbxZoneControlProps {
