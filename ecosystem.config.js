@@ -7,6 +7,7 @@ module.exports = {
     cwd: '/home/ubuntu/Sports-Bar-TV-Controller/apps/web',
     instances: 1,
     exec_mode: 'fork',
+    node_args: '--max-old-space-size=512',
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',

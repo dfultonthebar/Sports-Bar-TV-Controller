@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm'
 import { queryAtlasHardwareConfiguration as queryAtlasHardware } from '@/lib/atlas-hardware-query'
-import { audioProcessors } from '@/db/schema'
+import { audioProcessors, audioZones } from '@/db/schema'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -39,7 +39,49 @@ export async function GET(
       )
     }
 
-    // Query the Atlas hardware for current configuration
+    // For non-Atlas processors (dbx-zonepro, bss-blu), return zone data from database
+    // Only Atlas processors support the Atlas TCP/HTTP hardware query protocol
+    if (processor.processorType !== 'atlas') {
+      logger.info(`[Zones Status] Processor ${processorId} is type '${processor.processorType}', returning database zone data`)
+
+      // Fetch zones from database
+      const zones = await db
+        .select()
+        .from(audioZones)
+        .where(eq(audioZones.processorId, processorId))
+        .all()
+
+      const zonesWithStatus = zones
+        .filter(zone => zone.enabled)
+        .map(zone => ({
+          id: zone.id,
+          zoneNumber: zone.zoneNumber,
+          name: zone.name,
+          currentSource: zone.currentSource ? parseInt(zone.currentSource, 10) : -1,
+          currentSourceName: zone.currentSource || 'Not Set',
+          volume: zone.volume ?? 50,
+          isMuted: Boolean(zone.muted),
+          isActive: Boolean(zone.enabled),
+          channelMode: zone.channelMode || 'mono',
+          outputs: [{
+            id: `output_${zone.zoneNumber}_0`,
+            outputNumber: 1,
+            name: zone.name,
+            type: zone.channelMode || 'mono',
+            volume: zone.volume ?? 50,
+          }]
+        }))
+
+      return NextResponse.json({
+        success: true,
+        zones: zonesWithStatus,
+        sources: [],
+        processorType: processor.processorType,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    // Atlas processor: Query the Atlas hardware for current configuration
     const hardwareConfig = await queryAtlasHardware(
       processor.ipAddress,
       processor.tcpPort || 5321,
@@ -141,6 +183,7 @@ export async function GET(
       success: true,
       zones: zonesWithStatus,
       sources: sources,
+      processorType: 'atlas',
       timestamp: new Date().toISOString()
     })
 
