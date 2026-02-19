@@ -174,20 +174,35 @@ async function executeDbxCommand(processor: any, command: ControlCommand): Promi
       if (typeof command.value === 'number') {
         sourceIndex = command.value
       } else if (typeof command.value === 'string') {
-        // Parse source strings like "Source 1" or "input_1" or direct numbers
+        // Parse source strings to dbx Router source indices
+        // dbx ZonePRO 1260m: 0=None, 1-6=ML1-ML6, 7=S1, 8=S2, 9=S3, 10=S4
         const val = command.value as string
         if (val.startsWith('Source ')) {
           sourceIndex = parseInt(val.replace('Source ', '')) - 1
         } else if (val.startsWith('input_')) {
           sourceIndex = parseInt(val.split('_')[1]) - 1
+        } else if (val.startsWith('Input ')) {
+          // "Input 1" → ML1 (index 1), "Input 2" → ML2 (index 2), etc.
+          sourceIndex = parseInt(val.replace('Input ', ''))
+        } else if (val.startsWith('Matrix Audio ')) {
+          // "Matrix Audio 1" → S2 (index 8), "Matrix Audio 2" → S3 (index 9)
+          // Matrix audio sources map to S-inputs starting at S2 (index 8)
+          const matrixNum = parseInt(val.replace('Matrix Audio ', ''))
+          sourceIndex = 7 + matrixNum  // Matrix Audio 1 → 8, Matrix Audio 2 → 9
+        } else if (val === 'Streaming Input') {
+          sourceIndex = 10  // S4 - Spotify/streaming
+        } else if (val === 'Microphone') {
+          sourceIndex = 5   // ML5 - Wireless Mic
         } else if (!isNaN(parseInt(val))) {
           sourceIndex = parseInt(val)
         } else {
+          logger.warn(`[AUDIO-CONTROL] Unknown dbx source name: "${val}", defaulting to 0`)
           sourceIndex = 0
         }
       } else {
         sourceIndex = 0
       }
+      logger.info(`[AUDIO-CONTROL] dbx source: "${command.value}" → index ${sourceIndex}`)
       await service.setSource(zoneIndex, sourceIndex)
       return { zone: command.zone, source: command.value, sourceIndex, timestamp: new Date() }
     }

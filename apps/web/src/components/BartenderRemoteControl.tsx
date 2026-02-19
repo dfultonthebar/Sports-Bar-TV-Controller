@@ -588,7 +588,7 @@ export default function BartenderRemoteControl() {
       // Log the audio operation - fire-and-forget
       const operationType = action === 'volume' ? 'volume_change' :
                           action === 'mute' ? 'volume_change' :
-                          action === 'setSource' ? 'input_switch' : 'audio_zone'
+                          action === 'source' ? 'input_switch' : 'audio_zone'
 
       fetch('/api/logs/operations', {
         method: 'POST',
@@ -608,7 +608,7 @@ export default function BartenderRemoteControl() {
             value,
             previousValue: action === 'volume' ? zone.volume :
                          action === 'mute' ? zone.muted :
-                         action === 'setSource' ? zone.currentSource : null
+                         action === 'source' ? zone.currentSource : null
           },
           success,
           errorMessage: success ? undefined : errorMessage
@@ -621,7 +621,41 @@ export default function BartenderRemoteControl() {
   }
 
   const setZoneSource = async (zone: AudioZone, source: string) => {
-    await controlAudioZone('setSource', zone, source)
+    // Matrix Audio sources: route Wolf Pack matrix, then switch dbx source
+    const matrixAudioMatch = source.match(/^Matrix Audio (\d+)$/)
+    if (matrixAudioMatch) {
+      if (!selectedInput) {
+        setAudioCommandStatus('Select a TV input first')
+        setTimeout(() => setAudioCommandStatus(''), 3000)
+        return
+      }
+      const matrixAudioNum = parseInt(matrixAudioMatch[1])
+      const audioOutput = 25 + matrixAudioNum  // Matrix Audio 1 → output 26, etc.
+      setAudioCommandStatus(`Routing input ${selectedInput} → audio output ${audioOutput}...`)
+      try {
+        const response = await fetch('/api/matrix/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: selectedInput,
+            output: audioOutput,
+            source: 'bartender',
+          }),
+        })
+        const result = await response.json()
+        if (result.success) {
+          setAudioCommandStatus(`Routed input ${selectedInput} → ${source}`)
+        } else {
+          setAudioCommandStatus(`Failed: ${result.error}`)
+        }
+      } catch (err) {
+        logger.error('Failed to route matrix audio:', err)
+        setAudioCommandStatus('Error routing matrix audio')
+      }
+      setTimeout(() => setAudioCommandStatus(''), 3000)
+    }
+    // Send source change to the audio processor (dbx or Atlas)
+    await controlAudioZone('source', zone, source)
   }
 
   const adjustZoneVolume = async (zone: AudioZone, volumeChange: number) => {
