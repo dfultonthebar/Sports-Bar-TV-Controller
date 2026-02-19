@@ -63,6 +63,8 @@ interface MatrixConfig {
   udpPort?: number
   protocol: string
   isActive: boolean
+  audioOutputCount?: number
+  outputOffset?: number
   inputs: MatrixInput[]
   outputs: MatrixOutput[]
 }
@@ -776,8 +778,12 @@ export default function MatrixControl() {
               <h3 className="text-xl font-semibold mb-4 text-slate-100">Output Configuration</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {currentConfig.outputs.map((output, index) => {
-                  const isMatrixOutput = output.channelNumber >= 33 && output.channelNumber <= 36
-                  const matrixNumber = output.channelNumber - 32
+                  const audioCount = currentConfig.audioOutputCount || 0
+                  const audioOffset = currentConfig.outputOffset || 0
+                  const firstAudioOutput = audioOffset + 1
+                  const lastAudioOutput = audioOffset + audioCount
+                  const isMatrixOutput = audioCount > 0 && output.channelNumber >= firstAudioOutput && output.channelNumber <= lastAudioOutput
+                  const matrixNumber = output.channelNumber - audioOffset
                   const isSimpleOutput = false // FIXED: outputs 1-4 are now regular matrix outputs
                   
                   return (
