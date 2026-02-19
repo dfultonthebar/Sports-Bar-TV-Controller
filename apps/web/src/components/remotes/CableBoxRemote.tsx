@@ -53,9 +53,6 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
   const isProcessingDigitsRef = useRef<boolean>(false)
   const DIGIT_DELAY_MS = 80 // Faster delay between digits for responsive channel entry
 
-  // Check if device has learned IR codes
-  const hasIRCodes = irCodes && Object.keys(irCodes).length > 0
-
   // Fire-and-forget digit sender - queues digits and processes without blocking UI
   const sendDigitCommand = (digit: string) => {
     // Add digit to queue
@@ -74,17 +71,16 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
 
     while (digitQueueRef.current.length > 0) {
       const digit = digitQueueRef.current.shift()!
-      const irCommand = mapCommandToIR(digit)
-      const hasLearnedCode = hasIRCodes && irCodes?.[irCommand]
+      const learnedCode = findIRCode(digit)
 
       try {
         // Send digit without waiting for response (fire-and-forget style)
         fetch('/api/ir-devices/send-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(hasLearnedCode && iTachAddress ? {
+          body: JSON.stringify(learnedCode && iTachAddress ? {
             deviceId,
-            command: irCodes![irCommand],
+            command: learnedCode,
             iTachAddress,
             isRawCode: true
           } : {
@@ -135,17 +131,16 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
 
     try {
       // Use IR control only (all cable boxes now use IR)
-      const irCommand = mapCommandToIR(command)
-      const hasLearnedCode = hasIRCodes && irCodes?.[irCommand]
+      const learnedCode = findIRCode(command)
 
-      if (hasLearnedCode && iTachAddress) {
+      if (learnedCode && iTachAddress) {
         // Use learned IR code
         const response = await fetch('/api/ir-devices/send-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             deviceId,
-            command: irCodes![irCommand], // Send the actual IR code
+            command: learnedCode,
             iTachAddress,
             isRawCode: true // Flag to indicate this is a raw IR code, not a command name
           })
@@ -187,45 +182,59 @@ export default function CableBoxRemote({ deviceId, deviceName, iTachAddress, irC
   }
 
   // Map remote button commands to IR learning command names (matches IRCommand table)
-  const mapCommandToIR = (command: string): string => {
-    const mapping: Record<string, string> = {
-      'POWER': 'Power',
-      'UP': 'Up',
-      'DOWN': 'Down',
-      'LEFT': 'Left',
-      'RIGHT': 'Right',
-      'OK': 'Select',
-      'MENU': 'Menu',
-      'GUIDE': 'Guide',
-      'INFO': 'Info',
-      'EXIT': 'Exit',
-      'BACK': 'Exit',
-      'LAST': 'Last',
-      'CH_UP': 'Channel Up',
-      'CH_DOWN': 'Channel Down',
-      'VOL_UP': 'Volume Up',
-      'VOL_DOWN': 'Volume Down',
-      'MUTE': 'Mute',
-      'PLAY': 'Play',
-      'PAUSE': 'Pause',
-      'REWIND': 'Rewind',
-      'FAST_FORWARD': 'Fast Forward',
-      'RECORD': 'Record',
-      'STOP': 'Stop',
-      'SKIP_BACK': 'Skip Back',     // May not be available on all cable boxes
-      'SKIP_FORWARD': 'Skip Forward', // May not be available on all cable boxes
-      '0': '0',
-      '1': '1',
-      '2': '2',
-      '3': '3',
-      '4': '4',
-      '5': '5',
-      '6': '6',
-      '7': '7',
-      '8': '8',
-      '9': '9',
+  // Returns an array of possible key names to try, in order of preference
+  const mapCommandToIR = (command: string): string[] => {
+    // Each button maps to multiple possible key names to handle different naming conventions:
+    // Template format: "Power", "Channel Up", "0"
+    // Script/legacy format: "power", "channel_up", "digit_0"
+    const mapping: Record<string, string[]> = {
+      'POWER': ['Power', 'power', 'POWER'],
+      'UP': ['Up', 'arrow_up', 'up'],
+      'DOWN': ['Down', 'arrow_down', 'down'],
+      'LEFT': ['Left', 'arrow_left', 'left'],
+      'RIGHT': ['Right', 'arrow_right', 'right'],
+      'OK': ['Select', 'select', 'OK', 'ok'],
+      'MENU': ['Menu', 'menu'],
+      'GUIDE': ['Guide', 'guide'],
+      'INFO': ['Info', 'info'],
+      'EXIT': ['Exit', 'exit'],
+      'BACK': ['Exit', 'exit', 'Back', 'back'],
+      'LAST': ['Last', 'last', 'Previous Channel'],
+      'CH_UP': ['Channel Up', 'channel_up', 'ch_up'],
+      'CH_DOWN': ['Channel Down', 'channel_down', 'ch_down'],
+      'VOL_UP': ['Volume Up', 'volume_up', 'vol_up'],
+      'VOL_DOWN': ['Volume Down', 'volume_down', 'vol_down'],
+      'MUTE': ['Mute', 'mute'],
+      'PLAY': ['Play', 'play'],
+      'PAUSE': ['Pause', 'pause'],
+      'REWIND': ['Rewind', 'rewind'],
+      'FAST_FORWARD': ['Fast Forward', 'fast_forward', 'ff'],
+      'RECORD': ['Record', 'record'],
+      'STOP': ['Stop', 'stop'],
+      'SKIP_BACK': ['Skip Back', 'skip_back'],
+      'SKIP_FORWARD': ['Skip Forward', 'skip_forward'],
+      '0': ['0', 'digit_0'],
+      '1': ['1', 'digit_1'],
+      '2': ['2', 'digit_2'],
+      '3': ['3', 'digit_3'],
+      '4': ['4', 'digit_4'],
+      '5': ['5', 'digit_5'],
+      '6': ['6', 'digit_6'],
+      '7': ['7', 'digit_7'],
+      '8': ['8', 'digit_8'],
+      '9': ['9', 'digit_9'],
     }
-    return mapping[command] || command.toLowerCase()
+    return mapping[command] || [command, command.toLowerCase()]
+  }
+
+  // Find an IR code by trying all possible key name variants
+  const findIRCode = (command: string): string | undefined => {
+    if (!irCodes) return undefined
+    const keys = mapCommandToIR(command)
+    for (const key of keys) {
+      if (irCodes[key]) return irCodes[key]
+    }
+    return undefined
   }
 
   // Auto-clear timeout ref for channel input display
