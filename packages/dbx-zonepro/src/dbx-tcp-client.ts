@@ -19,13 +19,11 @@ import { logger } from '@sports-bar/logger'
 import { DBX_NETWORK_CONFIG, percentToVolume } from './config'
 import {
   type HiQnetAddress,
-  buildTcpFrame,
   buildVolumeSetFrame,
   buildMuteSetFrame,
   buildSourceSetFrame,
   buildRecallSceneFrame,
   buildGetFrame,
-  CONTROLLER_ADDRESS,
   DEFAULT_ROUTER_OBJECTS,
 } from './dbx-protocol'
 
@@ -63,7 +61,6 @@ export class DbxTcpClient extends EventEmitter {
   private connecting: boolean = false
   private connectPromise: Promise<void> | null = null
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null
-  private lastSendTime: number = 0
 
   constructor(config: DbxTcpClientConfig) {
     super()
@@ -142,13 +139,10 @@ export class DbxTcpClient extends EventEmitter {
         this._connected = true
         this.connecting = false
         this.connectPromise = null
-        this.lastSendTime = Date.now()
+        // connection established
         logger.info('[DBX-TCP] Connected', {
           data: { ipAddress: this.config.ipAddress, port: this.config.port, connectMs: Date.now() - connectStart },
         })
-
-        // Start HiQnet heartbeat (proper DiscoInfo frame, not RS-232 sync bytes)
-        this.startHeartbeat()
 
         this.emit('connected')
         resolve()
@@ -189,47 +183,7 @@ export class DbxTcpClient extends EventEmitter {
   }
 
   /**
-   * Start HiQnet heartbeat - sends a DiscoInfo frame every 10s when idle
-   * This keeps the connection active at the HiQnet protocol level.
-   * Uses proper HiQnet frames, NOT RS-232 sync bytes.
-   */
-  private startHeartbeat(): void {
-    this.stopHeartbeat()
-
-    // Build a minimal HiQnet DiscoInfo frame (Message ID 0x0000) as heartbeat
-    const heartbeatFrame = buildTcpFrame(
-      0x0000, // DiscoInfo - discovery/keepalive
-      { device: this.deviceAddress, vd: 0x00, object: 0x000000 },
-      Buffer.alloc(0), // Empty payload for ping
-      0,
-      CONTROLLER_ADDRESS
-    )
-
-    this.heartbeatInterval = setInterval(() => {
-      if (!this._connected || !this.socket) {
-        this.stopHeartbeat()
-        return
-      }
-
-      // Only send heartbeat if no message was sent in the last 10s
-      if (Date.now() - this.lastSendTime >= 10000) {
-        this.socket.write(heartbeatFrame, (err) => {
-          if (err) {
-            logger.error('[DBX-TCP] Heartbeat failed, connection dead', { error: err })
-            this._connected = false
-            this.socket?.destroy()
-            this.socket = null
-            this.stopHeartbeat()
-          } else {
-            this.lastSendTime = Date.now()
-          }
-        })
-      }
-    }, 10000)
-  }
-
-  /**
-   * Stop heartbeat timer
+   * Stop heartbeat timer (placeholder for future use)
    */
   private stopHeartbeat(): void {
     if (this.heartbeatInterval) {
@@ -300,7 +254,7 @@ export class DbxTcpClient extends EventEmitter {
           this.stopHeartbeat()
           reject(err)
         } else {
-          this.lastSendTime = Date.now()
+          // connection established
           resolve({ success: true })
         }
       })
