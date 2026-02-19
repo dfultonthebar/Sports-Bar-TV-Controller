@@ -28,20 +28,20 @@ function rawVolumeToDb(raw: number): number {
   return ((raw - 215) / 200) * 20
 }
 
-// dbx ZonePRO 1260m Router source indices (confirmed via UI testing)
-// Index 1 = None, 2-7 = ML1-ML6 (mic/line), 8-13 = S1-S6 (stereo)
-// ML3/ML4 are wired as DJ stereo pair - selecting index 4 routes both
+// dbx ZonePRO 1260m Router source indices (confirmed via API testing)
+// Index 0 = None, 1-6 = ML1-ML6, 7-10 = S1-S4
+// ML3/ML4 are wired as DJ stereo pair - selecting index 3 routes both
 const DEFAULT_INPUT_LABELS: Record<number, string> = {
-  1: 'None',
-  2: 'ML1 - Front XLR',
-  3: 'ML2 - Back XLR',
-  4: 'DJ (ML3/ML4)',
-  6: 'ML5 - Wireless Mic',
-  7: 'ML6 (unused)',
-  8: 'S1 - Jukebox',
-  9: 'S2 - Matrix TV1',
-  10: 'S3 - Matrix TV2',
-  11: 'S4 - Spotify',
+  0: 'None',
+  1: 'ML1 - Front XLR',
+  2: 'ML2 - Back XLR',
+  3: 'DJ (ML3/ML4)',
+  5: 'ML5 - Wireless Mic',
+  6: 'ML6 (unused)',
+  7: 'S1 - Jukebox',
+  8: 'S2 - Matrix TV1',
+  9: 'S3 - Matrix TV2',
+  10: 'S4 - Spotify',
 }
 
 interface DbxZoneControlProps {
