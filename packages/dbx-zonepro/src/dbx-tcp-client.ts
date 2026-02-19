@@ -33,6 +33,10 @@ export interface DbxTcpClientConfig {
   // HiQnet addressing - MUST be configured per installation
   deviceAddress?: number // ZonePRO's HiQnet node address (default: 0x001E = Node 30)
   routerObjects?: HiQnetAddress[] // Router Object addresses from ZonePRO Designer
+  // Scene to recall after connecting (fixes failsafe mode source mapping)
+  // New connections trigger failsafe which shifts Router source indices.
+  // Recalling a scene restores normal routing. Set to 0 to disable.
+  sceneOnConnect?: number
 }
 
 export interface DbxClientEvents {
@@ -54,9 +58,10 @@ const IDLE_TIMEOUT = 30_000
  * Socket closes after IDLE_TIMEOUT of no commands.
  */
 export class DbxTcpClient extends EventEmitter {
-  private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects'>>
+  private config: Required<Omit<DbxTcpClientConfig, 'deviceAddress' | 'routerObjects' | 'sceneOnConnect'>>
   private deviceAddress: number
   private routerObjects: HiQnetAddress[]
+  private sceneOnConnect: number
   private sequenceNumber: number = 0
   private socket: Socket | null = null
   private _connected: boolean = false
@@ -74,6 +79,7 @@ export class DbxTcpClient extends EventEmitter {
     }
 
     this.deviceAddress = config.deviceAddress ?? 0x001E
+    this.sceneOnConnect = config.sceneOnConnect ?? 1
     this.routerObjects = config.routerObjects ?? DEFAULT_ROUTER_OBJECTS.map(obj => ({
       ...obj,
       device: this.deviceAddress,
@@ -229,6 +235,22 @@ export class DbxTcpClient extends EventEmitter {
     })
 
     await this.connectPromise
+
+    // Recall scene after new connection to exit failsafe mode.
+    // New connections can trigger failsafe which shifts Router source indices.
+    if (this.sceneOnConnect > 0 && this.socket) {
+      const destAddress: HiQnetAddress = {
+        device: this.deviceAddress,
+        vd: 0x00,
+        object: 0x000000,
+      }
+      const frame = buildRecallSceneFrame(destAddress, this.sceneOnConnect, this.getNextSequence())
+      logger.info('[DBX-TCP] Recalling scene on connect to exit failsafe', {
+        data: { scene: this.sceneOnConnect },
+      })
+      this.socket.write(frame)
+    }
+
     return this.socket!
   }
 
