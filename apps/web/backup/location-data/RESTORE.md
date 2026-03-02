@@ -1,8 +1,8 @@
 # Location Backup Restore Instructions
 
-## Location: Graystone 
-## Backup Date: 2026-01-06T05:08:06.865Z
-## Location ID: default-location
+## Location: Leg Lamp
+## Backup Date: 2026-03-02T19:19:01.518Z
+## Location ID: fd8d5821-4b7e-4e70-873b-0ffec0285f3e
 
 ## To restore this backup:
 
@@ -15,4 +15,4 @@
 - data.json - All database tables
 
 ## Tables included:
-
+- Location: 1 rows
