@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Save, RefreshCw, Edit2, Eye, Trash2, Plus, Image } from 'lucide-react'
+import { Upload, Save, RefreshCw, Edit2, Eye, Trash2, Plus, Image, Home, X, Palette } from 'lucide-react'
 import LayoutEditor from './layout/LayoutEditor'
 import { type Zone, type Room } from './layout/DraggableZone'
 import { logger } from '@sports-bar/logger'
@@ -22,6 +22,19 @@ interface Layout {
   imageHeight?: number
 }
 
+const ROOM_COLORS = [
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#14b8a6', // teal
+  '#6366f1', // indigo
+]
+
 export default function EmbeddedLayoutManager() {
   const [layout, setLayout] = useState<Layout | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -30,6 +43,10 @@ export default function EmbeddedLayoutManager() {
   const [isUploading, setIsUploading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [matrixOutputs, setMatrixOutputs] = useState<Array<{ channelNumber: number; label: string }>>([])
+  const [newRoomName, setNewRoomName] = useState('')
+  const [newRoomColor, setNewRoomColor] = useState(ROOM_COLORS[0])
+  const [showAddRoom, setShowAddRoom] = useState(false)
+  const [roomToDelete, setRoomToDelete] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -138,6 +155,75 @@ export default function EmbeddedLayoutManager() {
     }
   }
 
+  const handleAddRoom = async () => {
+    if (!newRoomName.trim()) return
+
+    const newRoom: Room = {
+      id: `room-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      name: newRoomName.trim(),
+      color: newRoomColor
+    }
+
+    const updatedLayout: Layout = {
+      ...(layout || { name: 'Bar Layout', zones: [] }),
+      rooms: [...(layout?.rooms || []), newRoom]
+    }
+
+    // Save immediately
+    try {
+      const response = await fetch('/api/bartender/layout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layout: updatedLayout })
+      })
+
+      if (response.ok) {
+        setLayout(updatedLayout)
+        setNewRoomName('')
+        setNewRoomColor(ROOM_COLORS[(updatedLayout.rooms?.length || 0) % ROOM_COLORS.length])
+        setShowAddRoom(false)
+        setMessage({ type: 'success', text: `Room "${newRoom.name}" added!` })
+      } else {
+        setMessage({ type: 'error', text: 'Failed to save room' })
+      }
+    } catch (error) {
+      logger.error('[EmbeddedLayoutManager] Error adding room:', error)
+      setMessage({ type: 'error', text: 'Failed to add room' })
+    }
+  }
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!layout) return
+
+    const roomName = layout.rooms?.find(r => r.id === roomId)?.name || 'Unknown'
+
+    // Remove room and unassign zones from this room
+    const updatedLayout: Layout = {
+      ...layout,
+      rooms: (layout.rooms || []).filter(r => r.id !== roomId),
+      zones: layout.zones.map(z => z.room === roomId ? { ...z, room: undefined } : z)
+    }
+
+    try {
+      const response = await fetch('/api/bartender/layout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layout: updatedLayout })
+      })
+
+      if (response.ok) {
+        setLayout(updatedLayout)
+        setRoomToDelete(null)
+        setMessage({ type: 'success', text: `Room "${roomName}" deleted. Its TV zones are now unassigned.` })
+      } else {
+        setMessage({ type: 'error', text: 'Failed to delete room' })
+      }
+    } catch (error) {
+      logger.error('[EmbeddedLayoutManager] Error deleting room:', error)
+      setMessage({ type: 'error', text: 'Failed to delete room' })
+    }
+  }
+
   const handleCancelEdit = () => {
     setIsEditing(false)
     loadLayout() // Reload to discard changes
@@ -211,6 +297,143 @@ export default function EmbeddedLayoutManager() {
             </>
           )}
         </button>
+      </div>
+
+      {/* Room Management */}
+      <div className="p-6 bg-slate-800 rounded-lg border border-slate-700">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Home className="w-5 h-5 text-blue-400" />
+            Room Management
+          </h3>
+          {!showAddRoom && (
+            <button
+              onClick={() => {
+                setShowAddRoom(true)
+                setNewRoomColor(ROOM_COLORS[(layout?.rooms?.length || 0) % ROOM_COLORS.length])
+              }}
+              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Room
+            </button>
+          )}
+        </div>
+
+        <p className="text-slate-400 text-sm mb-4">
+          Create rooms to organize your TV zones (e.g., Main Bar, Patio, VIP Room). Zones can be assigned to rooms in the layout editor.
+        </p>
+
+        {/* Add Room Form */}
+        {showAddRoom && (
+          <div className="mb-4 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+            <h4 className="text-sm font-medium text-white mb-3">New Room</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Room Name</label>
+                <input
+                  type="text"
+                  value={newRoomName}
+                  onChange={(e) => setNewRoomName(e.target.value)}
+                  placeholder="e.g., Main Bar, Patio, VIP Room"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddRoom()}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block flex items-center gap-1">
+                  <Palette className="w-3 h-3" /> Color
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {ROOM_COLORS.map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setNewRoomColor(color)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                        newRoomColor === color ? 'border-white scale-110' : 'border-transparent hover:border-slate-400'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleAddRoom}
+                  disabled={!newRoomName.trim()}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/30 disabled:text-green-400/50 text-white rounded-lg transition-colors text-sm flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Room
+                </button>
+                <button
+                  onClick={() => { setShowAddRoom(false); setNewRoomName('') }}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Room List */}
+        {layout?.rooms && layout.rooms.length > 0 ? (
+          <div className="space-y-2">
+            {layout.rooms.map(room => {
+              const zoneCount = layout.zones?.filter(z => z.room === room.id).length || 0
+              return (
+                <div
+                  key={room.id}
+                  className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg border border-slate-600/50 hover:border-slate-500/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: room.color }}
+                    />
+                    <div>
+                      <span className="text-white font-medium">{room.name}</span>
+                      <span className="text-slate-400 text-sm ml-2">({zoneCount} TV{zoneCount !== 1 ? 's' : ''})</span>
+                    </div>
+                  </div>
+                  {roomToDelete === room.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-red-400">Delete?</span>
+                      <button
+                        onClick={() => handleDeleteRoom(room.id)}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setRoomToDelete(null)}
+                        className="px-2 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setRoomToDelete(room.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                      title={`Delete ${room.name}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-slate-500">
+            <Home className="w-10 h-10 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No rooms created yet</p>
+            <p className="text-xs mt-1">Add a room to organize your TV zones</p>
+          </div>
+        )}
       </div>
 
       {/* Current Layout Preview */}
