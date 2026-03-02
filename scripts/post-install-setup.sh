@@ -68,11 +68,13 @@ discover_devices() {
     echo "Scanning for common devices..."
     echo ""
 
-    # Wolf Pack Matrix (port 5000)
-    echo -e "${CYAN}Wolf Pack Matrix (port 5000):${NC}"
+    # Wolf Pack Matrix (HTTP API on port 80)
+    # NOTE: TCP port 5000 is non-functional on all Wolf Pack units (responds but never switches).
+    # The correct interface is the HTTP web API on port 80.
+    echo -e "${CYAN}Wolf Pack Matrix (HTTP):${NC}"
     for ip in ${subnet}.100 ${subnet}.101 ${subnet}.102; do
-        if timeout 1 bash -c "echo > /dev/tcp/$ip/5000" 2>/dev/null; then
-            print_success "Found Wolf Pack at $ip:5000"
+        if curl -s -o /dev/null -w "" --connect-timeout 1 "http://$ip/login.php" 2>/dev/null; then
+            print_success "Found Wolf Pack at $ip (HTTP)"
         fi
     done
 

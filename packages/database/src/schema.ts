@@ -218,7 +218,7 @@ export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   ipAddress: text('ipAddress').notNull(),
   tcpPort: integer('tcpPort').notNull().default(23),
   udpPort: integer('udpPort').notNull().default(4000),
-  protocol: text('protocol').notNull().default('TCP'),
+  protocol: text('protocol').notNull().default('HTTP'),
   inputCount: integer('inputCount').notNull().default(36),
   outputCount: integer('outputCount').notNull().default(36),
   outputOffset: integer('outputOffset').notNull().default(0),

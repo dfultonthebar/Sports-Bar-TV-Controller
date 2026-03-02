@@ -5,6 +5,7 @@
 import { db, schema, eq, withTransaction } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { randomUUID } from 'crypto'
+import { sendHTTPCommand } from './wolfpack-matrix-service'
 
 /**
  * Route matrix input to output
@@ -31,17 +32,36 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
 
     // IMPORTANT: Hardware commands must happen OUTSIDE the transaction because they are async.
     // Step 1: Send the Wolf Pack command first (async operation)
-    const wolfPackCommand = `${inputNum}X${outputNum}.`
-    const commandSuccess = await sendWolfPackCommand(
-      activeConfig.ipAddress,
-      activeConfig.protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
-      wolfPackCommand,
-      activeConfig.protocol || 'TCP'
-    )
+    const protocol = (activeConfig.protocol || 'TCP').toUpperCase()
 
-    if (!commandSuccess) {
-      logger.error(`Failed to send Wolf Pack command: ${wolfPackCommand}`)
-      return false
+    let commandSuccess: boolean
+
+    if (protocol === 'HTTP') {
+      // HTTP API uses 0-based indices
+      const input0Based = inputNum - 1
+      const output0Based = outputNum - 1
+      logger.info(`[WOLFPACK-HTTP] routeMatrix: input ${inputNum}->0b:${input0Based}, output ${outputNum}->0b:${output0Based}`)
+
+      const result = await sendHTTPCommand(activeConfig.ipAddress, input0Based, output0Based)
+      commandSuccess = result.success
+
+      if (!commandSuccess) {
+        logger.error(`[WOLFPACK-HTTP] Failed: ${result.error}`)
+        return false
+      }
+    } else {
+      const wolfPackCommand = `${inputNum}X${outputNum}.`
+      commandSuccess = await sendWolfPackCommand(
+        activeConfig.ipAddress,
+        protocol === 'UDP' ? (activeConfig.udpPort || 4000) : (activeConfig.tcpPort || 5000),
+        wolfPackCommand,
+        protocol
+      )
+
+      if (!commandSuccess) {
+        logger.error(`Failed to send Wolf Pack command: ${inputNum}X${outputNum}.`)
+        return false
+      }
     }
 
     // Step 2: Update database in synchronous transaction (hardware command succeeded)

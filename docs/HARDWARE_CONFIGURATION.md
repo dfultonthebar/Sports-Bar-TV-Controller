@@ -12,6 +12,7 @@ Complete hardware setup and configuration documentation for the Sports Bar TV Co
 - [Matrix Switcher Setup](#matrix-switcher-setup)
 - [CEC Adapter Configuration](#cec-adapter-configuration)
 - [Audio Processor Setup](#audio-processor-setup)
+- [dbx ZonePRO Setup](#5-dbx-zonepro-audio-processor)
 - [Device Inventory](#device-inventory)
 - [Troubleshooting](#troubleshooting)
 
@@ -83,43 +84,51 @@ The Sports Bar TV Controller system integrates multiple hardware components to p
 
 ### 2. Wolf Pack HDMI Matrix Switcher
 
-**Model:** Wolf Pack 4K HDMI Matrix (various sizes: 8x8, 16x16, etc.)
+**Model:** Wolf Pack 4K HDMI Matrix (various sizes: 8x8, 16x16, 36x36, etc.)
 
 **Specifications:**
 - **Resolution:** 4K@60Hz with HDR support
-- **Control:** TCP/IP (Telnet protocol)
-- **Default Port:** 23 (Telnet)
-- **Protocol:** TCP or UDP
+- **Control:** HTTP Web API (recommended) or TCP/UDP (legacy, unreliable)
+- **Protocol:** HTTP
+
+**IMPORTANT:** The Wolf Pack's TCP port 5000 is known to be non-functional on all tested units - it responds "OK" to any command (including garbage) but never actually switches routes. Always use the HTTP web API.
 
 **Network Configuration:**
 - **IP Address:** 192.168.1.100 (example - configure to your network)
 - **Subnet Mask:** 255.255.255.0
 - **Gateway:** 192.168.1.1
-- **Port:** 23 (TCP)
+- **Web Interface:** `http://<ip>/` (login: admin/admin)
 
-**Command Format:**
-- Input to Output: `IxOy.` (e.g., `I1O1.` routes input 1 to output 1)
-- All outputs to one input: `IxOA.` (e.g., `I2OA.` routes input 2 to all outputs)
-- Commands must end with a period (`.`)
+**HTTP API Protocol:**
+- **Login:** `POST http://<ip>/login.php` with body `username=admin&password=admin` (form-encoded)
+- **Route:** `GET http://<ip>/get_json_cmd.php?cmd=o2ox&prm={input_0based},{output_0based},` with session cookie
+- **Response:** JSON array where index = output (0-based), value = input (0-based)
+- **Verification:** Check `responseArray[output] === input` to confirm the route took effect
 
-**Connection:**
-- Connect to network via Ethernet
-- Assign static IP address via web interface or front panel
-- Test connectivity: `telnet 192.168.1.100 23`
+**Test connectivity:**
+```bash
+# Verify Wolf Pack web interface is reachable
+curl -s -o /dev/null -w "%{http_code}" http://192.168.1.100/login.php
+# Should return 200
+```
 
 **Inputs (Example Configuration):**
-1. DirecTV Satellite
-2. Cable Box (Main)
-3. Fire TV Cube #1
-4. Fire TV Cube #2
-5. PlayStation 5
-6. Nintendo Switch
-7. PC/Laptop (HDMI)
-8. Streaming Box
+1. Fire TV Cube #1
+2. Fire TV Cube #2
+3. Fire TV Cube #3
+4. Fire TV Cube #4
+5. Cable Box
+6. Streaming Box
 
 **Outputs (Example Configuration):**
-- Outputs 1-25: Individual TVs throughout venue
+- Outputs 1-32: Individual TVs throughout venue
+- Outputs 33-36: Audio matrix outputs (routed to audio processor)
 - Configure output labels in application
+
+**Setup Script:**
+```bash
+npx tsx scripts/seed-wolfpack-config.ts --name "My Bar" --ip 192.168.1.100 --model WP-36X36
+```
 
 ---
 
@@ -209,7 +218,130 @@ echo 'scan' | cec-client -s -d 1 | grep 'device #'
 
 ---
 
-### 5. Global Cache IR Blaster
+### 5. dbx ZonePRO Audio Processor
+
+**Models:** 640, 640m, 641, 641m, 1260, 1260m, 1261, 1261m
+
+The M-series variants (640m, 641m, 1260m, 1261m) support 3rd-party TCP control, which is required for integration with this system.
+
+**Specifications:**
+- **Zones:** 6 (1260/1260m) or 12 (1261/1261m) output zones
+- **Control:** TCP/IP (HiQnet protocol)
+- **Port:** 3804
+- **Protocol:** Raw HiQnet frames (NOT RS-232 framing)
+
+**Network Configuration:**
+- **IP Address:** 192.168.10.50 (example - Lucky's 1313 deployment)
+- **TCP Port:** 3804
+- **Node Address:** 30 (configurable in ZonePRO Designer)
+- **Web Interface:** `http://<ip>/` (admin/admin) — firmware updates only, not used for control
+
+**CRITICAL: TCP vs RS-232 Framing Difference:**
+
+The dbx ZonePRO supports two different communication protocols depending on the transport layer. Using the wrong framing will silently fail.
+
+| | RS-232 (Serial) | TCP (Port 3804) |
+|---|---|---|
+| **Prefix** | F0/64/00 | None |
+| **Checksum** | Required | None |
+| **Transport** | Serial port (RS-232) | TCP socket |
+| **Frame** | Wrapped HiQnet | Raw HiQnet only |
+
+**Do NOT use RS-232 framing over TCP.** Commands will be silently ignored.
+
+**TCP Frame Format:**
+```
+Version(01) + Length(4 bytes) + SrcVD(2) + SrcObj(4) + DstVD(2) + DstObj(4) + MsgID(2) + Flags(2) + Payload
+```
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Version | `0x01` | Protocol version |
+| Length | 4 bytes | Total frame length |
+| Source VD | `0x0033` | 3rd-party controller identifier |
+| Source Object | (mirror dest) | Mirror the destination object ID |
+| Dest VD | e.g., `0x001E` | Device node address (30 = 0x001E) |
+| Dest Object | e.g., `0x0105001F` | Target router object |
+| MSG_ID | `0x0100` | MultiSVSet command |
+| Flags | `0x0500` | Hop count 5 |
+
+**Router Object Addressing:**
+
+Object IDs depend on the ZonePRO Designer configuration. The general formula is `0x00010000 + (zone_0based + 1)`, but this varies per installation. Confirm object IDs using ZonePRO Designer software.
+
+| Zone | Object ID | Description |
+|------|-----------|-------------|
+| Ch1 (Lucky's Main Bar) | `0x0105001F` | Router for zone 1 |
+| Ch2 (Lucky's Banquet) | `0x01050020` | Router for zone 2 |
+
+**State Variable (SV) IDs for Router Objects:**
+
+| SV ID | Name | Data Type | Range | Description |
+|-------|------|-----------|-------|-------------|
+| `0x0000` | Input Source | UBYTE | 0-based index | Source selection (see mapping below) |
+| `0x0001` | Fader/Volume | UWORD | 0-415 | Volume level |
+| `0x0002` | Mute | UBYTE | 0 or 1 | 0=unmuted, 1=muted |
+
+**Volume Safety:** Normal listening level is approximately 95. Do not test above 125. Maximum value is 415.
+
+**MultiSVSet Payload Format:**
+```
+NumSVs(2 bytes) + SV_ID(2) + DataType(1) + Value(varies)
+```
+
+**Source Index Mapping (Lucky's 1313 Example):**
+
+| Index | Source | Notes |
+|-------|--------|-------|
+| 0 | None | No source selected |
+| 1 | ML1 | Mic/Line input 1 |
+| 2 | ML2 | Mic/Line input 2 |
+| 3 | DJ | ML3/ML4 stereo pair |
+| 4 | ML4 | Mic/Line input 4 |
+| 5 | ML5 | Mic/Line input 5 |
+| 6 | ML6 | Unused |
+| 7 | S1 (Jukebox) | S/PDIF input 1 |
+| 8 | S2 (TV1) | S/PDIF input 2 |
+| 9 | S3 (TV2) | S/PDIF input 3 |
+| 10 | S4 (Spotify) | S/PDIF input 4 |
+
+Source indices are 0-based and installation-specific. ML3/ML4 are a combined stereo DJ pair — selecting index 3 routes both channels.
+
+**CRITICAL GOTCHA — Failsafe Mode:**
+
+Opening a new TCP connection to the dbx ZonePRO triggers its built-in failsafe mode. This shifts source indices (e.g., Spotify may become S/PDIF), causing audio to route incorrectly.
+
+**Fix:** The `DbxTcpClient` uses a `sceneOnConnect` setting to automatically recall Scene 1 on every new TCP connection. Scene recall restores normal routing after failsafe activation.
+
+```typescript
+// In packages/dbx-zonepro/ — sceneOnConnect triggers scene recall
+// on each new TCP connection to counteract failsafe mode
+```
+
+**Protocol Characteristics:**
+- **One-way / fire-and-forget:** No response is expected from the device
+- **No keepalive:** Connections can be opened and closed per command
+- **Scene recall required:** Always recall a scene after connecting to counteract failsafe
+
+**Test Connectivity:**
+```bash
+# Verify TCP port is reachable
+nc -zv 192.168.10.50 3804
+
+# Check web interface (firmware updates only)
+curl -s -o /dev/null -w "%{http_code}" http://192.168.10.50/
+```
+
+**Integration:**
+1. Configure processor IP, port, and node address in the Audio Processor settings
+2. Identify router object IDs using ZonePRO Designer software
+3. Map source indices to physical inputs
+4. Set `sceneOnConnect` to auto-recall Scene 1 on connection
+5. Test volume, mute, and source selection per zone
+
+---
+
+### 6. Global Cache IR Blaster
 
 **Model:** Global Cache iTach IP2IR
 
@@ -241,7 +373,7 @@ echo 'scan' | cec-client -s -d 1 | grep 'device #'
 
 ---
 
-### 6. Fire TV Devices
+### 7. Fire TV Devices
 
 **Model:** Fire TV Cube (3rd Gen) or Fire TV Stick 4K Max
 
@@ -293,6 +425,7 @@ adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_HOME
 | Matrix Switcher | 1 | Wolf Pack 16x16 | 192.168.1.100 | HDMI routing |
 | CEC Adapter | 1 | Pulse-Eight USB-CEC | USB (N/A) | TV/CEC control |
 | Audio Processor | 1 | AtlasIED AZM8 | 192.168.1.50 | Audio routing |
+| Audio Processor | 1 | dbx ZonePRO 1260m | 192.168.10.50 | Zone audio (Lucky's) |
 | IR Blaster | 1 | Global Cache iTach | 192.168.1.150 | IR control |
 | Fire TV Cubes | 3 | Fire TV Cube 3rd Gen | 192.168.5.131-133 | Streaming |
 | HDTVs | 25 | Various | N/A | Display endpoints |
@@ -331,6 +464,7 @@ adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_HOME
 # Port 5555 - ADB (Fire TV)
 # Port 23 - Telnet (Wolf Pack)
 # Port 5321 - AtlasIED
+# Port 3804 - dbx ZonePRO
 # Port 4998 - Global Cache
 ```
 
@@ -360,8 +494,8 @@ adb -s 192.168.5.131:5555 shell input keyevent KEYCODE_HOME
 # Test network connectivity
 ping 192.168.1.100
 
-# Test Telnet connection
-telnet 192.168.1.100 23
+# Test HTTP web interface
+curl -s -o /dev/null -w "%{http_code}" http://192.168.1.100/login.php
 
 # If connection fails:
 # 1. Check network cable
@@ -370,11 +504,11 @@ telnet 192.168.1.100 23
 # 4. Restart matrix (power cycle)
 ```
 
-**Problem:** Commands not working
-- Ensure commands end with period (`.`)
-- Check command format: `IxOy.`
-- Verify TCP vs UDP protocol setting
-- Check for network latency
+**Problem:** Routes not switching
+- Verify protocol is set to HTTP in Matrix Control settings (NOT TCP)
+- TCP port 5000 is non-functional on Wolf Pack units - always use HTTP
+- Check PM2 logs for `[WOLFPACK-HTTP]` messages to see verification results
+- If HTTP response shows `65535` for an output, that output slot is disconnected
 
 ### CEC Adapter Issues
 
@@ -412,6 +546,36 @@ nc -zv 192.168.1.50 5321
 - Verify input levels are not muted
 - Check physical connections
 - Verify zone is enabled
+
+### dbx ZonePRO Issues
+
+**Problem:** Cannot connect to dbx ZonePRO
+```bash
+# Test TCP connectivity
+nc -zv 192.168.10.50 3804
+
+# If connection refused, check:
+# 1. Verify IP address is correct
+# 2. Ensure M-series firmware (non-M models lack TCP control)
+# 3. Check if ZonePRO Designer PC is blocking the port (192.168.10.199)
+```
+
+**Problem:** Commands sent but no audio change
+- Verify you are NOT using RS-232 framing (F0/64/00 prefix) over TCP
+- Check that the destination object ID matches the ZonePRO Designer configuration
+- Confirm the node address (VD) is correct (e.g., 0x001E for node 30)
+- Check PM2 logs for `[DBX]` messages
+
+**Problem:** Audio sources shifted after reconnecting
+- This is the failsafe mode issue — TCP connections trigger failsafe
+- Ensure `sceneOnConnect` is enabled in the dbx configuration
+- Scene 1 must be saved in ZonePRO Designer with correct routing
+- Verify scene recall is happening by checking logs for scene recall messages
+
+**Problem:** Volume commands have no effect
+- Confirm the correct SV ID (0x0001 for fader)
+- Check that value is UWORD format (2 bytes) in range 0-415
+- Try mute/unmute (SV 0x0002) first as a simpler test
 
 ### Fire TV Issues
 

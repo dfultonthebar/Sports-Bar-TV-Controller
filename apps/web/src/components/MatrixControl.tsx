@@ -113,7 +113,7 @@ export default function MatrixControl() {
     port: 23,
     tcpPort: 23,
     udpPort: 4000,
-    protocol: 'TCP',
+    protocol: 'HTTP',
     isActive: true,
     inputs: generateDefaultInputs(defaultModel.inputs),
     outputs: generateDefaultOutputs(defaultModel.outputs)
@@ -495,8 +495,9 @@ export default function MatrixControl() {
               onChange={(e) => setCurrentConfig({ ...currentConfig, protocol: e.target.value })}
               className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
             >
-              <option value="TCP">TCP</option>
-              <option value="UDP">UDP</option>
+              <option value="HTTP">HTTP (Recommended)</option>
+              <option value="TCP">TCP (Legacy)</option>
+              <option value="UDP">UDP (Legacy)</option>
             </select>
           </div>
 
