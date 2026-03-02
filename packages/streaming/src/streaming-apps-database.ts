@@ -14,6 +14,7 @@ export interface StreamingApp {
   apiDocUrl?: string
   deepLinkSupport: boolean
   deepLinkFormat?: string
+  liveTvDeepLink?: string
   description: string
   sports: string[]
   requiresSubscription: boolean
@@ -166,8 +167,9 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     category: 'live-tv',
     hasPublicApi: false,
     deepLinkSupport: true,
-    deepLinkFormat: 'paramountplus://play/{contentId}',
-    description: 'Paramount+ with CBS Sports content',
+    deepLinkFormat: 'pplus://www.paramountplus.com/watch/{contentId}',
+    liveTvDeepLink: 'https://www.paramountplus.com/live-tv/',
+    description: 'Paramount+ with CBS Sports content and Live TV guide',
     sports: ['football', 'basketball', 'soccer', 'golf'],
     requiresSubscription: true,
     notes: 'CBS Sports content available. No public API'
