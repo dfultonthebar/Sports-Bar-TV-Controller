@@ -4,8 +4,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { liveSportsService } from '@/lib/sports-apis/live-sports-service'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { initSportsServiceChannelLookup } from '@/lib/sports-service-init'
 
 import { logger } from '@sports-bar/logger'
+
+// Wire DB channel presets into the sports service
+initSportsServiceChannelLookup()
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'

@@ -110,7 +110,19 @@ const CHANNEL_MAPPINGS: Record<string, ChannelMapping> = {
   }
 }
 
+export type ChannelLookupFn = (networkName: string, deviceType: string) => Promise<string | null>
+
 class LiveSportsService {
+  private channelLookup?: ChannelLookupFn
+
+  /**
+   * Set an external channel lookup function (e.g., from DB presets).
+   * When set, getChannelMapping() will query this first, falling back to CHANNEL_MAPPINGS.
+   */
+  setChannelLookup(fn: ChannelLookupFn): void {
+    this.channelLookup = fn
+  }
+
   /**
    * Convert ESPN game to unified format
    */
@@ -198,24 +210,38 @@ class LiveSportsService {
   }
 
   /**
-   * Get channel mapping for a broadcast network
+   * Get channel mapping for a broadcast network.
+   * If a channelLookup function is set, queries it first for DB-based presets.
    */
-  private getChannelMapping(broadcastName?: string): ChannelMapping {
+  private async getChannelMapping(broadcastName?: string): Promise<ChannelMapping> {
     if (!broadcastName) {
-      // Default to ESPN if no broadcast info
       return CHANNEL_MAPPINGS['ESPN']
     }
 
-    // Try to match broadcast name to channel
     const upperBroadcast = broadcastName.toUpperCase()
+
+    // Find static mapping key first (for structure)
+    let staticMapping: ChannelMapping | undefined
     for (const [key, mapping] of Object.entries(CHANNEL_MAPPINGS)) {
       if (upperBroadcast.includes(key.toUpperCase())) {
-        return mapping
+        staticMapping = mapping
+        break
       }
     }
 
-    // Default fallback
-    return CHANNEL_MAPPINGS['ESPN']
+    // If we have an injected channel lookup, try to resolve from DB
+    if (this.channelLookup && staticMapping) {
+      try {
+        const dbChannel = await this.channelLookup(broadcastName, staticMapping.deviceType || 'cable')
+        if (dbChannel) {
+          return { ...staticMapping, channelNumber: dbChannel }
+        }
+      } catch {
+        // Fall through to static mapping
+      }
+    }
+
+    return staticMapping || CHANNEL_MAPPINGS['ESPN']
   }
 
   /**
@@ -274,10 +300,12 @@ class LiveSportsService {
     }
 
     // Add channel mappings to games
-    const gamesWithChannels = allGames.map(game => ({
-      ...game,
-      channel: this.getChannelMapping(game.broadcast?.[0])
-    }))
+    const gamesWithChannels = await Promise.all(
+      allGames.map(async game => ({
+        ...game,
+        channel: await this.getChannelMapping(game.broadcast?.[0])
+      }))
+    )
 
     // Sort by date and time
     gamesWithChannels.sort((a, b) => {
