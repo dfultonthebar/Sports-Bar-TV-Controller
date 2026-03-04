@@ -1,17 +1,113 @@
 {
   "version": "1.0",
-  "createdAt": "2026-03-02T19:22:12.388Z",
+  "createdAt": "2026-03-04T03:14:58.733Z",
   "location": {
-    "id": "fd8d5821-4b7e-4e70-873b-0ffec0285f3e",
-    "name": "Leg Lamp",
-    "city": "Appleton",
+    "id": "default-location",
+    "name": "Graystone ",
+    "city": "DePere",
     "state": "WI"
   },
   "tables": [
     {
       "name": "Location",
       "rowCount": 1
+    },
+    {
+      "name": "MatrixConfiguration",
+      "rowCount": 1
+    },
+    {
+      "name": "MatrixInput",
+      "rowCount": 36
+    },
+    {
+      "name": "MatrixOutput",
+      "rowCount": 36
+    },
+    {
+      "name": "MatrixRoute",
+      "rowCount": 32
+    },
+    {
+      "name": "AudioProcessor",
+      "rowCount": 1
+    },
+    {
+      "name": "AudioZone",
+      "rowCount": 8
+    },
+    {
+      "name": "AudioGroup",
+      "rowCount": 12
+    },
+    {
+      "name": "GlobalCacheDevice",
+      "rowCount": 2
+    },
+    {
+      "name": "GlobalCachePort",
+      "rowCount": 6
+    },
+    {
+      "name": "IRDevice",
+      "rowCount": 4
+    },
+    {
+      "name": "IRCommand",
+      "rowCount": 124
+    },
+    {
+      "name": "BartenderLayout",
+      "rowCount": 3
+    },
+    {
+      "name": "CableBox",
+      "rowCount": 4
+    },
+    {
+      "name": "ChannelPreset",
+      "rowCount": 143
+    },
+    {
+      "name": "HomeTeam",
+      "rowCount": 20
+    },
+    {
+      "name": "Schedule",
+      "rowCount": 3
+    },
+    {
+      "name": "ScheduledCommand",
+      "rowCount": 1
+    },
+    {
+      "name": "SoundtrackConfig",
+      "rowCount": 1
+    },
+    {
+      "name": "SoundtrackPlayer",
+      "rowCount": 7
+    },
+    {
+      "name": "SportsGuideConfiguration",
+      "rowCount": 1
+    },
+    {
+      "name": "input_sources",
+      "rowCount": 10
+    },
+    {
+      "name": "InputCurrentChannel",
+      "rowCount": 13
+    },
+    {
+      "name": "WolfpackMatrixState",
+      "rowCount": 124
+    },
+    {
+      "name": "WolfpackMatrixRouting",
+      "rowCount": 4
     }
   ],
-  "totalRows": 1
+  "totalRows": 597
 }
