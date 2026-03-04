@@ -13,7 +13,7 @@
       "label": "TV 1",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv2",
@@ -25,7 +25,7 @@
       "label": "TV 2",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv3",
@@ -37,7 +37,7 @@
       "label": "TV 3",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv4",
@@ -49,7 +49,7 @@
       "label": "TV 4",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "dining"
+      "room": "dining-room"
     },
     {
       "id": "tv5",
@@ -61,7 +61,7 @@
       "label": "TV 5",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv8",
@@ -73,7 +73,7 @@
       "label": "TV 8",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "main-bar"
     },
     {
       "id": "tv9",
@@ -85,7 +85,7 @@
       "label": "TV 9",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "main-bar"
     },
     {
       "id": "tv6",
@@ -97,7 +97,7 @@
       "label": "TV 6",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv7",
@@ -109,7 +109,7 @@
       "label": "TV 7",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "dining-room"
     },
     {
       "id": "tv10",
@@ -121,7 +121,7 @@
       "label": "TV 10",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "east-wall"
+      "room": "main-bar"
     },
     {
       "id": "tv11",
@@ -145,7 +145,7 @@
       "label": "TV 12",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "dining"
+      "room": "main-bar"
     },
     {
       "id": "tv13",
@@ -229,7 +229,7 @@
       "label": "TV 19",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "niagra-room"
     },
     {
       "id": "tv20",
@@ -241,7 +241,7 @@
       "label": "TV 20",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "niagra-room"
     },
     {
       "id": "tv21",
@@ -253,7 +253,7 @@
       "label": "TV 21",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "main-bar"
     },
     {
       "id": "tv22",
@@ -265,7 +265,7 @@
       "label": "TV 22",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "redbird-room"
     },
     {
       "id": "tv23",
@@ -277,7 +277,7 @@
       "label": "TV 23",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "redbird-room"
     },
     {
       "id": "tv24",
@@ -289,31 +289,35 @@
       "label": "TV 24",
       "confidence": 0.95,
       "ocrMethod": "manual",
-      "room": "west-side"
+      "room": "redbird-room"
     }
   ],
   "imageWidth": 9834,
   "imageHeight": 6834,
   "rooms": [
     {
+      "id": "dining-room",
+      "name": "Dining Room",
+      "color": "#3B82F6",
+      "imageUrl": "/api/uploads/layouts/layout_1768784374283.png"
+    },
+    {
       "id": "main-bar",
       "name": "Main Bar",
-      "color": "#3b82f6"
+      "color": "#10B981",
+      "imageUrl": "/api/uploads/layouts/layout_1769230334317.png"
     },
     {
-      "id": "east-wall",
-      "name": "East Wall",
-      "color": "#22c55e"
+      "id": "niagra-room",
+      "name": "Niagra Room",
+      "color": "#8B5CF6",
+      "imageUrl": "/api/uploads/layouts/layout_1768785284625.png"
     },
     {
-      "id": "west-side",
-      "name": "West Side",
-      "color": "#f59e0b"
-    },
-    {
-      "id": "dining",
-      "name": "Dining",
-      "color": "#a855f7"
+      "id": "redbird-room",
+      "name": "Redbird Room",
+      "color": "#EF4444",
+      "imageUrl": "/api/uploads/layouts/layout_1769229708659.png"
     }
   ]
 }
