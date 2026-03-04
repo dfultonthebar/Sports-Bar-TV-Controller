@@ -1,13 +1,13 @@
 {
   "name": "Bar Layout",
-  "imageUrl": "/api/uploads/layouts/layout_1763671093016.png",
-  "originalFileUrl": "/api/uploads/layouts/layout_1763671093016.png",
+  "imageUrl": "/api/uploads/layouts/layout_1772594998443.png",
+  "originalFileUrl": "/api/uploads/layouts/layout_1772594998443.png",
   "zones": [
     {
       "id": "tv1",
       "outputNumber": 1,
-      "x": 79.28324324324326,
-      "y": 6.1453625280109385,
+      "x": 36.94,
+      "y": 18.37,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 1",
@@ -18,8 +18,8 @@
     {
       "id": "tv2",
       "outputNumber": 2,
-      "x": 89.39270270270269,
-      "y": 6.248440502867565,
+      "x": 59.27,
+      "y": 19.58,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 2",
@@ -30,8 +30,8 @@
     {
       "id": "tv3",
       "outputNumber": 3,
-      "x": 87.76108108108109,
-      "y": 58.977838505070466,
+      "x": 58.87,
+      "y": 70.25,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 3",
@@ -42,8 +42,8 @@
     {
       "id": "tv4",
       "outputNumber": 4,
-      "x": 74.66810810810811,
-      "y": 58.57476053021383,
+      "x": 36.64,
+      "y": 70.8,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 4",
@@ -54,8 +54,8 @@
     {
       "id": "tv5",
       "outputNumber": 5,
-      "x": 89.47648648648648,
-      "y": 38.388495195411906,
+      "x": 61.82,
+      "y": 50.13,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 5",
@@ -66,8 +66,8 @@
     {
       "id": "tv8",
       "outputNumber": 8,
-      "x": 79.07189189189188,
-      "y": 18.2630096091762,
+      "x": 79.07,
+      "y": 20.17,
       "width": 5.5,
       "height": 11.94,
       "label": "TV 8",
@@ -78,8 +78,8 @@
     {
       "id": "tv9",
       "outputNumber": 9,
-      "x": 79.28216216216218,
-      "y": 27.256894678871213,
+      "x": 79.41,
+      "y": 32.02,
       "width": 5.5,
       "height": 11.94,
       "label": "TV 9",
@@ -90,8 +90,8 @@
     {
       "id": "tv6",
       "outputNumber": 6,
-      "x": 89.51432432432432,
-      "y": 27.823064301720517,
+      "x": 61.74,
+      "y": 41.16,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 6",
@@ -102,8 +102,8 @@
     {
       "id": "tv7",
       "outputNumber": 7,
-      "x": 88.95702702702702,
-      "y": 18.776101257168907,
+      "x": 61.67,
+      "y": 32.9,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 7",
@@ -114,8 +114,8 @@
     {
       "id": "tv10",
       "outputNumber": 10,
-      "x": 79.3791891891892,
-      "y": 38.26768810057351,
+      "x": 79.5,
+      "y": 47,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 10",
@@ -126,8 +126,8 @@
     {
       "id": "tv11",
       "outputNumber": 11,
-      "x": 67.16648648648649,
-      "y": 24.359165558889437,
+      "x": 68.89,
+      "y": 34.84,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 11",
@@ -138,8 +138,8 @@
     {
       "id": "tv12",
       "outputNumber": 12,
-      "x": 48.402972972972975,
-      "y": 52.35232557256258,
+      "x": 57.04,
+      "y": 57.59,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 12",
@@ -150,8 +150,8 @@
     {
       "id": "tv13",
       "outputNumber": 13,
-      "x": 31.762702702702697,
-      "y": 24.891436438907668,
+      "x": 43.86,
+      "y": 35.05,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 13",
@@ -162,8 +162,8 @@
     {
       "id": "tv14",
       "outputNumber": 14,
-      "x": 39.34540540540541,
-      "y": 16.15755136921265,
+      "x": 52.55,
+      "y": 30.12,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 14",
@@ -174,8 +174,8 @@
     {
       "id": "tv15",
       "outputNumber": 15,
-      "x": 39.12594594594596,
-      "y": 32.40069770974969,
+      "x": 52.46,
+      "y": 38.9,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 15",
@@ -186,8 +186,8 @@
     {
       "id": "tv16",
       "outputNumber": 16,
-      "x": 48.47324324324323,
-      "y": 40.92300960917618,
+      "x": 55.88,
+      "y": 47.11,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 16",
@@ -198,8 +198,8 @@
     {
       "id": "tv18",
       "outputNumber": 18,
-      "x": 56.34864864864864,
-      "y": 15.955184777241818,
+      "x": 61.41,
+      "y": 30.24,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 18",
@@ -210,8 +210,8 @@
     {
       "id": "tv17",
       "outputNumber": 17,
-      "x": 54.036216216216204,
-      "y": 33.07526681605834,
+      "x": 58.98,
+      "y": 39.11,
       "width": 10.21,
       "height": 5.5,
       "label": "TV 17",
@@ -222,8 +222,8 @@
     {
       "id": "tv19",
       "outputNumber": 19,
-      "x": 12.988918918918909,
-      "y": 19.109015154392473,
+      "x": 60.4,
+      "y": 51.17,
       "width": 10.21,
       "height": 5.5,
       "label": "TV 19",
@@ -234,8 +234,8 @@
     {
       "id": "tv20",
       "outputNumber": 20,
-      "x": 14.901351351351352,
-      "y": 36.70674427437427,
+      "x": 41.81,
+      "y": 65.28,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 20",
@@ -246,8 +246,8 @@
     {
       "id": "tv21",
       "outputNumber": 21,
-      "x": 25.675675675675674,
-      "y": 41.408303771506695,
+      "x": 37.16,
+      "y": 44.11,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 21",
@@ -258,8 +258,8 @@
     {
       "id": "tv22",
       "outputNumber": 22,
-      "x": 3.2251351351351403,
-      "y": 58.55837213718712,
+      "x": 37.18,
+      "y": 46.49,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 22",
@@ -270,8 +270,8 @@
     {
       "id": "tv23",
       "outputNumber": 23,
-      "x": 20.95702702702704,
-      "y": 58.558372137187135,
+      "x": 43.67,
+      "y": 25.86,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 23",
@@ -282,8 +282,8 @@
     {
       "id": "tv24",
       "outputNumber": 24,
-      "x": 28.83297297297297,
-      "y": 65.35912453948117,
+      "x": 43.89,
+      "y": 56.63,
       "width": 5.5,
       "height": 5.5,
       "label": "TV 24",
@@ -299,25 +299,25 @@
       "id": "dining-room",
       "name": "Dining Room",
       "color": "#3B82F6",
-      "imageUrl": "/api/uploads/layouts/layout_1768784374283.png"
+      "imageUrl": "/api/uploads/layouts/layout_1772595192189.png"
     },
     {
       "id": "main-bar",
       "name": "Main Bar",
       "color": "#10B981",
-      "imageUrl": "/api/uploads/layouts/layout_1769230334317.png"
+      "imageUrl": "/api/uploads/layouts/layout_1772595045674.png"
     },
     {
       "id": "niagra-room",
       "name": "Niagra Room",
       "color": "#8B5CF6",
-      "imageUrl": "/api/uploads/layouts/layout_1768785284625.png"
+      "imageUrl": "/api/uploads/layouts/layout_1772595296121.png"
     },
     {
       "id": "redbird-room",
       "name": "Redbird Room",
       "color": "#EF4444",
-      "imageUrl": "/api/uploads/layouts/layout_1769229708659.png"
+      "imageUrl": "/api/uploads/layouts/layout_1772595327302.png"
     }
   ]
 }
