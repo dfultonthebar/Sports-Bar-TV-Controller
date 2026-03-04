@@ -686,6 +686,43 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
+## Multi-Location Deployment
+
+This system supports multiple sports bar locations. Each location runs its own installation with location-specific data on dedicated git branches.
+
+### Location Branch Convention
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Shared code with empty data templates |
+| `location/graystone` | Graystone (Green Bay, WI) data |
+| `location/lucky-s-1313` | Lucky's data |
+
+### Location-Specific Files (empty templates on main)
+
+These files are replaced with real data on location branches:
+- `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
+- `apps/web/data/directv-devices.json` — DirecTV receiver configs
+- `apps/web/data/firetv-devices.json` — Fire TV device configs
+- `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
+- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
+- `apps/web/public/uploads/layouts/` — Floor plan images (gitignored)
+- `data/` mirrors — Root copies of the above
+- `.env` — `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+
+### Workflow: Pulling Code Updates to a Location
+
+```bash
+git checkout location/<name>
+git merge main
+# On conflict with data files → keep the location version
+npm run build && pm2 restart sports-bar-tv-controller
+```
+
+### Shared Location Reference Docs
+
+See `.claude/locations/` for per-location details (device IPs, input maps, channel numbers).
+
 ## Documentation References
 
 - API Reference: `/docs/API_REFERENCE.md`
