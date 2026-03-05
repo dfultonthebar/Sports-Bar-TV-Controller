@@ -88,12 +88,26 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
   const [alignmentTestCount, setAlignmentTestCount] = useState(0)
   const [alignmentTestInterval, setAlignmentTestInterval] = useState<NodeJS.Timeout | null>(null)
 
+  // Learn All wizard state
+  const [wizardRunning, setWizardRunning] = useState(false)
+  const [wizardQueue, setWizardQueue] = useState<IRCommand[]>([])
+  const [wizardIndex, setWizardIndex] = useState(0)
+  const [wizardStatus, setWizardStatus] = useState<'idle' | 'connecting' | 'ready' | 'captured' | 'testing' | 'verified' | 'failed' | 'skipped'>('idle')
+  const [wizardResults, setWizardResults] = useState<Array<{ name: string; status: 'ok' | 'fail' | 'skipped' }>>([])
+  const [wizardAbort, setWizardAbort] = useState(false)
+
+  // Clone state
+  const [cloning, setCloning] = useState(false)
+  const [cloneResult, setCloneResult] = useState<string>('')
+  const [allIRDevices, setAllIRDevices] = useState<IRDevice[]>([])
+
   const categories = ['Power', 'Volume', 'Channel', 'Menu', 'Navigation', 'Other']
 
   useEffect(() => {
     loadCommands()
     loadGlobalCacheDevices()
     loadTemplates()
+    loadAllIRDevices()
   }, [])
 
   // Cleanup alignment test interval on unmount
@@ -144,6 +158,47 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
       }
     } catch (error) {
       logger.error('Error loading command templates:', error)
+    }
+  }
+
+  const loadAllIRDevices = async () => {
+    try {
+      const response = await fetch('/api/ir/devices')
+      const data = await response.json()
+      if (data.success) {
+        setAllIRDevices(data.devices || [])
+      }
+    } catch (error) {
+      logger.error('Error loading IR devices:', error)
+    }
+  }
+
+  const cloneToOtherDevices = async () => {
+    const otherDevices = allIRDevices.filter(d => d.id !== device.id)
+    if (otherDevices.length === 0) return
+
+    setCloning(true)
+    setCloneResult('')
+    try {
+      const response = await fetch('/api/ir/commands/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceDeviceId: device.id,
+          targetDeviceIds: otherDevices.map(d => d.id)
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        const summary = data.results.map((r: any) => `${r.deviceName}: ${r.updated} updated, ${r.added} added`).join('; ')
+        setCloneResult(summary)
+      } else {
+        setCloneResult(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      setCloneResult('Failed to clone commands')
+    } finally {
+      setCloning(false)
     }
   }
 
@@ -257,71 +312,111 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
     }
   }
 
+  // Play a beep using Web Audio API (no audio files needed)
+  const playBeep = (frequency: number = 880, duration: number = 200) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = frequency
+      osc.type = 'sine'
+      gain.gain.value = 0.3
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration / 1000)
+      osc.start()
+      osc.stop(ctx.currentTime + duration / 1000)
+    } catch {}
+  }
+
   const startLearning = async (commandId: string, functionName: string) => {
-    // Validate Global Cache device is configured
     if (!device.globalCacheDeviceId) {
-      alert('This device is not configured with a Global Cache device. Please edit the device and assign a Global Cache device and port.')
+      alert('This device is not configured with a Global Cache device.')
       return
     }
 
     const globalCacheDevice = globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)
-    
     if (!globalCacheDevice) {
-      alert('Global Cache device not found. Please ensure it is properly configured.')
-      return
-    }
-
-    if (globalCacheDevice.status !== 'online') {
-      alert(`Global Cache device "${globalCacheDevice.name}" is offline. Please ensure it is powered on and connected to the network.`)
+      alert('Global Cache device not found.')
       return
     }
 
     setLearningCommandId(commandId)
-    setLearningStatus('Initializing IR learning mode...')
+    setLearningStatus('connecting')
     setLearningError('')
 
     try {
-      logger.info(`🎓 Starting IR learning for command: ${functionName}`)
-      logger.info(`   Device: ${globalCacheDevice.name} (${globalCacheDevice.ipAddress})`)
-
       const response = await fetch('/api/ir/learn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceId: device.id,
           globalCacheDeviceId: device.globalCacheDeviceId,
-          commandId: commandId,
-          functionName: functionName
+          commandId,
+          functionName
         })
       })
 
-      const data = await response.json()
+      // Check if streaming response
+      if (response.headers.get('content-type')?.includes('text/event-stream')) {
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
 
-      if (data.success && data.learnedCode) {
-        setLearningStatus('✅ IR code learned successfully!')
-        
-        // Reload commands to show the updated code
-        await loadCommands()
+        if (!reader) throw new Error('No response stream')
 
-        // Clear status after 3 seconds
-        setTimeout(() => {
-          setLearningCommandId(null)
-          setLearningStatus('')
-        }, 3000)
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const match = line.match(/^data: (.+)$/m)
+            if (!match) continue
+            try {
+              const event = JSON.parse(match[1])
+              if (event.status === 'connecting') {
+                setLearningStatus('connecting')
+              } else if (event.status === 'ready') {
+                setLearningStatus('ready')
+                playBeep(880, 150)
+                setTimeout(() => playBeep(1100, 150), 180)
+              } else if (event.status === 'captured') {
+                setLearningStatus('captured')
+                playBeep(1320, 300)
+                await loadCommands()
+                setTimeout(() => {
+                  setLearningCommandId(null)
+                  setLearningStatus('')
+                }, 2000)
+              } else if (event.status === 'error') {
+                setLearningError(event.error || 'Learning failed')
+                setTimeout(() => {
+                  setLearningCommandId(null)
+                  setLearningError('')
+                }, 5000)
+              }
+            } catch {}
+          }
+        }
       } else {
-        setLearningError(data.error || 'Failed to learn IR code')
-        setTimeout(() => {
-          setLearningCommandId(null)
-          setLearningError('')
-        }, 5000)
+        // Fallback for non-streaming response
+        const data = await response.json()
+        if (data.success) {
+          setLearningStatus('captured')
+          await loadCommands()
+          setTimeout(() => { setLearningCommandId(null); setLearningStatus('') }, 2000)
+        } else {
+          setLearningError(data.error || 'Failed')
+          setTimeout(() => { setLearningCommandId(null); setLearningError('') }, 5000)
+        }
       }
     } catch (error) {
-      logger.error('Error learning IR code:', error)
-      setLearningError('Error learning IR code: ' + (error instanceof Error ? error.message : 'Unknown error'))
-      setTimeout(() => {
-        setLearningCommandId(null)
-        setLearningError('')
-      }, 5000)
+      setLearningError('Error: ' + (error instanceof Error ? error.message : 'Unknown'))
+      setTimeout(() => { setLearningCommandId(null); setLearningError('') }, 5000)
     }
   }
 
@@ -490,6 +585,160 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
     logger.info(`🎯 Stopped IR alignment test mode after ${alignmentTestCount} commands`)
   }
 
+  // Learn All wizard - walks through every command sequentially
+  const startWizard = () => {
+    // Queue all commands (prioritize unlearned, then all)
+    const queue = [...commands].sort((a, b) => {
+      const aLearned = a.irCode !== 'PLACEHOLDER' && !a.irCode.startsWith('sendir,1:1,1,38000')
+      const bLearned = b.irCode !== 'PLACEHOLDER' && !b.irCode.startsWith('sendir,1:1,1,38000')
+      if (aLearned === bLearned) return 0
+      return aLearned ? 1 : -1 // Unlearned first
+    })
+    setWizardQueue(queue)
+    setWizardIndex(0)
+    setWizardResults([])
+    setWizardRunning(true)
+    setWizardAbort(false)
+    setWizardStatus('idle')
+    // Start first command
+    wizardLearnCommand(queue, 0)
+  }
+
+  const stopWizard = () => {
+    setWizardAbort(true)
+    setWizardRunning(false)
+    setWizardStatus('idle')
+    setLearningCommandId(null)
+  }
+
+  const wizardSkip = () => {
+    const cmd = wizardQueue[wizardIndex]
+    setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'skipped' }])
+    const nextIdx = wizardIndex + 1
+    if (nextIdx < wizardQueue.length) {
+      setWizardIndex(nextIdx)
+      setWizardStatus('idle')
+      wizardLearnCommand(wizardQueue, nextIdx)
+    } else {
+      setWizardRunning(false)
+      setWizardStatus('idle')
+      setLearningCommandId(null)
+    }
+  }
+
+  const wizardLearnCommand = async (queue: IRCommand[], idx: number) => {
+    if (idx >= queue.length) {
+      setWizardRunning(false)
+      setWizardStatus('idle')
+      setLearningCommandId(null)
+      return
+    }
+
+    const cmd = queue[idx]
+    setLearningCommandId(cmd.id)
+    setWizardStatus('connecting')
+
+    try {
+      const response = await fetch('/api/ir/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: device.id,
+          globalCacheDeviceId: device.globalCacheDeviceId,
+          commandId: cmd.id,
+          functionName: cmd.functionName
+        })
+      })
+
+      if (response.headers.get('content-type')?.includes('text/event-stream')) {
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        if (!reader) throw new Error('No stream')
+
+        let buffer = ''
+        let captured = false
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const match = line.match(/^data: (.+)$/m)
+            if (!match) continue
+            try {
+              const event = JSON.parse(match[1])
+              if (event.status === 'connecting') setWizardStatus('connecting')
+              else if (event.status === 'ready') {
+                setWizardStatus('ready')
+                playBeep(880, 150)
+                setTimeout(() => playBeep(1100, 150), 180)
+              } else if (event.status === 'captured') {
+                captured = true
+                setWizardStatus('testing')
+                playBeep(1320, 200)
+
+                // Auto-test the captured code
+                await loadCommands()
+                await new Promise(r => setTimeout(r, 500))
+                const testRes = await fetch('/api/ir/commands/send', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ deviceId: device.id, commandId: cmd.id })
+                })
+                const testData = await testRes.json()
+
+                if (testData.success) {
+                  setWizardStatus('verified')
+                  setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'ok' }])
+                  playBeep(1320, 100)
+                  setTimeout(() => playBeep(1540, 200), 120)
+                } else {
+                  setWizardStatus('failed')
+                  setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'fail' }])
+                }
+
+                // Auto-advance after 1.5s
+                await new Promise(r => setTimeout(r, 1500))
+                if (!wizardAbort) {
+                  const nextIdx = idx + 1
+                  setWizardIndex(nextIdx)
+                  wizardLearnCommand(queue, nextIdx)
+                }
+              } else if (event.status === 'error') {
+                setWizardStatus('failed')
+                setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'fail' }])
+                await new Promise(r => setTimeout(r, 2000))
+                if (!wizardAbort) {
+                  const nextIdx = idx + 1
+                  setWizardIndex(nextIdx)
+                  wizardLearnCommand(queue, nextIdx)
+                }
+              }
+            } catch {}
+          }
+        }
+
+        if (!captured) {
+          setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'fail' }])
+          if (!wizardAbort) {
+            const nextIdx = idx + 1
+            setWizardIndex(nextIdx)
+            wizardLearnCommand(queue, nextIdx)
+          }
+        }
+      }
+    } catch (error) {
+      setWizardResults(prev => [...prev, { name: cmd.functionName, status: 'fail' }])
+      if (!wizardAbort) {
+        const nextIdx = idx + 1
+        setWizardIndex(nextIdx)
+        wizardLearnCommand(queue, nextIdx)
+      }
+    }
+  }
+
   // Group commands by category
   const commandsByCategory = commands.reduce((acc, cmd) => {
     const category = cmd.category || 'Other'
@@ -511,6 +760,27 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Learn All Wizard Button */}
+          {wizardRunning ? (
+            <Button
+              variant="destructive"
+              onClick={stopWizard}
+              className="flex items-center gap-2"
+            >
+              <StopCircle className="w-4 h-4" />
+              Stop Wizard
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={startWizard}
+              disabled={commands.length === 0 || !device.globalCacheDeviceId || alignmentTestRunning}
+              className="flex items-center gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10"
+            >
+              <Radio className="w-4 h-4" />
+              Learn All
+            </Button>
+          )}
           {/* Alignment Test Button */}
           {alignmentTestRunning ? (
             <Button
@@ -551,11 +821,41 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               </>
             )}
           </Button>
+          {allIRDevices.filter(d => d.id !== device.id).length > 0 && (
+            <Button
+              variant="outline"
+              onClick={cloneToOtherDevices}
+              disabled={cloning || commands.filter(c => c.irCode && c.irCode.startsWith('sendir')).length === 0}
+              className="flex items-center gap-2 border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+            >
+              {cloning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Copying...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Copy to Other Boxes ({allIRDevices.filter(d => d.id !== device.id).length})
+                </>
+              )}
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose} disabled={alignmentTestRunning}>
             Back to Devices
           </Button>
         </div>
       </div>
+
+      {/* Clone result banner */}
+      {cloneResult && (
+        <div className={`rounded-lg border p-3 text-sm ${
+          cloneResult.startsWith('Error') ? 'border-red-500 bg-red-500/10 text-red-400' : 'border-green-500 bg-green-500/10 text-green-400'
+        }`}>
+          {cloneResult}
+          <button onClick={() => setCloneResult('')} className="ml-2 text-slate-400 hover:text-white">&times;</button>
+        </div>
+      )}
 
       {/* Global Cache Status */}
       {device.globalCacheDeviceId ? (
@@ -624,6 +924,107 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                 <StopCircle className="w-4 h-4" />
                 Stop Test
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Learn All Wizard Banner */}
+      {wizardRunning && wizardQueue.length > 0 && (
+        <Card className={`border-2 ${
+          wizardStatus === 'ready' ? 'border-green-500 bg-green-500/10 animate-pulse' :
+          wizardStatus === 'captured' || wizardStatus === 'testing' ? 'border-blue-500 bg-blue-500/10' :
+          wizardStatus === 'verified' ? 'border-green-500 bg-green-500/10' :
+          wizardStatus === 'failed' ? 'border-red-500 bg-red-500/10' :
+          'border-blue-500/50 bg-blue-500/10'
+        }`}>
+          <CardContent className="py-6">
+            <div className="text-center space-y-4">
+              {/* Progress */}
+              <div className="text-sm text-slate-400">
+                Button {wizardIndex + 1} of {wizardQueue.length}
+                {wizardResults.length > 0 && (
+                  <span className="ml-3">
+                    ({wizardResults.filter(r => r.status === 'ok').length} verified,
+                    {' '}{wizardResults.filter(r => r.status === 'fail').length} failed,
+                    {' '}{wizardResults.filter(r => r.status === 'skipped').length} skipped)
+                  </span>
+                )}
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-green-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${(wizardIndex / wizardQueue.length) * 100}%` }}
+                />
+              </div>
+
+              {/* Current button name - BIG */}
+              <div className={`text-4xl font-bold ${
+                wizardStatus === 'ready' ? 'text-green-400' :
+                wizardStatus === 'verified' ? 'text-green-400' :
+                wizardStatus === 'failed' ? 'text-red-400' :
+                'text-white'
+              }`}>
+                {wizardQueue[wizardIndex]?.functionName || ''}
+              </div>
+
+              {/* Status */}
+              <div className={`text-xl font-semibold ${
+                wizardStatus === 'connecting' ? 'text-blue-400' :
+                wizardStatus === 'ready' ? 'text-green-400 animate-pulse' :
+                wizardStatus === 'captured' || wizardStatus === 'testing' ? 'text-blue-400' :
+                wizardStatus === 'verified' ? 'text-green-400' :
+                wizardStatus === 'failed' ? 'text-red-400' :
+                'text-slate-400'
+              }`}>
+                {wizardStatus === 'connecting' && '⏳ Connecting...'}
+                {wizardStatus === 'ready' && '👉 PRESS THE BUTTON NOW!'}
+                {wizardStatus === 'captured' && '📡 Captured! Testing...'}
+                {wizardStatus === 'testing' && '🔍 Verifying...'}
+                {wizardStatus === 'verified' && '✅ Verified! Moving on...'}
+                {wizardStatus === 'failed' && '❌ Failed — moving on...'}
+                {wizardStatus === 'skipped' && '⏭️ Skipped'}
+                {wizardStatus === 'idle' && 'Starting...'}
+              </div>
+
+              {/* Skip button */}
+              {(wizardStatus === 'ready' || wizardStatus === 'connecting') && (
+                <Button
+                  variant="outline"
+                  onClick={wizardSkip}
+                  className="mt-2"
+                >
+                  Skip This Button
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Wizard Complete Summary */}
+      {!wizardRunning && wizardResults.length > 0 && (
+        <Card className="border-slate-700 bg-slate-800/50">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-100">Learn All Results</h3>
+              <Button size="sm" variant="outline" onClick={() => setWizardResults([])}>Dismiss</Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {wizardResults.map((r, i) => (
+                <Badge
+                  key={i}
+                  className={
+                    r.status === 'ok' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                    r.status === 'fail' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                    'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                  }
+                >
+                  {r.status === 'ok' ? '✓' : r.status === 'fail' ? '✗' : '⏭'} {r.name}
+                </Badge>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -772,37 +1173,16 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
         </CardContent>
       </Card>
 
-      {/* Learning Status */}
-      {learningCommandId && (
-        <Card className={`border-2 ${learningError ? 'border-red-500/50 bg-red-500/10' : 'border-blue-500/50 bg-blue-500/10'}`}>
+      {/* Learning Status - shows error details if any */}
+      {learningCommandId && learningError && (
+        <Card className="border-2 border-red-500/50 bg-red-500/10">
           <CardContent className="py-4">
             <div className="flex items-center gap-3">
-              {learningError ? (
-                <>
-                  <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-red-200">Learning Failed</div>
-                    <div className="text-sm text-red-300 mt-1">{learningError}</div>
-                  </div>
-                </>
-              ) : learningStatus.includes('✅') ? (
-                <>
-                  <CheckCircle2 className="w-6 h-6 text-green-400 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-green-200">{learningStatus}</div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Loader2 className="w-6 h-6 text-blue-400 animate-spin flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-blue-200">{learningStatus}</div>
-                    <div className="text-sm text-blue-300 mt-1">
-                      Point your remote at the Global Cache device and press the button you want to learn...
-                    </div>
-                  </div>
-                </>
-              )}
+              <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-medium text-red-200">Learning Failed</div>
+                <div className="text-sm text-red-300 mt-1">{learningError}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -911,10 +1291,42 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                           <Button
                             size="sm"
                             onClick={() => startLearning(command.id, command.functionName)}
-                            disabled={isLearning || !device.globalCacheDeviceId}
-                            className={isPlaceholder ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                            disabled={(learningCommandId !== null && !isLearning) || !device.globalCacheDeviceId}
+                            className={
+                              isLearning && learningStatus === 'ready'
+                                ? 'bg-green-500 hover:bg-green-600 animate-pulse text-white min-w-[140px]'
+                                : isLearning && learningStatus === 'captured'
+                                ? 'bg-green-700 text-white min-w-[140px]'
+                                : isLearning && learningError
+                                ? 'bg-red-600 text-white min-w-[140px]'
+                                : isLearning
+                                ? 'bg-blue-600 text-white min-w-[140px]'
+                                : isPlaceholder
+                                ? 'bg-blue-600 hover:bg-blue-700'
+                                : ''
+                            }
                           >
-                            {isLearning ? (
+                            {isLearning && learningError ? (
+                              <>
+                                <AlertCircle className="w-4 h-4 mr-1" />
+                                Failed
+                              </>
+                            ) : isLearning && learningStatus === 'connecting' ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : isLearning && learningStatus === 'ready' ? (
+                              <>
+                                <Radio className="w-4 h-4 mr-1 animate-ping" />
+                                PRESS NOW!
+                              </>
+                            ) : isLearning && learningStatus === 'captured' ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 mr-1" />
+                                Captured!
+                              </>
+                            ) : isLearning ? (
                               <>
                                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                                 Learning...
