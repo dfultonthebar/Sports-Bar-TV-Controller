@@ -22,48 +22,54 @@ const backupSchema = z.object({
 // Tables to backup (in order of dependencies)
 const BACKUP_TABLES = [
   // Location first (parent)
-  'locations',
+  'Location',
   // Matrix configuration
-  'matrixConfigurations',
-  'matrixInputs',
-  'matrixOutputs',
-  'matrixRoutes',
+  'MatrixConfiguration',
+  'MatrixInput',
+  'MatrixOutput',
+  'MatrixRoute',
   // Audio configuration
-  'audioProcessors',
-  'audioZones',
-  'audioGroups',
-  'audioScenes',
+  'AudioProcessor',
+  'AudioZone',
+  'AudioGroup',
+  'AudioScene',
   // Devices
-  'fireTVDevices',
-  'fireCubeDevices',
-  'globalCacheDevices',
-  'globalCachePorts',
-  'irDevices',
-  'irCommands',
-  'networkTVDevices',
-  'bartenderRemotes',
-  'cableBoxes',
+  'FireTVDevice',
+  'FireCubeDevice',
+  'GlobalCacheDevice',
+  'GlobalCachePort',
+  'IRDevice',
+  'IRCommand',
+  'NetworkTVDevice',
+  'BartenderRemote',
+  'BartenderLayout',
+  'CableBox',
   // Channel presets
-  'channelPresets',
+  'ChannelPreset',
   // Teams and scheduling
-  'homeTeams',
-  'schedules',
-  'scheduledCommands',
+  'HomeTeam',
+  'Schedule',
+  'ScheduledCommand',
   // AI profiles
-  'aiVenueProfiles',
-  'aiTvAvailability',
+  'ai_venue_profiles',
+  'ai_tv_availability',
   // Soundtrack
-  'soundtrackConfigs',
-  'soundtrackPlayers',
+  'SoundtrackConfig',
+  'SoundtrackPlayer',
   // Sports guide
-  'sportsGuideConfigurations',
+  'SportsGuideConfiguration',
   // TV Layout
-  'tvLayouts',
+  'TVLayout',
   // Input sources
-  'inputSources',
-  'inputCurrentChannels',
+  'input_sources',
+  'InputCurrentChannel',
   // Device mappings
-  'deviceMappings',
+  'DeviceMapping',
+  // Wolfpack matrix
+  'WolfpackMatrixState',
+  'WolfpackMatrixRouting',
+  // Crestron
+  'CrestronMatrix',
 ]
 
 async function exportTableToJson(tableName: string): Promise<any[]> {

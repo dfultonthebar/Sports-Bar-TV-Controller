@@ -13,7 +13,12 @@ import { validateRequestBody, isValidationError } from '@/lib/validation'
 const { globalCacheDevices, irDevices } = schema
 /**
  * POST /api/ir/learn
- * Start IR learning session for a specific command
+ * Start IR learning session with streaming status updates.
+ * Returns a text/event-stream so the frontend gets real-time feedback:
+ *   {"status":"connecting"}
+ *   {"status":"ready"}        ← learner enabled, user should press button NOW
+ *   {"status":"captured","learnedCode":"sendir,..."}
+ *   {"status":"error","error":"..."}
  */
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -21,136 +26,301 @@ export async function POST(request: NextRequest) {
     return rateLimit.response
   }
 
-
   // Input validation
   const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
   if (isValidationError(bodyValidation)) return bodyValidation.error
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  logger.info('🎓 [IR LEARN API] Starting IR learning session')
-  logger.info('   Timestamp:', { data: new Date().toISOString() })
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-  try {
-    const { deviceId, globalCacheDeviceId, commandId, functionName } = bodyValidation.data
+  const { deviceId, globalCacheDeviceId, commandId, functionName } = bodyValidation.data
 
-    if (!deviceId || !globalCacheDeviceId || !commandId || !functionName) {
-      logger.info('❌ [IR LEARN API] Missing required fields')
-      return NextResponse.json(
-        { success: false, error: 'Device ID, Global Cache Device ID, Command ID, and Function Name are required' },
-        { status: 400 }
-      )
-    }
-
-    logger.info('   Device ID:', deviceId)
-    logger.info('   Global Cache Device ID:', globalCacheDeviceId)
-    logger.info('   Command ID:', commandId)
-    logger.info('   Function Name:', functionName)
-
-    // Get Global Cache device
-    const globalCacheDevice = await db.select()
-      .from(globalCacheDevices)
-      .where(eq(globalCacheDevices.id, globalCacheDeviceId as string))
-      .limit(1)
-      .get()
-
-    if (!globalCacheDevice) {
-      logger.info('❌ [IR LEARN API] Global Cache device not found')
-      return NextResponse.json(
-        { success: false, error: 'Global Cache device not found' },
-        { status: 404 }
-      )
-    }
-
-    logger.info('📡 [IR LEARN API] Global Cache device found')
-    logger.info('   Name:', { data: globalCacheDevice.name })
-    logger.info('   IP:', { data: globalCacheDevice.ipAddress })
-    logger.info('   Port:', { data: globalCacheDevice.port })
-
-    // Get the IR device to find the configured emitter port
-    const irDevice = await db.select()
-      .from(irDevices)
-      .where(eq(irDevices.id, deviceId as string))
-      .limit(1)
-      .get()
-
-    if (!irDevice) {
-      logger.info('❌ [IR LEARN API] IR device not found')
-      return NextResponse.json(
-        { success: false, error: 'IR device not found' },
-        { status: 404 }
-      )
-    }
-
-    const emitterPort = irDevice.globalCachePortNumber || 1
-    logger.info('   Emitter Port:', { data: emitterPort })
-
-    // Start learning session
-    const result = await startLearningSession(
-      globalCacheDevice.ipAddress,
-      globalCacheDevice.port
+  if (!deviceId || !globalCacheDeviceId || !commandId || !functionName) {
+    return NextResponse.json(
+      { success: false, error: 'Device ID, Global Cache Device ID, Command ID, and Function Name are required' },
+      { status: 400 }
     )
+  }
 
-    if (result.success && result.learnedCode) {
-      logger.info('✅ [IR LEARN API] IR code learned successfully')
-      logger.info('   Code length:', { data: result.learnedCode.length })
+  // Pre-validate devices before starting the stream
+  const globalCacheDevice = await db.select()
+    .from(globalCacheDevices)
+    .where(eq(globalCacheDevices.id, globalCacheDeviceId as string))
+    .limit(1)
+    .get()
 
-      // Fix the port in the learned code to match the configured emitter port
-      // The IR learner reports the code with its own port (e.g., 2:1), but we need
-      // to send to the emitter port (e.g., 1:1, 1:2, 1:3)
-      let fixedCode = result.learnedCode
-      const portMatch = result.learnedCode.match(/^sendir,(\d+):(\d+),/)
-      if (portMatch) {
-        const originalPort = `${portMatch[1]}:${portMatch[2]}`
-        const targetPort = `1:${emitterPort}`
-        fixedCode = result.learnedCode.replace(`sendir,${originalPort},`, `sendir,${targetPort},`)
-        logger.info('   Port fix: ' + originalPort + ' -> ' + targetPort)
+  if (!globalCacheDevice) {
+    return NextResponse.json({ success: false, error: 'Global Cache device not found' }, { status: 404 })
+  }
+
+  const irDevice = await db.select()
+    .from(irDevices)
+    .where(eq(irDevices.id, deviceId as string))
+    .limit(1)
+    .get()
+
+  if (!irDevice) {
+    return NextResponse.json({ success: false, error: 'IR device not found' }, { status: 404 })
+  }
+
+  const emitterPort = irDevice.globalCachePortNumber || 1
+
+  logger.info('[IR LEARN] Starting streaming learn session for ' + functionName)
+
+  // Return a streaming response
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder()
+      let closed = false
+      const send = (data: Record<string, unknown>) => {
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          closed = true
+        }
+      }
+      const close = () => {
+        if (closed) return
+        closed = true
+        try { controller.close() } catch {}
       }
 
-      // Update the command with the fixed IR code
-      const updatedCommand = await update(
-        'irCommands',
-        eq(schema.irCommands.id, commandId as string),
-        {
-          irCode: fixedCode,
-          updatedAt: new Date().toISOString()
+      send({ status: 'connecting' })
+
+      startLearningSessionStreaming(
+        globalCacheDevice.ipAddress,
+        globalCacheDevice.port,
+        // onReady callback
+        () => { send({ status: 'ready' }) },
+        // onComplete callback
+        async (result) => {
+          try {
+            if (result.success && result.learnedCode) {
+              // Fix port
+              let fixedCode = result.learnedCode
+              const portMatch = fixedCode.match(/^sendir,(\d+):(\d+),/)
+              if (portMatch) {
+                const targetPort = `1:${emitterPort}`
+                fixedCode = fixedCode.replace(`sendir,${portMatch[1]}:${portMatch[2]},`, `sendir,${targetPort},`)
+              }
+
+              // Trim excess repeats
+              fixedCode = trimIRCodeRepeats(fixedCode)
+
+              // Save to DB
+              await update(
+                'irCommands',
+                eq(schema.irCommands.id, commandId as string),
+                { irCode: fixedCode, updatedAt: new Date().toISOString() }
+              )
+
+              logger.info('[IR LEARN] Code saved: ' + fixedCode.length + ' chars')
+              send({ status: 'captured', learnedCode: fixedCode })
+            } else {
+              send({ status: 'error', error: result.error || 'Failed to learn IR code' })
+            }
+          } catch (err) {
+            logger.error('[IR LEARN] Error in onComplete:', err)
+            send({ status: 'error', error: 'Failed to save learned code' })
+          }
+          close()
         }
       )
-
-      logger.info('✅ [IR LEARN API] Command updated with learned code')
-      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-      return NextResponse.json({
-        success: true,
-        status: 'IR code learned and saved successfully',
-        learnedCode: result.learnedCode,
-        command: updatedCommand
-      })
-    } else {
-      logger.info('❌ [IR LEARN API] Failed to learn IR code')
-      logger.info('   Error:', { data: result.error })
-      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-      return NextResponse.json(
-        { success: false, error: result.error || 'Failed to learn IR code' },
-        { status: 500 }
-      )
     }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}
+
+/**
+ * Clean and trim a learned IR code for reliable iTach playback.
+ *
+ * Issues this fixes:
+ * 1. Excess repeats: The learner captures every repetition when the user holds
+ *    the button (3-4 bursts). The iTach has a 96 on/off pair limit.
+ * 2. Garbage gap pairs: The learner sometimes inserts tiny mark values (e.g., 1,305)
+ *    between bursts. These are timing artifacts, not real IR data, and cause ERR_1:1,008.
+ *
+ * Strategy: detect burst boundaries (lead-in pairs with mark+space > 150),
+ * remove garbage inter-burst pairs, keep at most 3 bursts, and ensure the
+ * trailing gap is long enough.
+ */
+function trimIRCodeRepeats(code: string): string {
+  const parts = code.split(',')
+  // Header: sendir,module:port,ID,freq,repeat,offset = 6 parts
+  if (parts.length < 8) return code
+
+  const header = parts.slice(0, 6)
+  const data = parts.slice(6).map(Number)
+  const pairCount = data.length / 2
+
+  // Find burst boundaries: lead-in pairs where both mark and space > 150
+  const burstStarts: number[] = []
+  for (let i = 0; i < data.length - 1; i += 2) {
+    if (data[i] > 150 && data[i + 1] > 150) {
+      burstStarts.push(i)
+    }
+  }
+
+  logger.info(`[IR TRIM] ${pairCount} pairs, ${burstStarts.length} bursts`)
+
+  // Extract clean bursts (each burst = lead-in to just before next lead-in, minus garbage gaps)
+  const cleanBursts: number[][] = []
+  for (let b = 0; b < burstStarts.length; b++) {
+    const start = burstStarts[b]
+    const end = b + 1 < burstStarts.length ? burstStarts[b + 1] : data.length
+
+    // Collect pairs for this burst, skipping garbage (mark < 5 = learner artifact)
+    const burst: number[] = []
+    for (let i = start; i < end - 1; i += 2) {
+      if (data[i] >= 5) {
+        burst.push(data[i], data[i + 1])
+      } else {
+        logger.info(`[IR TRIM] Removed garbage pair at index ${i}: ${data[i]},${data[i + 1]}`)
+      }
+    }
+    cleanBursts.push(burst)
+  }
+
+  // Keep up to 3 bursts, staying under 90 pairs (safe margin below 96 limit)
+  let result: number[] = []
+  for (let b = 0; b < Math.min(cleanBursts.length, 3); b++) {
+    if ((result.length + cleanBursts[b].length) / 2 > 90) break
+    result = result.concat(cleanBursts[b])
+  }
+
+  // Must have at least 1 burst
+  if (result.length === 0 && cleanBursts.length > 0) {
+    result = cleanBursts[0].slice(0, 180) // Truncate single burst to 90 pairs
+  }
+
+  // Ensure trailing gap is long enough for clean signal termination
+  if (result.length >= 2 && result[result.length - 1] < 4000) {
+    result[result.length - 1] = 7000
+  }
+
+  const finalPairs = result.length / 2
+  logger.info(`[IR TRIM] Result: ${finalPairs} pairs from ${cleanBursts.length} clean bursts`)
+
+  return header.join(',') + ',' + result.join(',')
+}
+
+/**
+ * Start IR learning session with streaming callbacks for real-time UI updates.
+ */
+function startLearningSessionStreaming(
+  ipAddress: string,
+  port: number,
+  onReady: () => void,
+  onComplete: (result: { success: boolean; learnedCode?: string; error?: string }) => void,
+  timeout: number = 60000
+): void {
+  const client = new net.Socket()
+  let dataBuffer = ''
+  let resolved = false
+  let learningEnabled = false
+  const MAX_BUFFER_SIZE = 64 * 1024
+
+  const timeoutId = setTimeout(() => {
+    if (!resolved) {
+      resolved = true
+      client.destroy()
+      onComplete({ success: false, error: 'Learning timeout - no IR code received within 60 seconds.' })
+    }
+  }, timeout)
+
+  client.on('connect', () => {
+    logger.info('[IR LEARN] Connected, sending get_IRL')
+    client.write('get_IRL\r')
+  })
+
+  client.on('data', (data) => {
+    const response = data.toString()
+    dataBuffer += response
+
+    if (dataBuffer.length > MAX_BUFFER_SIZE) {
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timeoutId)
+        client.destroy()
+        onComplete({ success: false, error: 'IR code too large or malformed data received' })
+      }
+      return
+    }
+
+    if (response.includes('IR Learner Enabled') && !learningEnabled) {
+      learningEnabled = true
+      logger.info('[IR LEARN] Learner enabled — notifying frontend')
+      onReady()
+      return
+    }
+
+    if (response.includes('IR Learner Unavailable')) {
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timeoutId)
+        client.destroy()
+        onComplete({ success: false, error: 'IR Learner unavailable - device may be in another mode' })
+      }
+      return
+    }
+
+    if (learningEnabled && dataBuffer.includes('sendir')) {
+      const lines = dataBuffer.split('\r')
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i].trim()
+        if (line.startsWith('sendir,')) {
+          const endsWithNumber = /,\d{3,}$/.test(line)
+          const segmentCount = line.split(',').length
+          if (endsWithNumber && segmentCount >= 6) {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeoutId)
+              logger.info('[IR LEARN] Code captured: ' + segmentCount + ' segments')
+              client.write('stop_IRL\r')
+              setTimeout(() => client.destroy(), 200)
+              onComplete({ success: true, learnedCode: line })
+            }
+            return
+          }
+        }
+      }
+    }
+  })
+
+  client.on('error', (error) => {
+    if (!resolved) {
+      resolved = true
+      clearTimeout(timeoutId)
+      onComplete({ success: false, error: `Connection error: ${error.message}` })
+    }
+  })
+
+  client.on('close', () => {
+    if (!resolved) {
+      resolved = true
+      clearTimeout(timeoutId)
+      onComplete({ success: false, error: learningEnabled ? 'Connection closed before IR code was received' : 'Failed to enable IR learning mode' })
+    }
+  })
+
+  try {
+    client.connect(port, ipAddress)
   } catch (error) {
-    logger.error('❌ [IR LEARN API] Error in learning API:', error)
-    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to start learning' 
-      },
-      { status: 500 }
-    )
+    if (!resolved) {
+      resolved = true
+      clearTimeout(timeoutId)
+      onComplete({ success: false, error: error instanceof Error ? error.message : 'Connection failed' })
+    }
   }
 }
 
 /**
- * Start IR learning session on Global Cache device
+ * Start IR learning session on Global Cache device (legacy non-streaming version)
  */
 async function startLearningSession(
   ipAddress: string,
@@ -237,7 +407,8 @@ async function startLearningSession(
       }
 
       // Check if we received a learned IR code (starts with "sendir")
-      if (learningEnabled && response.includes('sendir')) {
+      // IMPORTANT: Check dataBuffer (not response) since IR codes may arrive across multiple TCP chunks
+      if (learningEnabled && dataBuffer.includes('sendir')) {
         // Only process complete lines (ending with \r)
         const lines = dataBuffer.split('\r')
 
@@ -258,7 +429,7 @@ async function startLearningSession(
                 resolved = true
                 clearTimeout(timeoutId)
 
-                logger.info('🎉 [IR LEARN] COMPLETE IR code learned successfully!')
+                logger.info('[IR LEARN] COMPLETE IR code learned successfully!')
                 logger.info(`   Code length: ${line.length} characters`)
                 logger.info(`   Segments: ${segmentCount}`)
                 logger.info('   Code preview:', { data: line.substring(0, 100) + '...' })
@@ -270,7 +441,7 @@ async function startLearningSession(
                 // Give it a moment to process stop command, then close
                 setTimeout(() => {
                   client.destroy()
-                }, 500)
+                }, 200)
 
                 resolve({
                   success: true,
@@ -280,7 +451,7 @@ async function startLearningSession(
               }
               break
             } else {
-              logger.info(`⏳ [IR LEARN] Received incomplete IR code (${segmentCount} segments, ends: ${line.slice(-20)}), waiting for more data...`)
+              logger.info(`[IR LEARN] Partial IR code (${segmentCount} segments, ends: ${line.slice(-20)}), waiting for more data...`)
             }
           }
         }

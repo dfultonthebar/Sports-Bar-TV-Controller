@@ -236,7 +236,7 @@ export const KNOWN_SPORTS_APPS: KnownSportsApp[] = [
     category: 'Sports',
     subscriptionCheckMethod: 'shared_prefs',
     subscriptionIndicators: ['subscription_tier', 'premium_access'],
-    deepLinkScheme: 'cbsott://',
+    deepLinkScheme: 'pplus://',
     iconUrl: '/icons/paramount.png'
   },
   {

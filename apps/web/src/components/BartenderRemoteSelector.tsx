@@ -130,19 +130,51 @@ export default function BartenderRemoteSelector() {
       ])
 
       // Load matrix inputs
+      // We need device lists first to check which inputs have devices attached
+      let direcTVList: DirecTVDevice[] = []
+      let fireTVList: FireTVDevice[] = []
+      let irList: IRDevice[] = []
+
+      if (direcTVResponse.status === 'fulfilled') {
+        const direcTVData = await direcTVResponse.value.json()
+        direcTVList = direcTVData.devices || []
+      }
+      if (fireTVResponse.status === 'fulfilled') {
+        const fireTVData = await fireTVResponse.value.json()
+        fireTVList = fireTVData.devices || []
+      }
+      if (irResponse.status === 'fulfilled') {
+        const irData = await irResponse.value.json()
+        irList = irData.devices || []
+      }
+
       if (matrixResponse.status === 'fulfilled') {
         const matrixData = await matrixResponse.value.json()
-        if (matrixData.configs?.length > 0) {
-          const customInputs = matrixData.configs[0].inputs?.filter((input: MatrixInput) =>
-            input.label && !input.label.match(/^Input \d+$/) && input.isActive
-          ) || []
-          setInputs(customInputs)
-        } else if (matrixData.inputs) {
-          const customInputs = matrixData.inputs.filter((input: MatrixInput) =>
-            input.label && !input.label.match(/^Input \d+$/) && input.isActive
-          )
-          setInputs(customInputs)
-        }
+        const allInputs = matrixData.configs?.length > 0
+          ? matrixData.configs[0].inputs || []
+          : matrixData.inputs || []
+
+        // Show inputs that are active AND either have a custom label or have a device attached
+        const visibleInputs = allInputs.filter((input: MatrixInput) => {
+          if (!input.isActive) return false
+          const hasCustomLabel = input.label && !input.label.match(/^Input \d+$/)
+          const hasDevice = direcTVList.some(d => d.inputChannel === input.channelNumber) ||
+            fireTVList.some(d => d.inputChannel === input.channelNumber) ||
+            irList.some(d => d.matrixInput === input.channelNumber)
+          return hasCustomLabel || hasDevice
+        })
+
+        // For inputs with devices but default labels, use the device name as label
+        const enrichedInputs = visibleInputs.map((input: MatrixInput) => {
+          if (input.label && !input.label.match(/^Input \d+$/)) return input
+          const dtv = direcTVList.find(d => d.inputChannel === input.channelNumber)
+          const ftv = fireTVList.find(d => d.inputChannel === input.channelNumber)
+          const ir = irList.find(d => d.matrixInput === input.channelNumber)
+          const deviceName = dtv?.name || ftv?.name || ir?.name
+          return deviceName ? { ...input, label: deviceName } : input
+        })
+
+        setInputs(enrichedInputs)
       }
 
       // Load GlobalCache devices for IR device lookup
@@ -156,59 +188,40 @@ export default function BartenderRemoteSelector() {
         }
       }
 
-      // Load IR devices and enrich with GlobalCache IP addresses and commands
-      if (irResponse.status === 'fulfilled') {
-        const irData = await irResponse.value.json()
-        const devices = irData.devices || []
+      // Enrich IR devices with GlobalCache IP addresses and commands
+      const devicesWithCommands = await Promise.all(
+        irList.map(async (device: IRDevice) => {
+          try {
+            const commandsResponse = await fetch(`/api/ir/devices/${device.id}/commands`)
+            const commandsData = await commandsResponse.json()
 
-        // Load commands for each IR device
-        const devicesWithCommands = await Promise.all(
-          devices.map(async (device: IRDevice) => {
-            try {
-              const commandsResponse = await fetch(`/api/ir/devices/${device.id}/commands`)
-              const commandsData = await commandsResponse.json()
+            let enrichedDevice = { ...device }
 
-              let enrichedDevice = { ...device }
-
-              // Add commands if successfully loaded
-              if (commandsData.success && commandsData.commands) {
-                enrichedDevice.commands = commandsData.commands
-              }
-
-              // Add iTach address if GlobalCache device is assigned
-              if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
-                enrichedDevice.iTachAddress = globalCacheMap[device.globalCacheDeviceId].ipAddress
-              }
-
-              return enrichedDevice
-            } catch (error) {
-              logger.error(`Error loading commands for device ${device.id}:`, error)
-              // Return device without commands if loading fails
-              if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
-                return {
-                  ...device,
-                  iTachAddress: globalCacheMap[device.globalCacheDeviceId].ipAddress
-                }
-              }
-              return device
+            if (commandsData.success && commandsData.commands) {
+              enrichedDevice.commands = commandsData.commands
             }
-          })
-        )
 
-        setIRDevices(devicesWithCommands)
-      }
+            if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
+              enrichedDevice.iTachAddress = globalCacheMap[device.globalCacheDeviceId].ipAddress
+            }
 
-      // Load DirecTV devices
-      if (direcTVResponse.status === 'fulfilled') {
-        const direcTVData = await direcTVResponse.value.json()
-        setDirecTVDevices(direcTVData.devices || [])
-      }
+            return enrichedDevice
+          } catch (error) {
+            logger.error(`Error loading commands for device ${device.id}:`, error)
+            if (device.globalCacheDeviceId && globalCacheMap[device.globalCacheDeviceId]) {
+              return {
+                ...device,
+                iTachAddress: globalCacheMap[device.globalCacheDeviceId].ipAddress
+              }
+            }
+            return device
+          }
+        })
+      )
 
-      // Load Fire TV devices
-      if (fireTVResponse.status === 'fulfilled') {
-        const fireTVData = await fireTVResponse.value.json()
-        setFireTVDevices(fireTVData.devices || [])
-      }
+      setIRDevices(devicesWithCommands)
+      setDirecTVDevices(direcTVList)
+      setFireTVDevices(fireTVList)
     } catch (error) {
       logger.error('Error loading devices:', error)
     }

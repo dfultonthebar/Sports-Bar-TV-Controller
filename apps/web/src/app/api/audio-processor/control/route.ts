@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { findUnique, update, eq } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
+import { getDbxControlService } from '@/lib/dbxControlService'
 import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
@@ -59,14 +60,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    atlasLogger.info('CONTROL', `Executing ${command.action} command on processor ${processor.name}`, {
-      processorId,
-      ipAddress: processor.ipAddress,
-      tcpPort: processor.tcpPort,
-      command
+    logger.info(`[AUDIO-CONTROL] Executing ${command.action} command on ${processor.processorType} processor ${processor.name}`, {
+      data: { processorId, ipAddress: processor.ipAddress, tcpPort: processor.tcpPort, command }
     })
 
     let result;
+
+    // Route to the correct processor backend
+    if (processor.processorType === 'dbx-zonepro') {
+      // Fire-and-forget for dbx (one-way protocol, no feedback)
+      // Don't await - return immediately for fast UI response
+      const dbxStart = Date.now()
+      executeDbxCommand(processor, command)
+        .then(() => logger.info(`[AUDIO-CONTROL] dbx command completed in ${Date.now() - dbxStart}ms`))
+        .catch(err =>
+          logger.error(`[AUDIO-CONTROL] dbx command failed after ${Date.now() - dbxStart}ms: ${err?.message || err}`)
+        )
+      return NextResponse.json({
+        success: true,
+        result: { action: command.action, zone: command.zone },
+        message: `${command.action} command sent`
+      })
+    }
+
+    // Atlas and other processor types
     switch (command.action) {
       case 'volume':
         result = await setZoneVolume(processor, command.zone!, command.value as number)
@@ -120,6 +137,83 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// dbx ZonePRO control functions
+
+/**
+ * Execute a command on a dbx ZonePRO processor
+ * Uses the DbxControlService from @sports-bar/dbx-zonepro package
+ */
+async function executeDbxCommand(processor: any, command: ControlCommand): Promise<any> {
+  const service = await getDbxControlService({
+    deviceId: processor.id,
+    model: processor.model || '1260m',
+    ipAddress: processor.ipAddress,
+    port: processor.tcpPort || 3804,
+  })
+
+  // dbx zones are 0-based in the service, UI sends 1-based
+  const zoneIndex = command.zone ? command.zone - 1 : 0
+
+  switch (command.action) {
+    case 'volume': {
+      const volume = command.value as number
+      // UI sends raw dbx values (0-415), not percentages
+      await service.setVolume(zoneIndex, volume, { type: 'raw' })
+      return { zone: command.zone, volume, timestamp: new Date() }
+    }
+    case 'mute': {
+      const muted = command.value as boolean
+      await service.setMute(zoneIndex, muted)
+      return { zone: command.zone, muted, timestamp: new Date() }
+    }
+    case 'source': {
+      let sourceIndex: number
+      if (typeof command.value === 'number') {
+        sourceIndex = command.value
+      } else if (typeof command.value === 'string') {
+        // Parse source strings to dbx Router source indices
+        // dbx ZonePRO 1260m: 0=None, 1-6=ML1-ML6, 7=S1, 8=S2, 9=S3, 10=S4
+        const val = command.value as string
+        if (val.startsWith('Source ')) {
+          sourceIndex = parseInt(val.replace('Source ', '')) - 1
+        } else if (val.startsWith('input_')) {
+          sourceIndex = parseInt(val.split('_')[1]) - 1
+        } else if (val.startsWith('Input ')) {
+          // "Input 1" → ML1 (index 1), "Input 2" → ML2 (index 2), etc.
+          sourceIndex = parseInt(val.replace('Input ', ''))
+        } else if (val.startsWith('Matrix Audio')) {
+          // "Matrix Audio" → S2 (index 8) - single matrix audio output
+          // "Matrix Audio 1" → S2 (index 8), "Matrix Audio 2" → S3 (index 9)
+          const numMatch = val.match(/\d+$/)
+          const matrixNum = numMatch ? parseInt(numMatch[0]) : 1
+          sourceIndex = 7 + matrixNum  // Matrix Audio → 8, Matrix Audio 2 → 9
+        } else if (val === 'Streaming Input') {
+          sourceIndex = 10  // S4 - Spotify/streaming
+        } else if (val === 'Microphone') {
+          sourceIndex = 5   // ML5 - Wireless Mic
+        } else if (!isNaN(parseInt(val))) {
+          sourceIndex = parseInt(val)
+        } else {
+          logger.warn(`[AUDIO-CONTROL] Unknown dbx source name: "${val}", defaulting to 0`)
+          sourceIndex = 0
+        }
+      } else {
+        sourceIndex = 0
+      }
+      logger.info(`[AUDIO-CONTROL] dbx source: "${command.value}" → index ${sourceIndex}`)
+      await service.setSource(zoneIndex, sourceIndex)
+      return { zone: command.zone, source: command.value, sourceIndex, timestamp: new Date() }
+    }
+    case 'scene': {
+      const sceneNumber = command.sceneId || 1
+      await service.recallScene(sceneNumber)
+      return { sceneId: sceneNumber, timestamp: new Date() }
+    }
+    default:
+      throw new Error(`Unsupported dbx command action: ${command.action}`)
   }
 }
 

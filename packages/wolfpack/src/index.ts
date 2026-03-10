@@ -27,6 +27,7 @@ export { routeMatrix } from './matrix-control'
 // Wolfpack Matrix Service - Atlas Audio Integration
 export {
   routeWolfpackToMatrix,
+  sendHTTPCommand,
   getMatrixRoutingState,
   type MatrixConfiguration,
   type RoutingResult,

@@ -181,10 +181,7 @@ export default function BartenderRemoteControl() {
     { id: 'input2', name: 'Input 2', isActive: true },
     { id: 'input3', name: 'Input 3', isActive: true },
     { id: 'input4', name: 'Input 4', isActive: true },
-    { id: 'matrix1', name: 'Matrix Audio 1', isActive: true },
-    { id: 'matrix2', name: 'Matrix Audio 2', isActive: true },
-    { id: 'matrix3', name: 'Matrix Audio 3', isActive: true },
-    { id: 'matrix4', name: 'Matrix Audio 4', isActive: true },
+    { id: 'matrix_audio', name: 'Matrix Audio', isActive: true },
     { id: 'streaming', name: 'Streaming Input', isActive: true },
     { id: 'microphone', name: 'Microphone', isActive: true },
   ])
@@ -588,7 +585,7 @@ export default function BartenderRemoteControl() {
       // Log the audio operation - fire-and-forget
       const operationType = action === 'volume' ? 'volume_change' :
                           action === 'mute' ? 'volume_change' :
-                          action === 'setSource' ? 'input_switch' : 'audio_zone'
+                          action === 'source' ? 'input_switch' : 'audio_zone'
 
       fetch('/api/logs/operations', {
         method: 'POST',
@@ -608,7 +605,7 @@ export default function BartenderRemoteControl() {
             value,
             previousValue: action === 'volume' ? zone.volume :
                          action === 'mute' ? zone.muted :
-                         action === 'setSource' ? zone.currentSource : null
+                         action === 'source' ? zone.currentSource : null
           },
           success,
           errorMessage: success ? undefined : errorMessage
@@ -621,7 +618,40 @@ export default function BartenderRemoteControl() {
   }
 
   const setZoneSource = async (zone: AudioZone, source: string) => {
-    await controlAudioZone('setSource', zone, source)
+    // Matrix Audio sources: route Wolf Pack input to audio output, then switch dbx source
+    const matrixAudioMatch = source.match(/^Matrix Audio/)
+    if (matrixAudioMatch) {
+      if (!selectedInput) {
+        setAudioCommandStatus('Select a TV input first')
+        setTimeout(() => setAudioCommandStatus(''), 3000)
+        return
+      }
+      setAudioCommandStatus(`Routing input ${selectedInput} → Matrix Audio...`)
+      try {
+        // Route via wolfpack-to-matrix API (applies outputOffset from config)
+        // matrixOutputNumber 1 = the matrix audio output (offset handles actual port)
+        const response = await fetch('/api/wolfpack/route-to-matrix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wolfpackInputNumber: selectedInput,
+            matrixOutputNumber: 1,
+          }),
+        })
+        const result = await response.json()
+        if (result.success) {
+          setAudioCommandStatus(`Routed input ${selectedInput} → Matrix Audio`)
+        } else {
+          setAudioCommandStatus(`Failed: ${result.error}`)
+        }
+      } catch (err) {
+        logger.error('Failed to route matrix audio:', err)
+        setAudioCommandStatus('Error routing matrix audio')
+      }
+      setTimeout(() => setAudioCommandStatus(''), 3000)
+    }
+    // Send source change to the audio processor (dbx or Atlas)
+    await controlAudioZone('source', zone, source)
   }
 
   const adjustZoneVolume = async (zone: AudioZone, volumeChange: number) => {

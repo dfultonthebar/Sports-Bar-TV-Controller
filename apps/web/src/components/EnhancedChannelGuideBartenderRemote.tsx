@@ -3,7 +3,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -12,6 +11,7 @@ import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
+import LiveSportsDashboard from './LiveSportsDashboard'
 import { logger } from '@sports-bar/logger'
 import {
   Power,
@@ -495,25 +495,45 @@ export default function EnhancedChannelGuideBartenderRemote() {
       const result = await response.json()
 
       if (result.success && result.data) {
-        // Load matrix inputs
+        // Load device lists first so we can use them for input filtering
+        const ir = result.data.irDevices || []
+        const dtv = result.data.direcTVDevices || []
+        const ftv = result.data.fireTVDevices || []
+        const ep = result.data.everPassDevices || []
+
+        setIRDevices(ir)
+        setDirecTVDevices(dtv)
+        setFireTVDevices(ftv)
+        setEverPassDevices(ep)
+
+        // Build set of input numbers that have an associated device
+        const inputsWithDevices = new Set<number>()
+        ir.forEach((d: any) => d.matrixInput && inputsWithDevices.add(d.matrixInput))
+        dtv.forEach((d: any) => d.inputChannel && inputsWithDevices.add(d.inputChannel))
+        ftv.forEach((d: any) => d.inputChannel && inputsWithDevices.add(d.inputChannel))
+        ep.forEach((d: any) => d.inputChannel && inputsWithDevices.add(d.inputChannel))
+
+        // Load matrix inputs: show inputs that have a custom label OR have an associated device
         if (result.data.matrix?.inputs) {
-          const customInputs = result.data.matrix.inputs.filter((input: MatrixInput) =>
-            input.label && !input.label.match(/^Input \d+$/) && input.isActive
+          const relevantInputs = result.data.matrix.inputs.filter((input: MatrixInput) =>
+            input.isActive && (
+              (input.label && !input.label.match(/^Input \d+$/)) ||
+              inputsWithDevices.has(input.channelNumber)
+            )
           )
-          setInputs(customInputs)
+
+          // Enrich default "Input N" labels with device names
+          const enrichedInputs = relevantInputs.map((input: MatrixInput) => {
+            if (input.label && !input.label.match(/^Input \d+$/)) return input
+            const dtvDevice = dtv.find((d: any) => d.inputChannel === input.channelNumber)
+            const ftvDevice = ftv.find((d: any) => d.inputChannel === input.channelNumber)
+            const irDevice = ir.find((d: any) => d.matrixInput === input.channelNumber)
+            const deviceName = dtvDevice?.name || ftvDevice?.name || irDevice?.name
+            return deviceName ? { ...input, label: deviceName } : input
+          })
+
+          setInputs(enrichedInputs)
         }
-
-        // Load IR devices
-        setIRDevices(result.data.irDevices || [])
-
-        // Load DirecTV devices
-        setDirecTVDevices(result.data.direcTVDevices || [])
-
-        // Load Fire TV devices
-        setFireTVDevices(result.data.fireTVDevices || [])
-
-        // Load EverPass devices
-        setEverPassDevices(result.data.everPassDevices || [])
       }
 
       const loadTime = endPerformanceTimer('load_devices')
@@ -1240,6 +1260,79 @@ export default function EnhancedChannelGuideBartenderRemote() {
     return <AlertCircle className="w-4 h-4 text-slate-500" />
   }
 
+  // ── Dashboard handlers (for LiveSportsDashboard) ──────────────────
+
+  const handleTuneFromDashboard = async (channelNumber: string, deviceId: string, deviceType: 'cable' | 'directv') => {
+    setLoading(true)
+    setCommandStatus(`Tuning to channel ${channelNumber}...`)
+
+    try {
+      if (deviceType === 'cable') {
+        const response = await fetch('/api/channel-presets/tune', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelNumber, cableBoxId: deviceId }),
+        })
+        const data = await response.json()
+        if (data.success) {
+          setCommandStatus(`Tuned to Ch ${channelNumber}`)
+          await loadCurrentChannels()
+        } else {
+          setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
+        }
+      } else {
+        const response = await fetch(`/api/directv/${deviceId}/tune`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel: channelNumber }),
+        })
+        const data = await response.json()
+        if (data.success) {
+          setCommandStatus(`Tuned to Ch ${channelNumber}`)
+          await loadCurrentChannels()
+        } else {
+          setCommandStatus(`Failed: ${data.error || 'Unknown error'}`)
+        }
+      }
+    } catch (error) {
+      logger.error('Error tuning from dashboard:', error)
+      setCommandStatus('Tuning failed')
+    } finally {
+      setLoading(false)
+      setTimeout(() => setCommandStatus(''), 5000)
+    }
+  }
+
+  const handleLaunchFromDashboard = async (appId: string, _packageName: string, deviceId: string) => {
+    setCommandStatus(`Launching app...`)
+
+    try {
+      if (appId === 'paramount-live') {
+        const res = await fetch(`/api/firetv-devices/${deviceId}/paramount-live`, { method: 'POST' })
+        const data = await res.json()
+        setCommandStatus(data.success ? 'Paramount+ Live TV launched' : `Failed: ${data.error}`)
+      } else {
+        const device = fireTVDevices.find(d => d.id === deviceId)
+        if (!device) {
+          setCommandStatus('Fire TV device not found')
+          return
+        }
+        const res = await fetch('/api/streaming/launch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, ipAddress: device.ipAddress, appId, port: device.port }),
+        })
+        const data = await res.json()
+        setCommandStatus(data.success ? `App launched` : `Failed: ${data.error}`)
+      }
+    } catch (error) {
+      logger.error('Error launching app from dashboard:', error)
+      setCommandStatus('App launch failed')
+    } finally {
+      setTimeout(() => setCommandStatus(''), 5000)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden p-4 pb-20">
       {/* Animated background orbs */}
@@ -1378,30 +1471,20 @@ export default function EnhancedChannelGuideBartenderRemote() {
         {/* Main Panel - Channel Guide */}
         <div className="lg:col-span-2">
           {!showChannelGuide ? (
-            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
-              <Calendar className="w-16 h-16 text-blue-400 mx-auto mb-4 opacity-50" />
-              <h3 className="text-xl font-medium bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">Channel Guide</h3>
-              <p className="text-slate-400 mb-4">Select an input and click "Channel Guide" to see available sports programming</p>
-              <div className="flex gap-3 justify-center">
-                <Button
-                  onClick={() => setShowChannelGuide(true)}
-                  className="group relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                  <div className="relative z-10 text-blue-400 font-medium">Open Channel Guide</div>
-                </Button>
-                <Link
-                  href="/ai-gameplan"
-                  className="group relative backdrop-blur-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl border-2 border-yellow-400/30 hover:border-yellow-400/50 hover:scale-105 transition-all duration-300 shadow-xl px-4 py-2 inline-flex items-center"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                  <div className="relative z-10 text-yellow-400 font-medium flex items-center">
-                    <Gamepad2 className="w-4 h-4 mr-2" />
-                    AI Game Plan
-                  </div>
-                </Link>
-              </div>
-            </div>
+            <LiveSportsDashboard
+              inputs={inputs.map(i => ({ channelNumber: i.channelNumber, label: i.label, inputType: i.inputType }))}
+              irDevices={irDevices}
+              direcTVDevices={direcTVDevices}
+              fireTVDevices={fireTVDevices}
+              selectedInputLabel={selectedInput ? inputs.find(i => i.channelNumber === selectedInput)?.label || null : null}
+              selectedDeviceType={selectedInput ? getDeviceTypeForInput(selectedInput) : null}
+              onTuneChannel={handleTuneFromDashboard}
+              onLaunchApp={handleLaunchFromDashboard}
+              onStatusMessage={(msg) => {
+                setCommandStatus(msg)
+                setTimeout(() => setCommandStatus(''), 5000)
+              }}
+            />
           ) : !selectedInput ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
               <Tv className="w-16 h-16 text-purple-400 mx-auto mb-4 opacity-50" />

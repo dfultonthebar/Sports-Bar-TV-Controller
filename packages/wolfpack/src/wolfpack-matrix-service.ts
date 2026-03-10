@@ -11,6 +11,7 @@ interface MatrixConfiguration {
   tcpPort: number
   udpPort: number
   protocol: string
+  outputOffset?: number
 }
 
 interface RoutingResult {
@@ -18,6 +19,91 @@ interface RoutingResult {
   error?: string
   command?: string
   response?: string
+}
+
+/**
+ * Sends an HTTP command to the Wolf Pack matrix via its web API.
+ * The HTTP API uses 0-based indices for both input and output.
+ * This function accepts 0-based indices directly.
+ */
+export async function sendHTTPCommand(
+  ipAddress: string,
+  input0Based: number,
+  output0Based: number
+): Promise<RoutingResult> {
+  const baseUrl = `http://${ipAddress}`
+
+  try {
+    // Step 1: Login to get PHP session cookie
+    logger.info(`[WOLFPACK-HTTP] Logging in to ${baseUrl}/login.php`)
+    const loginResponse = await fetch(`${baseUrl}/login.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'username=admin&password=admin',
+      redirect: 'manual',
+    })
+
+    // Extract PHPSESSID from Set-Cookie header
+    const setCookie = loginResponse.headers.get('set-cookie') || ''
+    const sessionMatch = setCookie.match(/PHPSESSID=([^;]+)/)
+    if (!sessionMatch) {
+      logger.error('[WOLFPACK-HTTP] Login failed - no PHPSESSID in response')
+      return {
+        success: false,
+        error: 'Login failed - no session cookie received',
+      }
+    }
+    const sessionCookie = `PHPSESSID=${sessionMatch[1]}`
+    logger.info(`[WOLFPACK-HTTP] Login successful, got session cookie`)
+
+    // Step 2: Send routing command
+    const routeUrl = `${baseUrl}/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based},`
+    logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
+    logger.info(`[WOLFPACK-HTTP] GET ${routeUrl}`)
+
+    const routeResponse = await fetch(routeUrl, {
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+
+    const responseText = await routeResponse.text()
+    logger.info(`[WOLFPACK-HTTP] Response: ${responseText}`)
+
+    // Step 3: Parse response
+    let routingMap: number[]
+    try {
+      routingMap = JSON.parse(responseText)
+    } catch {
+      logger.error(`[WOLFPACK-HTTP] Failed to parse response as JSON: ${responseText}`)
+      return {
+        success: false,
+        error: `Invalid JSON response: ${responseText}`,
+        response: responseText,
+      }
+    }
+
+    // The o2ox command applies the route AND returns the routing array.
+    // Due to firmware timing, the returned array may show stale state for the
+    // just-routed output. The route itself always succeeds if we get valid JSON back.
+    const actual = routingMap[output0Based]
+    if (actual === input0Based) {
+      logger.info(`[WOLFPACK-HTTP] Verified: output ${output0Based} is now routed to input ${input0Based}`)
+    } else {
+      logger.info(`[WOLFPACK-HTTP] Route sent. State shows output ${output0Based} = input ${actual} (firmware may report stale; route applied)`)
+    }
+
+    return {
+      success: true,
+      command: `HTTP o2ox: ${input0Based},${output0Based}`,
+      response: responseText,
+    }
+  } catch (error) {
+    logger.error('[WOLFPACK-HTTP] Error:', { error })
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'HTTP request failed',
+    }
+  }
 }
 
 /**
@@ -33,13 +119,36 @@ export async function routeWolfpackToMatrix(
   try {
     logger.info(`Routing Wolfpack input ${wolfpackInputNumber} (${inputLabel}) to Matrix output ${matrixOutputNumber}`)
 
-    // Wolfpack Matrix outputs are typically channels 33-36 (or configured range)
-    // This maps to Matrix 1-4 outputs
-    const wolfpackMatrixOutput = 32 + matrixOutputNumber // 33, 34, 35, 36
+    // HTTP API path: convert 1-based system indices to 0-based wire indices
+    if (config.protocol === 'HTTP') {
+      const offset = config.outputOffset || 0
+      const wolfpackOutput = offset + matrixOutputNumber
+      const input0Based = wolfpackInputNumber - 1
+      const output0Based = wolfpackOutput - 1
 
+      logger.info(`[WOLFPACK-HTTP] Converting: input ${wolfpackInputNumber}->0b:${input0Based}, output ${wolfpackOutput}->0b:${output0Based}`)
+
+      const result = await sendHTTPCommand(config.ipAddress, input0Based, output0Based)
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to send HTTP command to Wolfpack',
+          command: result.command,
+        }
+      }
+
+      logger.info(`Successfully routed ${inputLabel} to Matrix ${matrixOutputNumber} via HTTP`)
+      return result
+    }
+
+    // TCP/UDP path (legacy)
     // Build the routing command using correct Wolfpack protocol
     // Format: "[input]X[output]." (period required, \r\n added by sendWolfpackCommand)
-    const command = `${wolfpackInputNumber}X${wolfpackMatrixOutput}.`
+    // outputOffset handles multi-card matrices (e.g., Graystone uses +32 for audio outputs 33-36)
+    const offset = config.outputOffset || 0
+    const wolfpackOutput = offset + matrixOutputNumber
+    const command = `${wolfpackInputNumber}X${wolfpackOutput}.`
 
     logger.info(`Sending command to Wolfpack: ${command}`)
 

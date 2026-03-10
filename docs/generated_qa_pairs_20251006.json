@@ -22,7 +22,7 @@
   },
   {
     "question": "How does the Q&A training system work?",
-    "answer": "The Q&A training system stores question-answer pairs in a Prisma database (QAEntry table) to train the AI assistant. It supports: 1) Automatic generation from documentation files using local AI (Ollama), 2) Manual entry through the web interface, 3) Bulk upload via Q&A documents in multiple formats (Q:/A:, Question:/Answer:, JSON, Markdown), 4) Categories include system, api, features, configuration, troubleshooting, and general. Each entry tracks usage count, confidence score, and source type.",
+    "answer": "The Q&A training system stores question-answer pairs in a Drizzle ORM database (QAEntry table) to train the AI assistant. It supports: 1) Automatic generation from documentation files using local AI (Ollama), 2) Manual entry through the web interface, 3) Bulk upload via Q&A documents in multiple formats (Q:/A:, Question:/Answer:, JSON, Markdown), 4) Categories include system, api, features, configuration, troubleshooting, and general. Each entry tracks usage count, confidence score, and source type.",
     "category": "features",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -36,7 +36,7 @@
   },
   {
     "question": "How do I configure the Wolfpack matrix switcher?",
-    "answer": "Configure the matrix through Settings → Matrix Configuration: 1) Enter the matrix IP address and ports (TCP: 5000, UDP: 4000, default: 4999), 2) Configure input channels (1-32) with labels like 'Cable Box 1', 'DirecTV', device types, and status, 3) Configure output channels with TV labels, resolution (1080p/4K), audio routing to Atlas zones, and CEC settings, 4) Optionally set CEC adapter input channel for TV power control, 5) Test the connection to verify communication. All settings are stored in the MatrixConfiguration database table.",
+    "answer": "Configure the matrix through Settings -> Matrix Configuration: 1) Enter the matrix IP address and ensure the protocol is set to 'HTTP' in the MatrixConfiguration database table. IMPORTANT: TCP port 5000 is non-functional on ALL Wolf Pack units -- it responds 'OK' to any command but never actually switches routes. Do NOT use TCP. 2) The HTTP web API (port 80) is the correct and only working protocol. It works by POSTing to login.php (admin/admin) to authenticate, then sending routing commands via GET to get_json_cmd.php?cmd=o2ox&prm={input_0based},{output_0based}. The response is a JSON array routing map where routingMap[output] === input (65535 means disconnected). 3) Configure input channels (1-32) with labels like 'Cable Box 1', 'DirecTV', device types, and status, 4) Configure output channels with TV labels, resolution (1080p/4K), audio routing to Atlas zones, and CEC settings, 5) Optionally set CEC adapter input channel for TV power control, 6) Test the connection to verify communication. All settings are stored in the MatrixConfiguration database table.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -78,7 +78,7 @@
   },
   {
     "question": "How do I set up IR control for DirecTV and Fire TV devices?",
-    "answer": "IR control uses Global Cache iTach devices: 1) Connect iTach to your network and to IR emitters on each device, 2) Configure in Settings → IR Devices, 3) Add device mappings with iTach IP, port, and IR output number, 4) Select device type (DirecTV, Fire TV, etc.) which loads appropriate IR codes, 5) Test commands to verify control, 6) Map devices to matrix inputs for integrated control. The system includes pre-programmed IR codes for DirecTV channel control, guide navigation, and Fire TV app launching.",
+    "answer": "IR control uses Global Cache iTach devices: 1) Connect iTach to your network and to IR emitters on each device, 2) Configure in Settings -> IR Devices, 3) Add device mappings with iTach IP, port, and IR output number, 4) Select device type (DirecTV, Fire TV, etc.) which loads appropriate IR codes, 5) Test commands to verify control, 6) Map devices to matrix inputs for integrated control. The system includes pre-programmed IR codes for DirecTV channel control, guide navigation, and Fire TV app launching.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -99,7 +99,7 @@
   },
   {
     "question": "What AI models and providers are supported?",
-    "answer": "Supported AI providers: 1) Local AI via Ollama (llama3.2:3b, mistral, etc.) for privacy and no API costs, 2) Claude (Anthropic) for advanced reasoning, 3) ChatGPT/OpenAI for general tasks, 4) Grok (xAI) for real-time information. API keys are stored encrypted in the ApiKey database table. Configure in Settings → AI Configuration. The system uses local AI by default for Q&A generation and knowledge base queries. Each provider has specific use cases: Claude for device insights, local AI for document processing.",
+    "answer": "Supported AI providers: 1) Local AI via Ollama (llama3.2:3b, mistral, etc.) for privacy and no API costs, 2) Claude (Anthropic) for advanced reasoning, 3) ChatGPT/OpenAI for general tasks, 4) Grok (xAI) for real-time information. API keys are stored encrypted in the ApiKey database table. Configure in Settings -> AI Configuration. The system uses local AI by default for Q&A generation and knowledge base queries. Each provider has specific use cases: Claude for device insights, local AI for document processing.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -120,7 +120,7 @@
   },
   {
     "question": "How do I configure audio zones with the AtlasIED processor?",
-    "answer": "Configure audio zones through Settings → Audio Configuration: 1) Add AudioProcessor with model (AZM4/AZM8/etc.), IP address, and port, 2) Configure each zone (1-4 or 1-8 depending on model) with name, description, and source, 3) Set volume levels (0-100) and mute status, 4) Map zones to matrix audio outputs for integrated control, 5) Create audio scenes to save zone configurations, 6) Enable AI-powered gain control for automatic level adjustment. Each zone can have independent source, volume, and mute settings.",
+    "answer": "Configure audio zones through Settings -> Audio Configuration: 1) Add AudioProcessor with model (AZM4/AZM8/etc.), IP address, and port, 2) Configure each zone (1-4 or 1-8 depending on model) with name, description, and source, 3) Set volume levels (0-100) and mute status, 4) Map zones to matrix audio outputs for integrated control, 5) Create audio scenes to save zone configurations, 6) Enable AI-powered gain control for automatic level adjustment. Each zone can have independent source, volume, and mute settings.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -141,7 +141,7 @@
   },
   {
     "question": "What is Soundtrack Your Brand integration and how do I set it up?",
-    "answer": "Soundtrack Your Brand provides licensed background music: 1) Sign up for Soundtrack account and get API credentials, 2) Configure in Settings → Soundtrack with API key/token, 3) System stores credentials in SoundtrackConfig database table, 4) Configure players for different zones/areas, 5) Control playback through the web interface, 6) Integrate with audio zones for automatic routing, 7) Schedule music for different times of day. The integration handles authentication, playlist management, and playback control. Credentials are automatically backed up.",
+    "answer": "Soundtrack Your Brand provides licensed background music: 1) Sign up for Soundtrack account and get API credentials, 2) Configure in Settings -> Soundtrack with API key/token, 3) System stores credentials in SoundtrackConfig database table, 4) Configure players for different zones/areas, 5) Control playback through the web interface, 6) Integrate with audio zones for automatic routing, 7) Schedule music for different times of day. The integration handles authentication, playlist management, and playback control. Credentials are automatically backed up.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -169,7 +169,7 @@
   },
   {
     "question": "What database models are used for matrix configuration?",
-    "answer": "Matrix database models: 1) MatrixConfiguration - stores matrix IP, ports, protocol, connection status, CEC input channel, 2) MatrixInput - input channels with labels, device types, input types (HDMI/Component), status, 3) MatrixOutput - output channels with TV labels, resolution, audio routing, CEC info, daily schedule flags, 4) MatrixRoute - active routing state (input to output mappings), 5) MatrixScene - saved routing configurations with JSON route data, 6) WolfpackMatrixRouting - Wolfpack-to-Atlas routing mappings, 7) WolfpackMatrixState - current routing state. All models use Prisma ORM with SQLite.",
+    "answer": "Matrix database models: 1) MatrixConfiguration - stores matrix IP, ports, protocol, connection status, CEC input channel, 2) MatrixInput - input channels with labels, device types, input types (HDMI/Component), status, 3) MatrixOutput - output channels with TV labels, resolution, audio routing, CEC info, daily schedule flags, 4) MatrixRoute - active routing state (input to output mappings), 5) MatrixScene - saved routing configurations with JSON route data, 6) WolfpackMatrixRouting - Wolfpack-to-Atlas routing mappings, 7) WolfpackMatrixState - current routing state. All models use Drizzle ORM with SQLite.",
     "category": "api",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -210,8 +210,8 @@
     "confidence": 1.0
   },
   {
-    "question": "What is the difference between TCP and UDP protocols for matrix control?",
-    "answer": "Matrix protocol differences: 1) TCP (port 5000) - reliable, connection-oriented, guarantees command delivery, used for critical operations like routing changes, 2) UDP (port 4000) - faster, connectionless, no delivery guarantee, used for status queries and non-critical commands, 3) Default protocol (port 4999) - typically TCP for Wolfpack matrices, 4) Configure in MatrixConfiguration with protocol field, 5) TCP is recommended for routing commands to ensure they execute, 6) UDP can be faster for frequent status polling. The system supports both and can be configured per installation.",
+    "question": "What protocol does the Wolf Pack matrix use for routing control?",
+    "answer": "The Wolf Pack matrix uses the HTTP web API (port 80) as the only functional control protocol. CRITICAL: TCP port 5000 is non-functional on ALL Wolf Pack units -- it accepts connections and responds 'OK' to any command, but never actually switches routes. Do NOT use TCP port 5000. The correct HTTP API works as follows: 1) POST to login.php with credentials admin/admin to get a session cookie, 2) Send routing commands via GET to get_json_cmd.php?cmd=o2ox&prm={input_0based},{output_0based} (both input and output use 0-based indices), 3) The response is a JSON array where index=output and value=input, allowing verification that the route was applied, 4) A value of 65535 in the routing map means the output is disconnected. Configure the protocol to 'HTTP' in the MatrixConfiguration database table. The system defaults to HTTP protocol for all Wolf Pack matrices. Legacy TCP/UDP code exists as fallback but should never be used.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0
@@ -302,7 +302,7 @@
   },
   {
     "question": "How do I manage API keys for AI providers?",
-    "answer": "Manage API keys in Settings → AI Configuration: 1) Add keys via web interface or ApiKey database table, 2) Each key has name (display name), provider (xai/anthropic/openai), keyValue (encrypted), 3) Toggle isActive to enable/disable without deleting, 4) Keys are encrypted before storage for security, 5) Multiple keys per provider supported for load balancing, 6) Description field for notes about key usage or limits, 7) Keys are automatically backed up with database. Never expose keys in logs or client-side code.",
+    "answer": "Manage API keys in Settings -> AI Configuration: 1) Add keys via web interface or ApiKey database table, 2) Each key has name (display name), provider (xai/anthropic/openai), keyValue (encrypted), 3) Toggle isActive to enable/disable without deleting, 4) Keys are encrypted before storage for security, 5) Multiple keys per provider supported for load balancing, 6) Description field for notes about key usage or limits, 7) Keys are automatically backed up with database. Never expose keys in logs or client-side code.",
     "category": "configuration",
     "sourceType": "documentation",
     "confidence": 1.0

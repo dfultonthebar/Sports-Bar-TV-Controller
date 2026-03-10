@@ -156,6 +156,7 @@ export default function BartenderRemotePage() {
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
+  const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -332,6 +333,7 @@ export default function BartenderRemotePage() {
           const processor = data.processors[0]
           setAudioProcessorIp(processor.ipAddress)
           setAudioProcessorId(processor.id)
+          setAudioProcessorType(processor.processorType || 'atlas')
         }
       }
     } catch (error) {
@@ -764,9 +766,10 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'audio' && (
           <div className="max-w-7xl mx-auto">
-            <BartenderRemoteAudioPanel 
+            <BartenderRemoteAudioPanel
               processorIp={audioProcessorIp}
               processorId={audioProcessorId}
+              processorType={audioProcessorType}
             />
           </div>
         )}

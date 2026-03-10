@@ -41,6 +41,10 @@ export interface DbxControlServiceConfig {
   port?: number // TCP port override (default: 3804)
   baudRate?: number // Serial baud rate override (default: 57600)
   autoReconnect?: boolean // Auto-reconnect on disconnect (default: true)
+
+  // HiQnet addressing (from ZonePRO Designer)
+  deviceAddress?: number // ZonePRO's HiQnet node address (default: 0x001E = Node 30)
+  routerObjects?: import('./dbx-protocol').HiQnetAddress[] // Router Object addresses per zone
 }
 
 export interface ZoneState {
@@ -131,6 +135,8 @@ export class DbxControlService extends EventEmitter {
           ipAddress: this.config.ipAddress!,
           port: this.config.port,
           autoReconnect: this.config.autoReconnect ?? true,
+          deviceAddress: this.config.deviceAddress,
+          routerObjects: this.config.routerObjects,
         }
 
         this.client = new DbxTcpClient(tcpConfig)
@@ -241,17 +247,6 @@ export class DbxControlService extends EventEmitter {
         break
     }
 
-    logger.info('[DBX-CONTROL] Setting volume', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        rawVolume,
-        percent: volumeToPercent(rawVolume),
-        db: volumeToDb(rawVolume),
-        stereo,
-      },
-    })
-
     await this.client!.setVolume(zone, rawVolume, stereo)
 
     // Update local state
@@ -313,14 +308,6 @@ export class DbxControlService extends EventEmitter {
     this.validateZone(zone)
     this.ensureConnected()
 
-    logger.info('[DBX-CONTROL] Setting mute', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        muted,
-      },
-    })
-
     await this.client!.setMute(zone, muted)
 
     // Update local state
@@ -361,14 +348,6 @@ export class DbxControlService extends EventEmitter {
     this.validateZone(zone)
     this.validateSource(sourceIndex)
     this.ensureConnected()
-
-    logger.info('[DBX-CONTROL] Setting source', {
-      data: {
-        deviceId: this.config.deviceId,
-        zone,
-        sourceIndex,
-      },
-    })
 
     await this.client!.setSource(zone, sourceIndex)
 
@@ -481,39 +460,42 @@ export class DbxControlService extends EventEmitter {
 
 // Service registry for managing multiple processors
 const serviceRegistry: Map<string, DbxControlService> = new Map()
+// Pending creation promises to prevent race conditions
+const pendingCreation: Map<string, Promise<DbxControlService>> = new Map()
 
 /**
  * Get or create a control service for a device
+ * Uses pending promise map to prevent duplicate creation from concurrent calls
  */
 export async function getDbxControlService(
   config: DbxControlServiceConfig
 ): Promise<DbxControlService> {
-  // Check if service already exists
+  // Check if service already exists and is connected
   if (serviceRegistry.has(config.deviceId)) {
     const existing = serviceRegistry.get(config.deviceId)!
     if (existing.isConnected()) {
       return existing
     }
-    // Service exists but not connected, reconnect
     await existing.connect()
     return existing
   }
 
-  // Create new service
-  const service = new DbxControlService(config)
-  await service.connect()
+  // Check if creation is already in progress (concurrent call race)
+  if (pendingCreation.has(config.deviceId)) {
+    return pendingCreation.get(config.deviceId)!
+  }
 
-  // Store in registry
-  serviceRegistry.set(config.deviceId, service)
+  // Create new service (store promise to prevent duplicate creation)
+  const createPromise = (async () => {
+    const service = new DbxControlService(config)
+    await service.connect()
+    serviceRegistry.set(config.deviceId, service)
+    pendingCreation.delete(config.deviceId)
+    return service
+  })()
 
-  // Clean up on disconnect (if not auto-reconnecting)
-  service.once('error', () => {
-    if (!config.autoReconnect) {
-      serviceRegistry.delete(config.deviceId)
-    }
-  })
-
-  return service
+  pendingCreation.set(config.deviceId, createPromise)
+  return createPromise
 }
 
 /**

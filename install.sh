@@ -418,9 +418,8 @@ download_ollama_models() {
     # Format: "model_name:tag|description"
     local REQUIRED_MODELS=(
         "llama3.2:3b|Primary model for enhanced chat, tool chat, and log analysis"
-        "phi3:mini|Lightweight model for general chat interface"
-        "llama2|Backup model for device diagnostics"
-        "mistral|Fast model for quick queries"
+        "phi3:mini|Lightweight model for sports guide and quick queries"
+        "nomic-embed-text|Embedding model for RAG documentation search"
     )
     
     local total_models=${#REQUIRED_MODELS[@]}
@@ -524,12 +523,9 @@ download_ollama_models() {
         print_success "All required AI models downloaded successfully!"
         echo ""
         print_info "AI Features Ready:"
-        echo "  ✓ Enhanced Chat (llama3.2:3b)"
-        echo "  ✓ Tool Chat (llama3.2:3b)"
-        echo "  ✓ Log Analysis (llama3.2:3b)"
-        echo "  ✓ General Chat (phi3:mini)"
-        echo "  ✓ Device Diagnostics (llama2)"
-        echo "  ✓ Quick Queries (mistral)"
+        echo "  - Enhanced Chat & Log Analysis (llama3.2:3b)"
+        echo "  - Sports Guide & Quick Queries (phi3:mini)"
+        echo "  - RAG Documentation Search (nomic-embed-text)"
         echo ""
     fi
 }
@@ -1118,15 +1114,48 @@ print_final_instructions() {
     echo -e "  • Or log out and log back in to refresh your PATH"
     echo ""
     
+    echo -e "${CYAN}Post-Install (if migrating from existing location):${NC}"
+    echo -e "  Migrate data: ${YELLOW}cd $INSTALL_DIR && ./scripts/new-location-setup.sh --migrate-from <source-ip>${NC}"
+    echo -e "  Device setup: ${YELLOW}./scripts/post-install-setup.sh${NC}"
+    echo ""
+
     echo -e "${CYAN}Uninstall:${NC}"
     echo -e "  To uninstall: ${YELLOW}cd $INSTALL_DIR && ./uninstall.sh${NC}"
     echo -e "  Or download: ${YELLOW}curl -sSL https://raw.githubusercontent.com/dfultonthebar/Sports-Bar-TV-Controller/main/uninstall.sh | bash${NC}"
     echo ""
-    
+
     echo -e "${CYAN}Documentation:${NC}"
     echo -e "  README: ${YELLOW}$INSTALL_DIR/README.md${NC}"
     echo -e "  GitHub: ${YELLOW}https://github.com/dfultonthebar/Sports-Bar-TV-Controller${NC}"
     echo ""
+}
+
+#############################################################################
+# PHASE 10: Post-Install Setup
+#############################################################################
+# Runs the new-location-setup.sh script to configure:
+# - PM2 logrotate (log rotation for production)
+# - NEXTAUTH_URL (auto-detect local IP)
+# - Database backup script and crontab
+# - Memory monitor crontab
+#############################################################################
+
+run_post_install_setup() {
+    print_header "PHASE 10: Post-Install Configuration"
+
+    local setup_script="$INSTALL_DIR/scripts/new-location-setup.sh"
+
+    if [ -f "$setup_script" ]; then
+        chmod +x "$setup_script"
+        log_and_print "Running new-location-setup.sh..."
+        # Run non-interactively (skip LVM prompt and data migration)
+        bash "$setup_script" 2>&1 | tee -a "$LOG_FILE" || {
+            print_warning "Post-install setup had warnings (non-fatal)"
+        }
+    else
+        print_warning "Post-install script not found at $setup_script"
+        print_info "Run manually after install: ./scripts/new-location-setup.sh"
+    fi
 }
 
 #############################################################################
@@ -1234,9 +1263,12 @@ main() {
     # PHASE 9: Verify everything works
     verify_installation
     
+    # PHASE 10: Post-install setup (PM2 logrotate, crontab, NEXTAUTH_URL)
+    run_post_install_setup
+
     # Show completion message
     print_final_instructions
-    
+
     log "Installation completed at $(date)"
 }
 

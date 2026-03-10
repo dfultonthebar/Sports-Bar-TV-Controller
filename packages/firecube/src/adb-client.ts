@@ -351,6 +351,45 @@ export class ADBClient {
     }
   }
 
+  /**
+   * Launch Paramount+ Live TV with automated profile selection.
+   *
+   * Sequence:
+   * 1. Deep link to Paramount+ live TV activity
+   * 2. Wait for profile picker to appear (~5 seconds)
+   * 3. Send DPAD_CENTER to auto-select the first profile
+   *
+   * The caller should allow ~8 additional seconds after this method
+   * returns for the live TV stream to begin playing.
+   */
+  async launchParamountLiveTV(): Promise<string> {
+    try {
+      logger.info(`[ADB CLIENT] Launching Paramount+ Live TV on ${this.deviceAddress}`)
+
+      // Step 1: Launch Paramount+ with live-tv deep link
+      const launchResult = await this.executeShellCommand(
+        'am start -a android.intent.action.VIEW ' +
+        '-n "com.cbs.ott/com.paramount.android.pplus.features.splash.tv.SplashMediatorActivity" ' +
+        '-d "https://www.paramountplus.com/live-tv/"'
+      )
+      logger.info(`[ADB CLIENT] Paramount+ launch result: ${launchResult}`)
+
+      // Step 2: Wait for profile picker to appear
+      logger.info(`[ADB CLIENT] Waiting 5s for Paramount+ profile picker on ${this.deviceAddress}`)
+      await new Promise(resolve => setTimeout(resolve, 5000))
+
+      // Step 3: Send DPAD_CENTER to select the first profile
+      logger.info(`[ADB CLIENT] Sending DPAD_CENTER to select profile on ${this.deviceAddress}`)
+      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+
+      logger.info(`[ADB CLIENT] Paramount+ Live TV launch sequence completed on ${this.deviceAddress}`)
+      return 'Paramount+ Live TV launch sequence completed'
+    } catch (error) {
+      logger.error(`[ADB CLIENT] Paramount+ Live TV launch error:`, error)
+      throw error
+    }
+  }
+
   async stopApp(packageName: string): Promise<string> {
     try {
       logger.info(`[ADB CLIENT] Stopping app ${packageName} on ${this.deviceAddress}`)

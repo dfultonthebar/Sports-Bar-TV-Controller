@@ -1,8 +1,8 @@
 # Location Backup Restore Instructions
 
-## Location: Lucky's 1313
-## Backup Date: 2026-02-18T20:03:50.929Z
-## Location ID: 39172208-7751-4182-af6a-129307c3e42e
+## Location: Leg Lamp
+## Backup Date: 2026-03-05T18:42:36.908Z
+## Location ID: fd8d5821-4b7e-4e70-873b-0ffec0285f3e
 
 ## To restore this backup:
 
@@ -16,8 +16,11 @@
 
 ## Tables included:
 - Location: 1 rows
-- GlobalCacheDevice: 2 rows
-- GlobalCachePort: 6 rows
-- IRDevice: 4 rows
-- IRCommand: 124 rows
-- ChannelPreset: 108 rows
+- MatrixConfiguration: 1 rows
+- MatrixInput: 18 rows
+- MatrixOutput: 18 rows
+- MatrixRoute: 12 rows
+- GlobalCacheDevice: 1 rows
+- GlobalCachePort: 3 rows
+- IRDevice: 3 rows
+- IRCommand: 81 rows

@@ -24,6 +24,7 @@ import {
   buildMuteSetFrame,
   buildSourceSetFrame,
   buildRecallSceneFrame,
+  DEFAULT_ROUTER_OBJECTS,
 } from './dbx-protocol'
 
 // Dynamic import for serialport to handle environments without serial support
@@ -66,7 +67,7 @@ export class DbxSerialClient extends EventEmitter {
   private serialPort: any = null
   private connected: boolean = false
   private connecting: boolean = false
-  private frameBuffer: FrameBuffer = new FrameBuffer()
+  private frameBuffer = new FrameBuffer()
   private sequenceNumber: number = 0
   private pendingCommands: Map<number, PendingCommand> = new Map()
   private pingTimer: NodeJS.Timeout | null = null
@@ -443,7 +444,8 @@ export class DbxSerialClient extends EventEmitter {
       data: { zone, volume: actualVolume, stereo },
     })
 
-    const frame = buildVolumeSetFrame(zone, actualVolume, stereo, this.getNextSequence())
+    const destAddress = DEFAULT_ROUTER_OBJECTS[zone] || DEFAULT_ROUTER_OBJECTS[0]
+    const frame = buildVolumeSetFrame(destAddress, actualVolume, this.getNextSequence())
     return this.sendFrame(frame, false) // Volume set doesn't need response
   }
 
@@ -458,7 +460,8 @@ export class DbxSerialClient extends EventEmitter {
       data: { zone, muted },
     })
 
-    const frame = buildMuteSetFrame(zone, muted, this.getNextSequence())
+    const destAddr = DEFAULT_ROUTER_OBJECTS[zone] || DEFAULT_ROUTER_OBJECTS[0]
+    const frame = buildMuteSetFrame(destAddr, muted, this.getNextSequence())
     return this.sendFrame(frame, false)
   }
 
@@ -473,7 +476,8 @@ export class DbxSerialClient extends EventEmitter {
       data: { zone, sourceIndex },
     })
 
-    const frame = buildSourceSetFrame(zone, sourceIndex, this.getNextSequence())
+    const destAddr = DEFAULT_ROUTER_OBJECTS[zone] || DEFAULT_ROUTER_OBJECTS[0]
+    const frame = buildSourceSetFrame(destAddr, sourceIndex, this.getNextSequence())
     return this.sendFrame(frame, false)
   }
 
@@ -487,7 +491,8 @@ export class DbxSerialClient extends EventEmitter {
       data: { sceneNumber },
     })
 
-    const frame = buildRecallSceneFrame(sceneNumber, this.getNextSequence())
+    const destAddr: import('./dbx-protocol').HiQnetAddress = { device: 0x0001, vd: 0x00, object: 0x000000 }
+    const frame = buildRecallSceneFrame(destAddr, sceneNumber, this.getNextSequence())
     return this.sendFrame(frame, false)
   }
 

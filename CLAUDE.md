@@ -326,10 +326,15 @@ DUMPDMROUTEI              # Get current routing state
 - Features: Dante/CobraNet support on some models
 - Control: Zone volume, mute, source selection
 
-**dbx ZonePRO (RS-232/TCP):**
+**dbx ZonePRO (TCP/RS-232):**
 - Models: 640, 640m, 641, 641m, 1260, 1260m, 1261, 1261m
-- Protocol: RS-232 (serial) or TCP (port 3804)
-- Control: Zone volume, mute, source routing
+- Protocol: TCP (port 3804) preferred, RS-232 (serial) also supported
+- Control: Zone volume, mute, source routing, scene recall
+- **CRITICAL:** TCP framing is different from RS-232 — NO F0/64/00 prefix, NO checksum over TCP
+- Router SV IDs: 0x0000=Source (UBYTE), 0x0001=Volume (UWORD 0-415), 0x0002=Mute (UBYTE)
+- Object ID formula: device-specific, configured in ZonePRO Designer
+- **Failsafe gotcha:** New TCP connections trigger failsafe mode which shifts source indices. Fix: auto-recall Scene 1 on connect (`sceneOnConnect` in DbxTcpClient)
+- Fire-and-forget protocol: no response expected from device
 
 **UI Location:** Device Config page → Audio Processors section
 **Component:** `apps/web/src/components/AudioProcessorManager.tsx`
@@ -680,6 +685,43 @@ const result = await queryDocs({
 **Important:** IR codes must be COMPLETE. Truncated codes will cause `ERR_2:1,010` errors from iTach device. The learning API properly buffers TCP data to ensure complete codes are captured.
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
+
+## Multi-Location Deployment
+
+This system supports multiple sports bar locations. Each location runs its own installation with location-specific data on dedicated git branches.
+
+### Location Branch Convention
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Shared code with empty data templates |
+| `location/graystone` | Graystone (Green Bay, WI) data |
+| `location/lucky-s-1313` | Lucky's data |
+
+### Location-Specific Files (empty templates on main)
+
+These files are replaced with real data on location branches:
+- `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
+- `apps/web/data/directv-devices.json` — DirecTV receiver configs
+- `apps/web/data/firetv-devices.json` — Fire TV device configs
+- `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
+- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
+- `apps/web/public/uploads/layouts/` — Floor plan images (gitignored)
+- `data/` mirrors — Root copies of the above
+- `.env` — `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+
+### Workflow: Pulling Code Updates to a Location
+
+```bash
+git checkout location/<name>
+git merge main
+# On conflict with data files → keep the location version
+npm run build && pm2 restart sports-bar-tv-controller
+```
+
+### Shared Location Reference Docs
+
+See `.claude/locations/` for per-location details (device IPs, input maps, channel numbers).
 
 ## Documentation References
 

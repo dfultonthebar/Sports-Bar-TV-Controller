@@ -116,7 +116,7 @@ The automated installation script performs the following steps:
 2. ✅ **Dependencies** - Installs Node.js 20.x, npm, git, build tools, SQLite3
 3. ✅ **Repository** - Clones the project from GitHub
 4. ✅ **NPM Packages** - Installs all Node.js dependencies
-5. ✅ **Database** - Sets up SQLite database with Prisma
+5. ✅ **Database** - Sets up SQLite database with Drizzle ORM
 6. ✅ **Environment** - Creates .env file with secure defaults
 7. ✅ **Build** - Compiles the Next.js application
 8. ✅ **Service** - Installs and starts systemd service
@@ -223,17 +223,14 @@ npm list --depth=0
 ### Step 6: Set Up Database
 
 ```bash
-# Generate Prisma client
-npx prisma generate
+# Create the production database directory
+mkdir -p /home/ubuntu/sports-bar-data
 
-# Create database directory
-mkdir -p prisma/data
+# Push the schema to create the database
+npm run db:push
 
-# Run database migrations
-npx prisma migrate deploy
-
-# If migrations fail, push schema directly
-npx prisma db push --accept-data-loss
+# Seed Wolf Pack configuration (if using Wolf Pack matrix)
+npx tsx scripts/seed-wolfpack-config.ts
 ```
 
 ### Step 7: Create Environment File
@@ -321,7 +318,7 @@ The application uses environment variables for configuration. All settings are s
 
 ```bash
 # Database Configuration
-DATABASE_URL="file:./prisma/data/sports_bar.db"
+DATABASE_URL="file:/home/ubuntu/sports-bar-data/production.db"
 
 # Authentication (REQUIRED)
 NEXTAUTH_SECRET="your-secure-random-string-here"
@@ -437,15 +434,17 @@ ip addr show | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | cut -d/ -f1
 
 ## Database Setup
 
-The application uses SQLite as its database, managed by Prisma ORM.
+The application uses SQLite as its database, managed by Drizzle ORM.
 
 ### Database Location
 
 ```
-/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+/home/ubuntu/sports-bar-data/production.db
 ```
 
 ### Database Schema
+
+The schema is defined in `packages/database/src/schema.ts`.
 
 The database includes tables for:
 - **Users** - Authentication and user management
@@ -465,51 +464,45 @@ The database includes tables for:
 - **TestLog** - System test results
 - **IndexedFile** - Knowledge base file index
 
-### Prisma Commands
+### Drizzle ORM Commands
 
 ```bash
-# Generate Prisma client (after schema changes)
-npx prisma generate
+# Generate Drizzle migrations (after schema changes)
+npm run db:generate
 
-# View database in Prisma Studio
-npx prisma studio
+# Push schema changes directly to the database
+npm run db:push
 
-# Run migrations
-npx prisma migrate deploy
+# Open Drizzle Studio database GUI
+npm run db:studio
 
-# Push schema changes (development)
-npx prisma db push
-
-# Reset database (WARNING: deletes all data)
-npx prisma migrate reset
-
-# Create a new migration
-npx prisma migrate dev --name migration_name
+# Seed Wolf Pack configuration
+npx tsx scripts/seed-wolfpack-config.ts
 ```
 
 ### Database Backup
 
 ```bash
 # Create backup
-cp /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+cp /home/ubuntu/sports-bar-data/production.db \
    /home/ubuntu/sports_bar_backup_$(date +%Y%m%d_%H%M%S).db
 
 # Restore from backup
 cp /home/ubuntu/sports_bar_backup_YYYYMMDD_HHMMSS.db \
-   /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+   /home/ubuntu/sports-bar-data/production.db
 ```
 
 ### Database Maintenance
 
 ```bash
 # Optimize database (reduce file size)
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "VACUUM;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "VACUUM;"
 
 # Check database integrity
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "PRAGMA integrity_check;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA integrity_check;"
 
 # View database size
-ls -lh /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+ls -lh /home/ubuntu/sports-bar-data/production.db
 ```
 
 ---
@@ -561,7 +554,8 @@ npm install
 npm run build
 
 # After database schema changes
-npx prisma generate
+npm run db:generate
+npm run db:push
 npm run build
 ```
 
@@ -888,7 +882,7 @@ The knowledge base indexes:
 ### Knowledge Base Location
 
 ```
-/home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+/home/ubuntu/sports-bar-data/production.db
 ```
 
 Knowledge is stored in the `IndexedFile` and `Document` tables.
@@ -905,11 +899,11 @@ Knowledge is stored in the `IndexedFile` and `Document` tables.
 
 ```bash
 # Check indexed files
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
   "SELECT COUNT(*) FROM IndexedFile;"
 
 # View indexed documents
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
   "SELECT filename, uploadedAt FROM Document ORDER BY uploadedAt DESC LIMIT 10;"
 ```
 
@@ -920,7 +914,7 @@ sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db \
 cd /home/ubuntu/Sports-Bar-TV-Controller
 
 # Clear existing index
-sqlite3 prisma/data/sports_bar.db "DELETE FROM IndexedFile;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "DELETE FROM IndexedFile;"
 
 # Rebuild from documents
 npm run build-knowledge-base
@@ -940,8 +934,7 @@ npm run build-knowledge-base
 4. Add matrix configuration:
    - Name: "Main Bar Matrix"
    - IP Address: 192.168.1.100
-   - TCP Port: 5000 (default)
-   - UDP Port: 4000 (default)
+   - Protocol: HTTP (recommended - TCP port 5000 is non-functional)
 5. Configure inputs and outputs
 6. Test connection
 
@@ -1058,30 +1051,30 @@ sudo journalctl -u sportsbar-assistant -n 50
    ```bash
    # Find what's using port 3000
    sudo lsof -i :3000
-   
+
    # Kill the process
    sudo kill -9 <PID>
-   
+
    # Or change port in .env
    PORT=8080
    ```
 
 2. **Database Errors**
    ```bash
-   # Reset database
+   # Re-push the schema to recreate tables
    cd /home/ubuntu/Sports-Bar-TV-Controller
-   npx prisma migrate reset
-   
-   # Or recreate
-   rm -f prisma/data/sports_bar.db
-   npx prisma migrate deploy
+   npm run db:push
+
+   # Or delete and recreate (WARNING: deletes all data)
+   rm -f /home/ubuntu/sports-bar-data/production.db
+   npm run db:push
    ```
 
 3. **Permission Issues**
    ```bash
    # Fix ownership
    sudo chown -R ubuntu:ubuntu /home/ubuntu/Sports-Bar-TV-Controller
-   
+
    # Fix .env permissions
    chmod 600 /home/ubuntu/Sports-Bar-TV-Controller/.env
    ```
@@ -1155,21 +1148,21 @@ sudo usermod -a -G dialout ubuntu
 
 **Check Database File:**
 ```bash
-ls -la /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+ls -la /home/ubuntu/sports-bar-data/production.db
 ```
 
 **Test Database Connection:**
 ```bash
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "SELECT COUNT(*) FROM User;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM User;"
 ```
 
 **Repair Database:**
 ```bash
 # Check integrity
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "PRAGMA integrity_check;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA integrity_check;"
 
 # Vacuum (optimize)
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "VACUUM;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "VACUUM;"
 ```
 
 ### Performance Issues
@@ -1200,7 +1193,7 @@ systemctl status sportsbar-assistant
 
 **Optimize Database:**
 ```bash
-sqlite3 /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db "VACUUM;"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "VACUUM;"
 ```
 
 ### AI Features Not Working
@@ -1257,7 +1250,7 @@ cd /home/ubuntu/Sports-Bar-TV-Controller
 sudo systemctl stop sportsbar-assistant
 
 # Backup database
-cp prisma/data/sports_bar.db prisma/data/sports_bar.db.backup
+cp /home/ubuntu/sports-bar-data/production.db /home/ubuntu/sports-bar-data/production.db.backup
 
 # Pull latest changes
 git pull origin main
@@ -1265,8 +1258,8 @@ git pull origin main
 # Install new dependencies
 npm install
 
-# Run migrations
-npx prisma migrate deploy
+# Apply any schema changes
+npm run db:push
 
 # Rebuild application
 npm run build
@@ -1308,7 +1301,7 @@ git log --oneline
 git reset --hard <commit-hash>
 
 # Restore database backup
-cp prisma/data/sports_bar.db.backup prisma/data/sports_bar.db
+cp /home/ubuntu/sports-bar-data/production.db.backup /home/ubuntu/sports-bar-data/production.db
 
 # Rebuild
 npm install
@@ -1330,12 +1323,13 @@ sudo systemctl start sportsbar-assistant
 BACKUP_DIR="/home/ubuntu/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 PROJECT_DIR="/home/ubuntu/Sports-Bar-TV-Controller"
+DB_DIR="/home/ubuntu/sports-bar-data"
 
 mkdir -p $BACKUP_DIR
 
 # Backup database
-cp $PROJECT_DIR/prisma/data/sports_bar.db \
-   $BACKUP_DIR/sports_bar_${TIMESTAMP}.db
+cp $DB_DIR/production.db \
+   $BACKUP_DIR/production_${TIMESTAMP}.db
 
 # Backup .env file
 cp $PROJECT_DIR/.env \
@@ -1369,8 +1363,8 @@ crontab -e
 sudo systemctl stop sportsbar-assistant
 
 # Restore database
-cp /home/ubuntu/backups/sports_bar_YYYYMMDD_HHMMSS.db \
-   /home/ubuntu/Sports-Bar-TV-Controller/prisma/data/sports_bar.db
+cp /home/ubuntu/backups/production_YYYYMMDD_HHMMSS.db \
+   /home/ubuntu/sports-bar-data/production.db
 
 # Start service
 sudo systemctl start sportsbar-assistant
@@ -1428,9 +1422,9 @@ sudo journalctl -u sportsbar-assistant -f
 sudo journalctl -u sportsbar-assistant -n 100
 
 # Database
-npx prisma studio
-npx prisma migrate deploy
-sqlite3 prisma/data/sports_bar.db
+npm run db:studio
+npm run db:push
+sqlite3 /home/ubuntu/sports-bar-data/production.db
 
 # Application
 npm run dev          # Development mode
@@ -1456,7 +1450,7 @@ pm2 logs sports-bar-tv-controller
 - **Repository**: https://github.com/dfultonthebar/Sports-Bar-TV-Controller
 - **Issue Tracker**: https://github.com/dfultonthebar/Sports-Bar-TV-Controller/issues
 - **Next.js Docs**: https://nextjs.org/docs
-- **Prisma Docs**: https://www.prisma.io/docs
+- **Drizzle ORM Docs**: https://orm.drizzle.team/docs/overview
 
 ---
 
@@ -1519,7 +1513,7 @@ cd /home/ubuntu/Sports-Bar-TV-Controller
 
 **Backup:**
 ```bash
-cp prisma/data/sports_bar.db ~/sports_bar_backup_$(date +%Y%m%d).db
+cp /home/ubuntu/sports-bar-data/production.db ~/sports_bar_backup_$(date +%Y%m%d).db
 ```
 
 ---

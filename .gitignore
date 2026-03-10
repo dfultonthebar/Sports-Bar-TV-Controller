@@ -47,6 +47,7 @@ next-env.d.ts
 !/uploads/.gitkeep
 /public/uploads/*
 !/public/uploads/.gitkeep
+apps/web/public/uploads/layouts/
 
 # logs
 *.log
@@ -76,8 +77,9 @@ migrate-*-to-drizzle.*
 data/*.json
 !data/*.template.json
 data/scene-logs/
-data/atlas-configs/*.json
-!data/atlas-configs/*.template.json
+data/atlas-configs/
+apps/web/data/atlas-configs/
+data/backups/
 
 # IDE
 .vscode/

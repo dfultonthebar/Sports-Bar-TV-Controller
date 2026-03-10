@@ -21,7 +21,7 @@ export { sportsDBAPI, type SportsDBTeam, type SportsDBEvent, type SportsDBLeague
 export { nflSundayTicketService, type SundayTicketGame } from './nfl-sunday-ticket'
 
 // Live Sports Service (combined)
-export { liveSportsService, type UnifiedGame, type ChannelMapping } from './live-sports-service'
+export { liveSportsService, type UnifiedGame, type ChannelMapping, type ChannelLookupFn } from './live-sports-service'
 
 // Enhanced Live Sports Service
 export { enhancedLiveSportsService, type EnhancedUnifiedGame, type EnhancedSportsDataResponse } from './enhanced-live-sports-service'

@@ -1,10 +1,10 @@
 {
   "version": "1.0",
-  "createdAt": "2026-02-18T20:03:50.927Z",
+  "createdAt": "2026-03-05T18:42:36.907Z",
   "location": {
-    "id": "39172208-7751-4182-af6a-129307c3e42e",
-    "name": "Lucky's 1313",
-    "city": "Madison",
+    "id": "fd8d5821-4b7e-4e70-873b-0ffec0285f3e",
+    "name": "Leg Lamp",
+    "city": "Appleton",
     "state": "WI"
   },
   "tables": [
@@ -13,25 +13,37 @@
       "rowCount": 1
     },
     {
+      "name": "MatrixConfiguration",
+      "rowCount": 1
+    },
+    {
+      "name": "MatrixInput",
+      "rowCount": 18
+    },
+    {
+      "name": "MatrixOutput",
+      "rowCount": 18
+    },
+    {
+      "name": "MatrixRoute",
+      "rowCount": 12
+    },
+    {
       "name": "GlobalCacheDevice",
-      "rowCount": 2
+      "rowCount": 1
     },
     {
       "name": "GlobalCachePort",
-      "rowCount": 6
+      "rowCount": 3
     },
     {
       "name": "IRDevice",
-      "rowCount": 4
+      "rowCount": 3
     },
     {
       "name": "IRCommand",
-      "rowCount": 124
-    },
-    {
-      "name": "ChannelPreset",
-      "rowCount": 108
+      "rowCount": 81
     }
   ],
-  "totalRows": 245
+  "totalRows": 138
 }

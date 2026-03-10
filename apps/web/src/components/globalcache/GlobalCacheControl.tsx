@@ -55,6 +55,13 @@ export default function GlobalCacheControl() {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
+  const [editingDevice, setEditingDevice] = useState<string | null>(null)
+  const [editFormData, setEditFormData] = useState<AddDeviceForm>({
+    name: '',
+    ipAddress: '',
+    port: '4998',
+    model: ''
+  })
   const [formData, setFormData] = useState<AddDeviceForm>({
     name: '',
     ipAddress: '',
@@ -171,6 +178,49 @@ export default function GlobalCacheControl() {
       logger.error('Error deleting device:', error)
       alert('Failed to delete device')
     }
+  }
+
+  const handleEditDevice = (device: GlobalCacheDevice) => {
+    setEditingDevice(device.id)
+    setEditFormData({
+      name: device.name,
+      ipAddress: device.ipAddress,
+      port: String(device.port),
+      model: device.model || ''
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingDevice) return
+
+    try {
+      const response = await fetch(`/api/globalcache/devices/${editingDevice}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editFormData.name,
+          ipAddress: editFormData.ipAddress,
+          port: parseInt(editFormData.port) || 4998,
+          model: editFormData.model || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        await fetchDevices()
+        setEditingDevice(null)
+      } else {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      logger.error('Error updating device:', error)
+      alert('Failed to update device')
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingDevice(null)
   }
 
   const handleStartLearning = async () => {
@@ -423,9 +473,17 @@ export default function GlobalCacheControl() {
                   <div className="flex-1">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Radio className="w-4 h-4" />
-                      {device.name}
+                      {editingDevice === device.id ? (
+                        <Input
+                          value={editFormData.name}
+                          onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                          className="bg-slate-800 border-slate-600 h-8 text-base"
+                        />
+                      ) : (
+                        device.name
+                      )}
                     </CardTitle>
-                    {device.model && (
+                    {editingDevice !== device.id && device.model && (
                       <p className="text-sm text-slate-400 mt-1">{device.model}</p>
                     )}
                   </div>
@@ -439,54 +497,108 @@ export default function GlobalCacheControl() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <Wifi className="w-4 h-4 text-blue-400" />
-                    <span className="font-mono">{device.ipAddress}:{device.port}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <Info className="w-4 h-4" />
-                    <span>
-                      {device.ports?.length || 0} IR port{device.ports?.length !== 1 ? 's' : ''}
-                      {device.ports && ` (${device.ports.filter(p => p.enabled).length} enabled)`}
-                    </span>
-                  </div>
-                  {device.lastSeen && (
-                    <div className="text-xs text-slate-500">
-                      Last seen: {new Date(device.lastSeen).toLocaleString()}
+                {editingDevice === device.id ? (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-400">IP Address</Label>
+                      <Input
+                        value={editFormData.ipAddress}
+                        onChange={(e) => setEditFormData({ ...editFormData, ipAddress: e.target.value })}
+                        className="bg-slate-800 border-slate-600 font-mono"
+                        placeholder="192.168.x.x"
+                      />
                     </div>
-                  )}
-                </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-400">Port</Label>
+                        <Input
+                          type="number"
+                          value={editFormData.port}
+                          onChange={(e) => setEditFormData({ ...editFormData, port: e.target.value })}
+                          className="bg-slate-800 border-slate-600"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-400">Model</Label>
+                        <Input
+                          value={editFormData.model}
+                          onChange={(e) => setEditFormData({ ...editFormData, model: e.target.value })}
+                          className="bg-slate-800 border-slate-600"
+                          placeholder="e.g., IP2IR"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSaveEdit} className="flex-1">
+                        <Save className="w-3 h-3 mr-1" />
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Wifi className="w-4 h-4 text-blue-400" />
+                        <span className="font-mono">{device.ipAddress}:{device.port}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <Info className="w-4 h-4" />
+                        <span>
+                          {device.ports?.length || 0} IR port{device.ports?.length !== 1 ? 's' : ''}
+                          {device.ports && ` (${device.ports.filter(p => p.enabled).length} enabled)`}
+                        </span>
+                      </div>
+                      {device.lastSeen && (
+                        <div className="text-xs text-slate-500">
+                          Last seen: {new Date(device.lastSeen).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
 
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTestDevice(device.id)}
-                    disabled={testing === device.id}
-                    className="flex-1"
-                  >
-                    {testing === device.id ? (
-                      <>
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        Test
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDeleteDevice(device.id, device.name)}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditDevice(device)}
+                        className="flex-1"
+                      >
+                        <Edit3 className="w-3 h-3 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleTestDevice(device.id)}
+                        disabled={testing === device.id}
+                        className="flex-1"
+                      >
+                        {testing === device.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Testing...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3 h-3 mr-1" />
+                            Test
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteDevice(device.id, device.name)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}
