@@ -1,6 +1,6 @@
 /**
  * Sports Guide Configuration Component
- * 
+ *
  * Provides UI for managing Sports Guide API configuration:
  * - View API key status
  * - Verify API key
@@ -11,6 +11,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Key, CheckCircle, XCircle, RefreshCw, Settings, Info, Shield } from 'lucide-react';
 
 import { logger } from '@sports-bar/logger'
 interface ApiStatus {
@@ -47,7 +48,7 @@ export default function SportsGuideConfig() {
       setLoading(true);
       const response = await fetch('/api/sports-guide/status');
       const data = await response.json();
-      
+
       if (data.success) {
         setStatus(data);
         setNewUserId(data.userId || '');
@@ -63,10 +64,10 @@ export default function SportsGuideConfig() {
     try {
       setVerifying(true);
       setVerificationResult(null);
-      
+
       const response = await fetch('/api/sports-guide/verify-key');
       const data = await response.json();
-      
+
       setVerificationResult({
         valid: data.valid,
         message: data.message,
@@ -83,7 +84,7 @@ export default function SportsGuideConfig() {
 
   const handleUpdateKey = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!newApiKey || !newUserId) {
       setUpdateMessage({
         type: 'error',
@@ -95,7 +96,7 @@ export default function SportsGuideConfig() {
     try {
       setUpdating(true);
       setUpdateMessage(null);
-      
+
       const response = await fetch('/api/sports-guide/update-key', {
         method: 'POST',
         headers: {
@@ -106,9 +107,9 @@ export default function SportsGuideConfig() {
           userId: newUserId,
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setUpdateMessage({
           type: 'success',
@@ -117,7 +118,7 @@ export default function SportsGuideConfig() {
         setShowUpdateForm(false);
         setNewApiKey('');
         await fetchStatus();
-        
+
         // Auto-verify after successful update
         setTimeout(() => {
           handleVerifyKey();
@@ -140,50 +141,59 @@ export default function SportsGuideConfig() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Sports Guide API Configuration</h2>
+      <div className="rounded-lg border border-slate-700 p-6">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-4">
+          <Key className="h-5 w-5 text-blue-400" />
+          Sports Guide API Configuration
+        </h2>
         <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Loading configuration...</span>
+          <RefreshCw className="h-6 w-6 text-blue-400 animate-spin" />
+          <span className="ml-3 text-slate-400">Loading configuration...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">Sports Guide API Configuration</h2>
-      
+    <div className="rounded-lg border border-slate-700 p-6">
+      <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-6">
+        <Key className="h-5 w-5 text-blue-400" />
+        Sports Guide API Configuration
+      </h2>
+
       {/* API Status Section */}
       <div className="mb-6">
-        <h3 className="text-lg font-medium mb-3">API Status</h3>
-        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+        <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          API Status
+        </h3>
+        <div className="rounded-lg bg-slate-800/50 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-gray-700">Configuration Status:</span>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              status?.configured 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-red-100 text-red-800'
+            <span className="text-slate-300">Configuration Status</span>
+            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
+              status?.configured
+                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                : 'bg-red-500/20 text-red-400 border-red-500/30'
             }`}>
               {status?.configured ? 'Configured' : 'Not Configured'}
             </span>
           </div>
-          
+
           {status?.configured && (
             <>
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">API URL:</span>
-                <span className="text-gray-900 font-mono text-sm">{status.apiUrl}</span>
+                <span className="text-slate-300">API URL</span>
+                <span className="text-slate-200 font-mono text-sm">{status.apiUrl}</span>
               </div>
-              
+
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">User ID:</span>
-                <span className="text-gray-900 font-mono text-sm">{status.userId}</span>
+                <span className="text-slate-300">User ID</span>
+                <span className="text-slate-200 font-mono text-sm">{status.userId}</span>
               </div>
-              
+
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">API Key:</span>
-                <span className="text-gray-900 font-mono text-sm">
+                <span className="text-slate-300">API Key</span>
+                <span className="text-slate-200 font-mono text-sm">
                   {status.apiKeyPreview || 'Not set'}
                 </span>
               </div>
@@ -195,49 +205,39 @@ export default function SportsGuideConfig() {
       {/* Verification Section */}
       {status?.configured && (
         <div className="mb-6">
-          <h3 className="text-lg font-medium mb-3">API Key Verification</h3>
+          <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">API Key Verification</h3>
           <button
             onClick={handleVerifyKey}
             disabled={verifying}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-colors text-sm font-medium"
           >
             {verifying ? (
               <span className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
                 Verifying...
               </span>
             ) : (
               'Verify API Key'
             )}
           </button>
-          
+
           {verificationResult && (
-            <div className={`mt-3 p-4 rounded-lg ${
-              verificationResult.valid 
-                ? 'bg-green-50 border border-green-200' 
-                : 'bg-red-50 border border-red-200'
+            <div className={`mt-3 p-3 rounded-lg border ${
+              verificationResult.valid
+                ? 'bg-green-500/10 border-green-500/30'
+                : 'bg-red-500/10 border-red-500/30'
             }`}>
-              <div className="flex items-start">
-                <div className={`flex-shrink-0 ${
-                  verificationResult.valid ? 'text-green-600' : 'text-red-600'
+              <div className="flex items-center gap-2">
+                {verificationResult.valid ? (
+                  <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                )}
+                <p className={`text-sm font-medium ${
+                  verificationResult.valid ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  {verificationResult.valid ? (
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-                <div className="ml-3">
-                  <p className={`text-sm font-medium ${
-                    verificationResult.valid ? 'text-green-800' : 'text-red-800'
-                  }`}>
-                    {verificationResult.message}
-                  </p>
-                </div>
+                  {verificationResult.message}
+                </p>
               </div>
             </div>
           )}
@@ -246,19 +246,22 @@ export default function SportsGuideConfig() {
 
       {/* Update API Key Section */}
       <div className="mb-6">
-        <h3 className="text-lg font-medium mb-3">Update API Configuration</h3>
-        
+        <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Update API Configuration
+        </h3>
+
         {!showUpdateForm ? (
           <button
             onClick={() => setShowUpdateForm(true)}
-            className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors text-sm font-medium border border-slate-600"
           >
             {status?.configured ? 'Change API Key' : 'Configure API Key'}
           </button>
         ) : (
-          <form onSubmit={handleUpdateKey} className="bg-gray-50 rounded-lg p-4 space-y-4">
+          <form onSubmit={handleUpdateKey} className="rounded-lg bg-slate-800/50 p-4 space-y-4">
             <div>
-              <label htmlFor="userId" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="userId" className="block text-sm font-medium text-slate-300 mb-1">
                 User ID
               </label>
               <input
@@ -267,13 +270,13 @@ export default function SportsGuideConfig() {
                 value={newUserId}
                 onChange={(e) => setNewUserId(e.target.value)}
                 placeholder="258351"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 required
               />
             </div>
-            
+
             <div>
-              <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="apiKey" className="block text-sm font-medium text-slate-300 mb-1">
                 API Key
               </label>
               <input
@@ -282,28 +285,35 @@ export default function SportsGuideConfig() {
                 value={newApiKey}
                 onChange={(e) => setNewApiKey(e.target.value)}
                 placeholder="12548RK0000d2bb701f55b82bfa192e680985919"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                 required
               />
             </div>
-            
+
             {updateMessage && (
-              <div className={`p-3 rounded-lg ${
-                updateMessage.type === 'success' 
-                  ? 'bg-green-50 border border-green-200 text-green-800' 
-                  : 'bg-red-50 border border-red-200 text-red-800'
+              <div className={`p-3 rounded-lg border ${
+                updateMessage.type === 'success'
+                  ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
               }`}>
-                {updateMessage.text}
+                <span className="text-sm">{updateMessage.text}</span>
               </div>
             )}
-            
+
             <div className="flex space-x-3">
               <button
                 type="submit"
                 disabled={updating}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-colors text-sm font-medium"
               >
-                {updating ? 'Updating...' : 'Update API Key'}
+                {updating ? (
+                  <span className="flex items-center">
+                    <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                    Updating...
+                  </span>
+                ) : (
+                  'Update API Key'
+                )}
               </button>
               <button
                 type="button"
@@ -312,7 +322,7 @@ export default function SportsGuideConfig() {
                   setNewApiKey('');
                   setUpdateMessage(null);
                 }}
-                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors text-sm border border-slate-600"
               >
                 Cancel
               </button>
@@ -322,17 +332,20 @@ export default function SportsGuideConfig() {
       </div>
 
       {/* Information Section */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-blue-900 mb-2">About Sports Guide API</h4>
-        <p className="text-sm text-blue-800 mb-2">
+      <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+        <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-2">
+          <Info className="h-4 w-4" />
+          About Sports Guide API
+        </h4>
+        <p className="text-sm text-slate-300 mb-2">
           The Sports Guide API provides real-time sports programming information for cable, satellite, and streaming services.
         </p>
-        <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+        <ul className="text-sm text-slate-300 space-y-1 list-disc list-inside">
           <li>Cable box channel guide (currently supported)</li>
           <li>Direct TV channel guide (coming soon)</li>
           <li>Streaming service guide (coming soon)</li>
         </ul>
-        <p className="text-xs text-blue-700 mt-3">
+        <p className="text-xs text-slate-400 mt-3">
           API Provider: The Rail Media (guide.thedailyrail.com)
         </p>
       </div>
