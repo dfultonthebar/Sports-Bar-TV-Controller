@@ -150,6 +150,9 @@ const nextConfig = {
       config.externals.push('isolated-vm');
       config.externals.push('serialport');
       config.externals.push('@serialport/bindings-cpp');
+      config.externals.push('ws');
+      config.externals.push('bufferutil');
+      config.externals.push('utf-8-validate');
     }
 
     // Fix React error #31: Ensure React and ReactDOM are properly deduplicated

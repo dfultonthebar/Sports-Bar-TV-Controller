@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Power Control API
@@ -72,6 +72,10 @@ export async function POST(
 
       case 'samsung':
         result = await controlSamsungPower(device, action)
+        break
+
+      case 'sharp':
+        result = await controlSharpPower(device, action)
         break
 
       case 'lg':
@@ -205,23 +209,63 @@ async function controlSamsungPower(
   try {
     let result: { success: boolean; message?: string; error?: string }
 
-    switch (action) {
-      case 'on':
-        result = await client.powerOn()
-        break
-      case 'off':
-        result = await client.powerOff()
-        break
-      case 'toggle':
-        // Samsung doesn't have a dedicated toggle key — use KEY_POWER
-        result = await client.sendKey('KEY_POWER')
-        break
+    if (action === 'on') {
+      // Explicit power on — try WebSocket first, fall back to WOL
+      result = await client.sendKey('KEY_POWER').catch(async () => {
+        logger.info(`[TV-CONTROL] WebSocket failed for power on, falling back to WOL for ${device.ipAddress}`)
+        return client.powerOn()
+      })
+    } else {
+      // off or toggle — send KEY_POWER via WebSocket (works in both on and standby)
+      result = await client.sendKey('KEY_POWER')
     }
+
+    // Wait for the TV to process the command before disconnecting
+    await new Promise(resolve => setTimeout(resolve, 500))
 
     return result
   } catch (error: any) {
+    // Last resort: try WOL if WebSocket completely failed
+    if (action !== 'off' && device.macAddress) {
+      logger.info(`[TV-CONTROL] Falling back to WOL for ${device.ipAddress}`)
+      try {
+        return await client.powerOn()
+      } catch {
+        // WOL also failed
+      }
+    }
     return { success: false, error: error.message }
   } finally {
     client.disconnect()
+  }
+}
+
+/**
+ * Control Sharp Aquos TV power via TCP (port 10002)
+ */
+async function controlSharpPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = new SharpTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port || 10002,
+    brand: TVBrand.SHARP,
+    macAddress: device.macAddress,
+  })
+
+  try {
+    switch (action) {
+      case 'on':
+        return await client.powerOn()
+      case 'off':
+        return await client.powerOff()
+      case 'toggle': {
+        const isOn = await client.getPowerState()
+        return isOn ? await client.powerOff() : await client.powerOn()
+      }
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
   }
 }

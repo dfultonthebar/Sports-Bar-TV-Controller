@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, RokuTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, RokuTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV HDMI Input Control API
@@ -88,6 +88,16 @@ export async function POST(
         break
       }
 
+      case 'sharp': {
+        const client = new SharpTVClient({
+          ipAddress: device.ipAddress,
+          port: device.port || 10002,
+          brand: TVBrand.SHARP,
+        })
+        result = await client.switchInput(inputNumber)
+        break
+      }
+
       default:
         return NextResponse.json(
           { success: false, error: `${device.brand} input switching not yet implemented` },
@@ -98,6 +108,7 @@ export async function POST(
     if (result.success) {
       await db.update(schema.networkTVDevices)
         .set({
+          currentInput: input,
           lastSeen: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })

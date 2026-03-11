@@ -1286,6 +1286,9 @@ export const networkTVDevices = sqliteTable('NetworkTVDevice', {
   // Matrix Integration
   matrixOutputId: text('matrixOutputId').references(() => matrixOutputs.id, { onDelete: 'set null' }),
 
+  // Current state
+  currentInput: text('currentInput'), // Last known HDMI input: 'hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'
+
   // Capabilities
   supportsPower: integer('supportsPower', { mode: 'boolean' }).notNull().default(true),
   supportsVolume: integer('supportsVolume', { mode: 'boolean' }).notNull().default(true),

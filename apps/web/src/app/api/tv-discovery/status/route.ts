@@ -5,6 +5,7 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import * as net from 'net'
 
 /**
  * TV Status Check API
@@ -29,13 +30,15 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.allSettled(
       devices.map(async (device) => {
-        const online = await pingDevice(device.ipAddress, device.brand, device.port)
+        const powerState = await pingDevice(device.ipAddress, device.brand, device.port)
         const now = new Date().toISOString()
+        // Map power state: 'on' = online, 'standby' = standby, null = offline
+        const status = powerState === 'on' ? 'online' : powerState === 'standby' ? 'standby' : 'offline'
 
         await db.update(schema.networkTVDevices)
           .set({
-            status: online ? 'online' : 'offline',
-            ...(online ? { lastSeen: now } : {}),
+            status,
+            ...(powerState ? { lastSeen: now } : {}),
             updatedAt: now,
           })
           .where(eq(schema.networkTVDevices.id, device.id))
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
           ipAddress: device.ipAddress,
           brand: device.brand,
           model: device.model,
-          status: online ? 'online' : 'offline',
+          status,
         }
       })
     )
@@ -75,10 +78,16 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Ping a TV to check if it's reachable.
+ * Ping a TV to check if it's reachable and get its power state.
  * Uses brand-appropriate endpoints with a fast 2-second timeout.
+ * Returns 'on' if powered on, 'standby' if in standby, or null if unreachable.
  */
-async function pingDevice(ip: string, brand: string, port: number): Promise<boolean> {
+async function pingDevice(ip: string, brand: string, port: number): Promise<'on' | 'standby' | null> {
+  // Sharp Aquos uses TCP on port 10002 — not HTTP
+  if (brand.toLowerCase() === 'sharp') {
+    return pingSharpDevice(ip, port || 10002)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 2000)
 
@@ -99,9 +108,56 @@ async function pingDevice(ip: string, brand: string, port: number): Promise<bool
 
     const response = await fetch(url, { signal: controller.signal })
     clearTimeout(timeout)
-    return response.ok
+
+    if (!response.ok) return null
+
+    // Samsung REST API returns PowerState field
+    if (brand.toLowerCase() === 'samsung') {
+      try {
+        const data = await response.json()
+        const powerState = data?.device?.PowerState
+        if (powerState === 'standby') return 'standby'
+      } catch {
+        // JSON parse failure — still reachable
+      }
+    }
+
+    return 'on'
   } catch {
     clearTimeout(timeout)
-    return false
+    return null
   }
+}
+
+/**
+ * Ping a Sharp Aquos TV via TCP port 10002.
+ * Sends POWR? query — response "1" = on, "0" = standby, timeout = offline
+ */
+async function pingSharpDevice(ip: string, port: number): Promise<'on' | 'standby' | null> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    const timeout = setTimeout(() => {
+      socket.destroy()
+      resolve(null)
+    }, 2000)
+
+    socket.connect(port, ip, () => {
+      socket.write('POWR?   \r')
+    })
+
+    socket.on('data', (data) => {
+      clearTimeout(timeout)
+      const resp = data.toString().trim()
+      socket.destroy()
+      if (resp === '1') resolve('on')
+      else if (resp === '0') resolve('standby')
+      else resolve(null)
+    })
+
+    socket.on('error', () => {
+      clearTimeout(timeout)
+      socket.destroy()
+      resolve(null)
+    })
+  })
 }
