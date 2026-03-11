@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, SharpTVClient, VavaTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Power Control API
@@ -76,6 +76,10 @@ export async function POST(
 
       case 'sharp':
         result = await controlSharpPower(device, action)
+        break
+
+      case 'vava':
+        result = await controlVavaPower(device, action)
         break
 
       case 'lg':
@@ -265,6 +269,32 @@ async function controlSharpPower(
         return isOn ? await client.powerOff() : await client.powerOn()
       }
     }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control VAVA projector power via EShare HTTP API + WOL
+ */
+async function controlVavaPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = new VavaTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port || 8000,
+    brand: TVBrand.VAVA,
+    macAddress: device.macAddress,
+  })
+
+  try {
+    // For toggle, use DB status instead of live query — avoids double-sleep causing full shutdown
+    if (action === 'toggle') {
+      const isOn = device.status === 'online'
+      return isOn ? await client.powerOff() : await client.powerOn()
+    }
+    return action === 'on' ? await client.powerOn() : await client.powerOff()
   } catch (error: any) {
     return { success: false, error: error.message }
   }

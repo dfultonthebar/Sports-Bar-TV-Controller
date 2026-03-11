@@ -88,6 +88,11 @@ async function pingDevice(ip: string, brand: string, port: number): Promise<'on'
     return pingSharpDevice(ip, port || 10002)
   }
 
+  // VAVA uses EShare HTTP on port 8000
+  if (brand.toLowerCase() === 'vava') {
+    return pingVavaDevice(ip, port || 8000)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 2000)
 
@@ -160,4 +165,27 @@ async function pingSharpDevice(ip: string, port: number): Promise<'on' | 'standb
       resolve(null)
     })
   })
+}
+
+/**
+ * Ping a VAVA projector via EShare HTTP API on port 8000.
+ * Queries get_volume — if it responds, projector is on.
+ * If connection refused/timeout, projector is off.
+ */
+async function pingVavaDevice(ip: string, port: number): Promise<'on' | 'standby' | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 2000)
+
+  try {
+    const response = await fetch(`http://${ip}:${port}/remote/get_volume`, {
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+    const text = await response.text()
+    if (text.includes("'status':'ok'")) return 'on'
+    return null
+  } catch {
+    clearTimeout(timeout)
+    return null
+  }
 }
