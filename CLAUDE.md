@@ -696,6 +696,7 @@ This system supports multiple sports bar locations. Each location runs its own i
 |--------|---------|
 | `main` | Shared code with empty data templates |
 | `location/graystone` | Graystone (Green Bay, WI) data |
+| `location/holmgren-way` | Holmgren Way (current installation) data |
 | `location/lucky-s-1313` | Lucky's data |
 
 ### Location-Specific Files (empty templates on main)
