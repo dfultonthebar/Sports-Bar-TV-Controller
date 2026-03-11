@@ -170,6 +170,7 @@ export default function BartenderRemotePage() {
   const [tvMessage, setTvMessage] = useState<string | null>(null)
   const [matrixOutputs, setMatrixOutputs] = useState<{ id: string; channelNumber: number; label: string }[]>([])
   const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
+  const [tvPairing, setTvPairing] = useState<string | null>(null)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -774,6 +775,30 @@ export default function BartenderRemotePage() {
     }
   }
 
+  const pairTV = async (deviceId: string) => {
+    setTvPairing(deviceId)
+    setTvMessage('Check TV screen and click "Allow" on the popup...')
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeout: 30000 })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setTvMessage(`Paired successfully! Token saved.`)
+        await loadNetworkTVs()
+      } else {
+        setTvMessage(data.error || 'Pairing failed')
+      }
+    } catch {
+      setTvMessage('Pairing request failed')
+    } finally {
+      setTvPairing(null)
+      setTimeout(() => setTvMessage(null), 5000)
+    }
+  }
+
   const sendTVPower = async (deviceId: string, action: 'on' | 'off' | 'toggle') => {
     setTvPowerLoading(`${deviceId}-${action}`)
     try {
@@ -1046,11 +1071,25 @@ export default function BartenderRemotePage() {
                       </div>
                     )}
 
-                    {/* HDMI Input Buttons */}
+                    {/* Pair Button (Samsung without token) */}
+                    {tv.brand.toLowerCase() === 'samsung' && !tv.authToken && (
+                      <button
+                        onClick={() => pairTV(tv.id)}
+                        disabled={tvPairing === tv.id}
+                        className="w-full py-1.5 mb-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                      >
+                        {tvPairing === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Pairing...</> : 'Pair TV'}
+                      </button>
+                    )}
+
+                    {/* HDMI Input Buttons — active input highlighted green */}
                     {tv.supportsInput && (
                       <div>
                         <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
                           <Monitor className="w-2.5 h-2.5" /> HDMI Input
+                          {tv.currentInput && (
+                            <span className="text-blue-400 ml-auto">{tv.currentInput.toUpperCase()}</span>
+                          )}
                         </p>
                         <div className="grid grid-cols-4 gap-1">
                           {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (

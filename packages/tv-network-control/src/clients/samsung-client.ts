@@ -276,6 +276,49 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
+   * Get the current HDMI input source via WebSocket ed.edenApp.get event
+   * Requires auth token (TV must be paired)
+   */
+  async getCurrentSource(): Promise<CommandResult & { source?: string }> {
+    try {
+      await this.ensureConnection()
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return { success: false, error: 'WebSocket not connected' }
+      }
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({ success: false, error: 'Timeout waiting for source info' })
+        }, 5000)
+
+        const handler = (data: WebSocket.Data) => {
+          try {
+            const msg = JSON.parse(data.toString())
+            // Samsung TVs respond with ed.edenTV.update containing current source
+            if (msg.event === 'ed.edenTV.update' || msg.event === 'ed.edenApp.get') {
+              clearTimeout(timeout)
+              this.ws?.removeListener('message', handler)
+              const source = msg.data?.source || msg.data?.input || msg.data?.id || null
+              resolve({ success: true, source, message: `Current source: ${source}` })
+            }
+          } catch { /* ignore non-JSON */ }
+        }
+
+        this.ws!.on('message', handler)
+
+        // Request current source info
+        this.ws!.send(JSON.stringify({
+          method: 'ms.channel.emit',
+          params: { event: 'ed.edenApp.get', to: 'host' }
+        }))
+      })
+    } catch (error) {
+      return this.handleError('Failed to get current source', error)
+    }
+  }
+
+  /**
    * Test connection via REST API on port 8001
    */
   async testConnection(): Promise<boolean> {

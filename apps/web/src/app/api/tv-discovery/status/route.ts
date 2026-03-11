@@ -10,7 +10,7 @@ import * as net from 'net'
 /**
  * TV Status Check API
  *
- * Pings all discovered TVs to check online/offline status.
+ * Pings all discovered TVs to check online/offline/standby status.
  * Uses fast HTTP probes with short timeouts for quick results.
  * Updates status and lastSeen in the database.
  */
@@ -30,15 +30,15 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.allSettled(
       devices.map(async (device) => {
-        const powerState = await pingDevice(device.ipAddress, device.brand, device.port)
+        const info = await pingDevice(device.ipAddress, device.brand, device.port, device.authToken)
         const now = new Date().toISOString()
         // Map power state: 'on' = online, 'standby' = standby, null = offline
-        const status = powerState === 'on' ? 'online' : powerState === 'standby' ? 'standby' : 'offline'
+        const status = info.powerState === 'on' ? 'online' : info.powerState === 'standby' ? 'standby' : 'offline'
 
         await db.update(schema.networkTVDevices)
           .set({
             status,
-            ...(powerState ? { lastSeen: now } : {}),
+            ...(info.powerState ? { lastSeen: now } : {}),
             updatedAt: now,
           })
           .where(eq(schema.networkTVDevices.id, device.id))
@@ -49,6 +49,8 @@ export async function POST(request: NextRequest) {
           brand: device.brand,
           model: device.model,
           status,
+          powerState: info.powerState || null,
+          currentSource: info.currentSource || null,
         }
       })
     )
@@ -78,54 +80,91 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Ping a TV to check if it's reachable and get its power state.
- * Uses brand-appropriate endpoints with a fast 2-second timeout.
- * Returns 'on' if powered on, 'standby' if in standby, or null if unreachable.
+ * Ping a TV to check if it's reachable and gather diagnostic info.
+ * Returns powerState ('on', 'standby', or null) and optionally currentSource.
  */
-async function pingDevice(ip: string, brand: string, port: number): Promise<'on' | 'standby' | null> {
+async function pingDevice(
+  ip: string,
+  brand: string,
+  port: number,
+  authToken?: string | null
+): Promise<{ powerState: 'on' | 'standby' | null; currentSource?: string }> {
   // Sharp Aquos uses TCP on port 10002 — not HTTP
   if (brand.toLowerCase() === 'sharp') {
-    return pingSharpDevice(ip, port || 10002)
+    const state = await pingSharpDevice(ip, port || 10002)
+    return { powerState: state }
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 2000)
+  const timeout = setTimeout(() => controller.abort(), 3000)
 
   try {
-    let url: string
-
     switch (brand.toLowerCase()) {
-      case 'samsung':
-        url = `http://${ip}:8001/api/v2/`
-        break
-      case 'roku':
-        url = `http://${ip}:${port || 8060}/query/device-info`
-        break
-      default:
-        url = `http://${ip}:${port}/`
-        break
-    }
+      case 'samsung': {
+        const response = await fetch(`http://${ip}:8001/api/v2/`, { signal: controller.signal })
+        clearTimeout(timeout)
+        if (!response.ok) return { powerState: null }
 
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
-
-    if (!response.ok) return null
-
-    // Samsung REST API returns PowerState field
-    if (brand.toLowerCase() === 'samsung') {
-      try {
         const data = await response.json()
-        const powerState = data?.device?.PowerState
-        if (powerState === 'standby') return 'standby'
-      } catch {
-        // JSON parse failure — still reachable
+        const rawPowerState = data?.device?.PowerState
+        const powerState: 'on' | 'standby' = rawPowerState === 'standby' ? 'standby' : 'on'
+
+        // Try to get current source from authenticated endpoint
+        let currentSource: string | undefined
+        if (authToken) {
+          try {
+            const srcController = new AbortController()
+            const srcTimeout = setTimeout(() => srcController.abort(), 2000)
+            const srcResponse = await fetch(
+              `http://${ip}:8001/api/v2/sources/`,
+              { signal: srcController.signal, headers: { 'Authorization': `Bearer ${authToken}` } }
+            )
+            clearTimeout(srcTimeout)
+            if (srcResponse.ok) {
+              const srcData = await srcResponse.json()
+              if (Array.isArray(srcData)) {
+                const active = srcData.find((s: any) => s.connected || s.active)
+                currentSource = active?.name || active?.label || undefined
+              }
+            }
+          } catch {
+            // Source query failed — not critical
+          }
+        }
+
+        return { powerState, currentSource }
+      }
+
+      case 'roku': {
+        const response = await fetch(`http://${ip}:${port || 8060}/query/device-info`, { signal: controller.signal })
+        clearTimeout(timeout)
+        if (!response.ok) return { powerState: null }
+
+        let currentSource: string | undefined
+        try {
+          const inputController = new AbortController()
+          const inputTimeout = setTimeout(() => inputController.abort(), 2000)
+          const inputResponse = await fetch(`http://${ip}:${port || 8060}/query/active-app`, { signal: inputController.signal })
+          clearTimeout(inputTimeout)
+          if (inputResponse.ok) {
+            const text = await inputResponse.text()
+            const match = text.match(/<app[^>]*>([^<]+)<\/app>/)
+            if (match) currentSource = match[1]
+          }
+        } catch { /* not critical */ }
+
+        return { powerState: 'on', currentSource }
+      }
+
+      default: {
+        const response = await fetch(`http://${ip}:${port}/`, { signal: controller.signal })
+        clearTimeout(timeout)
+        return { powerState: response.ok ? 'on' : null }
       }
     }
-
-    return 'on'
   } catch {
     clearTimeout(timeout)
-    return null
+    return { powerState: null }
   }
 }
 
