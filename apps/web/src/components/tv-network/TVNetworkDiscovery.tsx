@@ -168,7 +168,7 @@ export default function TVNetworkDiscovery() {
     }
   }
 
-  const sendBulkPower = async (action: 'on' | 'off') => {
+  const sendBulkPower = async (action: 'on' | 'off' | 'toggle') => {
     setBulkLoading(action)
     setError(null)
 
@@ -327,28 +327,16 @@ export default function TVNetworkDiscovery() {
       {/* Bulk Power Controls */}
       <div className="flex items-center gap-3">
         <Button
-          onClick={() => sendBulkPower('on')}
+          onClick={() => sendBulkPower('toggle')}
           disabled={!!bulkLoading || devices.length === 0}
-          className="bg-green-600 hover:bg-green-700 text-white"
+          className="bg-slate-600 hover:bg-slate-500 text-white"
         >
-          {bulkLoading === 'on' ? (
+          {bulkLoading ? (
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
           ) : (
             <Power className="w-4 h-4 mr-2" />
           )}
-          All TVs On
-        </Button>
-        <Button
-          onClick={() => sendBulkPower('off')}
-          disabled={!!bulkLoading || devices.length === 0}
-          className="bg-red-600 hover:bg-red-700 text-white"
-        >
-          {bulkLoading === 'off' ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <Power className="w-4 h-4 mr-2" />
-          )}
-          All TVs Off
+          Toggle All TVs
         </Button>
         <span className="text-sm text-slate-400">
           {devices.length} device{devices.length !== 1 ? 's' : ''} discovered
@@ -505,52 +493,21 @@ export default function TVNetworkDiscovery() {
                     </div>
                   )}
 
-                  {/* Power Controls */}
+                  {/* Power Control */}
                   {device.supportsPower && (
                     <div className="flex gap-2 mt-3 pt-3 border-t border-slate-700">
-                      <Button
-                        onClick={() => sendPowerCommand(device.id, 'on')}
-                        disabled={powerLoading === device.id}
-                        size="sm"
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        {powerLoading === device.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Power className="w-3 h-3 mr-1" />
-                            On
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={() => sendPowerCommand(device.id, 'off')}
-                        disabled={powerLoading === device.id}
-                        size="sm"
-                        className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        {powerLoading === device.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Power className="w-3 h-3 mr-1" />
-                            Off
-                          </>
-                        )}
-                      </Button>
                       <Button
                         onClick={() => sendPowerCommand(device.id, 'toggle')}
                         disabled={powerLoading === device.id}
                         size="sm"
-                        variant="outline"
-                        className="flex-1"
+                        className="flex-1 bg-slate-600 hover:bg-slate-500 text-white"
                       >
                         {powerLoading === device.id ? (
                           <Loader2 className="w-3 h-3 animate-spin" />
                         ) : (
                           <>
                             <Power className="w-3 h-3 mr-1" />
-                            Toggle
+                            Power
                           </>
                         )}
                       </Button>

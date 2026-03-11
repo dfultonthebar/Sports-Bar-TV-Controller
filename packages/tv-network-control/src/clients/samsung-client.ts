@@ -26,6 +26,7 @@ export class SamsungTVClient extends BaseTVClient {
   private commandQueue: CommandQueue
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private connecting = false
+  private ready = false
 
   constructor(config: TVDeviceConfig) {
     super(config)
@@ -48,16 +49,18 @@ export class SamsungTVClient extends BaseTVClient {
 
   /**
    * Connect to the Samsung TV via WebSocket
+   * Waits for the ms.channel.connect event before resolving,
+   * which confirms the TV is ready to accept commands.
    */
   async connect(): Promise<void> {
-    if (this.ws?.readyState === WebSocket.OPEN) return
+    if (this.ws?.readyState === WebSocket.OPEN && this.ready) return
     if (this.connecting) {
       // Wait for existing connection attempt
       await new Promise<void>((resolve, reject) => {
         const check = setInterval(() => {
           if (!this.connecting) {
             clearInterval(check)
-            if (this.ws?.readyState === WebSocket.OPEN) resolve()
+            if (this.ws?.readyState === WebSocket.OPEN && this.ready) resolve()
             else reject(new Error('Connection attempt failed'))
           }
         }, 100)
@@ -67,6 +70,7 @@ export class SamsungTVClient extends BaseTVClient {
     }
 
     this.connecting = true
+    this.ready = false
     const url = this.buildWsUrl()
 
     try {
@@ -80,11 +84,9 @@ export class SamsungTVClient extends BaseTVClient {
         }, 10_000)
 
         ws.on('open', () => {
-          clearTimeout(timeout)
           this.ws = ws
           this.resetIdleTimer()
-          logger.info(`[SAMSUNG] Connected to ${this.config.ipAddress}`)
-          resolve()
+          logger.info(`[SAMSUNG] WebSocket open for ${this.config.ipAddress}, waiting for channel connect...`)
         })
 
         ws.on('error', (err) => {
@@ -95,6 +97,7 @@ export class SamsungTVClient extends BaseTVClient {
 
         ws.on('close', () => {
           this.ws = null
+          this.ready = false
           this.clearIdleTimer()
           logger.info(`[SAMSUNG] WebSocket closed for ${this.config.ipAddress}`)
         })
@@ -108,6 +111,19 @@ export class SamsungTVClient extends BaseTVClient {
             if (msg.data?.token) {
               this.config.authToken = msg.data.token
               logger.info(`[SAMSUNG] Token received for ${this.config.ipAddress}`)
+            }
+
+            // TV is ready to accept commands after channel connect
+            if (msg.event === 'ms.channel.connect') {
+              clearTimeout(timeout)
+              this.ready = true
+              logger.info(`[SAMSUNG] Connected and ready: ${this.config.ipAddress}`)
+              resolve()
+            }
+
+            // Handle auth errors
+            if (msg.event === 'ms.error') {
+              logger.warn(`[SAMSUNG] TV error: ${msg.data?.message} for ${this.config.ipAddress}`)
             }
           } catch {
             // Non-JSON messages are ignored
@@ -214,11 +230,12 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
-   * Power off via WebSocket KEY_POWEROFF command
+   * Power off via WebSocket KEY_POWER toggle
+   * Samsung TVs don't support KEY_POWEROFF — only KEY_POWER (toggle)
    */
   async powerOff(): Promise<CommandResult> {
     logger.info(`[SAMSUNG] Powering off ${this.config.ipAddress}`)
-    return this.sendKey('KEY_POWEROFF')
+    return this.sendKey('KEY_POWER')
   }
 
   async volumeUp(): Promise<CommandResult> {
@@ -395,13 +412,22 @@ export class SamsungTVClient extends BaseTVClient {
         reject(err)
       })
 
+      // Send WOL to multiple broadcast addresses for reliability
+      const broadcastAddresses = ['255.255.255.255', '10.11.3.255', this.config.ipAddress]
+
       client.bind(() => {
         client.setBroadcast(true)
-        client.send(magicPacket, 0, magicPacket.length, WOL_PORT, '255.255.255.255', (err) => {
-          client.close()
-          if (err) reject(err)
-          else resolve()
-        })
+        let sent = 0
+        for (const addr of broadcastAddresses) {
+          client.send(magicPacket, 0, magicPacket.length, WOL_PORT, addr, (err) => {
+            sent++
+            if (err) logger.warn(`[SAMSUNG] WOL send to ${addr} failed: ${err.message}`)
+            if (sent === broadcastAddresses.length) {
+              client.close()
+              resolve()
+            }
+          })
+        }
       })
     })
   }

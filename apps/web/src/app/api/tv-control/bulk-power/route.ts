@@ -6,7 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq, inArray } from 'drizzle-orm'
-import { SamsungTVClient, RokuTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, RokuTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * Bulk TV Power Control API
@@ -103,16 +103,16 @@ export async function POST(request: NextRequest) {
 
 async function controlDevicePower(
   device: any,
-  action: 'on' | 'off'
+  action: 'on' | 'off' | 'toggle'
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   switch (device.brand.toLowerCase()) {
     case 'roku': {
       const baseUrl = `http://${device.ipAddress}:${device.port}`
-      const endpoint = action === 'on' ? '/keypress/PowerOn' : '/keypress/PowerOff'
+      const endpointMap = { on: '/keypress/PowerOn', off: '/keypress/PowerOff', toggle: '/keypress/Power' }
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 5000)
       try {
-        const response = await fetch(`${baseUrl}${endpoint}`, {
+        const response = await fetch(`${baseUrl}${endpointMap[action]}`, {
           method: 'POST',
           signal: controller.signal,
         })
@@ -135,10 +135,28 @@ async function controlDevicePower(
         authToken: device.authToken,
       })
       try {
-        return action === 'on' ? await client.powerOn() : await client.powerOff()
+        if (action === 'on') return await client.powerOn()
+        // Samsung only supports KEY_POWER toggle for both off and toggle
+        const result = await client.sendKey('KEY_POWER')
+        await new Promise(resolve => setTimeout(resolve, 500))
+        return result
       } finally {
         client.disconnect()
       }
+    }
+
+    case 'sharp': {
+      const client = new SharpTVClient({
+        ipAddress: device.ipAddress,
+        port: device.port || 10002,
+        brand: TVBrand.SHARP,
+        macAddress: device.macAddress,
+      })
+      if (action === 'on') return await client.powerOn()
+      if (action === 'off') return await client.powerOff()
+      // toggle
+      const isOn = await client.getPowerState()
+      return isOn ? await client.powerOff() : await client.powerOn()
     }
 
     default:

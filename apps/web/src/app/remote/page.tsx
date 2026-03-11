@@ -161,7 +161,7 @@ export default function BartenderRemotePage() {
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 
   // Network TV state
-  const [networkTVs, setNetworkTVs] = useState<{ id: string; name?: string | null; outputLabel?: string | null; outputNumber?: number | null; matrixOutputId?: string | null; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; supportsPower: boolean; supportsInput: boolean }[]>([])
+  const [networkTVs, setNetworkTVs] = useState<{ id: string; name?: string | null; outputLabel?: string | null; outputNumber?: number | null; matrixOutputId?: string | null; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; currentInput?: string | null; supportsPower: boolean; supportsInput: boolean }[]>([])
   const [editingTVName, setEditingTVName] = useState<string | null>(null)
   const [editNameValue, setEditNameValue] = useState('')
   const [tvPowerLoading, setTvPowerLoading] = useState<string | null>(null)
@@ -774,7 +774,7 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const sendTVPower = async (deviceId: string, action: 'on' | 'off') => {
+  const sendTVPower = async (deviceId: string, action: 'on' | 'off' | 'toggle') => {
     setTvPowerLoading(`${deviceId}-${action}`)
     try {
       const response = await fetch(`/api/tv-control/${deviceId}/power`, {
@@ -793,7 +793,7 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const sendTVBulkPower = async (action: 'on' | 'off') => {
+  const sendTVBulkPower = async (action: 'on' | 'off' | 'toggle') => {
     setTvBulkLoading(action)
     try {
       const response = await fetch('/api/tv-control/bulk-power', {
@@ -821,6 +821,10 @@ export default function BartenderRemotePage() {
         body: JSON.stringify({ input })
       })
       const data = await response.json()
+      if (data.success) {
+        // Optimistically update the current input in local state
+        setNetworkTVs(prev => prev.map(tv => tv.id === deviceId ? { ...tv, currentInput: input } : tv))
+      }
       setTvMessage(data.success ? `Switched to ${input.toUpperCase()}` : (data.error || 'Failed'))
       setTimeout(() => setTvMessage(null), 3000)
     } catch {
@@ -928,20 +932,12 @@ export default function BartenderRemotePage() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => sendTVBulkPower('on')}
+                    onClick={() => sendTVBulkPower('toggle')}
                     disabled={!!tvBulkLoading || networkTVs.length === 0}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
-                    {tvBulkLoading === 'on' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
-                    All TVs On
-                  </button>
-                  <button
-                    onClick={() => sendTVBulkPower('off')}
-                    disabled={!!tvBulkLoading || networkTVs.length === 0}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {tvBulkLoading === 'off' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
-                    All TVs Off
+                    {tvBulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                    Toggle All TVs
                   </button>
                 </div>
               </div>
@@ -976,7 +972,7 @@ export default function BartenderRemotePage() {
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Tv className={`w-4 h-4 flex-shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : tv.status === 'standby' ? 'bg-yellow-500' : 'bg-red-500'}`} />
                       </div>
                       <span className="text-[10px] text-slate-500 uppercase">{tv.brand}</span>
                     </div>
@@ -1035,22 +1031,17 @@ export default function BartenderRemotePage() {
                       )}
                     </div>
 
-                    {/* Power Buttons */}
+                    {/* Power Button */}
                     {tv.supportsPower && (
-                      <div className="flex gap-1.5 mb-2">
+                      <div className="mb-2">
                         <button
-                          onClick={() => sendTVPower(tv.id, 'on')}
-                          disabled={tvPowerLoading === `${tv.id}-on`}
-                          className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                          onClick={() => sendTVPower(tv.id, 'toggle')}
+                          disabled={tvPowerLoading === `${tv.id}-toggle`}
+                          className={`w-full py-1.5 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1 ${
+                            tv.status === 'online' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                          }`}
                         >
-                          {tvPowerLoading === `${tv.id}-on` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> On</>}
-                        </button>
-                        <button
-                          onClick={() => sendTVPower(tv.id, 'off')}
-                          disabled={tvPowerLoading === `${tv.id}-off`}
-                          className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                        >
-                          {tvPowerLoading === `${tv.id}-off` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Off</>}
+                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Power</>}
                         </button>
                       </div>
                     )}
@@ -1067,7 +1058,11 @@ export default function BartenderRemotePage() {
                               key={input}
                               onClick={() => sendTVInput(tv.id, input)}
                               disabled={tvInputLoading === `${tv.id}-${input}`}
-                              className="py-1 bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                              className={`py-1 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                                tv.currentInput === input
+                                  ? 'bg-blue-600 text-white ring-1 ring-blue-400'
+                                  : 'bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white'
+                              }`}
                             >
                               {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : input.replace('hdmi', '')}
                             </button>

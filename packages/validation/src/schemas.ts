@@ -738,8 +738,8 @@ export const tvPairSchema = z.object({
  * TV bulk power control schema
  */
 export const tvBulkPowerSchema = z.object({
-  action: z.enum(['on', 'off'], {
-    errorMap: () => ({ message: 'Action must be on or off' })
+  action: z.enum(['on', 'off', 'toggle'], {
+    errorMap: () => ({ message: 'Action must be on, off, or toggle' })
   }),
   deviceIds: z.array(z.string()).optional()
 })

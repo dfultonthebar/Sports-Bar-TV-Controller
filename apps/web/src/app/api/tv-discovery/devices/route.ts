@@ -5,7 +5,7 @@ import { validateRequestBody, z } from '@/lib/validation'
 import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 /**
  * TV Discovery Devices List API
@@ -31,14 +31,20 @@ export async function GET(request: NextRequest) {
     })
       .from(schema.networkTVDevices)
       .leftJoin(schema.matrixOutputs, eq(schema.networkTVDevices.matrixOutputId, schema.matrixOutputs.id))
-      .orderBy(desc(schema.networkTVDevices.lastSeen))
 
-    // Flatten: merge output info into device object
+    // Flatten and sort by IP address numerically
     const devices = rows.map(row => ({
       ...row.device,
       outputLabel: row.outputLabel || null,
       outputNumber: row.outputNumber || null,
-    }))
+    })).sort((a, b) => {
+      const aParts = a.ipAddress.split('.').map(Number)
+      const bParts = b.ipAddress.split('.').map(Number)
+      for (let i = 0; i < 4; i++) {
+        if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]
+      }
+      return 0
+    })
 
     logger.info(`[TV-DISCOVERY] Found ${devices.length} TV devices`)
 
