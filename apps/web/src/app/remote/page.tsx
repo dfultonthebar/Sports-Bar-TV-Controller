@@ -161,11 +161,15 @@ export default function BartenderRemotePage() {
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 
   // Network TV state
-  const [networkTVs, setNetworkTVs] = useState<{ id: string; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; supportsPower: boolean; supportsInput: boolean }[]>([])
+  const [networkTVs, setNetworkTVs] = useState<{ id: string; name?: string | null; outputLabel?: string | null; outputNumber?: number | null; matrixOutputId?: string | null; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; supportsPower: boolean; supportsInput: boolean }[]>([])
+  const [editingTVName, setEditingTVName] = useState<string | null>(null)
+  const [editNameValue, setEditNameValue] = useState('')
   const [tvPowerLoading, setTvPowerLoading] = useState<string | null>(null)
   const [tvInputLoading, setTvInputLoading] = useState<string | null>(null)
   const [tvBulkLoading, setTvBulkLoading] = useState<string | null>(null)
   const [tvMessage, setTvMessage] = useState<string | null>(null)
+  const [matrixOutputs, setMatrixOutputs] = useState<{ id: string; channelNumber: number; label: string }[]>([])
+  const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -252,6 +256,17 @@ export default function BartenderRemotePage() {
       clearInterval(statusInterval)
     }
   }, [fetchLightingSettings])
+
+  // Poll TV status every 30 seconds while on the Power tab
+  useEffect(() => {
+    if (activeTab !== 'power') return
+
+    const interval = setInterval(() => {
+      checkTVStatus()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
 
   useEffect(() => {
     // Re-fetch matrix data when layout zones change (but skip initial empty state)
@@ -703,13 +718,59 @@ export default function BartenderRemotePage() {
 
   const loadNetworkTVs = async () => {
     try {
-      const response = await fetch('/api/tv-discovery/devices')
-      if (response.ok) {
-        const data = await response.json()
+      const [devicesRes, outputsRes] = await Promise.all([
+        fetch('/api/tv-discovery/devices'),
+        fetch('/api/matrix/outputs'),
+      ])
+      if (devicesRes.ok) {
+        const data = await devicesRes.json()
         setNetworkTVs(data.devices || [])
+      }
+      if (outputsRes.ok) {
+        const data = await outputsRes.json()
+        setMatrixOutputs((data.outputs || []).map((o: any) => ({ id: o.id, channelNumber: o.channelNumber, label: o.label })))
       }
     } catch (error) {
       logger.error('Error loading network TVs:', error)
+    }
+  }
+
+  const checkTVStatus = async () => {
+    try {
+      const response = await fetch('/api/tv-discovery/status', { method: 'POST' })
+      if (response.ok) {
+        await loadNetworkTVs()
+      }
+    } catch (error) {
+      logger.error('Error checking TV status:', error)
+    }
+  }
+
+  const saveTVName = async (deviceId: string, name: string) => {
+    try {
+      await fetch('/api/tv-discovery/devices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deviceId, name: name.trim() || null })
+      })
+      setEditingTVName(null)
+      await loadNetworkTVs()
+    } catch (error) {
+      logger.error('Error saving TV name:', error)
+    }
+  }
+
+  const assignTVOutput = async (deviceId: string, matrixOutputId: string | null) => {
+    try {
+      await fetch('/api/tv-discovery/devices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deviceId, matrixOutputId })
+      })
+      setAssigningOutput(null)
+      await loadNetworkTVs()
+    } catch (error) {
+      logger.error('Error assigning TV output:', error)
     }
   }
 
@@ -902,18 +963,77 @@ export default function BartenderRemotePage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                {networkTVs.map((tv) => (
+                {[...networkTVs].sort((a, b) => {
+                  const aParts = a.ipAddress.split('.').map(Number)
+                  const bParts = b.ipAddress.split('.').map(Number)
+                  for (let i = 0; i < 4; i++) {
+                    if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]
+                  }
+                  return 0
+                }).map((tv) => (
                   <div key={tv.id} className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
                     {/* TV Header */}
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Tv className={`w-4 h-4 flex-shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
-                        <span className="text-xs font-semibold text-slate-200 uppercase truncate">{tv.brand}</span>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} />
                       </div>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="text-[10px] text-slate-500 uppercase">{tv.brand}</span>
                     </div>
-                    <p className="text-xs text-slate-400 truncate mb-1">{tv.model || tv.ipAddress}</p>
-                    <p className="text-[10px] text-slate-500 font-mono mb-3">{tv.ipAddress}</p>
+                    {/* TV Name — uses Wolf Pack output label, custom name as override */}
+                    {editingTVName === tv.id ? (
+                      <div className="flex gap-1 mb-1">
+                        <input
+                          type="text"
+                          value={editNameValue}
+                          onChange={(e) => setEditNameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveTVName(tv.id, editNameValue)
+                            if (e.key === 'Escape') setEditingTVName(null)
+                          }}
+                          autoFocus
+                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-0"
+                          placeholder="TV name..."
+                        />
+                        <button
+                          onClick={() => saveTVName(tv.id, editNameValue)}
+                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px]"
+                        >OK</button>
+                      </div>
+                    ) : (
+                      <p
+                        onClick={() => { setEditingTVName(tv.id); setEditNameValue(tv.name || tv.outputLabel || '') }}
+                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors"
+                        title="Click to rename"
+                      >
+                        {tv.name || tv.outputLabel || 'Unnamed TV'}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <p className="text-[10px] text-slate-500 font-mono">{tv.ipAddress}</p>
+                      {assigningOutput === tv.id ? (
+                        <select
+                          value={tv.matrixOutputId || ''}
+                          onChange={(e) => assignTVOutput(tv.id, e.target.value || null)}
+                          autoFocus
+                          onBlur={() => setAssigningOutput(null)}
+                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">None</option>
+                          {matrixOutputs.map((o) => (
+                            <option key={o.id} value={o.id}>Out {o.channelNumber}: {o.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span
+                          onClick={() => setAssigningOutput(tv.id)}
+                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded cursor-pointer hover:text-blue-300 transition-colors"
+                          title="Click to assign Wolf Pack output"
+                        >
+                          {tv.outputNumber ? `Out ${tv.outputNumber}` : 'Link output'}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Power Buttons */}
                     {tv.supportsPower && (
@@ -1201,7 +1321,7 @@ export default function BartenderRemotePage() {
           <button
             onClick={() => {
               setActiveTab('power')
-              loadNetworkTVs()
+              checkTVStatus()
             }}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'power'

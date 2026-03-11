@@ -77,6 +77,11 @@ export async function POST(request: NextRequest) {
     const successCount = deviceResults.filter((r) => r.success).length
     const failCount = deviceResults.filter((r) => !r.success).length
 
+    // Log failures individually
+    deviceResults.filter((r: any) => !r.success).forEach((r: any) => {
+      logger.error(`[TV-CONTROL] Bulk power ${action} failed for ${r.brand} TV ${r.deviceId} (${r.ipAddress}): ${r.error}`)
+    })
+
     logger.info(`[TV-CONTROL] Bulk power ${action} complete: ${successCount} success, ${failCount} failed`)
 
     return NextResponse.json({

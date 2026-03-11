@@ -1267,6 +1267,7 @@ export const securityValidationLogs = sqliteTable('SecurityValidationLog', {
 // Network TV Device Model - For IP-controlled TVs (Samsung, LG, Sony, Roku, etc.)
 export const networkTVDevices = sqliteTable('NetworkTVDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name'), // User-assigned display name (e.g., "Bar TV 1", "Pool Table")
   ipAddress: text('ipAddress').notNull().unique(),
   macAddress: text('macAddress'),
   brand: text('brand').notNull(), // 'samsung', 'lg', 'sony', 'roku', 'vizio', 'sharp', 'hisense'
