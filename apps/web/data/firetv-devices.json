@@ -1,52 +1,40 @@
 {
   "devices": [
     {
-      "name": "Amazon 1",
-      "ipAddress": "192.168.5.131",
+      "name": "Fire TV 1",
+      "ipAddress": "10.11.3.49",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 13,
-      "id": "firetv_1764889208258_s1akqme5j",
+      "inputChannel": 1,
+      "id": "firetv_1741700000001_holmgren1",
       "isOnline": false,
-      "addedAt": "2025-12-04T23:00:08.455Z",
-      "updatedAt": "2025-12-04T23:00:08.455Z",
-      "lastSeen": "2026-03-11T19:43:46.463Z"
+      "addedAt": "2026-03-11T21:00:00.000Z",
+      "updatedAt": "2026-03-11T21:00:00.000Z",
+      "lastSeen": "2026-03-11T20:31:19.771Z"
     },
     {
-      "name": "Amazon 2",
-      "ipAddress": "192.168.5.132",
+      "name": "Fire TV 2",
+      "ipAddress": "10.11.3.50",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 14,
-      "id": "firetv_1764889234926_isxzuwh21",
-      "isOnline": false,
-      "addedAt": "2025-12-04T23:00:35.436Z",
-      "updatedAt": "2025-12-04T23:00:35.436Z",
-      "lastSeen": "2026-03-11T19:43:49.591Z"
+      "inputChannel": 2,
+      "id": "firetv_1741700000002_holmgren2",
+      "isOnline": true,
+      "addedAt": "2026-03-11T21:00:00.000Z",
+      "updatedAt": "2026-03-11T21:00:00.000Z",
+      "lastSeen": "2026-03-11T20:30:14.112Z"
     },
     {
-      "name": "Amazon 3",
-      "ipAddress": "192.168.5.133",
+      "name": "Fire TV 3",
+      "ipAddress": "10.11.3.51",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 15,
-      "id": "firetv_1764889262402_vgqlvyeub",
-      "isOnline": false,
-      "addedAt": "2025-12-04T23:01:02.522Z",
-      "updatedAt": "2025-12-04T23:01:02.522Z",
-      "lastSeen": "2026-03-11T19:43:48.457Z"
-    },
-    {
-      "name": "Amazon 4",
-      "ipAddress": "192.168.5.134",
-      "port": 5555,
-      "deviceType": "Fire TV Cube",
-      "inputChannel": 16,
-      "id": "firetv_1764889293768_3qkc8653t",
-      "isOnline": false,
-      "addedAt": "2025-12-04T23:01:34.198Z",
-      "updatedAt": "2025-12-04T23:01:34.198Z",
-      "lastSeen": "2026-03-11T19:43:45.559Z"
+      "inputChannel": 3,
+      "id": "firetv_1741700000003_holmgren3",
+      "isOnline": true,
+      "addedAt": "2026-03-11T21:00:00.000Z",
+      "updatedAt": "2026-03-11T21:00:00.000Z",
+      "lastSeen": "2026-03-11T20:30:14.107Z"
     }
   ]
 }
