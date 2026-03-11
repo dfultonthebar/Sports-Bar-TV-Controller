@@ -170,6 +170,7 @@ export default function BartenderRemotePage() {
   const [tvMessage, setTvMessage] = useState<string | null>(null)
   const [matrixOutputs, setMatrixOutputs] = useState<{ id: string; channelNumber: number; label: string }[]>([])
   const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
+  const [pairingTVId, setPairingTVId] = useState<string | null>(null)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -420,6 +421,30 @@ export default function BartenderRemotePage() {
       }
     } catch (error) {
       logger.error('Error loading Fire TV devices:', error)
+    }
+  }
+
+  const pairNetworkTV = async (deviceId: string, deviceName: string) => {
+    setPairingTVId(deviceId)
+    setTvMessage('Pairing... Accept the popup on the TV screen')
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeout: 30000 }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setTvMessage(`${deviceName} paired successfully!`)
+        await loadNetworkTVs()
+      } else {
+        setTvMessage(data.error || `${deviceName} pairing failed`)
+      }
+    } catch (error) {
+      setTvMessage(`${deviceName} pairing failed — device unreachable`)
+    } finally {
+      setPairingTVId(null)
+      setTimeout(() => setTvMessage(null), 8000)
     }
   }
 
@@ -1031,6 +1056,19 @@ export default function BartenderRemotePage() {
                       )}
                     </div>
 
+                    {/* Pair Button — Samsung TVs without auth token */}
+                    {tv.brand.toLowerCase() === 'samsung' && !tv.authToken && (
+                      <div className="mb-2">
+                        <button
+                          onClick={() => pairNetworkTV(tv.id, tv.name || tv.outputLabel || tv.ipAddress)}
+                          disabled={pairingTVId === tv.id}
+                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {pairingTVId === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for TV...</> : <><Zap className="w-3 h-3" /> Pair</>}
+                        </button>
+                      </div>
+                    )}
+
                     {/* Power Button */}
                     {tv.supportsPower && (
                       <div className="mb-2">
@@ -1074,6 +1112,7 @@ export default function BartenderRemotePage() {
                 ))}
               </div>
             )}
+
           </div>
         )}
 
