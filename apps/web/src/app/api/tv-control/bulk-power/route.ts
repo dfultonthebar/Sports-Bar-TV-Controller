@@ -6,7 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq, inArray } from 'drizzle-orm'
-import { SamsungTVClient, RokuTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * Bulk TV Power Control API
@@ -157,6 +157,19 @@ async function controlDevicePower(
       // toggle
       const isOn = await client.getPowerState()
       return isOn ? await client.powerOff() : await client.powerOn()
+    }
+
+    case 'vava': {
+      const client = new VavaTVClient({
+        ipAddress: device.ipAddress,
+        port: device.port || 8000,
+        brand: TVBrand.VAVA,
+        macAddress: device.macAddress,
+      })
+      if (action === 'on') return await client.powerOn()
+      if (action === 'off') return await client.powerOff()
+      const isVavaOn = await client.getPowerState()
+      return isVavaOn ? await client.powerOff() : await client.powerOn()
     }
 
     default:

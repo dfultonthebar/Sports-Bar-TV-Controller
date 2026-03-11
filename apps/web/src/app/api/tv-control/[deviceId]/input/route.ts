@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, RokuTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV HDMI Input Control API
@@ -93,6 +93,17 @@ export async function POST(
           ipAddress: device.ipAddress,
           port: device.port || 10002,
           brand: TVBrand.SHARP,
+        })
+        result = await client.switchInput(inputNumber)
+        break
+      }
+
+      case 'vava': {
+        const client = new VavaTVClient({
+          ipAddress: device.ipAddress,
+          port: device.port || 8000,
+          brand: TVBrand.VAVA,
+          macAddress: device.macAddress,
         })
         result = await client.switchInput(inputNumber)
         break
