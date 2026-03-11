@@ -7,6 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
+import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Power Control API
@@ -70,6 +71,9 @@ export async function POST(
         break
 
       case 'samsung':
+        result = await controlSamsungPower(device, action)
+        break
+
       case 'lg':
       case 'sony':
       case 'vizio':
@@ -175,5 +179,44 @@ async function controlRokuPower(
       return { success: false, error: 'Request timeout - TV may be offline' }
     }
     return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control Samsung TV power using WebSocket + WOL
+ */
+async function controlSamsungPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = new SamsungTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port,
+    brand: TVBrand.SAMSUNG,
+    macAddress: device.macAddress,
+    authToken: device.authToken,
+  })
+
+  try {
+    let result: { success: boolean; message?: string; error?: string }
+
+    switch (action) {
+      case 'on':
+        result = await client.powerOn()
+        break
+      case 'off':
+        result = await client.powerOff()
+        break
+      case 'toggle':
+        // Samsung doesn't have a dedicated toggle key — use KEY_POWER
+        result = await client.sendKey('KEY_POWER')
+        break
+    }
+
+    return result
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  } finally {
+    client.disconnect()
   }
 }

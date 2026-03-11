@@ -14,6 +14,10 @@ export {
   type CommandResult,
 } from './types'
 
+// Utilities
+export { CommandQueue } from './utils/command-queue'
+
 // Clients
 export { BaseTVClient } from './clients/base-client'
 export { RokuTVClient } from './clients/roku-client'
+export { SamsungTVClient } from './clients/samsung-client'

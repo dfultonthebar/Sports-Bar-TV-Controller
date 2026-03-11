@@ -10,6 +10,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios'
 import { BaseTVClient } from './base-client'
 import { TVDeviceConfig, CommandResult } from '../types'
+import { CommandQueue } from '../utils/command-queue'
 import { logger } from '@sports-bar/logger'
 
 interface RokuDeviceInfo {
@@ -18,50 +19,6 @@ interface RokuDeviceInfo {
   serialNumber?: string
   softwareVersion?: string
   userDeviceName?: string
-}
-
-/**
- * Command queue for managing sequential command execution
- * Prevents concurrent requests that could interfere with each other
- */
-class CommandQueue {
-  private queue: (() => Promise<any>)[] = []
-  private processing = false
-
-  async enqueue<T>(command: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await command()
-          resolve(result)
-        } catch (error) {
-          reject(error)
-        }
-      })
-
-      this.processQueue()
-    })
-  }
-
-  private async processQueue(): Promise<void> {
-    if (this.processing || this.queue.length === 0) return
-
-    this.processing = true
-
-    while (this.queue.length > 0) {
-      const command = this.queue.shift()!
-      try {
-        await command()
-      } catch (error) {
-        logger.error('[ROKU] Command queue execution error', { error })
-      }
-
-      // Small delay between commands to prevent overwhelming the device
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-
-    this.processing = false
-  }
 }
 
 export class RokuTVClient extends BaseTVClient {
@@ -80,8 +37,8 @@ export class RokuTVClient extends BaseTVClient {
       },
     })
 
-    // Initialize command queue
-    this.commandQueue = new CommandQueue()
+    // Initialize command queue with 100ms delay between commands
+    this.commandQueue = new CommandQueue({ delayMs: 100, label: 'ROKU' })
 
     logger.info(`[ROKU] Client initialized for ${config.ipAddress}:${config.port || 8060}`)
   }

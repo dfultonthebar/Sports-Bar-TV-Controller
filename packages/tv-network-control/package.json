@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@sports-bar/logger": "*",
-    "axios": "^1.12.2"
+    "axios": "^1.12.2",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@types/ws": "^8.5.14",
     "typescript": "^5.8.3"
   }
 }

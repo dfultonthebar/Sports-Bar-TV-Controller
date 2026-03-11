@@ -7,6 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
+import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Volume Control API
@@ -70,6 +71,9 @@ export async function POST(
         break
 
       case 'samsung':
+        result = await controlSamsungVolume(device, action, value)
+        break
+
       case 'lg':
       case 'sony':
       case 'vizio':
@@ -185,5 +189,53 @@ async function controlRokuVolume(
       return { success: false, error: 'Request timeout - TV may be offline' }
     }
     return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control Samsung TV volume using WebSocket commands
+ */
+async function controlSamsungVolume(
+  device: any,
+  action: 'up' | 'down' | 'mute' | 'set',
+  value?: number
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  if (action === 'set') {
+    return {
+      success: false,
+      error: 'Samsung TVs do not support direct volume level setting. Use up/down instead.',
+    }
+  }
+
+  const client = new SamsungTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port,
+    brand: TVBrand.SAMSUNG,
+    macAddress: device.macAddress,
+    authToken: device.authToken,
+  })
+
+  try {
+    let result: { success: boolean; message?: string; error?: string }
+
+    switch (action) {
+      case 'up':
+        result = await client.volumeUp()
+        break
+      case 'down':
+        result = await client.volumeDown()
+        break
+      case 'mute':
+        result = await client.volumeMute()
+        break
+      default:
+        result = { success: false, error: 'Invalid action' }
+    }
+
+    return result
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  } finally {
+    client.disconnect()
   }
 }

@@ -115,87 +115,74 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
 }
 
 // Cable (Spectrum) channel mapping for broadcast networks
-// UPDATED: Matches actual Spectrum Green Bay channel numbers from presets
+// UPDATED: Madison Spectrum channel numbers (Lucky's 1313)
 const NETWORK_TO_CABLE: Record<string, string> = {
   // ESPN family
-  'ESPN': '27',
-  'ESPN2': '28',
-  'ESPNU': '303',
-  'ESPNEWS': '305',
-  'ESPN+': '27',
+  'ESPN': '24',
+  'ESPN2': '23',
+  'ESPNU': '310',
+  'ESPNEWS': '304',
+  'ESPN+': '24',
 
   // Fox Sports
-  'FOX': '12',  // Local Fox (WLUK channel 12 on Spectrum)
-  'FS1': '75',
-  'FS2': '328',
-  'FOX Sports 1': '75',
-  'FOX Sports 2': '328',
+  'FOX': '8',   // Local Fox (WMSN channel 8 on Spectrum Madison)
+  'FS1': '27',
+  'FS2': '305',
+  'FOX Sports 1': '27',
+  'FOX Sports 2': '305',
 
   // CBS/NBC/ABC
-  'CBS': '6',   // Local CBS (WFRV channel 6 on Spectrum)
-  'NBC': '13',  // Local NBC (channel 13 on Spectrum)
-  'ABC': '3',   // Local ABC (channel 3 on Spectrum)
-  'CBS Sports Network': '322',
-  'CBSSN': '322',
+  'CBS': '9',   // Local CBS (WISC channel 9 on Spectrum Madison)
+  'NBC': '5',   // Local NBC (WMTV channel 5 on Spectrum Madison)
+  'ABC': '7',   // Local ABC (WKOW channel 7 on Spectrum Madison)
+  'CBS Sports Network': '306',
+  'CBSSN': '306',
+  'Peacock': '28',
+  'NBC Sports': '28',
+  'NBCSN': '28',
 
   // Turner
-  'TNT': '29',
-  'TBS': '25',
-  'truTV': '37',
-  'TruTV': '37',
+  'TNT': '32',
+  'TBS': '32',  // TBS not in presets, map to TNT as fallback
+  'truTV': '56',
+  'TruTV': '56',
 
   // Other sports
-  'NFL Network': '346',
-  'NFL RedZone': '347',
-  'Red Zone': '347',
-  'NFLN': '346',
-  'NBA TV': '325',
-  'NBATV': '325',
-  'MLB Network': '213',
-  'MLBN': '213',
-  'NHL Network': '215',
-  'NHLN': '215',
-  'Big Ten Network': '39',
-  'BTN': '39',
-  'SEC Network': '65',
-  'SECN': '65',
-  'ACC Network': '348',
-  'ACCN': '348',
+  'NBA TV': '338',
+  'NBATV': '338',
+  'MLB Network': '84',
+  'MLBN': '84',
+  'NHL Network': '326',
+  'NHLN': '326',
+  'Big Ten Network': '73',
+  'BTN': '73',
+  'SEC Network': '333',
+  'SECN': '333',
 
   // USA Network (for sports)
-  'USA': '26',
-  'USA Network': '26',
+  'USA': '34',
+  'USA Network': '34',
 
   // Golf
-  'Golf Channel': '14',
-  'GOLF': '14',
+  'Golf Channel': '22',
+  'Golf': '22',
+  'GOLF': '22',
 
   // Tennis
-  'Tennis Channel': '327',
-  'Tennis': '327',
-  'TENNIS': '327',
-
-  // Racing
-  'NBCSN': '159',
-  'NBC Sports': '159',
+  'Tennis Channel': '313',
+  'Tennis': '313',
+  'TENNIS': '313',
 
   // Soccer
-  'beIN Sports': '327',
-  'beIN SPORTS': '327',
-  'BEIN': '327',
+  'beIN Sports': '243',
+  'beIN SPORTS': '243',
+  'BEIN': '243',
 
-  // CW
-  'CW': '10',
-  'The CW': '10',
-
-  // Local stations (Green Bay area on Spectrum)
-  'TV32': '83',
-  'WACY': '83',
-  'WBAY': '3',   // ABC
-  'WFRV': '6',   // CBS
-  'WLUK': '12',  // FOX
-  'WCWF': '10',  // CW
-  'WGBA': '13',  // NBC
+  // Local stations (Madison area on Spectrum)
+  'WMTV': '5',   // NBC
+  'WKOW': '7',   // ABC
+  'WMSN': '8',   // FOX
+  'WISC': '9',   // CBS
 }
 
 // Function to get the appropriate channel mapping based on device type

@@ -22,7 +22,9 @@ import {
   Calendar,
   Music2,
   Gamepad2,
-  Lightbulb
+  Lightbulb,
+  Monitor,
+  Loader2
 } from 'lucide-react'
 import Image from 'next/image'
 import SportsGuide from '@/components/SportsGuide'
@@ -158,6 +160,13 @@ export default function BartenderRemotePage() {
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 
+  // Network TV state
+  const [networkTVs, setNetworkTVs] = useState<{ id: string; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; supportsPower: boolean; supportsInput: boolean }[]>([])
+  const [tvPowerLoading, setTvPowerLoading] = useState<string | null>(null)
+  const [tvInputLoading, setTvInputLoading] = useState<string | null>(null)
+  const [tvBulkLoading, setTvBulkLoading] = useState<string | null>(null)
+  const [tvMessage, setTvMessage] = useState<string | null>(null)
+
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
   const [commercialLightingEnabled, setCommercialLightingEnabled] = useState(false)
@@ -221,6 +230,7 @@ export default function BartenderRemotePage() {
     loadIRDevices()
     loadDirecTVDevices()
     loadFireTVDevices()
+    loadNetworkTVs()
     loadTVLayout()
     loadAudioProcessor()
     fetchLightingSettings()
@@ -691,6 +701,75 @@ export default function BartenderRemotePage() {
     return input.label
   }
 
+  const loadNetworkTVs = async () => {
+    try {
+      const response = await fetch('/api/tv-discovery/devices')
+      if (response.ok) {
+        const data = await response.json()
+        setNetworkTVs(data.devices || [])
+      }
+    } catch (error) {
+      logger.error('Error loading network TVs:', error)
+    }
+  }
+
+  const sendTVPower = async (deviceId: string, action: 'on' | 'off') => {
+    setTvPowerLoading(`${deviceId}-${action}`)
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await response.json()
+      setTvMessage(data.success ? `Power ${action} sent` : (data.error || 'Failed'))
+      setTimeout(() => setTvMessage(null), 3000)
+    } catch {
+      setTvMessage('Failed to send power command')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvPowerLoading(null)
+    }
+  }
+
+  const sendTVBulkPower = async (action: 'on' | 'off') => {
+    setTvBulkLoading(action)
+    try {
+      const response = await fetch('/api/tv-control/bulk-power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await response.json()
+      setTvMessage(data.message || `Bulk power ${action} complete`)
+      setTimeout(() => setTvMessage(null), 5000)
+    } catch {
+      setTvMessage('Bulk power command failed')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvBulkLoading(null)
+    }
+  }
+
+  const sendTVInput = async (deviceId: string, input: string) => {
+    setTvInputLoading(`${deviceId}-${input}`)
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      })
+      const data = await response.json()
+      setTvMessage(data.success ? `Switched to ${input.toUpperCase()}` : (data.error || 'Failed'))
+      setTimeout(() => setTvMessage(null), 3000)
+    } catch {
+      setTvMessage('Failed to switch input')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvInputLoading(null)
+    }
+  }
+
   const handleRoutingMatrixClick = async (inputNum: number, outputNum: number) => {
     setRoutingStatus(`Routing input ${inputNum} to output ${outputNum}...`)
     setIsRouting(true)
@@ -775,10 +854,111 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'power' && (
-          <div className="bg-slate-800 rounded-lg p-8 text-center">
-            <Power className="w-16 h-16 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-white mb-2">Power Control</h3>
-            <p className="text-slate-400">CEC-based power control has been removed. IR-based TV power control coming soon.</p>
+          <div className="max-w-7xl mx-auto pt-4 space-y-4">
+            {/* Bulk Power Controls */}
+            <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Power className="w-5 h-5 text-red-400" />
+                    TV Power Control
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">{networkTVs.length} TV{networkTVs.length !== 1 ? 's' : ''} available</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => sendTVBulkPower('on')}
+                    disabled={!!tvBulkLoading || networkTVs.length === 0}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {tvBulkLoading === 'on' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                    All TVs On
+                  </button>
+                  <button
+                    onClick={() => sendTVBulkPower('off')}
+                    disabled={!!tvBulkLoading || networkTVs.length === 0}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {tvBulkLoading === 'off' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                    All TVs Off
+                  </button>
+                </div>
+              </div>
+              {tvMessage && (
+                <div className={`mt-3 p-2 rounded text-sm font-medium ${
+                  tvMessage.toLowerCase().includes('fail') ? 'bg-red-900/40 text-red-300 border border-red-700/50' : 'bg-green-900/40 text-green-300 border border-green-700/50'
+                }`}>
+                  {tvMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Individual TV Grid */}
+            {networkTVs.length === 0 ? (
+              <div className="bg-slate-800 rounded-lg p-8 text-center">
+                <Tv className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400">No network TVs discovered yet.</p>
+                <p className="text-slate-500 text-sm mt-1">Run a scan from Device Setup to find TVs.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {networkTVs.map((tv) => (
+                  <div key={tv.id} className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    {/* TV Header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Tv className={`w-4 h-4 flex-shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
+                        <span className="text-xs font-semibold text-slate-200 uppercase truncate">{tv.brand}</span>
+                      </div>
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    </div>
+                    <p className="text-xs text-slate-400 truncate mb-1">{tv.model || tv.ipAddress}</p>
+                    <p className="text-[10px] text-slate-500 font-mono mb-3">{tv.ipAddress}</p>
+
+                    {/* Power Buttons */}
+                    {tv.supportsPower && (
+                      <div className="flex gap-1.5 mb-2">
+                        <button
+                          onClick={() => sendTVPower(tv.id, 'on')}
+                          disabled={tvPowerLoading === `${tv.id}-on`}
+                          className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {tvPowerLoading === `${tv.id}-on` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> On</>}
+                        </button>
+                        <button
+                          onClick={() => sendTVPower(tv.id, 'off')}
+                          disabled={tvPowerLoading === `${tv.id}-off`}
+                          className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {tvPowerLoading === `${tv.id}-off` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Off</>}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* HDMI Input Buttons */}
+                    {tv.supportsInput && (
+                      <div>
+                        <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
+                          <Monitor className="w-2.5 h-2.5" /> HDMI Input
+                        </p>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
+                            <button
+                              key={input}
+                              onClick={() => sendTVInput(tv.id, input)}
+                              disabled={tvInputLoading === `${tv.id}-${input}`}
+                              className="py-1 bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+                            >
+                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : input.replace('hdmi', '')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1019,7 +1199,10 @@ export default function BartenderRemotePage() {
           )}
 
           <button
-            onClick={() => setActiveTab('power')}
+            onClick={() => {
+              setActiveTab('power')
+              loadNetworkTVs()
+            }}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'power'
                 ? 'bg-red-500/30 text-red-300'
