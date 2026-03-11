@@ -98,27 +98,32 @@ export async function POST(
         })
         .where(eq(schema.networkTVDevices.id, deviceId))
 
-      logger.info(`[TV-CONTROL] Volume ${action} successful for ${device.brand} TV ${deviceId}`)
-
-      // Log operation for AI learning
-      await operationLogger.logOperation({
-        type: 'volume_change',
-        device: `${device.brand} TV (${deviceId})`,
-        action: `Volume ${action}`,
-        details: {
-          deviceId,
-          brand: device.brand,
-          action,
-          volume: value,
-        },
-        user: 'bartender',
-        success: true,
-      })
+      logger.info(`[TV-CONTROL] Volume ${action} successful for ${device.brand} TV ${deviceId} (${device.ipAddress})`)
+    } else {
+      logger.error(`[TV-CONTROL] Volume ${action} failed for ${device.brand} TV ${deviceId} (${device.ipAddress}): ${result.error}`)
     }
+
+    // Log operation for AI learning (both success and failure)
+    await operationLogger.logOperation({
+      type: 'volume_change',
+      device: `${device.brand} TV (${deviceId})`,
+      action: `Volume ${action}`,
+      details: {
+        deviceId,
+        brand: device.brand,
+        ipAddress: device.ipAddress,
+        action,
+        volume: value,
+        error: result.error || undefined,
+      },
+      user: 'bartender',
+      success: result.success,
+    })
 
     return NextResponse.json({
       success: result.success,
       message: result.message || `Volume ${action} ${result.success ? 'successful' : 'failed'}`,
+      error: result.error,
       deviceId,
       deviceBrand: device.brand,
       action,

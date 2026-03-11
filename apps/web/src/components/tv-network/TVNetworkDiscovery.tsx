@@ -48,12 +48,20 @@ export default function TVNetworkDiscovery() {
   const [inputLoading, setInputLoading] = useState<string | null>(null)
   const [bulkLoading, setBulkLoading] = useState<string | null>(null)
   const [ipRange, setIpRange] = useState('192.168.10.1-192.168.10.254')
+  const [statusChecking, setStatusChecking] = useState(false)
 
   useEffect(() => {
     // Restore IP range from localStorage
     const saved = localStorage.getItem(IP_RANGE_KEY)
     if (saved) setIpRange(saved)
     loadDevices()
+
+    // Poll TV status every 30 seconds
+    const statusInterval = setInterval(() => {
+      refreshStatus()
+    }, 30000)
+
+    return () => clearInterval(statusInterval)
   }, [])
 
   const saveIpRange = (value: string) => {
@@ -81,6 +89,20 @@ export default function TVNetworkDiscovery() {
       setError('Failed to connect to server')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const refreshStatus = async () => {
+    setStatusChecking(true)
+    try {
+      const response = await fetch('/api/tv-discovery/status', { method: 'POST' })
+      if (response.ok) {
+        await loadDevices()
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] Status check failed:', err)
+    } finally {
+      setStatusChecking(false)
     }
   }
 
@@ -271,14 +293,14 @@ export default function TVNetworkDiscovery() {
             </div>
             <div className="flex items-center gap-3">
               <Button
-                onClick={loadDevices}
-                disabled={isLoading || isScanning}
+                onClick={refreshStatus}
+                disabled={statusChecking || isScanning}
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`w-4 h-4 ${statusChecking ? 'animate-spin' : ''}`} />
+                Check Status
               </Button>
               <Button
                 onClick={startNetworkScan}
