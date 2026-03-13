@@ -49,5 +49,16 @@ export async function register() {
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize scheduler service:', error)
     }
+
+    try {
+      // Initialize cron jobs: monthly preset reorder + daily channel sync from Rail Media
+      const { initializePresetCronJob, initializeChannelSyncCronJob } = await import('./services/presetCronService')
+      initializePresetCronJob()
+      initializeChannelSyncCronJob()
+
+      logger.info('[INSTRUMENTATION] ✅ Cron jobs initialized (preset reorder + channel sync)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize cron jobs:', error)
+    }
   }
 }

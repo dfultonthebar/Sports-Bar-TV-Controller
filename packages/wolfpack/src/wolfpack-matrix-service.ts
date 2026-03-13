@@ -22,29 +22,78 @@ interface RoutingResult {
 }
 
 /**
+ * Makes an HTTP request using Node's native http module.
+ * Bypasses Next.js fetch() override which interferes with session cookies
+ * and request deduplication for hardware control.
+ */
+function httpRequest(options: {
+  hostname: string
+  path: string
+  method: string
+  headers?: Record<string, string>
+  body?: string
+  followRedirect?: boolean
+}): Promise<{ statusCode: number; headers: Record<string, string | string[]>; body: string }> {
+  const http = require('http')
+  return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = { ...(options.headers || {}) }
+    if (options.body && !headers['Content-Length']) {
+      headers['Content-Length'] = Buffer.byteLength(options.body).toString()
+    }
+    const req = http.request(
+      {
+        hostname: options.hostname,
+        port: 80,
+        path: options.path,
+        method: options.method,
+        headers,
+      },
+      (res: any) => {
+        let body = ''
+        res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            body,
+          })
+        })
+      }
+    )
+    req.on('error', reject)
+    req.setTimeout(10000, () => { req.destroy(new Error('HTTP request timeout')) })
+    if (options.body) req.write(options.body)
+    req.end()
+  })
+}
+
+/**
  * Sends an HTTP command to the Wolf Pack matrix via its web API.
  * The HTTP API uses 0-based indices for both input and output.
  * This function accepts 0-based indices directly.
+ *
+ * Uses Node's native http module instead of fetch() to avoid
+ * Next.js fetch interception that breaks session-based auth.
  */
 export async function sendHTTPCommand(
   ipAddress: string,
   input0Based: number,
   output0Based: number
 ): Promise<RoutingResult> {
-  const baseUrl = `http://${ipAddress}`
-
   try {
     // Step 1: Login to get PHP session cookie
-    logger.info(`[WOLFPACK-HTTP] Logging in to ${baseUrl}/login.php`)
-    const loginResponse = await fetch(`${baseUrl}/login.php`, {
+    logger.info(`[WOLFPACK-HTTP] Logging in to http://${ipAddress}/login.php`)
+    const loginResponse = await httpRequest({
+      hostname: ipAddress,
+      path: '/login.php',
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'username=admin&password=admin',
-      redirect: 'manual',
     })
 
-    // Extract PHPSESSID from Set-Cookie header
-    const setCookie = loginResponse.headers.get('set-cookie') || ''
+    // Extract PHPSESSID from set-cookie header
+    const setCookieHeader = loginResponse.headers['set-cookie']
+    const setCookie = Array.isArray(setCookieHeader) ? setCookieHeader.join(', ') : (setCookieHeader || '')
     const sessionMatch = setCookie.match(/PHPSESSID=([^;]+)/)
     if (!sessionMatch) {
       logger.error('[WOLFPACK-HTTP] Login failed - no PHPSESSID in response')
@@ -56,17 +105,28 @@ export async function sendHTTPCommand(
     const sessionCookie = `PHPSESSID=${sessionMatch[1]}`
     logger.info(`[WOLFPACK-HTTP] Login successful, got session cookie`)
 
-    // Step 2: Send routing command
-    const routeUrl = `${baseUrl}/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based},`
-    logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
-    logger.info(`[WOLFPACK-HTTP] GET ${routeUrl}`)
-
-    const routeResponse = await fetch(routeUrl, {
+    // Step 1b: Follow redirect to index.php to finalize PHP session
+    // Without this, the session is not fully authenticated and routing commands are ignored
+    await httpRequest({
+      hostname: ipAddress,
+      path: '/index.php',
       method: 'GET',
       headers: { 'Cookie': sessionCookie },
     })
 
-    const responseText = await routeResponse.text()
+    // Step 2: Send routing command
+    const routePath = `/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based}`
+    logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
+    logger.info(`[WOLFPACK-HTTP] GET http://${ipAddress}${routePath}`)
+
+    const routeResponse = await httpRequest({
+      hostname: ipAddress,
+      path: routePath,
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+
+    const responseText = routeResponse.body
     logger.info(`[WOLFPACK-HTTP] Response: ${responseText}`)
 
     // Step 3: Parse and verify
