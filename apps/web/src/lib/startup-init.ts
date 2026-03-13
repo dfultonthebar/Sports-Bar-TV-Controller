@@ -1,5 +1,6 @@
 import { logger } from '@sports-bar/logger'
 import { startAutoIndexer } from '@/lib/rag-server'
+import { initializePresetCronJob, initializeChannelSyncCronJob } from '@/services/presetCronService'
 
 /**
  * Startup Initialization
@@ -59,6 +60,10 @@ export async function runStartupTasks() {
 
   // Initialize RAG auto-indexer
   await initializeRAGAutoIndexer()
+
+  // Initialize cron jobs
+  initializePresetCronJob()
+  initializeChannelSyncCronJob()
 
   logger.info('[Startup] Startup tasks completed')
 }
