@@ -148,14 +148,48 @@ export async function sendHTTPCommand(
     const actual = routingMap[output0Based]
     if (actual === input0Based) {
       logger.info(`[WOLFPACK-HTTP] Verified: output ${output0Based} is now routed to input ${input0Based}`)
-    } else {
-      logger.info(`[WOLFPACK-HTTP] Route sent. State shows output ${output0Based} = input ${actual} (firmware may report stale; route applied)`)
+      return {
+        success: true,
+        command: `HTTP o2ox: ${input0Based},${output0Based}`,
+        response: responseText,
+      }
     }
 
-    return {
-      success: true,
-      command: `HTTP o2ox: ${input0Based},${output0Based}`,
-      response: responseText,
+    // o2ox can toggle: if route was already set, it clears it.
+    // Retry once — the second call will re-set it.
+    logger.info(`[WOLFPACK-HTTP] Verification missed (got ${routingMap[output0Based]}), retrying...`)
+    const retryResponse = await httpRequest({
+      hostname: ipAddress,
+      path: routePath,
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+    const retryText = retryResponse.body
+    logger.info(`[WOLFPACK-HTTP] Retry response: ${retryText}`)
+
+    let retryMap: number[]
+    try {
+      retryMap = JSON.parse(retryText)
+    } catch {
+      return { success: false, error: `Invalid JSON on retry: ${retryText}`, response: retryText }
+    }
+
+    if (retryMap[output0Based] === input0Based) {
+      logger.info(`[WOLFPACK-HTTP] Verified on retry: output ${output0Based} is now routed to input ${input0Based}`)
+      return {
+        success: true,
+        command: `HTTP o2ox: ${input0Based},${output0Based}`,
+        response: retryText,
+      }
+    } else {
+      const actual = retryMap[output0Based]
+      logger.error(`[WOLFPACK-HTTP] Verification FAILED after retry: output ${output0Based} is routed to input ${actual}, expected ${input0Based}`)
+      return {
+        success: false,
+        error: `Route verification failed: output ${output0Based} mapped to input ${actual}, expected ${input0Based}`,
+        command: `HTTP o2ox: ${input0Based},${output0Based}`,
+        response: retryText,
+      }
     }
   } catch (error) {
     logger.error('[WOLFPACK-HTTP] Error:', { error })

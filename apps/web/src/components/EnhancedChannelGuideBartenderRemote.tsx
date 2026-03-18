@@ -748,7 +748,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       { packageName: 'com.peacocktv.peacockandroid', displayName: 'Peacock', category: 'Sports', sportsContent: true },
       { packageName: 'com.amazon.avod', displayName: 'Prime Video', category: 'Entertainment', sportsContent: true },
       { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
-      { packageName: 'com.fox.now', displayName: 'Fox Sports', category: 'Sports', sportsContent: true },
+      { packageName: 'com.foxsports.videogo', displayName: 'Fox Sports', category: 'Sports', sportsContent: true },
       { packageName: 'com.playon.nfhslive', displayName: 'NFHS Network', category: 'Sports', sportsContent: true }
     ]
 
