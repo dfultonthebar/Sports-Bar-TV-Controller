@@ -121,3 +121,23 @@ export {
   AIGainService,
   aiGainService
 } from './ai-gain-service'
+
+// Learning Event Collector
+export {
+  recordGainAdjustment,
+  recordGainAdjustmentFailure,
+  recordClippingEvent,
+  recordZoneChange,
+  recordConnectionChange,
+  recordSignalSnapshot,
+} from './atlas-learning-collector'
+
+// Pattern Learner
+export {
+  runAtlasLearningCycle,
+  getAtlasLearnedPatterns,
+  getAtlasLastRunTimestamp,
+  getAtlasLearningStats,
+  type AtlasLearnedPattern,
+  type AtlasLearningCycleResult,
+} from './atlas-pattern-learner'

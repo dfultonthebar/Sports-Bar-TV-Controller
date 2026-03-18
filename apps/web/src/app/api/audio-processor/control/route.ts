@@ -6,6 +6,7 @@ import { executeAtlasCommand } from '@/lib/atlasClient'
 import { getDbxControlService } from '@/lib/dbxControlService'
 import { atlasLogger } from '@/lib/atlas-logger'
 import { logger } from '@sports-bar/logger'
+import { recordZoneChange } from '@sports-bar/atlas'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -115,14 +116,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last seen timestamp using Drizzle
-    await update('audioProcessors', eq(schema.audioProcessors.id, processorId), { 
-      lastSeen: new Date().toISOString() 
+    await update('audioProcessors', eq(schema.audioProcessors.id, processorId), {
+      lastSeen: new Date().toISOString()
     })
 
+    // Record zone change for learning (fire-and-forget, Atlas commands only)
+    if (command.zone && ['volume', 'mute', 'source'].includes(command.action)) {
+      recordZoneChange({
+        processorId,
+        zoneNumber: command.zone,
+        changeType: command.action as 'volume' | 'mute' | 'source',
+        newVolume: command.action === 'volume' ? (command.value as number) : undefined,
+        muted: command.action === 'mute' ? (command.value as boolean) : undefined,
+        sourceValue: command.action === 'source' ? (command.value as string) : undefined,
+      })
+    }
+
     logger.api.response('POST', '/api/audio-processor/control', 200, { success: true })
-    
-    return NextResponse.json({ 
-      success: true, 
+
+    return NextResponse.json({
+      success: true,
       result,
       message: `${command.action} command executed successfully`
     })

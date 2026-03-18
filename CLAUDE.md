@@ -410,6 +410,40 @@ EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00
 - UI component in Matrix Control page for slot/serial port configuration
 - Integration with existing Wolf Pack matrix routing display
 
+#### 10. Atlas Audio AI Learning System
+**Purpose:** Passive learning from Atlas audio processor operations to discover patterns
+
+**Architecture: 3 Layers (same as Wolf Pack learning)**
+1. **Event Collector** (`packages/atlas/src/atlas-learning-collector.ts`) — fire-and-forget recording of gain adjustments, clipping, zone changes, connection state
+2. **Pattern Learner** (`packages/atlas/src/atlas-pattern-learner.ts`) — periodic analysis (every 6h) discovers 6 audio-specific pattern types
+3. **Enhanced Analyzer** — `atlasAIAnalyzer.analyzeWithLearning()` blends static + learned patterns into existing `AtlasAIAnalysisResult`
+
+**Database Table:** `AtlasLearningEvent` (eventType, processorId, inputNumber, zoneNumber, gain/level fields, dayOfWeek, hourOfDay)
+
+**Event Types:** `gain_adjustment`, `gain_adjustment_failed`, `clipping_detected`, `zone_volume_change`, `zone_mute_toggle`, `zone_source_change`, `connection_online`, `connection_offline`, `signal_snapshot`
+
+**6 Collector Functions:**
+- `recordGainAdjustment()` — after successful AI gain set (wired into `ai-gain-service.ts`)
+- `recordGainAdjustmentFailure()` — after failed AI gain set
+- `recordClippingEvent()` — when meter reading has `clipping=true` (wired into `atlas-meter-service.ts`)
+- `recordZoneChange()` — after volume/mute/source commands (wired into `audio-processor/control/route.ts`)
+- `recordConnectionChange()` — processor online/offline transitions
+- `recordSignalSnapshot()` — periodic (5-min throttled) JSON summary of all input levels
+
+**6 Pattern Analysis Functions:**
+- `analyzeInputHealth()` — chronic clipping inputs
+- `analyzeGainEffectiveness()` — AI gain "fighting" (moving away from target >30%)
+- `analyzeTimePatterns()` — peak clipping time windows (game nights)
+- `analyzeZoneUsage()` — frequently muted or over-adjusted zones
+- `analyzeProcessorReliability()` — connection drop frequency
+- `analyzeAdjustmentEfficiency()` — inputs requiring excessive adjustments/day
+
+**API Routes:**
+- `GET /api/atlas/ai-learning` — Learning stats + cached patterns
+- `POST /api/atlas/ai-learning` — Trigger learning cycle manually
+
+**Instrumentation:** 90s warm-up delay (staggered 30s after wolfpack's 60s), then every 6 hours
+
 ### API Route Patterns
 
 #### Standard API Route Structure

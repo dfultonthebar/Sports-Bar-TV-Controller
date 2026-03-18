@@ -60,5 +60,51 @@ export async function register() {
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize cron jobs:', error)
     }
+
+    try {
+      // Initialize Wolf Pack AI learning cycle (every 6 hours)
+      const { runLearningCycle } = await import('@sports-bar/wolfpack')
+
+      // Run initial cycle after 60s warm-up delay
+      setTimeout(() => {
+        runLearningCycle().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Initial learning cycle failed:', err)
+        })
+      }, 60_000)
+
+      // Schedule recurring cycle every 6 hours
+      setInterval(() => {
+        runLearningCycle().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Learning cycle failed:', err)
+        })
+      }, 6 * 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ Wolf Pack AI learning cycle initialized (every 6 hours)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize Wolf Pack learning cycle:', error)
+    }
+
+    try {
+      // Initialize Atlas Audio AI learning cycle (every 6 hours, staggered 90s after wolfpack)
+      const { runAtlasLearningCycle } = await import('@sports-bar/atlas')
+
+      // Run initial cycle after 90s warm-up delay (staggered from wolfpack's 60s)
+      setTimeout(() => {
+        runAtlasLearningCycle().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Initial Atlas learning cycle failed:', err)
+        })
+      }, 90_000)
+
+      // Schedule recurring cycle every 6 hours
+      setInterval(() => {
+        runAtlasLearningCycle().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Atlas learning cycle failed:', err)
+        })
+      }, 6 * 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ Atlas Audio AI learning cycle initialized (every 6 hours)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize Atlas learning cycle:', error)
+    }
   }
 }
