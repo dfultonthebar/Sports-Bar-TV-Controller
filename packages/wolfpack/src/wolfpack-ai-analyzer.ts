@@ -4,6 +4,7 @@ import { logger } from '@sports-bar/logger'
 // Wolfpack Matrix AI Analyzer - Advanced AI system for matrix switcher monitoring and optimization
 
 export interface WolfpackMatrixData {
+  chassisId?: string | null;
   config?: {
     name: string;
     ipAddress: string;
@@ -14,6 +15,7 @@ export interface WolfpackMatrixData {
     connectionStatus?: string;
     lastTested?: string;
     isActive: boolean;
+    chassisId?: string | null;
   };
   inputs?: Array<{
     channelNumber: number;
@@ -55,6 +57,7 @@ export interface WolfpackAIInsight {
   confidence: number;
   priority: 'low' | 'medium' | 'high' | 'critical';
   affectedChannels?: number[];
+  chassisId?: string | null;
   timestamp: string;
 }
 
@@ -92,6 +95,14 @@ export class WolfpackMatrixAIAnalyzer {
 
       // Channel Utilization Analysis
       insights.push(...this.analyzeChannelUtilization(data));
+
+      // Tag all insights with chassisId if provided
+      const chassisId = data.chassisId || data.config?.chassisId || null
+      if (chassisId) {
+        for (const insight of insights) {
+          insight.chassisId = chassisId
+        }
+      }
 
       // Sort by priority and confidence
       return insights
