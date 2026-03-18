@@ -7,6 +7,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 interface DeviceStatus {
   id: string
@@ -90,12 +91,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Check if output is currently routed
-      const activeMatrix = await db
-        .select()
-        .from(schema.matrixConfigurations)
-        .where(eq(schema.matrixConfigurations.isActive, true))
-        .limit(1)
-        .get()
+      const activeMatrix = await getActiveChassisConfig()
 
       if (activeMatrix) {
         // TV is online if part of active matrix
@@ -193,12 +189,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check Matrix Configuration
-    const matrixConfig = await db
-      .select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    const matrixConfig = await getActiveChassisConfig()
 
     if (matrixConfig) {
       const device: DeviceStatus = {

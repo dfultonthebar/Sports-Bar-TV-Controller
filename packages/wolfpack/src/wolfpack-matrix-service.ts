@@ -12,6 +12,8 @@ interface MatrixConfiguration {
   udpPort: number
   protocol: string
   outputOffset?: number
+  credentials?: { username: string; password: string }
+  chassisId?: string | null
 }
 
 interface RoutingResult {
@@ -78,9 +80,12 @@ function httpRequest(options: {
 export async function sendHTTPCommand(
   ipAddress: string,
   input0Based: number,
-  output0Based: number
+  output0Based: number,
+  credentials?: { username: string; password: string }
 ): Promise<RoutingResult> {
   try {
+    const creds = credentials || { username: 'admin', password: 'admin' }
+
     // Step 1: Login to get PHP session cookie
     logger.info(`[WOLFPACK-HTTP] Logging in to http://${ipAddress}/login.php`)
     const loginResponse = await httpRequest({
@@ -88,7 +93,7 @@ export async function sendHTTPCommand(
       path: '/login.php',
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'username=admin&password=admin',
+      body: `username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`,
     })
 
     // Extract PHPSESSID from set-cookie header
@@ -219,7 +224,7 @@ export async function routeWolfpackToMatrix(
 
       logger.info(`[WOLFPACK-HTTP] Converting: input ${wolfpackInputNumber}->0b:${input0Based}, output ${wolfpackOutput}->0b:${output0Based}`)
 
-      const result = await sendHTTPCommand(config.ipAddress, input0Based, output0Based)
+      const result = await sendHTTPCommand(config.ipAddress, input0Based, output0Based, config.credentials)
 
       if (!result.success) {
         return {

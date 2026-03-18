@@ -339,7 +339,37 @@ DUMPDMROUTEI              # Get current routing state
 **UI Location:** Device Config page → Audio Processors section
 **Component:** `apps/web/src/components/AudioProcessorManager.tsx`
 
-#### 8. Wolf Pack Multi-View Card Control (Future Implementation)
+#### 8. Wolf Pack Multi-Chassis Device Driver System
+**Purpose:** Support multiple Wolf Pack matrices per location (e.g., video + audio breakaway)
+
+**Architecture: JSON + Database Hybrid**
+- **JSON driver file** (`apps/web/data/wolfpack-devices.json`) = source of truth for hardware topology (IP, model, inputs, outputs, credentials)
+- **Database** (`matrixConfigurations` table with `chassisId` column) = runtime state (current routes, connection status)
+- **Template on main:** `{"chassis":[]}` — real data lives on location branches only
+
+**Key Files:**
+- `packages/wolfpack/src/chassis-config.ts` — `WolfpackChassisConfig` interface
+- `packages/wolfpack/src/models.ts` — Shared `WOLFPACK_MODELS` constant (single source of truth)
+- `apps/web/src/lib/wolfpack/chassis-loader.ts` — Reads/caches JSON driver file
+- `apps/web/src/lib/wolfpack/get-active-chassis.ts` — `getActiveChassisConfig(chassisId?)` helper
+- `packages/wolfpack/src/matrix-control.ts` — `routeMatrix(input, output, chassisId?)` with optional chassis
+
+**API Routes:**
+- `GET /api/wolfpack/chassis` — List all chassis from JSON + DB status
+- `GET /api/wolfpack/chassis/[chassisId]` — Single chassis config + runtime state
+- `POST /api/wolfpack/chassis/[chassisId]/route` — Route input→output on specific chassis
+- `GET /api/wolfpack/chassis/[chassisId]/routes` — Current routes for chassis
+- `POST /api/wolfpack/chassis/sync` — Sync JSON driver → DB (create/update configs)
+
+**Backward Compatibility:** All new DB columns are nullable. All API params are optional. Without `chassisId`, the system falls back to `WHERE isActive = true` (single-chassis behavior).
+
+**Database Columns Added:**
+- `matrixConfigurations.chassisId` — Links DB row to JSON driver entry
+- `matrixRoutes.chassisId` — Which chassis this route belongs to
+- `wolfpackMatrixRoutings.chassisId` — Chassis-specific routing
+- `wolfpackMatrixStates.chassisId` — Chassis-specific state
+
+#### 9. Wolf Pack Multi-View Card Control (Future Implementation)
 **Purpose:** Control HDTVSupply Multi-View output cards installed in Wolf Pack matrix slots
 **Compatibility:** Wolf Pack matrices ONLY (8x8, 16x16, 36x36)
 

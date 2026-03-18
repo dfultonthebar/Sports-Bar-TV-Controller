@@ -18,6 +18,7 @@ import path from 'path'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 const DIRECTV_DEVICES_FILE = path.join(process.cwd(), 'data', 'directv-devices.json')
 const FIRETV_DEVICES_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
@@ -81,12 +82,8 @@ export async function GET(request: NextRequest) {
 
 async function loadMatrixConfig() {
   try {
-    // Get active config with inputs in a single transaction
-    const config = await db.select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    // Get active config with inputs
+    const config = await getActiveChassisConfig()
 
     if (!config) {
       return { config: null, inputs: [], outputs: [] }

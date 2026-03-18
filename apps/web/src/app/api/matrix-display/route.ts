@@ -2,12 +2,13 @@ export const dynamic = 'force-dynamic';
 
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, desc, eq, findFirst, or } from '@/lib/db-helpers'
+import { and, asc, eq } from '@/lib/db-helpers'
 import { db } from '@/db'
-import { matrixConfigurations, matrixInputs, matrixOutputs } from '@/db/schema'
+import { matrixInputs, matrixOutputs } from '@/db/schema'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateQueryParams, isValidationError } from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 
 /**
@@ -58,11 +59,8 @@ export async function GET(request: NextRequest) {
     const includeInactive = searchParams.get('includeInactive') === 'true'
 
     // Get active matrix configuration
-    const configs = await db.select()
-      .from(matrixConfigurations)
-      .where(eq(matrixConfigurations.isActive, true))
-
-    const config = configs[0]
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
 
     if (!config) {
       return NextResponse.json(

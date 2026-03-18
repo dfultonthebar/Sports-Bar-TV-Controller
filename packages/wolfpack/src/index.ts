@@ -32,3 +32,19 @@ export {
   type MatrixConfiguration,
   type RoutingResult,
 } from './wolfpack-matrix-service'
+
+// Chassis Configuration Types
+export type {
+  WolfpackChassisConfig,
+  WolfpackChassisInput,
+  WolfpackChassisOutput,
+  WolfpackChassisCredentials,
+  WolfpackDevicesFile,
+} from './chassis-config'
+
+// Model Profiles
+export {
+  WOLFPACK_MODELS,
+  getWolfpackModel,
+  type WolfpackModelProfile,
+} from './models'

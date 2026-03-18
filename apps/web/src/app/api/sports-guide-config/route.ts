@@ -7,6 +7,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
@@ -92,9 +93,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Get matrix inputs for assignment
-    const matrixConfig = await findFirst('matrixConfigurations', {
-      where: eq(schema.matrixConfigurations.isActive, true)
-    })
+    const matrixConfig = await getActiveChassisConfig()
 
     let matrixInputs: any[] = []
     if (matrixConfig) {

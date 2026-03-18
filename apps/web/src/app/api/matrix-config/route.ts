@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findFirst, eq } from '@/lib/db-helpers'
-import { schema } from '@/db'
 import { logger } from '@sports-bar/logger'
 import { cacheManager } from '@/lib/cache-manager'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,9 +17,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const config = await findFirst('matrixConfigurations', {
-      where: eq(schema.matrixConfigurations.isActive, true)
-    });
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
 
     if (!config) {
       return NextResponse.json(

@@ -7,6 +7,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -16,11 +17,8 @@ export async function GET(request: NextRequest) {
 
   try {
     // Find active configuration
-    const config = await db.select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
     
     if (config) {
       // Get inputs for this configuration

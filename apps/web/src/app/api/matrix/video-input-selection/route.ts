@@ -9,6 +9,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 /**
  * Matrix Video Input Selection API
@@ -62,9 +63,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get active matrix configuration
-    const config = await findFirst('matrixConfigurations', {
-      where: eq(schema.matrixConfigurations.isActive, true)
-    })
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
 
     if (!config) {
       logger.api.error('POST', '/api/matrix/video-input-selection', new Error('No active matrix configuration'))
@@ -223,9 +223,8 @@ export async function GET(request: NextRequest) {
     const matrixOutputNumber = searchParams.get('matrixOutputNumber')
 
     // Get active matrix configuration
-    const config = await findFirst('matrixConfigurations', {
-      where: eq(schema.matrixConfigurations.isActive, true)
-    })
+    const chassisId = searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
 
     if (!config) {
       logger.api.error('GET', '/api/matrix/video-input-selection', new Error('No active matrix configuration'))

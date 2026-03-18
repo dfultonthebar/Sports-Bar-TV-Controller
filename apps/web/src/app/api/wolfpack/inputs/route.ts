@@ -5,6 +5,7 @@ import { eq, and, asc } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -63,12 +64,8 @@ export async function GET(request: NextRequest) {
     logger.api.request('GET', '/api/wolfpack/inputs')
 
     // Get active matrix configuration
-    const config = await db
-      .select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const config = await getActiveChassisConfig(chassisId)
 
     if (!config) {
       logger.api.response('GET', '/api/wolfpack/inputs', 404, { error: 'No active config' })

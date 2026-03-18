@@ -9,6 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 // TCP command with timeout
 async function sendTCPCommand(
   ipAddress: string,
@@ -88,13 +89,8 @@ export async function POST(request: NextRequest) {
     logger.info('📂 [WOLFPACK] Loading configuration from database...')
     
     // Get the active matrix configuration
-    const matrixConfigResults = await db
-      .select()
-      .from(matrixConfigurations)
-      .where(eq(matrixConfigurations.isActive, true))
-      .limit(1)
-    
-    const matrixConfig = matrixConfigResults[0]
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const matrixConfig = await getActiveChassisConfig(chassisId)
 
     if (!matrixConfig) {
       logger.error('❌ [WOLFPACK] No active matrix configuration found')

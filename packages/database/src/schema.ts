@@ -213,6 +213,7 @@ export const matrixConfigs = sqliteTable('MatrixConfig', {
 // Matrix Configuration Model
 export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json entry (nullable for backward compat)
   name: text('name').notNull(),
   model: text('model').notNull().default('WP-36X36'), // Wolf Pack model (WP-4X4, WP-8X8, WP-16X16, WP-18X18, WP-36X36, WP-64X64)
   ipAddress: text('ipAddress').notNull(),
@@ -435,6 +436,7 @@ export const testLogs = sqliteTable('TestLog', {
 // Wolfpack Matrix Routing Model
 export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull().unique(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -448,6 +450,7 @@ export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
 // Wolfpack Matrix State Model
 export const wolfpackMatrixStates = sqliteTable('WolfpackMatrixState', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -880,6 +883,7 @@ export const channelPresets = sqliteTable('ChannelPreset', {
 // Matrix Route Model (for tracking matrix routing)
 export const matrixRoutes = sqliteTable('MatrixRoute', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   inputNum: integer('inputNum').notNull(),
   outputNum: integer('outputNum').notNull().unique(),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),

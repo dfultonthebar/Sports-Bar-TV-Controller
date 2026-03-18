@@ -7,6 +7,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 
 export async function GET(request: NextRequest) {
@@ -17,11 +18,8 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get the active matrix configuration
-    const activeConfig = await db.select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    const chassisId = request.nextUrl.searchParams.get('chassisId')
+    const activeConfig = await getActiveChassisConfig(chassisId)
 
     if (!activeConfig) {
       return NextResponse.json({
