@@ -57,7 +57,7 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
   {
     id: 'fox-sports',
     name: 'Fox Sports',
-    packageName: 'com.fox.nowapp',
+    packageName: 'com.foxsports.videogo',
     category: 'sports',
     hasPublicApi: false,
     deepLinkSupport: true,
