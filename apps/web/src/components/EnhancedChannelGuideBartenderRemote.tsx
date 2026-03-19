@@ -306,19 +306,34 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   const loadLiveGameData = async () => {
     try {
-      const response = await fetch('/api/scheduling/live-status')
+      // Fetch live ESPN scores via live-by-channel (works without CableBox table)
+      const response = await fetch('/api/sports-guide/live-by-channel?deviceType=cable')
       if (response.ok) {
         const data = await response.json()
-        if (data.success && data.games) {
-          // Create a map of ESPN game IDs to live game data
+        if (data.success && data.channels) {
           const gameMap = new Map()
-          data.games.forEach((game: any) => {
-            // Key by both ESPN game ID and team names for matching
-            gameMap.set(game.espnGameId, game)
-            gameMap.set(`${game.awayTeam}-${game.homeTeam}`, game)
-          })
+          // data.channels is keyed by channel number, each value has homeTeam/awayTeam/liveData
+          for (const [_ch, game] of Object.entries(data.channels) as [string, any][]) {
+            if (!game.homeTeam || !game.awayTeam) continue
+            const entry = {
+              espnGameId: game.espnGameId || '',
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              league: game.league,
+              homeScore: game.liveData?.homeScore ?? null,
+              awayScore: game.liveData?.awayScore ?? null,
+              timeRemaining: game.liveData?.clock ?? null,
+              quarter: game.liveData?.period ? `Q${game.liveData.period}` : null,
+              isLive: game.liveData?.isLive ?? false,
+              status: game.liveData?.statusDetail ?? '',
+              isAutoScheduled: false,
+              inputLabel: null,
+            }
+            // Key by team names for matching with guide programs
+            gameMap.set(`${game.awayTeam}-${game.homeTeam}`, entry)
+          }
           setLiveGameData(gameMap)
-          logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${data.games.length} games`)
+          logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${gameMap.size} games from ESPN`)
         }
       }
     } catch (error) {
@@ -629,36 +644,22 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const input = inputs.find(i => i.channelNumber === inputNumber) as any
     if (!input) return null
 
-    // Check for DirecTV device
-    if (direcTVDevices.find(d => d.inputChannel === inputNumber)) {
-      return 'satellite'
-    }
+    // Matrix input deviceType is the authoritative source — check it first.
+    // This prevents shared inputs (e.g. cable box + Fire TV on same input)
+    // from being misclassified by the device list lookups below.
+    const dt = input.deviceType?.toLowerCase() || ''
+    if (dt.includes('cable')) return 'cable'
+    if (dt.includes('directv') || dt.includes('satellite')) return 'satellite'
+    if (dt.includes('fire') || dt.includes('everpass') || dt.includes('streaming')) return 'streaming'
 
-    // Check for Fire TV device - also check matrix input deviceType as fallback
-    if (fireTVDevices.find(d => d.inputChannel === inputNumber) ||
-        input.deviceType?.toLowerCase().includes('fire')) {
-      return 'streaming'
-    }
+    // Fallback: check device lists for inputs without a deviceType tag
+    if (direcTVDevices.find(d => d.inputChannel === inputNumber)) return 'satellite'
+    if (fireTVDevices.find(d => d.inputChannel === inputNumber)) return 'streaming'
+    if (everPassDevices.find(d => d.inputChannel === inputNumber)) return 'streaming'
+    if (irDevices.find((d: any) => d.matrixInput === inputNumber)) return 'cable'
+    if (input.label?.toLowerCase().includes('cable')) return 'cable'
 
-    // Check for EverPass device (CEC streaming box)
-    if (everPassDevices.find(d => d.inputChannel === inputNumber) ||
-        input.deviceType?.toLowerCase().includes('everpass')) {
-      return 'streaming'
-    }
-
-    // Check input type for cable
-    if (input.inputType.toLowerCase().includes('cable')) {
-      return 'cable'
-    }
-
-    // Check matrix input deviceType for satellite
-    if (input.deviceType?.toLowerCase().includes('directv') ||
-        input.deviceType?.toLowerCase().includes('satellite')) {
-      return 'satellite'
-    }
-
-    // Default to cable for IR devices (most likely cable boxes)
-    return 'cable'
+    return null
   }
 
   const loadCableGuideData = async (): Promise<DeviceGuideData> => {
@@ -786,6 +787,11 @@ export default function EnhancedChannelGuideBartenderRemote() {
         return true // Keep event if we can't parse the date
       }
     })
+
+    // Filter out tournament-style events without team matchups (PGA Tour, Golf, F1, etc.)
+    filtered = filtered.filter(prog =>
+      prog.homeTeam?.trim() !== '' || prog.awayTeam?.trim() !== ''
+    )
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
@@ -1417,7 +1423,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3 flex-1 overflow-hidden">
                           <div className="flex items-center space-x-2 flex-shrink-0">
-                            {getInputIcon(input.inputType)}
+                            {getInputIcon(deviceType || input.inputType)}
                             {getDeviceStatusIcon(input.channelNumber)}
                           </div>
                           <div className="flex-1 overflow-hidden">
