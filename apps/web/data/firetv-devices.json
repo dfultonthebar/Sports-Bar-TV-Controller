@@ -5,36 +5,36 @@
       "ipAddress": "10.11.3.49",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 1,
+      "inputChannel": 14,
       "id": "firetv_1741700000001_holmgren1",
       "isOnline": false,
       "addedAt": "2026-03-11T21:00:00.000Z",
-      "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-19T15:15:21.103Z"
+      "updatedAt": "2026-03-19T16:15:34.127Z",
+      "lastSeen": "2026-03-19T17:46:05.206Z"
     },
     {
       "name": "Fire TV 2",
       "ipAddress": "10.11.3.50",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 2,
+      "inputChannel": 15,
       "id": "firetv_1741700000002_holmgren2",
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
-      "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-19T15:14:15.481Z"
+      "updatedAt": "2026-03-19T16:15:44.259Z",
+      "lastSeen": "2026-03-19T17:44:05.200Z"
     },
     {
       "name": "Fire TV 3",
       "ipAddress": "10.11.3.51",
       "port": 5555,
       "deviceType": "Fire TV Cube",
-      "inputChannel": 3,
+      "inputChannel": 16,
       "id": "firetv_1741700000003_holmgren3",
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
-      "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-19T15:14:15.481Z"
+      "updatedAt": "2026-03-19T16:16:19.145Z",
+      "lastSeen": "2026-03-19T17:44:05.223Z"
     },
     {
       "name": "Epson Projector",
@@ -47,7 +47,7 @@
       "addedAt": "2026-03-19T15:00:00.000Z",
       "updatedAt": "2026-03-19T15:00:00.000Z",
       "model": "HA90",
-      "lastSeen": "2026-03-19T15:14:15.476Z"
+      "lastSeen": "2026-03-19T17:44:05.264Z"
     }
   ]
 }
