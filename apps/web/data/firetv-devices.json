@@ -10,7 +10,7 @@
       "isOnline": false,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-11T21:29:33.252Z"
+      "lastSeen": "2026-03-19T15:15:21.103Z"
     },
     {
       "name": "Fire TV 2",
@@ -22,7 +22,7 @@
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-11T21:28:27.620Z"
+      "lastSeen": "2026-03-19T15:14:15.481Z"
     },
     {
       "name": "Fire TV 3",
@@ -34,7 +34,20 @@
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-11T21:00:00.000Z",
-      "lastSeen": "2026-03-11T21:28:27.614Z"
+      "lastSeen": "2026-03-19T15:14:15.481Z"
+    },
+    {
+      "name": "Epson Projector",
+      "ipAddress": "10.11.3.14",
+      "port": 5555,
+      "deviceType": "Epson Projector",
+      "inputChannel": 0,
+      "id": "firetv_epson_holmgren",
+      "isOnline": true,
+      "addedAt": "2026-03-19T15:00:00.000Z",
+      "updatedAt": "2026-03-19T15:00:00.000Z",
+      "model": "HA90",
+      "lastSeen": "2026-03-19T15:14:15.476Z"
     }
   ]
 }
