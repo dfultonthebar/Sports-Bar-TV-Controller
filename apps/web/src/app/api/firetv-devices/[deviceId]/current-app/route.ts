@@ -25,7 +25,7 @@ const APP_NAMES: Record<string, string> = {
   'com.hbo.hbonow': 'HBO Max',
   'com.wbd.stream': 'Max',
   'com.espn.gtv': 'ESPN',
-  'com.fox.now': 'Fox Sports',
+  'com.foxsports.videogo': 'Fox Sports',
   'com.cbs.app': 'Paramount+',
   'com.peacocktv.peacockandroid': 'Peacock',
   'com.tubitv': 'Tubi',
