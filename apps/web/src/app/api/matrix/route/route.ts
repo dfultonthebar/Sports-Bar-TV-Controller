@@ -38,10 +38,20 @@ export async function POST(request: NextRequest) {
 
   try {
 
+    // Get active matrix config for port limits
+    const activeConfig = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
+
+    const maxInput = activeConfig?.inputCount || 48
+    const maxOutput = activeConfig?.outputCount || 48
+
     // Validate input parameters
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 36 || outputNum > 36) {
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > maxInput || outputNum > maxOutput) {
       return NextResponse.json(
-        { error: 'Invalid input or output channel' },
+        { error: `Invalid input (max ${maxInput}) or output (max ${maxOutput}) channel` },
         { status: 400 }
       )
     }

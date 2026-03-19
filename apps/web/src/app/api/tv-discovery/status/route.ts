@@ -93,6 +93,11 @@ async function pingDevice(ip: string, brand: string, port: number): Promise<'on'
     return pingVavaDevice(ip, port || 8000)
   }
 
+  // Epson uses ADB — check power state via dumpsys
+  if (brand.toLowerCase() === 'epson') {
+    return pingEpsonDevice(ip, port || 5555)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 2000)
 
@@ -186,6 +191,30 @@ async function pingVavaDevice(ip: string, port: number): Promise<'on' | 'standby
     return null
   } catch {
     clearTimeout(timeout)
+    return null
+  }
+}
+
+/**
+ * Ping an Epson projector via ADB to check power state.
+ * Uses dumpsys power to read mWakefulness.
+ */
+async function pingEpsonDevice(ip: string, port: number): Promise<'on' | 'standby' | null> {
+  const { exec } = require('child_process')
+  const { promisify } = require('util')
+  const execAsync = promisify(exec)
+  const adbTarget = `${ip}:${port}`
+
+  try {
+    await execAsync(`adb connect ${adbTarget}`, { timeout: 3000 })
+    const { stdout } = await execAsync(
+      `adb -s ${adbTarget} shell dumpsys power | grep mWakefulness`,
+      { timeout: 3000 }
+    )
+    if (stdout.includes('Awake')) return 'on'
+    if (stdout.includes('Asleep') || stdout.includes('Dozing')) return 'standby'
+    return null
+  } catch {
     return null
   }
 }

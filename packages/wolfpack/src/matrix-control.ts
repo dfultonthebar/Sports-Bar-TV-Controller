@@ -12,12 +12,6 @@ import { sendHTTPCommand } from './wolfpack-matrix-service'
  */
 export async function routeMatrix(inputNum: number, outputNum: number): Promise<boolean> {
   try {
-    // Validate input parameters
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 36 || outputNum > 36) {
-      logger.error(`Invalid input (${inputNum}) or output (${outputNum}) channel`)
-      return false
-    }
-
     // Get active matrix configuration
     const activeConfig = await db.select()
       .from(schema.matrixConfigurations)
@@ -27,6 +21,14 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
 
     if (!activeConfig) {
       logger.error('No active matrix configuration found')
+      return false
+    }
+
+    // Validate input parameters against actual matrix size
+    const maxInput = activeConfig.inputCount || 36
+    const maxOutput = activeConfig.outputCount || 36
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > maxInput || outputNum > maxOutput) {
+      logger.error(`Invalid input (${inputNum}, max ${maxInput}) or output (${outputNum}, max ${maxOutput}) channel`)
       return false
     }
 

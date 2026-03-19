@@ -82,6 +82,10 @@ export async function POST(
         result = await controlVavaPower(device, action)
         break
 
+      case 'epson':
+        result = await controlEpsonPower(device, action)
+        break
+
       case 'lg':
       case 'sony':
       case 'vizio':
@@ -98,9 +102,21 @@ export async function POST(
     }
 
     if (result.success) {
-      // Update last seen timestamp
+      // Determine new power status based on action taken
+      let newStatus: string | undefined
+      if (action === 'on') {
+        newStatus = 'online'
+      } else if (action === 'off') {
+        newStatus = 'standby'
+      } else if (action === 'toggle') {
+        // Toggle flips the current status
+        newStatus = device.status === 'online' ? 'standby' : 'online'
+      }
+
+      // Update status and last seen timestamp
       await db.update(schema.networkTVDevices)
         .set({
+          ...(newStatus ? { status: newStatus } : {}),
           lastSeen: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         })
@@ -295,6 +311,50 @@ async function controlVavaPower(
       return isOn ? await client.powerOff() : await client.powerOn()
     }
     return action === 'on' ? await client.powerOn() : await client.powerOff()
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control Epson projector power via ADB (SLEEP/WAKEUP)
+ * On power-on, automatically switches to HDMI 1 input
+ */
+async function controlEpsonPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const { exec } = require('child_process')
+  const { promisify } = require('util')
+  const execAsync = promisify(exec)
+  const adbTarget = `${device.ipAddress}:${device.port || 5555}`
+
+  try {
+    // Ensure ADB connection
+    await execAsync(`adb connect ${adbTarget}`, { timeout: 5000 })
+
+    let shouldPowerOn: boolean
+    if (action === 'toggle') {
+      shouldPowerOn = device.status !== 'online'
+    } else {
+      shouldPowerOn = action === 'on'
+    }
+
+    if (shouldPowerOn) {
+      // Wake up
+      await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_WAKEUP`, { timeout: 5000 })
+      // Wait for projector to initialize, then switch to HDMI 1
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      await execAsync(
+        `adb -s ${adbTarget} shell am start -a android.intent.action.VIEW -d "content://android.media.tv/passthrough/com.droidlogic.tvinput%2F.services.Hdmi3InputService%2FHW7"`,
+        { timeout: 5000 }
+      )
+      return { success: true, message: 'Epson powered on + HDMI 3 selected' }
+    } else {
+      // Sleep
+      await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_SLEEP`, { timeout: 5000 })
+      return { success: true, message: 'Epson powered off (standby)' }
+    }
   } catch (error: any) {
     return { success: false, error: error.message }
   }

@@ -109,6 +109,34 @@ export async function POST(
         break
       }
 
+      case 'epson': {
+        const { exec } = require('child_process')
+        const { promisify } = require('util')
+        const execAsync = promisify(exec)
+        const adbTarget = `${device.ipAddress}:${device.port || 5555}`
+        const hdmiInputIds: Record<number, string> = {
+          1: 'com.droidlogic.tvinput%2F.services.Hdmi1InputService%2FHW5',
+          2: 'com.droidlogic.tvinput%2F.services.Hdmi2InputService%2FHW6',
+          3: 'com.droidlogic.tvinput%2F.services.Hdmi3InputService%2FHW7',
+        }
+        const inputId = hdmiInputIds[inputNumber]
+        if (!inputId) {
+          result = { success: false, error: `HDMI ${inputNumber} not available (1-3 supported)` }
+        } else {
+          try {
+            await execAsync(`adb connect ${adbTarget}`, { timeout: 5000 })
+            await execAsync(
+              `adb -s ${adbTarget} shell am start -a android.intent.action.VIEW -d "content://android.media.tv/passthrough/${inputId}"`,
+              { timeout: 5000 }
+            )
+            result = { success: true, message: `Switched to HDMI ${inputNumber}` }
+          } catch (err: any) {
+            result = { success: false, error: err.message }
+          }
+        }
+        break
+      }
+
       default:
         return NextResponse.json(
           { success: false, error: `${device.brand} input switching not yet implemented` },
