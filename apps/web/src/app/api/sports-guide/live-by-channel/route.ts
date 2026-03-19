@@ -115,74 +115,81 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
 }
 
 // Cable (Spectrum) channel mapping for broadcast networks
-// UPDATED: Madison Spectrum channel numbers (Lucky's 1313)
+// Green Bay area Spectrum channel numbers (Holmgren Way)
 const NETWORK_TO_CABLE: Record<string, string> = {
   // ESPN family
-  'ESPN': '24',
-  'ESPN2': '23',
-  'ESPNU': '310',
-  'ESPNEWS': '304',
-  'ESPN+': '24',
+  'ESPN': '27',
+  'ESPN2': '28',
+  'ESPNU': '303',
+  'ESPNEWS': '305',
+  'ESPN+': '27',
 
   // Fox Sports
-  'FOX': '8',   // Local Fox (WMSN channel 8 on Spectrum Madison)
-  'FS1': '27',
-  'FS2': '305',
-  'FOX Sports 1': '27',
-  'FOX Sports 2': '305',
+  'FOX': '12',   // Local Fox (WLUK-TV channel 12 on Spectrum Green Bay)
+  'FS1': '75',
+  'FS2': '328',
+  'FOX Sports 1': '75',
+  'FOX Sports 2': '328',
 
   // CBS/NBC/ABC
-  'CBS': '9',   // Local CBS (WISC channel 9 on Spectrum Madison)
-  'NBC': '5',   // Local NBC (WMTV channel 5 on Spectrum Madison)
-  'ABC': '7',   // Local ABC (WKOW channel 7 on Spectrum Madison)
-  'CBS Sports Network': '306',
-  'CBSSN': '306',
-  'Peacock': '28',
-  'NBC Sports': '28',
-  'NBCSN': '28',
+  'CBS': '6',    // Local CBS (WFRV channel 6 on Spectrum Green Bay)
+  'NBC': '13',   // Local NBC (WGBA channel 13 on Spectrum Green Bay)
+  'ABC': '3',    // Local ABC (WBAY channel 3 on Spectrum Green Bay)
+  'CBS Sports Network': '322',
+  'CBSSN': '322',
+  'Peacock': '38',
+  'NBC Sports': '38',
+  'NBCSN': '38',
 
   // Turner
-  'TNT': '32',
-  'TBS': '32',  // TBS not in presets, map to TNT as fallback
-  'truTV': '56',
-  'TruTV': '56',
+  'TNT': '29',
+  'TBS': '25',
+  'truTV': '74',
+  'TruTV': '74',
 
   // Other sports
-  'NBA TV': '338',
-  'NBATV': '338',
-  'MLB Network': '84',
-  'MLBN': '84',
-  'NHL Network': '326',
-  'NHLN': '326',
-  'Big Ten Network': '73',
-  'BTN': '73',
-  'SEC Network': '333',
-  'SECN': '333',
+  'NBA TV': '325',
+  'NBATV': '325',
+  'MLB Network': '326',
+  'MLBN': '326',
+  'NHL Network': '324',
+  'NHLN': '324',
+  'Big Ten Network': '39',
+  'BTN': '39',
+  'SEC Network': '65',
+  'SECN': '65',
 
   // USA Network (for sports)
-  'USA': '34',
-  'USA Network': '34',
+  'USA': '53',
+  'USA Network': '53',
 
   // Golf
-  'Golf Channel': '22',
-  'Golf': '22',
-  'GOLF': '22',
-
-  // Tennis
-  'Tennis Channel': '313',
-  'Tennis': '313',
-  'TENNIS': '313',
+  'Golf Channel': '14',
+  'Golf': '14',
+  'GOLF': '14',
 
   // Soccer
-  'beIN Sports': '243',
-  'beIN SPORTS': '243',
-  'BEIN': '243',
+  'beIN Sports': '337',
+  'beIN SPORTS': '337',
+  'BEIN': '337',
 
-  // Local stations (Madison area on Spectrum)
-  'WMTV': '5',   // NBC
-  'WKOW': '7',   // ABC
-  'WMSN': '8',   // FOX
-  'WISC': '9',   // CBS
+  // Bally / Fan Duel Sports
+  'Bally Sports North': '310',
+  'Fan Duel Sports North': '310',
+  'Bally Sports Wisconsin': '40',
+  'Fan Duel Sports Wisconsin': '40',
+  'FOX Sports Wisconsin': '40',
+  'Fox Sports Prime': '339',
+
+  // Local stations (Green Bay area on Spectrum)
+  'WBAY': '3',    // ABC
+  'WFRV': '6',    // CBS
+  'WCWF': '10',   // CW
+  'WLUK': '12',   // FOX
+  'WLUK-TV': '12',
+  'WGBA': '13',   // NBC
+  'WACY': '83',   // MyNetworkTV
+  'WACY-TV': '83',
 }
 
 // Function to get the appropriate channel mapping based on device type
@@ -307,6 +314,9 @@ export async function GET(request: NextRequest) {
       const { sportConfig, games } = result.value
 
       for (const game of games) {
+        // Skip events without real team matchups (golf, F1, etc.)
+        if (!game.homeTeam?.displayName || !game.awayTeam?.displayName) continue
+
         // Get broadcast networks
         const networks = espnScoreboardAPI.getAllNetworks(game)
 

@@ -5,6 +5,8 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { randomUUID } from 'crypto'
+import { getSceneEngine } from '@sports-bar/dmx'
+import { ensureDMXControllersRegistered } from '@/lib/dmx-bootstrap'
 
 /**
  * POST /api/dmx/control/blackout
@@ -27,8 +29,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // TODO: Send blackout command to all adapters via connection manager
-    // For now, log the action
+    // Ensure controllers are registered, then blackout via scene engine
+    await ensureDMXControllersRegistered()
+    const sceneEngine = getSceneEngine()
+    await sceneEngine.blackout(0)
+
     logger.info('[DMX] BLACKOUT triggered', {
       controllerCount: controllers.length,
     })

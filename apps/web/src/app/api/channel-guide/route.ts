@@ -303,6 +303,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Filter out tournament-style events without team matchups (Golf, NASCAR, etc.)
+      const preFilterCount = programs.length
+      programs = programs.filter(p => p.homeTeam.trim() !== '' || p.awayTeam.trim() !== '')
+      if (programs.length < preFilterCount) {
+        logInfo(`Filtered out ${preFilterCount - programs.length} programs without team matchups`)
+      }
+
       logInfo(`Processed ${programs.length} programs from Rail API for ${deviceType}`)
       logInfo(`Matched ${matchedCount} station listings to presets`)
       if (unmatchedStations.size > 0) {
