@@ -908,7 +908,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       try {
         // Find the cable box device for the selected input
-        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && (d.deviceType === 'Cable Box' || d.deviceType === 'CableBox'))
 
         if (!cableBoxDevice) {
           setCommandStatus('No cable box configured for this input')
@@ -1115,7 +1115,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       try {
         // Find the cable box device for the selected input
-        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && (d.deviceType === 'Cable Box' || d.deviceType === 'CableBox'))
 
         if (!cableBoxDevice) {
           setCommandStatus('No cable box configured for this input')
