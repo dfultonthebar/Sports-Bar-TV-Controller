@@ -1,1 +1,163 @@
-{"name":"Bar Layout","zones":[],"rooms":[]}
+{
+  "name": "Bar Layout",
+  "zones": [
+    {
+      "id": "zone-1774459599717-xqamsr49e",
+      "outputNumber": 1,
+      "x": 38.5,
+      "y": 17.17,
+      "width": 8,
+      "height": 8,
+      "label": "TV 01",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459616179-my7cm84v7",
+      "outputNumber": 2,
+      "x": 47.3,
+      "y": 17.41,
+      "width": 8,
+      "height": 8,
+      "label": "TV 02",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459623150-fdr5m0i6a",
+      "outputNumber": 3,
+      "x": 56.63,
+      "y": 17.97,
+      "width": 8,
+      "height": 8,
+      "label": "TV 03",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459632520-hftekg6i3",
+      "outputNumber": 4,
+      "x": 38.99,
+      "y": 26.5,
+      "width": 8,
+      "height": 8,
+      "label": "TV 04",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459645704-vku2z3k9u",
+      "outputNumber": 5,
+      "x": 47.28,
+      "y": 26.2,
+      "width": 8,
+      "height": 8,
+      "label": "TV 05",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459652353-v1sbvfijy",
+      "outputNumber": 6,
+      "x": 57.08,
+      "y": 25.54,
+      "width": 8,
+      "height": 8,
+      "label": "TV 06",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459658944-4bgca3vmr",
+      "outputNumber": 7,
+      "x": 24.11,
+      "y": 37.39,
+      "width": 8,
+      "height": 8,
+      "label": "TV 07",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459669264-7tnjcm1k8",
+      "outputNumber": 8,
+      "x": 15.32,
+      "y": 37.81,
+      "width": 8,
+      "height": 8,
+      "label": "TV 08",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459675612-sn185i6it",
+      "outputNumber": 9,
+      "x": 7.25,
+      "y": 38.27,
+      "width": 8,
+      "height": 8,
+      "label": "TV 09",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459682115-aqysmhmdx",
+      "outputNumber": 10,
+      "x": 7.69,
+      "y": 47.04,
+      "width": 8,
+      "height": 8,
+      "label": "TV 10",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459690635-i5kgsl8m8",
+      "outputNumber": 11,
+      "x": 16.3,
+      "y": 46.93,
+      "width": 8,
+      "height": 8,
+      "label": "TV 11",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459697303-idpsjtjex",
+      "outputNumber": 12,
+      "x": 24.12,
+      "y": 47.15,
+      "width": 8,
+      "height": 8,
+      "label": "TV 12",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459704494-u0lynupdk",
+      "outputNumber": 13,
+      "x": 42.42,
+      "y": 71.42,
+      "width": 8,
+      "height": 8,
+      "label": "TV 13",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459711344-wrc1068n4",
+      "outputNumber": 14,
+      "x": 69.33,
+      "y": 35.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 14",
+      "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774459717945-dcqh3fzdl",
+      "outputNumber": 15,
+      "x": 69.72,
+      "y": 45.6,
+      "width": 8,
+      "height": 8,
+      "label": "TV 15",
+      "room": "room-1774458842414-9y6y34"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room-1774458842414-9y6y34",
+      "name": "Main Bar",
+      "color": "#3b82f6",
+      "imageUrl": "/api/uploads/layouts/layout_1774458853484.png"
+    }
+  ]
+}
