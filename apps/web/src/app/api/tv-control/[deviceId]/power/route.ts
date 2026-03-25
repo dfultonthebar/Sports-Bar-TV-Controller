@@ -230,11 +230,8 @@ async function controlSamsungPower(
     let result: { success: boolean; message?: string; error?: string }
 
     if (action === 'on') {
-      // Explicit power on — try WebSocket first, fall back to WOL
-      result = await client.sendKey('KEY_POWER').catch(async () => {
-        logger.info(`[TV-CONTROL] WebSocket failed for power on, falling back to WOL for ${device.ipAddress}`)
-        return client.powerOn()
-      })
+      // Use powerOn() which sends WoL + checks PowerState before sending KEY_POWER
+      result = await client.powerOn()
     } else {
       // off or toggle — send KEY_POWER via WebSocket (works in both on and standby)
       result = await client.sendKey('KEY_POWER')

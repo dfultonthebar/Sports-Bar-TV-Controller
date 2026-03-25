@@ -192,13 +192,13 @@ export async function POST(request: NextRequest) {
                 .from(schema.irDevices)
                 .where(and(
                   eq(schema.irDevices.id, cableBoxIdStr),
-                  eq(schema.irDevices.deviceType, 'Cable Box')
+                  or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox'))
                 ))
                 .limit(1)
                 .get()
             : await db.select()
                 .from(schema.irDevices)
-                .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+                .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
                 .limit(1)
                 .get()
 
@@ -472,7 +472,7 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     const irDevices = await db
       .select()
       .from(schema.irDevices)
-      .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+      .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
       .execute()
 
     if (irDevices.length === 0) {
