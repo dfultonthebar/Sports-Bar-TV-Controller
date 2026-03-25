@@ -209,8 +209,9 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
-   * Power on via Wake-on-LAN magic packet
-   * Doesn't need WebSocket since the TV is off
+   * Power on via Wake-on-LAN + KEY_POWER
+   * WoL wakes the network interface, then KEY_POWER turns the screen on.
+   * Some Samsung TVs (especially on ethernet) need both steps.
    */
   async powerOn(): Promise<CommandResult> {
     try {
@@ -220,10 +221,42 @@ export class SamsungTVClient extends BaseTVClient {
       }
 
       logger.info(`[SAMSUNG] Sending WOL to ${mac} for ${this.config.ipAddress}`)
-
       await this.sendWOL(mac)
 
-      return { success: true, message: 'Wake-on-LAN packet sent' }
+      // Wait for the TV to become reachable, then check if screen is actually on
+      // Some Samsung TVs fully power on from WoL alone; others need KEY_POWER too.
+      // Check PowerState via REST API to avoid toggling an already-on TV back off.
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        try {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const response = await fetch(`http://${this.config.ipAddress}:${REST_PORT}/api/v2/`, {
+            signal: controller.signal,
+          })
+          clearTimeout(timeout)
+          if (response.ok) {
+            const data = await response.json()
+            const powerState = data?.device?.PowerState
+            logger.info(`[SAMSUNG] TV reachable after WOL, PowerState=${powerState} for ${this.config.ipAddress}`)
+
+            if (powerState === 'on') {
+              // WoL fully powered on the TV — no KEY_POWER needed
+              return { success: true, message: `WOL powered on TV (attempt ${attempt + 1})` }
+            }
+
+            // TV is in standby/suspend — send KEY_POWER to wake the screen
+            logger.info(`[SAMSUNG] TV in standby, sending KEY_POWER to ${this.config.ipAddress}`)
+            await this.sendKey('KEY_POWER')
+            return { success: true, message: `WOL + KEY_POWER sent (attempt ${attempt + 1})` }
+          }
+        } catch {
+          logger.debug(`[SAMSUNG] TV not yet reachable (attempt ${attempt + 1}/10)`)
+        }
+      }
+
+      // WoL sent but couldn't confirm TV is reachable
+      return { success: true, message: 'Wake-on-LAN packet sent (TV not yet reachable for status check)' }
     } catch (error) {
       return this.handleError('Failed to power on', error)
     }
