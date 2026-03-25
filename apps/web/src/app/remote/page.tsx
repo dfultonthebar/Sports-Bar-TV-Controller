@@ -155,6 +155,11 @@ export default function BartenderRemotePage() {
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   const [currentSources, setCurrentSources] = useState<Map<number, number>>(new Map()) // outputNumber -> inputNumber
 
+  // Multi-view card state
+  const [multiViewMode, setMultiViewMode] = useState<number>(0)
+  const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
+  const [multiViewLoading, setMultiViewLoading] = useState(false)
+
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
@@ -242,6 +247,7 @@ export default function BartenderRemotePage() {
     // Also fetch matrix data on initial load
     fetchMatrixData()
     loadCurrentChannels()
+    loadMultiViewCard()
 
     // Establish persistent connection on component mount
     establishPersistentConnection()
@@ -347,6 +353,46 @@ export default function BartenderRemotePage() {
   const loadInputs = async () => {
     // Matrix inputs are loaded via fetchMatrixData()
     // This function is kept for compatibility
+  }
+
+  const loadMultiViewCard = async () => {
+    try {
+      const response = await fetch('/api/wolfpack/multiview')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.cards?.length > 0) {
+          setMultiViewCardId(data.cards[0].id)
+          setMultiViewMode(data.cards[0].currentMode ?? 0)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading multi-view card:', error)
+    }
+  }
+
+  const toggleMultiView = async () => {
+    if (!multiViewCardId) return
+    const newMode = multiViewMode === 0 ? 6 : 0 // Toggle between single and equal quad (mode 6)
+    setMultiViewLoading(true)
+    try {
+      const response = await fetch(`/api/wolfpack/multiview/${multiViewCardId}/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMultiViewMode(newMode)
+        setCommandStatus(newMode === 7 ? 'Quad View enabled' : 'Single View enabled')
+      } else {
+        setCommandStatus(`Multi-view error: ${data.error}`)
+      }
+    } catch (error) {
+      setCommandStatus('Failed to switch multi-view')
+    } finally {
+      setMultiViewLoading(false)
+      setTimeout(() => setCommandStatus(''), 3000)
+    }
   }
 
   const loadAudioProcessor = async () => {
@@ -1130,6 +1176,19 @@ export default function BartenderRemotePage() {
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
                   <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
                 </div>
+                {multiViewCardId && (
+                  <button
+                    onClick={toggleMultiView}
+                    disabled={multiViewLoading}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                      multiViewMode === 6
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
+                  </button>
+                )}
                 <button
                   onClick={loadCurrentRoutes}
                   disabled={loadingRoutes}
@@ -1185,7 +1244,7 @@ export default function BartenderRemotePage() {
                   </thead>
                   <tbody>
                     {matrixConfig?.outputs
-                      ?.filter((output: any) => output.isActive && output.channelNumber <= 32)
+                      ?.filter((output: any) => output.isActive)
                       .map((output: any) => {
                         const currentInput = currentSources.get(output.channelNumber)
 
