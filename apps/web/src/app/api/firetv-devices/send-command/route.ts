@@ -31,7 +31,9 @@ const KEY_CODES: Record<string, number> = {
   'VOL_DOWN': 25,
   'MUTE': 164,
   'POWER': 26,
-  'SEARCH': 84
+  'SEARCH': 84,
+  'CHANNEL_UP': 166,
+  'CHANNEL_DOWN': 167
 }
 
 // Validation schema for FireTV command

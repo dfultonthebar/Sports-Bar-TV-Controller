@@ -240,15 +240,22 @@ export class SamsungTVClient extends BaseTVClient {
             const powerState = data?.device?.PowerState
             logger.info(`[SAMSUNG] TV reachable after WOL, PowerState=${powerState} for ${this.config.ipAddress}`)
 
-            if (powerState === 'on') {
-              // WoL fully powered on the TV — no KEY_POWER needed
+            if (powerState === 'on' || !powerState) {
+              // WoL fully powered on the TV — no KEY_POWER needed.
+              // Some older Samsung TVs (Series 6) don't report PowerState at all,
+              // but if the REST API is reachable after WoL, the TV is on.
               return { success: true, message: `WOL powered on TV (attempt ${attempt + 1})` }
             }
 
-            // TV is in standby/suspend — send KEY_POWER to wake the screen
-            logger.info(`[SAMSUNG] TV in standby, sending KEY_POWER to ${this.config.ipAddress}`)
-            await this.sendKey('KEY_POWER')
-            return { success: true, message: `WOL + KEY_POWER sent (attempt ${attempt + 1})` }
+            if (powerState === 'standby') {
+              // TV is explicitly in standby — send KEY_POWER to wake the screen
+              logger.info(`[SAMSUNG] TV in standby, sending KEY_POWER to ${this.config.ipAddress}`)
+              await this.sendKey('KEY_POWER')
+              return { success: true, message: `WOL + KEY_POWER sent (attempt ${attempt + 1})` }
+            }
+
+            // Unknown power state — safer to just return WoL success
+            return { success: true, message: `WOL sent, PowerState=${powerState} (attempt ${attempt + 1})` }
           }
         } catch {
           logger.debug(`[SAMSUNG] TV not yet reachable (attempt ${attempt + 1}/10)`)
