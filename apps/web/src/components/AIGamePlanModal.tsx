@@ -214,7 +214,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
       if (result.success && result.inputs) {
         // Filter to only active inputs that can tune channels (Cable Box, DirecTV, Fire TV)
         const sourceInputs = result.inputs
-          .filter((i: any) => i.isActive && ['Cable Box', 'DirecTV', 'Fire TV'].includes(i.deviceType))
+          .filter((i: any) => i.isActive && ['Cable Box', 'CableBox', 'DirecTV', 'Fire TV'].includes(i.deviceType))
           .map((i: any) => ({
             id: i.id,
             channelNumber: i.channelNumber,

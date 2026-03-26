@@ -77,7 +77,7 @@ interface MatrixInput {
   label: string
   inputType: string
   isActive: boolean
-  deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming' | 'Cable Box' | 'DirecTV' | 'Fire TV' | 'Other'
+  deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming' | 'Cable Box' | 'CableBox' | 'DirecTV' | 'Fire TV' | 'Other'
 }
 
 interface Configuration {
@@ -2046,7 +2046,7 @@ n          {/* API Configuration Tab */}
                       <div className="space-y-3 max-h-96 overflow-y-auto">
                         {inputs
                           .filter(input =>
-                            input.deviceType === 'Cable Box' ||
+                            input.deviceType === 'Cable Box' || input.deviceType === 'CableBox' ||
                             input.deviceType === 'DirecTV' ||
                             input.inputType?.toLowerCase().includes('cable') ||
                             input.inputType?.toLowerCase().includes('directv') ||
@@ -2083,7 +2083,7 @@ n          {/* API Configuration Tab */}
                                       {channelPresets
                                         .filter(p => {
                                           // Filter presets by input type - use deviceType from preset
-                                          if (input.deviceType === 'Cable Box' || input.inputType?.toLowerCase().includes('cable')) {
+                                          if (input.deviceType === 'Cable Box' || input.deviceType === 'CableBox' || input.inputType?.toLowerCase().includes('cable')) {
                                             return p.deviceType === 'cable' || p.deviceType === 'both';
                                           }
                                           if (input.deviceType === 'DirecTV' || input.inputType?.toLowerCase().includes('directv') || input.inputType?.toLowerCase().includes('satellite')) {
@@ -2185,7 +2185,7 @@ n          {/* API Configuration Tab */}
                                             const input = inputs.find(i => i.id === mapping.inputId);
                                             if (!input) return false;
                                             // Filter presets by input type - use deviceType from preset
-                                            if (input.inputType?.toLowerCase().includes('cable') || input.deviceType === 'Cable Box') {
+                                            if (input.inputType?.toLowerCase().includes('cable') || input.deviceType === 'Cable Box' || input.deviceType === 'CableBox') {
                                               return p.deviceType === 'cable' || p.deviceType === 'both';
                                             }
                                             if (input.inputType?.toLowerCase().includes('directv') || input.inputType?.toLowerCase().includes('satellite') || input.deviceType === 'DirecTV') {

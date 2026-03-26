@@ -230,7 +230,7 @@ export default function AIGamePlanPage() {
 
     if (result.success && result.inputs) {
       const sourceInputs = result.inputs
-        .filter((i: any) => i.isActive && ['Cable Box', 'DirecTV', 'Fire TV'].includes(i.deviceType))
+        .filter((i: any) => i.isActive && ['Cable Box', 'CableBox', 'DirecTV', 'Fire TV'].includes(i.deviceType))
         .map((i: any) => ({
           id: i.id,
           channelNumber: i.channelNumber,

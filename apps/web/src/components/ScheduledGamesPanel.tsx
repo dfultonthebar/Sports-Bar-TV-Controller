@@ -24,6 +24,14 @@ interface ScheduledGame {
   tvOutputIds: number[]
 }
 
+interface CableBoxChannel {
+  channelNumber: string
+  channelName: string | null
+  deviceType: string
+  inputLabel: string
+  lastTuned: string
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -76,6 +84,24 @@ export default function ScheduledGamesPanel() {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [cableBoxChannels, setCableBoxChannels] = useState<Record<string, CableBoxChannel>>({})
+
+  // -----------------------------------------------------------------------
+  // Fetch current cable box channels
+  // -----------------------------------------------------------------------
+
+  const fetchCableBoxChannels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/matrix/current-channels')
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.success && data.channels) {
+        setCableBoxChannels(data.channels)
+      }
+    } catch (err) {
+      logger.debug('[SCHEDULED-GAMES] Failed to fetch cable box channels', err)
+    }
+  }, [])
 
   // -----------------------------------------------------------------------
   // Fetch schedule
@@ -112,12 +138,16 @@ export default function ScheduledGamesPanel() {
     }
   }, [])
 
-  // Initial fetch + auto-refresh every 60 seconds
+  // Initial fetch + auto-refresh every 30 seconds
   useEffect(() => {
     fetchSchedule()
-    const interval = setInterval(() => fetchSchedule(), 60_000)
+    fetchCableBoxChannels()
+    const interval = setInterval(() => {
+      fetchSchedule()
+      fetchCableBoxChannels()
+    }, 30_000)
     return () => clearInterval(interval)
-  }, [fetchSchedule])
+  }, [fetchSchedule, fetchCableBoxChannels])
 
   // -----------------------------------------------------------------------
   // Cancel a pending schedule
@@ -177,7 +207,7 @@ export default function ScheduledGamesPanel() {
         </h3>
         <button
           type="button"
-          onClick={() => fetchSchedule(true)}
+          onClick={() => { fetchSchedule(true); fetchCableBoxChannels() }}
           disabled={refreshing}
           className="flex items-center gap-1.5 rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-50"
         >
@@ -187,6 +217,57 @@ export default function ScheduledGamesPanel() {
           Refresh
         </button>
       </div>
+
+      {/* Cable Box Status Cards */}
+      {Object.keys(cableBoxChannels).length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(cableBoxChannels)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([inputNum, channel]) => {
+              // Find active allocation for this cable box by matching inputLabel
+              const activeGame = games.find(
+                (g) =>
+                  g.status === 'active' &&
+                  g.inputLabel === channel.inputLabel
+              )
+              const hasActiveAllocation = !!activeGame
+
+              return (
+                <div
+                  key={inputNum}
+                  className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 py-3"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span
+                      className={`inline-block h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+                        hasActiveAllocation
+                          ? 'bg-green-400 animate-pulse'
+                          : 'bg-blue-400'
+                      }`}
+                    />
+                    <span className="text-sm font-semibold text-white truncate">
+                      Cable Box {inputNum}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm text-slate-300 mb-1">
+                    <Tv className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
+                    <span className="truncate">
+                      Ch {channel.channelNumber}
+                      {channel.channelName ? ` - ${channel.channelName}` : ''}
+                    </span>
+                  </div>
+                  {hasActiveAllocation && activeGame ? (
+                    <p className="text-xs text-green-400 font-medium truncate">
+                      {activeGame.awayTeam} vs {activeGame.homeTeam}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500">Idle</p>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      )}
 
       {/* Loading state */}
       {loading && (

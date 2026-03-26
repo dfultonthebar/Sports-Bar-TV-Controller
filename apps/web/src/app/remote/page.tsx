@@ -37,6 +37,7 @@ import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
+import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 
 import { logger } from '@sports-bar/logger'
@@ -279,6 +280,16 @@ export default function BartenderRemotePage() {
 
     return () => clearInterval(interval)
   }, [activeTab])
+
+  // Clear digit buffer when the selected input changes (user switches cable boxes)
+  // to prevent stale digits from firing a tune on the newly selected device
+  useEffect(() => {
+    if (digitTimerRef.current) {
+      clearTimeout(digitTimerRef.current)
+      digitTimerRef.current = null
+    }
+    digitBufferRef.current = ''
+  }, [selectedInput])
 
   useEffect(() => {
     // Re-fetch matrix data when layout zones change (but skip initial empty state)
@@ -724,6 +735,10 @@ export default function BartenderRemotePage() {
         if (/^[0-9]$/.test(command) && selectedInput && ('iTachAddress' in selectedDevice || selectedDevice.deviceType === 'DirecTV')) {
           digitBufferRef.current += command
 
+          // Capture device identity at the moment digits are typed
+          const capturedDeviceId = selectedDevice.id
+          const capturedDeviceType = selectedDevice.deviceType
+
           // Clear any pending timer
           if (digitTimerRef.current) clearTimeout(digitTimerRef.current)
 
@@ -733,13 +748,14 @@ export default function BartenderRemotePage() {
             digitBufferRef.current = ''
             try {
               // Update channel tracking in the database
+              // Use captured device identity, not current selectedDevice
               await fetch('/api/channel-presets/tune', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   channelNumber: channelNum,
-                  deviceType: selectedDevice.deviceType === 'DirecTV' ? 'directv' : 'cable',
-                  cableBoxId: selectedDevice.id,
+                  deviceType: capturedDeviceType === 'DirecTV' ? 'directv' : 'cable',
+                  cableBoxId: capturedDeviceId,
                   presetId: 'manual'
                 })
               })
@@ -1003,6 +1019,7 @@ export default function BartenderRemotePage() {
 
       {/* Main Content Area - Changes based on active tab */}
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
+        <RecoveryConfirmationPopup />
         {activeTab === 'video' && (
           <div className="w-full max-w-7xl lg:max-w-full mx-auto space-y-4 px-2 sm:px-4 lg:px-8">
             <InteractiveBartenderLayout
