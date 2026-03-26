@@ -150,6 +150,166 @@
       "height": 8,
       "label": "TV 15",
       "room": "room-1774458842414-9y6y34"
+    },
+    {
+      "id": "zone-1774464337553-xp9jf1xj2",
+      "outputNumber": 23,
+      "x": 37.64,
+      "y": 25.19,
+      "width": 8,
+      "height": 8,
+      "label": "TV 23",
+      "room": "room-1774464255498-f2pfg6"
+    },
+    {
+      "id": "zone-1774464359482-gzllwu02a",
+      "outputNumber": 22,
+      "x": 37.01,
+      "y": 66.84,
+      "width": 8,
+      "height": 8,
+      "label": "TV 22",
+      "room": "room-1774464255498-f2pfg6"
+    },
+    {
+      "id": "zone-1774464380944-kko3vlf6x",
+      "outputNumber": 24,
+      "x": 55.08,
+      "y": 25.89,
+      "width": 8,
+      "height": 8,
+      "label": "TV 24",
+      "room": "room-1774464255498-f2pfg6"
+    },
+    {
+      "id": "zone-1774464413286-3cwmsn0sl",
+      "outputNumber": 25,
+      "x": 55.83,
+      "y": 66.73,
+      "width": 8,
+      "height": 8,
+      "label": "TV 25",
+      "room": "room-1774464255498-f2pfg6"
+    },
+    {
+      "id": "zone-1774464527515-ehizrr16z",
+      "outputNumber": 16,
+      "x": 81.5,
+      "y": 39.26,
+      "width": 8,
+      "height": 8,
+      "label": "TV 16",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464543213-05tfxjy8e",
+      "outputNumber": 17,
+      "x": 59.71,
+      "y": 32.67,
+      "width": 8,
+      "height": 8,
+      "label": "TV 17",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464550942-buarza2sp",
+      "outputNumber": 18,
+      "x": 59.95,
+      "y": 45.55,
+      "width": 8,
+      "height": 8,
+      "label": "TV 18",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464557442-m80ypr3k3",
+      "outputNumber": 19,
+      "x": 45.1,
+      "y": 42.33,
+      "width": 8,
+      "height": 8,
+      "label": "TV 19",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464567262-wuvjklqw8",
+      "outputNumber": 20,
+      "x": 52.84,
+      "y": 56.46,
+      "width": 8,
+      "height": 8,
+      "label": "TV 20",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464572934-uis67cck8",
+      "outputNumber": 21,
+      "x": 71.07,
+      "y": 55.96,
+      "width": 8,
+      "height": 8,
+      "label": "TV 21",
+      "room": "room-1774464504372-7qg1na"
+    },
+    {
+      "id": "zone-1774464603098-w8zeiulpx",
+      "outputNumber": 26,
+      "x": 78.5,
+      "y": 72.39,
+      "width": 8,
+      "height": 8,
+      "label": "TV 26",
+      "room": "room-1774464484255-477k61"
+    },
+    {
+      "id": "zone-1774464624345-ai37uxuye",
+      "outputNumber": 33,
+      "x": 78.58,
+      "y": 30.97,
+      "width": 8,
+      "height": 8,
+      "label": "TV 33",
+      "room": "room-1774464484255-477k61"
+    },
+    {
+      "id": "zone-1774464681616-gy3vvfr41",
+      "outputNumber": 27,
+      "x": 68.45,
+      "y": 71.59,
+      "width": 8,
+      "height": 8,
+      "label": "TV 27",
+      "room": "room-1774464484255-477k61"
+    },
+    {
+      "id": "zone-1774464689330-gu6xpm0pb",
+      "outputNumber": 34,
+      "x": 86.62,
+      "y": 30.58,
+      "width": 8,
+      "height": 8,
+      "label": "TV 34",
+      "room": "room-1774464484255-477k61"
+    },
+    {
+      "id": "zone-1774464718724-lsdk7qbz8",
+      "outputNumber": 35,
+      "x": 78.26,
+      "y": 41.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 35",
+      "room": "room-1774464484255-477k61"
+    },
+    {
+      "id": "zone-1774464756361-gyfckhto9",
+      "outputNumber": 36,
+      "x": 86.82,
+      "y": 40.37,
+      "width": 8,
+      "height": 8,
+      "label": "TV 36",
+      "room": "room-1774464484255-477k61"
     }
   ],
   "rooms": [
@@ -158,6 +318,24 @@
       "name": "Main Bar",
       "color": "#3b82f6",
       "imageUrl": "/api/uploads/layouts/layout_1774458853484.png"
+    },
+    {
+      "id": "room-1774464255498-f2pfg6",
+      "name": "UpStairs",
+      "color": "#ef4444",
+      "imageUrl": "/api/uploads/layouts/layout_1774464333801.png"
+    },
+    {
+      "id": "room-1774464484255-477k61",
+      "name": "Pavillion",
+      "color": "#22c55e",
+      "imageUrl": "/api/uploads/layouts/layout_1774464892198.png"
+    },
+    {
+      "id": "room-1774464504372-7qg1na",
+      "name": "Party Room/Patio",
+      "color": "#f59e0b",
+      "imageUrl": "/api/uploads/layouts/layout_1774464524316.png"
     }
   ]
 }
