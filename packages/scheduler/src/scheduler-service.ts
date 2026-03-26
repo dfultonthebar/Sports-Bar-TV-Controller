@@ -108,9 +108,14 @@ class SchedulerService {
 
       const missedAllocations = pendingAllocations.filter((r) => {
         if (r.allocation.scheduledBy !== 'bartender') return false;
+        // Only flag allocations whose scheduled time has passed (overdue)
         if ((r.allocation.allocatedAt || 0) > nowUnix) return false;
-        const gameEndBuffer = (r.game.estimatedEnd || 0) + 30 * 60;
-        if (gameEndBuffer > 0 && nowUnix > gameEndBuffer) return false;
+        // Skip allocations where the game is already over (estimatedEnd + 30 min buffer)
+        const estimatedEnd = r.game.estimatedEnd || 0;
+        if (estimatedEnd > 0) {
+          const gameEndBuffer = estimatedEnd + 30 * 60;
+          if (nowUnix > gameEndBuffer) return false;
+        }
         return true;
       });
 

@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { findUnique, update, eq } from '@/lib/db-helpers'
+import { findUnique, findMany, update, eq, db } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 import { getDbxControlService } from '@/lib/dbxControlService'
@@ -76,6 +76,11 @@ export async function POST(request: NextRequest) {
         .catch(err =>
           logger.error(`[AUDIO-CONTROL] dbx command failed after ${Date.now() - dbxStart}ms: ${err?.message || err}`)
         )
+      // Fire-and-forget volume logging for dbx
+      if ((command.action === 'volume' || command.action === 'output-volume') && command.zone != null) {
+        logVolumeChange(processorId, command.zone, command.value as number, 'bartender')
+          .catch(err => logger.error(`[AUDIO-VOLUME-LOG] Failed to log dbx volume change: ${err?.message || err}`))
+      }
       return NextResponse.json({
         success: true,
         result: { action: command.action, zone: command.zone },
@@ -114,9 +119,15 @@ export async function POST(request: NextRequest) {
         )
     }
 
+    // Fire-and-forget volume logging for Atlas and other processors
+    if ((command.action === 'volume' || command.action === 'output-volume') && command.zone != null) {
+      logVolumeChange(processorId, command.zone, command.value as number, 'bartender')
+        .catch(err => logger.error(`[AUDIO-VOLUME-LOG] Failed to log volume change: ${err?.message || err}`))
+    }
+
     // Update last seen timestamp using Drizzle
-    await update('audioProcessors', eq(schema.audioProcessors.id, processorId), { 
-      lastSeen: new Date().toISOString() 
+    await update('audioProcessors', eq(schema.audioProcessors.id, processorId), {
+      lastSeen: new Date().toISOString()
     })
 
     logger.api.response('POST', '/api/audio-processor/control', 200, { success: true })
@@ -553,4 +564,96 @@ async function combineRooms(processor: any, zones: number[]): Promise<any> {
   // )
   
   return { combinedZones: zones, timestamp: new Date(), note: 'Group configuration required' }
+}
+
+// --- Audio Volume Logging for AI Learning ---
+
+const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const
+
+/**
+ * Determine the time slot from an hour (0-23)
+ */
+function getTimeSlot(hour: number): string {
+  if (hour >= 6 && hour < 11) return 'morning'
+  if (hour >= 11 && hour < 14) return 'lunch'
+  if (hour >= 14 && hour < 17) return 'afternoon'
+  if (hour >= 17 && hour < 23) return 'prime_time'
+  return 'late_night' // 23-5
+}
+
+/**
+ * Log a volume change with full context for AI learning.
+ * Designed to be called fire-and-forget (don't await in the request path).
+ */
+async function logVolumeChange(
+  processorId: string,
+  zoneNumber: number,
+  newVolume: number,
+  changedBy: string = 'bartender',
+): Promise<void> {
+  try {
+    const now = new Date()
+    const hourOfDay = now.getHours()
+    const dayOfWeek = DAY_NAMES[now.getDay()]
+    const timeSlot = getTimeSlot(hourOfDay)
+
+    // Gather game context: find active allocations for any currently in-progress games
+    let activeGameId: string | null = null
+    let activeLeague: string | null = null
+    let activeHomeTeam: string | null = null
+    let activeAwayTeam: string | null = null
+    let isHomeGame: boolean | null = null
+
+    try {
+      const activeAllocations = await findMany('inputSourceAllocations', {
+        where: eq(schema.inputSourceAllocations.status, 'active'),
+        limit: 1,
+      })
+
+      if (activeAllocations.length > 0) {
+        const allocation = activeAllocations[0]
+        const gameId = allocation.gameScheduleId
+        if (gameId) {
+          const game = await findUnique('gameSchedules', eq(schema.gameSchedules.id, gameId))
+          if (game) {
+            activeGameId = game.id
+            activeLeague = game.league
+            activeHomeTeam = game.homeTeamName
+            activeAwayTeam = game.awayTeamName
+            // isHomeGame is bar-relative; check if venue suggests home (heuristic)
+            isHomeGame = game.venueCity ? game.venueCity.includes('Green Bay') : null
+          }
+        }
+      }
+    } catch (gameErr) {
+      // Don't let game context lookup failure prevent logging
+      logger.debug(`[AUDIO-VOLUME-LOG] Could not fetch game context: ${gameErr instanceof Error ? gameErr.message : gameErr}`)
+    }
+
+    // Insert the log entry directly via Drizzle (lightweight, no overhead from helpers)
+    await db.insert(schema.audioVolumeLogs).values({
+      id: crypto.randomUUID(),
+      processorId,
+      zoneNumber,
+      zoneName: null, // Could be enriched later from processor zone config
+      previousVolume: null, // Would need state tracking to know previous value
+      newVolume,
+      changedBy,
+      activeGameId,
+      activeLeague,
+      activeHomeTeam,
+      activeAwayTeam,
+      isHomeGame,
+      dayOfWeek,
+      hourOfDay,
+      timeSlot,
+      currentSource: null, // Could be enriched from zone source state
+      isDJMode: false,
+    })
+
+    logger.debug(`[AUDIO-VOLUME-LOG] Logged volume change: zone=${zoneNumber} vol=${newVolume} by=${changedBy} slot=${timeSlot}`)
+  } catch (err) {
+    // Never let logging break the main flow
+    logger.error(`[AUDIO-VOLUME-LOG] Error logging volume change: ${err instanceof Error ? err.message : err}`)
+  }
 }

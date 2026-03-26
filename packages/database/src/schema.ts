@@ -2360,3 +2360,38 @@ export const schedulingPatterns = sqliteTable('scheduling_patterns', {
   confidenceIdx: index('SchedulingPattern_confidence_idx').on(table.confidence),
   lastObservedIdx: index('SchedulingPattern_lastObserved_idx').on(table.lastObserved),
 }))
+
+// Audio Volume Log - Tracks every volume change with context for AI learning
+export const audioVolumeLogs = sqliteTable('audio_volume_logs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processor_id').notNull(),
+  zoneNumber: integer('zone_number').notNull(),
+  zoneName: text('zone_name'),
+  previousVolume: integer('previous_volume'),
+  newVolume: integer('new_volume').notNull(),
+  changedBy: text('changed_by').notNull().default('bartender'), // 'bartender', 'scheduler', 'ai', 'system'
+
+  // Game context (what was playing when volume changed)
+  activeGameId: text('active_game_id'),
+  activeLeague: text('active_league'),
+  activeHomeTeam: text('active_home_team'),
+  activeAwayTeam: text('active_away_team'),
+  isHomeGame: integer('is_home_game', { mode: 'boolean' }),
+
+  // Time context
+  dayOfWeek: text('day_of_week'), // 'monday', 'tuesday', etc.
+  hourOfDay: integer('hour_of_day'), // 0-23
+  timeSlot: text('time_slot'), // 'morning', 'lunch', 'afternoon', 'prime_time', 'late_night'
+
+  // Audio context
+  currentSource: text('current_source'), // 'dj', 'game_audio', 'jukebox', 'spotify', etc.
+  isDJMode: integer('is_dj_mode', { mode: 'boolean' }).default(false),
+
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  zoneIdx: index('AudioVolumeLog_zone_idx').on(table.zoneNumber),
+  changedByIdx: index('AudioVolumeLog_changedBy_idx').on(table.changedBy),
+  leagueIdx: index('AudioVolumeLog_league_idx').on(table.activeLeague),
+  timeSlotIdx: index('AudioVolumeLog_timeSlot_idx').on(table.timeSlot),
+  createdAtIdx: index('AudioVolumeLog_createdAt_idx').on(table.createdAt),
+}))
