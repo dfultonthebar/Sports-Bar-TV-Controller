@@ -10,7 +10,7 @@
       "isOnline": false,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:15:34.127Z",
-      "lastSeen": "2026-03-26T14:58:43.953Z"
+      "lastSeen": "2026-03-26T16:58:23.469Z"
     },
     {
       "name": "Fire TV 2",
@@ -22,7 +22,7 @@
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:15:44.259Z",
-      "lastSeen": "2026-03-26T14:57:38.354Z"
+      "lastSeen": "2026-03-26T16:57:17.865Z"
     },
     {
       "name": "Fire TV 3",
@@ -34,7 +34,7 @@
       "isOnline": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:16:19.145Z",
-      "lastSeen": "2026-03-26T14:57:38.353Z"
+      "lastSeen": "2026-03-26T16:57:17.864Z"
     },
     {
       "name": "Epson Projector",
@@ -47,7 +47,7 @@
       "addedAt": "2026-03-19T15:00:00.000Z",
       "updatedAt": "2026-03-19T15:00:00.000Z",
       "model": "HA90",
-      "lastSeen": "2026-03-26T14:57:38.347Z"
+      "lastSeen": "2026-03-26T16:57:17.858Z"
     }
   ]
 }
