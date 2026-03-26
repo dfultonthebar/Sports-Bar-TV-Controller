@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         'ACC': ['ACC', 'ACC Network', 'ACCN'],
         'FS1': ['FS1', 'Fox Sports 1', 'FOX Sports 1'],
         'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
-        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS'],
+        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS', 'Peacock/NBC Sports'],
         'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
         'TNT': ['TNT', 'TNT HD'],
         'TBS': ['TBS', 'TBS HD'],
@@ -167,6 +167,11 @@ export async function POST(request: NextRequest) {
         'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
         'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin'],
         'BSNOR+': ['BSNOR+', 'Bally Sports North', 'Fox Sports North'],
+        'WGBA-TV': ['WGBA-TV', 'WGBA', 'NBC 26', 'WGBA-DT'],
+        'WACY-TV': ['WACY-TV', 'WACY', 'MyNetworkTV'],
+        'WFRV': ['WFRV', 'WFRV-TV', 'CBS 5'],
+        'NBCUN': ['NBCUN', 'NBC Universe', 'Peacock'],
+        'MLBEI': ['MLBEI', 'MLB Extra Innings', 'MLB.TV'],
       }
 
       // Normalize station names for matching

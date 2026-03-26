@@ -230,19 +230,30 @@ export async function GET(request: NextRequest) {
 
     const results = await query.all()
 
-    const schedules = results.map(r => ({
-      id: r.allocation.id,
-      inputSourceId: r.allocation.inputSourceId,
-      inputLabel: r.inputSource.name,
-      deviceType: r.allocation.inputSourceType,
-      channelNumber: r.allocation.channelNumber,
-      gameId: r.allocation.gameScheduleId,
-      homeTeam: r.game.homeTeamName,
-      awayTeam: r.game.awayTeamName,
-      league: r.game.league,
-      tuneAt: new Date(r.allocation.allocatedAt * 1000).toISOString(),
-      status: r.allocation.status,
-    }))
+    const schedules = results.map(r => {
+      let tvOutputIds: number[] = []
+      try {
+        const parsed = JSON.parse(r.allocation.tvOutputIds || '[]')
+        tvOutputIds = Array.isArray(parsed) ? parsed : []
+      } catch {
+        tvOutputIds = []
+      }
+
+      return {
+        id: r.allocation.id,
+        inputSourceId: r.allocation.inputSourceId,
+        inputLabel: r.inputSource.name,
+        deviceType: r.allocation.inputSourceType,
+        channelNumber: r.allocation.channelNumber,
+        gameId: r.allocation.gameScheduleId,
+        homeTeam: r.game.homeTeamName,
+        awayTeam: r.game.awayTeamName,
+        league: r.game.league,
+        tuneAt: new Date(r.allocation.allocatedAt * 1000).toISOString(),
+        status: r.allocation.status,
+        tvOutputIds,
+      }
+    })
 
     return NextResponse.json({
       success: true,
@@ -306,6 +317,64 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error('[BARTENDER-SCHEDULE] Error cancelling schedule:', error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// Schema for PATCH - updating TV output assignments
+const patchScheduleSchema = z.object({
+  id: z.string().min(1, 'Allocation ID is required'),
+  tvOutputIds: z.array(z.number().int().min(0)).default([]),
+})
+
+// PATCH - Update TV output assignments for a scheduled allocation
+export async function PATCH(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
+  const bodyValidation = await validateRequestBody(request, patchScheduleSchema)
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+
+  const { id, tvOutputIds } = bodyValidation.data
+
+  try {
+    // Verify the allocation exists
+    const allocation = await db.select().from(schema.inputSourceAllocations)
+      .where(eq(schema.inputSourceAllocations.id, id))
+      .get()
+
+    if (!allocation) {
+      return NextResponse.json(
+        { success: false, error: 'Allocation not found' },
+        { status: 404 }
+      )
+    }
+
+    // Update the tv_output_ids and tv_count
+    await db.update(schema.inputSourceAllocations)
+      .set({
+        tvOutputIds: JSON.stringify(tvOutputIds),
+        tvCount: tvOutputIds.length,
+        updatedAt: Math.floor(Date.now() / 1000),
+      })
+      .where(eq(schema.inputSourceAllocations.id, id))
+
+    logger.info(`[BARTENDER-SCHEDULE] Updated TV outputs for allocation ${id}: ${JSON.stringify(tvOutputIds)}`)
+
+    return NextResponse.json({
+      success: true,
+      message: `Updated TV outputs for allocation`,
+      allocationId: id,
+      tvOutputIds,
+      tvCount: tvOutputIds.length,
+    })
+  } catch (error: any) {
+    logger.error('[BARTENDER-SCHEDULE] Error updating TV outputs:', error)
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

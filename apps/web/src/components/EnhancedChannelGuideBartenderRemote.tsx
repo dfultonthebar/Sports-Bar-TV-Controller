@@ -12,6 +12,7 @@ import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
 import LiveSportsDashboard from './LiveSportsDashboard'
+import ScheduledGameTVPicker from './ScheduledGameTVPicker'
 import { logger } from '@sports-bar/logger'
 import {
   Power,
@@ -669,7 +670,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       body: JSON.stringify({
         inputNumber: selectedInput,
         deviceType: 'cable',
-        startTime: new Date().toISOString(),
+        startTime: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
         endTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       })
     })
@@ -1699,18 +1700,32 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               if (!isFutureGame) return null
 
                               if (currentScheduleId) {
-                                // Already scheduled on this input - show Cancel button
+                                // Already scheduled on this input - show Cancel button + TV picker
+                                const alloc = scheduledAllocations.find((a: any) => a.id === currentScheduleId)
+                                const currentTVOutputIds: number[] = alloc?.tvOutputIds || []
                                 return (
-                                  <button
-                                    onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
-                                    className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
-                                  >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                                    <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
-                                      <Calendar className="w-3 h-3" />
-                                      <span>Cancel</span>
-                                    </div>
-                                  </button>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                      onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
+                                      className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
+                                    >
+                                      <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                      <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Cancel</span>
+                                      </div>
+                                    </button>
+                                    <ScheduledGameTVPicker
+                                      allocationId={currentScheduleId}
+                                      currentOutputIds={currentTVOutputIds}
+                                      onUpdate={(ids) => {
+                                        // Update local state so it reflects immediately
+                                        setScheduledAllocations(prev => prev.map((a: any) =>
+                                          a.id === currentScheduleId ? { ...a, tvOutputIds: ids } : a
+                                        ))
+                                      }}
+                                    />
+                                  </div>
                                 )
                               } else {
                                 // Not scheduled - show Schedule button

@@ -841,3 +841,15 @@ className="bg-amber-950/20" // Warning rows
 
 ### Reference Component
 See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implementation of this styling pattern.
+
+## Bartender Remote - iPad/Tablet UI
+
+**IMPORTANT:** The bartender remote (`/remote` on port 3002) is used on iPads and tablets behind the bar. All bartender-facing UI must be touch-screen friendly:
+
+- **Minimum touch targets:** 44x44px (Apple Human Interface Guidelines)
+- **Checkboxes:** At least `h-5 w-5`, wrapped in tappable containers with `py-2 px-3` padding
+- **Buttons:** Generous padding, never icon-only without adequate tap area
+- **Text size:** `text-sm` minimum for interactive elements (not `text-xs`)
+- **Spacing:** `gap-2` minimum between tappable elements to prevent accidental taps
+- **Port 3002:** Nginx reverse proxy restricts access to bartender remote only (no admin pages)
+- **Test viewport:** ~768px-1024px width for tablet layouts

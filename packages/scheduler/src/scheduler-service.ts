@@ -17,6 +17,7 @@ const VENUE_TIMEZONE = 'America/Chicago'
 
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
+  private tvStatusIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private lastCleanup: Date | null = null;
   private executingSchedules = new Set<string>();
@@ -60,6 +61,16 @@ class SchedulerService {
 
     // Also check immediately on start
     this.checkAndExecuteSchedules();
+
+    // Poll TV status every 5 minutes
+    if (this.tvStatusIntervalId) {
+      clearInterval(this.tvStatusIntervalId);
+    }
+    this.tvStatusIntervalId = setInterval(() => {
+      this.pollTVStatus();
+    }, 300000); // 5 minutes
+    // Run first poll after 30 seconds (let app fully start)
+    setTimeout(() => this.pollTVStatus(), 30000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -261,6 +272,25 @@ class SchedulerService {
   }
 
   /**
+   * Poll all TV statuses via the status check API
+   * Runs every 5 minutes to keep the bartender remote's TV status accurate
+   */
+  private async pollTVStatus() {
+    try {
+      const response = await fetch(`http://127.0.0.1:${API_PORT}/api/tv-discovery/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        logger.debug(`[TV-POLL] Status check: ${data.online}/${data.count} TVs online`);
+      }
+    } catch (error) {
+      logger.debug('[TV-POLL] Status check failed (app may still be starting)');
+    }
+  }
+
+  /**
    * Stop the scheduler service
    */
   async stop() {
@@ -269,6 +299,10 @@ class SchedulerService {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.tvStatusIntervalId) {
+      clearInterval(this.tvStatusIntervalId);
+      this.tvStatusIntervalId = null;
     }
     this.isRunning = false;
 
@@ -667,6 +701,55 @@ class SchedulerService {
             );
 
             logger.info(`[SCHEDULER] ✅ Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
+
+            // Route matrix inputs to TV outputs if tvOutputIds is set
+            if (allocation.tvOutputIds && inputSource.matrixInputId) {
+              try {
+                const outputIds: number[] = JSON.parse(allocation.tvOutputIds);
+                const matrixInput = parseInt(inputSource.matrixInputId, 10);
+
+                if (outputIds.length > 0 && !isNaN(matrixInput)) {
+                  logger.info(`[SCHEDULER] 🔀 Routing matrix input ${matrixInput} to ${outputIds.length} TV outputs: [${outputIds.join(', ')}]`);
+
+                  for (const outputNumber of outputIds) {
+                    try {
+                      const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          input: matrixInput,
+                          output: outputNumber,
+                        }),
+                      });
+
+                      if (routeResponse.ok) {
+                        logger.info(`[SCHEDULER] ✅ Routed matrix input ${matrixInput} → output ${outputNumber}`);
+                      } else {
+                        const routeResult = await routeResponse.json().catch(() => ({}));
+                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeResult.error || routeResponse.statusText}`);
+                      }
+                    } catch (routeError: any) {
+                      logger.error(`[SCHEDULER] ❌ Error routing matrix input ${matrixInput} → output ${outputNumber}:`, { error: routeError });
+                    }
+                  }
+
+                  await schedulerLogger.info(
+                    'scheduler-service',
+                    'tune',
+                    `Matrix routing complete: input ${matrixInput} → outputs [${outputIds.join(', ')}]`,
+                    correlationId,
+                    {
+                      gameId: game.id,
+                      inputSourceId: inputSource.id,
+                      allocationId: allocation.id,
+                      metadata: { matrixInput, outputIds },
+                    }
+                  );
+                }
+              } catch (parseError: any) {
+                logger.error(`[SCHEDULER] ❌ Error parsing tvOutputIds for allocation ${allocation.id}:`, { error: parseError, tvOutputIds: allocation.tvOutputIds });
+              }
+            }
           } else {
             await schedulerLogger.log({
               correlationId,
