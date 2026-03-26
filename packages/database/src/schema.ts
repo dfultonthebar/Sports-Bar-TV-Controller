@@ -2282,3 +2282,81 @@ export const schedulerMetrics = sqliteTable('SchedulerMetrics', {
   periodStartIdx: index('SchedulerMetrics_periodStart_idx').on(table.periodStart),
   metricTypePeriodStartIdx: uniqueIndex('SchedulerMetrics_type_period_start_idx').on(table.metricType, table.period, table.periodStart),
 }))
+
+// ============================================================================
+// AI Scheduling Intelligence Tables
+// ============================================================================
+
+export const schedulingPreferences = sqliteTable('scheduling_preferences', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  preferenceType: text('preference_type').notNull(),
+  teamId: text('team_id').references(() => homeTeams.id, { onDelete: 'cascade' }),
+  teamName: text('team_name'),
+  league: text('league'),
+  preferenceData: text('preference_data').notNull(),
+  weight: integer('weight').notNull().default(50),
+  confidence: real('confidence').notNull().default(0.5),
+  source: text('source').notNull().default('learned'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  preferenceTypeIdx: index('SchedulingPreference_preferenceType_idx').on(table.preferenceType),
+  teamIdIdx: index('SchedulingPreference_teamId_idx').on(table.teamId),
+  leagueIdx: index('SchedulingPreference_league_idx').on(table.league),
+  isActiveIdx: index('SchedulingPreference_isActive_idx').on(table.isActive),
+  typeTeamIdx: index('SchedulingPreference_type_team_idx').on(table.preferenceType, table.teamId),
+}))
+
+export const aiScheduleSuggestions = sqliteTable('ai_schedule_suggestions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  batchId: text('batch_id').notNull(),
+  gameScheduleId: text('game_schedule_id').notNull().references(() => gameSchedules.id, { onDelete: 'cascade' }),
+  suggestedInputSourceId: text('suggested_input_source_id').references(() => inputSources.id, { onDelete: 'set null' }),
+  suggestedChannelNumber: text('suggested_channel_number'),
+  suggestedAppName: text('suggested_app_name'),
+  suggestedTvOutputIds: text('suggested_tv_output_ids'),
+  suggestedTvCount: integer('suggested_tv_count').default(0),
+  confidenceScore: real('confidence_score').notNull().default(0.5),
+  reasoning: text('reasoning').notNull(),
+  reasoningFactors: text('reasoning_factors'),
+  gamePriorityScore: integer('game_priority_score').default(0),
+  conflictsDetected: text('conflicts_detected'),
+  status: text('status').notNull().default('suggested'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: integer('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  modifiedInputSourceId: text('modified_input_source_id'),
+  modifiedChannelNumber: text('modified_channel_number'),
+  modifiedTvOutputIds: text('modified_tv_output_ids'),
+  appliedAllocationId: text('applied_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  expiresAt: integer('expires_at'),
+}, (table) => ({
+  batchIdIdx: index('AIScheduleSuggestion_batchId_idx').on(table.batchId),
+  gameScheduleIdIdx: index('AIScheduleSuggestion_gameScheduleId_idx').on(table.gameScheduleId),
+  statusIdx: index('AIScheduleSuggestion_status_idx').on(table.status),
+  statusCreatedIdx: index('AIScheduleSuggestion_status_createdAt_idx').on(table.status, table.createdAt),
+}))
+
+export const schedulingPatterns = sqliteTable('scheduling_patterns', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  patternType: text('pattern_type').notNull(),
+  patternKey: text('pattern_key').notNull(),
+  patternData: text('pattern_data').notNull(),
+  observationCount: integer('observation_count').notNull().default(1),
+  sampleSize: integer('sample_size').notNull().default(0),
+  firstObserved: integer('first_observed').notNull().default(sql`(strftime('%s', 'now'))`),
+  lastObserved: integer('last_observed').notNull().default(sql`(strftime('%s', 'now'))`),
+  confidence: real('confidence').notNull().default(0.0),
+  isStale: integer('is_stale', { mode: 'boolean' }).notNull().default(false),
+  lastAnalyzedAt: integer('last_analyzed_at').default(sql`(strftime('%s', 'now'))`),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  patternTypeIdx: index('SchedulingPattern_patternType_idx').on(table.patternType),
+  typeKeyIdx: uniqueIndex('SchedulingPattern_type_key_idx').on(table.patternType, table.patternKey),
+  confidenceIdx: index('SchedulingPattern_confidence_idx').on(table.confidence),
+  lastObservedIdx: index('SchedulingPattern_lastObserved_idx').on(table.lastObserved),
+}))

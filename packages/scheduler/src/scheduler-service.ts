@@ -274,6 +274,7 @@ class SchedulerService {
   /**
    * Poll all TV statuses via the status check API
    * Runs every 5 minutes to keep the bartender remote's TV status accurate
+   * Also pings the VAVA projector to prevent deep sleep
    */
   private async pollTVStatus() {
     try {
@@ -287,6 +288,31 @@ class SchedulerService {
       }
     } catch (error) {
       logger.debug('[TV-POLL] Status check failed (app may still be starting)');
+    }
+
+    // Keep VAVA projector alive - send a harmless volume query to prevent deep sleep
+    // VAVA shuts down all network services when it sleeps, making it uncontrollable
+    try {
+      const vavaDevices = await db.select()
+        .from(schema.networkTVDevices)
+        .where(eq(schema.networkTVDevices.brand, 'VAVA'))
+        .all();
+
+      for (const vava of vavaDevices) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+          await fetch(`http://${vava.ipAddress}:${vava.port || 8000}/remote/get_volume`, {
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+          logger.debug(`[TV-POLL] VAVA keep-alive ping sent to ${vava.ipAddress}`);
+        } catch {
+          // VAVA may already be in deep sleep — nothing we can do
+        }
+      }
+    } catch {
+      // Ignore errors
     }
   }
 
@@ -611,9 +637,12 @@ class SchedulerService {
       .where(eq(schema.inputSourceAllocations.status, 'pending'))
       .all();
 
-      // Filter to allocations that are due (allocatedAt <= now)
+      // Filter to allocations that are due (5-minute early buffer: allocatedAt - 300 <= now)
+      const EARLY_BUFFER_SECONDS = 300; // 5 minutes before scheduled time
+      const MAX_DELAY_SECONDS = 1800; // 30 minutes max delay for live game protection
+
       const dueAllocations = pendingAllocations.filter(
-        (r) => (r.allocation.allocatedAt || 0) <= nowUnix
+        (r) => ((r.allocation.allocatedAt || 0) - EARLY_BUFFER_SECONDS) <= nowUnix
       );
 
       if (dueAllocations.length === 0) {
@@ -635,26 +664,32 @@ class SchedulerService {
         try {
           logger.info(`[SCHEDULER] 🎯 Checking if ready to tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
 
-          // Check if there's a game currently on this input that's still in progress
+          // Check if there's a scheduled game currently on this input that's still in progress
           const currentGameStatus = await this.checkCurrentGameStatus(inputSource.id);
+          const timePastScheduled = nowUnix - (allocation.allocatedAt || 0);
+          const forceOverride = timePastScheduled >= MAX_DELAY_SECONDS;
 
-          if (currentGameStatus.gameInProgress) {
+          if (currentGameStatus.gameInProgress && !forceOverride) {
             await schedulerLogger.info(
               'scheduler-service',
               'tune',
-              `Delaying tune - current game still in progress: ${currentGameStatus.gameDescription}`,
+              `Delaying tune - scheduled game still in progress: ${currentGameStatus.gameDescription} (${Math.round(timePastScheduled / 60)}min past scheduled)`,
               correlationId,
               {
                 gameId: game.id,
                 inputSourceId: inputSource.id,
                 allocationId: allocation.id,
-                metadata: { status: currentGameStatus.status },
+                metadata: { status: currentGameStatus.status, timePastScheduled },
               }
             );
 
-            logger.info(`[SCHEDULER] ⏳ Delaying tune - current game still in progress: ${currentGameStatus.gameDescription} (${currentGameStatus.status})`);
+            logger.info(`[SCHEDULER] ⏳ Delaying tune - scheduled game still in progress: ${currentGameStatus.gameDescription} (${currentGameStatus.status}) - ${Math.round(timePastScheduled / 60)}min past scheduled`);
             // Skip this allocation for now, will check again next cycle
             continue;
+          }
+
+          if (currentGameStatus.gameInProgress && forceOverride) {
+            logger.info(`[SCHEDULER] ⚠️ Force-tuning after ${MAX_DELAY_SECONDS / 60}min delay - overriding active game: ${currentGameStatus.gameDescription}`);
           }
 
           logger.info(`[SCHEDULER] ✅ Ready to execute tune - no game in progress or game has ended`);
