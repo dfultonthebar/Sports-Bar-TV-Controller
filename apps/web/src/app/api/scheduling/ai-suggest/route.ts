@@ -1,0 +1,546 @@
+/**
+ * API Route: AI Scheduling Suggestions
+ *
+ * GET /api/scheduling/ai-suggest
+ *
+ * Fetches upcoming games from the sports guide, reads learned scheduling patterns
+ * from the database, and uses Ollama (llama3.1:8b) to generate intelligent
+ * scheduling suggestions for cable box / TV routing.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { db, schema } from '@/db'
+import { eq, and, sql } from 'drizzle-orm'
+import { logger } from '@sports-bar/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { validateQueryParams, z } from '@/lib/validation'
+
+const OLLAMA_URL = 'http://localhost:11434/api/generate'
+const OLLAMA_MODEL = 'llama3.1:8b'
+const OLLAMA_TIMEOUT_MS = 30_000
+const SPORTS_GUIDE_URL = 'http://localhost:3001/api/sports-guide'
+
+// ---------- types ----------
+
+interface SchedulingPattern {
+  id: string
+  pattern_type: string
+  team_name?: string
+  league?: string
+  input_source_id?: string
+  input_source_name?: string
+  preferred_outputs?: string
+  occurrence_count: number
+  confidence: number
+  last_seen?: string
+  metadata?: string
+}
+
+interface GameListing {
+  time: string
+  date?: string
+  title: string
+  league: string
+  homeTeam: string
+  awayTeam: string
+  stations: string[]
+  channelNumber?: string
+  channelName?: string
+}
+
+interface AISuggestion {
+  gameId: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  startTime: string
+  channelNumber: string
+  channelName: string
+  suggestedInput: string
+  suggestedInputId: string
+  suggestedOutputs: number[]
+  confidence: number
+  reasoning: string
+}
+
+// ---------- helper: fetch upcoming games from sports guide ----------
+
+async function fetchUpcomingGames(): Promise<GameListing[]> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+
+  try {
+    const response = await fetch(SPORTS_GUIDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days: 2 }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      logger.error(`[AI-SUGGEST] Sports guide returned ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    if (!data.success || !data.data?.listing_groups) {
+      logger.warn('[AI-SUGGEST] Sports guide returned no listing groups')
+      return []
+    }
+
+    const now = new Date()
+    const games: GameListing[] = []
+
+    for (const group of data.data.listing_groups) {
+      const league = group.group_title || 'Unknown'
+
+      for (const listing of group.listings || []) {
+        // Parse time — the Rail Media API returns local time strings
+        const gameTime = listing.time ? new Date(listing.time) : null
+        if (!gameTime || gameTime < now) continue // skip past games
+
+        // Only include games within the next ~30 hours
+        const hoursAhead = (gameTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+        if (hoursAhead > 30) continue
+
+        // Extract team names from listing data
+        const listingData = listing.data || {}
+        const title = Object.values(listingData).join(' ') || 'Unknown Game'
+
+        // Stations can be an array or an object
+        let stations: string[] = []
+        if (Array.isArray(listing.stations)) {
+          stations = listing.stations
+        } else if (listing.stations && typeof listing.stations === 'object') {
+          stations = Object.keys(listing.stations)
+        }
+
+        // Try to extract channel numbers from the listing
+        let channelNumber = ''
+        let channelName = stations[0] || ''
+        if (listing.channel_numbers) {
+          // channel_numbers is { lineup: { station: number[] } }
+          for (const lineup of Object.values(listing.channel_numbers) as any[]) {
+            for (const [station, numbers] of Object.entries(lineup)) {
+              if (Array.isArray(numbers) && numbers.length > 0) {
+                channelNumber = String(numbers[0])
+                channelName = station
+                break
+              }
+            }
+            if (channelNumber) break
+          }
+        }
+
+        // Parse home/away from title (common format: "Away at Home" or "Away vs Home")
+        let homeTeam = ''
+        let awayTeam = ''
+        const atMatch = title.match(/^(.+?)\s+at\s+(.+)$/i)
+        const vsMatch = title.match(/^(.+?)\s+vs\.?\s+(.+)$/i)
+        if (atMatch) {
+          awayTeam = atMatch[1].trim()
+          homeTeam = atMatch[2].trim()
+        } else if (vsMatch) {
+          homeTeam = vsMatch[1].trim()
+          awayTeam = vsMatch[2].trim()
+        } else {
+          homeTeam = title
+          awayTeam = ''
+        }
+
+        games.push({
+          time: gameTime.toISOString(),
+          date: listing.date,
+          title,
+          league,
+          homeTeam,
+          awayTeam,
+          stations,
+          channelNumber,
+          channelName,
+        })
+      }
+    }
+
+    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games from sports guide`)
+    return games
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      logger.error('[AI-SUGGEST] Sports guide request timed out')
+    } else {
+      logger.error('[AI-SUGGEST] Error fetching sports guide:', err)
+    }
+    return []
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ---------- helper: load scheduling patterns (raw SQL) ----------
+
+async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
+  try {
+    const rows = await db.all(
+      sql`SELECT * FROM scheduling_patterns ORDER BY occurrence_count DESC LIMIT 100`
+    ) as SchedulingPattern[]
+    logger.info(`[AI-SUGGEST] Loaded ${rows.length} scheduling patterns`)
+    return rows
+  } catch (err: any) {
+    // Table may not exist yet
+    logger.warn(`[AI-SUGGEST] Could not load scheduling_patterns (table may not exist): ${err.message}`)
+    return []
+  }
+}
+
+// ---------- helper: load historical allocation patterns from existing data ----------
+
+async function loadHistoricalPatterns(): Promise<string> {
+  try {
+    const rows = await db.all(sql`
+      SELECT
+        isa.input_source_type,
+        isa.channel_number,
+        isa.tv_output_ids,
+        isa.status,
+        isa.scheduled_by,
+        gs.home_team_name,
+        gs.away_team_name,
+        gs.league,
+        isrc.name as input_name,
+        isrc.matrix_input_id
+      FROM input_source_allocations isa
+      JOIN game_schedules gs ON isa.game_schedule_id = gs.id
+      JOIN input_sources isrc ON isa.input_source_id = isrc.id
+      WHERE isa.status IN ('completed', 'active')
+      ORDER BY isa.allocated_at DESC
+      LIMIT 50
+    `) as any[]
+
+    if (rows.length === 0) return 'No historical scheduling data available yet.'
+
+    const summary = rows.map(r => {
+      let outputs: number[] = []
+      try { outputs = JSON.parse(r.tv_output_ids || '[]') } catch { /* ignore */ }
+      return `- ${r.away_team_name || '?'} at ${r.home_team_name || '?'} (${r.league}): Input "${r.input_name}" (matrix input ${r.matrix_input_id || 'N/A'}), ch ${r.channel_number || 'N/A'}, TVs ${outputs.join(',') || 'none'}`
+    })
+
+    return summary.join('\n')
+  } catch (err: any) {
+    logger.warn(`[AI-SUGGEST] Could not load historical patterns: ${err.message}`)
+    return 'No historical scheduling data available.'
+  }
+}
+
+// ---------- helper: load input sources ----------
+
+async function loadInputSources() {
+  const sources = await db.select().from(schema.inputSources).where(eq(schema.inputSources.isActive, true))
+  return sources.map(s => ({
+    id: s.id,
+    name: s.name,
+    type: s.type,
+    matrixInputId: s.matrixInputId,
+    currentlyAllocated: s.currentlyAllocated,
+    currentChannel: s.currentChannel,
+    priorityRank: s.priorityRank,
+    availableNetworks: (() => { try { return JSON.parse(s.availableNetworks) } catch { return [] } })(),
+  }))
+}
+
+// ---------- helper: load channel presets ----------
+
+async function loadChannelPresets() {
+  const presets = await db.select().from(schema.channelPresets).where(eq(schema.channelPresets.isActive, true))
+  return presets.map(p => ({
+    name: p.name,
+    channelNumber: p.channelNumber,
+    deviceType: p.deviceType,
+  }))
+}
+
+// ---------- helper: load TV outputs ----------
+
+async function loadTVOutputs() {
+  const outputs = await db.select().from(schema.matrixOutputs).where(
+    and(
+      eq(schema.matrixOutputs.isActive, true),
+      eq(schema.matrixOutputs.isSchedulingEnabled, true),
+    )
+  )
+  return outputs.map(o => ({
+    channelNumber: o.channelNumber,
+    label: o.label,
+    tvGroupId: o.tvGroupId,
+  }))
+}
+
+// ---------- helper: call Ollama ----------
+
+async function callOllama(prompt: string): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt,
+        stream: false,
+        format: 'json',
+        options: {
+          temperature: 0.3,
+          num_predict: 2048,
+        },
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Ollama returned status ${response.status}`)
+    }
+
+    const data = await response.json()
+    return data.response || ''
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ---------- helper: build the LLM prompt ----------
+
+function buildPrompt(
+  games: GameListing[],
+  inputSources: any[],
+  channelPresets: any[],
+  tvOutputs: any[],
+  patterns: SchedulingPattern[],
+  historicalSummary: string,
+): string {
+  const inputList = inputSources.map(s =>
+    `  - "${s.name}" (id: ${s.id}, type: ${s.type}, matrix input: ${s.matrixInputId || 'N/A'}, priority: ${s.priorityRank}, allocated: ${s.currentlyAllocated ? 'YES' : 'no'})`
+  ).join('\n')
+
+  const gameList = games.map((g, i) =>
+    `  ${i + 1}. ${g.awayTeam || '?'}${g.homeTeam ? ' at ' + g.homeTeam : ''} — ${g.league}, ${new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })} CT, channel: ${g.channelName || 'unknown'}${g.channelNumber ? ' (' + g.channelNumber + ')' : ''}`
+  ).join('\n')
+
+  const presetList = channelPresets.slice(0, 30).map(p =>
+    `  - ${p.name}: ch ${p.channelNumber} (${p.deviceType})`
+  ).join('\n')
+
+  const tvList = tvOutputs.map(o =>
+    `  - Output ${o.channelNumber}: "${o.label}"${o.tvGroupId ? ' [group: ' + o.tvGroupId + ']' : ''}`
+  ).join('\n')
+
+  let patternSection = 'No learned patterns available yet.'
+  if (patterns.length > 0) {
+    patternSection = patterns.slice(0, 20).map(p =>
+      `  - ${p.pattern_type}: team=${p.team_name || 'any'}, league=${p.league || 'any'}, input="${p.input_source_name || 'N/A'}", outputs=${p.preferred_outputs || 'N/A'}, seen ${p.occurrence_count}x, confidence ${(p.confidence * 100).toFixed(0)}%`
+    ).join('\n')
+  }
+
+  return `You are an AI scheduling assistant for a sports bar with multiple TVs controlled by an HDMI matrix switcher.
+
+Your job: Given upcoming games and available cable boxes, suggest which cable box should tune to which channel and which TVs should show each game.
+
+AVAILABLE INPUT SOURCES (cable boxes / streaming devices):
+${inputList}
+
+AVAILABLE TV OUTPUTS (matrix outputs):
+${tvList}
+
+CHANNEL PRESETS (known channels):
+${presetList}
+
+UPCOMING GAMES:
+${gameList}
+
+LEARNED SCHEDULING PATTERNS:
+${patternSection}
+
+HISTORICAL ALLOCATION DATA (recent past decisions):
+${historicalSummary}
+
+RULES:
+1. Each input source (cable box) can only be tuned to ONE channel at a time.
+2. Multiple TV outputs can show the same input source simultaneously.
+3. Higher priority games (home teams, popular leagues) should get more TVs.
+4. Use historical patterns to maintain consistency — if a team always goes on a specific input, keep it there.
+5. Prefer inputs that are NOT currently allocated.
+6. Match channel names from games to channel presets to find the correct channel number.
+
+Return a JSON object with this exact structure:
+{
+  "suggestions": [
+    {
+      "gameIndex": <number matching the game list above (1-based)>,
+      "homeTeam": "<home team name>",
+      "awayTeam": "<away team name>",
+      "league": "<league name>",
+      "channelNumber": "<channel number to tune to>",
+      "channelName": "<station/channel name>",
+      "suggestedInputId": "<input source id>",
+      "suggestedInput": "<input source name>",
+      "suggestedOutputs": [<list of TV output channel numbers>],
+      "confidence": <0.0 to 1.0>,
+      "reasoning": "<brief explanation>"
+    }
+  ]
+}
+
+Only include games that should actually be shown. If there are more games than inputs, prioritize the most important ones. Return ONLY valid JSON, no extra text.`
+}
+
+// ---------- helper: parse Ollama response ----------
+
+function parseOllamaResponse(
+  raw: string,
+  games: GameListing[],
+  inputSources: any[],
+): AISuggestion[] {
+  try {
+    const parsed = JSON.parse(raw)
+    const suggestions: AISuggestion[] = []
+
+    for (const s of parsed.suggestions || []) {
+      const gameIdx = (s.gameIndex || 0) - 1
+      const game = games[gameIdx]
+
+      // Validate the suggested input exists
+      const input = inputSources.find(
+        (src: any) => src.id === s.suggestedInputId || src.name === s.suggestedInput
+      )
+
+      suggestions.push({
+        gameId: game ? `game-${gameIdx}` : `game-unknown`,
+        homeTeam: s.homeTeam || game?.homeTeam || 'Unknown',
+        awayTeam: s.awayTeam || game?.awayTeam || 'Unknown',
+        league: s.league || game?.league || 'Unknown',
+        startTime: game?.time || new Date().toISOString(),
+        channelNumber: s.channelNumber || game?.channelNumber || '',
+        channelName: s.channelName || game?.channelName || '',
+        suggestedInput: s.suggestedInput || input?.name || 'Unknown',
+        suggestedInputId: input?.id || s.suggestedInputId || '',
+        suggestedOutputs: Array.isArray(s.suggestedOutputs) ? s.suggestedOutputs : [],
+        confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
+        reasoning: s.reasoning || 'No reasoning provided',
+      })
+    }
+
+    return suggestions
+  } catch (err: any) {
+    logger.error(`[AI-SUGGEST] Failed to parse Ollama JSON response: ${err.message}`)
+    logger.debug(`[AI-SUGGEST] Raw response: ${raw.substring(0, 500)}`)
+    return []
+  }
+}
+
+// ---------- GET handler ----------
+
+export async function GET(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) return rateLimit.response
+
+  logger.api.request('GET', '/api/scheduling/ai-suggest')
+
+  const queryValidation = validateQueryParams(
+    request,
+    z.object({
+      forceRefresh: z.coerce.boolean().optional(),
+    })
+  )
+
+  if (!queryValidation.success) return queryValidation.error
+
+  try {
+    // 1. Fetch upcoming games from sports guide
+    const games = await fetchUpcomingGames()
+
+    if (games.length === 0) {
+      logger.info('[AI-SUGGEST] No upcoming games found')
+      return NextResponse.json({
+        success: true,
+        suggestions: [],
+        analyzedAt: new Date().toISOString(),
+        message: 'No upcoming games found in the sports guide.',
+      })
+    }
+
+    // 2. Load all required data in parallel
+    const [inputSources, channelPresets, tvOutputs, patterns, historicalSummary] = await Promise.all([
+      loadInputSources(),
+      loadChannelPresets(),
+      loadTVOutputs(),
+      loadSchedulingPatterns(),
+      loadHistoricalPatterns(),
+    ])
+
+    if (inputSources.length === 0) {
+      logger.warn('[AI-SUGGEST] No active input sources configured')
+      return NextResponse.json({
+        success: true,
+        suggestions: [],
+        analyzedAt: new Date().toISOString(),
+        message: 'No active input sources configured. Add cable boxes or streaming devices first.',
+      })
+    }
+
+    // 3. Build prompt and call Ollama
+    const prompt = buildPrompt(games, inputSources, channelPresets, tvOutputs, patterns, historicalSummary)
+    logger.info(`[AI-SUGGEST] Sending prompt to Ollama (${prompt.length} chars, ${games.length} games, ${inputSources.length} inputs)`)
+
+    let ollamaResponse: string
+    try {
+      ollamaResponse = await callOllama(prompt)
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        logger.error('[AI-SUGGEST] Ollama request timed out after 30s')
+        return NextResponse.json(
+          { success: false, error: 'AI suggestion timed out. Ollama may be busy or unavailable.', suggestions: [] },
+          { status: 504 }
+        )
+      }
+
+      logger.error('[AI-SUGGEST] Ollama unavailable:', err)
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Ollama is not available. Make sure it is running on localhost:11434.',
+          details: err.message,
+          suggestions: [],
+        },
+        { status: 503 }
+      )
+    }
+
+    // 4. Parse response into structured suggestions
+    const suggestions = parseOllamaResponse(ollamaResponse, games, inputSources)
+
+    logger.api.response('GET', '/api/scheduling/ai-suggest', 200, {
+      gamesAnalyzed: games.length,
+      suggestionsReturned: suggestions.length,
+    })
+
+    return NextResponse.json({
+      success: true,
+      suggestions,
+      analyzedAt: new Date().toISOString(),
+      meta: {
+        gamesFound: games.length,
+        inputSourcesAvailable: inputSources.length,
+        tvOutputsAvailable: tvOutputs.length,
+        patternsLoaded: patterns.length,
+        model: OLLAMA_MODEL,
+      },
+    })
+  } catch (error: any) {
+    logger.api.error('GET', '/api/scheduling/ai-suggest', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to generate scheduling suggestions', details: error.message },
+      { status: 500 }
+    )
+  }
+}

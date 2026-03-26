@@ -126,3 +126,13 @@ export {
   type LogLevel,
   type SchedulerLogEntry
 } from './scheduler-logger'
+
+// Pattern Analyzer - Scheduling history pattern extraction for AI suggestions
+export {
+  patternAnalyzer,
+  PatternAnalyzer,
+  type TeamRoutingPattern,
+  type LeaguePriorityPattern,
+  type TimeSlotPattern,
+  type PatternAnalysisResult
+} from './pattern-analyzer'
