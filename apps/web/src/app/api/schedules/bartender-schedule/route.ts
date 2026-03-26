@@ -243,6 +243,7 @@ export async function GET(request: NextRequest) {
         id: r.allocation.id,
         inputSourceId: r.allocation.inputSourceId,
         inputLabel: r.inputSource.name,
+        deviceId: r.inputSource.deviceId || null,
         deviceType: r.allocation.inputSourceType,
         channelNumber: r.allocation.channelNumber,
         gameId: r.allocation.gameScheduleId,

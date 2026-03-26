@@ -23,6 +23,7 @@ import {
   Music2,
   Gamepad2,
   Lightbulb,
+  Music,
   Monitor,
   Loader2
 } from 'lucide-react'
@@ -36,6 +37,7 @@ import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
+import DJControlPanel from '@/components/DJControlPanel'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
 import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
@@ -189,7 +191,7 @@ export default function BartenderRemotePage() {
   const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting' | 'schedule'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule'>('video')
 
   // System time state - initialize with null to avoid hydration mismatch
   const [currentTime, setCurrentTime] = useState<string | null>(null)
@@ -1363,6 +1365,12 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
+        {activeTab === 'dj' && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <DJControlPanel />
+          </div>
+        )}
+
         {activeTab === 'lighting' && lightingEnabled && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
             {commercialLightingEnabled && <CommercialLightingRemote />}
@@ -1466,6 +1474,18 @@ export default function BartenderRemotePage() {
           >
             <Calendar className="w-4 h-4" />
             <span className="text-xs font-medium">Schedule</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dj')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'dj'
+                ? 'bg-orange-500/30 text-orange-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Music className="w-4 h-4" />
+            <span className="text-xs font-medium">DJ</span>
           </button>
 
           {lightingEnabled && (

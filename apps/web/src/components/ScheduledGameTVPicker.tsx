@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '@sports-bar/logger'
-import { ChevronDown, ChevronRight, Monitor, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, Monitor, Check, Volume2 } from 'lucide-react'
 
 interface Zone {
   id: string
@@ -22,6 +22,14 @@ interface ScheduledGameTVPickerProps {
   currentOutputIds: number[]
   onUpdate: (outputIds: number[]) => void
 }
+
+// Wolf Pack audio outputs feed the Atlas audio processor
+const AUDIO_OUTPUTS = [
+  { outputNumber: 37, label: 'Matrix Audio 1' },
+  { outputNumber: 38, label: 'Matrix Audio 2' },
+  { outputNumber: 39, label: 'Matrix Audio 3' },
+  { outputNumber: 40, label: 'Matrix Audio 4' },
+]
 
 export default function ScheduledGameTVPicker({
   allocationId,
@@ -140,6 +148,27 @@ export default function ScheduledGameTVPicker({
     [zones, selectedOutputIds, persistSelection]
   )
 
+  // Toggle all audio outputs at once
+  const toggleAllAudio = useCallback(() => {
+    const audioOutputNumbers = AUDIO_OUTPUTS.map((a) => a.outputNumber)
+    const allSelected = audioOutputNumbers.every((o) =>
+      selectedOutputIds.includes(o)
+    )
+
+    let next: number[]
+    if (allSelected) {
+      next = selectedOutputIds.filter(
+        (id) => !audioOutputNumbers.includes(id)
+      )
+    } else {
+      const toAdd = audioOutputNumbers.filter(
+        (o) => !selectedOutputIds.includes(o)
+      )
+      next = [...selectedOutputIds, ...toAdd].sort((a, b) => a - b)
+    }
+    persistSelection(next)
+  }, [selectedOutputIds, persistSelection])
+
   // Group zones by room
   const zonesByRoom = zones.reduce<Record<string, Zone[]>>((acc, zone) => {
     const roomId = zone.room || '_unassigned'
@@ -158,6 +187,13 @@ export default function ScheduledGameTVPicker({
     return acc
   }, {})
 
+  const audioOutputNumbers = AUDIO_OUTPUTS.map((a) => a.outputNumber)
+  const tvCount = selectedOutputIds.filter(
+    (id) => !audioOutputNumbers.includes(id)
+  ).length
+  const audioCount = selectedOutputIds.filter((id) =>
+    audioOutputNumbers.includes(id)
+  ).length
   const count = selectedOutputIds.length
 
   return (
@@ -176,8 +212,12 @@ export default function ScheduledGameTVPicker({
         <Monitor className="h-4 w-4" />
         <span>
           {count === 0
-            ? 'Assign TVs'
-            : `${count} TV${count !== 1 ? 's' : ''} assigned`}
+            ? 'Assign TVs & Audio'
+            : tvCount > 0 && audioCount > 0
+              ? `${tvCount} TV${tvCount !== 1 ? 's' : ''} + ${audioCount} audio zone${audioCount !== 1 ? 's' : ''}`
+              : tvCount > 0
+                ? `${tvCount} TV${tvCount !== 1 ? 's' : ''} assigned`
+                : `${audioCount} audio zone${audioCount !== 1 ? 's' : ''}`}
         </span>
         {saving && (
           <span className="text-blue-400 text-[10px] ml-1">saving...</span>
@@ -295,6 +335,98 @@ export default function ScheduledGameTVPicker({
                 </div>
               )
             })}
+
+          {/* Audio Zones Section */}
+          {!loading && !error && (
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              {/* Audio Routing header with Select All */}
+              <label className="flex items-center gap-3 cursor-pointer py-1.5 group">
+                {(() => {
+                  const allAudioSelected = AUDIO_OUTPUTS.every((a) =>
+                    selectedOutputIds.includes(a.outputNumber)
+                  )
+                  const someAudioSelected =
+                    !allAudioSelected &&
+                    AUDIO_OUTPUTS.some((a) =>
+                      selectedOutputIds.includes(a.outputNumber)
+                    )
+                  return (
+                    <span
+                      className={`relative flex h-6 w-6 items-center justify-center rounded border-2 transition-colors ${
+                        allAudioSelected || someAudioSelected
+                          ? 'border-amber-500 bg-amber-500'
+                          : 'border-amber-500/50'
+                      }`}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        toggleAllAudio()
+                      }}
+                    >
+                      {allAudioSelected && (
+                        <Check className="h-4 w-4 text-white" />
+                      )}
+                      {someAudioSelected && (
+                        <span className="block h-2.5 w-2.5 rounded-sm bg-white" />
+                      )}
+                    </span>
+                  )
+                })()}
+                <Volume2 className="h-5 w-5 text-amber-400" />
+                <span
+                  className="font-semibold text-base text-slate-200 group-hover:text-white transition-colors"
+                  onClick={() => toggleAllAudio()}
+                >
+                  Audio Zones
+                </span>
+                <span className="text-slate-500 text-xs">
+                  ({AUDIO_OUTPUTS.length})
+                </span>
+              </label>
+
+              {/* Audio output checkboxes */}
+              <div className="ml-9 mt-1 flex flex-wrap gap-2">
+                {AUDIO_OUTPUTS.map((audio) => {
+                  const checked = selectedOutputIds.includes(
+                    audio.outputNumber
+                  )
+                  return (
+                    <label
+                      key={audio.outputNumber}
+                      className={`flex items-center gap-2 cursor-pointer py-2 px-3 rounded-lg border transition-all ${
+                        checked
+                          ? 'border-amber-500 bg-amber-500/20'
+                          : 'border-slate-600 bg-slate-900 hover:border-slate-500'
+                      }`}
+                    >
+                      <span
+                        className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                          checked
+                            ? 'border-amber-500 bg-amber-500'
+                            : 'border-slate-600 bg-slate-900'
+                        }`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          toggleOutput(audio.outputNumber)
+                        }}
+                      >
+                        {checked && (
+                          <Check className="h-3.5 w-3.5 text-white" />
+                        )}
+                      </span>
+                      <span
+                        className={`text-sm font-medium transition-colors ${
+                          checked ? 'text-white' : 'text-slate-400'
+                        }`}
+                        onClick={() => toggleOutput(audio.outputNumber)}
+                      >
+                        {audio.label}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
