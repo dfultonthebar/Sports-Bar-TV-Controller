@@ -20,24 +20,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
 
     companion object {
-        const val SERVER_URL = "http://192.168.5.99:3001/api/firestick-scout"
+        const val SERVER_URL = "http://10.11.3.100:3001/api/firestick-scout"
         const val HEARTBEAT_INTERVAL_MS = 30000L
-        const val VERSION = "1.7.0-bar-20251205"
+        const val VERSION = "1.8.0-holmgren-20260325"
 
         // Android ID to Device ID mapping (primary - most reliable)
         private val ANDROID_ID_MAP = mapOf(
-            "4820eaf0d0013bcb" to Pair("amazon-1", "Amazon 1"),
-            "9b46431b4d9a11c3" to Pair("amazon-2", "Amazon 2"),
-            "33aecc01840a96ee" to Pair("amazon-3", "Amazon 3"),
-            "46428b0aec5b8a18" to Pair("amazon-4", "Amazon 4")
+            "5aec52ddccc80e2e" to Pair("amazon-2", "Amazon 2"),
+            "669d2018260bfe55" to Pair("amazon-3", "Amazon 3")
         )
 
         // IP to Device ID mapping (fallback)
         private val IP_DEVICE_MAP = mapOf(
-            "192.168.5.131" to Pair("amazon-1", "Amazon 1"),
-            "192.168.5.132" to Pair("amazon-2", "Amazon 2"),
-            "192.168.5.133" to Pair("amazon-3", "Amazon 3"),
-            "192.168.5.134" to Pair("amazon-4", "Amazon 4")
+            "10.11.3.49" to Pair("amazon-1", "Amazon 1"),
+            "10.11.3.50" to Pair("amazon-2", "Amazon 2"),
+            "10.11.3.51" to Pair("amazon-3", "Amazon 3")
         )
 
         var deviceId: String = "fire-tv-unknown"
@@ -86,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                         if (!addr.isLoopbackAddress && addr.hostAddress?.contains('.') == true) {
                             val ip = addr.hostAddress
                             // Only return 192.168.x.x addresses
-                            if (ip?.startsWith("192.168.") == true) {
+                            if (ip?.startsWith("10.11.3.") == true || ip?.startsWith("192.168.") == true) {
                                 return ip
                             }
                         }

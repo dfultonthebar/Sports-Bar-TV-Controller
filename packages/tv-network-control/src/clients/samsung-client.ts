@@ -304,15 +304,17 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
-   * Switch HDMI input (1-4)
+   * Switch HDMI input
+   * Samsung TU/NU series don't support KEY_HDMI1-4 directly.
+   * KEY_HDMI cycles through HDMI inputs reliably on all models.
    */
   async switchInput(input: number): Promise<CommandResult> {
     if (input < 1 || input > 4) {
       return { success: false, error: `Invalid HDMI input: ${input}. Must be 1-4.` }
     }
 
-    logger.info(`[SAMSUNG] Switching to HDMI ${input} on ${this.config.ipAddress}`)
-    return this.sendKey(`KEY_HDMI${input}`)
+    logger.info(`[SAMSUNG] Switching to HDMI ${input} on ${this.config.ipAddress} (using KEY_HDMI)`)
+    return this.sendKey('KEY_HDMI')
   }
 
   /**

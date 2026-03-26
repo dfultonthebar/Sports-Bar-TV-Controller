@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Tv,
   Radio,
@@ -159,6 +159,10 @@ export default function BartenderRemotePage() {
   const [multiViewMode, setMultiViewMode] = useState<number>(0)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
   const [multiViewLoading, setMultiViewLoading] = useState(false)
+
+  // Channel digit buffer for tracking manual channel entry
+  const digitBufferRef = useRef<string>('')
+  const digitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
@@ -714,6 +718,37 @@ export default function BartenderRemotePage() {
       
       if (response.ok) {
         setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
+
+        // Track digit commands for channel updates
+        if (/^[0-9]$/.test(command) && selectedInput && ('iTachAddress' in selectedDevice || selectedDevice.deviceType === 'DirecTV')) {
+          digitBufferRef.current += command
+
+          // Clear any pending timer
+          if (digitTimerRef.current) clearTimeout(digitTimerRef.current)
+
+          // After 2s of no more digits, update channel tracking
+          digitTimerRef.current = setTimeout(async () => {
+            const channelNum = digitBufferRef.current
+            digitBufferRef.current = ''
+            try {
+              // Update channel tracking in the database
+              await fetch('/api/channel-presets/tune', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  channelNumber: channelNum,
+                  deviceType: selectedDevice.deviceType === 'DirecTV' ? 'directv' : 'cable',
+                  cableBoxId: selectedDevice.id,
+                  presetId: 'manual'
+                })
+              })
+              // Reload current channels to update the layout display
+              loadCurrentChannels()
+            } catch (err) {
+              logger.error('Error updating channel tracking:', err)
+            }
+          }, 2000)
+        }
       } else {
         setCommandStatus(`✗ Failed: ${result.error}`)
       }

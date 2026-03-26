@@ -229,11 +229,17 @@ async function controlSamsungPower(
   try {
     let result: { success: boolean; message?: string; error?: string }
 
-    if (action === 'on') {
-      // Use powerOn() which sends WoL + checks PowerState before sending KEY_POWER
-      result = await client.powerOn()
+    if (action === 'on' || action === 'toggle') {
+      // Try KEY_POWER via WebSocket first (works if TV is on/standby with network)
+      result = await client.sendKey('KEY_POWER')
+
+      // If WebSocket failed (TV is fully off), fall back to WoL
+      if (!result.success && device.macAddress) {
+        logger.info(`[TV-CONTROL] KEY_POWER failed for ${device.ipAddress}, falling back to WoL`)
+        result = await client.powerOn()
+      }
     } else {
-      // off or toggle — send KEY_POWER via WebSocket (works in both on and standby)
+      // off — send KEY_POWER via WebSocket
       result = await client.sendKey('KEY_POWER')
     }
 
@@ -242,9 +248,9 @@ async function controlSamsungPower(
 
     return result
   } catch (error: any) {
-    // Last resort: try WOL if WebSocket completely failed
+    // Last resort: try WOL if everything failed
     if (action !== 'off' && device.macAddress) {
-      logger.info(`[TV-CONTROL] Falling back to WOL for ${device.ipAddress}`)
+      logger.info(`[TV-CONTROL] Exception fallback to WOL for ${device.ipAddress}`)
       try {
         return await client.powerOn()
       } catch {

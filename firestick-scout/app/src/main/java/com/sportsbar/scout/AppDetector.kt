@@ -174,8 +174,8 @@ class AppDetector(private val context: Context) {
                     // Skip IPv6 and loopback
                     if (!addr.isLoopbackAddress && addr.hostAddress?.contains('.') == true) {
                         val ip = addr.hostAddress
-                        // Only return 192.168.x.x addresses
-                        if (ip?.startsWith("192.168.") == true) {
+                        // Only return local network addresses
+                        if (ip?.startsWith("10.11.3.") == true || ip?.startsWith("192.168.") == true) {
                             return ip
                         }
                     }
