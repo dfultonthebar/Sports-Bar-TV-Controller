@@ -51,8 +51,9 @@ class SchedulerService {
       clearInterval(this.intervalId);
     }
 
-    // On startup, recover any bartender-scheduled tunes that may have been missed during downtime
-    this.recoverMissedBartenderSchedules();
+    // On startup, flag any missed bartender-scheduled tunes for confirmation
+    // (Don't auto-recover — let the bartender decide via the remote popup)
+    this.flagMissedBartenderSchedules();
 
     // Check every minute for schedules to execute
     this.intervalId = setInterval(() => {
@@ -81,30 +82,19 @@ class SchedulerService {
   }
 
   /**
-   * Recover bartender-scheduled tunes that may have been missed during system downtime
-   * This handles the case where:
-   * 1. A bartender scheduled a tune for 2:00 PM
-   * 2. The system was rebooted at 2:15 PM (past the scheduled time)
-   * 3. On startup, we should still tune to that channel if the game is still ongoing
+   * Flag missed bartender-scheduled tunes for confirmation instead of auto-recovering.
+   * Sets status to 'needs_confirmation' so the bartender remote can show a popup
+   * asking whether to resume these schedules.
    */
-  private async recoverMissedBartenderSchedules() {
+  private async flagMissedBartenderSchedules() {
     const correlationId = schedulerLogger.generateCorrelationId();
-    const startTime = Date.now();
 
     try {
-      const now = new Date();
-      const nowUnix = Math.floor(now.getTime() / 1000);
-
-      await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        'Starting recovery check for missed bartender-scheduled tunes',
-        correlationId
-      );
+      const nowUnix = Math.floor(Date.now() / 1000);
 
       logger.info('[SCHEDULER] 🔄 Checking for missed bartender-scheduled tunes after startup...');
 
-      // Find all pending bartender allocations that are past due
+      // Find pending bartender allocations that are past due
       const pendingAllocations = await db.select({
         allocation: schema.inputSourceAllocations,
         inputSource: schema.inputSources,
@@ -116,158 +106,36 @@ class SchedulerService {
       .where(eq(schema.inputSourceAllocations.status, 'pending'))
       .all();
 
-      // Also find 'active' bartender allocations that may not have actually tuned
-      // (e.g., AUTO-REALLOCATOR marked them active before the fix)
-      const activeAllocations = await db.select({
-        allocation: schema.inputSourceAllocations,
-        inputSource: schema.inputSources,
-        game: schema.gameSchedules,
-      })
-      .from(schema.inputSourceAllocations)
-      .innerJoin(schema.inputSources, eq(schema.inputSourceAllocations.inputSourceId, schema.inputSources.id))
-      .innerJoin(schema.gameSchedules, eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id))
-      .where(eq(schema.inputSourceAllocations.status, 'active'))
-      .all();
-
-      // Filter to bartender-scheduled allocations that are past due and games still ongoing
-      const allAllocations = [...pendingAllocations, ...activeAllocations];
-      const missedAllocations = allAllocations.filter((r) => {
-        // Only bartender-scheduled
+      const missedAllocations = pendingAllocations.filter((r) => {
         if (r.allocation.scheduledBy !== 'bartender') return false;
-        // Past the scheduled tune time
         if ((r.allocation.allocatedAt || 0) > nowUnix) return false;
-        // Game hasn't ended yet (check estimatedEnd with 30 min buffer)
         const gameEndBuffer = (r.game.estimatedEnd || 0) + 30 * 60;
         if (gameEndBuffer > 0 && nowUnix > gameEndBuffer) return false;
         return true;
       });
 
       if (missedAllocations.length === 0) {
-        logger.info('[SCHEDULER] ✅ No missed bartender-scheduled tunes to recover');
-        await schedulerLogger.info(
-          'scheduler-service',
-          'recover',
-          'No missed bartender-scheduled tunes to recover',
-          correlationId,
-          { durationMs: Date.now() - startTime }
-        );
+        logger.info('[SCHEDULER] ✅ No missed bartender-scheduled tunes');
+        await schedulerLogger.info('scheduler-service', 'recover', 'No missed bartender-scheduled tunes to recover', correlationId);
         return;
       }
 
-      await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        `Found ${missedAllocations.length} potentially missed bartender-scheduled tunes to recover`,
-        correlationId,
-        { metadata: { missedCount: missedAllocations.length } }
-      );
-
-      logger.info(`[SCHEDULER] 🎯 Found ${missedAllocations.length} potentially missed bartender-scheduled tunes to recover`);
-
+      // Flag them as needs_confirmation instead of auto-tuning
       for (const { allocation, inputSource, game } of missedAllocations) {
-        const tuneStartTime = Date.now();
-        try {
-          logger.info(`[SCHEDULER] 📺 Recovering scheduled tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
+        await db.update(schema.inputSourceAllocations)
+          .set({ status: 'needs_confirmation', updatedAt: nowUnix })
+          .where(eq(schema.inputSourceAllocations.id, allocation.id));
 
-          // Call the channel tune API
-          const response = await fetch(`http://localhost:${API_PORT}/api/channel-presets/tune`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType,
-              cableBoxId: allocation.inputSourceType === 'cable' ? inputSource.deviceId : undefined,
-              directTVId: allocation.inputSourceType === 'directv' ? inputSource.deviceId : undefined,
-              fireTVId: allocation.inputSourceType === 'firetv' ? inputSource.deviceId : undefined,
-            })
-          });
-
-          const result = await response.json();
-          const tuneDurationMs = Date.now() - tuneStartTime;
-
-          if (result.success || response.ok) {
-            // Ensure allocation is marked as active
-            await db.update(schema.inputSourceAllocations)
-              .set({
-                status: 'active',
-                updatedAt: nowUnix,
-              })
-              .where(eq(schema.inputSourceAllocations.id, allocation.id));
-
-            await schedulerLogger.info(
-              'scheduler-service',
-              'recover',
-              `Recovered tune: ${inputSource.name} to channel ${allocation.channelNumber}`,
-              correlationId,
-              {
-                gameId: game.id,
-                inputSourceId: inputSource.id,
-                allocationId: allocation.id,
-                channelNumber: allocation.channelNumber,
-                deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-                durationMs: tuneDurationMs,
-              }
-            );
-
-            logger.info(`[SCHEDULER] ✅ Recovered: Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
-          } else {
-            await schedulerLogger.log({
-              correlationId,
-              component: 'scheduler-service',
-              operation: 'recover',
-              level: 'error',
-              message: `Failed to recover tune for ${inputSource.name}`,
-              gameId: game.id,
-              inputSourceId: inputSource.id,
-              allocationId: allocation.id,
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-              success: false,
-              durationMs: tuneDurationMs,
-              errorMessage: result.error || result.message || 'Unknown error',
-            });
-
-            logger.error(`[SCHEDULER] ❌ Failed to recover tune for ${inputSource.name}: ${result.error || result.message}`);
-          }
-        } catch (tuneError: any) {
-          await schedulerLogger.error(
-            'scheduler-service',
-            'recover',
-            `Error recovering scheduled tune for ${inputSource.name}`,
-            correlationId,
-            tuneError,
-            {
-              gameId: game.id,
-              inputSourceId: inputSource.id,
-              allocationId: allocation.id,
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-              durationMs: Date.now() - tuneStartTime,
-            }
-          );
-
-          logger.error(`[SCHEDULER] ❌ Error recovering scheduled tune for ${inputSource.name}:`, { error: tuneError });
-        }
+        logger.info(`[SCHEDULER] 🔔 Flagged for confirmation: ${inputSource.name} → ch ${allocation.channelNumber} (${game.homeTeamName} vs ${game.awayTeamName})`);
       }
 
       await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        `Recovery complete - processed ${missedAllocations.length} missed allocations`,
-        correlationId,
-        { durationMs: Date.now() - startTime }
+        'scheduler-service', 'recover',
+        `Flagged ${missedAllocations.length} missed schedules for bartender confirmation`,
+        correlationId
       );
     } catch (error: any) {
-      await schedulerLogger.error(
-        'scheduler-service',
-        'recover',
-        'Error recovering missed bartender schedules',
-        correlationId,
-        error,
-        { durationMs: Date.now() - startTime }
-      );
-
-      logger.error('[SCHEDULER] ❌ Error recovering missed bartender schedules:', { error });
+      logger.error('[SCHEDULER] ❌ Error flagging missed schedules:', { error });
     }
   }
 

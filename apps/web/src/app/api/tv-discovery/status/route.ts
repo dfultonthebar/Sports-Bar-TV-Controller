@@ -6,6 +6,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import * as net from 'net'
+import WebSocket from 'ws'
 
 /**
  * TV Status Check API
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.allSettled(
       devices.map(async (device) => {
-        const powerState = await pingDevice(device.ipAddress, device.brand, device.port)
+        const powerState = await pingDevice(device.ipAddress, device.brand, device.port, device.id, device.authToken)
         const now = new Date().toISOString()
         // Map power state: 'on' = online, 'standby' = standby, null = offline
         const status = powerState === 'on' ? 'online' : powerState === 'standby' ? 'standby' : 'offline'
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
  * Uses brand-appropriate endpoints with a fast 2-second timeout.
  * Returns 'on' if powered on, 'standby' if in standby, or null if unreachable.
  */
-async function pingDevice(ip: string, brand: string, port: number): Promise<'on' | 'standby' | null> {
+async function pingDevice(ip: string, brand: string, port: number, deviceId?: string, authToken?: string | null): Promise<'on' | 'standby' | null> {
   // Sharp Aquos uses TCP on port 10002 — not HTTP
   if (brand.toLowerCase() === 'sharp') {
     return pingSharpDevice(ip, port || 10002)
@@ -129,6 +130,14 @@ async function pingDevice(ip: string, brand: string, port: number): Promise<'on'
         if (powerState === 'standby') return 'standby'
       } catch {
         // JSON parse failure — still reachable
+      }
+
+      // Attempt Samsung token refresh via quick WebSocket connection.
+      // The ms.channel.connect response may include a refreshed token.
+      if (deviceId) {
+        refreshSamsungToken(ip, deviceId, authToken).catch(() => {
+          // Swallow errors — token refresh is best-effort
+        })
       }
     }
 
@@ -217,4 +226,67 @@ async function pingEpsonDevice(ip: string, port: number): Promise<'on' | 'standb
   } catch {
     return null
   }
+}
+
+/**
+ * Attempt to refresh a Samsung TV's auth token via a quick WebSocket handshake.
+ * Connects to the Samsung SmartView WebSocket API, waits for the ms.channel.connect
+ * event, and updates the stored token if the TV returns a new one.
+ * Uses a 5-second timeout so it doesn't slow down the status poll.
+ * Failures are silently ignored — this is a best-effort refresh.
+ */
+async function refreshSamsungToken(ip: string, deviceId: string, currentToken: string | null | undefined): Promise<void> {
+  const SAMSUNG_APP_NAME = 'SportsBarController'
+  const nameB64 = Buffer.from(SAMSUNG_APP_NAME).toString('base64')
+  let url = `wss://${ip}:8002/api/v2/channels/samsung.remote.control?name=${nameB64}`
+  if (currentToken) {
+    url += `&token=${currentToken}`
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.terminate()
+      resolve() // Timeout is not an error — just skip refresh
+    }, 5000)
+
+    const ws = new WebSocket(url, { rejectUnauthorized: false })
+
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+
+        if (msg.event === 'ms.channel.connect') {
+          const newToken = msg.data?.token
+          clearTimeout(timeout)
+          ws.close()
+
+          if (newToken && newToken !== currentToken) {
+            logger.info(`[TV-STATUS] Samsung token refreshed for ${ip} (device ${deviceId})`)
+            try {
+              await db.update(schema.networkTVDevices)
+                .set({ authToken: newToken, updatedAt: new Date().toISOString() })
+                .where(eq(schema.networkTVDevices.id, deviceId))
+            } catch (dbErr: any) {
+              logger.warn(`[TV-STATUS] Failed to save refreshed Samsung token for ${ip}: ${dbErr.message}`)
+            }
+          }
+
+          resolve()
+        }
+      } catch {
+        // Non-JSON message, ignore
+      }
+    })
+
+    ws.on('error', () => {
+      clearTimeout(timeout)
+      ws.terminate()
+      resolve() // Don't fail status check on WebSocket errors
+    })
+
+    ws.on('close', () => {
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
 }

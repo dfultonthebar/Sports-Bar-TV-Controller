@@ -175,7 +175,7 @@ export default function LiveSportsDashboard({
 
   const handleTuneChannel = (channelNumber: string, deviceType: 'cable' | 'directv') => {
     const devices = deviceType === 'cable'
-      ? irDevices.filter(d => d.deviceType === 'Cable Box')
+      ? irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox')
       : direcTVDevices
 
     if (devices.length === 0) {
@@ -268,7 +268,7 @@ export default function LiveSportsDashboard({
             <div className="space-y-2">
               {devicePickerFor.type === 'tune' ? (
                 devicePickerFor.deviceType === 'cable'
-                  ? irDevices.filter(d => d.deviceType === 'Cable Box').map((device) => (
+                  ? irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').map((device) => (
                     <button
                       key={device.id}
                       onClick={() => {
