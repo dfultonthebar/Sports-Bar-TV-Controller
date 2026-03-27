@@ -143,35 +143,61 @@ export async function POST(request: NextRequest) {
       const stationToPreset = new Map<string, { channelNumber: string; name: string }>()
 
       const stationAliases: Record<string, string[]> = {
+        // ESPN family
         'ESPN': ['ESPN', 'ESPN HD'],
         'ESPN2': ['ESPN2', 'ESPN 2', 'ESPN2 HD'],
         'ESPNU': ['ESPNU', 'ESPN U', 'ESPN University'],
-        'ESPND': ['ESPND', 'ESPN Deportes', 'ESPN News'],
+        'ESPND': ['ESPND', 'ESPN Deportes'],
+        'ESPNEWS': ['ESPNEWS', 'ESPN News', 'ESPNews'],
+        'ESPN+': ['ESPN+'],
+        // Conference networks
         'SEC': ['SEC', 'SEC Network', 'SECN'],
-        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN'],
+        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN', 'Big 10'],
         'ACC': ['ACC', 'ACC Network', 'ACCN'],
+        // Fox family
         'FS1': ['FS1', 'Fox Sports 1', 'FOX Sports 1'],
         'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
+        'FSP': ['FSP', 'Fox Sports Prime'],
+        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
+        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin', 'Fan Duel'],
+        // NBC/CBS sports
         'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS', 'Peacock/NBC Sports'],
         'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
+        // Turner/Warner
         'TNT': ['TNT', 'TNT HD'],
         'TBS': ['TBS', 'TBS HD'],
-        'TRUTV': ['TRUTV', 'TruTV', 'truTV', 'USA'],
-        'USA': ['USA', 'USA Network', 'TRUTV'],
+        'TRUTV': ['TRUTV', 'TruTV', 'truTV'],
+        // USA Network (separate from truTV)
+        'USA': ['USA', 'USA Network'],
+        // League networks
         'NBATV': ['NBATV', 'NBA TV', 'NBA Television'],
         'NFLNET': ['NFLNET', 'NFL Network', 'NFLN'],
-        'MLBN': ['MLBN', 'MLB Network', 'MLB Television'],
+        'MLBN': ['MLBN', 'MLBNet', 'MLB Network', 'MLB Television'],
         'NHLNet': ['NHLNet', 'NHL Network', 'NHLN'],
+        // Sports channels
         'GOLF': ['GOLF', 'Golf Channel', 'Golf'],
-        'TENNIS': ['TENNIS', 'Tennis Channel', 'Tennis'],
-        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
-        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin'],
+        'TENNIS': ['TENNIS', 'TENN', 'Tennis Channel', 'Tennis'],
+        'OT': ['OT', 'Overtime'],
+        // Regional / specialty
         'BSNOR+': ['BSNOR+', 'Bally Sports North', 'Fox Sports North'],
+        'NBCUN': ['NBCUN', 'NBC Universo'],
+        'NXTLVL': ['NXTLVL', 'Next Level'],
+        'TVGL': ['TVGL', 'TV Games Live'],
+        'MSG2': ['MSG2'],
+        // Local stations
         'WGBA-TV': ['WGBA-TV', 'WGBA', 'NBC 26', 'WGBA-DT'],
         'WACY-TV': ['WACY-TV', 'WACY', 'MyNetworkTV'],
         'WFRV': ['WFRV', 'WFRV-TV', 'CBS 5'],
-        'NBCUN': ['NBCUN', 'NBC Universe', 'Peacock'],
+        'WLUK-TV': ['WLUK-TV', 'WLUK', 'FOX 11'],
+        'WBAY': ['WBAY', 'WBAY-TV', 'ABC 2'],
+        'WCWF': ['WCWF', 'CW 14'],
+        'WDCW': ['WDCW'],
+        // Subscription / PPV / streaming
         'MLBEI': ['MLBEI', 'MLB Extra Innings', 'MLB.TV'],
+        'DTVPPV': ['DTVPPV', 'DTVppv', 'DirecTV PPV'],
+        'NUE': ['NUE', 'nuevoTV'],
+        'TYC': ['TYC', 'TyC Sports'],
+        'Prime': ['Prime', 'Amazon Prime'],
       }
 
       // Normalize station names for matching
@@ -213,7 +239,8 @@ export async function POST(request: NextRequest) {
       logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups`)
 
       // The lineup key to use for this device type
-      const lineupKey = deviceType === 'satellite' ? 'SAT' : 'CAB'
+      // Rail Media API uses 'DRTV' for DirecTV satellite, not 'SAT'
+      const lineupKey = deviceType === 'satellite' ? 'DRTV' : 'CAB'
       logInfo(`Using lineup key: ${lineupKey}`)
 
       let matchedCount = 0

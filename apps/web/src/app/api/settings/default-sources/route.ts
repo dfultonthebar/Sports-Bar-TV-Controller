@@ -396,10 +396,76 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 5. Tune cable boxes to their default channels
+    const cableBoxResults: Array<{ box: string; channel: string; status: string; error?: string }> = []
+    if (config.cableBoxDefaults && Object.keys(config.cableBoxDefaults).length > 0) {
+      // Load IR devices to get cable box IDs
+      const irDeviceRows = await db.select()
+        .from(schema.irDevices)
+        .all()
+
+      for (const [inputKey, boxDefault] of Object.entries(config.cableBoxDefaults)) {
+        if (!boxDefault.channelNumber) continue
+        const inputNum = parseInt(inputKey)
+
+        // Find the IR device for this matrix input
+        const irDevice = irDeviceRows.find(d =>
+          d.matrixInput === inputNum &&
+          (d.deviceType === 'CableBox' || d.deviceType === 'Cable Box')
+        )
+
+        if (!irDevice) {
+          cableBoxResults.push({ box: `Input ${inputNum}`, channel: boxDefault.channelNumber, status: 'skipped', error: 'No IR device found' })
+          continue
+        }
+
+        // Check if this cable box has an active game allocation
+        // Build set of input source IDs that have active games
+        const allocatedInputSourceIds = new Set(activeAllocations.map(a => a.inputSourceId))
+        // Look up input source for this cable box
+        const inputSource = await db.select()
+          .from(schema.inputSources)
+          .where(eq(schema.inputSources.deviceId, irDevice.id))
+          .get()
+        const hasActiveGame = inputSource ? allocatedInputSourceIds.has(inputSource.id) : false
+        if (hasActiveGame) {
+          cableBoxResults.push({ box: irDevice.name, channel: boxDefault.channelNumber, status: 'skipped_game' })
+          continue
+        }
+
+        try {
+          const tuneResponse = await fetch(`${baseUrl}/api/channel-presets/tune`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channelNumber: boxDefault.channelNumber,
+              deviceType: 'cable',
+              cableBoxId: irDevice.id,
+              presetId: 'default',
+            }),
+          })
+
+          if (tuneResponse.ok) {
+            cableBoxResults.push({ box: irDevice.name, channel: boxDefault.channelNumber, status: 'tuned' })
+            logger.info(`[DEFAULT_SOURCES] Tuned ${irDevice.name} to default ch ${boxDefault.channelNumber} (${boxDefault.channelName || ''})`)
+          } else {
+            const err = await tuneResponse.json().catch(() => ({}))
+            cableBoxResults.push({ box: irDevice.name, channel: boxDefault.channelNumber, status: 'failed', error: err.error })
+          }
+        } catch (tuneError: any) {
+          cableBoxResults.push({ box: irDevice.name, channel: boxDefault.channelNumber, status: 'failed', error: tuneError.message })
+        }
+
+        // Small delay between cable box tunes to avoid IR overlap
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    }
+
     const routed = results.filter((r) => r.status === 'routed').length
     const skippedAllocated = results.filter((r) => r.status === 'skipped_allocated').length
     const skippedNoDefault = results.filter((r) => r.status === 'skipped_no_default').length
     const failed = results.filter((r) => r.status === 'failed').length
+    const cableBoxesTuned = cableBoxResults.filter(r => r.status === 'tuned').length
 
     logger.info(
       `[DEFAULT_SOURCES] Apply complete: ${routed} routed, ${skippedAllocated} skipped (allocated), ${skippedNoDefault} skipped (no default), ${failed} failed`
@@ -407,15 +473,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Applied defaults: ${routed} outputs routed, ${skippedAllocated} skipped (games active), ${failed} failed`,
+      message: `Applied defaults: ${routed} outputs routed, ${cableBoxesTuned} cable boxes tuned, ${skippedAllocated} skipped (games active), ${failed} failed`,
       summary: {
         routed,
+        cableBoxesTuned,
         skippedAllocated,
         skippedNoDefault,
         failed,
         total: results.length,
       },
       results,
+      cableBoxResults,
     })
   } catch (error: any) {
     logger.error('[DEFAULT_SOURCES] Error applying defaults:', error)

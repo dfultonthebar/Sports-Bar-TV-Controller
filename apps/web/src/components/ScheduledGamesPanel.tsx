@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import DefaultSourceSettings from './DefaultSourceSettings'
 import {
   Calendar,
@@ -183,6 +183,8 @@ export default function ScheduledGamesPanel() {
   const [showDefaults, setShowDefaults] = useState(false)
   const [tuningId, setTuningId] = useState<string | null>(null)
   const [cableBoxChannels, setCableBoxChannels] = useState<Record<string, CableBoxChannel>>({})
+  const [notification, setNotification] = useState<string | null>(null)
+  const prevGamesRef = useRef<ScheduledGame[]>([])
 
   // -----------------------------------------------------------------------
   // AI Suggest state
@@ -261,6 +263,31 @@ export default function ScheduledGamesPanel() {
       const sorted = (data.schedules as ScheduledGame[]).sort(
         (a, b) => new Date(a.tuneAt).getTime() - new Date(b.tuneAt).getTime()
       )
+
+      // Check for games that just went from pending to active
+      if (prevGamesRef.current.length > 0) {
+        const prevMap = new Map(prevGamesRef.current.map((g) => [g.id, g]))
+        for (const game of sorted) {
+          const prev = prevMap.get(game.id)
+          if (prev && prev.status === 'pending' && game.status === 'active') {
+            const msg = `\u{1F3C8} Game Started: ${game.awayTeam} @ ${game.homeTeam} on ${game.inputLabel} Ch ${game.channelNumber}`
+            setNotification(msg)
+            // Play a short notification beep via Web Audio API
+            try {
+              const ctx = new AudioContext()
+              const osc = ctx.createOscillator()
+              osc.type = 'sine'
+              osc.frequency.value = 800
+              osc.connect(ctx.destination)
+              osc.start()
+              setTimeout(() => osc.stop(), 200)
+            } catch {}
+            break // Show one notification at a time
+          }
+        }
+      }
+      prevGamesRef.current = sorted
+
       setGames(sorted)
       logger.debug('[SCHEDULED-GAMES] Loaded schedule', {
         count: sorted.length,
@@ -285,6 +312,13 @@ export default function ScheduledGamesPanel() {
     }, 30_000)
     return () => clearInterval(interval)
   }, [fetchSchedule, fetchCableBoxChannels, showDefaults])
+
+  // Auto-dismiss notification after 10 seconds
+  useEffect(() => {
+    if (!notification) return
+    const timer = setTimeout(() => setNotification(null), 10_000)
+    return () => clearTimeout(timer)
+  }, [notification])
 
   // -----------------------------------------------------------------------
   // Cancel a pending schedule
@@ -738,6 +772,16 @@ export default function ScheduledGamesPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Game-started toast notification */}
+      {notification && (
+        <div
+          onClick={() => setNotification(null)}
+          className="fixed top-0 left-0 right-0 z-[100] bg-green-600 text-white p-4 text-center text-base font-semibold shadow-lg cursor-pointer animate-pulse"
+        >
+          {notification}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white flex items-center gap-2">
