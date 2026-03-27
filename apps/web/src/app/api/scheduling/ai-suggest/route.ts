@@ -17,8 +17,9 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate'
-const OLLAMA_MODEL = 'llama3.1:8b'
-const OLLAMA_TIMEOUT_MS = 30_000
+// const OLLAMA_MODEL = 'llama3.1:8b' // Too slow for large prompts
+const OLLAMA_TIMEOUT_MS = 60_000 // 60 seconds
+const OLLAMA_MODEL = 'llama3.2:3b' // Smaller model for faster responses
 const SPORTS_GUIDE_URL = 'http://localhost:3001/api/sports-guide'
 
 // ---------- types ----------
@@ -96,13 +97,26 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       const league = group.group_title || 'Unknown'
 
       for (const listing of group.listings || []) {
-        // Parse time — the Rail Media API returns local time strings
-        const gameTime = listing.time ? new Date(listing.time) : null
+        // Parse time — Rail Media returns "7:00 pm" + "Mar 27" format
+        let gameTime: Date | null = null
+        if (listing.time) {
+          const currentYear = new Date().getFullYear()
+          const dateStr = listing.date
+            ? `${listing.date} ${currentYear} ${listing.time}`
+            : `${new Date().toDateString()} ${listing.time}`
+          gameTime = new Date(dateStr)
+          if (isNaN(gameTime.getTime())) gameTime = null
+        }
         if (!gameTime || gameTime < now) continue // skip past games
 
-        // Only include games within the next ~30 hours
+        // Only include games within the next ~12 hours
         const hoursAhead = (gameTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-        if (hoursAhead > 30) continue
+        if (hoursAhead > 12) continue
+
+        // Skip events without team matchups (golf, F1, etc.)
+        const homeTeamCheck = listing.data?.['home team'] || listing.data?.['team'] || ''
+        const awayTeamCheck = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+        if (!homeTeamCheck.trim() && !awayTeamCheck.trim()) continue
 
         // Extract team names from listing data
         const listingData = listing.data || {}
@@ -163,8 +177,10 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       }
     }
 
-    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games from sports guide`)
-    return games
+    // Cap at 10 games to keep the LLM prompt fast
+    const capped = games.slice(0, 10)
+    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games, sending ${capped.length} to AI`)
+    return capped
   } catch (err: any) {
     if (err.name === 'AbortError') {
       logger.error('[AI-SUGGEST] Sports guide request timed out')
@@ -319,79 +335,27 @@ function buildPrompt(
   patterns: SchedulingPattern[],
   historicalSummary: string,
 ): string {
-  const inputList = inputSources.map(s =>
-    `  - "${s.name}" (id: ${s.id}, type: ${s.type}, matrix input: ${s.matrixInputId || 'N/A'}, priority: ${s.priorityRank}, allocated: ${s.currentlyAllocated ? 'YES' : 'no'})`
-  ).join('\n')
+  const inputList = inputSources.slice(0, 6).map(s =>
+    `${s.name} (${s.type}${s.currentlyAllocated ? ', BUSY' : ''})`
+  ).join(', ')
 
   const gameList = games.map((g, i) =>
-    `  ${i + 1}. ${g.awayTeam || '?'}${g.homeTeam ? ' at ' + g.homeTeam : ''} — ${g.league}, ${new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })} CT, channel: ${g.channelName || 'unknown'}${g.channelNumber ? ' (' + g.channelNumber + ')' : ''}`
+    `${i + 1}. ${g.league}: ${g.awayTeam || '?'} @ ${g.homeTeam || '?'}, ${new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}, ch ${g.channelNumber || '?'} (${g.channelName || '?'})`
   ).join('\n')
 
-  const presetList = channelPresets.slice(0, 30).map(p =>
-    `  - ${p.name}: ch ${p.channelNumber} (${p.deviceType})`
-  ).join('\n')
+  return `Sports bar scheduler. Assign games to cable boxes.
 
-  const tvList = tvOutputs.map(o =>
-    `  - Output ${o.channelNumber}: "${o.label}"${o.tvGroupId ? ' [group: ' + o.tvGroupId + ']' : ''}`
-  ).join('\n')
+Boxes: ${inputList}
 
-  let patternSection = 'No learned patterns available yet.'
-  if (patterns.length > 0) {
-    patternSection = patterns.slice(0, 20).map(p =>
-      `  - ${p.pattern_type}: team=${p.team_name || 'any'}, league=${p.league || 'any'}, input="${p.input_source_name || 'N/A'}", outputs=${p.preferred_outputs || 'N/A'}, seen ${p.occurrence_count}x, confidence ${(p.confidence * 100).toFixed(0)}%`
-    ).join('\n')
-  }
-
-  return `You are an AI scheduling assistant for a sports bar with multiple TVs controlled by an HDMI matrix switcher.
-
-Your job: Given upcoming games and available cable boxes, suggest which cable box should tune to which channel and which TVs should show each game.
-
-AVAILABLE INPUT SOURCES (cable boxes / streaming devices):
-${inputList}
-
-AVAILABLE TV OUTPUTS (matrix outputs):
-${tvList}
-
-CHANNEL PRESETS (known channels):
-${presetList}
-
-UPCOMING GAMES:
+Games:
 ${gameList}
 
-LEARNED SCHEDULING PATTERNS:
-${patternSection}
-
-HISTORICAL ALLOCATION DATA (recent past decisions):
-${historicalSummary}
-
-RULES:
-1. Each input source (cable box) can only be tuned to ONE channel at a time.
-2. Multiple TV outputs can show the same input source simultaneously.
-3. Higher priority games (home teams, popular leagues) should get more TVs.
-4. Use historical patterns to maintain consistency — if a team always goes on a specific input, keep it there.
-5. Prefer inputs that are NOT currently allocated.
-6. Match channel names from games to channel presets to find the correct channel number.
+Home teams: Packers, Brewers, Bucks, Badgers
 
 Return a JSON object with this exact structure:
-{
-  "suggestions": [
-    {
-      "gameIndex": <number matching the game list above (1-based)>,
-      "homeTeam": "<home team name>",
-      "awayTeam": "<away team name>",
-      "league": "<league name>",
-      "channelNumber": "<channel number to tune to>",
-      "channelName": "<station/channel name>",
-      "suggestedInputId": "<input source id>",
-      "suggestedInput": "<input source name>",
-      "suggestedOutputs": [<list of TV output channel numbers>],
-      "confidence": <0.0 to 1.0>,
-      "reasoning": "<brief explanation>"
-    }
-  ]
-}
-
-Only include games that should actually be shown. If there are more games than inputs, prioritize the most important ones. Return ONLY valid JSON, no extra text.`
+Rules: Each box tunes ONE channel. Prioritize home teams. Return JSON:
+{"suggestions":[{"gameIndex":1,"suggestedInput":"Cable Box 1","channelNumber":"27","confidence":0.8,"reasoning":"brief reason"}]}
+Only top games. JSON only.`
 }
 
 // ---------- helper: parse Ollama response ----------
