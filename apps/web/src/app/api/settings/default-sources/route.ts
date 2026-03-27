@@ -31,10 +31,18 @@ const sourceConfigSchema = z.object({
   channelNumber: z.string().optional(),
 })
 
+const cableBoxDefaultSchema = z.object({
+  channelNumber: z.string(),
+  channelName: z.string().optional(),
+})
+
 const defaultSourcesSchema = z.object({
   globalDefault: sourceConfigSchema.optional(),
   roomDefaults: z.record(z.string(), sourceConfigSchema).optional(),
   outputDefaults: z.record(z.string(), sourceConfigSchema).optional(),
+  cableBoxDefaults: z.record(z.string(), cableBoxDefaultSchema).optional(),
+  defaultAudioSource: z.number().int().min(0).optional(),
+  defaultAudioSourceName: z.string().optional(),
 })
 
 // --- Default empty config ---
@@ -45,16 +53,23 @@ interface SourceConfig {
   channelNumber?: string
 }
 
+interface CableBoxDefault {
+  channelNumber: string
+  channelName?: string
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: SourceConfig
   roomDefaults?: Record<string, SourceConfig>
   outputDefaults?: Record<string, SourceConfig>
+  cableBoxDefaults?: Record<string, CableBoxDefault>
 }
 
 const EMPTY_DEFAULTS: DefaultSourcesConfig = {
   globalDefault: undefined,
   roomDefaults: {},
   outputDefaults: {},
+  cableBoxDefaults: {},
 }
 
 // --- Helpers ---

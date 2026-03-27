@@ -217,6 +217,11 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [scheduledAllocations, setScheduledAllocations] = useState<any[]>([])
   const [schedulingGame, setSchedulingGame] = useState<string | null>(null) // game id being scheduled
 
+  // Schedule Picker State (for choosing Cable vs DirecTV when scheduling)
+  const [schedulePickerGame, setSchedulePickerGame] = useState<GameListing | null>(null)
+  const [schedulePickerDeviceType, setSchedulePickerDeviceType] = useState<'cable' | 'directv'>('cable')
+  const [schedulePickerDeviceId, setSchedulePickerDeviceId] = useState<string>('')
+
   // UI State
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -360,27 +365,53 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const handleScheduleGame = async (game: GameListing, event: React.MouseEvent) => {
     event.stopPropagation() // Don't trigger the game click (Watch)
 
-    if (!selectedInput || !selectedDevice) {
-      setCommandStatus('No device selected')
+    // Pre-select device type based on the currently selected input
+    const currentDeviceType = selectedInput ? getDeviceTypeForInput(selectedInput) : null
+    let defaultType: 'cable' | 'directv' = 'cable'
+    let defaultDeviceId = ''
+
+    if (currentDeviceType === 'satellite' && selectedDevice) {
+      defaultType = 'directv'
+      defaultDeviceId = selectedDevice.id
+    } else if (currentDeviceType === 'cable' && selectedDevice) {
+      defaultType = 'cable'
+      defaultDeviceId = selectedDevice.id
+    } else if (direcTVDevices.length > 0 && irDevices.length === 0) {
+      // Only DirecTV devices available
+      defaultType = 'directv'
+      defaultDeviceId = direcTVDevices[0].id
+    } else if (irDevices.length > 0) {
+      defaultType = 'cable'
+      defaultDeviceId = irDevices[0].id
+    }
+
+    // Open the schedule picker
+    setSchedulePickerGame(game)
+    setSchedulePickerDeviceType(defaultType)
+    setSchedulePickerDeviceId(defaultDeviceId)
+  }
+
+  const confirmScheduleGame = async () => {
+    const game = schedulePickerGame
+    if (!game) return
+
+    if (!schedulePickerDeviceId) {
+      setCommandStatus('Please select a device')
       return
     }
 
-    const deviceType = getDeviceTypeForInput(selectedInput)
-    if (!deviceType) {
-      setCommandStatus('Unknown device type')
-      return
-    }
-
-    // Determine device ID
-    let deviceId = ''
-    if ('matrixInput' in selectedDevice) {
-      // IR Device (cable box)
-      deviceId = selectedDevice.id
+    // Find the selected device name
+    let deviceName = ''
+    if (schedulePickerDeviceType === 'cable') {
+      const device = irDevices.find(d => d.id === schedulePickerDeviceId)
+      deviceName = device?.name || 'Cable Box'
     } else {
-      deviceId = selectedDevice.id
+      const device = direcTVDevices.find(d => d.id === schedulePickerDeviceId)
+      deviceName = device?.name || 'DirecTV'
     }
 
     setSchedulingGame(game.id)
+    setSchedulePickerGame(null)
     setCommandStatus(`Scheduling ${game.homeTeam} vs ${game.awayTeam}...`)
 
     try {
@@ -388,9 +419,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          deviceId: deviceId,
-          deviceType: deviceType === 'satellite' ? 'directv' : deviceType,
-          deviceName: selectedDevice.name,
+          deviceId: schedulePickerDeviceId,
+          deviceType: schedulePickerDeviceType,
+          deviceName,
           channelNumber: game.channel.channelNumber || game.channel.number,
           channelName: game.channel.name,
           gameInfo: {
@@ -411,6 +442,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         logButtonClick('schedule_game', `${game.league}`, {
           game: `${game.awayTeam} @ ${game.homeTeam}`,
           channel: game.channel.channelNumber,
+          deviceType: schedulePickerDeviceType,
           tuneAt: game.startTime
         })
 
@@ -1783,6 +1815,134 @@ export default function EnhancedChannelGuideBartenderRemote() {
           )}
         </div>
       </div>
+
+      {/* Schedule Device Picker Modal */}
+      {schedulePickerGame && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSchedulePickerGame(null)}>
+          <div
+            className="backdrop-blur-xl bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl p-5 mx-4 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-1">Schedule Game</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              {schedulePickerGame.awayTeam} @ {schedulePickerGame.homeTeam} -- {schedulePickerGame.channel.name}
+              {schedulePickerGame.channel.channelNumber ? ` (Ch ${schedulePickerGame.channel.channelNumber})` : ''}
+            </p>
+
+            {/* Device Type Tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => {
+                  setSchedulePickerDeviceType('cable')
+                  // Auto-select first cable box
+                  const cableDevices = irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox')
+                  setSchedulePickerDeviceId(cableDevices.length > 0 ? cableDevices[0].id : '')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  schedulePickerDeviceType === 'cable'
+                    ? 'bg-blue-500/30 border-2 border-blue-400/60 text-blue-300'
+                    : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <Cable className="w-4 h-4 inline mr-2" />
+                Cable Box
+              </button>
+              <button
+                onClick={() => {
+                  setSchedulePickerDeviceType('directv')
+                  // Auto-select first DirecTV device
+                  setSchedulePickerDeviceId(direcTVDevices.length > 0 ? direcTVDevices[0].id : '')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  schedulePickerDeviceType === 'directv'
+                    ? 'bg-blue-500/30 border-2 border-blue-400/60 text-blue-300'
+                    : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <Satellite className="w-4 h-4 inline mr-2" />
+                DirecTV
+              </button>
+            </div>
+
+            {/* Device Selector */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-slate-400 block mb-2">
+                Select {schedulePickerDeviceType === 'cable' ? 'Cable Box' : 'DirecTV Receiver'}
+              </label>
+              {schedulePickerDeviceType === 'cable' ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').length === 0 ? (
+                    <p className="text-sm text-slate-500 py-3 text-center">No cable boxes configured</p>
+                  ) : (
+                    irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSchedulePickerDeviceId(device.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
+                          schedulePickerDeviceId === device.id
+                            ? 'bg-blue-500/20 border-2 border-blue-400/50 text-white'
+                            : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{device.name}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">Input {device.matrixInput} -- {device.brand}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {direcTVDevices.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-3 text-center">No DirecTV receivers configured</p>
+                  ) : (
+                    direcTVDevices.map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSchedulePickerDeviceId(device.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
+                          schedulePickerDeviceId === device.id
+                            ? 'bg-blue-500/20 border-2 border-blue-400/50 text-white'
+                            : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-sm">{device.name}</div>
+                            <div className="text-xs text-slate-400 mt-0.5">{device.receiverType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
+                          </div>
+                          {device.isOnline ? (
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSchedulePickerGame(null)}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmScheduleGame}
+                disabled={!schedulePickerDeviceId}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-blue-500/30 border-2 border-blue-400/50 text-blue-300 hover:bg-blue-500/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Calendar className="w-4 h-4 inline mr-1" />
+                Confirm Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading Overlay */}
       {loading && (

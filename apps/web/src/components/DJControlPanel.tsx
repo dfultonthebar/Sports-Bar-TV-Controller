@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Music, Volume2, Radio, Zap } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
 
@@ -78,14 +78,60 @@ export default function DJControlPanel() {
     }
   }, [])
 
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Save DJ mode state (debounced)
+  const saveDJState = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch('/api/settings/dj-mode', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            isActive: true,
+            activeMode: isDJMode ? 'dj' : 'game',
+            djSourceIndex: selectedDJSource,
+            djSourceName: djSources.find(s => s.index === selectedDJSource)?.name,
+            gameAudioSourceIndex: selectedGameSource,
+            gameAudioSourceName: WOLFPACK_AUDIO_OPTIONS.find(s => s.index === selectedGameSource)?.name,
+            selectedZones: Array.from(selectedZones),
+          }),
+        })
+      } catch {}
+    }, 500)
+  }, [isDJMode, selectedDJSource, selectedGameSource, selectedZones, djSources])
+
+  // Load saved state on mount
   useEffect(() => {
     const init = async () => {
       setLoading(true)
       await Promise.all([fetchSources(), fetchZones()])
+
+      // Restore saved state
+      try {
+        const res = await fetch('/api/settings/dj-mode')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.state?.isActive) {
+            if (data.state.activeMode === 'dj') setIsDJMode(true)
+            else setIsDJMode(false)
+            if (data.state.djSourceIndex != null) setSelectedDJSource(data.state.djSourceIndex)
+            if (data.state.gameAudioSourceIndex != null) setSelectedGameSource(data.state.gameAudioSourceIndex)
+            if (data.state.selectedZones?.length > 0) setSelectedZones(new Set(data.state.selectedZones))
+          }
+        }
+      } catch {}
+
       setLoading(false)
     }
     init()
   }, [fetchSources, fetchZones])
+
+  // Auto-save when state changes
+  useEffect(() => {
+    if (!loading) saveDJState()
+  }, [isDJMode, selectedDJSource, selectedGameSource, selectedZones, loading, saveDJState])
 
   // Switch audio source for all selected zones
   const switchSource = useCallback(async (sourceIndex: number) => {

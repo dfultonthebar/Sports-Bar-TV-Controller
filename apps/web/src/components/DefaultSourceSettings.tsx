@@ -10,7 +10,7 @@
  * Follows the dark theme styling conventions (no white backgrounds).
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -33,6 +33,7 @@ import {
   Settings2,
   Layers,
   Globe,
+  Volume2,
 } from 'lucide-react'
 
 // --- Types ---
@@ -43,10 +44,18 @@ interface SourceConfig {
   channelNumber?: string
 }
 
+interface CableBoxDefault {
+  channelNumber: string
+  channelName?: string
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: SourceConfig
   roomDefaults?: Record<string, SourceConfig>
   outputDefaults?: Record<string, SourceConfig>
+  cableBoxDefaults?: Record<string, CableBoxDefault> // inputNumber -> default channel
+  defaultAudioSource?: number
+  defaultAudioSourceName?: string
 }
 
 interface MatrixInput {
@@ -80,7 +89,7 @@ const INHERIT_VALUE = '__inherit__'
 // Value used to indicate "no source / none configured"
 const NONE_VALUE = '__none__'
 
-export default function DefaultSourceSettings() {
+function DefaultSourceSettings() {
   const [config, setConfig] = useState<DefaultSourcesConfig>({})
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [outputs, setOutputs] = useState<MatrixOutput[]>([])
@@ -91,6 +100,8 @@ export default function DefaultSourceSettings() {
   const [success, setSuccess] = useState<string | null>(null)
   const [applyResults, setApplyResults] = useState<ApplyResult[] | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+  const [channelPresets, setChannelPresets] = useState<Array<{ channelNumber: number; name: string; deviceType: string }>>([])
+  const [audioSources, setAudioSources] = useState<Array<{ index: number; name: string }>>([])
 
   // --- Data Loading ---
 
@@ -118,6 +129,23 @@ export default function DefaultSourceSettings() {
       if (outputsRes.ok) {
         const outputsData = await outputsRes.json()
         setOutputs((outputsData.outputs || []).filter((o: MatrixOutput) => o.isActive))
+      }
+
+      // Load channel presets (cable + directv)
+      const presetsRes = await fetch('/api/channel-presets')
+      if (presetsRes.ok) {
+        const presetsData = await presetsRes.json()
+        const allPresets = (presetsData.presets || [])
+          .filter((p: any) => p.deviceType === 'cable' || p.deviceType === 'directv')
+          .sort((a: any, b: any) => a.channelNumber - b.channelNumber)
+        setChannelPresets(allPresets)
+      }
+
+      // Load Atlas audio sources
+      const audioRes = await fetch('/api/atlas/sources?processorIp=10.11.3.246')
+      if (audioRes.ok) {
+        const audioData = await audioRes.json()
+        setAudioSources(audioData.sources || [])
       }
 
       setHasChanges(false)
@@ -298,42 +326,31 @@ export default function DefaultSourceSettings() {
     allowInherit?: boolean
     inheritLabel?: string
   }) {
+    // Use local state to prevent parent re-render from closing the native picker
+    const [localValue, setLocalValue] = useState(value)
+    useEffect(() => { setLocalValue(value) }, [value])
+
     return (
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="bg-slate-800 border-slate-600 min-h-[44px] text-sm">
-          <SelectValue placeholder="Select default source..." />
-        </SelectTrigger>
-        <SelectContent className="bg-slate-800 border-slate-600">
-          {allowInherit && (
-            <SelectItem value={INHERIT_VALUE} className="min-h-[44px] text-sm">
-              {inheritLabel}
-            </SelectItem>
-          )}
-          <SelectItem value={NONE_VALUE} className="min-h-[44px] text-sm text-slate-400">
-            No default configured
-          </SelectItem>
-          {inputs.map((input) => (
-            <SelectItem
-              key={input.channelNumber}
-              value={String(input.channelNumber)}
-              className="min-h-[44px] text-sm"
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-slate-400 font-mono text-xs w-6 text-right">
-                  {input.channelNumber}
-                </span>
-                <span>{input.label}</span>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0 border-slate-600 text-slate-400"
-                >
-                  {input.deviceType}
-                </Badge>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <select
+        value={localValue}
+        onChange={(e) => {
+          const newVal = e.target.value
+          setLocalValue(newVal)
+          // Delay parent update so the native picker can close first
+          setTimeout(() => onChange(newVal), 50)
+        }}
+        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
+      >
+        {allowInherit && (
+          <option value={INHERIT_VALUE}>{inheritLabel}</option>
+        )}
+        <option value={NONE_VALUE}>No default configured</option>
+        {inputs.map((input) => (
+          <option key={input.channelNumber} value={String(input.channelNumber)}>
+            Input {input.channelNumber} — {input.label} ({input.deviceType})
+          </option>
+        ))}
+      </select>
     )
   }
 
@@ -422,11 +439,179 @@ export default function DefaultSourceSettings() {
         </p>
       </div>
 
-      {/* Global Default */}
+      {/* Cable Box Default Channels — from presets */}
+      {/* Cable Box + DirecTV Default Channels */}
+      <div className="rounded-lg border border-slate-700 p-6">
+        <h4 className="text-base font-semibold text-white flex items-center gap-2 mb-4">
+          <Tv className="h-5 w-5 text-green-400" />
+          Default Channels
+        </h4>
+        <p className="text-sm text-slate-400 mb-4">
+          Set the default channel for each cable box and DirecTV receiver when no game is scheduled.
+        </p>
+
+        {/* Cable Boxes */}
+        <h5 className="text-sm font-semibold text-slate-300 mb-3">Cable Boxes</h5>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {inputs
+            .filter((i) => i.deviceType === 'CableBox' || i.deviceType === 'Cable Box' || i.label?.toLowerCase().includes('cable'))
+            .sort((a, b) => a.channelNumber - b.channelNumber)
+            .map((box) => {
+              const key = String(box.channelNumber)
+              const current = config.cableBoxDefaults?.[key]
+              return (
+                <div key={key} className="bg-slate-800/50 rounded-lg p-4">
+                  <span className="text-sm font-semibold text-white block mb-2">{box.label}</span>
+                  <select
+                    onClick={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    value={current ? `${current.channelNumber}|${current.channelName || ''}` : ''}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (!val) {
+                        setConfig((prev) => {
+                          const cbd = { ...(prev.cableBoxDefaults || {}) }
+                          delete cbd[key]
+                          return { ...prev, cableBoxDefaults: cbd }
+                        })
+                      } else {
+                        const [ch, name] = val.split('|')
+                        setConfig((prev) => ({
+                          ...prev,
+                          cableBoxDefaults: {
+                            ...(prev.cableBoxDefaults || {}),
+                            [key]: { channelNumber: ch, channelName: name || '' },
+                          },
+                        }))
+                      }
+                      setHasChanges(true)
+                      setSuccess(null)
+                    }}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
+                  >
+                    <option value="">No default channel</option>
+                    {channelPresets.filter(p => p.deviceType === 'cable').map((p) => (
+                      <option key={`cable-${p.channelNumber}-${p.name}`} value={`${p.channelNumber}|${p.name}`}>
+                        Ch {p.channelNumber} — {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {current && (
+                    <p className="text-sm text-green-400/70 mt-1">
+                      Default: Ch {current.channelNumber} — {current.channelName}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+
+        {/* DirecTV Boxes */}
+        <h5 className="text-sm font-semibold text-slate-300 mb-3">DirecTV Receivers</h5>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {inputs
+            .filter((i) => i.deviceType === 'DirecTV' || i.label?.toLowerCase().includes('directv'))
+            .sort((a, b) => a.channelNumber - b.channelNumber)
+            .map((box) => {
+              const key = String(box.channelNumber)
+              const current = config.cableBoxDefaults?.[key]
+              return (
+                <div key={key} className="bg-slate-800/50 rounded-lg p-4">
+                  <span className="text-sm font-semibold text-white block mb-2">{box.label}</span>
+                  <select
+                    onClick={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    value={current ? `${current.channelNumber}|${current.channelName || ''}` : ''}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (!val) {
+                        setConfig((prev) => {
+                          const cbd = { ...(prev.cableBoxDefaults || {}) }
+                          delete cbd[key]
+                          return { ...prev, cableBoxDefaults: cbd }
+                        })
+                      } else {
+                        const [ch, name] = val.split('|')
+                        setConfig((prev) => ({
+                          ...prev,
+                          cableBoxDefaults: {
+                            ...(prev.cableBoxDefaults || {}),
+                            [key]: { channelNumber: ch, channelName: name || '' },
+                          },
+                        }))
+                      }
+                      setHasChanges(true)
+                      setSuccess(null)
+                    }}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
+                  >
+                    <option value="">No default channel</option>
+                    {channelPresets.filter(p => p.deviceType === 'directv').map((p) => (
+                      <option key={`dtv-${p.channelNumber}-${p.name}`} value={`${p.channelNumber}|${p.name}`}>
+                        Ch {p.channelNumber} — {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {current && (
+                    <p className="text-sm text-green-400/70 mt-1">
+                      Default: Ch {current.channelNumber} — {current.channelName}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      </div>
+
+      {/* Default Audio Source */}
+      <div className="rounded-lg border border-slate-700 p-6">
+        <h4 className="text-base font-semibold text-white flex items-center gap-2 mb-4">
+          <Volume2 className="h-5 w-5 text-amber-400" />
+          Default Audio Source
+        </h4>
+        <p className="text-sm text-slate-400 mb-4">
+          Set the default audio source for Atlas zones when no game audio is active.
+        </p>
+        <div className="max-w-md">
+          <select
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            value={config.defaultAudioSource?.toString() || ''}
+            onChange={(e) => {
+              const val = e.target.value
+              setConfig((prev) => ({
+                ...prev,
+                defaultAudioSource: val ? parseInt(val) : undefined,
+                defaultAudioSourceName: val ? audioSources.find(s => s.index === parseInt(val))?.name : undefined,
+              }))
+              setHasChanges(true)
+              setSuccess(null)
+            }}
+            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
+          >
+            <option value="">No default audio source</option>
+            {audioSources.map((s) => (
+              <option key={s.index} value={String(s.index)}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          {config.defaultAudioSource !== undefined && (
+            <p className="text-sm text-amber-400/70 mt-1">
+              Default: {config.defaultAudioSourceName || `Source ${config.defaultAudioSource}`}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Global Default — Which source goes on TVs */}
       <div className="rounded-lg border border-slate-700 p-6">
         <h4 className="text-base font-semibold text-white flex items-center gap-2 mb-4">
           <Globe className="h-5 w-5 text-blue-400" />
-          Global Default
+          Global TV Default
         </h4>
         <p className="text-sm text-slate-400 mb-3">
           All TVs without a room or output override will use this source.
@@ -438,7 +623,7 @@ export default function DefaultSourceSettings() {
           />
         </div>
         {config.globalDefault && (
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-sm text-slate-500 mt-2">
             Currently: Input {config.globalDefault.inputNumber} &mdash;{' '}
             {config.globalDefault.inputLabel || getInputLabel(config.globalDefault.inputNumber)}
           </p>
@@ -465,7 +650,7 @@ export default function DefaultSourceSettings() {
                 <div key={room.id} className="flex items-center gap-4 flex-wrap">
                   <div className="w-48 shrink-0">
                     <span className="text-sm font-medium text-white">{room.name}</span>
-                    <span className="text-xs text-slate-500 ml-2">
+                    <span className="text-sm text-slate-500 ml-2">
                       ({room.outputCount} TV{room.outputCount !== 1 ? 's' : ''})
                     </span>
                   </div>
@@ -526,56 +711,39 @@ export default function DefaultSourceSettings() {
         )}
 
         {/* Add override selector */}
-        <div className="rounded-lg bg-slate-800/50 p-4">
-          <label className="text-xs font-medium text-slate-400 block mb-2">
+        <div className="rounded-lg bg-slate-800/50 p-4" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <label className="text-sm font-medium text-slate-400 block mb-2">
             Add TV Override
           </label>
-          <Select
-            onValueChange={(value) => {
-              const outputNum = parseInt(value)
+          <select
+            value=""
+            onChange={(e) => {
+              e.stopPropagation()
+              const outputNum = parseInt(e.target.value)
               if (!isNaN(outputNum)) {
-                // Set to global default initially, or first input
                 const defaultInput = config.globalDefault?.inputNumber || inputs[0]?.channelNumber
                 if (defaultInput) {
                   updateOutputDefault(outputNum, String(defaultInput))
                 }
               }
             }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
           >
-            <SelectTrigger className="bg-slate-800 border-slate-600 min-h-[44px] text-sm max-w-md">
-              <SelectValue placeholder="Select a TV to add an override..." />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-600 max-h-[300px]">
-              {outputs
-                .filter(
-                  (o) =>
-                    !config.outputDefaults ||
-                    !config.outputDefaults[String(o.channelNumber)]
-                )
-                .map((output) => (
-                  <SelectItem
-                    key={output.channelNumber}
-                    value={String(output.channelNumber)}
-                    className="min-h-[44px] text-sm"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="text-slate-400 font-mono text-xs w-6 text-right">
-                        {output.channelNumber}
-                      </span>
-                      <span>{output.label}</span>
-                      {output.tvGroupId && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-1.5 py-0 border-slate-600 text-slate-400"
-                        >
-                          {output.tvGroupId}
-                        </Badge>
-                      )}
-                    </span>
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+            <option value="">Select a TV to add an override...</option>
+            {outputs
+              .filter(
+                (o) =>
+                  !config.outputDefaults ||
+                  !config.outputDefaults[String(o.channelNumber)]
+              )
+              .map((output) => (
+                <option key={output.channelNumber} value={String(output.channelNumber)}>
+                  Output {output.channelNumber} — {output.label}{output.tvGroupId ? ` (${output.tvGroupId})` : ''}
+                </option>
+              ))}
+          </select>
         </div>
       </div>
 
@@ -593,25 +761,25 @@ export default function DefaultSourceSettings() {
               <p className="text-xl font-bold text-green-400">
                 {applyResults.filter((r) => r.status === 'routed').length}
               </p>
-              <p className="text-xs text-slate-400">Routed</p>
+              <p className="text-sm text-slate-400">Routed</p>
             </div>
             <div className="rounded-lg bg-blue-500/10 p-3 text-center">
               <p className="text-xl font-bold text-blue-400">
                 {applyResults.filter((r) => r.status === 'skipped_allocated').length}
               </p>
-              <p className="text-xs text-slate-400">Games Active</p>
+              <p className="text-sm text-slate-400">Games Active</p>
             </div>
             <div className="rounded-lg bg-slate-500/10 p-3 text-center">
               <p className="text-xl font-bold text-slate-400">
                 {applyResults.filter((r) => r.status === 'skipped_no_default').length}
               </p>
-              <p className="text-xs text-slate-400">No Default</p>
+              <p className="text-sm text-slate-400">No Default</p>
             </div>
             <div className="rounded-lg bg-red-500/10 p-3 text-center">
               <p className="text-xl font-bold text-red-400">
                 {applyResults.filter((r) => r.status === 'failed').length}
               </p>
-              <p className="text-xs text-slate-400">Failed</p>
+              <p className="text-sm text-slate-400">Failed</p>
             </div>
           </div>
 
@@ -632,7 +800,7 @@ export default function DefaultSourceSettings() {
                     className={idx % 2 === 0 ? 'bg-slate-800/30' : 'bg-slate-800/50'}
                   >
                     <td className="p-3 text-white">
-                      <span className="font-mono text-xs text-slate-400 mr-2">
+                      <span className="font-mono text-sm text-slate-400 mr-2">
                         {result.outputNum}
                       </span>
                       {result.outputLabel}
@@ -674,3 +842,5 @@ export default function DefaultSourceSettings() {
     </div>
   )
 }
+
+export default React.memo(DefaultSourceSettings)

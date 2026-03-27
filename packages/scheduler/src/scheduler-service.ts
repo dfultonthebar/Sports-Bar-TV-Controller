@@ -51,17 +51,29 @@ class SchedulerService {
       clearInterval(this.intervalId);
     }
 
-    // On startup, flag any missed bartender-scheduled tunes for confirmation
-    // (Don't auto-recover — let the bartender decide via the remote popup)
-    this.flagMissedBartenderSchedules();
+    // On startup, flag any missed bartender-scheduled tunes for confirmation FIRST,
+    // then start the regular check cycle. This prevents a race condition where
+    // checkAndExecuteBartenderSchedules could pick up past-due pending allocations
+    // and auto-tune them before flagMissedBartenderSchedules can flag them for confirmation.
+    this.flagMissedBartenderSchedules().then(() => {
+      // Only start the regular schedule checks after missed schedules are flagged
+      // Check every minute for schedules to execute
+      this.intervalId = setInterval(() => {
+        this.checkAndExecuteSchedules();
+      }, 60000); // 60 seconds
 
-    // Check every minute for schedules to execute
-    this.intervalId = setInterval(() => {
+      // Also check immediately now that missed schedules have been flagged
       this.checkAndExecuteSchedules();
-    }, 60000); // 60 seconds
 
-    // Also check immediately on start
-    this.checkAndExecuteSchedules();
+      logger.info('[SCHEDULER] Regular schedule checks started (after missed-schedule flagging)');
+    }).catch((error) => {
+      // Even if flagging fails, start the regular checks so the scheduler isn't dead
+      logger.error('[SCHEDULER] Error flagging missed schedules, starting checks anyway:', { error });
+      this.intervalId = setInterval(() => {
+        this.checkAndExecuteSchedules();
+      }, 60000);
+      this.checkAndExecuteSchedules();
+    });
 
     // Poll TV status every 5 minutes
     if (this.tvStatusIntervalId) {
@@ -617,9 +629,34 @@ class SchedulerService {
                 const matrixInput = parseInt(inputSource.matrixInputId, 10);
 
                 if (outputIds.length > 0 && !isNaN(matrixInput)) {
-                  logger.info(`[SCHEDULER] 🔀 Routing matrix input ${matrixInput} to ${outputIds.length} TV outputs: [${outputIds.join(', ')}]`);
+                  // Check for conflicting active allocations that claim the same outputs
+                  const otherActiveAllocations = await db.select()
+                    .from(schema.inputSourceAllocations)
+                    .where(eq(schema.inputSourceAllocations.status, 'active'))
+                    .all();
 
-                  for (const outputNumber of outputIds) {
+                  const claimedOutputs = new Set<number>();
+                  for (const other of otherActiveAllocations) {
+                    if (other.id === allocation.id) continue; // Skip self
+                    if (other.tvOutputIds) {
+                      try {
+                        const otherOutputs: number[] = JSON.parse(other.tvOutputIds);
+                        otherOutputs.forEach(o => claimedOutputs.add(o));
+                      } catch {}
+                    }
+                  }
+
+                  // Filter out outputs already claimed by other active games
+                  const safeOutputs = outputIds.filter(o => !claimedOutputs.has(o));
+                  const skippedOutputs = outputIds.filter(o => claimedOutputs.has(o));
+
+                  if (skippedOutputs.length > 0) {
+                    logger.info(`[SCHEDULER] ⚠️ Skipping outputs [${skippedOutputs.join(', ')}] — already claimed by another active game`);
+                  }
+
+                  logger.info(`[SCHEDULER] 🔀 Routing matrix input ${matrixInput} to ${safeOutputs.length} TV outputs: [${safeOutputs.join(', ')}]${skippedOutputs.length > 0 ? ` (skipped ${skippedOutputs.length} conflicting)` : ''}`);
+
+                  for (const outputNumber of safeOutputs) {
                     try {
                       const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
                         method: 'POST',

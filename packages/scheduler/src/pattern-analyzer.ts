@@ -5,8 +5,8 @@
  * that the AI can use for future scheduling suggestions.
  *
  * READ ONLY against existing tables (input_source_allocations, game_schedules,
- * input_sources, etc.). Writes ONLY to new tables: scheduling_patterns,
- * scheduling_preferences.
+ * input_sources, audio_volume_logs, etc.). Writes ONLY to new tables:
+ * scheduling_patterns, scheduling_preferences.
  */
 
 import { db, sql } from '@sports-bar/database'
@@ -36,10 +36,25 @@ export interface TimeSlotPattern {
   peakBoxes: number;
 }
 
+export interface AudioVolumePattern {
+  patternKey: string;
+  patternType: 'team_volume' | 'timeslot_volume' | 'dj_volume';
+  data: {
+    teamName?: string;
+    timeSlot?: string;
+    zoneNumber: number;
+    zoneName: string;
+    avgVolume: number;
+    isHomeGame?: boolean;
+    sampleCount: number;
+  };
+}
+
 export interface PatternAnalysisResult {
   teamRouting: TeamRoutingPattern[];
   leaguePriority: LeaguePriorityPattern[];
   timeSlots: TimeSlotPattern[];
+  audioVolume: AudioVolumePattern[];
   analyzedAt: number;
 }
 
@@ -445,7 +460,217 @@ class PatternAnalyzer {
   }
 
   // ==========================================================================
-  // 4. Analyze All & Persist
+  // 4. Audio Volume Patterns
+  // ==========================================================================
+
+  /**
+   * Analyze audio volume logs to extract patterns:
+   * - Team + zone volume patterns (what volume per zone when a team is playing)
+   * - Time slot volume patterns (what volume per zone per time slot)
+   * - DJ mode volume patterns (typical volumes when DJ mode is active)
+   *
+   * Queries the audio_volume_logs table (most recent 1000 entries).
+   */
+  async analyzeAudioVolumePatterns(): Promise<AudioVolumePattern[]> {
+    try {
+      logger.info('[PATTERN-ANALYZER] Analyzing audio volume patterns...');
+
+      const rows = await db.all(sql`
+        SELECT zone_number, zone_name, new_volume, active_league, active_home_team, active_away_team,
+               is_home_game, day_of_week, hour_of_day, time_slot, current_source, is_dj_mode
+        FROM audio_volume_logs
+        ORDER BY created_at DESC
+        LIMIT 1000
+      `) as Array<{
+        zone_number: number;
+        zone_name: string | null;
+        new_volume: number;
+        active_league: string | null;
+        active_home_team: string | null;
+        active_away_team: string | null;
+        is_home_game: boolean | null;
+        day_of_week: string | null;
+        hour_of_day: number | null;
+        time_slot: string | null;
+        current_source: string | null;
+        is_dj_mode: boolean | null;
+      }>;
+
+      if (!rows || rows.length === 0) {
+        logger.info('[PATTERN-ANALYZER] No audio volume log data found');
+        return [];
+      }
+
+      const patterns: AudioVolumePattern[] = [];
+
+      // ---------------------------------------------------------------
+      // 4a. Team + zone volume patterns
+      // ---------------------------------------------------------------
+      // Key: "{teamName}_{zoneNumber}" -> { totalVolume, count, zoneName, isHomeGame }
+      const teamZoneMap = new Map<string, {
+        teamName: string;
+        zoneNumber: number;
+        zoneName: string;
+        totalVolume: number;
+        count: number;
+        isHomeGame: boolean | null;
+      }>();
+
+      for (const row of rows) {
+        // Process home team
+        if (row.active_home_team) {
+          const key = `${row.active_home_team}_${row.zone_number}`;
+          let entry = teamZoneMap.get(key);
+          if (!entry) {
+            entry = {
+              teamName: row.active_home_team,
+              zoneNumber: row.zone_number,
+              zoneName: row.zone_name || `Zone ${row.zone_number}`,
+              totalVolume: 0,
+              count: 0,
+              isHomeGame: row.is_home_game ?? null,
+            };
+            teamZoneMap.set(key, entry);
+          }
+          entry.totalVolume += row.new_volume;
+          entry.count++;
+        }
+
+        // Process away team
+        if (row.active_away_team) {
+          const key = `${row.active_away_team}_${row.zone_number}`;
+          let entry = teamZoneMap.get(key);
+          if (!entry) {
+            entry = {
+              teamName: row.active_away_team,
+              zoneNumber: row.zone_number,
+              zoneName: row.zone_name || `Zone ${row.zone_number}`,
+              totalVolume: 0,
+              count: 0,
+              isHomeGame: row.is_home_game != null ? !row.is_home_game : null,
+            };
+            teamZoneMap.set(key, entry);
+          }
+          entry.totalVolume += row.new_volume;
+          entry.count++;
+        }
+      }
+
+      for (const [, entry] of teamZoneMap) {
+        const avgVolume = Math.round(entry.totalVolume / entry.count);
+        patterns.push({
+          patternKey: `team_volume_${entry.teamName}_${entry.zoneNumber}`,
+          patternType: 'team_volume',
+          data: {
+            teamName: entry.teamName,
+            zoneNumber: entry.zoneNumber,
+            zoneName: entry.zoneName,
+            avgVolume,
+            isHomeGame: entry.isHomeGame ?? undefined,
+            sampleCount: entry.count,
+          },
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // 4b. Time slot + zone volume patterns
+      // ---------------------------------------------------------------
+      const timeSlotZoneMap = new Map<string, {
+        timeSlot: string;
+        zoneNumber: number;
+        zoneName: string;
+        totalVolume: number;
+        count: number;
+      }>();
+
+      for (const row of rows) {
+        if (!row.time_slot) continue;
+
+        const key = `${row.time_slot}_${row.zone_number}`;
+        let entry = timeSlotZoneMap.get(key);
+        if (!entry) {
+          entry = {
+            timeSlot: row.time_slot,
+            zoneNumber: row.zone_number,
+            zoneName: row.zone_name || `Zone ${row.zone_number}`,
+            totalVolume: 0,
+            count: 0,
+          };
+          timeSlotZoneMap.set(key, entry);
+        }
+        entry.totalVolume += row.new_volume;
+        entry.count++;
+      }
+
+      for (const [, entry] of timeSlotZoneMap) {
+        const avgVolume = Math.round(entry.totalVolume / entry.count);
+        patterns.push({
+          patternKey: `timeslot_volume_${entry.timeSlot}_${entry.zoneNumber}`,
+          patternType: 'timeslot_volume',
+          data: {
+            timeSlot: entry.timeSlot,
+            zoneNumber: entry.zoneNumber,
+            zoneName: entry.zoneName,
+            avgVolume,
+            sampleCount: entry.count,
+          },
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // 4c. DJ mode volume patterns
+      // ---------------------------------------------------------------
+      const djZoneMap = new Map<number, {
+        zoneNumber: number;
+        zoneName: string;
+        totalVolume: number;
+        count: number;
+      }>();
+
+      for (const row of rows) {
+        if (!row.is_dj_mode) continue;
+
+        let entry = djZoneMap.get(row.zone_number);
+        if (!entry) {
+          entry = {
+            zoneNumber: row.zone_number,
+            zoneName: row.zone_name || `Zone ${row.zone_number}`,
+            totalVolume: 0,
+            count: 0,
+          };
+          djZoneMap.set(row.zone_number, entry);
+        }
+        entry.totalVolume += row.new_volume;
+        entry.count++;
+      }
+
+      for (const [, entry] of djZoneMap) {
+        const avgVolume = Math.round(entry.totalVolume / entry.count);
+        patterns.push({
+          patternKey: `dj_volume_${entry.zoneNumber}`,
+          patternType: 'dj_volume',
+          data: {
+            zoneNumber: entry.zoneNumber,
+            zoneName: entry.zoneName,
+            avgVolume,
+            sampleCount: entry.count,
+          },
+        });
+      }
+
+      logger.info(
+        `[PATTERN-ANALYZER] Found ${patterns.length} audio volume patterns ` +
+        `(${teamZoneMap.size} team, ${timeSlotZoneMap.size} timeslot, ${djZoneMap.size} dj)`
+      );
+      return patterns;
+    } catch (error: any) {
+      logger.error('[PATTERN-ANALYZER] Error analyzing audio volume patterns:', { error });
+      return [];
+    }
+  }
+
+  // ==========================================================================
+  // 5. Analyze All & Persist
   // ==========================================================================
 
   /**
@@ -458,10 +683,11 @@ class PatternAnalyzer {
 
     await this.ensureTables();
 
-    const [teamRouting, leaguePriority, timeSlots] = await Promise.all([
+    const [teamRouting, leaguePriority, timeSlots, audioVolume] = await Promise.all([
       this.analyzeTeamRoutingPatterns(),
       this.analyzeLeaguePriorityPatterns(),
       this.analyzeTimeSlotPatterns(),
+      this.analyzeAudioVolumePatterns(),
     ]);
 
     const now = Math.floor(Date.now() / 1000);
@@ -556,6 +782,39 @@ class PatternAnalyzer {
       }
     }
 
+    // Persist audio volume patterns
+    for (const pattern of audioVolume) {
+      try {
+        const id = this.generateId();
+        const data = JSON.stringify(pattern.data);
+        const patternType = pattern.patternType;
+        const patternKey = pattern.patternKey;
+        const sampleCount = pattern.data.sampleCount;
+        await db.run(sql`
+          INSERT OR REPLACE INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
+          VALUES (
+            COALESCE(
+              (SELECT id FROM scheduling_patterns WHERE pattern_type = ${patternType} AND pattern_key = ${patternKey}),
+              ${id}
+            ),
+            ${patternType},
+            ${patternKey},
+            ${data},
+            ${sampleCount},
+            ${Math.min(sampleCount / 15, 1.0)},
+            COALESCE(
+              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = ${patternType} AND pattern_key = ${patternKey}),
+              ${now}
+            ),
+            ${now}
+          )
+        `);
+      } catch (error: any) {
+        logger.error(`[PATTERN-ANALYZER] Error saving audio volume pattern ${pattern.patternKey}:`, { error });
+      }
+    }
+
     // Save a summary preference for the last analysis run
     try {
       const summaryId = this.generateId();
@@ -563,6 +822,7 @@ class PatternAnalyzer {
         teamCount: teamRouting.length,
         leagueCount: leaguePriority.length,
         timeSlotCount: timeSlots.length,
+        audioVolumeCount: audioVolume.length,
         analyzedAt: now,
         durationMs: Date.now() - startTime,
       });
@@ -593,13 +853,15 @@ class PatternAnalyzer {
       teamRouting,
       leaguePriority,
       timeSlots,
+      audioVolume,
       analyzedAt: now,
     };
 
     const durationMs = Date.now() - startTime;
     logger.info(
       `[PATTERN-ANALYZER] Full analysis complete in ${durationMs}ms: ` +
-      `${teamRouting.length} teams, ${leaguePriority.length} leagues, ${timeSlots.length} time slots`
+      `${teamRouting.length} teams, ${leaguePriority.length} leagues, ` +
+      `${timeSlots.length} time slots, ${audioVolume.length} audio volume patterns`
     );
 
     return result;
