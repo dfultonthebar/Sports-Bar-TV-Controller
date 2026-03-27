@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, gte, lte } from 'drizzle-orm'
+import { eq, and, or, gte, lte, inArray } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
@@ -210,9 +210,18 @@ export async function GET(request: NextRequest) {
 
   const url = new URL(request.url)
   const deviceId = url.searchParams.get('deviceId')
-  const status = url.searchParams.get('status') || 'pending'
+  const status = url.searchParams.get('status')
 
   try {
+    // Default: show pending + active (today's full schedule)
+    const statusFilter = status
+      ? eq(schema.inputSourceAllocations.status, status as string)
+      : or(
+          eq(schema.inputSourceAllocations.status, 'pending'),
+          eq(schema.inputSourceAllocations.status, 'active'),
+          eq(schema.inputSourceAllocations.status, 'needs_confirmation')
+        )
+
     let query = db.select({
       allocation: schema.inputSourceAllocations,
       inputSource: schema.inputSources,
@@ -224,7 +233,7 @@ export async function GET(request: NextRequest) {
     .where(
       and(
         eq(schema.inputSourceAllocations.scheduledBy, 'bartender'),
-        eq(schema.inputSourceAllocations.status, status as 'pending' | 'active' | 'completed' | 'preempted' | 'cancelled')
+        statusFilter!
       )
     )
 

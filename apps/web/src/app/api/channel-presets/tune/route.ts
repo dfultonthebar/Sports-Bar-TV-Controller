@@ -549,8 +549,14 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     logger.info(`[CHANNEL TUNE] Channel number type: ${typeof channelNumber}, value: "${channelNumber}", length: ${channelNumber.length}`)
     logger.info(`[CHANNEL TUNE] Sending ${channelNumber.length} digits: ${channelNumber.split('').join(', ')}`)
 
+    // Pad channel number to 3 digits for Spectrum cable boxes
+    // Single digit "6" → "006", double digit "27" → "027", triple "303" stays "303"
+    // This prevents the cable box from waiting for more digits or misinterpreting
+    const paddedChannel = channelNumber.padStart(3, '0')
+    logger.info(`[CHANNEL TUNE] Padded channel: "${channelNumber}" → "${paddedChannel}"`)
+
     // Send each digit via IR
-    const digits = channelNumber.split('')
+    const digits = paddedChannel.split('')
     let digitsSent = 0
 
     for (const digit of digits) {
@@ -586,7 +592,17 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
         }, timeout)
 
         client.on('connect', () => {
-          client.write(command.irCode + '\r')
+          // Replace the port/connector in the IR code with the device's actual port
+          // IR codes are in format: sendir,MODULE:PORT,ID,...
+          // e.g., sendir,1:1,1,... needs to become sendir,1:2,1,... for port 2
+          let adjustedCode = command.irCode
+          if (targetDevice.globalCachePortNumber) {
+            adjustedCode = adjustedCode.replace(
+              /^(sendir,\d+:)\d+/,
+              `$1${targetDevice.globalCachePortNumber}`
+            )
+          }
+          client.write(adjustedCode + '\r')
         })
 
         client.on('data', (data) => {

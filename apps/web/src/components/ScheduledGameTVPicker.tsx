@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '@sports-bar/logger'
-import { ChevronDown, ChevronRight, Monitor, Check, Volume2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Monitor, Check, Volume2, AlertTriangle } from 'lucide-react'
 
 interface Zone {
   id: string
@@ -43,6 +43,7 @@ export default function ScheduledGameTVPicker({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [conflictMap, setConflictMap] = useState<Map<number, string>>(new Map())
   const hasFetched = useRef(false)
 
   // Sync with external changes to currentOutputIds
@@ -79,8 +80,29 @@ export default function ScheduledGameTVPicker({
       }
     }
 
+    const fetchConflicts = async () => {
+      try {
+        const res = await fetch('/api/schedules/bartender-schedule')
+        if (res.ok) {
+          const data = await res.json()
+          const map = new Map<number, string>()
+          for (const sched of data.schedules || []) {
+            if (sched.id === allocationId) continue
+            if (sched.tvOutputIds && Array.isArray(sched.tvOutputIds)) {
+              const label = `${sched.league}: ${sched.awayTeam} @ ${sched.homeTeam}`
+              for (const outputId of sched.tvOutputIds) {
+                map.set(outputId, label)
+              }
+            }
+          }
+          setConflictMap(map)
+        }
+      } catch {}
+    }
+
     fetchLayout()
-  }, [expanded])
+    fetchConflicts()
+  }, [expanded, allocationId])
 
   // Persist selection to backend and notify parent
   const persistSelection = useCallback(
@@ -291,23 +313,24 @@ export default function ScheduledGameTVPicker({
                   {/* TV checkboxes */}
                   <div className="ml-9 mt-1 flex flex-wrap gap-2">
                     {roomZones.map((zone) => {
-                      const checked = selectedOutputIds.includes(
-                        zone.outputNumber
-                      )
+                      const checked = selectedOutputIds.includes(zone.outputNumber)
+                      const conflict = conflictMap.get(zone.outputNumber)
+                      const hasConflict = !!conflict
+                      const accentColor = checked && hasConflict ? 'amber' : 'blue'
                       return (
                         <label
                           key={zone.id}
                           className={`flex items-center gap-2 cursor-pointer py-2 px-3 rounded-lg border transition-all ${
                             checked
-                              ? 'border-blue-500 bg-blue-500/20'
-                              : 'border-slate-600 bg-slate-900 hover:border-slate-500'
+                              ? hasConflict ? 'border-amber-500 bg-amber-500/20' : 'border-blue-500 bg-blue-500/20'
+                              : hasConflict ? 'border-amber-500/40 bg-slate-900 hover:border-amber-500' : 'border-slate-600 bg-slate-900 hover:border-slate-500'
                           }`}
                         >
                           <span
                             className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
                               checked
-                                ? 'border-blue-500 bg-blue-500'
-                                : 'border-slate-600 bg-slate-900 group-hover:border-slate-500'
+                                ? hasConflict ? 'border-amber-500 bg-amber-500' : 'border-blue-500 bg-blue-500'
+                                : 'border-slate-600 bg-slate-900'
                             }`}
                             onClick={(e) => {
                               e.preventDefault()
@@ -320,14 +343,18 @@ export default function ScheduledGameTVPicker({
                           </span>
                           <span
                             className={`text-sm font-medium transition-colors ${
-                              checked
-                                ? 'text-white'
-                                : 'text-slate-400'
+                              checked ? 'text-white' : 'text-slate-400'
                             }`}
                             onClick={() => toggleOutput(zone.outputNumber)}
                           >
                             {zone.label || `Output ${zone.outputNumber}`}
                           </span>
+                          {hasConflict && (
+                            <span className="flex items-center gap-1 text-xs text-amber-400" title={conflict}>
+                              <AlertTriangle className="h-3 w-3" />
+                              <span className="max-w-[100px] truncate">{conflict}</span>
+                            </span>
+                          )}
                         </label>
                       )
                     })}
@@ -386,16 +413,16 @@ export default function ScheduledGameTVPicker({
               {/* Audio output checkboxes */}
               <div className="ml-9 mt-1 flex flex-wrap gap-2">
                 {AUDIO_OUTPUTS.map((audio) => {
-                  const checked = selectedOutputIds.includes(
-                    audio.outputNumber
-                  )
+                  const checked = selectedOutputIds.includes(audio.outputNumber)
+                  const conflict = conflictMap.get(audio.outputNumber)
+                  const hasConflict = !!conflict
                   return (
                     <label
                       key={audio.outputNumber}
                       className={`flex items-center gap-2 cursor-pointer py-2 px-3 rounded-lg border transition-all ${
                         checked
                           ? 'border-amber-500 bg-amber-500/20'
-                          : 'border-slate-600 bg-slate-900 hover:border-slate-500'
+                          : hasConflict ? 'border-amber-500/40 bg-slate-900 hover:border-amber-500' : 'border-slate-600 bg-slate-900 hover:border-slate-500'
                       }`}
                     >
                       <span
@@ -421,6 +448,11 @@ export default function ScheduledGameTVPicker({
                       >
                         {audio.label}
                       </span>
+                      {hasConflict && (
+                        <span className="flex items-center gap-1 text-xs text-amber-400" title={conflict}>
+                          <AlertTriangle className="h-3 w-3" />
+                        </span>
+                      )}
                     </label>
                   )
                 })}

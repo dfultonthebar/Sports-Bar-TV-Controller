@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import DefaultSourceSettings from './DefaultSourceSettings'
 import {
   Calendar,
   Clock,
   Tv,
   RefreshCw,
+  Settings,
   X,
   Monitor,
   Play,
@@ -178,6 +180,7 @@ export default function ScheduledGamesPanel() {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [showDefaults, setShowDefaults] = useState(false)
   const [tuningId, setTuningId] = useState<string | null>(null)
   const [cableBoxChannels, setCableBoxChannels] = useState<Record<string, CableBoxChannel>>({})
 
@@ -271,16 +274,17 @@ export default function ScheduledGamesPanel() {
     }
   }, [])
 
-  // Initial fetch + auto-refresh every 30 seconds
+  // Initial fetch + auto-refresh every 30 seconds (paused while editing defaults)
   useEffect(() => {
     fetchSchedule()
     fetchCableBoxChannels()
+    if (showDefaults) return // Pause auto-refresh while defaults section is open
     const interval = setInterval(() => {
       fetchSchedule()
       fetchCableBoxChannels()
     }, 30_000)
     return () => clearInterval(interval)
-  }, [fetchSchedule, fetchCableBoxChannels])
+  }, [fetchSchedule, fetchCableBoxChannels, showDefaults])
 
   // -----------------------------------------------------------------------
   // Cancel a pending schedule
@@ -348,6 +352,26 @@ export default function ScheduledGamesPanel() {
           setGames((prev) =>
             prev.map((g) => (g.id === game.id ? { ...g, status: 'active' } : g))
           )
+
+          // Route matrix input to assigned TV/audio outputs
+          if (game.tvOutputIds && game.tvOutputIds.length > 0) {
+            // Derive matrix input from cable box label (Cable Box 1 = input 1, etc.)
+            const inputMatch = game.inputLabel.match(/(\d+)/)
+            const matrixInput = inputMatch ? parseInt(inputMatch[1], 10) : null
+
+            if (matrixInput) {
+              logger.debug('[SCHEDULED-GAMES] Routing matrix input', { matrixInput, outputs: game.tvOutputIds })
+              await Promise.all(
+                game.tvOutputIds.map((output) =>
+                  fetch('/api/matrix/route', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input: matrixInput, output }),
+                  }).catch(() => {})
+                )
+              )
+            }
+          }
         } else {
           const data = await res.json().catch(() => ({}))
           logger.error('[SCHEDULED-GAMES] Tune Now failed', {
@@ -931,30 +955,34 @@ export default function ScheduledGamesPanel() {
                       />
                     </div>
 
-                    {/* Right: Tune Now + Cancel buttons (pending only) */}
+                    {/* Right: Tune/Re-Tune + Cancel buttons */}
                     <div className="flex-shrink-0 flex flex-col gap-2">
+                      {(isPending || game.status === 'active') && (
+                        <button
+                          type="button"
+                          onClick={() => tuneNow(game)}
+                          disabled={tuningId === game.id}
+                          title={isPending ? 'Tune this channel now' : 'Re-tune this channel'}
+                          className={`flex items-center gap-1.5 rounded-md border py-2 px-4 text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+                            isPending
+                              ? 'border-green-600 bg-green-700 hover:bg-green-600 active:bg-green-800'
+                              : 'border-blue-600 bg-blue-700 hover:bg-blue-600 active:bg-blue-800'
+                          }`}
+                        >
+                          <Play className="h-4 w-4" />
+                          {tuningId === game.id ? 'Tuning...' : isPending ? 'Tune Now' : 'Re-Tune'}
+                        </button>
+                      )}
                       {isPending && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => tuneNow(game)}
-                            disabled={tuningId === game.id}
-                            title="Tune this channel now"
-                            className="flex items-center gap-1.5 rounded-md border border-green-600 bg-green-700 py-2 px-4 text-sm font-medium text-white hover:bg-green-600 active:bg-green-800 transition-colors disabled:opacity-50"
-                          >
-                            <Play className="h-4 w-4" />
-                            {tuningId === game.id ? 'Tuning...' : 'Tune Now'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => cancelSchedule(game.id)}
-                            disabled={isCancelling}
-                            title="Cancel scheduled game"
-                            className="rounded-md border border-slate-600 bg-slate-800 p-1.5 text-slate-400 hover:border-red-500/50 hover:bg-red-950/30 hover:text-red-400 transition-colors disabled:opacity-50 self-center"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => cancelSchedule(game.id)}
+                          disabled={isCancelling}
+                          title="Cancel scheduled game"
+                          className="rounded-md border border-slate-600 bg-slate-800 p-1.5 text-slate-400 hover:border-red-500/50 hover:bg-red-950/30 hover:text-red-400 transition-colors disabled:opacity-50 self-center"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1634,6 +1662,25 @@ export default function ScheduledGamesPanel() {
           )}
         </div>
       )}
+      {/* Default Source Configuration */}
+      <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowDefaults(!showDefaults)}
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-800/50 transition-colors"
+        >
+          <h3 className="text-base font-semibold text-slate-200 flex items-center gap-2">
+            <Settings className="h-5 w-5 text-slate-400" />
+            Default Sources (When No Games Scheduled)
+          </h3>
+          <span className="text-slate-500 text-sm">{showDefaults ? '▲ Hide' : '▼ Show'}</span>
+        </button>
+        {showDefaults && (
+          <div className="border-t border-slate-700 p-4" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+            <DefaultSourceSettings />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
