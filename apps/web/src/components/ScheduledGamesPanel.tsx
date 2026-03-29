@@ -26,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   StopCircle,
+  AlertTriangle,
+  Timer,
 } from 'lucide-react'
 import ScheduledGameTVPicker from './ScheduledGameTVPicker'
 import { logger } from '@sports-bar/logger'
@@ -119,6 +121,23 @@ interface AIGamePlanData {
 function formatTime(iso: string): string {
   const date = new Date(iso)
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** Check if a pending game is delayed because an active game is still running on the same input. */
+function getDelayInfo(
+  game: ScheduledGame,
+  allGames: ScheduledGame[]
+): { isDelayed: boolean; delayMinutes: number; blockingGame: ScheduledGame | null } {
+  if (game.status !== 'pending') return { isDelayed: false, delayMinutes: 0, blockingGame: null }
+  const tuneTime = new Date(game.tuneAt).getTime() - 300_000 // 5-minute early buffer
+  if (tuneTime >= Date.now()) return { isDelayed: false, delayMinutes: 0, blockingGame: null }
+  const blocker = allGames.find(
+    (g) => g.status === 'active' && g.inputLabel === game.inputLabel && g.id !== game.id
+  ) ?? null
+  if (!blocker) return { isDelayed: false, delayMinutes: 0, blockingGame: null }
+  const delayMs = Date.now() - tuneTime
+  const delayMinutes = Math.max(1, Math.round(delayMs / 60_000))
+  return { isDelayed: true, delayMinutes, blockingGame: blocker }
 }
 
 /** Status dot color classes keyed by status. */
@@ -900,6 +919,35 @@ export default function ScheduledGamesPanel() {
       {/* ================================================================= */}
       {mode === 'manual' && (
         <>
+          {/* Cascade delay warning banner */}
+          {(() => {
+            const delayedGames = games.filter((g) => getDelayInfo(g, games).isDelayed)
+            if (delayedGames.length === 0) return null
+            // Group delayed games by the cable box (inputLabel) that's blocking them
+            const byInput = new Map<string, number>()
+            for (const g of delayedGames) {
+              const count = byInput.get(g.inputLabel) || 0
+              byInput.set(g.inputLabel, count + 1)
+            }
+            const inputSummaries = Array.from(byInput.entries())
+              .map(([label, count]) => `${count} on ${label}`)
+              .join(', ')
+            return (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-300">
+                    {delayedGames.length} game{delayedGames.length !== 1 ? 's' : ''} delayed
+                    {' '}&mdash; live game{byInput.size !== 1 ? 's' : ''} running long
+                  </p>
+                  <p className="text-xs text-amber-400/70 mt-0.5">
+                    {inputSummaries}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Loading state */}
           {loading && (
             <div className="flex items-center justify-center py-12">
@@ -936,17 +984,24 @@ export default function ScheduledGamesPanel() {
                 const dotColor = STATUS_DOT_COLOR[game.status]
                 const isPending = game.status === 'pending'
                 const isCancelling = cancellingId === game.id
+                const delayInfo = getDelayInfo(game, games)
 
                 return (
                   <div
                     key={game.id}
-                    className="rounded-lg bg-slate-800/50 border border-slate-700 p-4 flex items-start gap-4"
+                    className={`rounded-lg bg-slate-800/50 border p-4 flex items-start gap-4 ${
+                      delayInfo.isDelayed
+                        ? 'border-amber-500/40'
+                        : 'border-slate-700'
+                    }`}
                   >
                     {/* Left: Time & status dot */}
                     <div className="flex flex-col items-center gap-1 min-w-[64px] pt-0.5">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`inline-block h-2.5 w-2.5 rounded-full ${dotColor} ${
+                          className={`inline-block h-2.5 w-2.5 rounded-full ${
+                            delayInfo.isDelayed ? 'bg-amber-400 animate-pulse' : dotColor
+                          } ${
                             game.status === 'active' ? 'animate-pulse' : ''
                           }`}
                         />
@@ -955,11 +1010,17 @@ export default function ScheduledGamesPanel() {
                       <span className="text-sm font-medium text-white whitespace-nowrap">
                         {formatTime(game.tuneAt)}
                       </span>
-                      <span
-                        className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight ${badge.classes}`}
-                      >
-                        {badge.label}
-                      </span>
+                      {delayInfo.isDelayed ? (
+                        <span className="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Delayed
+                        </span>
+                      ) : (
+                        <span
+                          className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight ${badge.classes}`}
+                        >
+                          {badge.label}
+                        </span>
+                      )}
                     </div>
 
                     {/* Center: Game details */}
@@ -997,6 +1058,36 @@ export default function ScheduledGamesPanel() {
                         currentOutputIds={game.tvOutputIds}
                         onUpdate={(outputIds) => handleTVUpdate(game.id, outputIds)}
                       />
+
+                      {/* Delay notification banner */}
+                      {(() => {
+                        const { isDelayed, delayMinutes, blockingGame } = getDelayInfo(game, games)
+                        if (!isDelayed || !blockingGame) return null
+                        return (
+                          <div className="rounded-lg border border-amber-500/30 bg-amber-500/20 p-3 mt-1">
+                            <div className="flex items-start gap-2">
+                              <Timer className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-amber-300">
+                                  Delayed {delayMinutes} minute{delayMinutes !== 1 ? 's' : ''}
+                                </p>
+                                <p className="text-xs text-amber-400/80 mt-0.5">
+                                  {blockingGame.awayTeam} @ {blockingGame.homeTeam} still in progress on {game.inputLabel}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => tuneNow(game)}
+                                disabled={tuningId === game.id}
+                                className="flex-shrink-0 flex items-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white py-2 px-4 text-sm font-medium transition-colors disabled:opacity-50"
+                              >
+                                <Zap className="h-4 w-4" />
+                                {tuningId === game.id ? 'Tuning...' : 'Force Tune Now'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
 
                     {/* Right: Tune/Re-Tune + Cancel buttons */}

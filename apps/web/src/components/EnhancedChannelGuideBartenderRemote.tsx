@@ -438,6 +438,32 @@ export default function EnhancedChannelGuideBartenderRemote() {
       const data = await response.json()
 
       if (data.success) {
+        // Auto-copy TV outputs from the most recent allocation on the same device
+        // If bartender scheduled games on the same cable box before, reuse those TV assignments
+        try {
+          const schedRes = await fetch('/api/schedules/bartender-schedule')
+          if (schedRes.ok) {
+            const schedData = await schedRes.json()
+            const prevAlloc = (schedData.schedules || [])
+              .filter((s: any) =>
+                s.id !== data.allocationId &&
+                s.inputLabel === deviceName &&
+                s.tvOutputIds && s.tvOutputIds.length > 0
+              )
+              .sort((a: any, b: any) => new Date(b.tuneAt).getTime() - new Date(a.tuneAt).getTime())
+              [0]
+
+            if (prevAlloc && data.allocationId) {
+              await fetch('/api/schedules/bartender-schedule', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: data.allocationId, tvOutputIds: prevAlloc.tvOutputIds })
+              })
+              logger.info('[GUIDE] Auto-copied TV outputs from previous schedule on same device')
+            }
+          }
+        } catch {}
+
         setCommandStatus(`Scheduled: ${data.message}`)
         logButtonClick('schedule_game', `${game.league}`, {
           game: `${game.awayTeam} @ ${game.homeTeam}`,

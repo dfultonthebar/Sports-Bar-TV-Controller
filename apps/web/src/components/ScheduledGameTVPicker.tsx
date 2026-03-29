@@ -85,14 +85,44 @@ export default function ScheduledGameTVPicker({
         const res = await fetch('/api/schedules/bartender-schedule')
         if (res.ok) {
           const data = await res.json()
+
+          // Find this allocation's start time
+          const thisAlloc = (data.schedules || []).find((s: any) => s.id === allocationId)
+          const thisStart = thisAlloc?.tuneAt ? new Date(thisAlloc.tuneAt).getTime() : 0
+
+          // Estimate game duration by league (in ms)
+          const durationByLeague: Record<string, number> = {
+            'mlb': 3 * 3600000, 'baseball': 3 * 3600000,
+            'nfl': 3.5 * 3600000, 'football': 3.5 * 3600000,
+            'nba': 2.5 * 3600000, 'basketball': 2 * 3600000,
+            'nhl': 2.5 * 3600000, 'hockey': 2.5 * 3600000,
+            'soccer': 2 * 3600000, 'mls': 2 * 3600000,
+          }
+          const getEstDuration = (league: string) => {
+            const l = (league || '').toLowerCase()
+            for (const [key, dur] of Object.entries(durationByLeague)) {
+              if (l.includes(key)) return dur
+            }
+            return 3 * 3600000 // default 3 hours
+          }
+
+          const thisEnd = thisStart + getEstDuration(thisAlloc?.league || '')
+
           const map = new Map<number, string>()
           for (const sched of data.schedules || []) {
             if (sched.id === allocationId) continue
-            if (sched.tvOutputIds && Array.isArray(sched.tvOutputIds)) {
-              const label = `${sched.league}: ${sched.awayTeam} @ ${sched.homeTeam}`
-              for (const outputId of sched.tvOutputIds) {
-                map.set(outputId, label)
-              }
+            if (!sched.tvOutputIds || !Array.isArray(sched.tvOutputIds)) continue
+
+            // Check time overlap — only flag if games actually overlap
+            const otherStart = sched.tuneAt ? new Date(sched.tuneAt).getTime() : 0
+            const otherEnd = otherStart + getEstDuration(sched.league || '')
+
+            // No overlap if one ends before the other starts
+            if (thisEnd <= otherStart || otherEnd <= thisStart) continue
+
+            const label = `${sched.league}: ${sched.awayTeam} @ ${sched.homeTeam}`
+            for (const outputId of sched.tvOutputIds) {
+              map.set(outputId, label)
             }
           }
           setConflictMap(map)

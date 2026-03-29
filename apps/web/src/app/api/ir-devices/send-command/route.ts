@@ -155,12 +155,21 @@ export async function POST(request: NextRequest) {
       logger.info(`Sending command '${commandStr}' to ${device.name}`)
     }
 
-    // Modify the IR code to use the correct connector if needed
-    // For learned codes, they already have the correct module:port
-    // For common codes, we might need to adjust
+    // Adjust the IR code port to match the device's actual Global Cache port
+    // All learned codes have sendir,1:1,... but each cable box uses a different port
+    let adjustedIrCode = irCode
+    if (device.globalCachePortNumber) {
+      adjustedIrCode = irCode.replace(
+        /^(sendir,\d+:)\d+/,
+        `$1${device.globalCachePortNumber}`
+      )
+      if (adjustedIrCode !== irCode) {
+        logger.info(`[IR-SEND] Adjusted port: ${irCode.substring(0, 15)}... → ${adjustedIrCode.substring(0, 15)}... (port ${device.globalCachePortNumber})`)
+      }
+    }
 
     try {
-      await sendITachCommand(iTachAddressStr, irCode)
+      await sendITachCommand(iTachAddressStr, adjustedIrCode)
 
       return NextResponse.json({
         success: true,
