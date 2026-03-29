@@ -10,7 +10,7 @@ This project uses **Turborepo** with npm workspaces. The codebase is organized a
 /
 ├── apps/
 │   └── web/              # Next.js 16 application (main app)
-├── packages/             # 24+ shared packages
+├── packages/             # 36+ shared packages
 │   ├── atlas/           # AtlasIED audio processor control
 │   ├── auth/            # Authentication utilities
 │   ├── bss-blu/         # BSS Soundweb London BLU audio processors (HiQnet)
@@ -686,6 +686,45 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
+#### 9. AI Scheduling Intelligence
+**Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
+
+**Key Components:**
+- **Pattern Analyzer** (`apps/web/src/lib/scheduling/pattern-analyzer.ts`) - Analyzes historical viewing patterns to predict optimal channel assignments
+- **AI Suggestions** - Uses Ollama LLM to generate scheduling recommendations based on upcoming games, time of day, and venue preferences
+- **Scheduling Preferences** - Per-location configuration for preferred sports, channels, and time slots
+- **Default Source Configuration** - Fallback source assignments for TVs when no scheduled content is active
+- **DJ Mode Control** - Override mode that locks TV assignments for special events, preventing automatic scheduling changes
+
+**API Endpoints:**
+- `GET/POST /api/scheduling/preferences` - Manage scheduling preferences
+- `GET /api/scheduling/suggestions` - Get AI-powered scheduling suggestions
+- `POST /api/scheduling/apply` - Apply a scheduling suggestion
+
+#### 10. Holmgren Way Hardware Configuration
+**Location:** Holmgren Way sports bar (current active installation)
+
+**Source Devices (13 total):**
+- **4 Spectrum Cable Boxes** - IR control via Global Cache iTach IP2IR at 192.168.4.40 (ports 1-2) and 192.168.4.41 (ports 1-2)
+- **6 DirecTV Receivers** - IP control at 192.168.4.42 through 192.168.4.47, port 8080
+- **3 Fire TV Cubes** - ADB control at 192.168.4.49, .50, .51, port 5555
+- **1 Atmosphere TV** - ADB control at 192.168.4.48, port 5555
+
+**Display Devices:**
+- **24 Samsung TVs** - 192.168.4.1 through 192.168.4.27 (Samsung SmartThings/WoL)
+- **1 VAVA Projector** - 192.168.4.15 (CAUTION: power off/sleep kills NIC, power off is blocked)
+- **1 Epson Projector** - 192.168.4.14
+
+**Audio & Lighting:**
+- **AtlasIED AZM8 Audio Processor** - 192.168.4.246, TCP port 5321
+- **PKnight CR011R ArtNet DMX Controller** - 192.168.4.240, universe 1
+
+**Matrix Switching:**
+- **Wolf Pack 48-port HDMI Matrix** - Outputs 37-40 are audio outputs (not video displays)
+
+**IR Port Adjustment (CRITICAL):**
+All learned IR codes have `sendir,1:1,...` hardcoded (port 1 on module 1). When sending commands, the system must replace the port address with the device's configured `globalCachePortNumber` before transmission. For multi-port Global Cache devices (iTach with 3 IR ports), sending to the wrong port means the wrong emitter fires.
+
 ## Multi-Location Deployment
 
 This system supports multiple sports bar locations. Each location runs its own installation with location-specific data on dedicated git branches.
@@ -733,11 +772,8 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 - IR Learning Demo: `/docs/IR_LEARNING_DEMO_SCRIPT.md`
 - IR Emitter Placement: `/docs/IR_EMITTER_PLACEMENT_GUIDE.md`
 - CEC to IR Migration: `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
-- Memory Bank Guide: `/MEMORY_BANK_IMPLEMENTATION.md`
-- RAG Server Guide: `/RAG_IMPLEMENTATION_REPORT.md`
-- RAG Quick Start: `/RAG_QUICK_START.md`
 - Soundtrack Integration: `/docs/SOUNDTRACK_INTEGRATION_GUIDE.md`
-- Authentication: `/docs/authentication/AUTHENTICATION_GUIDE.md`
+- Authentication: `/docs/AUTHENTICATION_GUIDE.md`
 
 ## UI Styling Guide - Location Tab Style (Dark Theme)
 
@@ -851,5 +887,5 @@ See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implemen
 - **Buttons:** Generous padding, never icon-only without adequate tap area
 - **Text size:** `text-sm` minimum for interactive elements (not `text-xs`)
 - **Spacing:** `gap-2` minimum between tappable elements to prevent accidental taps
-- **Port 3002:** Nginx reverse proxy restricts access to bartender remote only (no admin pages)
+- **Port 3002 (Nginx proxy):** Nginx reverse proxy on port 3002 forwards to the Next.js app on port 3001, but restricts access to bartender-facing routes only (e.g., `/remote`, `/api/` endpoints needed by the remote). Admin pages like `/device-config`, `/matrix`, `/system` are blocked at the proxy level so bartenders cannot access them.
 - **Test viewport:** ~768px-1024px width for tablet layouts

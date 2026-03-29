@@ -130,38 +130,38 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
           stations = Object.keys(listing.stations)
         }
 
-        // Try to extract channel numbers from the listing
+        // Extract cable channel numbers (CAB lineup) — matches Spectrum presets
         let channelNumber = ''
         let channelName = stations[0] || ''
         if (listing.channel_numbers) {
-          // channel_numbers is { lineup: { station: number[] } }
-          for (const lineup of Object.values(listing.channel_numbers) as any[]) {
-            for (const [station, numbers] of Object.entries(lineup)) {
+          const cabLineup = listing.channel_numbers['CAB'] || listing.channel_numbers['cab'] || {}
+          for (const [station, numbers] of Object.entries(cabLineup)) {
+            if (Array.isArray(numbers) && numbers.length > 0) {
+              // Use the lowest channel number (most common/basic tier)
+              channelNumber = String(Math.min(...(numbers as number[])))
+              channelName = station
+              break
+            }
+          }
+          // Fallback to DRTV if no cable
+          if (!channelNumber) {
+            const dtvLineup = listing.channel_numbers['DRTV'] || listing.channel_numbers['SAT'] || {}
+            for (const [station, numbers] of Object.entries(dtvLineup)) {
               if (Array.isArray(numbers) && numbers.length > 0) {
                 channelNumber = String(numbers[0])
                 channelName = station
                 break
               }
             }
-            if (channelNumber) break
           }
         }
 
-        // Parse home/away from title (common format: "Away at Home" or "Away vs Home")
-        let homeTeam = ''
-        let awayTeam = ''
-        const atMatch = title.match(/^(.+?)\s+at\s+(.+)$/i)
-        const vsMatch = title.match(/^(.+?)\s+vs\.?\s+(.+)$/i)
-        if (atMatch) {
-          awayTeam = atMatch[1].trim()
-          homeTeam = atMatch[2].trim()
-        } else if (vsMatch) {
-          homeTeam = vsMatch[1].trim()
-          awayTeam = vsMatch[2].trim()
-        } else {
-          homeTeam = title
-          awayTeam = ''
-        }
+        // Extract home/away teams from Rail Media data fields
+        let homeTeam = listingData['home team'] || listingData['team'] || ''
+        let awayTeam = listingData['visiting team'] || listingData['opponent'] || ''
+
+        // Skip games without team names (golf, racing, etc.)
+        if (!homeTeam.trim() && !awayTeam.trim()) continue
 
         games.push({
           time: gameTime.toISOString(),
@@ -177,8 +177,8 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       }
     }
 
-    // Cap at 10 games to keep the LLM prompt fast
-    const capped = games.slice(0, 10)
+    // Cap at 30 games — filtering later will reduce to only those with matching presets
+    const capped = games.slice(0, 30)
     logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games, sending ${capped.length} to AI`)
     return capped
   } catch (err: any) {
@@ -343,11 +343,17 @@ function buildPrompt(
     `${i + 1}. ${g.league}: ${g.awayTeam || '?'} @ ${g.homeTeam || '?'}, ${new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}, ch ${g.channelNumber || '?'} (${g.channelName || '?'})`
   ).join('\n')
 
-  return `Sports bar scheduler. Assign games to cable boxes.
+  const presetList = channelPresets.slice(0, 20).map((p: any) =>
+    `${p.name}: ch ${p.channelNumber}`
+  ).join(', ')
+
+  return `Sports bar scheduler. Assign upcoming games to cable boxes. ONLY use channel numbers from our presets.
 
 Boxes: ${inputList}
 
-Games:
+Our channel presets: ${presetList}
+
+Games (only ones on our channels):
 ${gameList}
 
 Home teams: Packers, Brewers, Bucks, Badgers
@@ -452,8 +458,29 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // 2b. Filter games to only those with cable channels matching our presets
+    // Exclude streaming-only channels (MLBEI, ESPN+, MLSDK, NBALP, etc.)
+    const STREAMING_ONLY = new Set(['MLBEI', 'ESPN+', 'MLSDK', 'NBALP', 'TELE', 'NBCUN', 'Netflix', 'Prime'])
+    const cablePresets = channelPresets.filter((p: any) => p.deviceType === 'cable')
+    const presetChannels = new Set(cablePresets.map((p: any) => String(p.channelNumber)))
+    const filteredGames = games.filter(g => {
+      if (STREAMING_ONLY.has(g.channelName)) return false
+      if (g.channelNumber && presetChannels.has(String(g.channelNumber))) return true
+      return false
+    })
+    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} matching channel presets`)
+
+    if (filteredGames.length === 0) {
+      return NextResponse.json({
+        success: true,
+        suggestions: [],
+        analyzedAt: new Date().toISOString(),
+        message: `Found ${games.length} upcoming games but none match your channel presets.`,
+      })
+    }
+
     // 3. Build prompt and call Ollama
-    const prompt = buildPrompt(games, inputSources, channelPresets, tvOutputs, patterns, historicalSummary)
+    const prompt = buildPrompt(filteredGames, inputSources, channelPresets, tvOutputs, patterns, historicalSummary)
     logger.info(`[AI-SUGGEST] Sending prompt to Ollama (${prompt.length} chars, ${games.length} games, ${inputSources.length} inputs)`)
 
     let ollamaResponse: string
@@ -481,7 +508,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Parse response into structured suggestions
-    const suggestions = parseOllamaResponse(ollamaResponse, games, inputSources)
+    const suggestions = parseOllamaResponse(ollamaResponse, filteredGames, inputSources)
 
     logger.api.response('GET', '/api/scheduling/ai-suggest', 200, {
       gamesAnalyzed: games.length,

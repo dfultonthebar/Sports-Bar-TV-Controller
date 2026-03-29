@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: body } = bodyValidation
     logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId } = body
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, trackOnly } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -91,7 +91,10 @@ export async function POST(request: NextRequest) {
 
     let result: any = { success: false }
 
-    if (deviceTypeStr === 'directv') {
+    // trackOnly mode: skip the actual tune, just update channel tracking below
+    if (trackOnly) {
+      result = { success: true, message: 'Track-only mode — channel tracking updated without tuning' }
+    } else if (deviceTypeStr === 'directv') {
       // DirecTV uses IP control - need either deviceIp or directTVId to look up the IP
       let targetIp = deviceIpStr
       const directTVIdStr = directTVId ? String(directTVId) : undefined

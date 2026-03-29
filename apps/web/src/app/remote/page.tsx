@@ -284,6 +284,20 @@ export default function BartenderRemotePage() {
     return () => clearInterval(interval)
   }, [activeTab])
 
+  // Poll routing + channel data every 15 seconds while on the Routing tab
+  useEffect(() => {
+    if (activeTab !== 'routing') return
+
+    loadCurrentRoutes()
+    loadCurrentChannels()
+    const interval = setInterval(() => {
+      loadCurrentRoutes()
+      loadCurrentChannels()
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
+
   // Clear digit buffer when the selected input changes (user switches cable boxes)
   // to prevent stale digits from firing a tune on the newly selected device
   useEffect(() => {
@@ -759,7 +773,8 @@ export default function BartenderRemotePage() {
                   channelNumber: channelNum,
                   deviceType: capturedDeviceType === 'DirecTV' ? 'directv' : 'cable',
                   cableBoxId: capturedDeviceId,
-                  presetId: 'manual'
+                  presetId: 'manual',
+                  trackOnly: true
                 })
               })
               // Reload current channels to update the layout display

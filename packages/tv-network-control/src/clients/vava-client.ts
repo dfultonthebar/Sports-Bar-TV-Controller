@@ -130,8 +130,13 @@ export class VavaTVClient extends BaseTVClient {
   }
 
   async powerOff(): Promise<CommandResult> {
-    logger.info(`[VAVA] Power OFF (SLEEP): ${this.config.ipAddress}`)
-    return this.sendKeycode(KEYCODE_SLEEP)
+    // VAVA kills NIC on ALL sleep/power commands — full shutdown, unrecoverable over network.
+    // Only the physical remote can bring it back. Block software power-off to prevent this.
+    logger.warn(`[VAVA] Power off blocked — VAVA cannot be powered on again over network. Use physical remote.`)
+    return {
+      success: false,
+      error: 'VAVA projector cannot be powered off remotely. It kills all network services and can only be restarted with the physical remote. Use the physical remote to power off.'
+    }
   }
 
   async getPowerState(): Promise<boolean> {
