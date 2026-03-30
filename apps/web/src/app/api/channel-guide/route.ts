@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
         'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
         'FSP': ['FSP', 'Fox Sports Prime'],
         'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
-        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin', 'Fan Duel'],
+        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin', 'Bally Sports WI', 'Fan Duel'],
         // NBC/CBS sports
         'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS', 'Peacock/NBC Sports'],
         'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
@@ -332,6 +332,80 @@ export async function POST(request: NextRequest) {
               station: station
             })
           }
+        }
+      }
+
+      // Local channel overrides: inject local Spectrum channels for teams with business carriage deals
+      // Brewers games → available on Bally Sports Wisconsin ch 308 regardless of national listing
+      const localOverrides = [
+        { teamMatch: 'Milwaukee Brewers', channelNumber: 308, channelName: 'Bally Sports Wisconsin' },
+      ]
+
+      if (deviceType !== 'satellite') {
+        // Scan ALL listings (not just matched ones) for local override teams
+        for (const group of guide.listing_groups || []) {
+          for (const listing of group.listings || []) {
+            const homeTeam = listing.data?.['home team'] || listing.data?.['team'] || ''
+            const awayTeam = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+
+            for (const override of localOverrides) {
+              if (!homeTeam.includes(override.teamMatch) && !awayTeam.includes(override.teamMatch)) continue
+              if (!homeTeam.trim() && !awayTeam.trim()) continue
+
+              // Check if this game already has a program entry on ch 308
+              const alreadyHas308 = programs.some(p =>
+                p.channel?.number === override.channelNumber &&
+                p.homeTeam === homeTeam && p.awayTeam === awayTeam &&
+                p.gameTime === listing.time
+              )
+              if (alreadyHas308) continue
+
+              // Parse date
+              let eventDate: Date
+              if (listing.date) {
+                const currentYear = new Date().getFullYear()
+                eventDate = new Date(`${listing.date} ${currentYear} ${listing.time}`)
+                if (isNaN(eventDate.getTime())) continue
+              } else {
+                eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
+              }
+
+              const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+              const programId = `local-${override.channelNumber}-${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
+
+              programs.push({
+                id: programId,
+                league: group.group_title,
+                homeTeam,
+                awayTeam,
+                gameTime: listing.time,
+                startTime: eventDate.toISOString(),
+                endTime: endTime.toISOString(),
+                channel: {
+                  id: `local-${override.channelNumber}`,
+                  name: override.channelName,
+                  number: override.channelNumber,
+                  type: deviceType,
+                  cost: 'subscription',
+                  platforms: ['Cable'],
+                  channelNumber: override.channelNumber,
+                  deviceType,
+                  station: override.channelName,
+                  presetName: override.channelName,
+                },
+                description: Object.entries(listing.data || {}).map(([k, v]) => `${k}: ${v}`).join(', '),
+                isSports: true,
+                isLive: false,
+                venue: listing.data?.['venue'] || listing.data?.['location'] || '',
+                date: listing.date,
+                station: override.channelName,
+              })
+            }
+          }
+        }
+        const overrideCount = programs.filter(p => p.id?.startsWith('local-')).length
+        if (overrideCount > 0) {
+          logInfo(`Added ${overrideCount} local channel overrides`)
         }
       }
 
@@ -620,7 +694,7 @@ export async function POST(request: NextRequest) {
       // Filter programs to only include preset channels
       presetFilteredPrograms = freshPrograms.filter(program => {
         const channelNumber = program.channel?.channelNumber || program.channel?.number
-        const isInPreset = channelNumber && presetChannels.has(channelNumber)
+        const isInPreset = channelNumber && (presetChannels.has(channelNumber) || presetChannels.has(String(channelNumber)))
 
         if (!isInPreset) {
           logInfo(`Filtering out channel ${channelNumber} - not in presets`, {

@@ -46,8 +46,8 @@ export default function AtlasZoneControl({
       const res2 = await fetch(`/api/atlas/output-meters?processorIp=${processorIp}`)
       const meterData = res2.ok ? await res2.json() : { meters: [] }
 
-      // Get zones from DB via a simple query
-      const res3 = await fetch(`/api/audio-processor/zones?processorId=${processorId}`)
+      // Get zones with live hardware state sync
+      const res3 = await fetch(`/api/audio-processor/zones?processorId=${processorId}&live=true`)
       if (res3.ok) {
         const zoneData = await res3.json()
         setZones(zoneData.zones || [])

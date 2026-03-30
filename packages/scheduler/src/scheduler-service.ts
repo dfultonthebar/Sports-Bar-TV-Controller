@@ -18,7 +18,9 @@ const VENUE_TIMEZONE = 'America/Chicago'
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private tvStatusIntervalId: NodeJS.Timeout | null = null;
+  private fastPollIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
   private executingSchedules = new Set<string>();
 
@@ -215,6 +217,10 @@ class SchedulerService {
       clearInterval(this.tvStatusIntervalId);
       this.tvStatusIntervalId = null;
     }
+    if (this.fastPollIntervalId) {
+      clearInterval(this.fastPollIntervalId);
+      this.fastPollIntervalId = null;
+    }
     this.isRunning = false;
 
     await schedulerLogger.info(
@@ -237,8 +243,23 @@ class SchedulerService {
     try {
       const now = new Date();
 
+      // Reset delayed flag — will be set again if any games are still delayed
+      this.hasDelayedGames = false;
+
       // Check for pending bartender-scheduled channel tunes
       await this.checkAndExecuteBartenderSchedules(now);
+
+      // Manage fast polling: when games are delayed, check every 15s instead of 60s
+      if (this.hasDelayedGames && !this.fastPollIntervalId) {
+        logger.info('[SCHEDULER] 🔄 Enabling fast polling (15s) — games are delayed');
+        this.fastPollIntervalId = setInterval(() => {
+          this.checkAndExecuteBartenderSchedules(new Date());
+        }, 15000);
+      } else if (!this.hasDelayedGames && this.fastPollIntervalId) {
+        logger.info('[SCHEDULER] ✅ Disabling fast polling — no more delayed games');
+        clearInterval(this.fastPollIntervalId);
+        this.fastPollIntervalId = null;
+      }
 
       // Hourly cleanup: Remove games that started 2+ hours ago
       if (!this.lastCleanup || (now.getTime() - this.lastCleanup.getTime()) >= 3600000) {
@@ -569,6 +590,10 @@ class SchedulerService {
             );
 
             logger.info(`[SCHEDULER] ⏳ Delaying tune - scheduled game still in progress: ${currentGameStatus.gameDescription} (${currentGameStatus.status}) - ${Math.round(timePastScheduled / 60)}min past scheduled`);
+
+            // Enable fast polling (every 15s) while games are delayed
+            this.hasDelayedGames = true;
+
             // Skip this allocation for now, will check again next cycle
             continue;
           }
