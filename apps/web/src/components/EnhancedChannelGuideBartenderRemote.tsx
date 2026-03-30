@@ -621,6 +621,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const oldInput = selectedInput
     setSelectedInput(inputNumber)
     setSelectedDevice(null)
+    setGuideData(null) // Clear stale guide data from previous input
 
     // Find associated device
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
@@ -804,7 +805,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     // Define streaming apps available on Fire TV
     const streamingApps: StreamingApp[] = [
       { packageName: 'com.btn2go', displayName: 'Big Ten+', category: 'Sports', sportsContent: true },
-      { packageName: 'com.espn.gtv', displayName: 'ESPN', category: 'Sports', sportsContent: true },
+      { packageName: 'com.espn.gtv', displayName: 'ESPN+', category: 'Sports', sportsContent: true },
       { packageName: 'com.peacocktv.peacockandroid', displayName: 'Peacock', category: 'Sports', sportsContent: true },
       { packageName: 'com.amazon.avod', displayName: 'Prime Video', category: 'Entertainment', sportsContent: true },
       { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
@@ -1514,8 +1515,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 />
               )}
 
-              {/* Fire TV App Shortcuts - Show when Fire TV device is selected */}
-              {getDeviceTypeForInput(selectedInput) === 'streaming' && 'ipAddress' in selectedDevice && (
+              {/* Fire TV App Shortcuts - ONLY show for Fire TV / streaming devices */}
+              {getDeviceTypeForInput(selectedInput) === 'streaming' && selectedDevice && selectedDevice.deviceType !== 'DirecTV' && (selectedDevice.deviceType === 'Fire TV Cube' || selectedDevice.deviceType === 'Fire TV' || selectedDevice.deviceType === 'Atmosphere TV') && (
                 <div className="mt-4">
                   <FireTVAppShortcuts
                     deviceId={selectedDevice.id}
@@ -1816,8 +1817,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 ) : null}
               </div>
 
-              {/* Streaming Apps (for Fire TV) */}
-              {guideData?.type === 'streaming' && guideData.apps && (
+              {/* Streaming Apps (for Fire TV ONLY — not cable or DirecTV) */}
+              {guideData?.type === 'streaming' && guideData.apps && getDeviceTypeForInput(selectedInput) === 'streaming' && (
                 <div className="mt-6 pt-4 border-t border-white/10">
                   <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

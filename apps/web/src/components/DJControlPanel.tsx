@@ -517,7 +517,7 @@ export default function DJControlPanel() {
                       max={100}
                       value={zoneVolumes.get(zone.zoneNumber) ?? zone.volume}
                       onChange={(e) => handleVolumeChange(zone.zoneNumber, parseInt(e.target.value))}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-teal-500"
+                      className="w-full h-4 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-teal-500 touch-action-none [&::-webkit-slider-thumb]:h-8 [&::-webkit-slider-thumb]:w-8 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-teal-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:shadow-lg"
                     />
                   </div>
                   <span className="text-sm font-mono text-slate-300 w-10 text-right">

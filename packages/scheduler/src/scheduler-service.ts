@@ -261,9 +261,19 @@ class SchedulerService {
         this.fastPollIntervalId = null;
       }
 
-      // Hourly cleanup: Remove games that started 2+ hours ago
+      // Hourly tasks
       if (!this.lastCleanup || (now.getTime() - this.lastCleanup.getTime()) >= 3600000) {
+        // Cleanup: Remove games that started 2+ hours ago
         this.cleanupOldGames();
+
+        // Run pattern analysis on scheduling history (learns from bartender TV routing)
+        try {
+          const { patternAnalyzer } = await import('./pattern-analyzer');
+          patternAnalyzer.analyzeAll().then(result => {
+            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.timeSlot?.length || 0} timeslot patterns`);
+          }).catch(() => {});
+        } catch {}
+
         this.lastCleanup = now;
       }
 
