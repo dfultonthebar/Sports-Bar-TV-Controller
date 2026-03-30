@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { findUnique, findMany, update, eq, db } from '@/lib/db-helpers'
+import { findUnique, findMany, update, eq, and, db } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 import { getDbxControlService } from '@/lib/dbxControlService'
@@ -117,6 +117,21 @@ export async function POST(request: NextRequest) {
           { error: `Unknown command action: ${command.action}` },
           { status: 400 }
         )
+    }
+
+    // Update zone source in DB after successful source change
+    if (command.action === 'source' && command.zone != null && result?.atlasResponse?.success !== false) {
+      try {
+        const zoneIndex = (command.zone as number) - 1 // zone is 1-based in API, 0-based in DB
+        const zone = await db.select().from(schema.audioZones)
+          .where(and(eq(schema.audioZones.processorId, processorId), eq(schema.audioZones.zoneNumber, zoneIndex)))
+          .get()
+        if (zone) {
+          await db.update(schema.audioZones)
+            .set({ currentSource: String(command.value), updatedAt: new Date().toISOString() })
+            .where(eq(schema.audioZones.id, zone.id))
+        }
+      } catch {}
     }
 
     // Fire-and-forget volume logging for Atlas and other processors
