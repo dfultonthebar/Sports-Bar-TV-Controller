@@ -55,8 +55,8 @@
       "port": 8080,
       "deviceType": "DirecTV",
       "inputChannel": 9,
-      "receiverId": "",
-      "isOnline": false,
+      "receiverId": "0323 6020 6851",
+      "isOnline": true,
       "addedAt": "2026-03-25T15:30:00.000Z",
       "updatedAt": "2026-03-25T15:30:00.000Z"
     },
