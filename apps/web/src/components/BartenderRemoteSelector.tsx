@@ -261,7 +261,7 @@ export default function BartenderRemoteSelector() {
 
   const sendChannelCommand = async (channelNumber: string, presetId?: string) => {
     // For DirecTV, use server-side proxy API (direct fetch blocked by CORS)
-    if (selectedDevice && 'receiverType' in selectedDevice) {
+    if (selectedDevice && (selectedDevice.deviceType === 'DirecTV' || 'receiverId' in selectedDevice)) {
       const direcTV = selectedDevice as DirecTVDevice
 
       // Use the server-side API which proxies to the DirecTV device
@@ -310,7 +310,7 @@ export default function BartenderRemoteSelector() {
   const sendCommand = async (command: string) => {
     if (!selectedDevice) throw new Error('No device selected')
 
-    if ('receiverType' in selectedDevice) {
+    if (selectedDevice.deviceType === 'DirecTV' || 'receiverId' in selectedDevice) {
       // DirecTV device
       const response = await fetch('/api/directv-devices/send-command', {
         method: 'POST',

@@ -239,8 +239,12 @@ async function controlSamsungPower(
         result = await client.powerOn()
       }
     } else {
-      // off — send KEY_POWER via WebSocket
-      result = await client.sendKey('KEY_POWER')
+      // off — check if already off before sending toggle
+      if (device.status === 'offline' || device.status === 'standby') {
+        result = { success: true, message: 'TV already off — skipped' }
+      } else {
+        result = await client.sendKey('KEY_POWER')
+      }
     }
 
     // Wait for the TV to process the command before disconnecting
@@ -354,9 +358,9 @@ async function controlEpsonPower(
       )
       return { success: true, message: 'Epson powered on + HDMI 3 selected' }
     } else {
-      // Sleep
+      // Sleep — note: this kills NIC, projector can only be powered back on with physical remote
       await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_SLEEP`, { timeout: 5000 })
-      return { success: true, message: 'Epson powered off (standby)' }
+      return { success: true, message: 'Epson powered off (standby) — use physical remote to turn back on' }
     }
   } catch (error: any) {
     return { success: false, error: error.message }

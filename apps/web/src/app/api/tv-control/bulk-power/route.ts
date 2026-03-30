@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   try {
     logger.info(`[TV-CONTROL] Bulk power ${action}`, { deviceIds: deviceIds || 'all' })
 
-    // Load devices — filter by IDs if provided, otherwise get all
+    // Load devices — status is refreshed every 5 min by scheduler poll
     let devices
     if (deviceIds && deviceIds.length > 0) {
       devices = await db.select()
@@ -49,33 +49,112 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[TV-CONTROL] Bulk power ${action} for ${devices.length} device(s)`)
 
-    // Execute power commands in parallel
-    const results = await Promise.allSettled(
-      devices.map(async (device) => {
+    // Determine desired state by probing the first 2 Samsung TVs
+    // If they're on → we want everything on. If they're off → everything off.
+    // This handles the toggle problem: KEY_POWER is a toggle on Samsung,
+    // so we need to know each TV's actual state before sending commands.
+    let desiredState: 'on' | 'off' = action === 'on' ? 'on' : 'off'
+
+    if (action === 'on' || action === 'off') {
+      // For explicit on/off, use the action directly
+      desiredState = action
+    } else {
+      // For toggle, probe first 2 Samsung TVs to determine intent
+      const samsungTVs = devices.filter(d => d.brand?.toLowerCase() === 'samsung').slice(0, 2)
+      let onCount = 0
+      for (const tv of samsungTVs) {
         try {
-          const result = await controlDevicePower(device, action)
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const resp = await fetch(`http://${tv.ipAddress}:8001/api/v2/`, { signal: controller.signal })
+          clearTimeout(timeout)
+          if (resp.ok) {
+            const data = await resp.json()
+            const ps = data?.device?.PowerState
+            if (ps === 'on' || !ps) onCount++
+          }
+        } catch {
+          // Unreachable = off
+        }
+      }
+      desiredState = onCount > 0 ? 'off' : 'on'
+      logger.info(`[TV-CONTROL] Toggle: ${onCount}/${samsungTVs.length} reference TVs are on → desired state: ${desiredState}`)
+    }
+
+    // Step 1: Probe all Samsung TVs for actual power state (parallel, fast)
+    const samsungDevices = devices.filter(d => d.brand?.toLowerCase() === 'samsung')
+    const tvStates = new Map<string, boolean>() // deviceId → isOn
+
+    const stateChecks = await Promise.allSettled(
+      samsungDevices.map(async (device) => {
+        try {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 2000)
+          const resp = await fetch(`http://${device.ipAddress}:8001/api/v2/`, { signal: ctrl.signal })
+          clearTimeout(t)
+          if (resp.ok) {
+            const data = await resp.json()
+            const ps = data?.device?.PowerState
+            tvStates.set(device.id, ps === 'on' || !ps)
+            return
+          }
+        } catch {}
+        tvStates.set(device.id, false)
+      })
+    )
+
+    // Non-Samsung: use DB status
+    devices.filter(d => d.brand?.toLowerCase() !== 'samsung').forEach(d => {
+      tvStates.set(d.id, d.status === 'online')
+    })
+
+    logger.info(`[TV-CONTROL] State check: ${[...tvStates.values()].filter(v => v).length} on, ${[...tvStates.values()].filter(v => !v).length} off`)
+
+    // Step 2: Send power commands in batches of 5
+    const BATCH_SIZE = 5
+    const deviceResults: any[] = []
+
+    for (let i = 0; i < devices.length; i += BATCH_SIZE) {
+      const batch = devices.slice(i, i + BATCH_SIZE)
+
+      const batchResults = await Promise.allSettled(
+        batch.map(async (device) => {
+          const currentlyOn = tvStates.get(device.id) ?? false
+
+          // Skip if already in desired state
+          if (desiredState === 'on' && currentlyOn) {
+            return { deviceId: device.id, brand: device.brand, ipAddress: device.ipAddress, success: true, message: 'Already on — skipped' }
+          }
+          if (desiredState === 'off' && !currentlyOn) {
+            return { deviceId: device.id, brand: device.brand, ipAddress: device.ipAddress, success: true, message: 'Already off — skipped' }
+          }
+
+          const result = await controlDevicePower(device, desiredState)
           if (result.success) {
             await db.update(schema.networkTVDevices)
               .set({
+                status: desiredState === 'on' ? 'online' : 'standby',
                 lastSeen: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               })
               .where(eq(schema.networkTVDevices.id, device.id))
           }
           return { deviceId: device.id, brand: device.brand, ipAddress: device.ipAddress, ...result }
-        } catch (error: any) {
-          return { deviceId: device.id, brand: device.brand, ipAddress: device.ipAddress, success: false, error: error.message }
-        }
+        })
+      )
+
+      batchResults.forEach(r => {
+        deviceResults.push(r.status === 'fulfilled' ? r.value : { success: false, error: r.reason?.message })
       })
-    )
 
-    const deviceResults = results.map((r) => {
-      if (r.status === 'fulfilled') return r.value
-      return { success: false, error: r.reason?.message || 'Unknown error' }
-    })
+      // Brief pause between batches
+      if (i + BATCH_SIZE < devices.length) {
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+    }
 
-    const successCount = deviceResults.filter((r) => r.success).length
-    const failCount = deviceResults.filter((r) => !r.success).length
+    const successCount = deviceResults.filter((r: any) => r.success).length
+    const failCount = deviceResults.filter((r: any) => !r.success).length
 
     // Log failures individually
     deviceResults.filter((r: any) => !r.success).forEach((r: any) => {
@@ -135,10 +214,47 @@ async function controlDevicePower(
         authToken: device.authToken,
       })
       try {
-        if (action === 'on') return await client.powerOn()
-        // Samsung only supports KEY_POWER toggle for both off and toggle
+        if (action === 'on') {
+          // Fast power on: check state, send targeted command
+          // Don't use full powerOn() loop — too slow for bulk operations
+          let powerState: string | null = null
+          try {
+            const ctrl = new AbortController()
+            const t = setTimeout(() => ctrl.abort(), 2000)
+            const resp = await fetch(`http://${device.ipAddress}:8001/api/v2/`, { signal: ctrl.signal })
+            clearTimeout(t)
+            if (resp.ok) {
+              const data = await resp.json()
+              powerState = data?.device?.PowerState || null
+            }
+          } catch {}
+
+          if (powerState === 'on' || (powerState !== 'standby' && powerState !== null)) {
+            return { success: true, message: 'TV already on — skipped' }
+          }
+          if (powerState === 'standby') {
+            // NIC is alive, screen off — just send KEY_POWER
+            const result = await client.sendKey('KEY_POWER')
+            await new Promise(resolve => setTimeout(resolve, 300))
+            return result
+          }
+          // Unreachable — send WoL only (no slow polling loop)
+          if (device.macAddress) {
+            await client.powerOn()  // This sends WoL
+          }
+          return { success: true, message: 'WoL sent' }
+        }
+
+        if (action === 'off') {
+          // Send KEY_POWER to turn off — state already checked by caller
+          const result = await client.sendKey('KEY_POWER')
+          await new Promise(resolve => setTimeout(resolve, 300))
+          return result
+        }
+
+        // Toggle
         const result = await client.sendKey('KEY_POWER')
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 300))
         return result
       } finally {
         client.disconnect()
@@ -152,11 +268,29 @@ async function controlDevicePower(
         brand: TVBrand.SHARP,
         macAddress: device.macAddress,
       })
-      if (action === 'on') return await client.powerOn()
-      if (action === 'off') return await client.powerOff()
-      // toggle
-      const isOn = await client.getPowerState()
-      return isOn ? await client.powerOff() : await client.powerOn()
+      // Sharp TVs can drop TCP connections under load — retry once on failure
+      const sharpAction = async () => {
+        if (action === 'on') return await client.powerOn()
+        if (action === 'off') {
+          if (device.status === 'offline' || device.status === 'standby') {
+            return { success: true, message: 'Sharp TV already off — skipped' }
+          }
+          return await client.powerOff()
+        }
+        const isOn = await client.getPowerState()
+        return isOn ? await client.powerOff() : await client.powerOn()
+      }
+      try {
+        return await sharpAction()
+      } catch (firstError: any) {
+        // Retry once after a short delay
+        await new Promise(resolve => setTimeout(resolve, 500))
+        try {
+          return await sharpAction()
+        } catch (retryError: any) {
+          return { success: false, error: retryError.message }
+        }
+      }
     }
 
     case 'vava': {
@@ -170,6 +304,52 @@ async function controlDevicePower(
       if (action === 'off') return await client.powerOff()
       const isVavaOn = await client.getPowerState()
       return isVavaOn ? await client.powerOff() : await client.powerOn()
+    }
+
+    case 'epson': {
+      const { exec } = require('child_process')
+      const { promisify } = require('util')
+      const execAsync = promisify(exec)
+      const adbTarget = `${device.ipAddress}:${device.port || 5555}`
+
+      try {
+        await execAsync(`adb connect ${adbTarget}`, { timeout: 5000 })
+
+        if (action === 'off') {
+          // Epson kills NIC on SLEEP — cannot be powered back on over network
+          // Block power off to prevent unrecoverable shutdown
+          return { success: true, message: 'Epson projector power off blocked — use physical remote' }
+          // Check if already asleep
+          try {
+            const { stdout } = await execAsync(`adb -s ${adbTarget} shell dumpsys power | grep mWakefulness`, { timeout: 3000 })
+            if (stdout.includes('Asleep') || stdout.includes('Dozing')) {
+              return { success: true, message: 'Epson already off — skipped' }
+            }
+          } catch {}
+          await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_SLEEP`, { timeout: 5000 })
+          return { success: true, message: 'Epson powered off (standby)' }
+        } else if (action === 'on') {
+          await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_WAKEUP`, { timeout: 5000 })
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          await execAsync(
+            `adb -s ${adbTarget} shell am start -a android.intent.action.VIEW -d "content://android.media.tv/passthrough/com.droidlogic.tvinput%2F.services.Hdmi3InputService%2FHW7"`,
+            { timeout: 5000 }
+          )
+          return { success: true, message: 'Epson powered on + HDMI 3 selected' }
+        } else {
+          // Toggle
+          const { stdout } = await execAsync(`adb -s ${adbTarget} shell dumpsys power | grep mWakefulness`, { timeout: 3000 })
+          if (stdout.includes('Awake')) {
+            await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_SLEEP`, { timeout: 5000 })
+            return { success: true, message: 'Epson powered off' }
+          } else {
+            await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_WAKEUP`, { timeout: 5000 })
+            return { success: true, message: 'Epson powered on' }
+          }
+        }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
     }
 
     default:
