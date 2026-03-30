@@ -730,6 +730,57 @@ class SchedulerService {
                 logger.error(`[SCHEDULER] ❌ Error parsing tvOutputIds for allocation ${allocation.id}:`, { error: parseError, tvOutputIds: allocation.tvOutputIds });
               }
             }
+
+            // Switch audio zones if audio source is configured
+            if (allocation.audioSourceIndex != null && allocation.audioZoneIds) {
+              try {
+                const audioZones: number[] = JSON.parse(allocation.audioZoneIds);
+                if (audioZones.length > 0) {
+                  logger.info(`[SCHEDULER] 🔊 Switching ${audioZones.length} audio zone(s) to source ${allocation.audioSourceIndex}${allocation.audioSourceName ? ` (${allocation.audioSourceName})` : ''}`);
+
+                  for (const zoneNumber of audioZones) {
+                    try {
+                      const audioResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          processorId: '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9',
+                          command: {
+                            action: 'source',
+                            zone: zoneNumber + 1,
+                            value: allocation.audioSourceIndex,
+                          },
+                        }),
+                      });
+
+                      if (audioResponse.ok) {
+                        logger.info(`[SCHEDULER] ✅ Audio zone ${zoneNumber} → source ${allocation.audioSourceIndex}`);
+                      } else {
+                        const audioResult = await audioResponse.json().catch(() => ({}));
+                        logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${(audioResult as any).error || audioResponse.statusText}`);
+                      }
+                    } catch (audioError: any) {
+                      logger.error(`[SCHEDULER] ❌ Error switching audio zone ${zoneNumber}:`, { error: audioError });
+                    }
+                  }
+
+                  await schedulerLogger.info(
+                    'scheduler-service',
+                    'tune',
+                    `Audio zone switching complete: zones [${audioZones.join(', ')}] → source ${allocation.audioSourceIndex}`,
+                    correlationId,
+                    {
+                      gameId: game.id,
+                      inputSourceId: inputSource.id,
+                      allocationId: allocation.id,
+                      metadata: { audioSourceIndex: allocation.audioSourceIndex, audioZones },
+                    }
+                  );
+                }
+              } catch (audioParseError: any) {
+                logger.error(`[SCHEDULER] ❌ Error parsing audioZoneIds for allocation ${allocation.id}:`, { error: audioParseError, audioZoneIds: allocation.audioZoneIds });
+              }
+            }
           } else {
             await schedulerLogger.log({
               correlationId,
