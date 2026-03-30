@@ -50,6 +50,9 @@ interface ScheduledGame {
   tuneAt: string
   status: 'pending' | 'active' | 'completed' | 'cancelled'
   tvOutputIds: number[]
+  audioSourceIndex: number | null
+  audioSourceName: string | null
+  audioZoneIds: number[]
 }
 
 interface CableBoxChannel {
@@ -424,6 +427,26 @@ export default function ScheduledGamesPanel() {
                 )
               )
             }
+          }
+
+          // Switch Atlas audio zones to the game audio source
+          if (game.audioSourceIndex != null && game.audioZoneIds && game.audioZoneIds.length > 0) {
+            logger.debug('[SCHEDULED-GAMES] Switching Atlas audio', {
+              source: game.audioSourceIndex,
+              zones: game.audioZoneIds,
+            })
+            await Promise.all(
+              game.audioZoneIds.map((zoneNumber) =>
+                fetch('/api/audio-processor/control', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    processorId: '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9',
+                    command: { action: 'source', zone: zoneNumber + 1, value: game.audioSourceIndex },
+                  }),
+                }).catch(() => {})
+              )
+            )
           }
         } else {
           const data = await res.json().catch(() => ({}))
