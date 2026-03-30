@@ -1564,6 +1564,11 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   preemptedByAllocationId: text('preempted_by_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
   preemptedReason: text('preempted_reason'),
 
+  // Audio routing
+  audioSourceIndex: integer('audio_source_index'),
+  audioSourceName: text('audio_source_name'),
+  audioZoneIds: text('audio_zone_ids'), // JSON array of zone numbers
+
   // Quality of Service
   allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
   qualityNotes: text('quality_notes'), // explanation of quality rating

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '@sports-bar/logger'
-import { ChevronDown, ChevronRight, Monitor, Check, Volume2, AlertTriangle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Monitor, Check, Volume2, AlertTriangle, Speaker } from 'lucide-react'
 
 interface Zone {
   id: string
@@ -17,11 +17,28 @@ interface Room {
   color: string
 }
 
+interface AtlasSource {
+  index: number
+  name: string
+}
+
+interface AtlasAudioZone {
+  id: string
+  zoneNumber: number
+  name: string
+  enabled: boolean
+}
+
 interface ScheduledGameTVPickerProps {
   allocationId: string
   currentOutputIds: number[]
   onUpdate: (outputIds: number[]) => void
+  currentAudioConfig?: { sourceIndex?: number; zoneIds?: number[] }
 }
+
+// Atlas audio processor constants
+const ATLAS_PROCESSOR_IP = '10.11.3.246'
+const ATLAS_PROCESSOR_ID = '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9'
 
 // Wolf Pack audio outputs feed the Atlas audio processor
 const AUDIO_OUTPUTS = [
@@ -35,6 +52,7 @@ export default function ScheduledGameTVPicker({
   allocationId,
   currentOutputIds,
   onUpdate,
+  currentAudioConfig,
 }: ScheduledGameTVPickerProps) {
   const [expanded, setExpanded] = useState(false)
   const [zones, setZones] = useState<Zone[]>([])
@@ -45,6 +63,19 @@ export default function ScheduledGameTVPicker({
   const [error, setError] = useState<string | null>(null)
   const [conflictMap, setConflictMap] = useState<Map<number, string>>(new Map())
   const hasFetched = useRef(false)
+
+  // Atlas audio state
+  const [atlasSources, setAtlasSources] = useState<AtlasSource[]>([])
+  const [atlasZones, setAtlasZones] = useState<AtlasAudioZone[]>([])
+  const [selectedAudioSource, setSelectedAudioSource] = useState<number | null>(
+    currentAudioConfig?.sourceIndex ?? null
+  )
+  const [selectedAudioSourceName, setSelectedAudioSourceName] = useState<string>('')
+  const [selectedAudioZoneIds, setSelectedAudioZoneIds] = useState<number[]>(
+    currentAudioConfig?.zoneIds ?? []
+  )
+  const [atlasLoading, setAtlasLoading] = useState(false)
+  const [audioSaving, setAudioSaving] = useState(false)
 
   // Sync with external changes to currentOutputIds
   useEffect(() => {
@@ -126,12 +157,60 @@ export default function ScheduledGameTVPicker({
             }
           }
           setConflictMap(map)
+
+          // Load saved audio config for this allocation
+          if (thisAlloc) {
+            if (thisAlloc.audioSourceIndex != null) {
+              setSelectedAudioSource(thisAlloc.audioSourceIndex)
+            }
+            if (thisAlloc.audioSourceName) {
+              setSelectedAudioSourceName(thisAlloc.audioSourceName)
+            }
+            if (Array.isArray(thisAlloc.audioZoneIds) && thisAlloc.audioZoneIds.length > 0) {
+              setSelectedAudioZoneIds(thisAlloc.audioZoneIds)
+            }
+          }
         }
       } catch {}
     }
 
+    const fetchAtlasData = async () => {
+      setAtlasLoading(true)
+      try {
+        const [sourcesRes, zonesRes] = await Promise.all([
+          fetch(`/api/atlas/sources?processorIp=${ATLAS_PROCESSOR_IP}`),
+          fetch(`/api/audio-processor/zones?processorId=${ATLAS_PROCESSOR_ID}`),
+        ])
+
+        if (sourcesRes.ok) {
+          const sourcesData = await sourcesRes.json()
+          setAtlasSources(sourcesData.sources || [])
+          logger.debug('[TV-PICKER] Loaded Atlas sources', {
+            count: (sourcesData.sources || []).length,
+          })
+        }
+
+        if (zonesRes.ok) {
+          const zonesData = await zonesRes.json()
+          const enabledZones = (zonesData.zones || []).filter(
+            (z: AtlasAudioZone) => z.enabled
+          )
+          setAtlasZones(enabledZones)
+          logger.debug('[TV-PICKER] Loaded Atlas zones', {
+            total: (zonesData.zones || []).length,
+            enabled: enabledZones.length,
+          })
+        }
+      } catch (err: any) {
+        logger.error('[TV-PICKER] Failed to load Atlas data:', err)
+      } finally {
+        setAtlasLoading(false)
+      }
+    }
+
     fetchLayout()
     fetchConflicts()
+    fetchAtlasData()
   }, [expanded, allocationId])
 
   // Persist selection to backend and notify parent
@@ -166,6 +245,75 @@ export default function ScheduledGameTVPicker({
       }
     },
     [allocationId, onUpdate]
+  )
+
+  // Persist Atlas audio config to backend
+  const persistAudioConfig = useCallback(
+    async (sourceIndex: number | null, sourceName: string, zoneIds: number[]) => {
+      setAudioSaving(true)
+      try {
+        const response = await fetch('/api/schedules/bartender-schedule', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: allocationId,
+            tvOutputIds: selectedOutputIds,
+            audioSourceIndex: sourceIndex ?? undefined,
+            audioSourceName: sourceName || undefined,
+            audioZoneIds: zoneIds,
+          }),
+        })
+        if (!response.ok) {
+          logger.error('[TV-PICKER] Failed to save audio config', {
+            status: response.status,
+          })
+        } else {
+          logger.debug('[TV-PICKER] Saved audio config', {
+            allocationId,
+            sourceIndex,
+            sourceName,
+            zoneIds,
+          })
+        }
+      } catch (err: any) {
+        logger.error('[TV-PICKER] Error saving audio config:', err)
+      } finally {
+        setAudioSaving(false)
+      }
+    },
+    [allocationId, selectedOutputIds]
+  )
+
+  // Handle Atlas audio source change
+  const handleAudioSourceChange = useCallback(
+    (sourceIndex: number, sourceName: string) => {
+      setSelectedAudioSource(sourceIndex)
+      setSelectedAudioSourceName(sourceName)
+      persistAudioConfig(sourceIndex, sourceName, selectedAudioZoneIds)
+    },
+    [selectedAudioZoneIds, persistAudioConfig]
+  )
+
+  // Toggle a single Atlas audio zone
+  const toggleAudioZone = useCallback(
+    (zoneNumber: number) => {
+      const next = selectedAudioZoneIds.includes(zoneNumber)
+        ? selectedAudioZoneIds.filter((id) => id !== zoneNumber)
+        : [...selectedAudioZoneIds, zoneNumber].sort((a, b) => a - b)
+      setSelectedAudioZoneIds(next)
+      persistAudioConfig(selectedAudioSource, selectedAudioSourceName, next)
+    },
+    [selectedAudioZoneIds, selectedAudioSource, selectedAudioSourceName, persistAudioConfig]
+  )
+
+  // Select all / clear all Atlas audio zones
+  const setAllAudioZones = useCallback(
+    (selectAll: boolean) => {
+      const next = selectAll ? atlasZones.map((z) => z.zoneNumber) : []
+      setSelectedAudioZoneIds(next)
+      persistAudioConfig(selectedAudioSource, selectedAudioSourceName, next)
+    },
+    [atlasZones, selectedAudioSource, selectedAudioSourceName, persistAudioConfig]
   )
 
   // Toggle a single TV output
@@ -246,7 +394,13 @@ export default function ScheduledGameTVPicker({
   const audioCount = selectedOutputIds.filter((id) =>
     audioOutputNumbers.includes(id)
   ).length
-  const count = selectedOutputIds.length
+  const gameAudioZoneCount = selectedAudioZoneIds.length
+
+  // Build summary parts for collapsed button
+  const summaryParts: string[] = []
+  if (tvCount > 0) summaryParts.push(`${tvCount} TV${tvCount !== 1 ? 's' : ''}`)
+  if (audioCount > 0) summaryParts.push(`${audioCount} matrix audio`)
+  if (gameAudioZoneCount > 0) summaryParts.push(`${gameAudioZoneCount} game audio zone${gameAudioZoneCount !== 1 ? 's' : ''}`)
 
   return (
     <div className="mt-1.5">
@@ -263,15 +417,11 @@ export default function ScheduledGameTVPicker({
         )}
         <Monitor className="h-4 w-4" />
         <span>
-          {count === 0
+          {summaryParts.length === 0
             ? 'Assign TVs & Audio'
-            : tvCount > 0 && audioCount > 0
-              ? `${tvCount} TV${tvCount !== 1 ? 's' : ''} + ${audioCount} audio zone${audioCount !== 1 ? 's' : ''}`
-              : tvCount > 0
-                ? `${tvCount} TV${tvCount !== 1 ? 's' : ''} assigned`
-                : `${audioCount} audio zone${audioCount !== 1 ? 's' : ''}`}
+            : summaryParts.join(' + ')}
         </span>
-        {saving && (
+        {(saving || audioSaving) && (
           <span className="text-blue-400 text-[10px] ml-1">saving...</span>
         )}
       </button>
@@ -346,7 +496,6 @@ export default function ScheduledGameTVPicker({
                       const checked = selectedOutputIds.includes(zone.outputNumber)
                       const conflict = conflictMap.get(zone.outputNumber)
                       const hasConflict = !!conflict
-                      const accentColor = checked && hasConflict ? 'amber' : 'blue'
                       return (
                         <label
                           key={zone.id}
@@ -487,6 +636,145 @@ export default function ScheduledGameTVPicker({
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Game Audio Zones Section — Atlas audio source & zone routing */}
+          {!loading && !error && (
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              {/* Section header */}
+              <div className="flex items-center gap-3 py-1.5">
+                <Speaker className="h-5 w-5 text-orange-400" />
+                <span className="font-semibold text-base text-slate-200">
+                  Game Audio Zones
+                </span>
+                {(audioSaving) && (
+                  <span className="text-orange-400 text-[10px] ml-1">saving...</span>
+                )}
+              </div>
+
+              {atlasLoading && (
+                <p className="text-slate-500 py-1 ml-8">Loading audio sources...</p>
+              )}
+
+              {!atlasLoading && (
+                <>
+                  {/* Audio Source Selector */}
+                  <div className="ml-8 mt-2">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Audio Source
+                    </label>
+                    <select
+                      className="min-h-[48px] text-base w-full max-w-sm rounded-lg border border-slate-600 bg-slate-900 text-slate-200 px-3 py-2 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                      value={selectedAudioSource ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        const idx = e.target.value === '' ? null : Number(e.target.value)
+                        if (idx === null) {
+                          setSelectedAudioSource(null)
+                          setSelectedAudioSourceName('')
+                          persistAudioConfig(null, '', selectedAudioZoneIds)
+                        } else {
+                          const source = atlasSources.find((s) => s.index === idx)
+                          handleAudioSourceChange(idx, source?.name || `Source ${idx}`)
+                        }
+                      }}
+                    >
+                      <option value="">-- Select audio source --</option>
+                      {atlasSources.map((source) => (
+                        <option key={source.index} value={source.index}>
+                          {source.name} (Source {source.index})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Zone Checkboxes */}
+                  {atlasZones.length > 0 && (
+                    <div className="ml-8 mt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-medium text-slate-400">
+                          Output Zones
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-orange-400 hover:text-orange-300 px-2 py-1 rounded transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setAllAudioZones(true)
+                            }}
+                          >
+                            All Zones
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-slate-400 hover:text-slate-300 px-2 py-1 rounded transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setAllAudioZones(false)
+                            }}
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {atlasZones.map((zone) => {
+                          const checked = selectedAudioZoneIds.includes(zone.zoneNumber)
+                          return (
+                            <label
+                              key={zone.id || zone.zoneNumber}
+                              className={`flex items-center gap-2 cursor-pointer py-2 px-3 rounded-lg border transition-all ${
+                                checked
+                                  ? 'border-orange-500 bg-orange-500/20'
+                                  : 'border-slate-600 bg-slate-900 hover:border-slate-500'
+                              }`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span
+                                className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                                  checked
+                                    ? 'border-orange-500 bg-orange-500'
+                                    : 'border-slate-600 bg-slate-900'
+                                }`}
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  toggleAudioZone(zone.zoneNumber)
+                                }}
+                              >
+                                {checked && (
+                                  <Check className="h-3.5 w-3.5 text-white" />
+                                )}
+                              </span>
+                              <span
+                                className={`text-sm font-medium transition-colors ${
+                                  checked ? 'text-white' : 'text-slate-400'
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleAudioZone(zone.zoneNumber)
+                                }}
+                              >
+                                {zone.name || `Zone ${zone.zoneNumber}`}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {!atlasLoading && atlasZones.length === 0 && atlasSources.length === 0 && (
+                    <p className="text-slate-500 py-1 ml-8 text-sm">
+                      No Atlas audio processor data available.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

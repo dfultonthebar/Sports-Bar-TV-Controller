@@ -248,6 +248,14 @@ export async function GET(request: NextRequest) {
         tvOutputIds = []
       }
 
+      let audioZoneIds: number[] = []
+      try {
+        const parsedZones = JSON.parse(r.allocation.audioZoneIds || '[]')
+        audioZoneIds = Array.isArray(parsedZones) ? parsedZones : []
+      } catch {
+        audioZoneIds = []
+      }
+
       return {
         id: r.allocation.id,
         inputSourceId: r.allocation.inputSourceId,
@@ -262,6 +270,9 @@ export async function GET(request: NextRequest) {
         tuneAt: new Date(r.allocation.allocatedAt * 1000).toISOString(),
         status: r.allocation.status,
         tvOutputIds,
+        audioSourceIndex: r.allocation.audioSourceIndex ?? null,
+        audioSourceName: r.allocation.audioSourceName ?? null,
+        audioZoneIds,
       }
     })
 
@@ -334,10 +345,13 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// Schema for PATCH - updating TV output assignments
+// Schema for PATCH - updating TV output assignments and audio routing
 const patchScheduleSchema = z.object({
   id: z.string().min(1, 'Allocation ID is required'),
   tvOutputIds: z.array(z.number().int().min(0)).default([]),
+  audioSourceIndex: z.number().int().min(0).optional(),
+  audioSourceName: z.string().optional(),
+  audioZoneIds: z.array(z.number().int().min(0)).optional(),
 })
 
 // PATCH - Update TV output assignments for a scheduled allocation
@@ -350,7 +364,7 @@ export async function PATCH(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, patchScheduleSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const { id, tvOutputIds } = bodyValidation.data
+  const { id, tvOutputIds, audioSourceIndex, audioSourceName, audioZoneIds } = bodyValidation.data
 
   try {
     // Verify the allocation exists
@@ -365,23 +379,38 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Update the tv_output_ids and tv_count
+    // Build update payload
+    const updateData: Record<string, any> = {
+      tvOutputIds: JSON.stringify(tvOutputIds),
+      tvCount: tvOutputIds.length,
+      updatedAt: Math.floor(Date.now() / 1000),
+    }
+
+    if (audioSourceIndex !== undefined) {
+      updateData.audioSourceIndex = audioSourceIndex
+    }
+    if (audioSourceName !== undefined) {
+      updateData.audioSourceName = audioSourceName
+    }
+    if (audioZoneIds !== undefined) {
+      updateData.audioZoneIds = JSON.stringify(audioZoneIds)
+    }
+
     await db.update(schema.inputSourceAllocations)
-      .set({
-        tvOutputIds: JSON.stringify(tvOutputIds),
-        tvCount: tvOutputIds.length,
-        updatedAt: Math.floor(Date.now() / 1000),
-      })
+      .set(updateData)
       .where(eq(schema.inputSourceAllocations.id, id))
 
-    logger.info(`[BARTENDER-SCHEDULE] Updated TV outputs for allocation ${id}: ${JSON.stringify(tvOutputIds)}`)
+    logger.info(`[BARTENDER-SCHEDULE] Updated allocation ${id}: TV outputs=${JSON.stringify(tvOutputIds)}${audioSourceIndex !== undefined ? `, audioSource=${audioSourceIndex}` : ''}${audioZoneIds ? `, audioZones=${JSON.stringify(audioZoneIds)}` : ''}`)
 
     return NextResponse.json({
       success: true,
-      message: `Updated TV outputs for allocation`,
+      message: `Updated allocation`,
       allocationId: id,
       tvOutputIds,
       tvCount: tvOutputIds.length,
+      audioSourceIndex: audioSourceIndex ?? null,
+      audioSourceName: audioSourceName ?? null,
+      audioZoneIds: audioZoneIds ?? null,
     })
   } catch (error: any) {
     logger.error('[BARTENDER-SCHEDULE] Error updating TV outputs:', error)
