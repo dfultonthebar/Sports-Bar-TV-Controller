@@ -347,7 +347,27 @@ function buildPrompt(
     `${p.name}: ch ${p.channelNumber}`
   ).join(', ')
 
-  return `Sports bar scheduler. Assign upcoming games to cable boxes. ONLY use channel numbers from our presets.
+  // Build pattern hints from learned data
+  let patternHints = ''
+  if (patterns.length > 0) {
+    const routingHints = patterns
+      .filter((p: any) => p.pattern_type === 'team_routing' && p.pattern_data)
+      .slice(0, 5)
+      .map((p: any) => {
+        try {
+          const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
+          const outputs = d.preferredOutputs?.slice(0, 8)?.join(',') || 'unknown'
+          return `${d.teamName || '?'}: Box=${d.preferredInput || '?'}, TVs=[${outputs}]`
+        } catch { return null }
+      })
+      .filter(Boolean)
+
+    if (routingHints.length > 0) {
+      patternHints = `\nLearned routing (from bartender history):\n${routingHints.join('\n')}`
+    }
+  }
+
+  return `Sports bar scheduler. Assign upcoming games to cable boxes and suggest which TVs to show each game on. ONLY use channel numbers from our presets.
 
 Boxes: ${inputList}
 
@@ -357,10 +377,10 @@ Games (only ones on our channels):
 ${gameList}
 
 Home teams: Packers, Brewers, Bucks, Badgers
+${patternHints}
 
-Return a JSON object with this exact structure:
-Rules: Each box tunes ONE channel. Prioritize home teams. Return JSON:
-{"suggestions":[{"gameIndex":1,"suggestedInput":"Cable Box 1","channelNumber":"27","confidence":0.8,"reasoning":"brief reason"}]}
+Rules: Each box tunes ONE channel. Prioritize home teams. Home team games get more TVs. Use learned routing patterns when available.
+Return JSON: {"suggestions":[{"gameIndex":1,"suggestedInput":"Cable Box 1","channelNumber":"27","suggestedOutputs":[1,2,3,5],"confidence":0.8,"reasoning":"brief reason"}]}
 Only top games. JSON only.`
 }
 
