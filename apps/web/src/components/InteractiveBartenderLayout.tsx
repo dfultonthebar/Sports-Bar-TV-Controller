@@ -10,8 +10,9 @@
  * - Clean, modern appearance
  */
 
-import { useState, useEffect } from 'react'
-import { Monitor, X, Tv } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Monitor, X, Tv, Grid2X2, Maximize } from 'lucide-react'
+import { logger } from '@sports-bar/logger'
 
 interface Room {
   id: string
@@ -68,8 +69,43 @@ export default function InteractiveBartenderLayout({
   currentChannels = {}
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
+  const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
+  const [multiViewMode, setMultiViewMode] = useState<number>(0)
+  const [multiViewLoading, setMultiViewLoading] = useState(false)
 
   const rooms = layout.rooms || []
+
+  // Load multi-view card
+  useEffect(() => {
+    fetch('/api/wolfpack/multiview')
+      .then(r => r.json())
+      .then(data => {
+        if (data.cards?.length > 0) {
+          setMultiViewCardId(data.cards[0].id)
+          setMultiViewMode(data.cards[0].currentMode ?? 0)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const toggleMultiView = useCallback(async () => {
+    if (!multiViewCardId) return
+    const newMode = multiViewMode === 0 ? 6 : 0
+    setMultiViewLoading(true)
+    try {
+      const response = await fetch(`/api/wolfpack/multiview/${multiViewCardId}/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      const data = await response.json()
+      if (data.success) setMultiViewMode(newMode)
+    } catch (error) {
+      logger.error('Multi-view toggle failed:', error)
+    } finally {
+      setMultiViewLoading(false)
+    }
+  }, [multiViewCardId, multiViewMode])
 
   // Default to Main Bar room if it exists, otherwise first room
   const [selectedRoomFilter, setSelectedRoomFilter] = useState<string>('')
@@ -164,9 +200,23 @@ export default function InteractiveBartenderLayout({
           </p>
         </div>
 
-        {/* Room Filter Tabs - Only show defined rooms */}
+        {/* Room Filter Tabs + Quad View Toggle */}
         {rooms.length > 0 && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
+            {multiViewCardId && (
+              <button
+                onClick={toggleMultiView}
+                disabled={multiViewLoading}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 border ${
+                  multiViewMode === 6
+                    ? 'bg-purple-600/30 text-purple-300 border-purple-500'
+                    : 'bg-slate-700/50 text-slate-400 border-white/10 hover:bg-slate-600/50'
+                } ${multiViewLoading ? 'opacity-50' : ''}`}
+              >
+                {multiViewMode === 6 ? <Maximize className="w-4 h-4" /> : <Grid2X2 className="w-4 h-4" />}
+                {multiViewLoading ? '...' : multiViewMode === 6 ? 'Single View' : 'Quad View'}
+              </button>
+            )}
             {rooms.map((room) => {
               const roomZoneCount = layout.zones.filter(z => z.room === room.id).length
               return (

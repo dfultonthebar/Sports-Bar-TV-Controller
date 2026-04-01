@@ -323,13 +323,15 @@ export default function LayoutEditor({
       y: 40 + (Math.random() * 20),
       width: 8,
       height: 8,
-      label: `TV ${String(nextNumber).padStart(2, '0')}`
+      label: `TV ${String(nextNumber).padStart(2, '0')}`,
+      // Assign to the currently selected room if one is active
+      ...(selectedRoomFilter !== 'all' ? { room: selectedRoomFilter } : {})
     }
 
     setZones(prev => [...prev, newZone])
     setSelectedZone(newZone)
     setShowPropertiesPanel(true)
-  }, [zones])
+  }, [zones, selectedRoomFilter])
 
   const handleReset = useCallback(() => {
     if (confirm('Reset all changes? This will revert to the original layout.')) {

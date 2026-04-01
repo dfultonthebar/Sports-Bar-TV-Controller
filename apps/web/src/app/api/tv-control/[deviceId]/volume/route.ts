@@ -7,6 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
+import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Volume Control API
@@ -70,6 +71,9 @@ export async function POST(
         break
 
       case 'samsung':
+        result = await controlSamsungVolume(device, action, value)
+        break
+
       case 'lg':
       case 'sony':
       case 'vizio':
@@ -94,27 +98,32 @@ export async function POST(
         })
         .where(eq(schema.networkTVDevices.id, deviceId))
 
-      logger.info(`[TV-CONTROL] Volume ${action} successful for ${device.brand} TV ${deviceId}`)
-
-      // Log operation for AI learning
-      await operationLogger.logOperation({
-        type: 'volume_change',
-        device: `${device.brand} TV (${deviceId})`,
-        action: `Volume ${action}`,
-        details: {
-          deviceId,
-          brand: device.brand,
-          action,
-          volume: value,
-        },
-        user: 'bartender',
-        success: true,
-      })
+      logger.info(`[TV-CONTROL] Volume ${action} successful for ${device.brand} TV ${deviceId} (${device.ipAddress})`)
+    } else {
+      logger.error(`[TV-CONTROL] Volume ${action} failed for ${device.brand} TV ${deviceId} (${device.ipAddress}): ${result.error}`)
     }
+
+    // Log operation for AI learning (both success and failure)
+    await operationLogger.logOperation({
+      type: 'volume_change',
+      device: `${device.brand} TV (${deviceId})`,
+      action: `Volume ${action}`,
+      details: {
+        deviceId,
+        brand: device.brand,
+        ipAddress: device.ipAddress,
+        action,
+        volume: value,
+        error: result.error || undefined,
+      },
+      user: 'bartender',
+      success: result.success,
+    })
 
     return NextResponse.json({
       success: result.success,
       message: result.message || `Volume ${action} ${result.success ? 'successful' : 'failed'}`,
+      error: result.error,
       deviceId,
       deviceBrand: device.brand,
       action,
@@ -185,5 +194,53 @@ async function controlRokuVolume(
       return { success: false, error: 'Request timeout - TV may be offline' }
     }
     return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control Samsung TV volume using WebSocket commands
+ */
+async function controlSamsungVolume(
+  device: any,
+  action: 'up' | 'down' | 'mute' | 'set',
+  value?: number
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  if (action === 'set') {
+    return {
+      success: false,
+      error: 'Samsung TVs do not support direct volume level setting. Use up/down instead.',
+    }
+  }
+
+  const client = new SamsungTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port,
+    brand: TVBrand.SAMSUNG,
+    macAddress: device.macAddress,
+    authToken: device.authToken,
+  })
+
+  try {
+    let result: { success: boolean; message?: string; error?: string }
+
+    switch (action) {
+      case 'up':
+        result = await client.volumeUp()
+        break
+      case 'down':
+        result = await client.volumeDown()
+        break
+      case 'mute':
+        result = await client.volumeMute()
+        break
+      default:
+        result = { success: false, error: 'Invalid action' }
+    }
+
+    return result
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  } finally {
+    client.disconnect()
   }
 }

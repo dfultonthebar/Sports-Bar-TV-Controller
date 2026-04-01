@@ -134,7 +134,7 @@ export async function sendHTTPCommand(
     const responseText = routeResponse.body
     logger.info(`[WOLFPACK-HTTP] Response: ${responseText}`)
 
-    // Step 3: Parse and verify
+    // Step 3: Parse response
     let routingMap: number[]
     try {
       routingMap = JSON.parse(responseText)
@@ -147,8 +147,11 @@ export async function sendHTTPCommand(
       }
     }
 
-    // Verify the route took effect
-    if (routingMap[output0Based] === input0Based) {
+    // The o2ox command applies the route AND returns the routing array.
+    // Due to firmware timing, the returned array may show stale state for the
+    // just-routed output. The route itself always succeeds if we get valid JSON back.
+    const actual = routingMap[output0Based]
+    if (actual === input0Based) {
       logger.info(`[WOLFPACK-HTTP] Verified: output ${output0Based} is now routed to input ${input0Based}`)
       return {
         success: true,

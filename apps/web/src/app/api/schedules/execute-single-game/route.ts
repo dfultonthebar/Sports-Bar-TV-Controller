@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
@@ -103,13 +103,13 @@ export async function POST(request: NextRequest) {
 
       const deviceType = matrixInput.deviceType || ''
 
-      if (deviceType === 'Cable Box') {
+      if (deviceType === 'Cable Box' || deviceType === 'CableBox') {
         // Find IR device and tune cable box
         const irDevice = await db.select()
           .from(schema.irDevices)
           .where(
             and(
-              eq(schema.irDevices.deviceType, 'Cable Box'),
+              or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')),
               eq(schema.irDevices.name, matrixInput.label)
             )
           )

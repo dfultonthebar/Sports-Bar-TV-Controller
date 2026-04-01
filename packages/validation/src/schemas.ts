@@ -685,8 +685,10 @@ export const tvNetworkScanSchema = z.object({
     /^(\d{1,3}\.){3}\d{1,3}-(\d{1,3}\.){3}\d{1,3}$/,
     'IP range must be in format: 192.168.1.1-192.168.1.254'
   ).optional(),
-  ports: z.array(z.number().int().min(1).max(65535)).optional().default([8060]),
-  timeout: z.number().int().min(1000).max(30000).optional().default(5000)
+  ports: z.string().optional().default('8001,8060').transform((val) =>
+    val.split(',').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n) && n >= 1 && n <= 65535)
+  ),
+  timeout: z.coerce.number().int().min(1000).max(30000).optional().default(5000)
 })
 
 /**
@@ -714,6 +716,32 @@ export const tvVolumeControlSchema = z.object({
 }, {
   message: "Value is required when action is 'set'",
   path: ['value']
+})
+
+/**
+ * TV HDMI input control schema
+ */
+export const tvInputControlSchema = z.object({
+  input: z.enum(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'], {
+    errorMap: () => ({ message: 'Input must be hdmi1, hdmi2, hdmi3, or hdmi4' })
+  })
+})
+
+/**
+ * TV pairing schema (Samsung)
+ */
+export const tvPairSchema = z.object({
+  timeout: z.number().int().min(5000).max(60000).optional().default(30000)
+})
+
+/**
+ * TV bulk power control schema
+ */
+export const tvBulkPowerSchema = z.object({
+  action: z.enum(['on', 'off', 'toggle'], {
+    errorMap: () => ({ message: 'Action must be on, off, or toggle' })
+  }),
+  deviceIds: z.array(z.string()).optional()
 })
 
 // ============================================================================
@@ -826,5 +854,8 @@ export const ValidationSchemas = {
   // TV Discovery & Control
   tvNetworkScan: tvNetworkScanSchema,
   tvPowerControl: tvPowerControlSchema,
-  tvVolumeControl: tvVolumeControlSchema
+  tvVolumeControl: tvVolumeControlSchema,
+  tvInputControl: tvInputControlSchema,
+  tvPair: tvPairSchema,
+  tvBulkPower: tvBulkPowerSchema
 }

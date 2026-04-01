@@ -115,7 +115,7 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
 }
 
 // Cable (Spectrum) channel mapping for broadcast networks
-// UPDATED: Matches actual Spectrum Green Bay channel numbers from presets
+// Green Bay area Spectrum channel numbers (Holmgren Way)
 const NETWORK_TO_CABLE: Record<string, string> = {
   // ESPN family
   'ESPN': '27',
@@ -125,77 +125,71 @@ const NETWORK_TO_CABLE: Record<string, string> = {
   'ESPN+': '27',
 
   // Fox Sports
-  'FOX': '12',  // Local Fox (WLUK channel 12 on Spectrum)
+  'FOX': '12',   // Local Fox (WLUK-TV channel 12 on Spectrum Green Bay)
   'FS1': '75',
   'FS2': '328',
   'FOX Sports 1': '75',
   'FOX Sports 2': '328',
 
   // CBS/NBC/ABC
-  'CBS': '6',   // Local CBS (WFRV channel 6 on Spectrum)
-  'NBC': '13',  // Local NBC (channel 13 on Spectrum)
-  'ABC': '3',   // Local ABC (channel 3 on Spectrum)
+  'CBS': '6',    // Local CBS (WFRV channel 6 on Spectrum Green Bay)
+  'NBC': '13',   // Local NBC (WGBA channel 13 on Spectrum Green Bay)
+  'ABC': '3',    // Local ABC (WBAY channel 3 on Spectrum Green Bay)
   'CBS Sports Network': '322',
   'CBSSN': '322',
+  'Peacock': '38',
+  'NBC Sports': '38',
+  'NBCSN': '38',
 
   // Turner
   'TNT': '29',
   'TBS': '25',
-  'truTV': '37',
-  'TruTV': '37',
+  'truTV': '74',
+  'TruTV': '74',
 
   // Other sports
-  'NFL Network': '346',
-  'NFL RedZone': '347',
-  'Red Zone': '347',
-  'NFLN': '346',
   'NBA TV': '325',
   'NBATV': '325',
-  'MLB Network': '213',
-  'MLBN': '213',
-  'NHL Network': '215',
-  'NHLN': '215',
+  'MLB Network': '326',
+  'MLBN': '326',
+  'NHL Network': '324',
+  'NHLN': '324',
   'Big Ten Network': '39',
   'BTN': '39',
   'SEC Network': '65',
   'SECN': '65',
-  'ACC Network': '348',
-  'ACCN': '348',
 
   // USA Network (for sports)
-  'USA': '26',
-  'USA Network': '26',
+  'USA': '53',
+  'USA Network': '53',
 
   // Golf
   'Golf Channel': '14',
+  'Golf': '14',
   'GOLF': '14',
 
-  // Tennis
-  'Tennis Channel': '327',
-  'Tennis': '327',
-  'TENNIS': '327',
-
-  // Racing
-  'NBCSN': '159',
-  'NBC Sports': '159',
-
   // Soccer
-  'beIN Sports': '327',
-  'beIN SPORTS': '327',
-  'BEIN': '327',
+  'beIN Sports': '337',
+  'beIN SPORTS': '337',
+  'BEIN': '337',
 
-  // CW
-  'CW': '10',
-  'The CW': '10',
+  // Bally / Fan Duel Sports
+  'Bally Sports North': '310',
+  'Fan Duel Sports North': '310',
+  'Bally Sports Wisconsin': '40',
+  'Fan Duel Sports Wisconsin': '40',
+  'FOX Sports Wisconsin': '40',
+  'Fox Sports Prime': '339',
 
   // Local stations (Green Bay area on Spectrum)
-  'TV32': '83',
-  'WACY': '83',
-  'WBAY': '3',   // ABC
-  'WFRV': '6',   // CBS
-  'WLUK': '12',  // FOX
-  'WCWF': '10',  // CW
-  'WGBA': '13',  // NBC
+  'WBAY': '3',    // ABC
+  'WFRV': '6',    // CBS
+  'WCWF': '10',   // CW
+  'WLUK': '12',   // FOX
+  'WLUK-TV': '12',
+  'WGBA': '13',   // NBC
+  'WACY': '83',   // MyNetworkTV
+  'WACY-TV': '83',
 }
 
 // Function to get the appropriate channel mapping based on device type
@@ -320,6 +314,9 @@ export async function GET(request: NextRequest) {
       const { sportConfig, games } = result.value
 
       for (const game of games) {
+        // Skip events without real team matchups (golf, F1, etc.)
+        if (!game.homeTeam?.displayName || !game.awayTeam?.displayName) continue
+
         // Get broadcast networks
         const networks = espnScoreboardAPI.getAllNetworks(game)
 

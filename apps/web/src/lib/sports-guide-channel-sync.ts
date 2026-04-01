@@ -32,6 +32,10 @@ const STATION_DISPLAY_NAMES: Record<string, string> = {
   'PSP': 'Peacock/NBC Sports',
   'USA': 'USA Network',
   'WGBA-TV': 'WGBA',
+  'WISC-TV': 'WISC (CBS)',
+  'WMTV': 'WMTV (NBC)',
+  'WKOW': 'WKOW (ABC)',
+  'WMSN-TV': 'WMSN (FOX)',
   'Willow': 'Willow Cricket',
   'BSNOR+': 'Fan Duel North',
   'FSP': 'Fox Sports Prime',
@@ -40,17 +44,26 @@ const STATION_DISPLAY_NAMES: Record<string, string> = {
   'NBC': 'NBC',
   'ABC': 'ABC',
   'CW': 'CW',
+  'NHLNet': 'NHL Network',
+  'NBATV': 'NBA TV',
+  'ESPNN': 'ESPN News',
+  'beINS': 'beIN Sports',
+  'WISC': 'WISC (CBS)',
 }
 
 // Premium/league-pass channels to skip (extra cost, not on standard cable)
+// Foreign language channels and non-sports channels also excluded
 const SKIP_STATIONS = new Set([
   'MLBEI', 'NHLCI', 'NBALP', 'MLSDK', 'ESPND', 'FOXD', 'NBCUN', 'TUDN',
+  'TV5MUS', 'RCNNT', 'UniMas', 'Estrella', 'TELE',
+  'ION-C', 'VICE', 'IN1', 'CNBC', 'WMTV2',
 ])
 
 // Lineup key → deviceType mapping for ChannelPreset
 const LINEUP_TO_DEVICE_TYPE: Record<string, string> = {
   'CAB': 'cable',
   'SAT': 'directv',
+  'DRTV': 'directv',
 }
 
 export interface ChannelMapEntry {
@@ -104,6 +117,10 @@ export function extractChannelMap(guideData: SportsGuideResponse): Map<string, C
 
           const targetArr = lineup === 'CAB' ? entry.cab : entry.sat
           for (const ch of channels) {
+            // Filter out placeholder channel values (0 and 2 appear across
+            // many stations in the Rail API as invalid/placeholder entries)
+            const chNum = typeof ch === 'string' ? parseInt(ch, 10) : ch
+            if (chNum <= 2 || isNaN(chNum)) continue
             if (!targetArr.includes(ch)) {
               targetArr.push(ch)
             }

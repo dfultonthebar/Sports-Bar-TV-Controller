@@ -12,6 +12,7 @@ import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
 import LiveSportsDashboard from './LiveSportsDashboard'
+import ScheduledGameTVPicker from './ScheduledGameTVPicker'
 import { logger } from '@sports-bar/logger'
 import {
   Power,
@@ -216,6 +217,11 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const [scheduledAllocations, setScheduledAllocations] = useState<any[]>([])
   const [schedulingGame, setSchedulingGame] = useState<string | null>(null) // game id being scheduled
 
+  // Schedule Picker State (for choosing Cable vs DirecTV when scheduling)
+  const [schedulePickerGame, setSchedulePickerGame] = useState<GameListing | null>(null)
+  const [schedulePickerDeviceType, setSchedulePickerDeviceType] = useState<'cable' | 'directv'>('cable')
+  const [schedulePickerDeviceId, setSchedulePickerDeviceId] = useState<string>('')
+
   // UI State
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
@@ -306,19 +312,34 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   const loadLiveGameData = async () => {
     try {
-      const response = await fetch('/api/scheduling/live-status')
+      // Fetch live ESPN scores via live-by-channel (works without CableBox table)
+      const response = await fetch('/api/sports-guide/live-by-channel?deviceType=cable')
       if (response.ok) {
         const data = await response.json()
-        if (data.success && data.games) {
-          // Create a map of ESPN game IDs to live game data
+        if (data.success && data.channels) {
           const gameMap = new Map()
-          data.games.forEach((game: any) => {
-            // Key by both ESPN game ID and team names for matching
-            gameMap.set(game.espnGameId, game)
-            gameMap.set(`${game.awayTeam}-${game.homeTeam}`, game)
-          })
+          // data.channels is keyed by channel number, each value has homeTeam/awayTeam/liveData
+          for (const [_ch, game] of Object.entries(data.channels) as [string, any][]) {
+            if (!game.homeTeam || !game.awayTeam) continue
+            const entry = {
+              espnGameId: game.espnGameId || '',
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              league: game.league,
+              homeScore: game.liveData?.homeScore ?? null,
+              awayScore: game.liveData?.awayScore ?? null,
+              timeRemaining: game.liveData?.clock ?? null,
+              quarter: game.liveData?.period ? `Q${game.liveData.period}` : null,
+              isLive: game.liveData?.isLive ?? false,
+              status: game.liveData?.statusDetail ?? '',
+              isAutoScheduled: false,
+              inputLabel: null,
+            }
+            // Key by team names for matching with guide programs
+            gameMap.set(`${game.awayTeam}-${game.homeTeam}`, entry)
+          }
           setLiveGameData(gameMap)
-          logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${data.games.length} games`)
+          logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${gameMap.size} games from ESPN`)
         }
       }
     } catch (error) {
@@ -344,27 +365,53 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const handleScheduleGame = async (game: GameListing, event: React.MouseEvent) => {
     event.stopPropagation() // Don't trigger the game click (Watch)
 
-    if (!selectedInput || !selectedDevice) {
-      setCommandStatus('No device selected')
+    // Pre-select device type based on the currently selected input
+    const currentDeviceType = selectedInput ? getDeviceTypeForInput(selectedInput) : null
+    let defaultType: 'cable' | 'directv' = 'cable'
+    let defaultDeviceId = ''
+
+    if (currentDeviceType === 'satellite' && selectedDevice) {
+      defaultType = 'directv'
+      defaultDeviceId = selectedDevice.id
+    } else if (currentDeviceType === 'cable' && selectedDevice) {
+      defaultType = 'cable'
+      defaultDeviceId = selectedDevice.id
+    } else if (direcTVDevices.length > 0 && irDevices.length === 0) {
+      // Only DirecTV devices available
+      defaultType = 'directv'
+      defaultDeviceId = direcTVDevices[0].id
+    } else if (irDevices.length > 0) {
+      defaultType = 'cable'
+      defaultDeviceId = irDevices[0].id
+    }
+
+    // Open the schedule picker
+    setSchedulePickerGame(game)
+    setSchedulePickerDeviceType(defaultType)
+    setSchedulePickerDeviceId(defaultDeviceId)
+  }
+
+  const confirmScheduleGame = async () => {
+    const game = schedulePickerGame
+    if (!game) return
+
+    if (!schedulePickerDeviceId) {
+      setCommandStatus('Please select a device')
       return
     }
 
-    const deviceType = getDeviceTypeForInput(selectedInput)
-    if (!deviceType) {
-      setCommandStatus('Unknown device type')
-      return
-    }
-
-    // Determine device ID
-    let deviceId = ''
-    if ('matrixInput' in selectedDevice) {
-      // IR Device (cable box)
-      deviceId = selectedDevice.id
+    // Find the selected device name
+    let deviceName = ''
+    if (schedulePickerDeviceType === 'cable') {
+      const device = irDevices.find(d => d.id === schedulePickerDeviceId)
+      deviceName = device?.name || 'Cable Box'
     } else {
-      deviceId = selectedDevice.id
+      const device = direcTVDevices.find(d => d.id === schedulePickerDeviceId)
+      deviceName = device?.name || 'DirecTV'
     }
 
     setSchedulingGame(game.id)
+    setSchedulePickerGame(null)
     setCommandStatus(`Scheduling ${game.homeTeam} vs ${game.awayTeam}...`)
 
     try {
@@ -372,9 +419,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          deviceId: deviceId,
-          deviceType: deviceType === 'satellite' ? 'directv' : deviceType,
-          deviceName: selectedDevice.name,
+          deviceId: schedulePickerDeviceId,
+          deviceType: schedulePickerDeviceType,
+          deviceName,
           channelNumber: game.channel.channelNumber || game.channel.number,
           channelName: game.channel.name,
           gameInfo: {
@@ -391,10 +438,37 @@ export default function EnhancedChannelGuideBartenderRemote() {
       const data = await response.json()
 
       if (data.success) {
+        // Auto-copy TV outputs from the most recent allocation on the same device
+        // If bartender scheduled games on the same cable box before, reuse those TV assignments
+        try {
+          const schedRes = await fetch('/api/schedules/bartender-schedule')
+          if (schedRes.ok) {
+            const schedData = await schedRes.json()
+            const prevAlloc = (schedData.schedules || [])
+              .filter((s: any) =>
+                s.id !== data.allocationId &&
+                s.inputLabel === deviceName &&
+                s.tvOutputIds && s.tvOutputIds.length > 0
+              )
+              .sort((a: any, b: any) => new Date(b.tuneAt).getTime() - new Date(a.tuneAt).getTime())
+              [0]
+
+            if (prevAlloc && data.allocationId) {
+              await fetch('/api/schedules/bartender-schedule', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: data.allocationId, tvOutputIds: prevAlloc.tvOutputIds })
+              })
+              logger.info('[GUIDE] Auto-copied TV outputs from previous schedule on same device')
+            }
+          }
+        } catch {}
+
         setCommandStatus(`Scheduled: ${data.message}`)
         logButtonClick('schedule_game', `${game.league}`, {
           game: `${game.awayTeam} @ ${game.homeTeam}`,
           channel: game.channel.channelNumber,
+          deviceType: schedulePickerDeviceType,
           tuneAt: game.startTime
         })
 
@@ -547,6 +621,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const oldInput = selectedInput
     setSelectedInput(inputNumber)
     setSelectedDevice(null)
+    setGuideData(null) // Clear stale guide data from previous input
 
     // Find associated device
     const direcTVDevice = direcTVDevices.find(d => d.inputChannel === inputNumber)
@@ -629,36 +704,22 @@ export default function EnhancedChannelGuideBartenderRemote() {
     const input = inputs.find(i => i.channelNumber === inputNumber) as any
     if (!input) return null
 
-    // Check for DirecTV device
-    if (direcTVDevices.find(d => d.inputChannel === inputNumber)) {
-      return 'satellite'
-    }
+    // Matrix input deviceType is the authoritative source — check it first.
+    // This prevents shared inputs (e.g. cable box + Fire TV on same input)
+    // from being misclassified by the device list lookups below.
+    const dt = input.deviceType?.toLowerCase() || ''
+    if (dt.includes('cable')) return 'cable'
+    if (dt.includes('directv') || dt.includes('satellite')) return 'satellite'
+    if (dt.includes('fire') || dt.includes('everpass') || dt.includes('streaming')) return 'streaming'
 
-    // Check for Fire TV device - also check matrix input deviceType as fallback
-    if (fireTVDevices.find(d => d.inputChannel === inputNumber) ||
-        input.deviceType?.toLowerCase().includes('fire')) {
-      return 'streaming'
-    }
+    // Fallback: check device lists for inputs without a deviceType tag
+    if (direcTVDevices.find(d => d.inputChannel === inputNumber)) return 'satellite'
+    if (fireTVDevices.find(d => d.inputChannel === inputNumber)) return 'streaming'
+    if (everPassDevices.find(d => d.inputChannel === inputNumber)) return 'streaming'
+    if (irDevices.find((d: any) => d.matrixInput === inputNumber)) return 'cable'
+    if (input.label?.toLowerCase().includes('cable')) return 'cable'
 
-    // Check for EverPass device (CEC streaming box)
-    if (everPassDevices.find(d => d.inputChannel === inputNumber) ||
-        input.deviceType?.toLowerCase().includes('everpass')) {
-      return 'streaming'
-    }
-
-    // Check input type for cable
-    if (input.inputType.toLowerCase().includes('cable')) {
-      return 'cable'
-    }
-
-    // Check matrix input deviceType for satellite
-    if (input.deviceType?.toLowerCase().includes('directv') ||
-        input.deviceType?.toLowerCase().includes('satellite')) {
-      return 'satellite'
-    }
-
-    // Default to cable for IR devices (most likely cable boxes)
-    return 'cable'
+    return null
   }
 
   const loadCableGuideData = async (): Promise<DeviceGuideData> => {
@@ -668,7 +729,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
       body: JSON.stringify({
         inputNumber: selectedInput,
         deviceType: 'cable',
-        startTime: new Date().toISOString(),
+        startTime: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
         endTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       })
     })
@@ -744,7 +805,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
     // Define streaming apps available on Fire TV
     const streamingApps: StreamingApp[] = [
       { packageName: 'com.btn2go', displayName: 'Big Ten+', category: 'Sports', sportsContent: true },
-      { packageName: 'com.espn.gtv', displayName: 'ESPN', category: 'Sports', sportsContent: true },
+      { packageName: 'com.espn.gtv', displayName: 'ESPN+', category: 'Sports', sportsContent: true },
       { packageName: 'com.peacocktv.peacockandroid', displayName: 'Peacock', category: 'Sports', sportsContent: true },
       { packageName: 'com.amazon.avod', displayName: 'Prime Video', category: 'Entertainment', sportsContent: true },
       { packageName: 'com.google.android.youtube.tv', displayName: 'YouTube TV', category: 'Sports', sportsContent: true },
@@ -786,6 +847,11 @@ export default function EnhancedChannelGuideBartenderRemote() {
         return true // Keep event if we can't parse the date
       }
     })
+
+    // Filter out tournament-style events without team matchups (PGA Tour, Golf, F1, etc.)
+    filtered = filtered.filter(prog =>
+      prog.homeTeam?.trim() !== '' || prog.awayTeam?.trim() !== ''
+    )
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
@@ -902,7 +968,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       try {
         // Find the cable box device for the selected input
-        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && (d.deviceType === 'Cable Box' || d.deviceType === 'CableBox'))
 
         if (!cableBoxDevice) {
           setCommandStatus('No cable box configured for this input')
@@ -1109,7 +1175,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       try {
         // Find the cable box device for the selected input
-        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && d.deviceType === 'Cable Box')
+        const cableBoxDevice = irDevices.find(d => d.matrixInput === selectedInput && (d.deviceType === 'Cable Box' || d.deviceType === 'CableBox'))
 
         if (!cableBoxDevice) {
           setCommandStatus('No cable box configured for this input')
@@ -1417,7 +1483,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3 flex-1 overflow-hidden">
                           <div className="flex items-center space-x-2 flex-shrink-0">
-                            {getInputIcon(input.inputType)}
+                            {getInputIcon(deviceType || input.inputType)}
                             {getDeviceStatusIcon(input.channelNumber)}
                           </div>
                           <div className="flex-1 overflow-hidden">
@@ -1449,8 +1515,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 />
               )}
 
-              {/* Fire TV App Shortcuts - Show when Fire TV device is selected */}
-              {getDeviceTypeForInput(selectedInput) === 'streaming' && 'ipAddress' in selectedDevice && (
+              {/* Fire TV App Shortcuts - ONLY show for Fire TV / streaming devices */}
+              {getDeviceTypeForInput(selectedInput) === 'streaming' && selectedDevice && selectedDevice.deviceType !== 'DirecTV' && (selectedDevice.deviceType === 'Fire TV Cube' || selectedDevice.deviceType === 'Fire TV' || selectedDevice.deviceType === 'Atmosphere TV') && (
                 <div className="mt-4">
                   <FireTVAppShortcuts
                     deviceId={selectedDevice.id}
@@ -1693,18 +1759,32 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               if (!isFutureGame) return null
 
                               if (currentScheduleId) {
-                                // Already scheduled on this input - show Cancel button
+                                // Already scheduled on this input - show Cancel button + TV picker
+                                const alloc = scheduledAllocations.find((a: any) => a.id === currentScheduleId)
+                                const currentTVOutputIds: number[] = alloc?.tvOutputIds || []
                                 return (
-                                  <button
-                                    onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
-                                    className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
-                                  >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                                    <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
-                                      <Calendar className="w-3 h-3" />
-                                      <span>Cancel</span>
-                                    </div>
-                                  </button>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                      onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
+                                      className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
+                                    >
+                                      <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                      <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Cancel</span>
+                                      </div>
+                                    </button>
+                                    <ScheduledGameTVPicker
+                                      allocationId={currentScheduleId}
+                                      currentOutputIds={currentTVOutputIds}
+                                      onUpdate={(ids) => {
+                                        // Update local state so it reflects immediately
+                                        setScheduledAllocations(prev => prev.map((a: any) =>
+                                          a.id === currentScheduleId ? { ...a, tvOutputIds: ids } : a
+                                        ))
+                                      }}
+                                    />
+                                  </div>
                                 )
                               } else {
                                 // Not scheduled - show Schedule button
@@ -1737,8 +1817,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 ) : null}
               </div>
 
-              {/* Streaming Apps (for Fire TV) */}
-              {guideData?.type === 'streaming' && guideData.apps && (
+              {/* Streaming Apps (for Fire TV ONLY — not cable or DirecTV) */}
+              {guideData?.type === 'streaming' && guideData.apps && getDeviceTypeForInput(selectedInput) === 'streaming' && (
                 <div className="mt-6 pt-4 border-t border-white/10">
                   <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1762,6 +1842,134 @@ export default function EnhancedChannelGuideBartenderRemote() {
           )}
         </div>
       </div>
+
+      {/* Schedule Device Picker Modal */}
+      {schedulePickerGame && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSchedulePickerGame(null)}>
+          <div
+            className="backdrop-blur-xl bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl p-5 mx-4 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white mb-1">Schedule Game</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              {schedulePickerGame.awayTeam} @ {schedulePickerGame.homeTeam} -- {schedulePickerGame.channel.name}
+              {schedulePickerGame.channel.channelNumber ? ` (Ch ${schedulePickerGame.channel.channelNumber})` : ''}
+            </p>
+
+            {/* Device Type Tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => {
+                  setSchedulePickerDeviceType('cable')
+                  // Auto-select first cable box
+                  const cableDevices = irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox')
+                  setSchedulePickerDeviceId(cableDevices.length > 0 ? cableDevices[0].id : '')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  schedulePickerDeviceType === 'cable'
+                    ? 'bg-blue-500/30 border-2 border-blue-400/60 text-blue-300'
+                    : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <Cable className="w-4 h-4 inline mr-2" />
+                Cable Box
+              </button>
+              <button
+                onClick={() => {
+                  setSchedulePickerDeviceType('directv')
+                  // Auto-select first DirecTV device
+                  setSchedulePickerDeviceId(direcTVDevices.length > 0 ? direcTVDevices[0].id : '')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  schedulePickerDeviceType === 'directv'
+                    ? 'bg-blue-500/30 border-2 border-blue-400/60 text-blue-300'
+                    : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <Satellite className="w-4 h-4 inline mr-2" />
+                DirecTV
+              </button>
+            </div>
+
+            {/* Device Selector */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-slate-400 block mb-2">
+                Select {schedulePickerDeviceType === 'cable' ? 'Cable Box' : 'DirecTV Receiver'}
+              </label>
+              {schedulePickerDeviceType === 'cable' ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').length === 0 ? (
+                    <p className="text-sm text-slate-500 py-3 text-center">No cable boxes configured</p>
+                  ) : (
+                    irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSchedulePickerDeviceId(device.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
+                          schedulePickerDeviceId === device.id
+                            ? 'bg-blue-500/20 border-2 border-blue-400/50 text-white'
+                            : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{device.name}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">Input {device.matrixInput} -- {device.brand}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {direcTVDevices.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-3 text-center">No DirecTV receivers configured</p>
+                  ) : (
+                    direcTVDevices.map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSchedulePickerDeviceId(device.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
+                          schedulePickerDeviceId === device.id
+                            ? 'bg-blue-500/20 border-2 border-blue-400/50 text-white'
+                            : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-sm">{device.name}</div>
+                            <div className="text-xs text-slate-400 mt-0.5">{device.receiverType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
+                          </div>
+                          {device.isOnline ? (
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSchedulePickerGame(null)}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmScheduleGame}
+                disabled={!schedulePickerDeviceId}
+                className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-blue-500/30 border-2 border-blue-400/50 text-blue-300 hover:bg-blue-500/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Calendar className="w-4 h-4 inline mr-1" />
+                Confirm Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading Overlay */}
       {loading && (

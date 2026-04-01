@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Tv,
   Radio,
@@ -22,7 +22,10 @@ import {
   Calendar,
   Music2,
   Gamepad2,
-  Lightbulb
+  Lightbulb,
+  Music,
+  Monitor,
+  Loader2
 } from 'lucide-react'
 import Image from 'next/image'
 import SportsGuide from '@/components/SportsGuide'
@@ -34,7 +37,11 @@ import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
+import DJControlPanel from '@/components/DJControlPanel'
+import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
+import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
+import AtmosphereControl from '@/components/AtmosphereControl'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -153,10 +160,31 @@ export default function BartenderRemotePage() {
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   const [currentSources, setCurrentSources] = useState<Map<number, number>>(new Map()) // outputNumber -> inputNumber
 
+  // Multi-view card state
+  const [multiViewMode, setMultiViewMode] = useState<number>(0)
+  const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
+  const [multiViewLoading, setMultiViewLoading] = useState(false)
+
+  // Channel digit buffer for tracking manual channel entry
+  const digitBufferRef = useRef<string>('')
+  const digitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Audio processor state
   const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
+
+  // Network TV state
+  const [networkTVs, setNetworkTVs] = useState<{ id: string; name?: string | null; outputLabel?: string | null; outputNumber?: number | null; matrixOutputId?: string | null; ipAddress: string; brand: string; model?: string; port: number; macAddress?: string; authToken?: string | null; status: string; currentInput?: string | null; supportsPower: boolean; supportsInput: boolean }[]>([])
+  const [editingTVName, setEditingTVName] = useState<string | null>(null)
+  const [editNameValue, setEditNameValue] = useState('')
+  const [tvPowerLoading, setTvPowerLoading] = useState<string | null>(null)
+  const [tvInputLoading, setTvInputLoading] = useState<string | null>(null)
+  const [tvBulkLoading, setTvBulkLoading] = useState<string | null>(null)
+  const [tvMessage, setTvMessage] = useState<string | null>(null)
+  const [matrixOutputs, setMatrixOutputs] = useState<{ id: string; channelNumber: number; label: string }[]>([])
+  const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
+  const [pairingTVId, setPairingTVId] = useState<string | null>(null)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -164,7 +192,7 @@ export default function BartenderRemotePage() {
   const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule'>('video')
 
   // System time state - initialize with null to avoid hydration mismatch
   const [currentTime, setCurrentTime] = useState<string | null>(null)
@@ -221,12 +249,14 @@ export default function BartenderRemotePage() {
     loadIRDevices()
     loadDirecTVDevices()
     loadFireTVDevices()
+    loadNetworkTVs()
     loadTVLayout()
     loadAudioProcessor()
     fetchLightingSettings()
     // Also fetch matrix data on initial load
     fetchMatrixData()
     loadCurrentChannels()
+    loadMultiViewCard()
 
     // Establish persistent connection on component mount
     establishPersistentConnection()
@@ -242,6 +272,41 @@ export default function BartenderRemotePage() {
       clearInterval(statusInterval)
     }
   }, [fetchLightingSettings])
+
+  // Poll TV status every 30 seconds while on the Power tab
+  useEffect(() => {
+    if (activeTab !== 'power') return
+
+    const interval = setInterval(() => {
+      checkTVStatus()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
+
+  // Poll routing + channel data every 15 seconds while on the Routing tab
+  useEffect(() => {
+    if (activeTab !== 'routing') return
+
+    loadCurrentRoutes()
+    loadCurrentChannels()
+    const interval = setInterval(() => {
+      loadCurrentRoutes()
+      loadCurrentChannels()
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
+
+  // Clear digit buffer when the selected input changes (user switches cable boxes)
+  // to prevent stale digits from firing a tune on the newly selected device
+  useEffect(() => {
+    if (digitTimerRef.current) {
+      clearTimeout(digitTimerRef.current)
+      digitTimerRef.current = null
+    }
+    digitBufferRef.current = ''
+  }, [selectedInput])
 
   useEffect(() => {
     // Re-fetch matrix data when layout zones change (but skip initial empty state)
@@ -323,6 +388,46 @@ export default function BartenderRemotePage() {
     // This function is kept for compatibility
   }
 
+  const loadMultiViewCard = async () => {
+    try {
+      const response = await fetch('/api/wolfpack/multiview')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.cards?.length > 0) {
+          setMultiViewCardId(data.cards[0].id)
+          setMultiViewMode(data.cards[0].currentMode ?? 0)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading multi-view card:', error)
+    }
+  }
+
+  const toggleMultiView = async () => {
+    if (!multiViewCardId) return
+    const newMode = multiViewMode === 0 ? 6 : 0 // Toggle between single and equal quad (mode 6)
+    setMultiViewLoading(true)
+    try {
+      const response = await fetch(`/api/wolfpack/multiview/${multiViewCardId}/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMultiViewMode(newMode)
+        setCommandStatus(newMode === 7 ? 'Quad View enabled' : 'Single View enabled')
+      } else {
+        setCommandStatus(`Multi-view error: ${data.error}`)
+      }
+    } catch (error) {
+      setCommandStatus('Failed to switch multi-view')
+    } finally {
+      setMultiViewLoading(false)
+      setTimeout(() => setCommandStatus(''), 3000)
+    }
+  }
+
   const loadAudioProcessor = async () => {
     try {
       const response = await fetch('/api/audio-processor')
@@ -395,6 +500,30 @@ export default function BartenderRemotePage() {
       }
     } catch (error) {
       logger.error('Error loading Fire TV devices:', error)
+    }
+  }
+
+  const pairNetworkTV = async (deviceId: string, deviceName: string) => {
+    setPairingTVId(deviceId)
+    setTvMessage('Pairing... Accept the popup on the TV screen')
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeout: 30000 }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setTvMessage(`${deviceName} paired successfully!`)
+        await loadNetworkTVs()
+      } else {
+        setTvMessage(data.error || `${deviceName} pairing failed`)
+      }
+    } catch (error) {
+      setTvMessage(`${deviceName} pairing failed — device unreachable`)
+    } finally {
+      setPairingTVId(null)
+      setTimeout(() => setTvMessage(null), 8000)
     }
   }
 
@@ -618,6 +747,43 @@ export default function BartenderRemotePage() {
       
       if (response.ok) {
         setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
+
+        // Track digit commands for channel updates
+        if (/^[0-9]$/.test(command) && selectedInput && ('iTachAddress' in selectedDevice || selectedDevice.deviceType === 'DirecTV')) {
+          digitBufferRef.current += command
+
+          // Capture device identity at the moment digits are typed
+          const capturedDeviceId = selectedDevice.id
+          const capturedDeviceType = selectedDevice.deviceType
+
+          // Clear any pending timer
+          if (digitTimerRef.current) clearTimeout(digitTimerRef.current)
+
+          // After 2s of no more digits, update channel tracking
+          digitTimerRef.current = setTimeout(async () => {
+            const channelNum = digitBufferRef.current
+            digitBufferRef.current = ''
+            try {
+              // Update channel tracking in the database
+              // Use captured device identity, not current selectedDevice
+              await fetch('/api/channel-presets/tune', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  channelNumber: channelNum,
+                  deviceType: capturedDeviceType === 'DirecTV' ? 'directv' : 'cable',
+                  cableBoxId: capturedDeviceId,
+                  presetId: 'manual',
+                  trackOnly: true
+                })
+              })
+              // Reload current channels to update the layout display
+              loadCurrentChannels()
+            } catch (err) {
+              logger.error('Error updating channel tracking:', err)
+            }
+          }, 2000)
+        }
       } else {
         setCommandStatus(`✗ Failed: ${result.error}`)
       }
@@ -691,6 +857,125 @@ export default function BartenderRemotePage() {
     return input.label
   }
 
+  const loadNetworkTVs = async () => {
+    try {
+      const [devicesRes, outputsRes] = await Promise.all([
+        fetch('/api/tv-discovery/devices'),
+        fetch('/api/matrix/outputs'),
+      ])
+      if (devicesRes.ok) {
+        const data = await devicesRes.json()
+        setNetworkTVs(data.devices || [])
+      }
+      if (outputsRes.ok) {
+        const data = await outputsRes.json()
+        setMatrixOutputs((data.outputs || []).map((o: any) => ({ id: o.id, channelNumber: o.channelNumber, label: o.label })))
+      }
+    } catch (error) {
+      logger.error('Error loading network TVs:', error)
+    }
+  }
+
+  const checkTVStatus = async () => {
+    try {
+      const response = await fetch('/api/tv-discovery/status', { method: 'POST' })
+      if (response.ok) {
+        await loadNetworkTVs()
+      }
+    } catch (error) {
+      logger.error('Error checking TV status:', error)
+    }
+  }
+
+  const saveTVName = async (deviceId: string, name: string) => {
+    try {
+      await fetch('/api/tv-discovery/devices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deviceId, name: name.trim() || null })
+      })
+      setEditingTVName(null)
+      await loadNetworkTVs()
+    } catch (error) {
+      logger.error('Error saving TV name:', error)
+    }
+  }
+
+  const assignTVOutput = async (deviceId: string, matrixOutputId: string | null) => {
+    try {
+      await fetch('/api/tv-discovery/devices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deviceId, matrixOutputId })
+      })
+      setAssigningOutput(null)
+      await loadNetworkTVs()
+    } catch (error) {
+      logger.error('Error assigning TV output:', error)
+    }
+  }
+
+  const sendTVPower = async (deviceId: string, action: 'on' | 'off' | 'toggle') => {
+    setTvPowerLoading(`${deviceId}-${action}`)
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await response.json()
+      setTvMessage(data.success ? `Power ${action} sent` : (data.error || 'Failed'))
+      setTimeout(() => setTvMessage(null), 3000)
+    } catch {
+      setTvMessage('Failed to send power command')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvPowerLoading(null)
+    }
+  }
+
+  const sendTVBulkPower = async (action: 'on' | 'off' | 'toggle') => {
+    setTvBulkLoading(action)
+    try {
+      const response = await fetch('/api/tv-control/bulk-power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await response.json()
+      setTvMessage(data.message || `Bulk power ${action} complete`)
+      setTimeout(() => setTvMessage(null), 5000)
+    } catch {
+      setTvMessage('Bulk power command failed')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvBulkLoading(null)
+    }
+  }
+
+  const sendTVInput = async (deviceId: string, input: string) => {
+    setTvInputLoading(`${deviceId}-${input}`)
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      })
+      const data = await response.json()
+      if (data.success) {
+        // Optimistically update the current input in local state
+        setNetworkTVs(prev => prev.map(tv => tv.id === deviceId ? { ...tv, currentInput: input } : tv))
+      }
+      setTvMessage(data.success ? `Switched to ${input.toUpperCase()}` : (data.error || 'Failed'))
+      setTimeout(() => setTvMessage(null), 3000)
+    } catch {
+      setTvMessage('Failed to switch input')
+      setTimeout(() => setTvMessage(null), 3000)
+    } finally {
+      setTvInputLoading(null)
+    }
+  }
+
   const handleRoutingMatrixClick = async (inputNum: number, outputNum: number) => {
     setRoutingStatus(`Routing input ${inputNum} to output ${outputNum}...`)
     setIsRouting(true)
@@ -752,6 +1037,7 @@ export default function BartenderRemotePage() {
 
       {/* Main Content Area - Changes based on active tab */}
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
+        <RecoveryConfirmationPopup />
         {activeTab === 'video' && (
           <div className="w-full max-w-7xl lg:max-w-full mx-auto space-y-4 px-2 sm:px-4 lg:px-8">
             <InteractiveBartenderLayout
@@ -761,6 +1047,7 @@ export default function BartenderRemotePage() {
               inputs={inputs}
               currentChannels={currentChannels}
             />
+            {selectedInput === 11 && <AtmosphereControl />}
           </div>
         )}
 
@@ -775,10 +1062,175 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'power' && (
-          <div className="bg-slate-800 rounded-lg p-8 text-center">
-            <Power className="w-16 h-16 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-white mb-2">Power Control</h3>
-            <p className="text-slate-400">CEC-based power control has been removed. IR-based TV power control coming soon.</p>
+          <div className="max-w-7xl mx-auto pt-4 space-y-4">
+            {/* Bulk Power Controls */}
+            <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Power className="w-5 h-5 text-red-400" />
+                    TV Power Control
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">{networkTVs.length} TV{networkTVs.length !== 1 ? 's' : ''} available</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => sendTVBulkPower('toggle')}
+                    disabled={!!tvBulkLoading || networkTVs.length === 0}
+                    className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {tvBulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                    Toggle All TVs
+                  </button>
+                </div>
+              </div>
+              {tvMessage && (
+                <div className={`mt-3 p-2 rounded text-sm font-medium ${
+                  tvMessage.toLowerCase().includes('fail') ? 'bg-red-900/40 text-red-300 border border-red-700/50' : 'bg-green-900/40 text-green-300 border border-green-700/50'
+                }`}>
+                  {tvMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Individual TV Grid */}
+            {networkTVs.length === 0 ? (
+              <div className="bg-slate-800 rounded-lg p-8 text-center">
+                <Tv className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400">No network TVs discovered yet.</p>
+                <p className="text-slate-500 text-sm mt-1">Run a scan from Device Setup to find TVs.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {[...networkTVs].sort((a, b) => {
+                  const aParts = a.ipAddress.split('.').map(Number)
+                  const bParts = b.ipAddress.split('.').map(Number)
+                  for (let i = 0; i < 4; i++) {
+                    if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]
+                  }
+                  return 0
+                }).map((tv) => (
+                  <div key={tv.id} className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    {/* TV Header */}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Tv className={`w-4 h-4 flex-shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : tv.status === 'standby' ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                      </div>
+                      <span className="text-[10px] text-slate-500 uppercase">{tv.brand}</span>
+                    </div>
+                    {/* TV Name — uses Wolf Pack output label, custom name as override */}
+                    {editingTVName === tv.id ? (
+                      <div className="flex gap-1 mb-1">
+                        <input
+                          type="text"
+                          value={editNameValue}
+                          onChange={(e) => setEditNameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveTVName(tv.id, editNameValue)
+                            if (e.key === 'Escape') setEditingTVName(null)
+                          }}
+                          autoFocus
+                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-0"
+                          placeholder="TV name..."
+                        />
+                        <button
+                          onClick={() => saveTVName(tv.id, editNameValue)}
+                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px]"
+                        >OK</button>
+                      </div>
+                    ) : (
+                      <p
+                        onClick={() => { setEditingTVName(tv.id); setEditNameValue(tv.name || tv.outputLabel || '') }}
+                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors"
+                        title="Click to rename"
+                      >
+                        {tv.name || tv.outputLabel || 'Unnamed TV'}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <p className="text-[10px] text-slate-500 font-mono">{tv.ipAddress}</p>
+                      {assigningOutput === tv.id ? (
+                        <select
+                          value={tv.matrixOutputId || ''}
+                          onChange={(e) => assignTVOutput(tv.id, e.target.value || null)}
+                          autoFocus
+                          onBlur={() => setAssigningOutput(null)}
+                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">None</option>
+                          {matrixOutputs.map((o) => (
+                            <option key={o.id} value={o.id}>Out {o.channelNumber}: {o.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span
+                          onClick={() => setAssigningOutput(tv.id)}
+                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded cursor-pointer hover:text-blue-300 transition-colors"
+                          title="Click to assign Wolf Pack output"
+                        >
+                          {tv.outputNumber ? `Out ${tv.outputNumber}` : 'Link output'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Pair Button — Samsung TVs without auth token */}
+                    {tv.brand.toLowerCase() === 'samsung' && !tv.authToken && (
+                      <div className="mb-2">
+                        <button
+                          onClick={() => pairNetworkTV(tv.id, tv.name || tv.outputLabel || tv.ipAddress)}
+                          disabled={pairingTVId === tv.id}
+                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {pairingTVId === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for TV...</> : <><Zap className="w-3 h-3" /> Pair</>}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Power Button */}
+                    {tv.supportsPower && (
+                      <div className="mb-2">
+                        <button
+                          onClick={() => sendTVPower(tv.id, 'toggle')}
+                          disabled={tvPowerLoading === `${tv.id}-toggle`}
+                          className={`w-full py-1.5 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1 ${
+                            tv.status === 'online' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                        >
+                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Power</>}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* HDMI Input Buttons */}
+                    {tv.supportsInput && (
+                      <div>
+                        <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
+                          <Monitor className="w-2.5 h-2.5" /> HDMI Input
+                        </p>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
+                            <button
+                              key={input}
+                              onClick={() => sendTVInput(tv.id, input)}
+                              disabled={tvInputLoading === `${tv.id}-${input}`}
+                              className={`py-1 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                                tv.currentInput === input
+                                  ? 'bg-blue-600 text-white ring-1 ring-blue-400'
+                                  : 'bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : input.replace('hdmi', '')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
           </div>
         )}
 
@@ -796,6 +1248,19 @@ export default function BartenderRemotePage() {
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
                   <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
                 </div>
+                {multiViewCardId && (
+                  <button
+                    onClick={toggleMultiView}
+                    disabled={multiViewLoading}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                      multiViewMode === 6
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
+                  </button>
+                )}
                 <button
                   onClick={loadCurrentRoutes}
                   disabled={loadingRoutes}
@@ -851,7 +1316,7 @@ export default function BartenderRemotePage() {
                   </thead>
                   <tbody>
                     {matrixConfig?.outputs
-                      ?.filter((output: any) => output.isActive && output.channelNumber <= 32)
+                      ?.filter((output: any) => output.isActive)
                       .map((output: any) => {
                         const currentInput = currentSources.get(output.channelNumber)
 
@@ -917,10 +1382,22 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
+        {activeTab === 'dj' && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <DJControlPanel />
+          </div>
+        )}
+
         {activeTab === 'lighting' && lightingEnabled && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
             {commercialLightingEnabled && <CommercialLightingRemote />}
             {dmxLightingEnabled && <DMXLightingRemote />}
+          </div>
+        )}
+
+        {activeTab === 'schedule' && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <ScheduledGamesPanel />
           </div>
         )}
       </div>
@@ -1004,6 +1481,30 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Remote</span>
           </button>
 
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'schedule'
+                ? 'bg-orange-500/30 text-orange-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span className="text-xs font-medium">Schedule</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dj')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'dj'
+                ? 'bg-orange-500/30 text-orange-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Music className="w-4 h-4" />
+            <span className="text-xs font-medium">DJ</span>
+          </button>
+
           {lightingEnabled && (
             <button
               onClick={() => setActiveTab('lighting')}
@@ -1019,7 +1520,10 @@ export default function BartenderRemotePage() {
           )}
 
           <button
-            onClick={() => setActiveTab('power')}
+            onClick={() => {
+              setActiveTab('power')
+              checkTVStatus()
+            }}
             className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
               activeTab === 'power'
                 ? 'bg-red-500/30 text-red-300'

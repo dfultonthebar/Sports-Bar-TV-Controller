@@ -48,3 +48,7 @@ export {
   getWolfpackModel,
   type WolfpackModelProfile,
 } from './models'
+
+// Learning System
+export { runLearningCycle } from './wolfpack-pattern-learner'
+export { WolfpackLearningCollector } from './wolfpack-learning-collector'

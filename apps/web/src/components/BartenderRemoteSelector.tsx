@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Button } from './ui/button'
 import { Cable, Satellite, Smartphone, Tv, CheckCircle, AlertCircle, Gamepad2, Zap, Radio } from 'lucide-react'
 import CableBoxRemote from './remotes/CableBoxRemote'
@@ -97,6 +97,8 @@ export default function BartenderRemoteSelector() {
   const [channelPresets, setChannelPresets] = useState<ChannelPreset[]>([])
   const [loading, setLoading] = useState(false)
   const [commandStatus, setCommandStatus] = useState<string>('')
+  const digitBufferRef = useRef<string>('')
+  const digitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [hoveredInput, setHoveredInput] = useState<number | null>(null)
   const [currentChannels, setCurrentChannels] = useState<Record<number, {
     channelNumber: string
@@ -259,7 +261,7 @@ export default function BartenderRemoteSelector() {
 
   const sendChannelCommand = async (channelNumber: string, presetId?: string) => {
     // For DirecTV, use server-side proxy API (direct fetch blocked by CORS)
-    if (selectedDevice && 'receiverType' in selectedDevice) {
+    if (selectedDevice && (selectedDevice.deviceType === 'DirecTV' || 'receiverId' in selectedDevice)) {
       const direcTV = selectedDevice as DirecTVDevice
 
       // Use the server-side API which proxies to the DirecTV device
@@ -308,7 +310,7 @@ export default function BartenderRemoteSelector() {
   const sendCommand = async (command: string) => {
     if (!selectedDevice) throw new Error('No device selected')
 
-    if ('receiverType' in selectedDevice) {
+    if (selectedDevice.deviceType === 'DirecTV' || 'receiverId' in selectedDevice) {
       // DirecTV device
       const response = await fetch('/api/directv-devices/send-command', {
         method: 'POST',
@@ -339,6 +341,33 @@ export default function BartenderRemoteSelector() {
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error)
+      }
+
+      // Track digit commands for channel updates
+      if (/^[0-9]$/.test(command)) {
+        const capturedDeviceId = selectedDevice.id
+        digitBufferRef.current += command
+
+        if (digitTimerRef.current) clearTimeout(digitTimerRef.current)
+        digitTimerRef.current = setTimeout(async () => {
+          const channelNum = digitBufferRef.current
+          digitBufferRef.current = ''
+          try {
+            await fetch('/api/channel-presets/tune', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                channelNumber: channelNum,
+                deviceType: 'cable',
+                cableBoxId: capturedDeviceId,
+                presetId: 'manual',
+                trackOnly: true
+              })
+            })
+          } catch (err) {
+            logger.error('[REMOTE] Error updating channel tracking:', err)
+          }
+        }, 2000)
       }
     }
   }

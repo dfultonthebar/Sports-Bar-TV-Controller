@@ -110,41 +110,71 @@ export async function POST(request: NextRequest) {
       )
 
       let added = 0
+      let updated = 0
       let skipped = 0
 
-      // Insert commands that don't already exist
+      // Build map of existing commands by function name for updates
+      const existingCommandMap = new Map(
+        existingCommands.map(cmd => [cmd.functionName.toLowerCase(), cmd])
+      )
+
+      const targetPort = targetDevice.globalCachePortNumber || 1
+
       for (const sourceCmd of sourceCommands) {
-        if (existingFunctionNames.has(sourceCmd.functionName.toLowerCase())) {
-          skipped++
-          continue
+        // Fix port number in IR code for target device
+        let fixedCode = sourceCmd.irCode || ''
+        if (fixedCode.startsWith('sendir,')) {
+          const portMatch = fixedCode.match(/^sendir,(\d+):(\d+),/)
+          if (portMatch) {
+            fixedCode = fixedCode.replace(
+              `sendir,${portMatch[1]}:${portMatch[2]},`,
+              `sendir,1:${targetPort},`
+            )
+          }
         }
 
-        await db.insert(schema.irCommands).values({
-          id: uuidv4(),
-          deviceId: targetDevice.id,
-          functionName: sourceCmd.functionName,
-          irCode: sourceCmd.irCode,
-          hexCode: sourceCmd.hexCode,
-          codeSetId: sourceCmd.codeSetId,
-          category: sourceCmd.category,
-          description: sourceCmd.description,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        })
-
-        added++
+        const existing = existingCommandMap.get(sourceCmd.functionName.toLowerCase())
+        if (existing) {
+          // Update existing command with new code
+          await db.update(schema.irCommands)
+            .set({
+              irCode: fixedCode,
+              hexCode: sourceCmd.hexCode,
+              codeSetId: sourceCmd.codeSetId,
+              category: sourceCmd.category,
+              description: sourceCmd.description,
+              updatedAt: new Date().toISOString()
+            })
+            .where(eq(schema.irCommands.id, existing.id))
+          updated++
+        } else {
+          // Insert new command
+          await db.insert(schema.irCommands).values({
+            id: uuidv4(),
+            deviceId: targetDevice.id,
+            functionName: sourceCmd.functionName,
+            irCode: fixedCode,
+            hexCode: sourceCmd.hexCode,
+            codeSetId: sourceCmd.codeSetId,
+            category: sourceCmd.category,
+            description: sourceCmd.description,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          })
+          added++
+        }
       }
 
       results.push({
         deviceId: targetDevice.id,
         deviceName: targetDevice.name,
         added,
+        updated,
         skipped,
         total: sourceCommands.length
       })
 
-      logger.info(`✅ [IR CLONE] Cloned to ${targetDevice.name}`)
-      logger.info(`   Added: ${added}, Skipped: ${skipped}`)
+      logger.info(`[IR CLONE] Cloned to ${targetDevice.name}: added=${added}, updated=${updated}`)
     }
 
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

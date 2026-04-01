@@ -191,8 +191,42 @@ async function scanDevice(ipAddress: string, port: number, timeout: number): Pro
     }
   }
 
-  // TODO: Add detection for Samsung, LG, Sony, etc. on their respective ports
-  // Samsung SmartView: 8001, 8002
+  // Samsung SmartView API on port 8001
+  if (port === 8001) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+      const response = await fetch(`http://${ipAddress}:${port}/api/v2/`, {
+        method: 'GET',
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+
+      if (response.ok) {
+        const data = await response.json()
+        const device = data?.device
+
+        if (device) {
+          logger.info(`[TV-DISCOVERY] Samsung TV found at ${ipAddress}:${port}`)
+
+          return {
+            ipAddress,
+            brand: 'samsung',
+            model: device.ModelName || undefined,
+            port: 8002, // WebSocket control port
+            macAddress: device.WifiMac || undefined
+          }
+        }
+      }
+    } catch (err) {
+      // Not a Samsung or unreachable
+      return null
+    }
+  }
+
+  // TODO: Add detection for LG, Sony, etc. on their respective ports
   // LG WebOS: 3000, 3001
   // Sony Bravia: 80
 

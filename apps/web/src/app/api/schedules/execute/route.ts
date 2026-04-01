@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { findMany, inArray } from '@/lib/db-helpers'
 import { schema } from '@/db'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, or, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -1164,6 +1164,7 @@ async function changeChannel(input: any, channel: string) {
     const deviceType = input.deviceType || input.inputType;
     switch (deviceType) {
       case 'Cable Box':
+      case 'CableBox':
         return await changeCableBoxChannel(input, channel);
 
       case 'DirecTV':
@@ -1189,7 +1190,7 @@ async function changeCableBoxChannel(input: any, channel: string) {
       .from(schema.irDevices)
       .where(
         and(
-          eq(schema.irDevices.deviceType, 'Cable Box'),
+          or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')),
           eq(schema.irDevices.name, input.label)
         )
       )

@@ -143,30 +143,61 @@ export async function POST(request: NextRequest) {
       const stationToPreset = new Map<string, { channelNumber: string; name: string }>()
 
       const stationAliases: Record<string, string[]> = {
+        // ESPN family
         'ESPN': ['ESPN', 'ESPN HD'],
         'ESPN2': ['ESPN2', 'ESPN 2', 'ESPN2 HD'],
         'ESPNU': ['ESPNU', 'ESPN U', 'ESPN University'],
-        'ESPND': ['ESPND', 'ESPN Deportes', 'ESPN News'],
+        'ESPND': ['ESPND', 'ESPN Deportes'],
+        'ESPNEWS': ['ESPNEWS', 'ESPN News', 'ESPNews'],
+        'ESPN+': ['ESPN+'],
+        // Conference networks
         'SEC': ['SEC', 'SEC Network', 'SECN'],
-        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN'],
+        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN', 'Big 10'],
         'ACC': ['ACC', 'ACC Network', 'ACCN'],
+        // Fox family
         'FS1': ['FS1', 'Fox Sports 1', 'FOX Sports 1'],
         'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
-        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS'],
+        'FSP': ['FSP', 'Fox Sports Prime'],
+        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
+        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin', 'Bally Sports WI', 'Fan Duel'],
+        // NBC/CBS sports
+        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS', 'Peacock/NBC Sports'],
         'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
+        // Turner/Warner
         'TNT': ['TNT', 'TNT HD'],
         'TBS': ['TBS', 'TBS HD'],
-        'TRUTV': ['TRUTV', 'TruTV', 'truTV', 'USA'],
-        'USA': ['USA', 'USA Network', 'TRUTV'],
+        'TRUTV': ['TRUTV', 'TruTV', 'truTV'],
+        // USA Network (separate from truTV)
+        'USA': ['USA', 'USA Network'],
+        // League networks
         'NBATV': ['NBATV', 'NBA TV', 'NBA Television'],
         'NFLNET': ['NFLNET', 'NFL Network', 'NFLN'],
-        'MLBN': ['MLBN', 'MLB Network', 'MLB Television'],
+        'MLBN': ['MLBN', 'MLBNet', 'MLB Network', 'MLB Television'],
         'NHLNet': ['NHLNet', 'NHL Network', 'NHLN'],
+        // Sports channels
         'GOLF': ['GOLF', 'Golf Channel', 'Golf'],
-        'TENNIS': ['TENNIS', 'Tennis Channel', 'Tennis'],
-        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
-        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin'],
+        'TENNIS': ['TENNIS', 'TENN', 'Tennis Channel', 'Tennis'],
+        'OT': ['OT', 'Overtime'],
+        // Regional / specialty
         'BSNOR+': ['BSNOR+', 'Bally Sports North', 'Fox Sports North'],
+        'NBCUN': ['NBCUN', 'NBC Universo'],
+        'NXTLVL': ['NXTLVL', 'Next Level'],
+        'TVGL': ['TVGL', 'TV Games Live'],
+        'MSG2': ['MSG2'],
+        // Local stations
+        'WGBA-TV': ['WGBA-TV', 'WGBA', 'NBC 26', 'WGBA-DT'],
+        'WACY-TV': ['WACY-TV', 'WACY', 'MyNetworkTV'],
+        'WFRV': ['WFRV', 'WFRV-TV', 'CBS 5'],
+        'WLUK-TV': ['WLUK-TV', 'WLUK', 'FOX 11'],
+        'WBAY': ['WBAY', 'WBAY-TV', 'ABC 2'],
+        'WCWF': ['WCWF', 'CW 14'],
+        'WDCW': ['WDCW'],
+        // Subscription / PPV / streaming
+        'MLBEI': ['MLBEI', 'MLB Extra Innings', 'MLB.TV'],
+        'DTVPPV': ['DTVPPV', 'DTVppv', 'DirecTV PPV'],
+        'NUE': ['NUE', 'nuevoTV'],
+        'TYC': ['TYC', 'TyC Sports'],
+        'Prime': ['Prime', 'Amazon Prime'],
       }
 
       // Normalize station names for matching
@@ -208,7 +239,8 @@ export async function POST(request: NextRequest) {
       logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups`)
 
       // The lineup key to use for this device type
-      const lineupKey = deviceType === 'satellite' ? 'SAT' : 'CAB'
+      // Rail Media API uses 'DRTV' for DirecTV satellite, not 'SAT'
+      const lineupKey = deviceType === 'satellite' ? 'DRTV' : 'CAB'
       logInfo(`Using lineup key: ${lineupKey}`)
 
       let matchedCount = 0
@@ -301,6 +333,87 @@ export async function POST(request: NextRequest) {
             })
           }
         }
+      }
+
+      // Local channel overrides: inject local Spectrum channels for teams with business carriage deals
+      // Brewers games → available on Bally Sports Wisconsin ch 308 regardless of national listing
+      const localOverrides = [
+        { teamMatch: 'Milwaukee Brewers', channelNumber: 308, channelName: 'Bally Sports Wisconsin' },
+      ]
+
+      if (deviceType !== 'satellite') {
+        // Scan ALL listings (not just matched ones) for local override teams
+        for (const group of guide.listing_groups || []) {
+          for (const listing of group.listings || []) {
+            const homeTeam = listing.data?.['home team'] || listing.data?.['team'] || ''
+            const awayTeam = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+
+            for (const override of localOverrides) {
+              if (!homeTeam.includes(override.teamMatch) && !awayTeam.includes(override.teamMatch)) continue
+              if (!homeTeam.trim() && !awayTeam.trim()) continue
+
+              // Check if this game already has a program entry on ch 308
+              const alreadyHas308 = programs.some(p =>
+                p.channel?.number === override.channelNumber &&
+                p.homeTeam === homeTeam && p.awayTeam === awayTeam &&
+                p.gameTime === listing.time
+              )
+              if (alreadyHas308) continue
+
+              // Parse date
+              let eventDate: Date
+              if (listing.date) {
+                const currentYear = new Date().getFullYear()
+                eventDate = new Date(`${listing.date} ${currentYear} ${listing.time}`)
+                if (isNaN(eventDate.getTime())) continue
+              } else {
+                eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
+              }
+
+              const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+              const programId = `local-${override.channelNumber}-${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
+
+              programs.push({
+                id: programId,
+                league: group.group_title,
+                homeTeam,
+                awayTeam,
+                gameTime: listing.time,
+                startTime: eventDate.toISOString(),
+                endTime: endTime.toISOString(),
+                channel: {
+                  id: `local-${override.channelNumber}`,
+                  name: override.channelName,
+                  number: override.channelNumber,
+                  type: deviceType,
+                  cost: 'subscription',
+                  platforms: ['Cable'],
+                  channelNumber: override.channelNumber,
+                  deviceType,
+                  station: override.channelName,
+                  presetName: override.channelName,
+                },
+                description: Object.entries(listing.data || {}).map(([k, v]) => `${k}: ${v}`).join(', '),
+                isSports: true,
+                isLive: false,
+                venue: listing.data?.['venue'] || listing.data?.['location'] || '',
+                date: listing.date,
+                station: override.channelName,
+              })
+            }
+          }
+        }
+        const overrideCount = programs.filter(p => p.id?.startsWith('local-')).length
+        if (overrideCount > 0) {
+          logInfo(`Added ${overrideCount} local channel overrides`)
+        }
+      }
+
+      // Filter out tournament-style events without team matchups (Golf, NASCAR, etc.)
+      const preFilterCount = programs.length
+      programs = programs.filter(p => p.homeTeam.trim() !== '' || p.awayTeam.trim() !== '')
+      if (programs.length < preFilterCount) {
+        logInfo(`Filtered out ${preFilterCount - programs.length} programs without team matchups`)
       }
 
       logInfo(`Processed ${programs.length} programs from Rail API for ${deviceType}`)
@@ -581,7 +694,7 @@ export async function POST(request: NextRequest) {
       // Filter programs to only include preset channels
       presetFilteredPrograms = freshPrograms.filter(program => {
         const channelNumber = program.channel?.channelNumber || program.channel?.number
-        const isInPreset = channelNumber && presetChannels.has(channelNumber)
+        const isInPreset = channelNumber && (presetChannels.has(channelNumber) || presetChannels.has(String(channelNumber)))
 
         if (!isInPreset) {
           logInfo(`Filtering out channel ${channelNumber} - not in presets`, {

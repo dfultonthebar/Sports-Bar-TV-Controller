@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: body } = bodyValidation
     logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId } = body
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, trackOnly } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -91,7 +91,10 @@ export async function POST(request: NextRequest) {
 
     let result: any = { success: false }
 
-    if (deviceTypeStr === 'directv') {
+    // trackOnly mode: skip the actual tune, just update channel tracking below
+    if (trackOnly) {
+      result = { success: true, message: 'Track-only mode — channel tracking updated without tuning' }
+    } else if (deviceTypeStr === 'directv') {
       // DirecTV uses IP control - need either deviceIp or directTVId to look up the IP
       let targetIp = deviceIpStr
       const directTVIdStr = directTVId ? String(directTVId) : undefined
@@ -192,13 +195,13 @@ export async function POST(request: NextRequest) {
                 .from(schema.irDevices)
                 .where(and(
                   eq(schema.irDevices.id, cableBoxIdStr),
-                  eq(schema.irDevices.deviceType, 'Cable Box')
+                  or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox'))
                 ))
                 .limit(1)
                 .get()
             : await db.select()
                 .from(schema.irDevices)
-                .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+                .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
                 .limit(1)
                 .get()
 
@@ -472,7 +475,7 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     const irDevices = await db
       .select()
       .from(schema.irDevices)
-      .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+      .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
       .execute()
 
     if (irDevices.length === 0) {
@@ -549,8 +552,14 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     logger.info(`[CHANNEL TUNE] Channel number type: ${typeof channelNumber}, value: "${channelNumber}", length: ${channelNumber.length}`)
     logger.info(`[CHANNEL TUNE] Sending ${channelNumber.length} digits: ${channelNumber.split('').join(', ')}`)
 
+    // Pad channel number to 3 digits for Spectrum cable boxes
+    // Single digit "6" → "006", double digit "27" → "027", triple "303" stays "303"
+    // This prevents the cable box from waiting for more digits or misinterpreting
+    const paddedChannel = channelNumber.padStart(3, '0')
+    logger.info(`[CHANNEL TUNE] Padded channel: "${channelNumber}" → "${paddedChannel}"`)
+
     // Send each digit via IR
-    const digits = channelNumber.split('')
+    const digits = paddedChannel.split('')
     let digitsSent = 0
 
     for (const digit of digits) {
@@ -586,7 +595,17 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
         }, timeout)
 
         client.on('connect', () => {
-          client.write(command.irCode + '\r')
+          // Replace the port/connector in the IR code with the device's actual port
+          // IR codes are in format: sendir,MODULE:PORT,ID,...
+          // e.g., sendir,1:1,1,... needs to become sendir,1:2,1,... for port 2
+          let adjustedCode = command.irCode
+          if (targetDevice.globalCachePortNumber) {
+            adjustedCode = adjustedCode.replace(
+              /^(sendir,\d+:)\d+/,
+              `$1${targetDevice.globalCachePortNumber}`
+            )
+          }
+          client.write(adjustedCode + '\r')
         })
 
         client.on('data', (data) => {

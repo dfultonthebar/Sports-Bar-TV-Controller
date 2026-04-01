@@ -3,12 +3,13 @@
  *
  * Returns the games that the AI scheduler found and which inputs/TVs they're scheduled for
  * NOW USING FRESH DATA FROM THE RAIL MEDIA API
+ * ENHANCED WITH LEARNED SCHEDULING PATTERNS
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
@@ -97,6 +98,194 @@ function matchGameByTeams(espnGames: any[], homeTeam: string, awayTeam: string):
 
   return null
 }
+
+// ============================================================================
+// Scheduling Pattern Types
+// ============================================================================
+
+interface TeamRoutingPatternData {
+  team: string;
+  preferredInput: string;
+  preferredInputId: string;
+  preferredOutputs: number[];
+  frequency: number;
+}
+
+interface LeaguePriorityPatternData {
+  league: string;
+  avgTVs: number;
+  scheduleCount: number;
+}
+
+interface LoadedPattern {
+  patternType: string;
+  patternKey: string;
+  patternData: any;
+  confidence: number;
+  sampleSize: number;
+}
+
+interface SchedulingPatterns {
+  teamRouting: Map<string, { data: TeamRoutingPatternData; confidence: number }>;
+  leaguePriority: Map<string, { data: LeaguePriorityPatternData; confidence: number }>;
+  tvZonePreference: Map<string, { preferredOutputs: number[]; confidence: number }>;
+}
+
+/**
+ * Load learned scheduling patterns from the database.
+ * Returns parsed patterns organized by type, or null if no patterns exist.
+ */
+async function loadSchedulingPatterns(): Promise<SchedulingPatterns | null> {
+  try {
+    const rows = await db.all(sql`
+      SELECT pattern_type, pattern_key, pattern_data, confidence, sample_size
+      FROM scheduling_patterns
+      WHERE is_stale = 0
+      ORDER BY confidence DESC
+    `) as Array<{
+      pattern_type: string;
+      pattern_key: string;
+      pattern_data: string;
+      confidence: number;
+      sample_size: number;
+    }>
+
+    if (!rows || rows.length === 0) {
+      logger.info('[AI-GAMEPLAN] No scheduling patterns found in database, using default allocation logic')
+      return null
+    }
+
+    logger.info(`[AI-GAMEPLAN] Loaded ${rows.length} scheduling patterns from database`)
+
+    const patterns: SchedulingPatterns = {
+      teamRouting: new Map(),
+      leaguePriority: new Map(),
+      tvZonePreference: new Map(),
+    }
+
+    for (const row of rows) {
+      let parsedData: any
+      try {
+        parsedData = JSON.parse(row.pattern_data)
+      } catch {
+        logger.warn(`[AI-GAMEPLAN] Failed to parse pattern data for ${row.pattern_type}/${row.pattern_key}`)
+        continue
+      }
+
+      switch (row.pattern_type) {
+        case 'team_routing': {
+          const teamData = parsedData as TeamRoutingPatternData
+          patterns.teamRouting.set(row.pattern_key.toLowerCase(), {
+            data: teamData,
+            confidence: row.confidence,
+          })
+          // Also populate tv zone preferences from team routing data
+          if (teamData.preferredOutputs && teamData.preferredOutputs.length > 0) {
+            patterns.tvZonePreference.set(row.pattern_key.toLowerCase(), {
+              preferredOutputs: teamData.preferredOutputs,
+              confidence: row.confidence,
+            })
+          }
+          logger.info(`[AI-GAMEPLAN] Using learned pattern: ${row.pattern_key} → ${teamData.preferredInput} (confidence: ${row.confidence.toFixed(2)})`)
+          break
+        }
+        case 'league_priority': {
+          const leagueData = parsedData as LeaguePriorityPatternData
+          patterns.leaguePriority.set(row.pattern_key.toLowerCase(), {
+            data: leagueData,
+            confidence: row.confidence,
+          })
+          logger.info(`[AI-GAMEPLAN] Using learned pattern: League ${row.pattern_key} avgTVs=${leagueData.avgTVs} (confidence: ${row.confidence.toFixed(2)})`)
+          break
+        }
+        case 'tv_zone_preference': {
+          // Direct tv_zone_preference patterns (if stored separately from team_routing)
+          if (parsedData.preferredOutputs) {
+            patterns.tvZonePreference.set(row.pattern_key.toLowerCase(), {
+              preferredOutputs: parsedData.preferredOutputs,
+              confidence: row.confidence,
+            })
+          }
+          break
+        }
+        default:
+          // Other pattern types (time_slot, etc.) are informational only for now
+          break
+      }
+    }
+
+    const teamCount = patterns.teamRouting.size
+    const leagueCount = patterns.leaguePriority.size
+    const zoneCount = patterns.tvZonePreference.size
+    logger.info(`[AI-GAMEPLAN] Parsed patterns: ${teamCount} team routings, ${leagueCount} league priorities, ${zoneCount} TV zone preferences`)
+
+    return patterns
+  } catch (error: any) {
+    // Table might not exist yet — that's okay, fall back to default logic
+    logger.warn(`[AI-GAMEPLAN] Could not load scheduling patterns: ${error.message}`)
+    return null
+  }
+}
+
+/**
+ * Apply team routing patterns to enhance a game with preferred input info.
+ * Returns the preferred input label/id if a pattern exists for either team.
+ */
+function getTeamPreferredInput(
+  game: any,
+  patterns: SchedulingPatterns
+): { inputLabel: string; inputId: string; confidence: number } | null {
+  // Check home team first, then away team
+  for (const teamName of [game.homeTeam, game.awayTeam]) {
+    if (!teamName) continue
+    const key = teamName.toLowerCase()
+    const routing = patterns.teamRouting.get(key)
+    if (routing && routing.confidence >= 0.3) {
+      return {
+        inputLabel: routing.data.preferredInput,
+        inputId: routing.data.preferredInputId,
+        confidence: routing.confidence,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Get the league priority score from patterns.
+ * Higher avgTVs = higher priority when competing for limited inputs.
+ */
+function getLeaguePriorityScore(
+  league: string,
+  patterns: SchedulingPatterns
+): number {
+  if (!league) return 0
+  const key = league.toLowerCase()
+  const priority = patterns.leaguePriority.get(key)
+  if (priority) {
+    return priority.data.avgTVs * priority.confidence
+  }
+  return 0
+}
+
+/**
+ * Get preferred TV outputs for a team from patterns.
+ */
+function getPreferredOutputs(
+  game: any,
+  patterns: SchedulingPatterns
+): { outputs: number[]; confidence: number } | null {
+  for (const teamName of [game.homeTeam, game.awayTeam]) {
+    if (!teamName) continue
+    const key = teamName.toLowerCase()
+    const pref = patterns.tvZonePreference.get(key)
+    if (pref && pref.confidence >= 0.3) {
+      return { outputs: pref.preferredOutputs, confidence: pref.confidence }
+    }
+  }
+  return null
+}
+
 
 /**
  * Fetch fresh games from The Rail Media API
@@ -485,6 +674,56 @@ export async function GET(request: NextRequest) {
 
     logger.info(`[AI_GAME_PLAN] Fetched ${freshGames.length} fresh games from Rail Media API`)
 
+    // =========================================================================
+    // Load learned scheduling patterns for smarter allocation decisions
+    // =========================================================================
+    const schedulingPatterns = await loadSchedulingPatterns()
+
+    // If patterns exist, enrich games with pattern-based hints
+    if (schedulingPatterns) {
+      for (const game of freshGames) {
+        // Attach preferred input from team routing patterns
+        const preferredInput = getTeamPreferredInput(game, schedulingPatterns)
+        if (preferredInput) {
+          game.patternPreferredInput = preferredInput.inputLabel
+          game.patternPreferredInputId = preferredInput.inputId
+          game.patternInputConfidence = preferredInput.confidence
+        }
+
+        // Attach league priority score
+        const leagueScore = getLeaguePriorityScore(game.league, schedulingPatterns)
+        if (leagueScore > 0) {
+          game.patternLeaguePriority = leagueScore
+        }
+
+        // Attach preferred TV outputs (zone preferences)
+        const preferredOutputs = getPreferredOutputs(game, schedulingPatterns)
+        if (preferredOutputs) {
+          game.patternPreferredOutputs = preferredOutputs.outputs
+          game.patternOutputConfidence = preferredOutputs.confidence
+        }
+      }
+
+      // Sort upcoming/unassigned games using league priority patterns
+      // Higher league priority games should be considered first for allocation
+      freshGames.sort((a: any, b: any) => {
+        // Home team games always come first
+        if (a.isHomeTeamGame && !b.isHomeTeamGame) return -1
+        if (!a.isHomeTeamGame && b.isHomeTeamGame) return 1
+
+        // Then sort by pattern league priority (higher = more important)
+        const aPriority = a.patternLeaguePriority || 0
+        const bPriority = b.patternLeaguePriority || 0
+        if (aPriority !== bPriority) return bPriority - aPriority
+
+        // Fall back to start time
+        if (a.startTime && b.startTime) {
+          return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        }
+        return 0
+      })
+    }
+
     // Fetch Fire TV device statuses for streaming capability matching
     let fireTVDevices: any[] = []
     try {
@@ -566,6 +805,16 @@ export async function GET(request: NextRequest) {
     // Create a map of input ID to current game/program by matching current channels against fresh games
     const inputGameMap = new Map<string, any>()
 
+    // =========================================================================
+    // Build an input-label lookup for pattern-based routing hints
+    // =========================================================================
+    const inputsByLabel = new Map<string, any>()
+    for (const input of inputs) {
+      if (input.label) {
+        inputsByLabel.set(input.label.toLowerCase(), input)
+      }
+    }
+
     // Process all current channel entries (cable boxes, DirecTV, Fire TV - everything)
     for (const channelInfo of currentChannels) {
       if (channelInfo.channelNumber) {
@@ -585,7 +834,7 @@ export async function GET(request: NextRequest) {
 
           if (gameOnChannel) {
             // We found a game on this channel - add it to the map
-            inputGameMap.set(input.id, {
+            const gameEntry: any = {
               inputLabel: channelInfo.inputLabel || input.label,
               inputNumber: input.channelNumber,
               deviceType: channelInfo.deviceType,
@@ -599,7 +848,29 @@ export async function GET(request: NextRequest) {
               startTime: gameOnChannel.startTime,
               isHomeTeamGame: gameOnChannel.isHomeTeamGame,
               lastTuned: channelInfo.lastTuned
-            })
+            }
+
+            // Enrich with pattern data if available
+            if (schedulingPatterns) {
+              const preferredInput = getTeamPreferredInput(gameOnChannel, schedulingPatterns)
+              if (preferredInput) {
+                gameEntry.patternPreferredInput = preferredInput.inputLabel
+                gameEntry.patternMatchesPreferred = (
+                  (channelInfo.inputLabel || input.label || '').toLowerCase() === preferredInput.inputLabel.toLowerCase()
+                )
+                if (gameEntry.patternMatchesPreferred) {
+                  logger.info(`[AI-GAMEPLAN] Pattern match confirmed: ${gameOnChannel.homeTeam || gameOnChannel.awayTeam} on preferred input ${preferredInput.inputLabel}`)
+                }
+              }
+
+              const preferredOutputs = getPreferredOutputs(gameOnChannel, schedulingPatterns)
+              if (preferredOutputs) {
+                gameEntry.patternPreferredOutputs = preferredOutputs.outputs
+                gameEntry.patternOutputConfidence = preferredOutputs.confidence
+              }
+            }
+
+            inputGameMap.set(input.id, gameEntry)
             logger.debug(`[AI_GAME_PLAN] Matched ${channelInfo.inputLabel} (${channelInfo.deviceType}) on channel ${channelInfo.channelNumber} to ${gameOnChannel.homeTeam} vs ${gameOnChannel.awayTeam}`)
           } else {
             // No game found, but still show what's tuned
@@ -742,6 +1013,14 @@ export async function GET(request: NextRequest) {
         // Put live games first, then sort by start time
         if (a.liveData?.isLive && !b.liveData?.isLive) return -1
         if (!a.liveData?.isLive && b.liveData?.isLive) return 1
+
+        // Use pattern-based league priority for secondary sort
+        if (schedulingPatterns) {
+          const aPriority = a.patternLeaguePriority || 0
+          const bPriority = b.patternLeaguePriority || 0
+          if (aPriority !== bPriority) return bPriority - aPriority
+        }
+
         if (a.startTime && b.startTime) {
           return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
         }
@@ -751,6 +1030,30 @@ export async function GET(request: NextRequest) {
     // Count streaming games
     const streamingOnlyGames = freshGames.filter((g: any) => g.streamingOnly).length
     const gamesWithStreaming = freshGames.filter((g: any) => g.streamingApp).length
+
+    // Build pattern summary for the response
+    const patternSummary = schedulingPatterns ? {
+      loaded: true,
+      teamRoutingCount: schedulingPatterns.teamRouting.size,
+      leaguePriorityCount: schedulingPatterns.leaguePriority.size,
+      tvZonePreferenceCount: schedulingPatterns.tvZonePreference.size,
+      teamRoutings: Array.from(schedulingPatterns.teamRouting.entries()).map(([team, info]) => ({
+        team,
+        preferredInput: info.data.preferredInput,
+        confidence: info.confidence,
+      })),
+      leaguePriorities: Array.from(schedulingPatterns.leaguePriority.entries()).map(([league, info]) => ({
+        league,
+        avgTVs: info.data.avgTVs,
+        scheduleCount: info.data.scheduleCount,
+        confidence: info.confidence,
+      })),
+    } : {
+      loaded: false,
+      teamRoutingCount: 0,
+      leaguePriorityCount: 0,
+      tvZonePreferenceCount: 0,
+    }
 
     return NextResponse.json({
       success: true,
@@ -770,6 +1073,7 @@ export async function GET(request: NextRequest) {
       })),
       dataSource: 'The Rail Media API (Fresh)',
       fetchedAt: new Date().toISOString(),
+      schedulingPatterns: patternSummary,
       summary: {
         totalGames: freshGames.length,
         homeTeamGames: freshGames.filter((g: any) => g.isHomeTeamGame).length,
@@ -778,7 +1082,8 @@ export async function GET(request: NextRequest) {
         streamingOnlyGames,
         gamesWithStreaming,
         fireTVDevicesOnline: fireTVDevices.filter(d => d.isOnline).length,
-        leagues: [...new Set(freshGames.map((g: any) => g.league))].filter(Boolean)
+        leagues: [...new Set(freshGames.map((g: any) => g.league))].filter(Boolean),
+        patternsLoaded: !!schedulingPatterns,
       }
     })
 

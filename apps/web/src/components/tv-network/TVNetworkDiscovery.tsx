@@ -9,7 +9,9 @@ import {
   Wifi,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Link,
+  Monitor
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Button } from '@/components/ui/button'
@@ -23,6 +25,7 @@ interface NetworkTVDevice {
   model?: string
   port: number
   macAddress?: string
+  authToken?: string | null
   status: string
   lastSeen: string
   supportsPower: boolean
@@ -32,6 +35,8 @@ interface NetworkTVDevice {
   updatedAt: string
 }
 
+const IP_RANGE_KEY = 'tv-discovery-ip-range'
+
 export default function TVNetworkDiscovery() {
   const [devices, setDevices] = useState<NetworkTVDevice[]>([])
   const [isScanning, setIsScanning] = useState(false)
@@ -39,10 +44,30 @@ export default function TVNetworkDiscovery() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [powerLoading, setPowerLoading] = useState<string | null>(null)
+  const [pairLoading, setPairLoading] = useState<string | null>(null)
+  const [inputLoading, setInputLoading] = useState<string | null>(null)
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null)
+  const [ipRange, setIpRange] = useState('192.168.10.1-192.168.10.254')
+  const [statusChecking, setStatusChecking] = useState(false)
 
   useEffect(() => {
+    // Restore IP range from localStorage
+    const saved = localStorage.getItem(IP_RANGE_KEY)
+    if (saved) setIpRange(saved)
     loadDevices()
+
+    // Poll TV status every 30 seconds
+    const statusInterval = setInterval(() => {
+      refreshStatus()
+    }, 30000)
+
+    return () => clearInterval(statusInterval)
   }, [])
+
+  const saveIpRange = (value: string) => {
+    setIpRange(value)
+    localStorage.setItem(IP_RANGE_KEY, value)
+  }
 
   const loadDevices = async () => {
     setIsLoading(true)
@@ -67,20 +92,33 @@ export default function TVNetworkDiscovery() {
     }
   }
 
+  const refreshStatus = async () => {
+    setStatusChecking(true)
+    try {
+      const response = await fetch('/api/tv-discovery/status', { method: 'POST' })
+      if (response.ok) {
+        await loadDevices()
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] Status check failed:', err)
+    } finally {
+      setStatusChecking(false)
+    }
+  }
+
   const startNetworkScan = async () => {
     setIsScanning(true)
     setError(null)
     setSuccessMessage(null)
 
     try {
-      // Default scan parameters matching the requirements
       const scanParams = new URLSearchParams({
-        ipRange: '192.168.5.1-192.168.5.254',
-        ports: '8001,8002,80,8060',
+        ipRange,
+        ports: '8001,8060',
         timeout: '2000'
       })
 
-      logger.info('[TV-DISCOVERY] Starting network scan')
+      logger.info('[TV-DISCOVERY] Starting network scan', { ipRange })
 
       const response = await fetch(`/api/tv-discovery/scan?${scanParams}`, {
         method: 'POST'
@@ -89,11 +127,7 @@ export default function TVNetworkDiscovery() {
       if (response.ok) {
         const data = await response.json()
         setSuccessMessage(data.message || `Scan complete. Found ${data.devicesFound} TV(s)`)
-
-        // Reload device list to show newly discovered TVs
         await loadDevices()
-
-        // Auto-dismiss success message after 5 seconds
         setTimeout(() => setSuccessMessage(null), 5000)
       } else {
         const errorData = await response.json()
@@ -131,6 +165,92 @@ export default function TVNetworkDiscovery() {
       setError('Failed to send power command')
     } finally {
       setPowerLoading(null)
+    }
+  }
+
+  const sendBulkPower = async (action: 'on' | 'off' | 'toggle') => {
+    setBulkLoading(action)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/tv-control/bulk-power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || `Bulk power ${action} complete`)
+        setTimeout(() => setSuccessMessage(null), 5000)
+      } else {
+        setError(data.error || `Bulk power ${action} failed`)
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] Bulk power error:', err)
+      setError('Failed to send bulk power command')
+    } finally {
+      setBulkLoading(null)
+    }
+  }
+
+  const pairDevice = async (deviceId: string) => {
+    setPairLoading(deviceId)
+    setError(null)
+
+    try {
+      setSuccessMessage('Pairing... Please accept the popup on the TV screen')
+
+      const response = await fetch(`/api/tv-control/${deviceId}/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeout: 30000 })
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setSuccessMessage('Pairing successful! Token saved.')
+        await loadDevices()
+        setTimeout(() => setSuccessMessage(null), 5000)
+      } else {
+        setError(data.error || 'Pairing failed')
+        setSuccessMessage(null)
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] Pair error:', err)
+      setError('Pairing failed')
+      setSuccessMessage(null)
+    } finally {
+      setPairLoading(null)
+    }
+  }
+
+  const sendInputCommand = async (deviceId: string, input: string) => {
+    setInputLoading(`${deviceId}-${input}`)
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/tv-control/${deviceId}/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setSuccessMessage(`Switched to ${input.toUpperCase()}`)
+        setTimeout(() => setSuccessMessage(null), 3000)
+      } else {
+        setError(data.error || `Input switch failed`)
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] Input command error:', err)
+      setError('Failed to switch input')
+    } finally {
+      setInputLoading(null)
     }
   }
 
@@ -173,14 +293,14 @@ export default function TVNetworkDiscovery() {
             </div>
             <div className="flex items-center gap-3">
               <Button
-                onClick={loadDevices}
-                disabled={isLoading || isScanning}
+                onClick={refreshStatus}
+                disabled={statusChecking || isScanning}
                 variant="outline"
                 size="sm"
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`w-4 h-4 ${statusChecking ? 'animate-spin' : ''}`} />
+                Check Status
               </Button>
               <Button
                 onClick={startNetworkScan}
@@ -204,6 +324,25 @@ export default function TVNetworkDiscovery() {
         </CardHeader>
       </Card>
 
+      {/* Bulk Power Controls */}
+      <div className="flex items-center gap-3">
+        <Button
+          onClick={() => sendBulkPower('toggle')}
+          disabled={!!bulkLoading || devices.length === 0}
+          className="bg-slate-600 hover:bg-slate-500 text-white"
+        >
+          {bulkLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          ) : (
+            <Power className="w-4 h-4 mr-2" />
+          )}
+          Toggle All TVs
+        </Button>
+        <span className="text-sm text-slate-400">
+          {devices.length} device{devices.length !== 1 ? 's' : ''} discovered
+        </span>
+      </div>
+
       {/* Messages */}
       {error && (
         <div className="bg-red-900/40 border border-red-500/50 rounded-lg p-4">
@@ -223,21 +362,27 @@ export default function TVNetworkDiscovery() {
         </div>
       )}
 
-      {/* Scan Info */}
+      {/* Scan Config */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-start gap-3 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
             <Search className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <div className="space-y-2">
+            <div className="space-y-2 flex-1">
               <p className="text-sm text-blue-200 font-medium">
                 Network Scan Configuration
               </p>
-              <p className="text-sm text-blue-300">
-                Scanning IP range: <code className="bg-blue-950/50 px-2 py-0.5 rounded">192.168.5.1-254</code> on ports{' '}
-                <code className="bg-blue-950/50 px-2 py-0.5 rounded">8001, 8002, 80, 8060</code>
-              </p>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-blue-300">IP Range:</label>
+                <input
+                  type="text"
+                  value={ipRange}
+                  onChange={(e) => saveIpRange(e.target.value)}
+                  placeholder="192.168.10.1-192.168.10.254"
+                  className="bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white font-mono w-80 focus:outline-none focus:border-blue-500"
+                />
+              </div>
               <p className="text-xs text-blue-400 mt-2">
-                Supported: Roku (8060), Samsung (8001/8002), Generic HTTP (80)
+                Supported: Roku (8060), Samsung (8001)
               </p>
             </div>
           </div>
@@ -278,11 +423,20 @@ export default function TVNetworkDiscovery() {
                         {device.brand.toUpperCase()}
                       </Badge>
                     </div>
-                    {device.status === 'online' ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {device.brand.toLowerCase() === 'samsung' && !device.authToken && (
+                        <Badge variant="outline" className="bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs">
+                          Unpaired
+                        </Badge>
+                      )}
+                      {device.status === 'online' ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : device.status === 'pairing' ? (
+                        <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                      )}
+                    </div>
                   </div>
 
                   {/* Device Info */}
@@ -315,55 +469,75 @@ export default function TVNetworkDiscovery() {
                     </div>
                   </div>
 
-                  {/* Power Controls */}
+                  {/* Pair Button for Samsung without token */}
+                  {device.brand.toLowerCase() === 'samsung' && !device.authToken && (
+                    <div className="mb-3">
+                      <Button
+                        onClick={() => pairDevice(device.id)}
+                        disabled={pairLoading === device.id}
+                        size="sm"
+                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
+                      >
+                        {pairLoading === device.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            Waiting for TV approval...
+                          </>
+                        ) : (
+                          <>
+                            <Link className="w-3 h-3 mr-1" />
+                            Pair TV
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Power Control */}
                   {device.supportsPower && (
                     <div className="flex gap-2 mt-3 pt-3 border-t border-slate-700">
-                      <Button
-                        onClick={() => sendPowerCommand(device.id, 'on')}
-                        disabled={powerLoading === device.id}
-                        size="sm"
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        {powerLoading === device.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Power className="w-3 h-3 mr-1" />
-                            On
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={() => sendPowerCommand(device.id, 'off')}
-                        disabled={powerLoading === device.id}
-                        size="sm"
-                        className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        {powerLoading === device.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Power className="w-3 h-3 mr-1" />
-                            Off
-                          </>
-                        )}
-                      </Button>
                       <Button
                         onClick={() => sendPowerCommand(device.id, 'toggle')}
                         disabled={powerLoading === device.id}
                         size="sm"
-                        variant="outline"
-                        className="flex-1"
+                        className="flex-1 bg-slate-600 hover:bg-slate-500 text-white"
                       >
                         {powerLoading === device.id ? (
                           <Loader2 className="w-3 h-3 animate-spin" />
                         ) : (
                           <>
                             <Power className="w-3 h-3 mr-1" />
-                            Toggle
+                            Power
                           </>
                         )}
                       </Button>
+                    </div>
+                  )}
+
+                  {/* HDMI Input Controls */}
+                  {device.supportsInput && (
+                    <div className="mt-3 pt-3 border-t border-slate-700">
+                      <p className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                        <Monitor className="w-3 h-3" /> HDMI Input
+                      </p>
+                      <div className="flex gap-1">
+                        {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
+                          <Button
+                            key={input}
+                            onClick={() => sendInputCommand(device.id, input)}
+                            disabled={inputLoading === `${device.id}-${input}`}
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 text-xs"
+                          >
+                            {inputLoading === `${device.id}-${input}` ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              input.replace('hdmi', 'HDMI ')
+                            )}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   )}
 

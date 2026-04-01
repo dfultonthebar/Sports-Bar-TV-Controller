@@ -17,12 +17,6 @@ import { sendHTTPCommand } from './wolfpack-matrix-service'
  */
 export async function routeMatrix(inputNum: number, outputNum: number, chassisId?: string | null): Promise<boolean> {
   try {
-    // Validate input parameters (upper bound checked against actual config below)
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1) {
-      logger.error(`Invalid input (${inputNum}) or output (${outputNum}) channel`)
-      return false
-    }
-
     // Get matrix configuration - by chassisId or fallback to active
     let activeConfig
     if (chassisId) {
@@ -45,11 +39,11 @@ export async function routeMatrix(inputNum: number, outputNum: number, chassisId
       return false
     }
 
-    // Validate against actual matrix size
+    // Validate input parameters against actual matrix size
     const maxInput = activeConfig.inputCount || 36
     const maxOutput = activeConfig.outputCount || 36
-    if (inputNum > maxInput || outputNum > maxOutput) {
-      logger.error(`Channel out of range: input ${inputNum}/${maxInput}, output ${outputNum}/${maxOutput}`)
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > maxInput || outputNum > maxOutput) {
+      logger.error(`Invalid input (${inputNum}, max ${maxInput}) or output (${outputNum}, max ${maxOutput}) channel`)
       return false
     }
 
