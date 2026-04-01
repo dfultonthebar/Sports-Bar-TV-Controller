@@ -5,7 +5,7 @@ import * as net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateRequestBody, isValidationError } from '@/lib/validation'
 import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 interface MatrixSwitchRequest {

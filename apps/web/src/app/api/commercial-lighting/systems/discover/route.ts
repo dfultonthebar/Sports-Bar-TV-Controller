@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@sports-bar/logger'
-import { LutronLIPClient, HueClient } from '@sports-bar/commercial-lighting'
+import { LutronLIPClient } from '@sports-bar/commercial-lighting'
 
 interface DiscoveredSystem {
   systemType: string

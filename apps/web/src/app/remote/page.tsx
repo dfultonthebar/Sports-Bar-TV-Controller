@@ -5,20 +5,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Tv,
-  Radio,
   Power,
-  VolumeX,
   Volume2,
-  ChevronUp,
-  ChevronDown,
-  RotateCcw,
-  Settings,
-  MapPin,
   Zap,
-  Volume1,
-  VolumeIcon,
-  Sliders,
-  Speaker,
   Calendar,
   Music2,
   Gamepad2,
@@ -27,14 +16,10 @@ import {
   Monitor,
   Loader2
 } from 'lucide-react'
-import Image from 'next/image'
-import SportsGuide from '@/components/SportsGuide'
-import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
-import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import DJControlPanel from '@/components/DJControlPanel'
@@ -113,35 +98,6 @@ interface TVLayout {
   zones: TVLayoutZone[]
 }
 
-interface RemoteCommand {
-  display: string
-  command: string
-  icon?: any
-  color?: string
-}
-
-const CHANNEL_COMMANDS: RemoteCommand[] = [
-  { display: '1', command: '1' },
-  { display: '2', command: '2' },
-  { display: '3', command: '3' },
-  { display: '4', command: '4' },
-  { display: '5', command: '5' },
-  { display: '6', command: '6' },
-  { display: '7', command: '7' },
-  { display: '8', command: '8' },
-  { display: '9', command: '9' },
-  { display: '0', command: '0' },
-  { display: 'CH+', command: 'CH_UP', icon: ChevronUp },
-  { display: 'CH-', command: 'CH_DOWN', icon: ChevronDown },
-]
-
-const CONTROL_COMMANDS: RemoteCommand[] = [
-  { display: 'Power', command: 'POWER', icon: Power, color: 'bg-red-500' },
-  { display: 'Vol+', command: 'VOL_UP', icon: Volume2, color: 'bg-blue-500' },
-  { display: 'Vol-', command: 'VOL_DOWN', icon: VolumeX, color: 'bg-blue-500' },
-  { display: 'Mute', command: 'MUTE', icon: VolumeX, color: 'bg-orange-500' },
-]
-
 export default function BartenderRemotePage() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
@@ -149,8 +105,7 @@ export default function BartenderRemotePage() {
   const [firetvDevices, setFiretvDevices] = useState<FireTVDevice[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<AllDeviceTypes | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  const [, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
@@ -566,45 +521,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const selectInput = async (inputNumber: number) => {
-    setSelectedInput(inputNumber)
-    
-    // Find the corresponding device for this input from all device types
-    let device: AllDeviceTypes | null = null
-
-    // Check IR devices first
-    device = irDevices.find(d => d.matrixInput === inputNumber && d.isActive) || null  // Fixed: use matrixInput for IR devices
-    
-    // Check DirecTV devices if no IR device found
-    if (!device) {
-      device = directvDevices.find(d => d.inputChannel === inputNumber) || null
-    }
-    
-    // Check Fire TV devices if no other device found
-    if (!device) {
-      device = firetvDevices.find(d => d.inputChannel === inputNumber) || null
-    }
-    
-    setSelectedDevice(device || null)
-    
-    const input = inputs.find(i => i.channelNumber === inputNumber)
-    
-    if (device) {
-      const deviceBrand = 'brand' in device ? device.brand : (device.deviceType === 'DirecTV' ? 'DirecTV' : 'Amazon Fire TV')
-      const controlType = device.controlMethod === 'IP' ? 'IP Control' : 'IR Control'
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} → ${device.name} (${deviceBrand} - ${controlType})`)
-    } else {
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} ⚠️ No control device configured for this input`)
-    }
-    
-    // Auto-clear status after 5 seconds
-    setTimeout(() => {
-      if (commandStatus.includes(input?.label || `Input ${inputNumber}`)) {
-        setCommandStatus('')
-      }
-    }, 5000)
-  }
-
   const routeInputToOutput = async (inputNumber: number, outputNumber: number) => {
     // Allow routing attempt even if connection status shows disconnected
     // The actual routing API will handle connection failures gracefully
@@ -639,174 +555,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const handleLabelUpdate = async (zoneId: string, newLabel: string) => {
-    try {
-      // Update local state immediately for responsive UI
-      const updatedZones = tvLayout.zones.map(zone =>
-        zone.id === zoneId ? { ...zone, label: newLabel } : zone
-      )
-      setTVLayout({ ...tvLayout, zones: updatedZones })
-
-      // Save to backend if layout has an ID
-      if (tvLayout.id) {
-        await fetch('/api/bartender/layout', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            layoutId: tvLayout.id,
-            zones: updatedZones
-          })
-        })
-      }
-    } catch (error) {
-      logger.error('Error updating label:', error)
-    }
-  }
-
-  const handleZoneClick = (zone: TVLayoutZone) => {
-    if (selectedInput && inputs.length > 0) {
-      const input = inputs.find(i => i.channelNumber === selectedInput)
-      if (input) {
-        routeInputToOutput(input.channelNumber, zone.outputNumber)
-      }
-    } else {
-      setCommandStatus('⚠️ Please select an input first')
-      setTimeout(() => setCommandStatus(''), 3000)
-    }
-  }
-
-  const sendIRCommand = async (command: string) => {
-    if (!selectedDevice) {
-      setCommandStatus('No device selected')
-      return
-    }
-
-    setLoading(true)
-    setCommandStatus(`Sending ${command}...`)
-
-    try {
-      let response;
-      
-      // Handle DirecTV devices
-      if (selectedDevice.deviceType === 'DirecTV') {
-        const directvDevice = selectedDevice as DirecTVDevice
-        response = await fetch('/api/directv-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: directvDevice.id,
-            command: command,
-            ipAddress: directvDevice.ipAddress,
-            port: directvDevice.port
-          })
-        })
-      }
-      // Handle Fire TV devices  
-      else if ('deviceType' in selectedDevice && selectedDevice.deviceType !== 'DirecTV') {
-        const firetvDevice = selectedDevice as FireTVDevice
-        response = await fetch('/api/firetv-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: firetvDevice.id,
-            command: command,
-            ipAddress: firetvDevice.ipAddress,
-            port: firetvDevice.port
-          })
-        })
-      }
-      // Handle IR devices (original logic)
-      else if (selectedDevice.controlMethod === 'IP' && 'deviceIpAddress' in selectedDevice && selectedDevice.deviceIpAddress) {
-        const irDevice = selectedDevice as IRDevice
-        response = await fetch('/api/ir-devices/send-ip-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: irDevice.id,
-            command: command,
-            ipAddress: irDevice.deviceIpAddress,
-            port: irDevice.ipControlPort || 80
-          })
-        })
-      } else if ('iTachAddress' in selectedDevice && selectedDevice.iTachAddress) {
-        const irDevice = selectedDevice as IRDevice
-        response = await fetch('/api/ir-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: irDevice.id,
-            command: command,
-            iTachAddress: irDevice.iTachAddress
-          })
-        })
-      } else {
-        setCommandStatus('Device not configured')
-        setLoading(false)
-        return
-      }
-
-      const result = await response.json()
-      
-      if (response.ok) {
-        setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
-
-        // Track digit commands for channel updates
-        if (/^[0-9]$/.test(command) && selectedInput && ('iTachAddress' in selectedDevice || selectedDevice.deviceType === 'DirecTV')) {
-          digitBufferRef.current += command
-
-          // Capture device identity at the moment digits are typed
-          const capturedDeviceId = selectedDevice.id
-          const capturedDeviceType = selectedDevice.deviceType
-
-          // Clear any pending timer
-          if (digitTimerRef.current) clearTimeout(digitTimerRef.current)
-
-          // After 2s of no more digits, update channel tracking
-          digitTimerRef.current = setTimeout(async () => {
-            const channelNum = digitBufferRef.current
-            digitBufferRef.current = ''
-            try {
-              // Update channel tracking in the database
-              // Use captured device identity, not current selectedDevice
-              await fetch('/api/channel-presets/tune', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  channelNumber: channelNum,
-                  deviceType: capturedDeviceType === 'DirecTV' ? 'directv' : 'cable',
-                  cableBoxId: capturedDeviceId,
-                  presetId: 'manual',
-                  trackOnly: true
-                })
-              })
-              // Reload current channels to update the layout display
-              loadCurrentChannels()
-            } catch (err) {
-              logger.error('Error updating channel tracking:', err)
-            }
-          }, 2000)
-        }
-      } else {
-        setCommandStatus(`✗ Failed: ${result.error}`)
-      }
-    } catch (error) {
-      logger.error('Error sending command:', error)
-      setCommandStatus(`✗ Error sending ${command}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const getInputIcon = (inputType: string) => {
-    switch (inputType.toLowerCase()) {
-      case 'cable': return '📺'
-      case 'satellite': return '🛰️'
-      case 'streaming': return '📱'
-      case 'gaming': return '🎮'
-      default: return '📺'
-    }
-  }
-
   const loadCurrentChannels = async () => {
     try {
       const response = await fetch('/api/matrix/current-channels')
@@ -838,25 +586,6 @@ export default function BartenderRemotePage() {
     } finally {
       setLoadingRoutes(false)
     }
-  }
-
-  const getInputLabelWithChannel = (inputNum: number): string => {
-    const input = inputs.find(i => i.channelNumber === inputNum)
-    if (!input) return `IN ${inputNum}`
-
-    // Check if this input has current channel info
-    const channelInfo = currentChannels[inputNum]
-    if (channelInfo) {
-      if (channelInfo.channelName) {
-        // Show preset name if available (e.g., "ESPN")
-        return channelInfo.channelName
-      } else {
-        // Show channel number if no preset name (e.g., "Ch 40")
-        return `Ch ${channelInfo.channelNumber}`
-      }
-    }
-
-    return input.label
   }
 
   const loadNetworkTVs = async () => {

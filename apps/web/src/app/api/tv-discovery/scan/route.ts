@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-import { validateQueryParams, ValidationSchemas, z } from '@/lib/validation'
+import { validateQueryParams, ValidationSchemas } from '@/lib/validation'
 import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
@@ -29,10 +29,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate query parameters
-  const queryValidation = validateQueryParams(request, ValidationSchemas.tvNetworkScan)
+  const queryValidation = validateQueryParams(request, ValidationSchemas.tvNetworkScan as any)
   if (!queryValidation.success) return queryValidation.error
 
-  const { ipRange, ports, timeout } = queryValidation.data
+  const { ipRange, ports, timeout } = queryValidation.data as { ipRange?: string; ports?: number[]; timeout?: number }
 
   try {
     logger.info('[TV-DISCOVERY] Starting network scan', { ipRange, ports, timeout })
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     await Promise.race([
       Promise.all(scanPromises),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Scan timeout')), scanTimeout))
-    ]).catch((err) => {
+    ]).catch((_err) => {
       logger.warn('[TV-DISCOVERY] Scan timeout reached, returning partial results')
     })
 

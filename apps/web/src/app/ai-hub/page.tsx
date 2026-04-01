@@ -7,10 +7,6 @@ import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
-import SmartDeviceOptimizer from '@/components/SmartDeviceOptimizer'
-import IntelligentTroubleshooter from '@/components/IntelligentTroubleshooter'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
-import { Badge } from '@/components/ui/badge'
 
 import { logger } from '@sports-bar/logger'
 
@@ -63,7 +59,6 @@ export default function AIHubPage() {
 
   // AI Configuration state
   const [providersStatus, setProvidersStatus] = useState<AIProvidersStatus | null>(null)
-  const [isLoadingProviders, setIsLoadingProviders] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // AI Enhanced Devices state
@@ -187,7 +182,6 @@ export default function AIHubPage() {
     } catch (error) {
       logger.error('Error testing AI providers:', error)
     } finally {
-      setIsLoadingProviders(false)
       setIsRefreshing(false)
     }
   }
@@ -478,7 +472,7 @@ export default function AIHubPage() {
                     type="text"
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Ask about your code, troubleshoot issues, or request help..."
                     className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
                     disabled={isChatting}

@@ -50,5 +50,5 @@ export {
 } from './models'
 
 // Learning System
-export { runLearningCycle } from './wolfpack-pattern-learner'
+export { runLearningCycle, getLearningStats, getLearnedPatterns, getLastRunTimestamp } from './wolfpack-pattern-learner'
 export { recordRouteSuccess, recordRouteFailure, recordConnectionError } from './wolfpack-learning-collector'
