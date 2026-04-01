@@ -1,1 +1,323 @@
-{"name":"Bar Layout","zones":[],"rooms":[]}
+{
+  "name": "Bar Layout",
+  "imageUrl": "/api/uploads/layouts/layout_1772594998443.png",
+  "originalFileUrl": "/api/uploads/layouts/layout_1772594998443.png",
+  "zones": [
+    {
+      "id": "tv1",
+      "outputNumber": 1,
+      "x": 36.94,
+      "y": 18.37,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 1",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv2",
+      "outputNumber": 2,
+      "x": 59.27,
+      "y": 19.58,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 2",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv3",
+      "outputNumber": 3,
+      "x": 58.87,
+      "y": 70.25,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 3",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv4",
+      "outputNumber": 4,
+      "x": 36.64,
+      "y": 70.8,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 4",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv5",
+      "outputNumber": 5,
+      "x": 61.82,
+      "y": 50.13,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 5",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv8",
+      "outputNumber": 8,
+      "x": 79.07,
+      "y": 20.17,
+      "width": 5.5,
+      "height": 11.94,
+      "label": "TV 8",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv9",
+      "outputNumber": 9,
+      "x": 79.41,
+      "y": 32.02,
+      "width": 5.5,
+      "height": 11.94,
+      "label": "TV 9",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv6",
+      "outputNumber": 6,
+      "x": 61.74,
+      "y": 41.16,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 6",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv7",
+      "outputNumber": 7,
+      "x": 61.67,
+      "y": 32.9,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 7",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "dining-room"
+    },
+    {
+      "id": "tv10",
+      "outputNumber": 10,
+      "x": 79.5,
+      "y": 47,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 10",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv11",
+      "outputNumber": 11,
+      "x": 68.89,
+      "y": 34.84,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 11",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv12",
+      "outputNumber": 12,
+      "x": 57.04,
+      "y": 57.59,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 12",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv13",
+      "outputNumber": 13,
+      "x": 43.86,
+      "y": 35.05,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 13",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv14",
+      "outputNumber": 14,
+      "x": 52.55,
+      "y": 30.12,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 14",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv15",
+      "outputNumber": 15,
+      "x": 52.46,
+      "y": 38.9,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 15",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv16",
+      "outputNumber": 16,
+      "x": 55.88,
+      "y": 47.11,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 16",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv18",
+      "outputNumber": 18,
+      "x": 61.41,
+      "y": 30.24,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 18",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv17",
+      "outputNumber": 17,
+      "x": 58.98,
+      "y": 39.11,
+      "width": 10.21,
+      "height": 5.5,
+      "label": "TV 17",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv19",
+      "outputNumber": 19,
+      "x": 60.4,
+      "y": 51.17,
+      "width": 10.21,
+      "height": 5.5,
+      "label": "TV 19",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "niagra-room"
+    },
+    {
+      "id": "tv20",
+      "outputNumber": 20,
+      "x": 41.81,
+      "y": 65.28,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 20",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "niagra-room"
+    },
+    {
+      "id": "tv21",
+      "outputNumber": 21,
+      "x": 37.16,
+      "y": 44.11,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 21",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "main-bar"
+    },
+    {
+      "id": "tv22",
+      "outputNumber": 22,
+      "x": 37.18,
+      "y": 46.49,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 22",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "redbird-room"
+    },
+    {
+      "id": "tv23",
+      "outputNumber": 23,
+      "x": 43.67,
+      "y": 25.86,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 23",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "redbird-room"
+    },
+    {
+      "id": "tv24",
+      "outputNumber": 24,
+      "x": 43.89,
+      "y": 56.63,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 24",
+      "confidence": 0.95,
+      "ocrMethod": "manual",
+      "room": "redbird-room"
+    }
+  ],
+  "imageWidth": 9834,
+  "imageHeight": 6834,
+  "rooms": [
+    {
+      "id": "dining-room",
+      "name": "Dining Room",
+      "color": "#3B82F6",
+      "imageUrl": "/api/uploads/layouts/layout_1775063512740.png"
+    },
+    {
+      "id": "main-bar",
+      "name": "Main Bar",
+      "color": "#10B981",
+      "imageUrl": "/api/uploads/layouts/layout_1772595045674.png"
+    },
+    {
+      "id": "niagra-room",
+      "name": "Niagra Room",
+      "color": "#8B5CF6",
+      "imageUrl": "/api/uploads/layouts/layout_1772595296121.png"
+    },
+    {
+      "id": "redbird-room",
+      "name": "Redbird Room",
+      "color": "#EF4444",
+      "imageUrl": "/api/uploads/layouts/layout_1775063560946.png"
+    }
+  ]
+}

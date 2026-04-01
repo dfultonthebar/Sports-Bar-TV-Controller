@@ -186,9 +186,10 @@ export default function BartenderRemotePage() {
   const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
   const [pairingTVId, setPairingTVId] = useState<string | null>(null)
 
-  // Lighting visibility settings
+  // Bartender remote visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
   const [commercialLightingEnabled, setCommercialLightingEnabled] = useState(false)
+  const [djControlsEnabled, setDjControlsEnabled] = useState(false)
   const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
 
   // Tab state
@@ -219,6 +220,7 @@ export default function BartenderRemotePage() {
       if (result.success && result.data) {
         setDmxLightingEnabled(result.data.dmxLightingEnabled)
         setCommercialLightingEnabled(result.data.commercialLightingEnabled)
+        setDjControlsEnabled(result.data.djControlsEnabled ?? false)
       }
     } catch (error) {
       logger.error('Failed to fetch lighting settings:', error)
@@ -1382,7 +1384,7 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
-        {activeTab === 'dj' && (
+        {activeTab === 'dj' && djControlsEnabled && (
           <div className="max-w-7xl mx-auto pt-4">
             <DJControlPanel />
           </div>
@@ -1493,17 +1495,19 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Schedule</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('dj')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'dj'
-                ? 'bg-orange-500/30 text-orange-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-            }`}
-          >
-            <Music className="w-4 h-4" />
-            <span className="text-xs font-medium">DJ</span>
-          </button>
+          {djControlsEnabled && (
+            <button
+              onClick={() => setActiveTab('dj')}
+              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+                activeTab === 'dj'
+                  ? 'bg-orange-500/30 text-orange-300'
+                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+              }`}
+            >
+              <Music className="w-4 h-4" />
+              <span className="text-xs font-medium">DJ</span>
+            </button>
+          )}
 
           {lightingEnabled && (
             <button

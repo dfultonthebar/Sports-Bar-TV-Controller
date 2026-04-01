@@ -51,4 +51,4 @@ export {
 
 // Learning System
 export { runLearningCycle } from './wolfpack-pattern-learner'
-export { WolfpackLearningCollector } from './wolfpack-learning-collector'
+export { recordRouteSuccess, recordRouteFailure, recordConnectionError } from './wolfpack-learning-collector'

@@ -47,7 +47,7 @@ next-env.d.ts
 !/uploads/.gitkeep
 /public/uploads/*
 !/public/uploads/.gitkeep
-apps/web/public/uploads/layouts/
+# Layout images tracked on location branches (not main)
 
 # logs
 *.log
@@ -116,10 +116,12 @@ next/
 # Memory Bank snapshots
 /memory-bank/*
 !/memory-bank/.gitkeep
+apps/web/memory-bank/
 rag-data/
 
 # Large log files
 /log/
+apps/web/log/
 
 # FireStick Scout build artifacts
 firestick-scout/.gradle/

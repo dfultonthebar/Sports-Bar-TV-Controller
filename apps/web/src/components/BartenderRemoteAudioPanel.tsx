@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Volume2, Activity, ChevronDown, ChevronUp, Speaker, Mic, Radio } from 'lucide-react'
 import { Switch } from './ui/switch'
 import AtlasGroupsControl from './AtlasGroupsControl'
-import AtlasZoneControl from './AtlasZoneControl'
 import WolfpackMatrixOutputControl from './WolfpackMatrixOutputControl'
 import AtlasRealtimeMeters from './AtlasRealtimeMeters'
 import DbxZoneControl from './DbxZoneControl'
@@ -202,16 +201,9 @@ export default function BartenderRemoteAudioPanel({
               </h3>
 
               <div className="w-full">
-                {processorId ? (
-                  <AtlasZoneControl
-                    processorId={processorId}
-                    processorIp={processorIp}
-                  />
-                ) : (
-                  <AtlasGroupsControl
-                    processorIp={processorIp}
-                  />
-                )}
+                <AtlasGroupsControl
+                  processorIp={processorIp}
+                />
               </div>
             </div>
           </>
