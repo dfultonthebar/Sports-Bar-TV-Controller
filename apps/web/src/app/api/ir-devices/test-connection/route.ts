@@ -8,7 +8,14 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url)
-  const iTachAddress = searchParams.get('address') || '192.168.1.100'
+  const iTachAddress = searchParams.get('address')
+
+  if (!iTachAddress) {
+    return NextResponse.json(
+      { connected: false, message: 'Missing required "address" query parameter' },
+      { status: 400 }
+    )
+  }
 
   try {
     const net = await import('net')

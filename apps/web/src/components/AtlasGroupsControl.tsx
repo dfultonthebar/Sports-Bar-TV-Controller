@@ -33,11 +33,13 @@ export default function AtlasGroupsControl({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!processorIp) return
     fetchGroups()
     fetchSources()
   }, [processorIp])
 
   const fetchGroups = async () => {
+    if (!processorIp) return
     try {
       setLoading(true)
       const response = await fetch(`/api/atlas/groups?processorIp=${processorIp}`)
@@ -58,6 +60,7 @@ export default function AtlasGroupsControl({
   }
 
   const fetchSources = async () => {
+    if (!processorIp) return
     try {
       const response = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
 
@@ -79,6 +82,7 @@ export default function AtlasGroupsControl({
   }
 
   const handleGroupAction = async (groupIndex: number, action: string, value: any) => {
+    if (!processorIp) return
     try {
       const response = await fetch('/api/atlas/groups', {
         method: 'POST',

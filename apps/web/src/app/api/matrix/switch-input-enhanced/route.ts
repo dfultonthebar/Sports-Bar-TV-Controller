@@ -6,6 +6,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
 
 interface MatrixSwitchRequest {
   input: number
@@ -81,9 +82,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get Wolf Pack configuration
-    const wolfPackHost = process.env.WOLFPACK_HOST || '192.168.1.100'
-    const wolfPackPort = parseInt(process.env.WOLFPACK_PORT || '23')
+    // Get Wolf Pack configuration from database (active chassis)
+    const matrixConfig = await getActiveChassisConfig()
+    const wolfPackHost = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST
+    const wolfPackPort = matrixConfig?.tcpPort || parseInt(process.env.WOLFPACK_PORT || '5000')
+
+    if (!wolfPackHost) {
+      await enhancedLogger.error(
+        'hardware',
+        'wolf-pack-matrix',
+        'no_config',
+        'No Wolf Pack IP found in database or environment variables',
+        { requestId }
+      )
+      return NextResponse.json(
+        { error: 'No matrix configuration found. Configure a Wolf Pack matrix in Device Config.' },
+        { status: 503 }
+      )
+    }
 
     await enhancedLogger.info(
       'hardware',
@@ -289,11 +305,26 @@ export async function GET(request: NextRequest) {
       'Matrix status check requested'
     )
 
-    // Return current matrix status (this would be enhanced to read actual status)
+    // Get active matrix configuration from database
+    const matrixConfig = await getActiveChassisConfig()
+    const host = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST
+    const port = matrixConfig?.tcpPort || parseInt(process.env.WOLFPACK_PORT || '5000')
+
+    if (!host) {
+      return NextResponse.json({
+        status: 'unconfigured',
+        error: 'No matrix configuration found in database or environment variables',
+        lastUpdated: new Date().toISOString()
+      }, { status: 503 })
+    }
+
+    // Return current matrix status
     return NextResponse.json({
       status: 'online',
-      host: process.env.WOLFPACK_HOST || '192.168.1.100',
-      port: parseInt(process.env.WOLFPACK_PORT || '23'),
+      host,
+      port,
+      model: matrixConfig?.model,
+      name: matrixConfig?.name,
       lastUpdated: new Date().toISOString()
     })
   } catch (error) {

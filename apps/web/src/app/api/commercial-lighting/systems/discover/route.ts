@@ -23,8 +23,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { subnet, systemTypes } = body
 
-    // Default to common subnet if not provided
-    const targetSubnet = subnet || '192.168.1'
+    // Subnet is required — no hardcoded default
+    if (!subnet) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required "subnet" parameter (e.g. "192.168.5")' },
+        { status: 400 }
+      )
+    }
+
+    const targetSubnet = subnet
 
     // Default to all supported system types
     const targetTypes: string[] = systemTypes || ['lutron', 'hue']

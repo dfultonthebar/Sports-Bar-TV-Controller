@@ -37,9 +37,16 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('[TV-DISCOVERY] Starting network scan', { ipRange, ports, timeout })
 
-    // Parse IP range if provided, otherwise use default local network
-    const startIP = ipRange ? ipRange.split('-')[0].trim() : '192.168.1.1'
-    const endIP = ipRange ? ipRange.split('-')[1].trim() : '192.168.1.254'
+    // IP range is required — no hardcoded default subnet
+    if (!ipRange) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required "ipRange" parameter (e.g. "192.168.5.1-192.168.5.254")' },
+        { status: 400 }
+      )
+    }
+
+    const startIP = ipRange.split('-')[0].trim()
+    const endIP = ipRange.split('-')[1].trim()
 
     // Extract network portion and host range
     const startParts = startIP.split('.').map(Number)

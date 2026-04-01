@@ -170,7 +170,7 @@ export default function BartenderRemotePage() {
   const digitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Audio processor state
-  const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
+  const [audioProcessorIp, setAudioProcessorIp] = useState<string>('')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 

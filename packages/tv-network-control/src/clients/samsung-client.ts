@@ -455,7 +455,10 @@ export class SamsungTVClient extends BaseTVClient {
       })
 
       // Send WOL to multiple broadcast addresses for reliability
-      const broadcastAddresses = ['255.255.255.255', '10.11.3.255', this.config.ipAddress]
+      // Derive subnet broadcast from device IP (replace last octet with 255)
+      const ipParts = this.config.ipAddress.split('.')
+      const subnetBroadcast = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.255`
+      const broadcastAddresses = ['255.255.255.255', subnetBroadcast, this.config.ipAddress]
 
       client.bind(() => {
         client.setBroadcast(true)
