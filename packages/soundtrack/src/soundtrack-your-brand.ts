@@ -672,6 +672,9 @@ export class SoundtrackYourBrandAPI {
               }
               album {
                 name
+                image {
+                  url
+                }
               }
             }
             startedAt
@@ -697,7 +700,8 @@ export class SoundtrackYourBrandAPI {
         track: {
           title: nowPlaying.track?.name || '',
           artist: nowPlaying.track?.artists?.map((a: any) => a.name).join(', ') || '',
-          album: nowPlaying.track?.album?.name
+          album: nowPlaying.track?.album?.name,
+          albumArt: nowPlaying.track?.album?.image?.url || undefined
         },
         startedAt: nowPlaying.startedAt
       } as any
