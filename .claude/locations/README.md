@@ -24,6 +24,7 @@ These files contain location-specific device configs, layouts, and credentials:
 | `apps/web/data/directv-devices.json` | DirecTV receiver IPs |
 | `apps/web/data/firetv-devices.json` | Fire TV/Cube device IPs |
 | `apps/web/data/device-subscriptions.json` | Device streaming subscriptions |
+| `apps/web/data/wolfpack-devices.json` | Wolf Pack multi-chassis configs |
 | `apps/web/data/atlas-configs/*.json` | Audio processor configurations |
 | `apps/web/public/uploads/layouts/*.png` | Floor plan images |
 | `data/tv-layout.json` | Mirror of layout (root copy) |
@@ -109,3 +110,34 @@ git push
 - The `.env` file is gitignored — each installation manages its own
 - Database (SQLite) is stored outside the repo at `/home/ubuntu/sports-bar-data/production.db`
 - PM2 working directory is `apps/web/` — `process.cwd()` resolves to there
+
+## Recent Feature Updates (April 2026)
+
+When pulling latest main into a location branch, these features are now available:
+
+### Live Channel Mapping
+ESPN network names (e.g., "FanDuel SN WI", "Bucks.TV") are mapped to local channel numbers
+in `apps/web/src/app/api/sports-guide/live-by-channel/route.ts`. Each location may need
+to add/update `NETWORK_TO_CABLE` and `NETWORK_TO_DIRECTV` mappings for their local RSN
+(Regional Sports Network) channels.
+
+### Wolf Pack Multi-Chassis Support
+Locations with multiple Wolf Pack matrices can configure them in `apps/web/data/wolfpack-devices.json`.
+Each chassis gets its own entry with IP, model, inputs, outputs, and credentials.
+Sync to DB via `POST /api/wolfpack/chassis/sync`.
+
+### Atlas Audio AI Learning
+Automatic pattern discovery for audio processors. Runs every 6 hours via instrumentation.
+Learns clipping patterns, gain effectiveness, and zone usage. No location-specific config needed.
+
+### DirecTV Device Loader
+DirecTV receivers are configured in `apps/web/data/directv-devices.json` (location-specific).
+The loader (`apps/web/src/lib/directv-device-loader.ts`) reads this file for all DirecTV API routes.
+
+### AI Scheduling with Ollama
+Requires Ollama with `llama3.1:8b` model installed. AI suggests which cable boxes to tune
+for upcoming games. Configure via `/api/scheduling/ai-suggest`.
+
+### Music Tab Enhancements
+Bartender Music tab now shows all playlists with artwork tiles and album art on Now Playing.
+Requires Soundtrack Your Brand API credentials in `.env`.
