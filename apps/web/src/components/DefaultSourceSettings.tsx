@@ -13,13 +13,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@sports-bar/ui-utils'
 import {
   Tv,
@@ -141,11 +134,20 @@ function DefaultSourceSettings() {
         setChannelPresets(allPresets)
       }
 
-      // Load Atlas audio sources
-      const audioRes = await fetch('/api/atlas/sources?processorIp=10.11.3.246')
-      if (audioRes.ok) {
-        const audioData = await audioRes.json()
-        setAudioSources(audioData.sources || [])
+      // Load Atlas audio sources — fetch processor IP from database
+      try {
+        const processorRes = await fetch('/api/audio-processor')
+        const processorData = await processorRes.json()
+        if (processorData.success && processorData.processors?.length > 0) {
+          const processorIp = processorData.processors[0].ipAddress
+          const audioRes = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp)}`)
+          if (audioRes.ok) {
+            const audioData = await audioRes.json()
+            setAudioSources(audioData.sources || [])
+          }
+        }
+      } catch (audioErr) {
+        console.warn('Could not load Atlas audio sources:', audioErr)
       }
 
       setHasChanges(false)

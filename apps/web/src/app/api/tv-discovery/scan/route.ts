@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-import { validateQueryParams, ValidationSchemas, z } from '@/lib/validation'
+import { validateQueryParams, ValidationSchemas } from '@/lib/validation'
 import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
@@ -29,17 +29,24 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate query parameters
-  const queryValidation = validateQueryParams(request, ValidationSchemas.tvNetworkScan)
+  const queryValidation = validateQueryParams(request, ValidationSchemas.tvNetworkScan as any)
   if (!queryValidation.success) return queryValidation.error
 
-  const { ipRange, ports, timeout } = queryValidation.data
+  const { ipRange, ports, timeout } = queryValidation.data as { ipRange?: string; ports?: number[]; timeout?: number }
 
   try {
     logger.info('[TV-DISCOVERY] Starting network scan', { ipRange, ports, timeout })
 
-    // Parse IP range if provided, otherwise use default local network
-    const startIP = ipRange ? ipRange.split('-')[0].trim() : '192.168.1.1'
-    const endIP = ipRange ? ipRange.split('-')[1].trim() : '192.168.1.254'
+    // IP range is required — no hardcoded default subnet
+    if (!ipRange) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required "ipRange" parameter (e.g. "192.168.5.1-192.168.5.254")' },
+        { status: 400 }
+      )
+    }
+
+    const startIP = ipRange.split('-')[0].trim()
+    const endIP = ipRange.split('-')[1].trim()
 
     // Extract network portion and host range
     const startParts = startIP.split('.').map(Number)
@@ -87,7 +94,7 @@ export async function POST(request: NextRequest) {
     await Promise.race([
       Promise.all(scanPromises),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Scan timeout')), scanTimeout))
-    ]).catch((err) => {
+    ]).catch((_err) => {
       logger.warn('[TV-DISCOVERY] Scan timeout reached, returning partial results')
     })
 

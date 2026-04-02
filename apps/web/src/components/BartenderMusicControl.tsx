@@ -29,6 +29,8 @@ interface AvailablePlaylist {
   id: string
   name: string
   description?: string
+  imageUrl?: string
+  genre?: string // 'Playlist' | 'Station' | 'Schedule'
 }
 
 interface SoundtrackPlayer {
@@ -385,36 +387,97 @@ export default function BartenderMusicControl() {
         </div>
 
         {/* Playlist Selector */}
-        {availablePlaylists.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center text-slate-400 text-sm mb-3">
-              <Radio className="w-4 h-4 mr-2" />
-              <span className="font-medium">Switch Playlist</span>
-            </div>
+        {availablePlaylists.length > 0 && (() => {
+          // Group by type
+          const playlists = availablePlaylists.filter(p => p.genre === 'Playlist' || !p.genre)
+          const stations = availablePlaylists.filter(p => p.genre === 'Station')
+          const schedules = availablePlaylists.filter(p => p.genre === 'Schedule')
+
+          const renderPlaylistGrid = (items: AvailablePlaylist[]) => (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {availablePlaylists.map((playlist) => (
-                <button
-                  key={playlist.id}
-                  onClick={() => handlePlaylistChange(playlist.id)}
-                  disabled={actionLoading}
-                  className={`group relative p-4 rounded-xl border-2 transition-all duration-300 text-left ${
-                    actionLoading
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:scale-105 hover:shadow-lg'
-                  }`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                  <div className="relative z-10">
-                    <div className="font-semibold text-sm text-white mb-1">{playlist.name}</div>
-                    {playlist.description && (
-                      <div className="text-xs text-slate-400">{playlist.description}</div>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {items.map((playlist) => {
+                const isActive = selectedPlayer?.currentStation?.id === playlist.id
+                return (
+                  <button
+                    key={playlist.id}
+                    onClick={() => handlePlaylistChange(playlist.id)}
+                    disabled={actionLoading}
+                    className={`group relative rounded-xl border-2 transition-all duration-300 text-left overflow-hidden ${
+                      actionLoading
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isActive
+                          ? 'backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl'
+                          : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:shadow-lg active:scale-95'
+                    }`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <div className="relative z-10 flex items-center gap-3 p-3">
+                      {playlist.imageUrl ? (
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                          <img
+                            src={playlist.imageUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
+                          <Music2 className="w-5 h-5 text-purple-300" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-white truncate">{playlist.name}</div>
+                        {playlist.description && (
+                          <div className="text-xs text-slate-400 truncate mt-0.5">{playlist.description}</div>
+                        )}
+                      </div>
+                      {isActive && (
+                        <div className="flex-shrink-0">
+                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-          </div>
-        )}
+          )
+
+          return (
+            <div className="mt-6 space-y-5">
+              {playlists.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Radio className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Playlists</span>
+                    <span className="ml-2 text-xs text-slate-500">({playlists.length})</span>
+                  </div>
+                  {renderPlaylistGrid(playlists)}
+                </div>
+              )}
+              {stations.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Disc className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Stations</span>
+                    <span className="ml-2 text-xs text-slate-500">({stations.length})</span>
+                  </div>
+                  {renderPlaylistGrid(stations)}
+                </div>
+              )}
+              {schedules.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Music2 className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Schedules</span>
+                    <span className="ml-2 text-xs text-slate-500">({schedules.length})</span>
+                  </div>
+                  {renderPlaylistGrid(schedules)}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Refresh Button */}
         <div className="mt-6 text-center">

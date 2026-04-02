@@ -18,6 +18,7 @@ import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { fetchDirecTVGuide } from '@/lib/directv-guide-service'
+import { getDirecTVDeviceFromConfig } from '@/lib/directv-device-loader'
 
 // DirecTV channel mapping for broadcast networks
 const NETWORK_TO_DIRECTV: Record<string, string> = {
@@ -98,6 +99,23 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'Univision': '402',
   'TUDN': '464',
 
+  // Bally / Fan Duel Sports (RSNs)
+  'Bally Sports North': '668.1',
+  'Fan Duel Sports North': '668.1',
+  'FanDuel SN North': '668.1',
+  'FanDuel Sports North': '668.1',
+  'FDNOR': '668.1',
+  // Channel 669 = Fan Duel Sports WI on DirecTV (Bucks, general sports)
+  'Bally Sports Wisconsin': '669',
+  'Fan Duel Sports Wisconsin': '669',
+  'FanDuel SN WI': '669',
+  'FanDuel Sports WI': '669',
+  'FanDuel SN Wisconsin': '669',
+  'FOX Sports Wisconsin': '669',
+  'Bucks.TV': '669',
+  // Brewers use a separate channel on DirecTV
+  'Brewers.TV': '669',
+
   // Local stations (Green Bay area)
   'TV32': '32',
   'WACY': '32',
@@ -173,12 +191,23 @@ const NETWORK_TO_CABLE: Record<string, string> = {
   'beIN SPORTS': '337',
   'BEIN': '337',
 
-  // Bally / Fan Duel Sports
+  // Bally / Fan Duel Sports (RSNs)
   'Bally Sports North': '310',
   'Fan Duel Sports North': '310',
+  'FanDuel SN North': '310',
+  'FanDuel Sports North': '310',
+  'FDNOR': '310',
+  // Channel 40 = Fan Duel Sports WI (Bucks, general sports)
   'Bally Sports Wisconsin': '40',
   'Fan Duel Sports Wisconsin': '40',
+  'FanDuel SN WI': '40',
+  'FanDuel Sports WI': '40',
+  'FanDuel SN Wisconsin': '40',
   'FOX Sports Wisconsin': '40',
+  'FSWI': '40',
+  'Bucks.TV': '40',
+  // Channel 308 = Bally Sports WI (Brewers only)
+  'Brewers.TV': '308',
   'Fox Sports Prime': '339',
 
   // Local stations (Green Bay area on Spectrum)
@@ -378,7 +407,14 @@ export async function GET(request: NextRequest) {
           ? channelList
           : Array.from(presetChannels)
 
+        const guideDevice = getDirecTVDeviceFromConfig()
+        if (!guideDevice) {
+          logger.warn('[LIVE_BY_CHANNEL] No online DirecTV device available for guide data')
+          throw new Error('No online DirecTV device')
+        }
+
         const guideResults = await fetchDirecTVGuide({
+          device: guideDevice,
           channels: channelsToFetch,
           timeout: 5000,
           useCache: true,

@@ -22,11 +22,10 @@ interface AtlasSource {
   name: string
 }
 
-interface AtlasAudioZone {
-  id: string
-  zoneNumber: number
+interface AtlasAudioGroup {
+  index: number
   name: string
-  enabled: boolean
+  isActive: boolean
 }
 
 interface ScheduledGameTVPickerProps {
@@ -35,10 +34,6 @@ interface ScheduledGameTVPickerProps {
   onUpdate: (outputIds: number[]) => void
   currentAudioConfig?: { sourceIndex?: number; zoneIds?: number[] }
 }
-
-// Atlas audio processor constants
-const ATLAS_PROCESSOR_IP = '10.11.3.246'
-const ATLAS_PROCESSOR_ID = '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9'
 
 // Wolf Pack audio outputs feed the Atlas audio processor
 const AUDIO_OUTPUTS = [
@@ -66,7 +61,7 @@ export default function ScheduledGameTVPicker({
 
   // Atlas audio state
   const [atlasSources, setAtlasSources] = useState<AtlasSource[]>([])
-  const [atlasZones, setAtlasZones] = useState<AtlasAudioZone[]>([])
+  const [atlasGroups, setAtlasGroups] = useState<AtlasAudioGroup[]>([])
   const [selectedAudioSource, setSelectedAudioSource] = useState<number | null>(
     currentAudioConfig?.sourceIndex ?? null
   )
@@ -74,6 +69,7 @@ export default function ScheduledGameTVPicker({
   const [selectedAudioZoneIds, setSelectedAudioZoneIds] = useState<number[]>(
     currentAudioConfig?.zoneIds ?? []
   )
+  const [atlasProcessorIp, setAtlasProcessorIp] = useState<string | null>(null)
   const [atlasLoading, setAtlasLoading] = useState(false)
   const [audioSaving, setAudioSaving] = useState(false)
 
@@ -174,12 +170,37 @@ export default function ScheduledGameTVPicker({
       } catch {}
     }
 
+    const fetchAtlasProcessorIp = async () => {
+      try {
+        const res = await fetch('/api/audio-processor')
+        const data = await res.json()
+        if (data.success && data.processors?.length > 0) {
+          const processor = data.processors[0]
+          setAtlasProcessorIp(processor.ipAddress)
+          logger.debug('[TV-PICKER] Loaded Atlas processor IP', {
+            ip: processor.ipAddress,
+          })
+        }
+      } catch (err: any) {
+        logger.error('[TV-PICKER] Failed to load Atlas processor:', err)
+      }
+    }
+
+    fetchLayout()
+    fetchConflicts()
+    fetchAtlasProcessorIp()
+  }, [expanded, allocationId])
+
+  // Fetch Atlas sources and groups once processor IP is known
+  useEffect(() => {
+    if (!atlasProcessorIp) return
+
     const fetchAtlasData = async () => {
       setAtlasLoading(true)
       try {
-        const [sourcesRes, zonesRes] = await Promise.all([
-          fetch(`/api/atlas/sources?processorIp=${ATLAS_PROCESSOR_IP}`),
-          fetch(`/api/audio-processor/zones?processorId=${ATLAS_PROCESSOR_ID}`),
+        const [sourcesRes, groupsRes] = await Promise.all([
+          fetch(`/api/atlas/sources?processorIp=${atlasProcessorIp}`),
+          fetch(`/api/atlas/groups?processorIp=${atlasProcessorIp}`),
         ])
 
         if (sourcesRes.ok) {
@@ -190,15 +211,15 @@ export default function ScheduledGameTVPicker({
           })
         }
 
-        if (zonesRes.ok) {
-          const zonesData = await zonesRes.json()
-          const enabledZones = (zonesData.zones || []).filter(
-            (z: AtlasAudioZone) => z.enabled
+        if (groupsRes.ok) {
+          const groupsData = await groupsRes.json()
+          const activeGroups = (groupsData.groups || []).filter(
+            (g: AtlasAudioGroup) => g.isActive
           )
-          setAtlasZones(enabledZones)
-          logger.debug('[TV-PICKER] Loaded Atlas zones', {
-            total: (zonesData.zones || []).length,
-            enabled: enabledZones.length,
+          setAtlasGroups(activeGroups)
+          logger.debug('[TV-PICKER] Loaded Atlas groups', {
+            total: (groupsData.groups || []).length,
+            active: activeGroups.length,
           })
         }
       } catch (err: any) {
@@ -208,10 +229,8 @@ export default function ScheduledGameTVPicker({
       }
     }
 
-    fetchLayout()
-    fetchConflicts()
     fetchAtlasData()
-  }, [expanded, allocationId])
+  }, [atlasProcessorIp])
 
   // Persist selection to backend and notify parent
   const persistSelection = useCallback(
@@ -309,11 +328,11 @@ export default function ScheduledGameTVPicker({
   // Select all / clear all Atlas audio zones
   const setAllAudioZones = useCallback(
     (selectAll: boolean) => {
-      const next = selectAll ? atlasZones.map((z) => z.zoneNumber) : []
+      const next = selectAll ? atlasGroups.map((g) => g.index) : []
       setSelectedAudioZoneIds(next)
       persistAudioConfig(selectedAudioSource, selectedAudioSourceName, next)
     },
-    [atlasZones, selectedAudioSource, selectedAudioSourceName, persistAudioConfig]
+    [atlasGroups, selectedAudioSource, selectedAudioSourceName, persistAudioConfig]
   )
 
   // Toggle a single TV output
@@ -690,12 +709,12 @@ export default function ScheduledGameTVPicker({
                     </select>
                   </div>
 
-                  {/* Zone Checkboxes */}
-                  {atlasZones.length > 0 && (
+                  {/* Group Checkboxes */}
+                  {atlasGroups.length > 0 && (
                     <div className="ml-8 mt-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-xs font-medium text-slate-400">
-                          Output Zones
+                          Audio Groups
                         </label>
                         <div className="flex gap-2">
                           <button
@@ -706,7 +725,7 @@ export default function ScheduledGameTVPicker({
                               setAllAudioZones(true)
                             }}
                           >
-                            All Zones
+                            All Groups
                           </button>
                           <button
                             type="button"
@@ -722,11 +741,11 @@ export default function ScheduledGameTVPicker({
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {atlasZones.map((zone) => {
-                          const checked = selectedAudioZoneIds.includes(zone.zoneNumber)
+                        {atlasGroups.map((group) => {
+                          const checked = selectedAudioZoneIds.includes(group.index)
                           return (
                             <label
-                              key={zone.id || zone.zoneNumber}
+                              key={group.index}
                               className={`flex items-center gap-2 cursor-pointer py-2 px-3 rounded-lg border transition-all ${
                                 checked
                                   ? 'border-orange-500 bg-orange-500/20'
@@ -743,7 +762,7 @@ export default function ScheduledGameTVPicker({
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  toggleAudioZone(zone.zoneNumber)
+                                  toggleAudioZone(group.index)
                                 }}
                               >
                                 {checked && (
@@ -756,10 +775,10 @@ export default function ScheduledGameTVPicker({
                                 }`}
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  toggleAudioZone(zone.zoneNumber)
+                                  toggleAudioZone(group.index)
                                 }}
                               >
-                                {zone.name || `Zone ${zone.zoneNumber}`}
+                                {group.name}
                               </span>
                             </label>
                           )
@@ -768,7 +787,7 @@ export default function ScheduledGameTVPicker({
                     </div>
                   )}
 
-                  {!atlasLoading && atlasZones.length === 0 && atlasSources.length === 0 && (
+                  {!atlasLoading && atlasGroups.length === 0 && atlasSources.length === 0 && (
                     <p className="text-slate-500 py-1 ml-8 text-sm">
                       No Atlas audio processor data available.
                     </p>

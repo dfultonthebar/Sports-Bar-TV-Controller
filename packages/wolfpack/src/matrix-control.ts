@@ -8,16 +8,31 @@ import { randomUUID } from 'crypto'
 import { sendHTTPCommand } from './wolfpack-matrix-service'
 
 /**
- * Route matrix input to output
+ * Route matrix input to output.
+ *
+ * @param inputNum - 1-based input channel number
+ * @param outputNum - 1-based output channel number
+ * @param chassisId - Optional chassis ID for multi-chassis support.
+ *   If omitted, uses the primary active config (backward compatible).
  */
-export async function routeMatrix(inputNum: number, outputNum: number): Promise<boolean> {
+export async function routeMatrix(inputNum: number, outputNum: number, chassisId?: string | null): Promise<boolean> {
   try {
-    // Get active matrix configuration
-    const activeConfig = await db.select()
-      .from(schema.matrixConfigurations)
-      .where(eq(schema.matrixConfigurations.isActive, true))
-      .limit(1)
-      .get()
+    // Get matrix configuration - by chassisId or fallback to active
+    let activeConfig
+    if (chassisId) {
+      activeConfig = await db.select()
+        .from(schema.matrixConfigurations)
+        .where(eq(schema.matrixConfigurations.chassisId, chassisId))
+        .limit(1)
+        .get()
+    }
+    if (!activeConfig) {
+      activeConfig = await db.select()
+        .from(schema.matrixConfigurations)
+        .where(eq(schema.matrixConfigurations.isActive, true))
+        .limit(1)
+        .get()
+    }
 
     if (!activeConfig) {
       logger.error('No active matrix configuration found')
@@ -44,7 +59,9 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
       const output0Based = outputNum - 1
       logger.info(`[WOLFPACK-HTTP] routeMatrix: input ${inputNum}->0b:${input0Based}, output ${outputNum}->0b:${output0Based}`)
 
-      const result = await sendHTTPCommand(activeConfig.ipAddress, input0Based, output0Based)
+      // Pass credentials if available (from chassis JSON config)
+      const credentials = (activeConfig as any).credentials as { username: string; password: string } | undefined
+      const result = await sendHTTPCommand(activeConfig.ipAddress, input0Based, output0Based, credentials)
       commandSuccess = result.success
 
       if (!commandSuccess) {
@@ -77,11 +94,14 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
         .limit(1)
         .get()
 
+      const resolvedChassisId = activeConfig.chassisId || chassisId || null
+
       if (existingRoute) {
         // Update existing route
         tx.update(schema.matrixRoutes)
           .set({
             inputNum: inputNum,
+            chassisId: resolvedChassisId,
             isActive: true,
             updatedAt: now
           })
@@ -92,6 +112,7 @@ export async function routeMatrix(inputNum: number, outputNum: number): Promise<
         tx.insert(schema.matrixRoutes)
           .values({
             id: randomUUID(),
+            chassisId: resolvedChassisId,
             inputNum: inputNum,
             outputNum: outputNum,
             isActive: true,

@@ -38,8 +38,6 @@ export {
   fetchDirecTVGuide,
   fetchChannelProgramInfo,
   fetchMultipleChannelProgramInfo,
-  getDirecTVDevice,
-  getAllDirecTVDevices,
   type DirecTVProgramInfo,
   type DirecTVDevice,
   type DirecTVGuideResult,

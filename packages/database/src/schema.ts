@@ -213,6 +213,7 @@ export const matrixConfigs = sqliteTable('MatrixConfig', {
 // Matrix Configuration Model
 export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json entry (nullable for backward compat)
   name: text('name').notNull(),
   model: text('model').notNull().default('WP-36X36'), // Wolf Pack model (WP-4X4, WP-8X8, WP-16X16, WP-18X18, WP-36X36, WP-64X64)
   ipAddress: text('ipAddress').notNull(),
@@ -435,6 +436,7 @@ export const testLogs = sqliteTable('TestLog', {
 // Wolfpack Matrix Routing Model
 export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull().unique(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -448,6 +450,7 @@ export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
 // Wolfpack Matrix State Model
 export const wolfpackMatrixStates = sqliteTable('WolfpackMatrixState', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -880,6 +883,7 @@ export const channelPresets = sqliteTable('ChannelPreset', {
 // Matrix Route Model (for tracking matrix routing)
 export const matrixRoutes = sqliteTable('MatrixRoute', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   inputNum: integer('inputNum').notNull(),
   outputNum: integer('outputNum').notNull().unique(),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
@@ -2286,6 +2290,75 @@ export const schedulerMetrics = sqliteTable('SchedulerMetrics', {
   metricTypeIdx: index('SchedulerMetrics_metricType_idx').on(table.metricType),
   periodStartIdx: index('SchedulerMetrics_periodStart_idx').on(table.periodStart),
   metricTypePeriodStartIdx: uniqueIndex('SchedulerMetrics_type_period_start_idx').on(table.metricType, table.period, table.periodStart),
+}))
+
+// ============================================================================
+// WOLFPACK AI LEARNING TABLES
+// ============================================================================
+
+// Wolfpack Learning Events - Records routing outcomes for pattern learning
+export const wolfpackLearningEvents = sqliteTable('WolfpackLearningEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text('eventType').notNull(), // 'route_success', 'route_failure', 'connection_error', 'connection_timeout', 'latency_spike', 'recovery'
+  chassisId: text('chassisId'),
+  inputNum: integer('inputNum'),
+  outputNum: integer('outputNum'),
+  inputLabel: text('inputLabel'),
+  outputLabel: text('outputLabel'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  durationMs: integer('durationMs'),
+  errorMessage: text('errorMessage'),
+  dayOfWeek: integer('dayOfWeek').notNull(), // 0-6 (Sunday-Saturday)
+  hourOfDay: integer('hourOfDay').notNull(), // 0-23
+  protocol: text('protocol'),
+  retryCount: integer('retryCount').notNull().default(0),
+  wasRetrySuccessful: integer('wasRetrySuccessful', { mode: 'boolean' }),
+  metadata: text('metadata'), // JSON
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventTypeIdx: index('WolfpackLearningEvent_eventType_idx').on(table.eventType),
+  chassisIdIdx: index('WolfpackLearningEvent_chassisId_idx').on(table.chassisId),
+  createdAtIdx: index('WolfpackLearningEvent_createdAt_idx').on(table.createdAt),
+  timePatternIdx: index('WolfpackLearningEvent_time_pattern_idx').on(table.dayOfWeek, table.hourOfDay),
+  successIdx: index('WolfpackLearningEvent_success_idx').on(table.success),
+}))
+
+// ============================================================================
+// ATLAS AI LEARNING TABLES
+// ============================================================================
+
+// Atlas Learning Events - Records audio gain, clipping, zone, and connection outcomes for pattern learning
+export const atlasLearningEvents = sqliteTable('AtlasLearningEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text('eventType').notNull(), // 'gain_adjustment', 'gain_adjustment_failed', 'clipping_detected', 'zone_volume_change', 'zone_mute_toggle', 'zone_source_change', 'connection_online', 'connection_offline', 'signal_snapshot'
+  processorId: text('processorId').notNull(),
+  inputNumber: integer('inputNumber'),
+  zoneNumber: integer('zoneNumber'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  previousGain: real('previousGain'),
+  newGain: real('newGain'),
+  currentLevel: real('currentLevel'),
+  targetLevel: real('targetLevel'),
+  adjustmentMode: text('adjustmentMode'), // 'fast' | 'slow'
+  movedTowardTarget: integer('movedTowardTarget', { mode: 'boolean' }),
+  previousVolume: integer('previousVolume'),
+  newVolume: integer('newVolume'),
+  muted: integer('muted', { mode: 'boolean' }),
+  signalLevels: text('signalLevels'), // JSON
+  clippingInputs: text('clippingInputs'), // JSON
+  errorMessage: text('errorMessage'),
+  dayOfWeek: integer('dayOfWeek').notNull(), // 0-6 (Sunday-Saturday)
+  hourOfDay: integer('hourOfDay').notNull(), // 0-23
+  durationMs: integer('durationMs'),
+  metadata: text('metadata'), // JSON
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventTypeIdx: index('AtlasLearningEvent_eventType_idx').on(table.eventType),
+  processorIdIdx: index('AtlasLearningEvent_processorId_idx').on(table.processorId),
+  createdAtIdx: index('AtlasLearningEvent_createdAt_idx').on(table.createdAt),
+  timePatternIdx: index('AtlasLearningEvent_time_pattern_idx').on(table.dayOfWeek, table.hourOfDay),
+  successIdx: index('AtlasLearningEvent_success_idx').on(table.success),
+  inputNumberIdx: index('AtlasLearningEvent_inputNumber_idx').on(table.inputNumber),
 }))
 
 // ============================================================================
