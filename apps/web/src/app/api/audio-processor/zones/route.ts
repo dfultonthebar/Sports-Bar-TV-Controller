@@ -10,6 +10,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
         })
         if (processor?.ipAddress) {
           const { getAtlasClient } = await import('@/lib/atlasClient')
-          const client = getAtlasClient(processor.ipAddress, processor.tcpPort || 5321)
+          const client = getAtlasClient(processor.ipAddress, processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort)
 
           // Get live zone data from output meters (most reliable source of truth)
           const dbZones = await findMany('audioZones', {

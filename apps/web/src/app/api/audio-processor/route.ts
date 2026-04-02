@@ -7,6 +7,7 @@ import { ATLAS_MODELS } from '@/lib/atlas-models-config'
 import { encryptPassword, decryptPassword } from '@/lib/atlas-auth'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // dbx ZonePRO model configurations
 const DBX_MODELS: Record<string, { inputs: number; outputs: number; zones: number; hasEthernet: boolean }> = {
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
     const calculatedZones = zones || getModelZones(modelStr, procType)
 
     // Determine default TCP port based on processor type
-    const defaultTcpPort = procType === 'bss-blu' ? 1023 : procType === 'dbx-zonepro' ? 3804 : 5321
+    const defaultTcpPort = procType === 'bss-blu' ? 1023 : procType === 'dbx-zonepro' ? 3804 : HARDWARE_CONFIG.atlas.tcpPort
 
     // Prepare processor data
     const processorData: any = {

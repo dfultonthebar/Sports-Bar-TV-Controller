@@ -5,8 +5,9 @@ import * as net from 'net'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, isValidationError } from '@/lib/validation'
-import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 interface MatrixSwitchRequest {
   input: number
@@ -82,24 +83,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get Wolf Pack configuration from database (active chassis)
-    const matrixConfig = await getActiveChassisConfig()
-    const wolfPackHost = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST
-    const wolfPackPort = matrixConfig?.tcpPort || parseInt(process.env.WOLFPACK_PORT || '5000')
+    // Get Wolf Pack configuration from DB
+    const matrixConfig = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
-    if (!wolfPackHost) {
-      await enhancedLogger.error(
-        'hardware',
-        'wolf-pack-matrix',
-        'no_config',
-        'No Wolf Pack IP found in database or environment variables',
-        { requestId }
-      )
-      return NextResponse.json(
-        { error: 'No matrix configuration found. Configure a Wolf Pack matrix in Device Config.' },
-        { status: 503 }
-      )
-    }
+    const wolfPackHost = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST || '192.168.1.100'
+    const wolfPackPort = matrixConfig?.port || parseInt(process.env.WOLFPACK_PORT || '23')
 
     await enhancedLogger.info(
       'hardware',
@@ -305,26 +298,18 @@ export async function GET(request: NextRequest) {
       'Matrix status check requested'
     )
 
-    // Get active matrix configuration from database
-    const matrixConfig = await getActiveChassisConfig()
-    const host = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST
-    const port = matrixConfig?.tcpPort || parseInt(process.env.WOLFPACK_PORT || '5000')
+    const matrixConfig = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
 
-    if (!host) {
-      return NextResponse.json({
-        status: 'unconfigured',
-        error: 'No matrix configuration found in database or environment variables',
-        lastUpdated: new Date().toISOString()
-      }, { status: 503 })
-    }
-
-    // Return current matrix status
+    // Return current matrix status (this would be enhanced to read actual status)
     return NextResponse.json({
       status: 'online',
-      host,
-      port,
-      model: matrixConfig?.model,
-      name: matrixConfig?.name,
+      host: matrixConfig?.ipAddress || process.env.WOLFPACK_HOST || '192.168.1.100',
+      port: matrixConfig?.port || parseInt(process.env.WOLFPACK_PORT || '23'),
       lastUpdated: new Date().toISOString()
     })
   } catch (error) {

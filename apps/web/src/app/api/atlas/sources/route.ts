@@ -6,6 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { cacheManager } from '@/lib/cache-manager'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
-      tcpPort: 5321,
+      tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
       timeout: 5000
     })
 

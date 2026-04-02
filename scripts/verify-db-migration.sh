@@ -35,10 +35,10 @@ SUCCESS=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdi
 echo ""
 echo "--- Matrix & Audio ---"
 
-# Matrix config
-RESULT=$(curl -s "$BASE/api/matrix/config")
-SUCCESS=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('configs',[]))>0)" 2>/dev/null)
-[ "$SUCCESS" = "True" ] && green "Matrix config loaded" || red "Matrix config empty"
+# Wolf Pack routings
+RESULT=$(curl -s "$BASE/api/wolfpack/current-routings")
+SUCCESS=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('success',False))" 2>/dev/null)
+[ "$SUCCESS" = "True" ] && green "Wolf Pack routings OK" || red "Wolf Pack routings failed"
 
 # Current channels
 RESULT=$(curl -s "$BASE/api/matrix/current-channels")

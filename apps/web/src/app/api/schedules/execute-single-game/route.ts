@@ -134,15 +134,10 @@ export async function POST(request: NextRequest) {
           }
         }
       } else if (deviceType === 'DirecTV') {
-        // Load DirecTV devices and tune
-        const fs = await import('fs/promises')
-        const path = await import('path')
-        const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json')
-
+        // Load DirecTV device from database and tune
         try {
-          const devicesJson = await fs.readFile(devicesPath, 'utf-8')
-          const devicesData = JSON.parse(devicesJson)
-          const direcTVDevice = devicesData.devices.find((d: any) => d.name === matrixInput.label)
+          const { getDirecTVDeviceByName } = await import('@/lib/device-db')
+          const direcTVDevice = await getDirecTVDeviceByName(matrixInput.label)
 
           if (direcTVDevice) {
             const tuneResponse = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {

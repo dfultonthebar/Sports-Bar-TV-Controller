@@ -3,11 +3,7 @@
   "syncInterval": 10,
   "autoCommitOnConfigChange": true,
   "monitoredPaths": [
-    "src/data/matrix-config.json",
-    "src/data/device-mappings.json",
     "src/data/ir-devices.json",
-    "src/data/audio-zones.json",
-    "src/data/directv-channels.json",
     "config/",
     ".env.local"
   ],

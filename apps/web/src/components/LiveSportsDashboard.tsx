@@ -12,6 +12,7 @@ import {
   Radio,
   Smartphone,
 } from 'lucide-react'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -519,7 +520,7 @@ export default function LiveSportsDashboard({
       {/* ── Footer ─────────────────────────────────────────────────── */}
       {data && (
         <div className="text-center text-xs text-slate-600">
-          Updated {new Date(data.fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })}
+          Updated {new Date(data.fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone })}
           {data.cached && ` (cached ${data.cacheAge}s ago)`}
           {' · '}Auto-refresh 90s
         </div>

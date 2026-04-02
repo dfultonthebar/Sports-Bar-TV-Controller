@@ -6,6 +6,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateRequestBody } from '@/lib/validation'
 import { z } from 'zod'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 const locationSchema = z.object({
   id: z.string().optional(),
@@ -15,7 +16,7 @@ const locationSchema = z.object({
   city: z.string().optional().default(''),
   state: z.string().optional().default(''),
   zipCode: z.string().optional().default(''),
-  timezone: z.string().default('America/Chicago'),
+  timezone: z.string().default(HARDWARE_CONFIG.venue.timezone),
   gitBranch: z.string().optional().default(''),
   isActive: z.boolean().optional().default(true),
 })

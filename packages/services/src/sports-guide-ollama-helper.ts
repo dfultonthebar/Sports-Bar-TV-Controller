@@ -9,11 +9,12 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getSportsGuideApi } from '@sports-bar/sports-apis'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@sports-bar/config'
 
 const execAsync = promisify(exec)
 
 // Ollama configuration
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434'
+const OLLAMA_HOST = process.env.OLLAMA_HOST || HARDWARE_CONFIG.ollama.baseUrl
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini'
 
 // Log file paths

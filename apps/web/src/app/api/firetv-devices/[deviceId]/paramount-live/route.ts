@@ -11,11 +11,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { connectionManager } from '@/services/firetv-connection-manager'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { getFireTVDeviceById } from '@/lib/device-db'
 import { logger } from '@sports-bar/logger'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
 export async function POST(
   request: NextRequest,
@@ -31,10 +28,8 @@ export async function POST(
   try {
     logger.info(`[FIRETV API] Paramount+ Live TV launch requested for device ${deviceId}`)
 
-    // Look up device info from data file
-    const data = await fs.readFile(DATA_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    const device = parsed.devices?.find((d: any) => d.id === deviceId)
+    // Look up device info from database
+    const device = await getFireTVDeviceById(deviceId)
 
     if (!device) {
       return NextResponse.json({

@@ -18,6 +18,60 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 export const dynamic = 'force-dynamic'
 
+// Module-level cache for station aliases loaded from DB
+let _cachedStationAliases: Record<string, string[]> | null = null
+let _stationAliasesCacheTime = 0
+const STATION_ALIASES_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+async function loadStationAliases(): Promise<Record<string, string[]>> {
+  const now = Date.now()
+  if (_cachedStationAliases && (now - _stationAliasesCacheTime) < STATION_ALIASES_TTL_MS) {
+    return _cachedStationAliases
+  }
+
+  try {
+    const { db } = await import('@/db')
+    const { schema } = await import('@/db')
+    const rows = await db.select().from(schema.stationAliases)
+
+    const aliasMap: Record<string, string[]> = {}
+    for (const row of rows) {
+      aliasMap[row.standardName] = JSON.parse(row.aliases)
+    }
+
+    _cachedStationAliases = aliasMap
+    _stationAliasesCacheTime = now
+    logger.info(`[Channel-Guide-API] Loaded ${rows.length} station alias entries from DB`)
+    return aliasMap
+  } catch (error) {
+    logger.error(`[Channel-Guide-API] Failed to load station aliases from DB, using cached or empty`, error)
+    // Return cached data if available, otherwise empty object
+    return _cachedStationAliases || {}
+  }
+}
+
+// Cache for local channel overrides (5-minute TTL)
+let _overridesCache: { data: { teamName: string; channelNumber: number; channelName: string }[]; ts: number } | null = null
+const OVERRIDES_TTL = 5 * 60 * 1000 // 5 minutes
+
+async function getLocalChannelOverrides(): Promise<{ teamName: string; channelNumber: number; channelName: string }[]> {
+  if (_overridesCache && Date.now() - _overridesCache.ts < OVERRIDES_TTL) {
+    return _overridesCache.data
+  }
+  const { db } = await import('@/db')
+  const { schema } = await import('@/db')
+  const { eq } = await import('drizzle-orm')
+  const rows = await db.select().from(schema.localChannelOverrides)
+    .where(eq(schema.localChannelOverrides.isActive, true))
+  const data = rows.map(r => ({
+    teamName: r.teamName,
+    channelNumber: r.channelNumber,
+    channelName: r.channelName,
+  }))
+  _overridesCache = { data, ts: Date.now() }
+  return data
+}
+
 // Streaming station codes to app mapping for Fire TV devices
 const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
   'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
@@ -122,18 +176,22 @@ export async function POST(request: NextRequest) {
     let programs: any[] = []
     const channels = new Map()
 
+    // Load channel presets ONCE for cable/satellite — reused for both
+    // station matching and result filtering later
+    let presets: any[] = []
+    let presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
+
     if (deviceType === 'cable' || deviceType === 'satellite') {
       // Use The Rail Media API for cable/satellite - it has comprehensive SAT/CAB channel data
       logInfo(`Using The Rail Media API for ${deviceType} guide data`)
 
-      // FIRST: Load channel presets and build a station name -> user channel mapping
+      // Load channel presets and build a station name -> user channel mapping
       // This is critical because Rail API returns national channel numbers, but users
       // configure their own local channel numbers in presets
       const { db: dbPresets } = await import('@/db')
       const { schema: schemaPresets } = await import('@/db')
 
-      const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
-      const presets = await dbPresets.select().from(schemaPresets.channelPresets)
+      presets = await dbPresets.select().from(schemaPresets.channelPresets)
         .where(require('drizzle-orm').eq(schemaPresets.channelPresets.deviceType, presetDeviceType))
 
       logInfo(`Loaded ${presets.length} ${presetDeviceType} channel presets`)
@@ -142,63 +200,8 @@ export async function POST(request: NextRequest) {
       // Map common variations: ESPN, ESPN2, FS1, Fox Sports 1, B10, Big Ten Network, etc.
       const stationToPreset = new Map<string, { channelNumber: string; name: string }>()
 
-      const stationAliases: Record<string, string[]> = {
-        // ESPN family
-        'ESPN': ['ESPN', 'ESPN HD'],
-        'ESPN2': ['ESPN2', 'ESPN 2', 'ESPN2 HD'],
-        'ESPNU': ['ESPNU', 'ESPN U', 'ESPN University'],
-        'ESPND': ['ESPND', 'ESPN Deportes'],
-        'ESPNEWS': ['ESPNEWS', 'ESPN News', 'ESPNews'],
-        'ESPN+': ['ESPN+'],
-        // Conference networks
-        'SEC': ['SEC', 'SEC Network', 'SECN'],
-        'B10': ['B10', 'BIG10', 'Big Ten', 'Big Ten Network', 'BTN', 'Big 10'],
-        'ACC': ['ACC', 'ACC Network', 'ACCN'],
-        // Fox family
-        'FS1': ['FS1', 'Fox Sports 1', 'FOX Sports 1'],
-        'FS2': ['FS2', 'Fox Sports 2', 'FOX Sports 2'],
-        'FSP': ['FSP', 'Fox Sports Prime'],
-        'FOXD': ['FOXD', 'Fox Deportes', 'Fox Sports Deportes'],
-        'FSWI': ['FSWI', 'Fox Sports Wisconsin', 'Bally Sports Wisconsin', 'Bally Sports WI', 'Fan Duel'],
-        // NBC/CBS sports
-        'NBCSN': ['NBCSN', 'NBC Sports Network', 'NBCSPORTS', 'Peacock/NBC Sports'],
-        'CBSSN': ['CBSSN', 'CBS Sports Network', 'CBS Sports'],
-        // Turner/Warner
-        'TNT': ['TNT', 'TNT HD'],
-        'TBS': ['TBS', 'TBS HD'],
-        'TRUTV': ['TRUTV', 'TruTV', 'truTV'],
-        // USA Network (separate from truTV)
-        'USA': ['USA', 'USA Network'],
-        // League networks
-        'NBATV': ['NBATV', 'NBA TV', 'NBA Television'],
-        'NFLNET': ['NFLNET', 'NFL Network', 'NFLN'],
-        'MLBN': ['MLBN', 'MLBNet', 'MLB Network', 'MLB Television'],
-        'NHLNet': ['NHLNet', 'NHL Network', 'NHLN'],
-        // Sports channels
-        'GOLF': ['GOLF', 'Golf Channel', 'Golf'],
-        'TENNIS': ['TENNIS', 'TENN', 'Tennis Channel', 'Tennis'],
-        'OT': ['OT', 'Overtime'],
-        // Regional / specialty
-        'BSNOR+': ['BSNOR+', 'Bally Sports North', 'Fox Sports North'],
-        'NBCUN': ['NBCUN', 'NBC Universo'],
-        'NXTLVL': ['NXTLVL', 'Next Level'],
-        'TVGL': ['TVGL', 'TV Games Live'],
-        'MSG2': ['MSG2'],
-        // Local stations
-        'WGBA-TV': ['WGBA-TV', 'WGBA', 'NBC 26', 'WGBA-DT'],
-        'WACY-TV': ['WACY-TV', 'WACY', 'MyNetworkTV'],
-        'WFRV': ['WFRV', 'WFRV-TV', 'CBS 5'],
-        'WLUK-TV': ['WLUK-TV', 'WLUK', 'FOX 11'],
-        'WBAY': ['WBAY', 'WBAY-TV', 'ABC 2'],
-        'WCWF': ['WCWF', 'CW 14'],
-        'WDCW': ['WDCW'],
-        // Subscription / PPV / streaming
-        'MLBEI': ['MLBEI', 'MLB Extra Innings', 'MLB.TV'],
-        'DTVPPV': ['DTVPPV', 'DTVppv', 'DirecTV PPV'],
-        'NUE': ['NUE', 'nuevoTV'],
-        'TYC': ['TYC', 'TyC Sports'],
-        'Prime': ['Prime', 'Amazon Prime'],
-      }
+      // Load station aliases from database (cached with 5-minute TTL)
+      const stationAliases = await loadStationAliases()
 
       // Normalize station names for matching
       function normalizeStation(name: string): string {
@@ -335,11 +338,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Local channel overrides: inject local Spectrum channels for teams with business carriage deals
-      // Brewers games → available on Bally Sports Wisconsin ch 308 regardless of national listing
-      const localOverrides = [
-        { teamMatch: 'Milwaukee Brewers', channelNumber: 308, channelName: 'Bally Sports Wisconsin' },
-      ]
+      // Local channel overrides: inject local channels for teams with business carriage deals
+      // Loaded from DB table local_channel_overrides (cached 5-min TTL)
+      const localOverrides = await getLocalChannelOverrides()
 
       if (deviceType !== 'satellite') {
         // Scan ALL listings (not just matched ones) for local override teams
@@ -349,7 +350,7 @@ export async function POST(request: NextRequest) {
             const awayTeam = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
 
             for (const override of localOverrides) {
-              if (!homeTeam.includes(override.teamMatch) && !awayTeam.includes(override.teamMatch)) continue
+              if (!homeTeam.includes(override.teamName) && !awayTeam.includes(override.teamName)) continue
               if (!homeTeam.trim() && !awayTeam.trim()) continue
 
               // Check if this game already has a program entry on ch 308
@@ -671,25 +672,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter by channel presets - only show channels that are configured
-    // Load channel presets from database (skip for streaming - they use installed apps)
-    const { db } = await import('@/db')
-    const { schema } = await import('@/db')
-
+    // Reuse presets already loaded above (no second DB query)
     let presetFilteredPrograms = freshPrograms
     let presetChannels = new Set<string>()
     let presetRemovedCount = 0
 
     if (deviceType !== 'streaming') {
-      // For cable/satellite, filter by channel presets
-      const presets = await db.select().from(schema.channelPresets)
-      const presetDeviceType = deviceType === 'satellite' ? 'directv' : deviceType
+      // For cable/satellite, build preset channel set from already-loaded presets
       presetChannels = new Set(
-        presets
-          .filter(p => p.deviceType === presetDeviceType)
-          .map(p => p.channelNumber)
+        presets.map(p => p.channelNumber)
       )
 
-      logInfo(`Loaded ${presetChannels.size} ${presetDeviceType} channel presets`)
+      logInfo(`Filtering by ${presetChannels.size} ${presetDeviceType} channel presets (reused from station matching)`)
 
       // Filter programs to only include preset channels
       presetFilteredPrograms = freshPrograms.filter(program => {

@@ -5,6 +5,7 @@
  */
 
 import path from 'path';
+import { HARDWARE_CONFIG } from '@sports-bar/config';
 
 export const RAGConfig = {
   // Document paths
@@ -20,7 +21,7 @@ export const RAGConfig = {
   minRelevanceScore: 0.3, // Minimum similarity score (0-1)
 
   // Ollama configuration
-  ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
+  ollamaUrl: process.env.OLLAMA_URL || HARDWARE_CONFIG.ollama.baseUrl,
   embeddingModel: 'nomic-embed-text',
   llmModel: 'llama3.1:8b',
 

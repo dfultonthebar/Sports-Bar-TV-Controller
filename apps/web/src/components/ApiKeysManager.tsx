@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 interface ApiKey {
   id: string
   name: string
@@ -15,7 +16,7 @@ interface ApiKey {
 }
 
 const PROVIDERS = [
-  { value: 'ollama', label: 'Ollama (Local)', description: 'Local LLM server running on localhost:11434 - RECOMMENDED' },
+  { value: 'ollama', label: 'Ollama (Local)', description: `Local LLM server running on ${HARDWARE_CONFIG.ollama.baseUrl.replace('http://', '')} - RECOMMENDED` },
   { value: 'abacus', label: 'Abacus AI', description: 'Abacus.AI enhanced models with advanced reasoning' },
   { value: 'openai', label: 'OpenAI', description: 'OpenAI GPT models' },
   { value: 'localai', label: 'LocalAI', description: 'Local AI server running on localhost:8080' },

@@ -11,6 +11,7 @@
 
 import { db, sql } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@sports-bar/config'
 
 // ============================================================================
 // Types
@@ -80,12 +81,16 @@ const CREATE_SCHEDULING_PREFERENCES_TABLE = `
   CREATE TABLE IF NOT EXISTS scheduling_preferences (
     id TEXT PRIMARY KEY NOT NULL,
     preference_type TEXT NOT NULL,
-    preference_key TEXT NOT NULL,
-    preference_value TEXT NOT NULL,
-    source TEXT NOT NULL DEFAULT 'analyzed',
+    team_id TEXT,
+    team_name TEXT,
+    league TEXT,
+    preference_data TEXT NOT NULL,
+    weight INTEGER NOT NULL DEFAULT 50,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    source TEXT NOT NULL DEFAULT 'learned',
+    is_active INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    UNIQUE(preference_type, preference_key)
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
   )
 `
 
@@ -339,7 +344,7 @@ class PatternAnalyzer {
       logger.info('[PATTERN-ANALYZER] Analyzing time slot patterns...');
 
       // Get allocation data with the game's scheduled start time.
-      // We use the venue timezone (America/Chicago) to extract the local hour.
+      // We use the venue timezone to extract the local hour.
       // SQLite doesn't natively handle timezones in strftime, so we do the
       // hour extraction in JS after fetching.
       const rows = await db.all(sql`
@@ -372,10 +377,10 @@ class PatternAnalyzer {
         // Convert Unix timestamp to local hour in venue timezone
         const date = new Date(row.scheduled_start * 1000);
         const localHour = parseInt(
-          date.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Chicago' }),
+          date.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: HARDWARE_CONFIG.venue.timezone }),
           10
         );
-        const dateKey = date.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
+        const dateKey = date.toLocaleDateString('en-US', { timeZone: HARDWARE_CONFIG.venue.timezone });
 
         let dayMap = hourBuckets.get(localHour);
         if (!dayMap) {
@@ -828,21 +833,21 @@ class PatternAnalyzer {
       });
       await db.run(sql`
         INSERT OR REPLACE INTO scheduling_preferences
-          (id, preference_type, preference_key, preference_value, source, created_at, updated_at)
+          (id, preference_type, preference_data, source, is_active, created_at, updated_at)
         VALUES (
           COALESCE(
-            (SELECT id FROM scheduling_preferences WHERE preference_type = 'analysis_run' AND preference_key = 'last_run'),
+            (SELECT id FROM scheduling_preferences WHERE preference_type = 'analysis_run'),
             ${summaryId}
           ),
           'analysis_run',
-          'last_run',
           ${summaryData},
           'analyzed',
+          1,
           COALESCE(
-            (SELECT created_at FROM scheduling_preferences WHERE preference_type = 'analysis_run' AND preference_key = 'last_run'),
-            ${now}
+            (SELECT created_at FROM scheduling_preferences WHERE preference_type = 'analysis_run'),
+            strftime('%s', 'now')
           ),
-          ${now}
+          strftime('%s', 'now')
         )
       `);
     } catch (error: any) {

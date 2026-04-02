@@ -10,6 +10,7 @@ import Tesseract from 'tesseract.js'
 import fetch from 'node-fetch'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@sports-bar/config'
 
 export interface DetectedZone {
   id: string
@@ -580,7 +581,7 @@ async function extractLabelWithOllama(regionBuffer: Buffer): Promise<string | nu
     logger.debug('[OLLAMA-OCR] Calling Ollama vision model...')
 
     // Call Ollama API with vision model
-    const response = await fetch('http://localhost:11434/api/generate', {
+    const response = await fetch(`${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

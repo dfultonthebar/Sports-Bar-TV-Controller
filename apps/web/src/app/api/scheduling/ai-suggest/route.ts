@@ -15,11 +15,12 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
-const OLLAMA_URL = 'http://localhost:11434/api/generate'
+const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
 // const OLLAMA_MODEL = 'llama3.1:8b' // Too slow for large prompts
-const OLLAMA_TIMEOUT_MS = 60_000 // 60 seconds
-const OLLAMA_MODEL = 'llama3.2:3b' // Smaller model for faster responses
+const OLLAMA_TIMEOUT_MS = HARDWARE_CONFIG.ollama.timeout // 60 seconds
+const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model // Smaller model for faster responses
 const SPORTS_GUIDE_URL = 'http://localhost:3001/api/sports-guide'
 
 // ---------- types ----------
@@ -519,7 +520,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Ollama is not available. Make sure it is running on localhost:11434.',
+          error: `Ollama is not available. Make sure it is running on ${HARDWARE_CONFIG.ollama.baseUrl}.`,
           details: err.message,
           suggestions: [],
         },

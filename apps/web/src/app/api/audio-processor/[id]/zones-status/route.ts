@@ -9,6 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 export async function GET(
   request: NextRequest,
   {  params: paramsPromise }: { params: Promise<{ id: string }> }
@@ -84,7 +85,7 @@ export async function GET(
     // Atlas processor: Query the Atlas hardware for current configuration
     const hardwareConfig = await queryAtlasHardware(
       processor.ipAddress,
-      processor.tcpPort || 5321,
+      processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort,
       processor.model || 'AZMP8',  // Atlas processor model
       processor.port || 80,  // HTTP port
       processor.username || undefined,  // HTTP basic auth username

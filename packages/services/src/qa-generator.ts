@@ -8,12 +8,13 @@ import fs from 'fs';
 import path from 'path';
 import { and, asc, create, deleteRecord, desc, eq, findMany, findUnique, or, update, upsert, db, schema, like, sql } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger';
+import { HARDWARE_CONFIG } from '@sports-bar/config';
 import { calculateFileHash } from '@sports-bar/utils';
 import { count as drizzleCount } from 'drizzle-orm';
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.baseUrl;
 const DEFAULT_MODEL = 'phi3:mini';
-const FALLBACK_MODEL = 'llama3.2:3b';
+const FALLBACK_MODEL = HARDWARE_CONFIG.ollama.model;
 const QA_GENERATION_TIMEOUT = 600000; // 10 minutes
 const MAX_CONCURRENT_FILES = 2;
 const MAX_FILE_SIZE_MB = 2;

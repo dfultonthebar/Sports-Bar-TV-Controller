@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { findFirst, update } from '@/lib/db-helpers'
-import { getDirecTVDeviceFromConfig } from '@/lib/directv-device-loader'
+import { getDirecTVDeviceById } from '@/lib/device-db'
 
 /**
  * DirecTV Channel Tune API
@@ -119,8 +119,8 @@ export async function POST(
   }
 
   try {
-    // Load device from centralized loader
-    const device = getDirecTVDeviceFromConfig(deviceId)
+    // Load DirecTV device from database
+    const device = await getDirecTVDeviceById(deviceId)
 
     if (!device) {
       logger.error(`[DIRECTV] Device not found: ${deviceId}`)

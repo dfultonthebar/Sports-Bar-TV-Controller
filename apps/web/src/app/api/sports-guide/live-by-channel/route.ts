@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { fetchDirecTVGuide } from '@/lib/directv-guide-service'
 import { getDirecTVDeviceFromConfig } from '@/lib/directv-device-loader'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // DirecTV channel mapping for broadcast networks
 const NETWORK_TO_DIRECTV: Record<string, string> = {
@@ -471,7 +472,7 @@ function buildGameData(game: any, league: string, channelNumber: string) {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'America/Chicago'  // Central time for bar
+    timeZone: HARDWARE_CONFIG.venue.timezone  // Venue timezone for bar
   })
 
   const isLive = espnScoreboardAPI.isLive(game)

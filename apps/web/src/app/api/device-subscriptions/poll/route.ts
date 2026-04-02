@@ -54,11 +54,13 @@ async function saveSubscriptionsData(data: { devices: DeviceSubscription[] }) {
 }
 
 async function loadDeviceList(type: 'firetv' | 'directv') {
-  const fileName = type === 'firetv' ? 'firetv-devices.json' : 'directv-devices.json'
-  const filePath = join(process.cwd(), 'data', fileName)
   try {
-    const data = await readFile(filePath, 'utf8')
-    return JSON.parse(data)
+    const { loadFireTVDevices, loadDirecTVDevices } = await import('@/lib/device-db')
+    if (type === 'firetv') {
+      return await loadFireTVDevices()
+    } else {
+      return await loadDirecTVDevices()
+    }
   } catch (error) {
     return { devices: [] as any[] }
   }

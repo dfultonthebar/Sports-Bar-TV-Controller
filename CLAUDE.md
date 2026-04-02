@@ -246,6 +246,24 @@ import { findFirst, findMany, create } from '@/lib/db-helpers'
 const device = await findFirst('fireTVDevices', { where: eq(schema.fireTVDevices.id, deviceId) })
 ```
 
+#### Device Data Migration (JSON → Database)
+**Status:** Complete as of March 2026
+
+Device configuration has been migrated from JSON files to database tables:
+
+| Device Type | Old Source | New Source | DB Table | Helper Module |
+|-------------|-----------|-----------|----------|---------------|
+| DirecTV receivers | `data/directv-devices.json` | Database | `DirecTVDevice` | `apps/web/src/lib/device-db.ts` |
+| Fire TV devices | `data/firetv-devices.json` | Database | `FireTVDevice` | `apps/web/src/lib/device-db.ts` |
+| Station aliases | Hardcoded in channel-guide route | Database | `station_aliases` | Cached DB query in channel-guide |
+| Channel overrides | Hardcoded in channel-guide route | Database | `local_channel_overrides` | Cached DB query in channel-guide |
+
+**Auto-Seed on First Startup:** When the app starts and device tables are empty, it automatically seeds from JSON files (`data/directv-devices.json`, `data/firetv-devices.json`). This ensures locations pulling the code update don't lose their devices. See `apps/web/src/lib/seed-from-json.ts`.
+
+**Centralized Hardware Config:** `apps/web/src/lib/hardware-config.ts` contains all device IPs, ports, and processor IDs. Update this file when hardware changes — no more hunting through 15+ files.
+
+**Important:** The JSON files still exist on location branches as seed data. After first startup, the database is the source of truth. Edits made through the UI go to DB only.
+
 #### 4. Logging Architecture
 **Logger Package:** `packages/logger/`
 ```typescript
@@ -522,7 +540,21 @@ pm2 restart sports-bar-tv-controller
 - **Xfinity cable boxes:** CEC works
 - **Check device type** before assuming CEC support
 
+### 6. Device Data: DB is Source of Truth
+- Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
+- JSON files (`data/directv-devices.json`, `data/firetv-devices.json`) are only used for initial seeding
+- All CRUD operations go through `apps/web/src/lib/device-db.ts`
+- To re-seed from JSON: delete rows from the DB table, restart the app
+- The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
+
 ## Development Workflow
+
+### Version Bumping (REQUIRED)
+**Always bump the version in root `package.json` when making code changes:**
+- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
+- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, small adjustments
+
+This is critical for multi-location deployments so each location knows what version they're running.
 
 ### Making Schema Changes
 ```bash
@@ -755,8 +787,8 @@ This system supports multiple sports bar locations. Each location runs its own i
 
 These files are replaced with real data on location branches:
 - `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
-- `apps/web/data/directv-devices.json` — DirecTV receiver configs
-- `apps/web/data/firetv-devices.json` ��� Fire TV device configs
+- `apps/web/data/directv-devices.json` — DirecTV receiver configs (Seed-only input — DB is source of truth after first run)
+- `apps/web/data/firetv-devices.json` — Fire TV device configs (Seed-only input — DB is source of truth after first run)
 - `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
 - `apps/web/data/wolfpack-devices.json` — Wolf Pack multi-chassis configs (empty `{"chassis":[]}` on main)
 - `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
@@ -770,7 +802,12 @@ These files are replaced with real data on location branches:
 git checkout location/<name>
 git merge main
 # On conflict with data files → keep the location version (git checkout --ours <file>)
-npm run build && pm2 restart sports-bar-tv-controller
+npm install
+npx drizzle-kit push --config drizzle.config.ts  # Create any new DB tables
+npm run build
+pm2 restart sports-bar-tv-controller
+# Check logs for auto-seed: pm2 logs sports-bar-tv-controller --lines 20
+# Look for: "[SEED] Seeded X DirecTV devices from JSON"
 ```
 
 ### Commit Strategy (IMPORTANT)

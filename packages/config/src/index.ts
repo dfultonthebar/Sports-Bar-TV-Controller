@@ -43,6 +43,9 @@ export {
   calculateBackoffDelay,
 } from './firetv-config'
 
+// Hardware Configuration
+export { HARDWARE_CONFIG, type HardwareConfig } from './hardware-config'
+
 // Configuration Change Tracking (DEPRECATED - moved to @sports-bar/utils)
 // Re-export for backwards compatibility
 export {

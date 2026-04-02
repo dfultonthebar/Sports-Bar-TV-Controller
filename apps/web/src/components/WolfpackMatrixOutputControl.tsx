@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Monitor, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 interface MatrixInput {
   id: string
   channelNumber: number
@@ -26,7 +27,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [routings, setRoutings] = useState<MatrixRouting[]>([])
   const [audioOutputCount, setAudioOutputCount] = useState(4)
-  const [audioOutputStart, setAudioOutputStart] = useState(37)
+  const [audioOutputStart, setAudioOutputStart] = useState(HARDWARE_CONFIG.wolfpack.audioOutputStart)
   const [selectedOutput, setSelectedOutput] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [routing, setRouting] = useState(false)

@@ -16,11 +16,10 @@ import { db, schema } from '@/db'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { logger } from '@sports-bar/logger'
+import { loadDirecTVDevices, loadFireTVDevices } from '@/lib/device-db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
-const DIRECTV_DEVICES_FILE = path.join(process.cwd(), 'data', 'directv-devices.json')
-const FIRETV_DEVICES_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 const EVERPASS_DEVICES_FILE = path.join(process.cwd(), 'data', 'everpass-devices.json')
 
 export const dynamic = 'force-dynamic'
@@ -35,18 +34,20 @@ export async function GET(request: NextRequest) {
 
   try {
     // Run all queries in parallel for maximum performance
-    const [matrixData, irDevicesData, direcTVData, fireTVData, everPassData] = await Promise.all([
+    const [matrixData, irDevicesData, direcTVResult, fireTVResult, everPassData] = await Promise.all([
       // Matrix config with inputs (combined query)
       loadMatrixConfig(),
       // IR devices from database
       loadIRDevices(),
-      // DirecTV devices from JSON file
+      // DirecTV devices from database
       loadDirecTVDevices(),
-      // Fire TV devices from JSON file
+      // Fire TV devices from database
       loadFireTVDevices(),
       // EverPass devices from JSON file
       loadEverPassDevices(),
     ])
+    const direcTVData = direcTVResult.devices
+    const fireTVData = fireTVResult.devices
 
     const duration = Date.now() - startTime
     logger.debug(`[DEVICES-ALL] Loaded all devices in ${duration}ms`)
@@ -120,28 +121,6 @@ async function loadIRDevices() {
     return devices.map(d => ({ ...d, inputChannel: d.matrixInput }))
   } catch (error) {
     logger.error('[DEVICES-ALL] Error loading IR devices:', error)
-    return []
-  }
-}
-
-async function loadDirecTVDevices() {
-  try {
-    const data = await fs.readFile(DIRECTV_DEVICES_FILE, 'utf8')
-    const parsed = JSON.parse(data)
-    return parsed.devices || []
-  } catch (error) {
-    // File might not exist yet, return empty array
-    return []
-  }
-}
-
-async function loadFireTVDevices() {
-  try {
-    const data = await fs.readFile(FIRETV_DEVICES_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    return parsed.devices || []
-  } catch (error) {
-    // File might not exist yet, return empty array
     return []
   }
 }

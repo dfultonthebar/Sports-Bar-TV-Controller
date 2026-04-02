@@ -11,7 +11,7 @@
       "disabled": true,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:15:34.127Z",
-      "lastSeen": "2026-03-30T19:03:59.663Z"
+      "lastSeen": "2026-03-30T20:02:31.199Z"
     },
     {
       "name": "Fire TV 2",
@@ -20,10 +20,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 15,
       "id": "firetv_1741700000002_holmgren2",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:15:44.259Z",
-      "lastSeen": "2026-03-30T19:02:54.082Z"
+      "lastSeen": "2026-03-30T20:02:31.195Z"
     },
     {
       "name": "Fire TV 3",
@@ -32,10 +32,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 16,
       "id": "firetv_1741700000003_holmgren3",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2026-03-11T21:00:00.000Z",
       "updatedAt": "2026-03-19T16:16:19.145Z",
-      "lastSeen": "2026-03-30T19:02:54.082Z"
+      "lastSeen": "2026-03-30T20:02:31.195Z"
     },
     {
       "name": "Atmosphere TV",
@@ -44,10 +44,10 @@
       "deviceType": "Atmosphere TV",
       "inputChannel": 11,
       "id": "atmosphere_holmgren1",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2026-03-25T15:00:00.000Z",
       "updatedAt": "2026-03-25T15:00:00.000Z",
-      "lastSeen": "2026-03-30T19:02:54.081Z"
+      "lastSeen": "2026-03-30T20:02:31.194Z"
     },
     {
       "name": "Epson Projector",
@@ -56,11 +56,11 @@
       "deviceType": "Epson Projector",
       "inputChannel": 0,
       "id": "firetv_epson_holmgren",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2026-03-19T15:00:00.000Z",
       "updatedAt": "2026-03-19T15:00:00.000Z",
       "model": "HA90",
-      "lastSeen": "2026-03-30T19:02:54.075Z"
+      "lastSeen": "2026-03-30T20:02:31.196Z"
     }
   ]
 }

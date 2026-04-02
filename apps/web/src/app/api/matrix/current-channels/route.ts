@@ -7,15 +7,12 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { findFirst, update as dbUpdate } from '@/lib/db-helpers'
-import fs from 'fs/promises'
-import path from 'path'
+import { loadDirecTVDevices } from '@/lib/device-db'
 
 // Poll all DirecTV receivers for their current channel and update the DB
 async function pollDirecTVChannels() {
   try {
-    const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json')
-    const devicesJson = await fs.readFile(devicesPath, 'utf-8')
-    const devicesData = JSON.parse(devicesJson)
+    const devicesData = await loadDirecTVDevices()
 
     await Promise.allSettled(
       (devicesData.devices || []).map(async (device: any) => {
