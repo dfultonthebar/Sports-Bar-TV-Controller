@@ -17,9 +17,8 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate'
-// const OLLAMA_MODEL = 'llama3.1:8b' // Too slow for large prompts
-const OLLAMA_TIMEOUT_MS = 60_000 // 60 seconds
-const OLLAMA_MODEL = 'llama3.2:3b' // Smaller model for faster responses
+const OLLAMA_MODEL = 'llama3.1:8b'
+const OLLAMA_TIMEOUT_MS = 90_000 // 90 seconds - 8b model needs more time
 const SPORTS_GUIDE_URL = 'http://localhost:3001/api/sports-guide'
 
 // ---------- types ----------

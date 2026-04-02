@@ -3,36 +3,13 @@
  *
  * GET /api/directv/guide
  *
- * Fetches program guide data from DirecTV receivers
+ * Fetches program guide data from DirecTV receivers.
+ * Loads devices from the centralized device loader (not hardcoded).
  *
  * Query Parameters:
  * - deviceId (optional): DirecTV device ID. If not provided, uses first online device
  * - channels (optional): Comma-separated list of channel numbers (e.g., "206,212,219")
  *                        If not provided, fetches all active DirecTV presets
- *
- * Response:
- * {
- *   "success": true,
- *   "device": { "id": "...", "name": "...", "ipAddress": "..." },
- *   "results": [
- *     {
- *       "success": true,
- *       "channel": "206",
- *       "channelName": "ESPN",
- *       "programInfo": {
- *         "title": "SportsCenter",
- *         "callsign": "ESPN",
- *         "duration": 3600,
- *         "startTime": 1234567890,
- *         "isOffAir": false,
- *         "major": 206,
- *         "minor": 1
- *       }
- *     }
- *   ],
- *   "fetchedAt": "2025-01-15T12:00:00Z",
- *   "cached": false
- * }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -44,11 +21,8 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq, and } from 'drizzle-orm'
-import {
-  fetchDirecTVGuide,
-  getDirecTVDevice,
-  type DirecTVGuideOptions
-} from '@/lib/directv-guide-service'
+import { fetchDirecTVGuide, type DirecTVGuideOptions } from '@sports-bar/directv'
+import { getDirecTVDeviceFromConfig } from '@/lib/directv-device-loader'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -110,23 +84,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get device info for response
-    const device = getDirecTVDevice(deviceId)
+    // Load device from centralized loader
+    const device = getDirecTVDeviceFromConfig(deviceId)
     if (!device) {
       return NextResponse.json({
         success: false,
         error: deviceId
           ? `DirecTV device not found: ${deviceId}`
-          : 'No online DirecTV devices available',
+          : 'No online DirecTV devices available. Check directv-devices.json configuration.',
         device: null,
         results: [],
         fetchedAt: new Date().toISOString()
       }, { status: 404 })
     }
 
-    // Fetch guide data
+    // Fetch guide data — pass device directly (no file reads inside the service)
     const options: DirecTVGuideOptions = {
-      deviceId,
+      device,
       channels: channelList,
       timeout,
       useCache,
@@ -160,7 +134,9 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error: any) {
-    logger.error('[DIRECTV_GUIDE_API] Error:', error)
+    logger.error('[DIRECTV_GUIDE_API] Error', {
+      error: error instanceof Error ? error : new Error(String(error))
+    })
 
     return NextResponse.json({
       success: false,

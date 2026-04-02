@@ -153,7 +153,8 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
       }
     }
   } catch (error) {
-    logger.error('DirecTV command error:', error)
+    const errMsg = error instanceof Error ? error.message : String(error)
+    logger.error(`DirecTV command error: ${errMsg}`, { error: error instanceof Error ? error : new Error(String(error)) })
 
     let errorMessage = 'Unknown error'
 
@@ -195,6 +196,24 @@ async function sendDirecTVCommand(ip: string, port: number, command: string, ret
   }
 }
 
+// Per-device command throttle: prevents overwhelming receivers with rapid-fire requests
+// DirecTV SHEF API needs ~500ms between commands to process reliably
+const deviceLastCommand = new Map<string, number>()
+const COMMAND_MIN_INTERVAL_MS = 500
+
+function throttleCommand(deviceId: string): { allowed: boolean; waitMs: number } {
+  const now = Date.now()
+  const lastTime = deviceLastCommand.get(deviceId) || 0
+  const elapsed = now - lastTime
+
+  if (elapsed < COMMAND_MIN_INTERVAL_MS) {
+    return { allowed: false, waitMs: COMMAND_MIN_INTERVAL_MS - elapsed }
+  }
+
+  deviceLastCommand.set(deviceId, now)
+  return { allowed: true, waitMs: 0 }
+}
+
 // Validation schema for DirecTV command
 const directvSendCommandSchema = z.object({
   deviceId: ValidationSchemas.deviceId,
@@ -217,6 +236,17 @@ export async function POST(request: NextRequest) {
     const { data } = validation
 
     const { deviceId, command, ipAddress, port } = data
+
+    // Throttle rapid-fire commands per device
+    const throttle = throttleCommand(deviceId)
+    if (!throttle.allowed) {
+      logger.debug(`[DIRECTV] Throttled command ${command} to ${deviceId} (wait ${throttle.waitMs}ms)`)
+      return NextResponse.json(
+        { success: false, error: `Too fast — wait ${throttle.waitMs}ms`, throttled: true },
+        { status: 429 }
+      )
+    }
+
     // Validate and map the command
     const mappedCommand = DIRECTV_COMMANDS[command as keyof typeof DIRECTV_COMMANDS]
     if (!mappedCommand) {
@@ -258,7 +288,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    logger.error('DirecTV Command API Error:', error)
+    logger.error('DirecTV Command API Error', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : 'Failed to send DirecTV command',

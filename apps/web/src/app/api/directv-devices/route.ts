@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    logger.error('Error loading DirecTV devices:', error)
+    logger.error('Error loading DirecTV devices', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json({ error: 'Failed to load DirecTV devices' }, { status: 500 })
   }
 }
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ message: 'DirecTV device added successfully', device })
   } catch (error) {
-    logger.error('Error adding DirecTV device:', error)
+    logger.error('Error adding DirecTV device', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json({ error: 'Failed to add DirecTV device' }, { status: 500 })
   }
 }
@@ -127,7 +127,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'DirecTV device not found' }, { status: 404 })
     }
   } catch (error) {
-    logger.error('Error updating DirecTV device:', error)
+    logger.error('Error updating DirecTV device', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json({ error: 'Failed to update DirecTV device' }, { status: 500 })
   }
 }
@@ -157,7 +157,7 @@ export async function DELETE(request: NextRequest) {
     await saveDirecTVDevices(data.devices)
     return NextResponse.json({ message: 'DirecTV device deleted successfully' })
   } catch (error) {
-    logger.error('Error deleting DirecTV device:', error)
+    logger.error('Error deleting DirecTV device', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json({ error: 'Failed to delete DirecTV device' }, { status: 500 })
   }
 }
