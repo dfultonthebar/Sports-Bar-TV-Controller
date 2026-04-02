@@ -1,18 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ChevronUp,
   ChevronDown,
   Home,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react'
 
-const ATMOSPHERE_DEVICE = {
-  deviceId: 'atmosphere_holmgren1',
-  ipAddress: '10.11.3.48',
-  port: 5555
+interface AtmosphereDevice {
+  deviceId: string
+  ipAddress: string
+  port: number
 }
 
 const ATMOSPHERE_BUTTONS = [
@@ -25,18 +26,42 @@ const ATMOSPHERE_BUTTONS = [
 export default function AtmosphereControl() {
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
   const [lastCommand, setLastCommand] = useState<string>('')
+  const [atmosphereDevice, setAtmosphereDevice] = useState<AtmosphereDevice | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/firetv-devices')
+      .then(res => res.json())
+      .then(data => {
+        const device = data.devices?.find(
+          (d: any) => d.deviceType === 'Atmosphere TV' || d.name?.toLowerCase().includes('atmosphere')
+        )
+        if (device) {
+          setAtmosphereDevice({
+            deviceId: device.id,
+            ipAddress: device.ipAddress,
+            port: device.port || 5555
+          })
+        }
+      })
+      .catch(() => {
+        // Failed to load devices — atmosphereDevice stays null
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
   const sendCommand = async (command: string, displayName: string) => {
+    if (!atmosphereDevice) return
     setLastCommand(displayName)
 
     fetch('/api/firetv-devices/send-command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        deviceId: ATMOSPHERE_DEVICE.deviceId,
+        deviceId: atmosphereDevice.deviceId,
         command,
-        ipAddress: ATMOSPHERE_DEVICE.ipAddress,
-        port: ATMOSPHERE_DEVICE.port
+        ipAddress: atmosphereDevice.ipAddress,
+        port: atmosphereDevice.port
       })
     })
       .then(response => response.json())
@@ -53,6 +78,29 @@ export default function AtmosphereControl() {
         setTimeout(() => setStatus({ type: null, message: '' }), 1500)
       })
   }
+
+  if (loading) {
+    return (
+      <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50 w-full max-w-sm">
+        <div className="flex items-center justify-center gap-2 text-slate-400 py-8">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Loading Atmosphere TV...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!atmosphereDevice) {
+    return (
+      <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50 w-full max-w-sm">
+        <div className="text-center py-8">
+          <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+          <p className="text-sm text-slate-400">No Atmosphere TV device configured</p>
+        </div>
+      </div>
+    )
+  }
+
 
   return (
     <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50 w-full max-w-sm">

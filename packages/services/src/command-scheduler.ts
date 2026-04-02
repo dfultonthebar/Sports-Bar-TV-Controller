@@ -3,7 +3,7 @@
  * Executes scheduled commands at specified intervals
  */
 
-import { db, scheduledCommands, scheduledCommandLogs, eq, and } from '@sports-bar/database'
+import { db, scheduledCommands, scheduledCommandLogs, matrixConfigurations, eq, and } from '@sports-bar/database'
 import { lte } from 'drizzle-orm'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -317,9 +317,20 @@ export class CommandScheduler {
     let sent = 0
     let failed = 0
 
-    // Get matrix configuration
-    const matrixIP = process.env.MATRIX_IP || '192.168.1.100'
-    const matrixPort = parseInt(process.env.MATRIX_PORT || '23')
+    // Get matrix configuration from database (active config)
+    const matrixConfig = await db.select()
+      .from(matrixConfigurations)
+      .where(eq(matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
+
+    const matrixIP = matrixConfig?.ipAddress || process.env.MATRIX_IP
+    const matrixPort = matrixConfig?.tcpPort || parseInt(process.env.MATRIX_PORT || '5000')
+
+    if (!matrixIP) {
+      logger.error('[SCHEDULER] No matrix IP found in database or environment variables')
+      return { results: [{ error: 'No matrix configuration found' }], sent: 0, failed: targets.length * commands.length }
+    }
 
     for (const target of targets) {
       for (const cmd of commands) {

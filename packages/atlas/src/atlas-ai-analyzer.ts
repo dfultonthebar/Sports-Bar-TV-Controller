@@ -10,6 +10,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 
 import { logger } from '@sports-bar/logger'
+import { getAtlasLearnedPatterns } from './atlas-pattern-learner'
 const execAsync = promisify(exec)
 
 export interface AtlasAIAnalysisResult {
@@ -563,12 +564,54 @@ if __name__ == '__main__':
    */
   private async triggerAtlasAlert(processorId: string, analysis: AtlasAIAnalysisResult): Promise<void> {
     logger.error(`ATLAS CRITICAL ALERT - Processor ${processorId}:`, { data: analysis.summary })
-    
+
     // Here you could integrate with notification systems:
     // - Send email alerts
-    // - SMS notifications  
+    // - SMS notifications
     // - Slack/Teams integration
     // - Dashboard alerts
+  }
+
+  /**
+   * Enhanced analysis that blends static analysis with learned patterns.
+   * Falls back to standard analyzeAtlasData when no learned patterns exist.
+   */
+  async analyzeWithLearning(data: AtlasMonitoringData): Promise<AtlasAIAnalysisResult> {
+    // 1. Run standard static analysis
+    const result = await this.analyzeAtlasData(data)
+
+    // 2. Get learned patterns from in-memory cache
+    const learnedPatterns = getAtlasLearnedPatterns()
+
+    if (learnedPatterns.length === 0) {
+      return result
+    }
+
+    // 3. Convert learned patterns to insights prefixed with [Learned]
+    const learnedInsights = learnedPatterns
+      .filter(p => !p.processorId || p.processorId === data.processorId)
+      .slice(0, 15)
+      .map(p => `[Learned] ${p.title}: ${p.description}`)
+
+    // 4. Add learned insights (cap at 25 total)
+    const existingInsights = result.audioInsights || []
+    result.audioInsights = [...existingInsights, ...learnedInsights].slice(0, 25)
+
+    // 5. Boost confidence when learned data corroborates static findings
+    if (learnedPatterns.length > 0) {
+      result.confidence = Math.min(100, result.confidence + 5)
+    }
+
+    // 6. Add learned recommendations to hardware recommendations
+    const learnedRecs = learnedPatterns
+      .filter(p => !p.processorId || p.processorId === data.processorId)
+      .flatMap(p => p.recommendations)
+      .slice(0, 5)
+
+    const existingRecs = result.hardwareRecommendations || []
+    result.hardwareRecommendations = [...existingRecs, ...learnedRecs].slice(0, 10)
+
+    return result
   }
 }
 

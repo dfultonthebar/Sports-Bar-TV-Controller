@@ -4,9 +4,6 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Music, Volume2, Radio, Zap } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
 
-const PROCESSOR_ID = '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9'
-const ATLAS_IP = '10.11.3.246'
-
 interface AtlasSource {
   index: number
   name: string
@@ -30,6 +27,8 @@ const WOLFPACK_AUDIO_OPTIONS: AtlasSource[] = [
 ]
 
 export default function DJControlPanel() {
+  const [processorId, setProcessorId] = useState<string | null>(null)
+  const [processorIp, setProcessorIp] = useState<string | null>(null)
   const [djSources, setDjSources] = useState<AtlasSource[]>([])
   const [selectedDJSource, setSelectedDJSource] = useState<number | null>(null)
   const [selectedGameSource, setSelectedGameSource] = useState<number>(WOLFPACK_AUDIO_OPTIONS[0].index)
@@ -44,8 +43,9 @@ export default function DJControlPanel() {
 
   // Fetch Atlas sources
   const fetchSources = useCallback(async () => {
+    if (!processorIp) return
     try {
-      const res = await fetch(`/api/atlas/sources?processorIp=${ATLAS_IP}`)
+      const res = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
       const data = await res.json()
       if (data.success && data.sources) {
         setDjSources(data.sources)
@@ -58,12 +58,13 @@ export default function DJControlPanel() {
     } catch (err) {
       logger.error('[DJ_PANEL] Failed to fetch sources:', err)
     }
-  }, [selectedDJSource])
+  }, [processorIp, selectedDJSource])
 
   // Fetch Atlas zones
   const fetchZones = useCallback(async () => {
+    if (!processorId) return
     try {
-      const res = await fetch(`/api/audio-processor/zones?processorId=${PROCESSOR_ID}`)
+      const res = await fetch(`/api/audio-processor/zones?processorId=${processorId}`)
       const data = await res.json()
       if (data.zones) {
         const enabledZones = data.zones.filter((z: AudioZone) => z.enabled)
@@ -76,7 +77,7 @@ export default function DJControlPanel() {
     } catch (err) {
       logger.error('[DJ_PANEL] Failed to fetch zones:', err)
     }
-  }, [])
+  }, [processorId])
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -102,8 +103,27 @@ export default function DJControlPanel() {
     }, 500)
   }, [isDJMode, selectedDJSource, selectedGameSource, selectedZones, djSources])
 
-  // Load saved state on mount
+  // Fetch processor from DB on mount
   useEffect(() => {
+    const fetchProcessor = async () => {
+      try {
+        const res = await fetch('/api/audio-processor')
+        const data = await res.json()
+        if (data.success && data.processors?.length > 0) {
+          const processor = data.processors[0]
+          setProcessorId(processor.id)
+          setProcessorIp(processor.ipAddress)
+        }
+      } catch (err) {
+        logger.error('[DJ_PANEL] Failed to fetch processor:', err)
+      }
+    }
+    fetchProcessor()
+  }, [])
+
+  // Load saved state once processor is loaded
+  useEffect(() => {
+    if (!processorId || !processorIp) return
     const init = async () => {
       setLoading(true)
       await Promise.all([fetchSources(), fetchZones()])
@@ -126,7 +146,7 @@ export default function DJControlPanel() {
       setLoading(false)
     }
     init()
-  }, [fetchSources, fetchZones])
+  }, [processorId, processorIp, fetchSources, fetchZones])
 
   // Auto-save when state changes
   useEffect(() => {
@@ -135,6 +155,7 @@ export default function DJControlPanel() {
 
   // Switch audio source for all selected zones
   const switchSource = useCallback(async (sourceIndex: number) => {
+    if (!processorId) return
     if (selectedZones.size === 0) {
       setStatusMessage('Select at least one zone')
       setTimeout(() => setStatusMessage(null), 3000)
@@ -150,7 +171,7 @@ export default function DJControlPanel() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            processorId: PROCESSOR_ID,
+            processorId,
             command: {
               action: 'source',
               zone: zoneNumber + 1,
@@ -175,7 +196,7 @@ export default function DJControlPanel() {
       setSwitching(false)
       setTimeout(() => setStatusMessage(null), 3000)
     }
-  }, [selectedZones])
+  }, [processorId, selectedZones])
 
   // Handle the big toggle button
   const handleModeToggle = useCallback(() => {
@@ -190,6 +211,7 @@ export default function DJControlPanel() {
 
   // Handle volume change with debounce
   const handleVolumeChange = useCallback((zoneNumber: number, value: number) => {
+    if (!processorId) return
     setZoneVolumes((prev) => {
       const next = new Map(prev)
       next.set(zoneNumber, value)
@@ -206,7 +228,7 @@ export default function DJControlPanel() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            processorId: PROCESSOR_ID,
+            processorId,
             command: {
               action: 'volume',
               zone: zoneNumber + 1,
@@ -224,7 +246,7 @@ export default function DJControlPanel() {
       next.set(zoneNumber, timer)
       return next
     })
-  }, [volumeTimers])
+  }, [processorId, volumeTimers])
 
   // Zone selection helpers
   const toggleZone = (zoneNumber: number) => {
@@ -249,6 +271,7 @@ export default function DJControlPanel() {
 
   // Quick presets
   const applyPreset = useCallback(async (preset: 'dj-main-bar' | 'dj-everywhere' | 'game-all') => {
+    if (!processorId) return
     if (selectedDJSource === null && preset !== 'game-all') {
       setStatusMessage('Select a DJ source first')
       setTimeout(() => setStatusMessage(null), 3000)
@@ -291,7 +314,7 @@ export default function DJControlPanel() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            processorId: PROCESSOR_ID,
+            processorId,
             command: {
               action: 'source',
               zone: zoneNumber + 1,
@@ -309,7 +332,7 @@ export default function DJControlPanel() {
       setSwitching(false)
       setTimeout(() => setStatusMessage(null), 3000)
     }
-  }, [zones, selectedDJSource, selectedGameSource])
+  }, [processorId, zones, selectedDJSource, selectedGameSource])
 
   if (loading) {
     return (

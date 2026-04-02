@@ -246,6 +246,10 @@ export default function ScheduledGamesPanel() {
 
   const [initialLoadDone, setInitialLoadDone] = useState(false)
 
+  // Atlas processor IP fetched from database
+  const [atlasProcessorIp, setAtlasProcessorIp] = useState<string | null>(null)
+
+
   // -----------------------------------------------------------------------
   // Fetch current cable box channels
   // -----------------------------------------------------------------------
@@ -334,6 +338,21 @@ export default function ScheduledGamesPanel() {
     }, 30_000)
     return () => clearInterval(interval)
   }, [fetchSchedule, fetchCableBoxChannels, showDefaults])
+
+  // Fetch Atlas processor IP from database on mount
+  useEffect(() => {
+    fetch('/api/audio-processor')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.processors?.length > 0) {
+          setAtlasProcessorIp(data.processors[0].ipAddress)
+        }
+      })
+      .catch((err) => {
+        logger.debug('[SCHEDULED-GAMES] Failed to fetch Atlas processor IP', err)
+      })
+  }, [])
+
 
   // Auto-dismiss notification after 10 seconds
   useEffect(() => {
@@ -429,24 +448,30 @@ export default function ScheduledGamesPanel() {
             }
           }
 
-          // Switch Atlas audio zones to the game audio source
+          // Switch Atlas audio groups to the game audio source
           if (game.audioSourceIndex != null && game.audioZoneIds && game.audioZoneIds.length > 0) {
-            logger.debug('[SCHEDULED-GAMES] Switching Atlas audio', {
-              source: game.audioSourceIndex,
-              zones: game.audioZoneIds,
-            })
-            await Promise.all(
-              game.audioZoneIds.map((zoneNumber) =>
-                fetch('/api/audio-processor/control', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    processorId: '3641dcba-98b8-4f7c-b0ae-d4c7dbecaed9',
-                    command: { action: 'source', zone: zoneNumber + 1, value: game.audioSourceIndex },
-                  }),
-                }).catch(() => {})
+            if (!atlasProcessorIp) {
+              logger.warn('[SCHEDULED-GAMES] Atlas processor IP not loaded, skipping audio group switch')
+            } else {
+              logger.debug('[SCHEDULED-GAMES] Switching Atlas audio groups', {
+                source: game.audioSourceIndex,
+                groups: game.audioZoneIds,
+              })
+              await Promise.all(
+                game.audioZoneIds.map((groupIndex) =>
+                  fetch('/api/atlas/groups', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      processorIp: atlasProcessorIp,
+                      groupIndex,
+                      action: 'setSource',
+                      value: game.audioSourceIndex,
+                    }),
+                  }).catch(() => {})
+                )
               )
-            )
+            }
           }
         } else {
           const data = await res.json().catch(() => ({}))
@@ -462,7 +487,7 @@ export default function ScheduledGamesPanel() {
         setTuningId(null)
       }
     },
-    []
+    [atlasProcessorIp]
   )
 
   // -----------------------------------------------------------------------

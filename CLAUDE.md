@@ -179,6 +179,8 @@ npm run test:coverage       # Generate coverage report
 - `@sports-bar/firecube` - Amazon Fire TV ADB control
 - `@sports-bar/ir-control` - IR blaster control (iTach IP2IR)
 
+**DirecTV Device Loader:** `apps/web/src/lib/directv-device-loader.ts` loads DirecTV receiver configs from `apps/web/data/directv-devices.json`. Used by DirecTV API routes to resolve device IPs and port numbers.
+
 **Command Queue Pattern:**
 All hardware services use a command queue pattern to prevent concurrent access issues:
 ```typescript
@@ -690,8 +692,8 @@ const result = await queryDocs({
 **Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
 
 **Key Components:**
-- **Pattern Analyzer** (`apps/web/src/lib/scheduling/pattern-analyzer.ts`) - Analyzes historical viewing patterns to predict optimal channel assignments
-- **AI Suggestions** - Uses Ollama LLM to generate scheduling recommendations based on upcoming games, time of day, and venue preferences
+- **Pattern Analyzer** (`packages/scheduler/src/pattern-analyzer.ts`) - Analyzes historical viewing patterns to predict optimal channel assignments
+- **AI Suggestions** (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) - Uses Ollama LLM (llama3.1:8b, 90s timeout) to generate scheduling recommendations
 - **Scheduling Preferences** - Per-location configuration for preferred sports, channels, and time slots
 - **Default Source Configuration** - Fallback source assignments for TVs when no scheduled content is active
 - **DJ Mode Control** - Override mode that locks TV assignments for special events, preventing automatic scheduling changes
@@ -700,6 +702,17 @@ const result = await queryDocs({
 - `GET/POST /api/scheduling/preferences` - Manage scheduling preferences
 - `GET /api/scheduling/suggestions` - Get AI-powered scheduling suggestions
 - `POST /api/scheduling/apply` - Apply a scheduling suggestion
+
+#### 9a. Live Channel Mapping (Network → Channel)
+**Purpose:** Map ESPN broadcast network names to local channel numbers for live game display
+
+**Location:** `apps/web/src/app/api/sports-guide/live-by-channel/route.ts`
+
+**How it works:** ESPN API returns broadcast info like `"FanDuel SN WI"` or `"Bucks.TV"`. The `NETWORK_TO_CABLE` and `NETWORK_TO_DIRECTV` dictionaries map these to local channel numbers so games appear in the bartender's live games section.
+
+**Adding New Mappings:** When a game doesn't appear in live games, check the ESPN API response for the exact network name, then add it to both mapping dictionaries in `live-by-channel/route.ts`.
+
+**Common Mapping Issues:** ESPN uses different names than expected (e.g., `"FanDuel SN WI"` instead of `"Bally Sports Wisconsin"`). Add ALL known variants for each regional sports network.
 
 #### 10. Holmgren Way Hardware Configuration
 **Location:** Holmgren Way sports bar (current active installation)
@@ -743,8 +756,9 @@ This system supports multiple sports bar locations. Each location runs its own i
 These files are replaced with real data on location branches:
 - `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
 - `apps/web/data/directv-devices.json` — DirecTV receiver configs
-- `apps/web/data/firetv-devices.json` — Fire TV device configs
+- `apps/web/data/firetv-devices.json` ��� Fire TV device configs
 - `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
+- `apps/web/data/wolfpack-devices.json` — Wolf Pack multi-chassis configs (empty `{"chassis":[]}` on main)
 - `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
 - `apps/web/public/uploads/layouts/` — Floor plan images (gitignored)
 - `data/` mirrors — Root copies of the above
@@ -755,9 +769,15 @@ These files are replaced with real data on location branches:
 ```bash
 git checkout location/<name>
 git merge main
-# On conflict with data files → keep the location version
+# On conflict with data files → keep the location version (git checkout --ours <file>)
 npm run build && pm2 restart sports-bar-tv-controller
 ```
+
+### Commit Strategy (IMPORTANT)
+- **Software changes** (code in `apps/web/src/`, `packages/`, docs) → commit to `main` branch, then merge into location branches
+- **Location-specific data** (device IPs, configs in `apps/web/data/*.json`, `.env`, layout images) → commit ONLY to location branch
+- **Never merge location branches back into main** — location data must not leak to other locations
+- When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
 
 ### Shared Location Reference Docs
 
@@ -774,6 +794,7 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 - CEC to IR Migration: `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
 - Soundtrack Integration: `/docs/SOUNDTRACK_INTEGRATION_GUIDE.md`
 - Authentication: `/docs/AUTHENTICATION_GUIDE.md`
+- Wolf Pack HTTP API: `/docs/WOLFPACK_HTTP_API_REFERENCE.md`
 
 ## UI Styling Guide - Location Tab Style (Dark Theme)
 
@@ -888,4 +909,6 @@ See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implemen
 - **Text size:** `text-sm` minimum for interactive elements (not `text-xs`)
 - **Spacing:** `gap-2` minimum between tappable elements to prevent accidental taps
 - **Port 3002 (Nginx proxy):** Nginx reverse proxy on port 3002 forwards to the Next.js app on port 3001, but restricts access to bartender-facing routes only (e.g., `/remote`, `/api/` endpoints needed by the remote). Admin pages like `/device-config`, `/matrix`, `/system` are blocked at the proxy level so bartenders cannot access them.
+- **Bartender Proxy:** `apps/web/bartender-proxy.js` is a Node.js proxy alternative to Nginx for bartender route isolation
 - **Test viewport:** ~768px-1024px width for tablet layouts
+- **Music Tab:** Shows all playlists with artwork tiles, Now Playing displays album art

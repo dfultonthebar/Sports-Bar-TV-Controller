@@ -9,15 +9,14 @@
  * - Built-in caching to reduce API calls
  * - Timeout and error handling
  * - Integration with channel presets
+ *
+ * NOTE: Device loading is handled by the app layer (directv-device-loader.ts).
+ * This package accepts device objects as parameters — it does NOT read from
+ * JSON files or the database directly.
  */
 
 import { logger } from '@sports-bar/logger'
 import { cacheManager } from '@sports-bar/cache-manager'
-import fs from 'fs'
-import path from 'path'
-
-// DirecTV device data location
-const DIRECTV_DEVICES_FILE = path.join(process.cwd(), 'data', 'directv-devices.json')
 
 export interface DirecTVProgramInfo {
   title: string
@@ -39,9 +38,9 @@ export interface DirecTVDevice {
   name: string
   ipAddress: string
   port: number
-  receiverType: string
+  receiverType?: string
   inputChannel?: number
-  isOnline: boolean
+  isOnline?: boolean
 }
 
 export interface DirecTVGuideResult {
@@ -56,50 +55,11 @@ export interface DirecTVGuideResult {
 }
 
 export interface DirecTVGuideOptions {
-  deviceId?: string  // If not provided, uses first online device
-  channels?: string[]  // Channel numbers to fetch. If not provided, fetches all active presets
-  timeout?: number  // Request timeout in milliseconds (default: 5000)
-  useCache?: boolean  // Whether to use cached results (default: true)
-  cacheTTL?: number  // Cache TTL in milliseconds (default: 30000)
-}
-
-/**
- * Load DirecTV devices from data file
- */
-function loadDirecTVDevices(): DirecTVDevice[] {
-  try {
-    const fileContent = fs.readFileSync(DIRECTV_DEVICES_FILE, 'utf-8')
-    const data = JSON.parse(fileContent)
-    return data.devices || []
-  } catch (error) {
-    logger.error('[DIRECTV_GUIDE] Failed to load DirecTV devices:', error)
-    return []
-  }
-}
-
-/**
- * Get a specific DirecTV device by ID or the first online device
- */
-export function getDirecTVDevice(deviceId?: string): DirecTVDevice | null {
-  const devices = loadDirecTVDevices()
-
-  if (deviceId) {
-    const device = devices.find(d => d.id === deviceId)
-    if (!device) {
-      logger.error(`[DIRECTV_GUIDE] Device not found: ${deviceId}`)
-      return null
-    }
-    return device
-  }
-
-  // Return first online device
-  const onlineDevice = devices.find(d => d.isOnline)
-  if (!onlineDevice) {
-    logger.error('[DIRECTV_GUIDE] No online DirecTV devices found')
-    return null
-  }
-
-  return onlineDevice
+  device: DirecTVDevice  // Device to query (required — caller provides this)
+  channels: string[]     // Channel numbers to fetch
+  timeout?: number       // Request timeout in milliseconds (default: 5000)
+  useCache?: boolean     // Whether to use cached results (default: true)
+  cacheTTL?: number      // Cache TTL in milliseconds (default: 30000)
 }
 
 /**
@@ -206,7 +166,8 @@ export async function fetchMultipleChannelProgramInfo(
       if (expectedFailureChannels.has(channel)) {
         logger.debug(`[DIRECTV_GUIDE] Channel ${channel} not available (expected)`)
       } else {
-        logger.error(`[DIRECTV_GUIDE] Failed to fetch channel ${channel}:`, error)
+        const errMsg = error instanceof Error ? error.message : String(error)
+        logger.error(`[DIRECTV_GUIDE] Failed to fetch channel ${channel}: ${errMsg}`)
       }
       // Don't set in results map - will be handled by caller
     }
@@ -218,39 +179,34 @@ export async function fetchMultipleChannelProgramInfo(
 }
 
 /**
- * Fetch DirecTV guide data with caching
+ * Fetch DirecTV guide data with caching.
+ * The caller must provide the device — this function does NOT load devices from files/DB.
  */
 export async function fetchDirecTVGuide(
-  options: DirecTVGuideOptions = {}
+  options: DirecTVGuideOptions
 ): Promise<DirecTVGuideResult[]> {
   const {
-    deviceId,
-    channels = [],
+    device,
+    channels,
     timeout = 5000,
     useCache = true,
     cacheTTL = 30000  // 30 seconds default cache
   } = options
 
-  // Get device
-  const device = getDirecTVDevice(deviceId)
   if (!device) {
     return [{
       success: false,
       channel: 'N/A',
-      error: deviceId
-        ? `DirecTV device not found: ${deviceId}`
-        : 'No online DirecTV devices available',
+      error: 'No DirecTV device provided',
       fetchedAt: new Date().toISOString(),
-      deviceId: deviceId || 'unknown',
+      deviceId: 'unknown',
       deviceName: 'Unknown'
     }]
   }
 
   logger.info(`[DIRECTV_GUIDE] Using device: ${device.name} (${device.ipAddress})`)
 
-  // If no channels specified, would need to load from channel presets
-  // For now, require channels to be specified
-  if (channels.length === 0) {
+  if (!channels || channels.length === 0) {
     return [{
       success: false,
       channel: 'N/A',
@@ -329,11 +285,4 @@ export async function fetchDirecTVGuide(
   logger.info(`[DIRECTV_GUIDE] Completed: ${results.filter(r => r.success).length}/${results.length} successful`)
 
   return results
-}
-
-/**
- * Get all DirecTV devices
- */
-export function getAllDirecTVDevices(): DirecTVDevice[] {
-  return loadDirecTVDevices()
 }
