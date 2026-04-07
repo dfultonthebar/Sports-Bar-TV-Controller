@@ -811,15 +811,20 @@ setup_database() {
         return 1
     }
     
+    # Ensure DATABASE_URL is exported for drizzle-kit
+    export DATABASE_URL="file:${DATABASE_DIR}/production.db"
+
     # Try running migrations with timeout
-    log_and_print "Running database migrations (with 60s timeout)..."
-    
+    log_and_print "Running database schema push (with 60s timeout)..."
+    log_and_print "  DATABASE_URL=${DATABASE_URL}"
+
     local migration_success=false
     local migration_output
-    
-    # Run with timeout and capture output
-    if migration_output=$(timeout 60s npm run db:push 2>&1); then
+
+    # Run with timeout and show output
+    if migration_output=$(timeout 60s npx drizzle-kit push --config=drizzle.config.ts 2>&1); then
         echo "$migration_output" >> "$LOG_FILE"
+        echo "$migration_output" | tail -5
         migration_success=true
         print_success "Database migrations completed"
     else
@@ -843,12 +848,12 @@ setup_database() {
             fi
         fi
         
-        # If still failing, try db push as fallback
+        # If still failing, try direct drizzle-kit as fallback
         if [ "$migration_success" = false ]; then
-            print_warning "Migration failed, falling back to prisma db push..."
-            log "Attempting fallback: prisma db push"
-            
-            if timeout 60s npm run db:push >> "$LOG_FILE" 2>&1; then
+            print_warning "Schema push failed, retrying with direct drizzle-kit..."
+            log "Attempting fallback: direct drizzle-kit push"
+
+            if timeout 60s npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
                 migration_success=true
                 print_success "Database schema pushed successfully (fallback method)"
             else
@@ -859,8 +864,8 @@ setup_database() {
                 echo ""
                 print_error "Database setup failed. Possible causes:"
                 echo "  1. Database file is locked by another process"
-                echo "  2. Insufficient permissions on prisma/data directory"
-                echo "  3. Corrupted migration state"
+                echo "  2. Insufficient permissions on ${DATABASE_DIR}"
+                echo "  3. Missing drizzle-kit or sqlite3 dependencies"
                 echo ""
                 echo "To manually fix:"
                 echo "  cd $INSTALL_DIR"
