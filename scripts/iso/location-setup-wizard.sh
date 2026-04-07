@@ -45,8 +45,9 @@ DONE_MARKER="/var/lib/sports-bar-wizard-done"
 WIZARD_VERSION="3.0"
 
 # Scan settings
-SCAN_TIMEOUT=1        # seconds per probe
-MAX_CONCURRENT=30     # parallel probes
+SCAN_TIMEOUT=1        # seconds per TCP probe
+HTTP_TIMEOUT=2        # seconds per HTTP identification
+MAX_CONCURRENT=50     # parallel probes
 SCAN_SUBNET=""        # detected during wizard_network
 LOCAL_IP=""           # detected during wizard_network
 
@@ -239,131 +240,142 @@ detect_subnet() {
 
 # ─── Network Scanner ────────────────────────────────────────────────────────
 
-# Probe a single IP on all device ports, write results to temp dir
-scan_single_ip() {
+# Phase 1: Fast TCP port probe for a single IP + single port
+# Writes "ip|port" to results file if port is open
+probe_single() {
     local ip="$1"
-    local tmpdir="$2"
-
-    # Wolf Pack HTTP (port 80)
-    if probe_port "$ip" 80; then
-        local body
-        body=$(http_get "http://${ip}/login.php" 2>/dev/null || true)
-        if [[ "$body" == *"Wolf"* ]] || [[ "$body" == *"HDMI"* ]] || [[ "$body" == *"Matrix"* ]]; then
-            echo "wolfpack|${ip}|80|HTTP OK" >> "${tmpdir}/results"
-        fi
+    local port="$2"
+    local tmpfile="$3"
+    if timeout "$SCAN_TIMEOUT" bash -c "echo >/dev/tcp/${ip}/${port}" 2>/dev/null; then
+        echo "${ip}|${port}" >> "$tmpfile"
     fi
+}
 
-    # Global Cache iTach (port 4998)
-    if probe_port "$ip" 4998; then
-        echo "globalcache|${ip}|4998|Connected" >> "${tmpdir}/results"
-    fi
+# Phase 2: Identify what type of device is at ip:port
+identify_device() {
+    local ip="$1"
+    local port="$2"
+    local tmpfile="$3"
 
-    # Atlas IED (port 5321)
-    if probe_port "$ip" 5321; then
-        echo "atlas|${ip}|5321|Connected" >> "${tmpdir}/results"
-    fi
-
-    # DirecTV SHEF (port 8080)
-    if probe_port "$ip" 8080; then
-        local resp
-        resp=$(http_get "http://${ip}:8080/info/getVersion" 2>/dev/null || true)
-        if [[ "$resp" == *"status"* ]] || [[ "$resp" == *"accessCardId"* ]] || [[ "$resp" == *"version"* ]]; then
-            echo "directv|${ip}|8080|SHEF OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # Fire TV ADB (port 5555)
-    if probe_port "$ip" 5555; then
-        echo "firetv|${ip}|5555|ADB Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Samsung TV SmartView (port 8001)
-    if probe_port "$ip" 8001; then
-        local resp
-        resp=$(http_get "http://${ip}:8001/api/v2/" 2>/dev/null || true)
-        if [[ "$resp" == *"device"* ]] || [[ "$resp" == *"name"* ]] || [[ "$resp" == *"Samsung"* ]]; then
-            echo "samsung|${ip}|8001|SmartView OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # Roku ECP (port 8060)
-    if probe_port "$ip" 8060; then
-        local resp
-        resp=$(http_get "http://${ip}:8060/query/device-info" 2>/dev/null || true)
-        if [[ "$resp" == *"device-info"* ]] || [[ "$resp" == *"model"* ]]; then
-            echo "roku|${ip}|8060|ECP OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # LG WebOS (port 3000 or 3001 — LG uses 3000 for WebSocket)
-    if probe_port "$ip" 3000; then
-        echo "lg|${ip}|3000|WebOS Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Vizio SmartCast (port 7345 or 9000)
-    if probe_port "$ip" 7345; then
-        echo "vizio|${ip}|7345|SmartCast Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Crestron Telnet (port 41795 CTP)
-    if probe_port "$ip" 41795; then
-        echo "crestron|${ip}|41795|CTP OK" >> "${tmpdir}/results"
-    elif probe_port "$ip" 41794; then
-        echo "crestron|${ip}|41794|CIP OK" >> "${tmpdir}/results"
-    fi
-
-    # BSS BLU (port 1023)
-    if probe_port "$ip" 1023; then
-        echo "bss|${ip}|1023|HiQnet OK" >> "${tmpdir}/results"
-    fi
-
-    # dbx ZonePRO (port 3804)
-    if probe_port "$ip" 3804; then
-        echo "dbx|${ip}|3804|Connected" >> "${tmpdir}/results"
-    fi
+    case "$port" in
+        80)
+            local body
+            body=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}/login.php" 2>/dev/null || true)
+            if [[ "$body" == *"Wolf"* ]] || [[ "$body" == *"HDMI"* ]] || [[ "$body" == *"Matrix"* ]] || [[ "$body" == *"wolf"* ]]; then
+                echo "wolfpack|${ip}|80|HTTP OK" >> "$tmpfile"
+            fi
+            ;;
+        4998)
+            echo "globalcache|${ip}|4998|Connected" >> "$tmpfile"
+            ;;
+        5321)
+            echo "atlas|${ip}|5321|Connected" >> "$tmpfile"
+            ;;
+        8080)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8080/info/getVersion" 2>/dev/null || true)
+            if [[ -n "$resp" ]] && [[ "$resp" != *"404"* ]]; then
+                echo "directv|${ip}|8080|SHEF OK" >> "$tmpfile"
+            fi
+            ;;
+        5555)
+            echo "firetv|${ip}|5555|ADB Port Open" >> "$tmpfile"
+            ;;
+        8001)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8001/api/v2/" 2>/dev/null || true)
+            if [[ "$resp" == *"device"* ]] || [[ "$resp" == *"name"* ]] || [[ "$resp" == *"Samsung"* ]]; then
+                echo "samsung|${ip}|8001|SmartView OK" >> "$tmpfile"
+            fi
+            ;;
+        8060)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8060/query/device-info" 2>/dev/null || true)
+            if [[ "$resp" == *"device-info"* ]] || [[ "$resp" == *"model"* ]]; then
+                echo "roku|${ip}|8060|ECP OK" >> "$tmpfile"
+            fi
+            ;;
+        3000)
+            echo "lg|${ip}|3000|WebOS Port Open" >> "$tmpfile"
+            ;;
+        7345)
+            echo "vizio|${ip}|7345|SmartCast Port Open" >> "$tmpfile"
+            ;;
+        41795)
+            echo "crestron|${ip}|41795|CTP OK" >> "$tmpfile"
+            ;;
+        41794)
+            echo "crestron|${ip}|41794|CIP OK" >> "$tmpfile"
+            ;;
+        1023)
+            echo "bss|${ip}|1023|HiQnet OK" >> "$tmpfile"
+            ;;
+        3804)
+            echo "dbx|${ip}|3804|Connected" >> "$tmpfile"
+            ;;
+    esac
 }
 
 scan_subnet_full() {
     local subnet="$1"
     local tmpdir
     tmpdir=$(mktemp -d)
-    touch "${tmpdir}/results"
+    local open_ports="${tmpdir}/open_ports"
+    local results="${tmpdir}/results"
+    touch "$open_ports" "$results"
 
-    echo -e "  Scanning ${BOLD}${subnet}.1-254${NC} on 13 device ports..."
-    echo -e "  ${DIM}(timeout: ${SCAN_TIMEOUT}s per probe, ${MAX_CONCURRENT} concurrent)${NC}"
-    echo ""
+    # Device ports to scan
+    local PORTS=(80 4998 5321 8080 5555 8001 8060 3000 7345 41795 41794 1023 3804)
+
+    # ── Phase 1: Fast TCP sweep ──────────────────────────────────────────
+    echo -e "  ${BOLD}Phase 1:${NC} Fast port sweep on ${subnet}.1-254..."
+    echo -e "  ${DIM}(${#PORTS[@]} ports × 254 IPs, ${SCAN_TIMEOUT}s timeout, ${MAX_CONCURRENT} concurrent)${NC}"
 
     local count=0
-    local total=254
+    local total=$(( 254 * ${#PORTS[@]} ))
+    local running=0
 
     for i in $(seq 1 254); do
         local ip="${subnet}.${i}"
-        ( scan_single_ip "$ip" "$tmpdir" ) &>/dev/null &
+        for port in "${PORTS[@]}"; do
+            ( probe_single "$ip" "$port" "$open_ports" ) &
+            ((running++)) || true
+            ((count++)) || true
 
-        ((count++)) || true
-        # Throttle concurrency
-        if (( count % MAX_CONCURRENT == 0 )); then
-            wait || true
-            # Progress indicator
-            local pct=$(( count * 100 / total ))
-            local bars=$(( pct / 4 ))
-            local spaces=$(( 25 - bars ))
-            printf "\r  [${GREEN}%${bars}s${NC}%${spaces}s] %d/%d" "" "" "$count" "$total" | tr ' ' '=' | sed "s/=\(.\)/\1/g"
-            printf "\r  [${GREEN}"
-            printf '=%.0s' $(seq 1 $bars)
-            printf "${NC}"
-            printf ' %.0s' $(seq 1 $spaces) 2>/dev/null || true
-            printf "] %d/%d" "$count" "$total"
+            if (( running >= MAX_CONCURRENT )); then
+                wait -n 2>/dev/null || wait || true
+                ((running--)) || true
+            fi
+        done
+
+        # Progress every 10 IPs
+        if (( i % 10 == 0 )); then
+            printf "\r  Scanning... %d/254 IPs" "$i"
         fi
     done
     wait || true
+    printf "\r  Scanning... 254/254 IPs — done!     \n"
 
-    printf "\r  [${GREEN}"
-    printf '=%.0s' $(seq 1 25)
-    printf "${NC}] 254/254\n\n"
+    local hits
+    hits=$(wc -l < "$open_ports" 2>/dev/null || echo 0)
+    log "Found ${hits} open port(s)"
+
+    # ── Phase 2: Identify devices on open ports ──────────────────────────
+    if [[ "$hits" -gt 0 ]]; then
+        echo -e "  ${BOLD}Phase 2:${NC} Identifying ${hits} device(s)..."
+
+        while IFS='|' read -r ip port; do
+            ( identify_device "$ip" "$port" "$results" ) &
+        done < "$open_ports"
+        wait || true
+
+        log "Device identification complete"
+    fi
+    echo ""
 
     # Parse results into arrays
     while IFS='|' read -r type ip port status; do
+        [[ -z "$type" ]] && continue
         case "$type" in
             wolfpack)    FOUND_WOLFPACK+=("${ip}|${port}|${status}") ;;
             globalcache) FOUND_GLOBALCACHE+=("${ip}|${port}|${status}") ;;
@@ -378,7 +390,7 @@ scan_subnet_full() {
             bss)         FOUND_BSS+=("${ip}|${port}|${status}") ;;
             dbx)         FOUND_DBX+=("${ip}|${port}|${status}") ;;
         esac
-    done < "${tmpdir}/results"
+    done < "$results"
 
     rm -rf "$tmpdir"
 }
