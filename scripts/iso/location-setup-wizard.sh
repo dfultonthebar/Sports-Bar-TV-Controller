@@ -15,7 +15,9 @@
 # Requires: adb, curl, sqlite3, git (all included in ISO v3.0)
 #
 
-set -euo pipefail
+set -uo pipefail
+# NOTE: NOT using set -e because parallel network scans and probe failures
+# would cause the script to exit. Each function handles its own errors.
 
 # ─── Colors & Formatting ────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -336,12 +338,12 @@ scan_subnet_full() {
 
     for i in $(seq 1 254); do
         local ip="${subnet}.${i}"
-        scan_single_ip "$ip" "$tmpdir" &
+        ( scan_single_ip "$ip" "$tmpdir" ) &>/dev/null &
 
-        ((count++))
+        ((count++)) || true
         # Throttle concurrency
         if (( count % MAX_CONCURRENT == 0 )); then
-            wait
+            wait || true
             # Progress indicator
             local pct=$(( count * 100 / total ))
             local bars=$(( pct / 4 ))
@@ -354,7 +356,7 @@ scan_subnet_full() {
             printf "] %d/%d" "$count" "$total"
         fi
     done
-    wait
+    wait || true
 
     printf "\r  [${GREEN}"
     printf '=%.0s' $(seq 1 25)
@@ -1402,15 +1404,73 @@ main() {
     local gateway
     gateway=$(detect_gateway)
 
+    # Detect primary network interface
+    local net_iface
+    net_iface=$(ip -o -4 addr show | grep -v '127.0.0.1' | grep -E '(eth|enp|eno)' | awk '{print $2}' | head -1)
+    net_iface="${net_iface:-$(ip -o -4 addr show | grep -v '127.0.0.1' | awk '{print $2}' | head -1)}"
+
     echo -e "  Detected network:"
+    echo -e "    Interface:   ${BOLD}${net_iface:-unknown}${NC}"
     echo -e "    IP Address:  ${BOLD}${LOCAL_IP}${NC}"
     echo -e "    Subnet:      ${BOLD}${SCAN_SUBNET}.0/24${NC}"
     echo -e "    Gateway:     ${BOLD}${gateway:-unknown}${NC}"
+    echo -e "    Type:        ${BOLD}$(grep -q 'dhcp' /etc/netplan/*.yaml 2>/dev/null && echo 'DHCP' || echo 'Static')${NC}"
     echo ""
 
     if ! prompt_yes_no "Is this correct?" "y"; then
         LOCAL_IP=$(prompt_input "Enter your IP address" "$LOCAL_IP")
         SCAN_SUBNET=$(detect_subnet "$LOCAL_IP")
+        gateway=$(prompt_input "Enter gateway" "$gateway")
+    fi
+
+    # Offer to set static IP
+    echo ""
+    if prompt_yes_no "Set a static IP address? (recommended for servers)" "y"; then
+        local static_ip
+        static_ip=$(prompt_input "Static IP address" "$LOCAL_IP")
+        local static_gateway
+        static_gateway=$(prompt_input "Gateway" "${gateway:-${SCAN_SUBNET}.1}")
+        local static_dns
+        static_dns=$(prompt_input "DNS server" "8.8.8.8")
+        local static_iface
+        static_iface=$(prompt_input "Network interface" "${net_iface}")
+
+        if [[ "$DRY_RUN" == true ]]; then
+            info "DRY RUN: Would set static IP ${static_ip} on ${static_iface}"
+        else
+            # Write netplan config
+            cat > /etc/netplan/01-static.yaml << NETPLANEOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${static_iface}:
+      dhcp4: no
+      addresses:
+        - ${static_ip}/24
+      routes:
+        - to: default
+          via: ${static_gateway}
+      nameservers:
+        addresses:
+          - ${static_dns}
+          - 8.8.4.4
+NETPLANEOF
+            # Remove any DHCP config
+            rm -f /etc/netplan/00-installer-config.yaml 2>/dev/null || true
+            rm -f /etc/netplan/01-netcfg.yaml 2>/dev/null || true
+
+            log "Applying static IP ${static_ip}..."
+            netplan apply 2>&1 || warn "netplan apply failed — may need manual fix"
+            sleep 2
+
+            # Update our variables
+            LOCAL_IP="$static_ip"
+            SCAN_SUBNET=$(detect_subnet "$LOCAL_IP")
+            log "Static IP set: ${static_ip} on ${static_iface}"
+        fi
+    else
+        info "Keeping current network configuration (DHCP)"
     fi
 
     configure_env
