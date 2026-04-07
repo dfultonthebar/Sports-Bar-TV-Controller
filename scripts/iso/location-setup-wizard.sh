@@ -1438,7 +1438,7 @@ main() {
         if [[ "$DRY_RUN" == true ]]; then
             info "DRY RUN: Would set static IP ${static_ip} on ${static_iface}"
         else
-            # Write netplan config
+            # Write netplan config (600 permissions required by netplan)
             cat > /etc/netplan/01-static.yaml << NETPLANEOF
 network:
   version: 2
@@ -1456,6 +1456,7 @@ network:
           - ${static_dns}
           - 8.8.4.4
 NETPLANEOF
+            chmod 600 /etc/netplan/01-static.yaml
             # Remove any DHCP config
             rm -f /etc/netplan/00-installer-config.yaml 2>/dev/null || true
             rm -f /etc/netplan/01-netcfg.yaml 2>/dev/null || true
