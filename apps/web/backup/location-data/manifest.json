@@ -1,17 +1,101 @@
 {
   "version": "1.0",
-  "createdAt": "2026-03-11T17:48:43.077Z",
+  "createdAt": "2026-04-07T22:54:51.661Z",
   "location": {
-    "id": "108c5d93-4654-45f5-acd1-b8ad790120bc",
-    "name": "The Bar Holmgren Way",
-    "city": "Green Bay",
+    "id": "5510cdf5-542a-41ae-8f00-11a35fe80b4f",
+    "name": "Stoneyard Greenville",
+    "city": "Greenville",
     "state": "WI"
   },
   "tables": [
     {
       "name": "Location",
       "rowCount": 1
+    },
+    {
+      "name": "MatrixConfiguration",
+      "rowCount": 1
+    },
+    {
+      "name": "MatrixInput",
+      "rowCount": 36
+    },
+    {
+      "name": "MatrixOutput",
+      "rowCount": 36
+    },
+    {
+      "name": "MatrixRoute",
+      "rowCount": 10
+    },
+    {
+      "name": "AudioProcessor",
+      "rowCount": 1
+    },
+    {
+      "name": "AudioZone",
+      "rowCount": 8
+    },
+    {
+      "name": "AudioGroup",
+      "rowCount": 8
+    },
+    {
+      "name": "FireTVDevice",
+      "rowCount": 3
+    },
+    {
+      "name": "GlobalCacheDevice",
+      "rowCount": 2
+    },
+    {
+      "name": "GlobalCachePort",
+      "rowCount": 6
+    },
+    {
+      "name": "IRDevice",
+      "rowCount": 5
+    },
+    {
+      "name": "IRCommand",
+      "rowCount": 124
+    },
+    {
+      "name": "NetworkTVDevice",
+      "rowCount": 20
+    },
+    {
+      "name": "CableBox",
+      "rowCount": 4
+    },
+    {
+      "name": "ChannelPreset",
+      "rowCount": 62
+    },
+    {
+      "name": "SoundtrackConfig",
+      "rowCount": 1
+    },
+    {
+      "name": "SoundtrackPlayer",
+      "rowCount": 1
+    },
+    {
+      "name": "input_sources",
+      "rowCount": 1
+    },
+    {
+      "name": "InputCurrentChannel",
+      "rowCount": 2
+    },
+    {
+      "name": "WolfpackMatrixState",
+      "rowCount": 4
+    },
+    {
+      "name": "WolfpackMatrixRouting",
+      "rowCount": 1
     }
   ],
-  "totalRows": 1
+  "totalRows": 337
 }
