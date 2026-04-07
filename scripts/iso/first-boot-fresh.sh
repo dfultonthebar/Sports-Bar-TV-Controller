@@ -43,7 +43,7 @@ log "Sports Bar TV Controller - Fresh Install First Boot"
 log "============================================================"
 
 # ─── Step 1: Unique system identifiers ───────────────────────────────────────
-log "Step 1/7: Regenerating SSH host keys and machine-id..."
+log "Step 1/8: Regenerating SSH host keys and machine-id..."
 
 rm -f /etc/ssh/ssh_host_*
 dpkg-reconfigure -f noninteractive openssh-server
@@ -57,7 +57,7 @@ fi
 log "SSH host keys and machine-id regenerated."
 
 # ─── Step 2: Wait for network ─────────────────────────────────────────────────
-log "Step 2/7: Waiting for network..."
+log "Step 2/8: Waiting for network..."
 MAX_WAIT=120
 ELAPSED=0
 until curl -fsS --max-time 5 https://github.com &>/dev/null; do
@@ -72,7 +72,7 @@ done
 log "Network is up."
 
 # ─── Step 3: Clone from GitHub ───────────────────────────────────────────────
-log "Step 3/7: Cloning from GitHub..."
+log "Step 3/8: Cloning from GitHub..."
 
 mkdir -p "$UBUNTU_HOME"
 
@@ -86,7 +86,7 @@ fi
 log "Repository ready at $APP_DIR"
 
 # ─── Step 4: Install deps and build ──────────────────────────────────────────
-log "Step 4/7: Installing dependencies and building..."
+log "Step 4/8: Installing dependencies and building..."
 
 # Load NVM / Node from ubuntu user's environment
 export NVM_DIR="$UBUNTU_HOME/.nvm"
@@ -99,7 +99,7 @@ fi
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 
 if ! command -v node &>/dev/null; then
-    err "Node.js not found. The ISO should have pre-installed Node 20."
+    err "Node.js not found. The ISO should have pre-installed Node 22."
     exit 1
 fi
 
@@ -112,7 +112,7 @@ sudo -u ubuntu npm run build 2>&1 | tail -20
 log "Build complete."
 
 # ─── Step 5: Initialize database ─────────────────────────────────────────────
-log "Step 5/7: Initializing database (Drizzle db:push)..."
+log "Step 5/8: Initializing database (Drizzle db:push)..."
 
 mkdir -p "$DATA_DIR"
 chown ubuntu:ubuntu "$DATA_DIR"
@@ -123,7 +123,7 @@ sudo -u ubuntu npm run db:push 2>&1 | tail -10
 log "Database schema initialized at $DATA_DIR/production.db"
 
 # ─── Step 6: Start PM2 ───────────────────────────────────────────────────────
-log "Step 6/7: Starting PM2..."
+log "Step 6/8: Starting PM2..."
 
 export PM2_HOME="$UBUNTU_HOME/.pm2"
 
@@ -147,13 +147,44 @@ sudo -u ubuntu pm2 save
 log "PM2 started and configured for auto-start."
 
 # ─── Step 7: New-location setup ───────────────────────────────────────────────
-log "Step 7/7: Running new-location-setup.sh..."
+log "Step 7/8: Running new-location-setup.sh..."
 
 if [ -f "$APP_DIR/scripts/new-location-setup.sh" ]; then
     chmod +x "$APP_DIR/scripts/new-location-setup.sh"
     sudo -u ubuntu bash "$APP_DIR/scripts/new-location-setup.sh" || warn "new-location-setup.sh exited non-zero (non-fatal)"
 else
     warn "scripts/new-location-setup.sh not found — skipping."
+fi
+
+# ─── Step 8/8: Setup Wizard Instructions ────────────────────────────────
+log "Step 8/8: Creating setup wizard instructions..."
+
+cat > /etc/update-motd.d/99-setup-wizard << 'MOTDEOF'
+#!/bin/bash
+if [ ! -f /var/lib/sports-bar-wizard-done ]; then
+    echo ""
+    echo "============================================"
+    echo "  SPORTS BAR TV CONTROLLER - SETUP REQUIRED"
+    echo "============================================"
+    echo ""
+    echo "  Run the setup wizard to configure your devices:"
+    echo ""
+    echo "    location-setup-wizard"
+    echo ""
+    echo "  This will scan your network and configure all"
+    echo "  AV equipment (matrix, TVs, cable boxes, etc.)"
+    echo ""
+    echo "============================================"
+    echo ""
+fi
+MOTDEOF
+chmod +x /etc/update-motd.d/99-setup-wizard
+
+# Add wizard alias to ubuntu user's bashrc
+if ! grep -q "location-setup-wizard" /home/ubuntu/.bashrc 2>/dev/null; then
+    echo "" >> /home/ubuntu/.bashrc
+    echo "# Sports Bar TV Controller setup wizard" >> /home/ubuntu/.bashrc
+    echo "alias location-setup-wizard='sudo bash /usr/local/bin/location-setup-wizard.sh'" >> /home/ubuntu/.bashrc
 fi
 
 # ─── Done ────────────────────────────────────────────────────────────────────
@@ -166,6 +197,49 @@ log "  DB:   $DATA_DIR/production.db"
 log "  Port: 3001"
 log "  Log:  $LOG_FILE"
 log "============================================================"
+
+# ─── Report first-boot results to GitHub ────────────────────────────────
+log "Reporting first-boot status..."
+REPORT_FILE="/tmp/first-boot-report.md"
+cat > "$REPORT_FILE" << REPORTEOF
+## First Boot Report - $(hostname) - $(date '+%Y-%m-%d %H:%M')
+
+### System Info
+- **Hostname:** $(hostname)
+- **IP:** $(ip -o -4 addr show | grep -v '127.0.0.1' | awk '{print $4}' | head -1)
+- **OS:** $(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
+- **Node:** $(node --version 2>/dev/null || echo "not found")
+- **npm:** $(npm --version 2>/dev/null || echo "not found")
+
+### First Boot Status
+- App cloned: $([ -d "$APP_DIR/.git" ] && echo "YES" || echo "NO")
+- Build completed: $([ -d "$APP_DIR/apps/web/.next" ] && echo "YES" || echo "NO")
+- Database initialized: $([ -f "$DATA_DIR/production.db" ] && echo "YES" || echo "NO")
+- PM2 running: $(pm2 list 2>/dev/null | grep -c "online" || echo "0") process(es)
+- Ollama installed: $(command -v ollama &>/dev/null && echo "YES" || echo "NO")
+
+### Improvement Notes
+<!-- Add any issues encountered during first boot -->
+- Review /var/log/sports-bar-first-boot.log for full details
+- Setup wizard has not been run yet
+
+### Log Tail (last 30 lines)
+\`\`\`
+$(tail -30 "$LOG_FILE" 2>/dev/null || echo "No log available")
+\`\`\`
+REPORTEOF
+
+# Try to create GitHub issue if gh is available and authenticated
+if command -v gh &>/dev/null; then
+    cd "$APP_DIR"
+    gh issue create \
+        --title "First Boot Report: $(hostname) - $(date '+%Y-%m-%d')" \
+        --body-file "$REPORT_FILE" \
+        --label "first-boot-report" 2>/dev/null \
+        || warn "Could not create GitHub issue (auth may not be configured)"
+else
+    warn "gh CLI not available — first-boot report saved to $REPORT_FILE"
+fi
 
 # Disable this one-shot service so it won't run again
 systemctl disable sports-bar-first-boot.service 2>/dev/null || true
