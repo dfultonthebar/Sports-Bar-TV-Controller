@@ -111,6 +111,18 @@ sudo -u ubuntu npm run build 2>&1 | tail -20
 
 log "Build complete."
 
+# Install/update Claude Code CLI
+log "Installing Claude Code CLI..."
+npm install -g @anthropic-ai/claude-code 2>&1 | tail -3 || warn "Claude Code CLI install failed (non-fatal)"
+
+# Install GitHub CLI if not already present
+if ! command -v gh &>/dev/null; then
+    log "Installing GitHub CLI..."
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+    apt-get update -qq && apt-get install -y gh 2>&1 | tail -3 || warn "GitHub CLI install failed (non-fatal)"
+fi
+
 # ─── Step 5: Initialize database ─────────────────────────────────────────────
 log "Step 5/8: Initializing database (Drizzle db:push)..."
 
