@@ -712,19 +712,21 @@ clone_repository() {
 
 install_app_dependencies() {
     print_header "PHASE 3: Installing Application Dependencies"
-    
-    cd "$INSTALL_DIR"
-    
-    log_and_print "Installing npm packages (including Drizzle)..."
-    print_info "This may take a few minutes as packages are downloaded and compiled..."
-    
-    # Install all npm dependencies
-    # This includes Drizzle, Next.js, and all other application dependencies
-    npm install
-    npm install -D tsx >> "$LOG_FILE" 2>&1
-    
-    print_success "Application dependencies installed"
-    print_info "Drizzle CLI and all required packages are now available"
+
+    cd "$INSTALL_DIR" || { print_error "Cannot cd to $INSTALL_DIR"; exit 1; }
+
+    log_and_print "Installing npm packages..."
+    print_info "This may take a few minutes..."
+
+    npm install 2>&1 | tail -10
+    npm install -D tsx 2>&1 | tail -3
+
+    # Verify drizzle-kit is available
+    if npx drizzle-kit --version &>/dev/null; then
+        print_success "Dependencies installed (drizzle-kit available)"
+    else
+        print_warning "drizzle-kit not found in node_modules — DB setup may fail"
+    fi
 }
 
 #############################################################################
@@ -779,113 +781,42 @@ ENVEOF
 
 setup_database() {
     print_header "PHASE 5: Setting Up Database"
-    
-    cd "$INSTALL_DIR"
-    
-    # Create database directory
+
+    cd "$INSTALL_DIR" || { print_error "Cannot cd to $INSTALL_DIR"; exit 1; }
+
     # Create database directory
     mkdir -p "$DATABASE_DIR"
-    
-    # Function to detect and resolve failed migrations
-    resolve_failed_migrations() {
-        print_info "Checking for failed migrations..."
-        
-        # Check if migrations table exists and has failed entries
-        if [ -f "/home/ubuntu/sports-bar-data/production.db" ]; then
-            local failed_count=$(sqlite3 /home/ubuntu/sports-bar-data/production.db \
-                "SELECT COUNT(*) FROM drizzle_migrations WHERE finished_at IS NULL;" 2>/dev/null || echo "0")
-            
-            if [ "$failed_count" -gt 0 ]; then
-                print_warning "Found $failed_count failed migration(s)"
-                print_info "Marking failed migrations as rolled back..."
-                
-                sqlite3 /home/ubuntu/sports-bar-data/production.db \
-                    "UPDATE drizzle_migrations SET rolled_back_at = datetime('now') WHERE finished_at IS NULL;" \
-                    >> "$LOG_FILE" 2>&1 || true
-                
-                print_success "Failed migrations resolved"
-                return 0
-            fi
-        fi
-        
-        return 1
-    }
-    
-    # Ensure DATABASE_URL is exported for drizzle-kit
+
+    # Export DATABASE_URL for drizzle-kit
     export DATABASE_URL="file:${DATABASE_DIR}/production.db"
 
-    # Try running migrations with timeout
-    log_and_print "Running database schema push (with 60s timeout)..."
-    log_and_print "  DATABASE_URL=${DATABASE_URL}"
+    log_and_print "Pushing database schema..."
+    log_and_print "  Database: ${DATABASE_DIR}/production.db"
 
-    local migration_success=false
-    local migration_output
-
-    # Run with timeout and show output
-    if migration_output=$(timeout 60s npx drizzle-kit push --config=drizzle.config.ts 2>&1); then
-        echo "$migration_output" >> "$LOG_FILE"
-        echo "$migration_output" | tail -5
-        migration_success=true
-        print_success "Database migrations completed"
+    # Simple and direct — run drizzle-kit push, show output
+    if npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
+        print_success "Database schema created"
     else
-        local exit_code=$?
-        echo "$migration_output" >> "$LOG_FILE"
-        
-        if [ $exit_code -eq 124 ]; then
-            print_error "Migration timed out after 60 seconds"
-            log "Migration timeout - attempting recovery"
+        print_error "Database push failed. Trying again..."
+        # Delete any corrupt DB and retry once
+        rm -f "${DATABASE_DIR}/production.db"
+        if npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "Database schema created (retry)"
         else
-            print_error "Migration failed with exit code $exit_code"
-            log "Migration failed - attempting recovery"
+            print_error "Database setup failed."
+            echo "  Manual fix: cd $INSTALL_DIR && npx drizzle-kit push --config=drizzle.config.ts"
+            return 1
         fi
-        
-        # Try to resolve failed migrations
-        if resolve_failed_migrations; then
-            print_info "Retrying migrations after cleanup..."
-            if timeout 60s npm run db:push >> "$LOG_FILE" 2>&1; then
-                migration_success=true
-                print_success "Database migrations completed after retry"
-            fi
-        fi
-        
-        # If still failing, try direct drizzle-kit as fallback
-        if [ "$migration_success" = false ]; then
-            print_warning "Schema push failed, retrying with direct drizzle-kit..."
-            log "Attempting fallback: direct drizzle-kit push"
+    fi
 
-            if timeout 60s npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
-                migration_success=true
-                print_success "Database schema pushed successfully (fallback method)"
-            else
-                print_error "Database setup failed completely"
-                log "Both migrate deploy and db push failed"
-                
-                # Provide helpful error message
-                echo ""
-                print_error "Database setup failed. Possible causes:"
-                echo "  1. Database file is locked by another process"
-                echo "  2. Insufficient permissions on ${DATABASE_DIR}"
-                echo "  3. Missing drizzle-kit or sqlite3 dependencies"
-                echo ""
-                echo "To manually fix:"
-                echo "  cd $INSTALL_DIR"
-                echo "  rm -f /home/ubuntu/sports-bar-data/production.db*"
-                echo "  npm run db:push"
-                echo ""
-                
-                return 1
-            fi
-        fi
+    # Verify DB exists
+    if [ -f "${DATABASE_DIR}/production.db" ]; then
+        local table_count
+        table_count=$(sqlite3 "${DATABASE_DIR}/production.db" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "0")
+        print_success "Database ready: ${table_count} tables"
+    else
+        print_warning "Database file not found — app will create on first run"
     fi
-    
-    # Generate Drizzle client
-    log_and_print "Generating Drizzle client..."
-    if ! echo "Drizzle schema is ready (no generation needed)" >> "$LOG_FILE" 2>&1; then
-        print_error "Failed to generate Drizzle client"
-        return 1
-    fi
-    
-    print_success "Database setup complete"
 }
 
 #############################################################################
@@ -899,13 +830,20 @@ setup_database() {
 
 build_application() {
     print_header "PHASE 6: Building Application"
-    
-    cd "$INSTALL_DIR"
-    
+
+    cd "$INSTALL_DIR" || { print_error "Cannot cd to $INSTALL_DIR"; exit 1; }
+
+    # Export DATABASE_URL — Next.js build reads it at compile time
+    export DATABASE_URL="file:${DATABASE_DIR}/production.db"
+
     log_and_print "Building Next.js application (this takes a few minutes)..."
-    npm run build 2>&1 | tee -a "$LOG_FILE"
-    
-    print_success "Application built successfully"
+    if npm run build 2>&1 | tee -a "$LOG_FILE"; then
+        print_success "Application built successfully"
+    else
+        print_error "Build failed! Check output above for errors."
+        echo "  Manual fix: cd $INSTALL_DIR && npm run build"
+        return 1
+    fi
 }
 
 #############################################################################
@@ -919,80 +857,23 @@ build_application() {
 
 setup_pm2() {
     print_header "PHASE 7: Setting Up PM2 Process Manager"
-    
-    # Configure npm global prefix for user installation
-    local NPM_GLOBAL_DIR="$HOME/.npm-global"
-    
-    # Set npm prefix if not already set
-    if [ "$(npm config get prefix)" != "$NPM_GLOBAL_DIR" ]; then
-        log_and_print "Configuring npm global prefix..."
-        npm config set prefix "$NPM_GLOBAL_DIR"
-    fi
-    
-    # Ensure npm global bin is in PATH for current session
-    if [[ ":$PATH:" != *":$NPM_GLOBAL_DIR/bin:"* ]]; then
-        export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
-        log_and_print "Added npm global bin to PATH"
-    fi
-    
-    # Add to .profile for persistence (if not already there)
-    if [ -f "$HOME/.profile" ]; then
-        if ! grep -q "\.npm-global/bin" "$HOME/.profile" 2>/dev/null; then
-            echo '' >> "$HOME/.profile"
-            echo '# npm global packages' >> "$HOME/.profile"
-            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.profile"
-            log_and_print "Added npm global bin to .profile"
-        fi
-    fi
-    
-    # Clean up duplicate entries in .bashrc (if they exist)
-    if [ -f "$HOME/.bashrc" ]; then
-        local bashrc_backup="$HOME/.bashrc.backup-$(date +%Y%m%d-%H%M%S)"
-        if grep -c "\.npm-global/bin" "$HOME/.bashrc" 2>/dev/null | grep -q "[2-9]"; then
-            log_and_print "Cleaning up duplicate PATH entries in .bashrc..."
-            cp "$HOME/.bashrc" "$bashrc_backup"
-            # Remove all npm-global PATH entries
-            sed -i '/\.npm-global\/bin/d' "$HOME/.bashrc"
-            # Add single entry
-            echo '' >> "$HOME/.bashrc"
-            echo '# npm global packages' >> "$HOME/.bashrc"
-            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
-            log_and_print "Cleaned up .bashrc (backup: $bashrc_backup)"
-        elif ! grep -q "\.npm-global/bin" "$HOME/.bashrc" 2>/dev/null; then
-            echo '' >> "$HOME/.bashrc"
-            echo '# npm global packages' >> "$HOME/.bashrc"
-            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
-            log_and_print "Added npm global bin to .bashrc"
-        fi
-    fi
-    
-    # Install PM2 globally (user installation, not sudo)
+
+    cd "$INSTALL_DIR" || { print_error "Cannot cd to $INSTALL_DIR"; exit 1; }
+
+    # Install PM2 globally if not present
     if ! check_command pm2; then
         log_and_print "Installing PM2..."
-        npm install -g pm2 >> "$LOG_FILE" 2>&1
-        
-        # Verify installation
+        sudo npm install -g pm2 2>&1 | tail -3
+
         if ! check_command pm2; then
             print_error "PM2 installation failed"
-            print_error "PM2 should be at: $NPM_GLOBAL_DIR/bin/pm2"
             exit 1
         fi
-        
-        log_and_print "PM2 installed successfully: $(pm2 --version)"
-    else
-        log_and_print "PM2 already installed: $(pm2 --version)"
     fi
-    
-    cd "$INSTALL_DIR"
-    
-    # Clean up any existing PM2 processes that might conflict with port 3001
-    print_info "Checking for existing PM2 processes on port 3001..."
-    
-    # Get list of all PM2 processes
-    local pm2_processes=$(pm2 jlist 2>/dev/null || echo "[]")
-    
-    # Check if any processes are using port 3001 or match our service names
-    local processes_to_delete=()
+    log_and_print "PM2 version: $(pm2 --version)"
+
+    # Stop any existing processes
+    pm2 delete all 2>/dev/null || true
     
     # Look for processes with our service name or old variations
     while IFS= read -r process_name; do
