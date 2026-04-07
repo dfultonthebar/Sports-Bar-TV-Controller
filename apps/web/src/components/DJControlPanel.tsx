@@ -19,11 +19,12 @@ interface AudioZone {
 }
 
 // Wolf Pack audio outputs that feed into Atlas source indices
+// Atlas sources: Matrix 1=6, Matrix 2=7, Matrix 3=8, Matrix 4=9
 const WOLFPACK_AUDIO_OPTIONS: AtlasSource[] = [
-  { index: 4, name: 'Matrix Audio 1' },
-  { index: 5, name: 'Matrix Audio 2' },
-  { index: 6, name: 'Matrix Audio 3' },
-  { index: 7, name: 'Matrix Audio 4' },
+  { index: 6, name: 'Matrix Audio 1' },
+  { index: 7, name: 'Matrix Audio 2' },
+  { index: 8, name: 'Matrix Audio 3' },
+  { index: 9, name: 'Matrix Audio 4' },
 ]
 
 export default function DJControlPanel() {

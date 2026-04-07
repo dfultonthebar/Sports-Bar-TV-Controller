@@ -1316,15 +1316,9 @@ async function changeCableBoxChannel(input: any, channel: string) {
 
 async function changeDirectTVChannel(input: any, channel: string) {
   try {
-    // Load DirecTV devices from JSON file
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json');
-    const devicesJson = await fs.readFile(devicesPath, 'utf-8');
-    const devicesData = JSON.parse(devicesJson);
-
-    // Find DirecTV device by matching input label
-    const direcTVDevice = devicesData.devices.find((d: any) => d.name === input.label);
+    // Load DirecTV device from database by matching input label
+    const { getDirecTVDeviceByName } = await import('@/lib/device-db');
+    const direcTVDevice = await getDirecTVDeviceByName(input.label);
 
     if (!direcTVDevice) {
       logger.error(`No DirecTV device found for: ${input.label}`);

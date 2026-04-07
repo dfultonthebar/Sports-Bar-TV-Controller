@@ -13,6 +13,17 @@ export async function register() {
     console.log('🚀 [INSTRUMENTATION] Initializing services...')
     logger.info('[INSTRUMENTATION] Initializing services...')
 
+    // Auto-seed DB tables from JSON on first startup (before any device-loading services)
+    try {
+      const { seedFromJson } = await import('./lib/seed-from-json')
+      const result = await seedFromJson()
+      if (result.direcTV.seeded || result.fireTV.seeded || result.stationAliases.seeded) {
+        logger.info(`[STARTUP] Auto-seeded from JSON: DirecTV=${result.direcTV.count}, FireTV=${result.fireTV.count}, Aliases=${result.stationAliases.count}`)
+      }
+    } catch (error) {
+      logger.error('[STARTUP] Failed to seed from JSON:', error)
+    }
+
     try {
       // Import health monitor singleton
       const { healthMonitor } = await import('./services/firetv-health-monitor')

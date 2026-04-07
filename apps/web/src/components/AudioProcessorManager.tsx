@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // Atlas models
 const ATLAS_MODELS = [
@@ -91,7 +92,7 @@ const defaultFormData: ProcessorFormData = {
   model: 'AZM8',
   ipAddress: '',
   port: 80,
-  tcpPort: 5321,
+  tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
   connectionType: 'ethernet',
   serialPort: '/dev/ttyUSB0',
   baudRate: 57600,
@@ -140,7 +141,7 @@ export default function AudioProcessorManager() {
 
     if (type === 'atlas') {
       defaultModel = 'AZM8'
-      defaultTcpPort = 5321
+      defaultTcpPort = HARDWARE_CONFIG.atlas.tcpPort
       models = ATLAS_MODELS
     } else if (type === 'dbx-zonepro') {
       defaultModel = 'ZonePRO 640m'
@@ -571,7 +572,7 @@ export default function AudioProcessorManager() {
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-100"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  {formData.processorType === 'atlas' ? 'Atlas default: 5321' : formData.processorType === 'bss-blu' ? 'HiQnet default: 1023' : 'dbx default: 3804'}
+                  {formData.processorType === 'atlas' ? `Atlas default: ${HARDWARE_CONFIG.atlas.tcpPort}` : formData.processorType === 'bss-blu' ? 'HiQnet default: 1023' : 'dbx default: 3804'}
                 </p>
               </div>
             </div>

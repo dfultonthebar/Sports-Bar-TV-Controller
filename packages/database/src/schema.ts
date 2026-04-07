@@ -5,15 +5,45 @@ import { sql } from 'drizzle-orm'
 const timestamp = (name: string) => text(name)
 const timestampNow = () => sql`CURRENT_TIMESTAMP`
 
-// FireTV Device Model
+// FireTV Device Model (expanded to be single source of truth — replaces firetv-devices.json)
 export const fireTVDevices = sqliteTable('FireTVDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   ipAddress: text('ipAddress').notNull().unique(),
+  port: integer('port').notNull().default(5555),
   macAddress: text('macAddress'),
+  deviceType: text('deviceType').notNull().default('Fire TV Cube'), // 'Fire TV Cube', 'Atmosphere TV', 'Epson Projector', etc.
+  inputChannel: integer('inputChannel'), // Wolf Pack matrix input number
   location: text('location'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
+  adbEnabled: integer('adbEnabled', { mode: 'boolean' }),
+  serialNumber: text('serialNumber'),
+  deviceModel: text('deviceModel'),
+  softwareVersion: text('softwareVersion'),
+  model: text('model'), // Hardware model (e.g. 'HA90' for Epson)
+  keepAwakeEnabled: integer('keepAwakeEnabled', { mode: 'boolean' }),
+  keepAwakeStart: text('keepAwakeStart'),
+  keepAwakeEnd: text('keepAwakeEnd'),
   status: text('status').notNull().default('offline'),
   lastSeen: timestamp('lastSeen'),
+  addedAt: timestamp('addedAt'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// DirecTV Device Model (single source of truth — replaces directv-devices.json)
+export const direcTVDevices = sqliteTable('DirecTVDevice', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  ipAddress: text('ipAddress').notNull().unique(),
+  port: integer('port').notNull().default(8080),
+  deviceType: text('deviceType').notNull().default('DirecTV'),
+  inputChannel: integer('inputChannel'), // Wolf Pack matrix input number
+  receiverId: text('receiverId'), // Receiver ID (e.g. '0330 7601 5313')
+  receiverType: text('receiverType').default('Genie HD DVR'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  addedAt: timestamp('addedAt'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
@@ -2440,6 +2470,17 @@ export const schedulingPatterns = sqliteTable('scheduling_patterns', {
 }))
 
 // Audio Volume Log - Tracks every volume change with context for AI learning
+// Local Channel Overrides - team-specific channel mappings (e.g., Brewers → ch 308)
+export const localChannelOverrides = sqliteTable('local_channel_overrides', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  teamName: text('team_name').notNull(),
+  channelNumber: integer('channel_number').notNull(),
+  channelName: text('channel_name').notNull(),
+  deviceType: text('device_type').default('cable'),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})
+
 export const audioVolumeLogs = sqliteTable('audio_volume_logs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   processorId: text('processor_id').notNull(),
@@ -2473,3 +2514,11 @@ export const audioVolumeLogs = sqliteTable('audio_volume_logs', {
   timeSlotIdx: index('AudioVolumeLog_timeSlot_idx').on(table.timeSlot),
   createdAtIdx: index('AudioVolumeLog_createdAt_idx').on(table.createdAt),
 }))
+
+// Station Aliases Model (for channel guide station name matching)
+export const stationAliases = sqliteTable('station_aliases', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  standardName: text('standard_name').notNull().unique(),
+  aliases: text('aliases').notNull(), // JSON array of alias strings
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})

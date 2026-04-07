@@ -4,14 +4,11 @@ import { testLogs, systemSettings } from '@/db/schema'
 import { eq, desc, and, gte } from 'drizzle-orm'
 import { getAISportsContextProvider } from '@/lib/ai-sports-context'
 import { logger } from '@sports-bar/logger'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
+import { loadDirecTVDevices } from '@/lib/device-db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-
-const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
 
 /**
  * Real AI Insights for DirecTV Devices
@@ -40,14 +37,13 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[AI Insights] Generating insights for device: ${deviceId}`)
 
-    // 1. Get device info from JSON file
+    // 1. Get device info from database
     let device: any = null
     try {
-      const data = await readFile(DIRECTV_DEVICES_FILE, 'utf-8')
-      const allDevices = JSON.parse(data)
-      device = allDevices.find((d: any) => d.id === deviceId)
+      const { devices } = await loadDirecTVDevices()
+      device = devices.find((d: any) => d.id === deviceId)
     } catch (error) {
-      logger.error('[AI Insights] Error reading DirecTV devices file:', error)
+      logger.error('[AI Insights] Error loading DirecTV devices from DB:', error)
       return NextResponse.json(
         { success: false, error: 'Failed to read device data' },
         { status: 500 }

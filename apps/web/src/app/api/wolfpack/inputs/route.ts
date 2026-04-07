@@ -6,6 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
+import { loadDirecTVDevices as loadDirecTVFromDB } from '@/lib/device-db'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -88,15 +89,13 @@ export async function GET(request: NextRequest) {
       .orderBy(asc(schema.matrixInputs.channelNumber))
       .all()
 
-    // Load DirecTV devices from JSON
+    // Load DirecTV devices from database
     let directvDevices: DirecTVDevice[] = []
     try {
-      const directvPath = path.join(process.cwd(), 'data', 'directv-devices.json')
-      const directvData = await fs.readFile(directvPath, 'utf-8')
-      const parsed = JSON.parse(directvData)
-      directvDevices = parsed.devices || []
+      const data = await loadDirecTVFromDB()
+      directvDevices = data.devices as DirecTVDevice[]
     } catch (error) {
-      logger.debug('[WOLFPACK INPUTS] Could not load DirecTV devices')
+      logger.debug('[WOLFPACK INPUTS] Could not load DirecTV devices from database')
     }
 
     // Get current channel tracking from database (for cable boxes, etc.)

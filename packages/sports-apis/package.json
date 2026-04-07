@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@sports-bar/cache-manager": "*",
+    "@sports-bar/config": "*",
     "@sports-bar/circuit-breaker": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/rate-limiting": "*"

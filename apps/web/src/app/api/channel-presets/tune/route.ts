@@ -99,22 +99,18 @@ export async function POST(request: NextRequest) {
       let targetIp = deviceIpStr
       const directTVIdStr = directTVId ? String(directTVId) : undefined
 
-      // If directTVId is provided but no IP, look up the IP from the devices file
+      // If directTVId is provided but no IP, look up the IP from the database
       if (!targetIp && directTVIdStr) {
         try {
-          const { readFile } = await import('fs/promises')
-          const { join } = await import('path')
-          const direcTvData = JSON.parse(
-            await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
-          )
-          const direcTvDevice = direcTvData.devices?.find((d: any) => d.id === directTVIdStr)
+          const { getDirecTVDeviceById } = await import('@/lib/device-db')
+          const direcTvDevice = await getDirecTVDeviceById(directTVIdStr)
 
           if (direcTvDevice?.ipAddress) {
             targetIp = direcTvDevice.ipAddress
             logger.info(`[TUNE API] Resolved DirecTV ID ${directTVIdStr} to IP ${targetIp}`)
           }
-        } catch (fileError) {
-          logger.error('[TUNE API] Could not load DirecTV devices to resolve ID:', fileError)
+        } catch (dbError) {
+          logger.error('[TUNE API] Could not load DirecTV device from database to resolve ID:', dbError)
         }
       }
 
@@ -210,28 +206,23 @@ export async function POST(request: NextRequest) {
             inputLabel = irDevice.matrixInputLabel || irDevice.name
           }
         } else if (deviceTypeStr === 'directv') {
-          // For DirecTV, try to load from JSON file to get input channel
-          // Can look up by IP address or device ID
+          // For DirecTV, look up from database to get input channel
           const directTVIdForTracking = directTVId ? String(directTVId) : undefined
           try {
-            const { readFile } = await import('fs/promises')
-            const { join } = await import('path')
-            const direcTvData = JSON.parse(
-              await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
-            )
+            const { getDirecTVDeviceById, getDirecTVDeviceByIp } = await import('@/lib/device-db')
             // Find device by ID first, then by IP
             const direcTvDevice = directTVIdForTracking
-              ? direcTvData.devices?.find((d: any) => d.id === directTVIdForTracking)
+              ? await getDirecTVDeviceById(directTVIdForTracking)
               : deviceIpStr
-                ? direcTvData.devices?.find((d: any) => d.ipAddress === deviceIpStr)
+                ? await getDirecTVDeviceByIp(deviceIpStr)
                 : null
 
             if (direcTvDevice?.inputChannel) {
               inputNum = direcTvDevice.inputChannel
               inputLabel = direcTvDevice.name || 'DirecTV'
             }
-          } catch (fileError) {
-            logger.warn('[Channel Tracking] Could not load DirecTV devices:', fileError)
+          } catch (dbError) {
+            logger.warn('[Channel Tracking] Could not load DirecTV devices from database:', dbError)
           }
         }
 

@@ -3,7 +3,7 @@
 # Sports Bar TV Controller - Upload ISO to GitHub Releases
 #
 # Usage:
-#   ./upload-github-release.sh <iso-path> [--tag v2.0-2026-03-02] [--notes "Release notes"]
+#   ./upload-github-release.sh <iso-path> [--tag v3.0-2026-03-02] [--notes "Release notes"]
 #
 # Requirements:
 #   - gh CLI authenticated (gh auth status)
@@ -42,12 +42,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Arguments:"
             echo "  iso-path   Path to the ISO file"
-            echo "  --tag      Git tag for the release (default: v2.0-YYYY-MM-DD)"
+            echo "  --tag      Git tag for the release (default: v3.0-YYYY-MM-DD)"
             echo "  --notes    Release notes / description"
             echo ""
             echo "Examples:"
-            echo "  $0 ~/sports-bar-tv-controller-v2.0-2026-03-02.iso"
-            echo "  $0 ~/sports-bar-tv-controller-v2.0-2026-03-02.iso --tag v2.0-2026-03-02 --notes 'Fresh build with Drizzle ORM'"
+            echo "  $0 ~/sports-bar-tv-controller-v3.0-2026-03-02.iso"
+            echo "  $0 ~/sports-bar-tv-controller-v3.0-2026-03-02.iso --tag v3.0-2026-03-02 --notes 'Fresh build with Drizzle ORM'"
             exit 0
             ;;
         -*)
@@ -74,7 +74,7 @@ ISO_DIR="$(dirname "$ISO_PATH")"
 
 # ─── Auto-generate tag if not provided ───────────────────────────────────────
 if [ -z "$TAG" ]; then
-    TAG="v2.0-$(date +%Y-%m-%d)"
+    TAG="v3.0-$(date +%Y-%m-%d)"
 fi
 
 # ─── Verify gh CLI ────────────────────────────────────────────────────────────
@@ -153,10 +153,11 @@ if [ -z "$NOTES" ]; then
 **Architecture:** x86_64, UEFI + BIOS hybrid
 
 ### Boot Modes
-1. **Fresh Install** — clones latest code from GitHub, empty database
-2. **Snapshot Install** — restores baked-in app + database from build time
-3. **Live (No Install)** — run from RAM for testing
-4. **Safe Mode** — nomodeset for display compatibility
+1. **Install** — clones latest code from GitHub, runs setup wizard
+2. **Live (No Install)** — run from RAM for testing
+3. **Safe Mode** — nomodeset for display compatibility
+
+After first boot, run \`location-setup-wizard\` to auto-discover and configure devices.
 
 ### Checksums
 \`\`\`
@@ -165,12 +166,14 @@ SHA256: $(cut -d' ' -f1 "${ISO_PATH}.sha256" 2>/dev/null || echo "unknown")
 \`\`\`
 
 ### Software Included
-- Node.js 20.x + npm
+- Node.js 22.x + npm
 - PM2 process manager
 - SQLite3
 - OpenSSH Server
 - ADB (Android Debug Bridge, for Fire TV)
 - cec-utils (for HDMI-CEC cable box control)
+- Ollama AI runtime
+- Location Setup Wizard
 - git, curl, logrotate
 
 ### Verification

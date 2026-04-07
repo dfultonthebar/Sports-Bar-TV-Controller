@@ -2,6 +2,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface ServiceStatus {
   name: string
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   // Test local services
   const localServices = [
     { name: 'Custom Local AI', endpoint: 'http://localhost:8000/v1/models', port: 8000 },
-    { name: 'Ollama', endpoint: 'http://localhost:11434/api/tags', port: 11434 },
+    { name: 'Ollama', endpoint: `${HARDWARE_CONFIG.ollama.baseUrl}/api/tags`, port: 11434 },
     { name: 'LocalAI', endpoint: 'http://localhost:8080/v1/models', port: 8080 },
     { name: 'LM Studio', endpoint: 'http://localhost:1234/v1/models', port: 1234 },
     { name: 'Text Generation WebUI', endpoint: 'http://localhost:5000/v1/models', port: 5000 },

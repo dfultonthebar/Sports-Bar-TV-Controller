@@ -6,6 +6,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 export const dynamic = 'force-dynamic'
 
 /**
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       success: true,
       status: {
         running: true, // This should come from scheduler.isRunning
-        checkInterval: 60000,
+        checkInterval: HARDWARE_CONFIG.scheduler.checkIntervalMs,
       },
     })
   } catch (error: any) {

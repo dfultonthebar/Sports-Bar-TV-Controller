@@ -6,14 +6,10 @@
  */
 
 import { ADBClient } from '@/lib/firecube/adb-client'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { getFireTVConfig } from '@/config/firetv-config'
+import { loadFireTVDevices, saveFireTVDevice } from '@/lib/device-db'
 
 import { logger } from '@sports-bar/logger'
-import { withFileLock } from '@/lib/file-lock'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 const config = getFireTVConfig()
 
 export interface FireTVDevice {
@@ -426,9 +422,8 @@ class FireTVConnectionManager {
    */
   private async loadDevices(): Promise<FireTVDevice[]> {
     try {
-      const data = await fs.readFile(DATA_FILE, 'utf-8')
-      const parsed = JSON.parse(data)
-      return parsed.devices || []
+      const { devices } = await loadFireTVDevices()
+      return devices as unknown as FireTVDevice[]
     } catch (error) {
       logger.error('[CONNECTION MANAGER] Error loading devices:', error)
       return []
@@ -437,25 +432,15 @@ class FireTVConnectionManager {
 
   /**
    * Update device online status in database
-   * Uses file lock to prevent race conditions during concurrent updates
    */
   private async updateDeviceStatus(deviceId: string, isOnline: boolean): Promise<void> {
     try {
-      await withFileLock(DATA_FILE, async () => {
-        const data = await fs.readFile(DATA_FILE, 'utf-8')
-        const parsed = JSON.parse(data)
-
-        const device = parsed.devices.find((d: FireTVDevice) => d.id === deviceId)
-
-        if (device) {
-          device.isOnline = isOnline
-          device.lastSeen = new Date().toISOString()
-
-          await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8')
-
-          logger.info(`[CONNECTION MANAGER] Updated device ${deviceId} status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`)
-        }
+      await saveFireTVDevice({
+        id: deviceId,
+        isOnline,
+        lastSeen: new Date().toISOString(),
       })
+      logger.info(`[CONNECTION MANAGER] Updated device ${deviceId} status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`)
     } catch (error) {
       logger.error('[CONNECTION MANAGER] Error updating device status:', error)
     }

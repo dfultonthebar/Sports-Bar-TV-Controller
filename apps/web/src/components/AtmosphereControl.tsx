@@ -101,6 +101,7 @@ export default function AtmosphereControl() {
     )
   }
 
+
   return (
     <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50 w-full max-w-sm">
       {/* Header */}

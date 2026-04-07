@@ -3,6 +3,7 @@ import { reorderAllPresets } from './presetReorderService'
 import { syncPresetsFromGuide } from '@/lib/sports-guide-channel-sync'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 let cronJob: ScheduledTask | null = null
 let syncCronJob: ScheduledTask | null = null
 
@@ -28,7 +29,7 @@ export function initializePresetCronJob() {
       logger.error('[Preset Cron] Error during monthly reordering:', error)
     }
   }, {
-    timezone: 'America/Chicago'
+    timezone: HARDWARE_CONFIG.venue.timezone
   })
 
   logger.info('[Preset Cron] Monthly preset reordering cron job initialized (runs at 3:00 AM on 1st of each month)')
@@ -57,7 +58,7 @@ export function initializeChannelSyncCronJob() {
       logger.error('[Channel Sync Cron] Error during daily sync:', error)
     }
   }, {
-    timezone: 'America/Chicago'
+    timezone: HARDWARE_CONFIG.venue.timezone
   })
 
   logger.info('[Channel Sync Cron] Daily channel sync initialized (runs at 4:00 AM Central)')

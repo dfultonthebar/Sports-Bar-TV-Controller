@@ -3,31 +3,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateRequestBody, z } from '@/lib/validation'
 import { logger } from '@sports-bar/logger'
-import { promises as fs } from 'fs'
-import path from 'path'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
-
-interface FireTVDevice {
-  id: string
-  name: string
-  ipAddress: string
-  port: number
-  deviceType: string
-  isOnline: boolean
-  lastSeen?: string
-  location?: string
-}
-
-async function readDevices(): Promise<{ devices: FireTVDevice[] }> {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf-8')
-    return JSON.parse(data)
-  } catch (error) {
-    logger.error('[BULK POWER] Error reading devices file:', error)
-    return { devices: [] }
-  }
-}
+import { loadFireTVDevices } from '@/lib/device-db'
 
 const bulkPowerSchema = z.object({
   operation: z.enum(['on', 'off', 'cycle']),
@@ -61,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Process Fire TV devices
     if (includeFireTV) {
-      const devicesData = await readDevices()
+      const devicesData = await loadFireTVDevices()
       const firetvDevices = devicesData.devices.filter(d => d.isOnline)
 
       logger.info(`[BULK POWER] Found ${firetvDevices.length} online Fire TV devices`)

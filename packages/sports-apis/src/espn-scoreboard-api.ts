@@ -5,6 +5,7 @@
 
 import { logger } from '@sports-bar/logger';
 import { cacheManager } from '@sports-bar/cache-manager';
+import { HARDWARE_CONFIG } from '@sports-bar/config';
 
 export interface ESPNGame {
   id: string;
@@ -208,13 +209,13 @@ class ESPNScoreboardAPIService {
 
   /**
    * Get today's games for a league
-   * Uses Central Time (America/Chicago) since the bar is in Central timezone
+   * Uses venue timezone since the bar is in Central timezone
    */
   async getTodaysGames(sport: string, league: string): Promise<ESPNGame[]> {
-    // Use Central Time for date calculation (bar's timezone)
+    // Use venue timezone for date calculation (bar's timezone)
     // This ensures 6 PM CST still shows today's games, not tomorrow's
     const today = new Date().toLocaleDateString('en-CA', {
-      timeZone: 'America/Chicago'
+      timeZone: HARDWARE_CONFIG.venue.timezone
     }).replace(/-/g, '');
     logger.debug(`[ESPN SCOREBOARD] getTodaysGames using Central Time date: ${today}`);
     return this.getGamesForDate(sport, league, today);
@@ -222,13 +223,13 @@ class ESPNScoreboardAPIService {
 
   /**
    * Get this week's games for a league (7 day window)
-   * Uses Central Time (America/Chicago) for date calculations
+   * Uses venue timezone for date calculations
    */
   async getWeekGames(sport: string, league: string): Promise<ESPNGame[]> {
-    // Helper to format date in Central Time
+    // Helper to format date in venue timezone
     const formatDateCentral = (date: Date): string => {
       return date.toLocaleDateString('en-CA', {
-        timeZone: 'America/Chicago'
+        timeZone: HARDWARE_CONFIG.venue.timezone
       }).replace(/-/g, '');
     };
 

@@ -10,6 +10,7 @@
 import { NextRequest } from 'next/server'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // Store zone metadata (names, mute states) - refreshed periodically
 const zoneMetadataCache = new Map<string, {
@@ -38,7 +39,7 @@ async function fetchZoneMetadata(processorIp: string): Promise<{ names: string[]
     const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
     const client = await getAtlasClient(
       `processor-${processorIp}`,
-      { ipAddress: processorIp, tcpPort: 5321, timeout: 5000 }
+      { ipAddress: processorIp, tcpPort: HARDWARE_CONFIG.atlas.tcpPort, timeout: 5000 }
     )
 
     const names: string[] = []
@@ -72,7 +73,7 @@ async function fetchZoneMetadata(processorIp: string): Promise<{ names: string[]
       muteStates.push(muted)
     }
 
-    releaseAtlasClient(processorIp, 5321)
+    releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Cache the metadata
     zoneMetadataCache.set(processorIp, {
@@ -104,7 +105,7 @@ async function fetchSourceMetadata(processorIp: string, sourceCount: number = 14
     const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
     const client = await getAtlasClient(
       `processor-${processorIp}`,
-      { ipAddress: processorIp, tcpPort: 5321, timeout: 5000 }
+      { ipAddress: processorIp, tcpPort: HARDWARE_CONFIG.atlas.tcpPort, timeout: 5000 }
     )
 
     const names: string[] = []
@@ -129,7 +130,7 @@ async function fetchSourceMetadata(processorIp: string, sourceCount: number = 14
       names.push(name)
     }
 
-    releaseAtlasClient(processorIp, 5321)
+    releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Cache the metadata
     sourceMetadataCache.set(processorIp, {

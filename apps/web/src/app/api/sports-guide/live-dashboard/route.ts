@@ -12,6 +12,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // ── ESPN sports (same list as live-by-channel) ──────────────────────────
 const ESPN_SPORTS = [
@@ -206,7 +207,7 @@ function buildDashboardEntry(game: any, league: string) {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'America/Chicago',
+    timeZone: HARDWARE_CONFIG.venue.timezone,
   })
 
   // Channel mappings

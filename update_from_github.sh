@@ -346,6 +346,21 @@ build_application() {
 }
 
 # =============================================================================
+# DATABASE SCHEMA PUSH
+# =============================================================================
+push_database_schema() {
+    log_info "Pushing database schema changes (creating new tables if needed)..."
+
+    if npx drizzle-kit push --config drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "Database schema pushed successfully"
+    else
+        log_warning "Database schema push failed - new tables may not exist"
+        log_warning "You can retry manually: npx drizzle-kit push --config drizzle.config.ts"
+        # Don't exit - the app may still work with existing tables
+    fi
+}
+
+# =============================================================================
 # PM2 PROCESS MANAGEMENT
 # =============================================================================
 stop_all_pm2_processes() {
@@ -507,7 +522,11 @@ main() {
         exit 1
     fi
     log ""
-    
+
+    # Step 8.5: Push DB schema changes (creates new tables if any)
+    push_database_schema
+    log ""
+
     # Step 9: Stop all PM2 processes
     stop_all_pm2_processes
     log ""

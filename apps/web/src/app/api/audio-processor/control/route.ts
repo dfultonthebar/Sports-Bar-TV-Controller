@@ -11,6 +11,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface ControlCommand {
   action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
@@ -278,7 +279,7 @@ async function setZoneVolume(processor: any, zone: number, volume: number): Prom
   
   // Send command to Atlas processor via TCP (port 5321 for AZMP8)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => {
       atlasLogger.info('ZONE_VOLUME', 'Sending setZoneVolume command to Atlas client', {
         zoneIndex,
@@ -343,7 +344,7 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
   
   // Send command to Atlas processor
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => {
       // Use setParameter method to set the output gain
       // Atlas expects volume in percentage (0-100)
@@ -392,7 +393,7 @@ async function setZoneMute(processor: any, zone: number, muted: boolean): Promis
   
   // Send command to Atlas processor via TCP (port 5321 for Atlas)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => {
       atlasLogger.info('ZONE_MUTE', 'Sending setZoneMute command to Atlas client', {
         zoneIndex,
@@ -467,7 +468,7 @@ async function setZoneSource(processor: any, zone: number, source: string | numb
   
   // Send command to Atlas processor via TCP (port 5321 for Atlas)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => {
       atlasLogger.info('ZONE_SOURCE', 'Sending setZoneSource command to Atlas client', {
         zoneIndex,
@@ -511,7 +512,7 @@ async function recallScene(processor: any, sceneId: number): Promise<any> {
   
   // Send command to Atlas processor via TCP (port 5321 for Atlas)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => await client.recallScene(sceneId)
   )
 
@@ -549,7 +550,7 @@ async function playMessage(processor: any, messageId: number, zones?: number[]):
   
   // Send command to Atlas processor via TCP (port 5321 for Atlas)
   const result = await executeAtlasCommand(
-    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
     async (client) => await client.playMessage(messageId)
   )
 
@@ -587,7 +588,7 @@ async function combineRooms(processor: any, zones: number[]): Promise<any> {
   
   // If you have a specific group index, you can use:
   // const result = await executeAtlasCommand(
-  //   { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || 5321 },
+  //   { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
   //   async (client) => await client.setGroupActive(groupIndex, true)
   // )
   

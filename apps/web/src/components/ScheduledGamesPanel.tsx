@@ -249,6 +249,7 @@ export default function ScheduledGamesPanel() {
   // Atlas processor IP fetched from database
   const [atlasProcessorIp, setAtlasProcessorIp] = useState<string | null>(null)
 
+
   // -----------------------------------------------------------------------
   // Fetch current cable box channels
   // -----------------------------------------------------------------------
@@ -351,6 +352,7 @@ export default function ScheduledGamesPanel() {
         logger.debug('[SCHEDULED-GAMES] Failed to fetch Atlas processor IP', err)
       })
   }, [])
+
 
   // Auto-dismiss notification after 10 seconds
   useEffect(() => {
