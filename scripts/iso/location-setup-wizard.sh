@@ -335,25 +335,37 @@ scan_subnet_full() {
     local total=$(( 254 * ${#PORTS[@]} ))
     local running=0
 
-    for i in $(seq 1 254); do
-        local ip="${subnet}.${i}"
-        for port in "${PORTS[@]}"; do
-            ( probe_single "$ip" "$port" "$open_ports" ) &
-            ((running++)) || true
-            ((count++)) || true
+    # Run the entire port sweep inside a timeout to prevent hangs
+    (
+        for i in $(seq 1 254); do
+            local ip="${subnet}.${i}"
+            for port in "${PORTS[@]}"; do
+                ( probe_single "$ip" "$port" "$open_ports" ) &
+            done
 
-            if (( running >= MAX_CONCURRENT )); then
-                wait -n 2>/dev/null || wait || true
-                ((running--)) || true
+            # Throttle: every 10 IPs, wait for batch to finish
+            if (( i % 10 == 0 )); then
+                wait 2>/dev/null || true
+                printf "\r  Scanning... %d/254 IPs" "$i" >&2
             fi
         done
+        wait 2>/dev/null || true
+    ) &
+    local scan_pid=$!
 
-        # Progress every 10 IPs
-        if (( i % 10 == 0 )); then
-            printf "\r  Scanning... %d/254 IPs" "$i"
+    # Hard timeout: kill the scan after 30 seconds no matter what
+    local elapsed=0
+    while kill -0 "$scan_pid" 2>/dev/null; do
+        sleep 1
+        ((elapsed++)) || true
+        if (( elapsed >= 30 )); then
+            kill -9 "$scan_pid" 2>/dev/null || true
+            wait "$scan_pid" 2>/dev/null || true
+            echo ""
+            warn "Scan timed out after 30s — using results collected so far"
+            break
         fi
     done
-    wait || true
     printf "\r  Scanning... 254/254 IPs — done!     \n"
 
     local hits
@@ -364,10 +376,26 @@ scan_subnet_full() {
     if [[ "$hits" -gt 0 ]]; then
         echo -e "  ${BOLD}Phase 2:${NC} Identifying ${hits} device(s)..."
 
-        while IFS='|' read -r ip port; do
-            ( identify_device "$ip" "$port" "$results" ) &
-        done < "$open_ports"
-        wait || true
+        (
+            while IFS='|' read -r ip port; do
+                ( identify_device "$ip" "$port" "$results" ) &
+            done < "$open_ports"
+            wait 2>/dev/null || true
+        ) &
+        local id_pid=$!
+
+        # Hard timeout: 15 seconds for identification
+        elapsed=0
+        while kill -0 "$id_pid" 2>/dev/null; do
+            sleep 1
+            ((elapsed++)) || true
+            if (( elapsed >= 15 )); then
+                kill -9 "$id_pid" 2>/dev/null || true
+                wait "$id_pid" 2>/dev/null || true
+                warn "Identification timed out — using results so far"
+                break
+            fi
+        done
 
         log "Device identification complete"
     fi
