@@ -303,6 +303,14 @@ chr "npm install -g pm2"
 log "Installing Ollama AI runtime..."
 chr "curl -fsSL https://ollama.com/install.sh | sh" || warn "Ollama install failed (non-fatal)"
 
+log "Installing Claude Code CLI..."
+chr "npm install -g @anthropic-ai/claude-code" || warn "Claude Code CLI install failed (non-fatal)"
+
+log "Installing GitHub CLI (gh)..."
+chr "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg" || true
+chr "echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list" || true
+chr "apt-get update -qq && apt-get install -y gh" || warn "GitHub CLI install failed (non-fatal)"
+
 log "Cleaning up APT cache..."
 chr "apt-get clean"
 chr "apt-get autoremove -y"
@@ -702,6 +710,8 @@ Software Installed:
   - Node.js 22.x + npm
   - PM2 process manager
   - Ollama AI runtime
+  - Claude Code CLI (@anthropic-ai/claude-code)
+  - GitHub CLI (gh)
   - SQLite3
   - OpenSSH Server
   - ADB (Android Debug Bridge - Fire TV control)
