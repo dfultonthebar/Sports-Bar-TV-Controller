@@ -7,7 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, SharpTVClient, VavaTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
  * TV Power Control API
@@ -87,6 +87,9 @@ export async function POST(
         break
 
       case 'lg':
+        result = await controlLGPower(device, action)
+        break
+
       case 'sony':
       case 'vizio':
         return NextResponse.json(
@@ -261,6 +264,38 @@ async function controlSamsungPower(
         // WOL also failed
       }
     }
+    return { success: false, error: error.message }
+  } finally {
+    client.disconnect()
+  }
+}
+
+/**
+ * Control LG TV power via WebOS WebSocket (port 3001)
+ */
+async function controlLGPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = new LGTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port || 3001,
+    brand: TVBrand.LG,
+    macAddress: device.macAddress,
+  })
+
+  try {
+    switch (action) {
+      case 'on':
+        return await client.powerOn()
+      case 'off':
+        return await client.powerOff()
+      case 'toggle': {
+        const isOn = device.status === 'online'
+        return isOn ? await client.powerOff() : await client.powerOn()
+      }
+    }
+  } catch (error: any) {
     return { success: false, error: error.message }
   } finally {
     client.disconnect()

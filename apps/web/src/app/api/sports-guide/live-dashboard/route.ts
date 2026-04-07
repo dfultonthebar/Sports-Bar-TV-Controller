@@ -59,23 +59,29 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'ABC': '7',
 }
 
-// ── Network → Cable (Spectrum) channel — Madison Spectrum (Lucky's 1313) ──
+// ── Network → Cable (Spectrum) channel — Spectrum Appleton ──
 const NETWORK_TO_CABLE: Record<string, string> = {
-  'ESPN': '24', 'ESPN2': '23', 'ESPNU': '310', 'ESPNEWS': '304', 'ESPN+': '24',
-  'FOX': '8', 'FS1': '27', 'FS2': '305', 'FOX Sports 1': '27', 'FOX Sports 2': '305',
-  'CBS': '9', 'NBC': '5', 'ABC': '7',
-  'CBS Sports Network': '306', 'CBSSN': '306',
-  'Peacock': '28', 'NBC Sports': '28', 'NBCSN': '28',
-  'TNT': '32', 'TBS': '32', 'truTV': '56', 'TruTV': '56',
-  'NBA TV': '338', 'NBATV': '338',
-  'MLB Network': '84', 'MLBN': '84',
-  'NHL Network': '326', 'NHLN': '326',
-  'Big Ten Network': '73', 'BTN': '73',
-  'SEC Network': '333', 'SECN': '333',
-  'USA': '34', 'USA Network': '34',
-  'Golf Channel': '22', 'Golf': '22', 'GOLF': '22',
-  'Tennis Channel': '313', 'Tennis': '313', 'TENNIS': '313',
-  'beIN Sports': '243', 'beIN SPORTS': '243', 'BEIN': '243',
+  'ESPN': '27', 'ESPN2': '28', 'ESPNU': '303', 'ESPNEWS': '305', 'ESPN+': '27',
+  'FOX': '12', 'FS1': '75', 'FS2': '328', 'FOX Sports 1': '75', 'FOX Sports 2': '328',
+  'CBS': '6', 'NBC': '13', 'ABC': '3',
+  'CBS Sports Network': '322', 'CBSSN': '322',
+  'Peacock': '38', 'NBC Sports': '38', 'NBCSN': '38',
+  'TNT': '29', 'TBS': '25', 'truTV': '74', 'TruTV': '74',
+  'NBA TV': '325', 'NBATV': '325',
+  'MLB Network': '326', 'MLBN': '326',
+  'NHL Network': '324', 'NHLN': '324',
+  'Big Ten Network': '39', 'BTN': '39',
+  'SEC Network': '65', 'SECN': '65',
+  'ACC Network': '348', 'ACCN': '348',
+  'USA': '53', 'USA Network': '53',
+  'Golf Channel': '14', 'Golf': '14', 'GOLF': '14',
+  'Tennis Channel': '327', 'Tennis': '327', 'TENNIS': '327',
+  'beIN Sports': '337', 'beIN SPORTS': '337', 'BEIN': '337',
+  'NFL Network': '346', 'NFLN': '346',
+  'NFL RedZone': '347', 'Red Zone': '347',
+  'Bally Sports Wisconsin': '40', 'FanDuel SN WI': '40', 'FanDuel Sports WI': '40', 'FSWI': '40', 'Bucks.TV': '40',
+  'Brewers.TV': '308',
+  'Bally Sports North': '310', 'FanDuel SN North': '310', 'FanDuel Sports North': '310', 'FDNOR': '310',
 }
 
 // ── Network → Streaming app ID (for Fire TV launch) ────────────────────

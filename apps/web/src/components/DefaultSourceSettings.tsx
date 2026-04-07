@@ -138,7 +138,7 @@ function DefaultSourceSettings() {
       try {
         const processorRes = await fetch('/api/audio-processor')
         const processorData = await processorRes.json()
-        if (processorData.success && processorData.processors?.length > 0) {
+        if (processorData.processors?.length > 0) {
           const processorIp = processorData.processors[0].ipAddress
           const audioRes = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp)}`)
           if (audioRes.ok) {

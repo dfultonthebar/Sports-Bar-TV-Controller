@@ -66,6 +66,9 @@ export async function GET(
       case 'pdf':
         contentType = 'application/pdf'
         break
+      case 'svg':
+        contentType = 'image/svg+xml'
+        break
     }
 
     // Return file with appropriate headers

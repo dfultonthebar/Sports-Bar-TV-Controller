@@ -99,6 +99,11 @@ async function pingDevice(ip: string, brand: string, port: number, deviceId?: st
     return pingEpsonDevice(ip, port || 5555)
   }
 
+  // LG uses WebOS WebSocket on port 3001
+  if (brand.toLowerCase() === 'lg') {
+    return pingLGDevice(ip, port || 3001)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 2000)
 
@@ -146,6 +151,32 @@ async function pingDevice(ip: string, brand: string, port: number, deviceId?: st
     clearTimeout(timeout)
     return null
   }
+}
+
+/**
+ * Ping an LG TV via TCP connect to WebOS port (default 3001).
+ * If the TCP connection succeeds the TV is on; if it fails/times out it's offline.
+ */
+async function pingLGDevice(ip: string, port: number): Promise<'on' | 'standby' | null> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    const timeout = setTimeout(() => {
+      socket.destroy()
+      resolve(null)
+    }, 2000)
+
+    socket.connect(port, ip, () => {
+      clearTimeout(timeout)
+      socket.destroy()
+      resolve('on')
+    })
+
+    socket.on('error', () => {
+      clearTimeout(timeout)
+      socket.destroy()
+      resolve(null)
+    })
+  })
 }
 
 /**
