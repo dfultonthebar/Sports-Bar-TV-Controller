@@ -245,13 +245,13 @@ export default function InteractiveBartenderLayout({
         )}
 
         {/* Layout Container - Responsive sizing for all devices */}
-        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
+        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '66%' }}>
           {/* Background Floor Plan Image */}
           {imageUrl && (
             <img
               src={imageUrl}
               alt="Floor plan"
-              className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none"
               draggable={false}
             />
           )}

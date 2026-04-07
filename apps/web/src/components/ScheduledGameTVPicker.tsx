@@ -174,7 +174,7 @@ export default function ScheduledGameTVPicker({
       try {
         const res = await fetch('/api/audio-processor')
         const data = await res.json()
-        if (data.success && data.processors?.length > 0) {
+        if (data.processors?.length > 0) {
           const processor = data.processors[0]
           setAtlasProcessorIp(processor.ipAddress)
           logger.debug('[TV-PICKER] Loaded Atlas processor IP', {

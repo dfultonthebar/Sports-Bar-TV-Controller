@@ -331,42 +331,26 @@ scan_subnet_full() {
     echo -e "  ${BOLD}Phase 1:${NC} Fast port sweep on ${subnet}.1-254..."
     echo -e "  ${DIM}(${#PORTS[@]} ports × 254 IPs, ${SCAN_TIMEOUT}s timeout, ${MAX_CONCURRENT} concurrent)${NC}"
 
-    local count=0
-    local total=$(( 254 * ${#PORTS[@]} ))
-    local running=0
-
-    # Run the entire port sweep inside a timeout to prevent hangs
-    (
-        for i in $(seq 1 254); do
-            local ip="${subnet}.${i}"
-            for port in "${PORTS[@]}"; do
-                ( probe_single "$ip" "$port" "$open_ports" ) &
-            done
-
-            # Throttle: every 10 IPs, wait for batch to finish
-            if (( i % 10 == 0 )); then
-                wait 2>/dev/null || true
-                printf "\r  Scanning... %d/254 IPs" "$i" >&2
-            fi
+    # Build list of all ip:port pairs and scan in parallel via xargs
+    local probe_list="${tmpdir}/probe_list"
+    for i in $(seq 1 254); do
+        local ip="${subnet}.${i}"
+        for port in "${PORTS[@]}"; do
+            echo "${ip} ${port}"
         done
-        wait 2>/dev/null || true
-    ) &
-    local scan_pid=$!
+    done > "$probe_list"
 
-    # Hard timeout: kill the scan after 30 seconds no matter what
-    local elapsed=0
-    while kill -0 "$scan_pid" 2>/dev/null; do
-        sleep 1
-        ((elapsed++)) || true
-        if (( elapsed >= 30 )); then
-            kill -9 "$scan_pid" 2>/dev/null || true
-            wait "$scan_pid" 2>/dev/null || true
-            echo ""
-            warn "Scan timed out after 30s — using results collected so far"
-            break
-        fi
-    done
-    printf "\r  Scanning... 254/254 IPs — done!     \n"
+    local total
+    total=$(wc -l < "$probe_list")
+    echo "  Probing ${total} targets with xargs -P ${MAX_CONCURRENT}..."
+
+    export -f probe_single
+    export SCAN_TIMEOUT
+    cat "$probe_list" | xargs -P "${MAX_CONCURRENT}" -n 2 bash -c '
+        probe_single "$1" "$2" "'"$open_ports"'"
+    ' _
+
+    echo "  Scanning... 254/254 IPs — done!"
 
     local hits
     hits=$(wc -l < "$open_ports" 2>/dev/null || echo 0)
@@ -376,26 +360,10 @@ scan_subnet_full() {
     if [[ "$hits" -gt 0 ]]; then
         echo -e "  ${BOLD}Phase 2:${NC} Identifying ${hits} device(s)..."
 
-        (
-            while IFS='|' read -r ip port; do
-                ( identify_device "$ip" "$port" "$results" ) &
-            done < "$open_ports"
-            wait 2>/dev/null || true
-        ) &
-        local id_pid=$!
-
-        # Hard timeout: 15 seconds for identification
-        elapsed=0
-        while kill -0 "$id_pid" 2>/dev/null; do
-            sleep 1
-            ((elapsed++)) || true
-            if (( elapsed >= 15 )); then
-                kill -9 "$id_pid" 2>/dev/null || true
-                wait "$id_pid" 2>/dev/null || true
-                warn "Identification timed out — using results so far"
-                break
-            fi
-        done
+        while IFS='|' read -r ip port; do
+            ( identify_device "$ip" "$port" "$results" ) &
+        done < "$open_ports"
+        wait || true
 
         log "Device identification complete"
     fi
@@ -656,9 +624,10 @@ configure_globalcache() {
         # Try to detect ports by sending getdevices command
         local num_ports=3  # Default: iTach IP2IR has 3 IR ports
         local port_response
-        port_response=$(echo -e "getdevices\r" | timeout 2 nc -q1 "$ip" 4998 2>/dev/null || true)
+        port_response=$( (echo -e "getdevices\r"; sleep 1) | nc "$ip" 4998 2>/dev/null || true)
         if [[ "$port_response" == *"IR"* ]]; then
-            num_ports=$(echo "$port_response" | grep -c "IR" || echo 3)
+            num_ports=$(echo "$port_response" | grep -oP 'IR' | wc -l)
+            [[ "$num_ports" -eq 0 ]] && num_ports=3
             log "Detected ${num_ports} IR port(s)"
         else
             num_ports=$(prompt_input "Number of IR ports on this device" "3")

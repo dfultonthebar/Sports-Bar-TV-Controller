@@ -25,7 +25,7 @@ export default function AtlasConfigPage() {
       const response = await fetch('/api/audio-processor')
       const data = await response.json()
       
-      if (data.success && data.processors) {
+      if (data.processors) {
         setProcessors(data.processors)
         if (data.processors.length > 0) {
           setSelectedProcessor(data.processors[0])

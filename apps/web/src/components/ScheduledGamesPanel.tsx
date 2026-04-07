@@ -344,7 +344,7 @@ export default function ScheduledGamesPanel() {
     fetch('/api/audio-processor')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.processors?.length > 0) {
+        if (data.processors?.length > 0) {
           setAtlasProcessorIp(data.processors[0].ipAddress)
         }
       })
