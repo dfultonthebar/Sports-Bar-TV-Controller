@@ -173,7 +173,7 @@ SHA256: $(cut -d' ' -f1 "${ISO_PATH}.sha256" 2>/dev/null || echo "unknown")
 - ADB (Android Debug Bridge, for Fire TV)
 - cec-utils (for HDMI-CEC cable box control)
 - Ollama AI runtime
-- Claude Code CLI (@anthropic-ai/claude-code)
+- Claude Code CLI (native)
 - GitHub CLI (gh)
 - Location Setup Wizard
 - git, curl, nmap, logrotate

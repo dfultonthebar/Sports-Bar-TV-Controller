@@ -111,9 +111,9 @@ sudo -u ubuntu npm run build 2>&1 | tail -20
 
 log "Build complete."
 
-# Install/update Claude Code CLI
+# Install/update Claude Code CLI (native install)
 log "Installing Claude Code CLI..."
-npm install -g @anthropic-ai/claude-code 2>&1 | tail -3 || warn "Claude Code CLI install failed (non-fatal)"
+sudo -u ubuntu bash -c "curl -fsSL https://claude.ai/install.sh | sh" 2>&1 | tail -5 || warn "Claude Code CLI install failed (non-fatal)"
 
 # Install GitHub CLI if not already present
 if ! command -v gh &>/dev/null; then

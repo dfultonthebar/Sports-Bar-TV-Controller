@@ -303,8 +303,8 @@ chr "npm install -g pm2"
 log "Installing Ollama AI runtime..."
 chr "curl -fsSL https://ollama.com/install.sh | sh" || warn "Ollama install failed (non-fatal)"
 
-log "Installing Claude Code CLI..."
-chr "npm install -g @anthropic-ai/claude-code" || warn "Claude Code CLI install failed (non-fatal)"
+log "Installing Claude Code CLI (native)..."
+chr "curl -fsSL https://claude.ai/install.sh | sh" || warn "Claude Code CLI install failed (non-fatal)"
 
 log "Installing GitHub CLI (gh)..."
 chr "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg" || true
@@ -710,7 +710,7 @@ Software Installed:
   - Node.js 22.x + npm
   - PM2 process manager
   - Ollama AI runtime
-  - Claude Code CLI (@anthropic-ai/claude-code)
+  - Claude Code CLI (native install via claude.ai)
   - GitHub CLI (gh)
   - SQLite3
   - OpenSSH Server
