@@ -290,6 +290,18 @@ log "Installing adb and cec-utils..."
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends adb 2>&1 || true"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cec-utils 2>&1 || true"
 
+# Realtek WiFi drivers + wireless tools
+log "Installing Realtek WiFi drivers and wireless tools..."
+chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    linux-firmware \
+    rtl8821ce-dkms \
+    r8168-dkms \
+    wpasupplicant \
+    wireless-tools \
+    rfkill \
+    2>&1 || true"
+# Note: rtl8812au-dkms fails in chroot (needs running kernel) — installed on first boot instead
+
 log "Installing Node.js 22 (NodeSource)..."
 chr "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"

@@ -56,6 +56,17 @@ fi
 
 log "SSH host keys and machine-id regenerated."
 
+# ─── Step 1b: Build Realtek WiFi DKMS drivers ───────────────────────────────
+log "Building Realtek WiFi drivers (DKMS)..."
+if dpkg -l rtl8821ce-dkms &>/dev/null 2>&1; then
+    dkms autoinstall 2>&1 | tail -5 || warn "DKMS autoinstall had issues (non-fatal)"
+    log "Realtek WiFi DKMS modules built."
+fi
+# Install rtl8812au if not present (failed in chroot, works on live kernel)
+if ! dpkg -l rtl8812au-dkms &>/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y rtl8812au-dkms 2>&1 | tail -5 || warn "rtl8812au install failed (non-fatal)"
+fi
+
 # ─── Step 2: Wait for network ─────────────────────────────────────────────────
 log "Step 2/8: Waiting for network..."
 MAX_WAIT=120
