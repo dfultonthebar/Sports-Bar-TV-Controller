@@ -59,7 +59,7 @@ QA_WORKER_NAME="qa-worker"
 LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
 
 # Node.js version
-NODE_VERSION="20"
+NODE_VERSION="22"
 
 # Reinstall flags
 REINSTALL=false
@@ -592,6 +592,55 @@ install_tailscale() {
 }
 
 #############################################################################
+# Install Claude Code CLI
+#############################################################################
+
+install_claude_code() {
+    print_header "Installing Claude Code CLI"
+
+    if check_command claude; then
+        print_success "Claude Code CLI is already installed"
+        return 0
+    fi
+
+    log_and_print "Installing Claude Code CLI (native installer)..."
+    curl -fsSL https://claude.ai/install.sh | sh >> "$LOG_FILE" 2>&1 || true
+
+    if check_command claude; then
+        print_success "Claude Code CLI installed"
+    else
+        # Try as the target user
+        sudo -u "$SERVICE_USER" bash -c "curl -fsSL https://claude.ai/install.sh | sh" >> "$LOG_FILE" 2>&1 || true
+        print_warning "Claude Code CLI install attempted — may need PATH update after login"
+    fi
+}
+
+#############################################################################
+# Install GitHub CLI
+#############################################################################
+
+install_github_cli() {
+    print_header "Installing GitHub CLI"
+
+    if check_command gh; then
+        print_success "GitHub CLI is already installed"
+        return 0
+    fi
+
+    log_and_print "Installing GitHub CLI (gh)..."
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg >> "$LOG_FILE" 2>&1 || true
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+    sudo apt-get install -y gh >> "$LOG_FILE" 2>&1
+
+    if check_command gh; then
+        print_success "GitHub CLI installed"
+    else
+        print_warning "GitHub CLI installation failed (non-fatal)"
+    fi
+}
+
+#############################################################################
 # Create Service User (if needed)
 #############################################################################
 
@@ -634,8 +683,15 @@ clone_repository() {
     mkdir -p "$(dirname "$INSTALL_DIR")"
     
     log_and_print "Cloning repository from $REPO_URL..."
-    git clone --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
-    
+    log_and_print "  Branch: $REPO_BRANCH"
+    log_and_print "  Destination: $INSTALL_DIR"
+    git clone --branch "$REPO_BRANCH" --progress "$REPO_URL" "$INSTALL_DIR" 2>&1 | tee -a "$LOG_FILE"
+
+    if [ ! -d "$INSTALL_DIR/.git" ]; then
+        print_error "Git clone failed! Check network connectivity."
+        exit 1
+    fi
+
     print_success "Repository cloned to $INSTALL_DIR"
 }
 
@@ -686,15 +742,25 @@ configure_environment() {
     cd "$INSTALL_DIR"
     
     if [ ! -f .env ]; then
-        log_and_print "Creating .env file from template..."
-        cp .env.example .env
-        
-        # Set default values
-        sed -i "s|DATABASE_URL=.*|DATABASE_URL=\"file:.//home/ubuntu/sports-bar-data/production.db\"|g" .env
-        sed -i "s|OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=\"http://localhost:11434\"|g" .env
-        
+        log_and_print "Creating .env file..."
+
+        # Detect local IP for NEXTAUTH_URL
+        local local_ip
+        local_ip=$(ip -o -4 addr show | grep -v '127.0.0.1' | grep -E '(eth|enp|eno)' | awk '{print $4}' | cut -d/ -f1 | head -1)
+        local_ip="${local_ip:-$(ip -o -4 addr show | grep -v '127.0.0.1' | awk '{print $4}' | cut -d/ -f1 | head -1)}"
+        local_ip="${local_ip:-localhost}"
+
+        cat > .env << ENVEOF
+DATABASE_URL="file:${DATABASE_DIR}/production.db"
+NODE_ENV=production
+PORT=${PORT}
+NEXTAUTH_URL=http://${local_ip}:${PORT}
+OLLAMA_BASE_URL=http://localhost:11434
+ENVEOF
+
         print_success "Environment configured"
-        print_info "Database URL and Ollama settings configured in .env"
+        print_info "DATABASE_URL=file:${DATABASE_DIR}/production.db"
+        print_info "NEXTAUTH_URL=http://${local_ip}:${PORT}"
     else
         print_info ".env file already exists, skipping"
     fi
@@ -831,8 +897,8 @@ build_application() {
     
     cd "$INSTALL_DIR"
     
-    log_and_print "Building Next.js application..."
-    npm run build >> "$LOG_FILE" 2>&1
+    log_and_print "Building Next.js application (this takes a few minutes)..."
+    npm run build 2>&1 | tee -a "$LOG_FILE"
     
     print_success "Application built successfully"
 }
@@ -1235,6 +1301,8 @@ main() {
     install_nodejs              # Node.js runtime (required by npm)
     install_ollama              # Ollama AI runtime (system service)
     install_tailscale           # Tailscale remote access (mesh VPN)
+    install_claude_code         # Claude Code CLI (AI assistant)
+    install_github_cli          # GitHub CLI (gh)
 
     # User setup (if needed for system-wide installation)
     create_service_user
