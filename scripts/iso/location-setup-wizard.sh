@@ -145,6 +145,26 @@ prompt_select() {
     done
 }
 
+# Extract last octet from IP address (e.g., 192.168.5.42 → 42)
+ip_last_octet() {
+    echo "${1##*.}"
+}
+
+# Sort an array of "ip|..." entries by IP last octet (ascending)
+sort_by_ip() {
+    local -n arr_ref=$1
+    local sorted
+    sorted=$(for entry in "${arr_ref[@]}"; do
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
+        printf "%03d|%s\n" "$octet" "$entry"
+    done | sort -n | cut -d'|' -f2-)
+    arr_ref=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && arr_ref+=("$line")
+    done <<< "$sorted"
+}
+
 # Test TCP port connectivity (returns 0 if open)
 probe_port() {
     local ip="$1"
@@ -722,11 +742,26 @@ configure_directv() {
         done
     fi
 
+    # Sort by IP so lowest IP = first device
+    sort_by_ip FOUND_DIRECTV
+
     echo ""
-    log "Configuring ${#FOUND_DIRECTV[@]} DirecTV receiver(s)"
+    log "Configuring ${#FOUND_DIRECTV[@]} DirecTV receiver(s) (sorted by IP)"
+    echo ""
+
+    # Show all discovered with auto-suggested numbering
+    echo -e "  ${BOLD}Discovered DirecTV receivers (sorted by IP):${NC}"
+    local dtv_num=1
+    for entry in "${FOUND_DIRECTV[@]}"; do
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
+        printf "    ${BOLD}%d.${NC} %-16s (last octet: .%s)\n" "$dtv_num" "$ip" "$octet"
+        ((dtv_num++))
+    done
+    echo ""
 
     local devices_json="["
-    local dtv_num=1
+    dtv_num=1
     local now
     now=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -734,10 +769,10 @@ configure_directv() {
         local ip
         ip=$(echo "$entry" | cut -d'|' -f1)
 
-        # Wolf Pack input mapping
+        # Wolf Pack input mapping — auto-suggest based on device order
         local wp_input=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_input=$(prompt_input "Wolf Pack input for Direct TV ${dtv_num} (${ip})" "")
+            wp_input=$(prompt_input "Wolf Pack input for Direct TV ${dtv_num} (.$(ip_last_octet "$ip"))" "$dtv_num")
             if [[ -n "$wp_input" ]]; then
                 WP_INPUTS["$wp_input"]="Direct TV ${dtv_num} (${ip})"
             fi
@@ -782,8 +817,24 @@ configure_firetv() {
         done
     fi
 
+    # Sort by IP so lowest IP = first device
+    sort_by_ip FOUND_FIRETV
+
     echo ""
-    log "Configuring ${#FOUND_FIRETV[@]} Fire TV device(s)"
+    log "Configuring ${#FOUND_FIRETV[@]} Fire TV device(s) (sorted by IP)"
+    echo ""
+
+    # Show all discovered
+    echo -e "  ${BOLD}Discovered Fire TV / Streaming devices (sorted by IP):${NC}"
+    local preview_num=1
+    for entry in "${FOUND_FIRETV[@]}"; do
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        local dtype=$(echo "$entry" | cut -d'|' -f3)
+        local octet=$(ip_last_octet "$ip")
+        printf "    ${BOLD}%d.${NC} %-16s .%-4s %s\n" "$preview_num" "$ip" "$octet" "$dtype"
+        ((preview_num++))
+    done
+    echo ""
 
     local devices_json="["
     local ftv_num=1
@@ -806,10 +857,10 @@ configure_firetv() {
             ((ftv_num++))
         fi
 
-        # Wolf Pack input mapping
+        # Wolf Pack input mapping — auto-suggest based on device order
         local wp_input=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_input=$(prompt_input "Wolf Pack input for ${device_name} (${ip})" "")
+            wp_input=$(prompt_input "Wolf Pack input for ${device_name} (.$(ip_last_octet "$ip"))" "$((ftv_num - 1 + atm_num - 1))")
             if [[ -n "$wp_input" ]]; then
                 WP_INPUTS["$wp_input"]="${device_name} (${ip})"
             fi
@@ -885,8 +936,57 @@ configure_tvs() {
         total_tvs=${#FOUND_SAMSUNG[@]}
     fi
 
+    # Sort all TV arrays by IP so lowest IP = first output
+    [[ ${#FOUND_SAMSUNG[@]} -gt 0 ]] && sort_by_ip FOUND_SAMSUNG
+    [[ ${#FOUND_LG[@]} -gt 0 ]] && sort_by_ip FOUND_LG
+    [[ ${#FOUND_ROKU[@]} -gt 0 ]] && sort_by_ip FOUND_ROKU
+    [[ ${#FOUND_VIZIO[@]} -gt 0 ]] && sort_by_ip FOUND_VIZIO
+
+    # Build combined list for preview, sorted by IP across all brands
     echo ""
-    log "Configuring ${total_tvs} TV(s)"
+    log "Configuring ${total_tvs} TV(s) (sorted by IP)"
+    echo ""
+    echo -e "  ${BOLD}Discovered TVs — IP last octet → suggested Wolf Pack output:${NC}"
+    echo -e "  ${DIM}(e.g., .1 → output 01, .15 → output 15)${NC}"
+    echo ""
+
+    # Preview all TVs sorted
+    local all_tvs=()
+    for entry in "${FOUND_SAMSUNG[@]+"${FOUND_SAMSUNG[@]}"}"; do
+        [[ -z "$entry" ]] && continue
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        all_tvs+=("${ip}|samsung|Samsung")
+    done
+    for entry in "${FOUND_LG[@]+"${FOUND_LG[@]}"}"; do
+        [[ -z "$entry" ]] && continue
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        all_tvs+=("${ip}|lg|LG")
+    done
+    for entry in "${FOUND_ROKU[@]+"${FOUND_ROKU[@]}"}"; do
+        [[ -z "$entry" ]] && continue
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        all_tvs+=("${ip}|roku|Roku")
+    done
+    for entry in "${FOUND_VIZIO[@]+"${FOUND_VIZIO[@]}"}"; do
+        [[ -z "$entry" ]] && continue
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        all_tvs+=("${ip}|vizio|Vizio")
+    done
+
+    # Sort combined list by IP
+    [[ ${#all_tvs[@]} -gt 0 ]] && sort_by_ip all_tvs
+
+    # Show preview with auto-suggested outputs
+    local preview_num=1
+    for entry in "${all_tvs[@]}"; do
+        local ip=$(echo "$entry" | cut -d'|' -f1)
+        local brand_label=$(echo "$entry" | cut -d'|' -f3)
+        local octet=$(ip_last_octet "$ip")
+        # Auto-suggest: use the IP last octet as the output number
+        printf "    ${BOLD}%2d.${NC} %-16s .%-4s %-8s → ${CYAN}output %02d${NC}\n" "$preview_num" "$ip" "$octet" "$brand_label" "$octet"
+        ((preview_num++))
+    done
+    echo ""
 
     local tv_num=1
 
@@ -895,6 +995,7 @@ configure_tvs() {
         [[ -z "$entry" ]] && continue
         local ip
         ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
 
         # Try to get model info
         local model="Samsung TV"
@@ -906,10 +1007,10 @@ configure_tvs() {
             [[ -n "$parsed_name" ]] && model="$parsed_name"
         fi
 
-        # Wolf Pack output mapping
+        # Wolf Pack output mapping — auto-suggest from IP last octet
         local wp_output=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - ${model} (${ip})" "${tv_num}")
+            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - ${model} (.${octet})" "${octet}")
             if [[ -n "$wp_output" ]]; then
                 WP_OUTPUTS["$wp_output"]="TV ${tv_num} - Samsung (${ip})"
             fi
@@ -918,7 +1019,7 @@ configure_tvs() {
         # Register in database
         run_sql "INSERT OR REPLACE INTO NetworkTVDevice (id, name, brand, model, ipAddress, port, macAddress, status, createdAt, updatedAt) VALUES ('tv-${tv_num}', 'TV ${tv_num}', 'samsung', '${model}', '${ip}', 8002, '', 'discovered', datetime('now'), datetime('now'));"
 
-        log "TV ${tv_num}: Samsung at ${ip} → Wolf Pack output ${wp_output:-N/A}"
+        log "TV ${tv_num}: Samsung at ${ip} (.${octet}) → Wolf Pack output ${wp_output:-N/A}"
         ((tv_num++))
     done
 
@@ -927,15 +1028,16 @@ configure_tvs() {
         [[ -z "$entry" ]] && continue
         local ip
         ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
 
         local wp_output=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - LG (${ip})" "${tv_num}")
+            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - LG (.${octet})" "${octet}")
             [[ -n "$wp_output" ]] && WP_OUTPUTS["$wp_output"]="TV ${tv_num} - LG (${ip})"
         fi
 
         run_sql "INSERT OR REPLACE INTO NetworkTVDevice (id, name, brand, model, ipAddress, port, macAddress, status, createdAt, updatedAt) VALUES ('tv-${tv_num}', 'TV ${tv_num}', 'lg', 'LG WebOS', '${ip}', 3000, '', 'discovered', datetime('now'), datetime('now'));"
-        log "TV ${tv_num}: LG at ${ip} → Wolf Pack output ${wp_output:-N/A}"
+        log "TV ${tv_num}: LG at ${ip} (.${octet}) → Wolf Pack output ${wp_output:-N/A}"
         ((tv_num++))
     done
 
@@ -944,15 +1046,16 @@ configure_tvs() {
         [[ -z "$entry" ]] && continue
         local ip
         ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
 
         local wp_output=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - Roku (${ip})" "${tv_num}")
+            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - Roku (.${octet})" "${octet}")
             [[ -n "$wp_output" ]] && WP_OUTPUTS["$wp_output"]="TV ${tv_num} - Roku (${ip})"
         fi
 
         run_sql "INSERT OR REPLACE INTO NetworkTVDevice (id, name, brand, model, ipAddress, port, macAddress, status, createdAt, updatedAt) VALUES ('tv-${tv_num}', 'TV ${tv_num}', 'roku', 'Roku TV', '${ip}', 8060, '', 'discovered', datetime('now'), datetime('now'));"
-        log "TV ${tv_num}: Roku at ${ip} → Wolf Pack output ${wp_output:-N/A}"
+        log "TV ${tv_num}: Roku at ${ip} (.${octet}) → Wolf Pack output ${wp_output:-N/A}"
         ((tv_num++))
     done
 
@@ -961,15 +1064,16 @@ configure_tvs() {
         [[ -z "$entry" ]] && continue
         local ip
         ip=$(echo "$entry" | cut -d'|' -f1)
+        local octet=$(ip_last_octet "$ip")
 
         local wp_output=""
         if [[ ${#FOUND_WOLFPACK[@]} -gt 0 ]]; then
-            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - Vizio (${ip})" "${tv_num}")
+            wp_output=$(prompt_input "Wolf Pack output for TV ${tv_num} - Vizio (.${octet})" "${octet}")
             [[ -n "$wp_output" ]] && WP_OUTPUTS["$wp_output"]="TV ${tv_num} - Vizio (${ip})"
         fi
 
         run_sql "INSERT OR REPLACE INTO NetworkTVDevice (id, name, brand, model, ipAddress, port, macAddress, status, createdAt, updatedAt) VALUES ('tv-${tv_num}', 'TV ${tv_num}', 'vizio', 'Vizio SmartCast', '${ip}', 7345, '', 'discovered', datetime('now'), datetime('now'));"
-        log "TV ${tv_num}: Vizio at ${ip} → Wolf Pack output ${wp_output:-N/A}"
+        log "TV ${tv_num}: Vizio at ${ip} (.${octet}) → Wolf Pack output ${wp_output:-N/A}"
         ((tv_num++))
     done
 
