@@ -241,9 +241,9 @@ export default function BartenderRemotePage() {
     return () => clearInterval(interval)
   }, [activeTab])
 
-  // Poll routing + channel data every 15 seconds while on the Routing tab
+  // Poll routing + channel data every 15 seconds while on the Video or Routing tab
   useEffect(() => {
-    if (activeTab !== 'routing') return
+    if (activeTab !== 'routing' && activeTab !== 'video') return
 
     loadCurrentRoutes()
     loadCurrentChannels()
@@ -770,13 +770,14 @@ export default function BartenderRemotePage() {
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
         <RecoveryConfirmationPopup />
         {activeTab === 'video' && (
-          <div className="w-full max-w-7xl lg:max-w-full mx-auto space-y-4 px-2 sm:px-4 lg:px-8">
+          <div className="w-full mx-auto space-y-4 px-1">
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
               currentSources={currentSources}
               inputs={inputs}
               currentChannels={currentChannels}
+              onRefreshRoutes={loadCurrentRoutes}
             />
             {selectedInput === 11 && <AtmosphereControl />}
           </div>

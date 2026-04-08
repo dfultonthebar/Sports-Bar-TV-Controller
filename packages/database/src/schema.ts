@@ -2229,6 +2229,7 @@ export const bartenderLayouts = sqliteTable('BartenderLayout', {
   // Floor plan image
   imageUrl: text('imageUrl'),
   originalFileUrl: text('originalFileUrl'),
+  professionalImageUrl: text('professionalImageUrl'),
   
   // TV zone configuration (JSON array of Zone objects)
   // Each zone: { id, outputNumber, x, y, width, height, label, confidence }
