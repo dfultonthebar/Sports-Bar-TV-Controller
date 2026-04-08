@@ -179,30 +179,26 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Pre-fetch zone metadata
-  let zoneNames: string[] = []
-  let muteStates: boolean[] = []
-  try {
-    const metadata = await fetchZoneMetadata(processorIp)
+  // Start with default names — fetch real metadata in background so SSE stream isn't blocked
+  let zoneNames: string[] = Array.from({ length: 8 }, (_, i) => `Zone ${i + 1}`)
+  let muteStates: boolean[] = Array(8).fill(false)
+  let sourceNames: string[] = Array.from({ length: 14 }, (_, i) => `Input ${i + 1}`)
+
+  // Fetch metadata asynchronously (updates names after first successful fetch)
+  fetchZoneMetadata(processorIp).then(metadata => {
     zoneNames = metadata.names
     muteStates = metadata.muteStates
-  } catch (error) {
+  }).catch(error => {
     logger.error(`[METER_STREAM] Failed to fetch zone metadata:`, error)
-    zoneNames = Array.from({ length: 8 }, (_, i) => `Zone ${i + 1}`)
-    muteStates = Array(8).fill(false)
-  }
+  })
 
-  // Pre-fetch source/input metadata
-  let sourceNames: string[] = []
-  try {
-    const sourceMetadata = await fetchSourceMetadata(processorIp, 14)
+  fetchSourceMetadata(processorIp, 14).then(sourceMetadata => {
     sourceNames = sourceMetadata.names
-  } catch (error) {
+  }).catch(error => {
     logger.error(`[METER_STREAM] Failed to fetch source metadata:`, error)
-    sourceNames = Array.from({ length: 14 }, (_, i) => `Input ${i + 1}`)
-  }
+  })
 
-  // Create a TransformStream for SSE - more reliable than ReadableStream
+  // Create a ReadableStream for SSE
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
