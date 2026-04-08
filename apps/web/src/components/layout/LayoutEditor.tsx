@@ -32,6 +32,7 @@ interface TVLayout {
   name: string
   imageUrl?: string
   originalFileUrl?: string
+  professionalImageUrl?: string
   zones: Zone[]
   rooms?: Room[]
 }
@@ -93,9 +94,11 @@ export default function LayoutEditor({
   }, [zones, originalZones, rooms, originalRooms])
 
   // Get the current image to display based on room filter
+  // Prefer professional (enhanced) image when available
+  const baseImageUrl = layout.professionalImageUrl || layout.imageUrl
   const currentImageUrl = selectedRoomFilter === 'all'
-    ? layout.imageUrl
-    : rooms.find(r => r.id === selectedRoomFilter)?.imageUrl || layout.imageUrl
+    ? baseImageUrl
+    : rooms.find(r => r.id === selectedRoomFilter)?.imageUrl || baseImageUrl
 
   // Handle room image upload
   const handleRoomImageUpload = async (roomId: string, file: File) => {
@@ -561,7 +564,7 @@ export default function LayoutEditor({
                 <img
                   src={currentImageUrl}
                   alt="Floor plan"
-                  className="absolute inset-0 w-full h-full object-contain layout-background opacity-50"
+                  className="absolute inset-0 w-full h-full object-fill layout-background opacity-50"
                   draggable={false}
                 />
               )}

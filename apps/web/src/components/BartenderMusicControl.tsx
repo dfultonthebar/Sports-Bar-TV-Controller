@@ -11,7 +11,9 @@ import {
   RefreshCw,
   AlertCircle,
   Radio,
-  Disc
+  Disc,
+  SkipForward,
+  Ban
 } from 'lucide-react'
 import Image from 'next/image'
 
@@ -45,6 +47,7 @@ interface SoundtrackPlayer {
 
 interface NowPlaying {
   track: {
+    id?: string
     title: string
     artist: string
     album?: string
@@ -66,6 +69,8 @@ export default function BartenderMusicControl() {
   const [actionLoading, setActionLoading] = useState(false)
   const [availablePlaylists, setAvailablePlaylists] = useState<AvailablePlaylist[]>([])
   const [playlistsLoading, setPlaylistsLoading] = useState(false)
+  const [skipLoading, setSkipLoading] = useState(false)
+  const [blockConfirm, setBlockConfirm] = useState(false)
 
   // Load data once on mount
   useEffect(() => {
@@ -198,6 +203,72 @@ export default function BartenderMusicControl() {
     }
   }
 
+  const handleSkip = async () => {
+    if (!selectedPlayer || skipLoading) return
+
+    setSkipLoading(true)
+    try {
+      const response = await fetch('/api/soundtrack/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          action: 'skip'
+        })
+      })
+
+      if (response.ok) {
+        // Wait a moment for the next track to start, then refresh
+        setTimeout(() => {
+          updateNowPlaying(selectedPlayer.id)
+          setSkipLoading(false)
+        }, 1500)
+      } else {
+        setSkipLoading(false)
+      }
+    } catch (err) {
+      logger.error('Failed to skip track:', err)
+      setSkipLoading(false)
+    }
+  }
+
+  const handleBlock = async () => {
+    if (!selectedPlayer || !nowPlaying?.track?.id || skipLoading) return
+
+    if (!blockConfirm) {
+      setBlockConfirm(true)
+      // Auto-reset confirmation after 4 seconds
+      setTimeout(() => setBlockConfirm(false), 4000)
+      return
+    }
+
+    setBlockConfirm(false)
+    setSkipLoading(true)
+    try {
+      const response = await fetch('/api/soundtrack/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          action: 'block',
+          trackId: nowPlaying.track.id
+        })
+      })
+
+      if (response.ok) {
+        setTimeout(() => {
+          updateNowPlaying(selectedPlayer.id)
+          setSkipLoading(false)
+        }, 1500)
+      } else {
+        setSkipLoading(false)
+      }
+    } catch (err) {
+      logger.error('Failed to block track:', err)
+      setSkipLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto">
@@ -324,6 +395,36 @@ export default function BartenderMusicControl() {
                 <p className="text-sm text-slate-400 truncate mt-2">{nowPlaying.track.album}</p>
               )}
             </div>
+          </div>
+
+          {/* Skip & Block Controls */}
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={handleSkip}
+              disabled={skipLoading}
+              className="flex-1 group relative backdrop-blur-xl bg-white/5 border-2 border-white/10 rounded-xl py-3 px-4 text-white font-semibold hover:border-blue-400/50 hover:bg-blue-500/10 transition-all duration-300 active:scale-95 disabled:opacity-50"
+            >
+              <div className="flex items-center justify-center">
+                <SkipForward className={`w-5 h-5 mr-2 ${skipLoading ? 'animate-pulse' : ''}`} />
+                Skip
+              </div>
+            </button>
+            {nowPlaying.track.id && (
+              <button
+                onClick={handleBlock}
+                disabled={skipLoading}
+                className={`group relative backdrop-blur-xl border-2 rounded-xl py-3 px-4 font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 ${
+                  blockConfirm
+                    ? 'bg-red-500/20 border-red-400/50 text-red-200'
+                    : 'bg-white/5 border-white/10 text-white hover:border-red-400/50 hover:bg-red-500/10'
+                }`}
+              >
+                <div className="flex items-center justify-center">
+                  <Ban className="w-5 h-5 mr-2" />
+                  {blockConfirm ? 'Tap to confirm' : 'Block Song'}
+                </div>
+              </button>
+            )}
           </div>
         </div>
       )}
