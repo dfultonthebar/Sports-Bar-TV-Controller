@@ -23,6 +23,78 @@ import { cacheManager } from '@/lib/cache-manager'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+
+// Cache for local channel overrides (5-minute TTL)
+let _overridesCache: { data: { teamName: string; channelNumber: number; channelName: string; deviceType: string }[]; ts: number } | null = null
+const OVERRIDES_TTL = 5 * 60 * 1000
+
+async function getLocalChannelOverrides(): Promise<{ teamName: string; channelNumber: number; channelName: string; deviceType: string }[]> {
+  if (_overridesCache && Date.now() - _overridesCache.ts < OVERRIDES_TTL) {
+    return _overridesCache.data
+  }
+  const { db } = await import('@/db')
+  const { schema } = await import('@/db')
+  const { eq } = await import('drizzle-orm')
+  const rows = await db.select().from(schema.localChannelOverrides)
+    .where(eq(schema.localChannelOverrides.isActive, true))
+  const data = rows.map(r => ({
+    teamName: r.teamName,
+    channelNumber: r.channelNumber,
+    channelName: r.channelName,
+    deviceType: r.deviceType || 'cable',
+  }))
+  _overridesCache = { data, ts: Date.now() }
+  return data
+}
+
+// Team name to Rail station code mapping for local channel overrides
+const TEAM_STATION_MAP: Record<string, string> = {
+  'Milwaukee Brewers': 'MILBRE',
+  'Milwaukee Bucks': 'MILBUC',
+  'Green Bay Packers': 'GRNBAY',
+  'Wisconsin Badgers': 'WISC',
+}
+
+/**
+ * Apply local channel overrides to Rail API guide data.
+ * When a listing has a station with empty cable channels and a DB override exists
+ * for the team, inject the override channel number.
+ */
+async function applyLocalChannelOverrides(guide: any): Promise<number> {
+  const overrides = await getLocalChannelOverrides()
+  if (overrides.length === 0) return 0
+
+  let overrideCount = 0
+
+  for (const group of guide.listing_groups || []) {
+    for (const listing of group.listings || []) {
+      const homeTeam = listing.data?.['home team'] || ''
+      const awayTeam = listing.data?.['visiting team'] || ''
+
+      for (const override of overrides) {
+        if (!homeTeam.includes(override.teamName) && !awayTeam.includes(override.teamName)) continue
+
+        const lineupKey = override.deviceType === 'cable' ? 'CAB' : 'DRTV'
+        if (!listing.channel_numbers?.[lineupKey]) continue
+
+        // Find the station code for this team
+        const stationCode = TEAM_STATION_MAP[override.teamName]
+        if (!stationCode) continue
+
+        // Only inject if the station exists in the listing but has empty channels
+        if (stationCode in listing.channel_numbers[lineupKey]) {
+          const existing = listing.channel_numbers[lineupKey][stationCode]
+          if (!existing || existing.length === 0) {
+            listing.channel_numbers[lineupKey][stationCode] = [override.channelNumber]
+            overrideCount++
+          }
+        }
+      }
+    }
+  }
+
+  return overrideCount
+}
 // Configure route segment to be dynamic
 export const dynamic = 'force-dynamic'
 
@@ -202,7 +274,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Return raw data - no filtering, no transformation
+    // Apply local channel overrides (e.g., Brewers → cable 308)
+    const overrideCount = await applyLocalChannelOverrides(guide)
+    if (overrideCount > 0) {
+      logInfo(`Applied ${overrideCount} local channel overrides to guide data`)
+    }
+
     const requestDuration = Date.now() - requestStart
     logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)
     logInfo(`Total request duration: ${requestDuration}ms`)
