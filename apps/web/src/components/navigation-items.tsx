@@ -19,7 +19,7 @@ export const navigationItems = [
   { icon: Volume2, label: 'Audio Zones', href: '/audio-zones' },
   { icon: Trophy, label: 'AI Game Plan', href: '/ai-gameplan' },
   { icon: Calendar, label: 'Sports Guide', href: '/sports-guide' },
-  { icon: Calendar, label: 'Smart Scheduler', href: '/scheduler' },
+  { icon: Calendar, label: 'Smart Scheduler', href: '/scheduling' },
   { icon: Brain, label: 'AI Assistant', href: '/ai-assistant' },
   { icon: Activity, label: 'Tests', href: '/tests' },
   { icon: Settings, label: 'Device Config', href: '/device-config' },

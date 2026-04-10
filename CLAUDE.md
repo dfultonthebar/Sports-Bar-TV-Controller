@@ -720,6 +720,18 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
+#### 8a. Sports Guide Admin Consolidation (v2.4.0, April 2026)
+
+The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consolidated into a single `/sports-guide-admin` page with 8 tabs (Guide, Games, Schedule, Home Teams, Channels, Providers, Configuration, Logs). The bartender remote at `/remote` is **not** affected. See `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md` for the full plan and per-item disposition.
+
+**Phase A completed in v2.4.0** — dead-weight cleanup. 16 unused API routes deleted, 7 orphaned components/pages deleted, 1 stale bootstrap script deleted, broken `/scheduler` nav link fixed to point at `/scheduling`, Leagues tab hidden in `/sports-guide-config`. Net change: 4,961 lines deleted, 12 added, zero regressions.
+
+**Deleted routes** (never reintroduce these unless designing something new): `/api/scheduler/{status,manage,settings,system-state,test-match,distribution-plan}`, `/api/schedules/{logs,by-game}`, `/api/scheduling/{analyze,auto-reallocate}`, `/api/sports-guide/{test-providers,current-time,channels,ollama/query,scheduled}`, `/api/channel-presets/statistics`.
+
+**Kept despite zero UI callers** (internal cron callers in `packages/scheduler/src/scheduler-service.ts`): `/api/sports-guide/cleanup-old` (line 516), `/api/scheduling/live-status` (line 885). Do not delete these without updating the caller.
+
+**Phases B (new consolidated page), C (nav flip + redirects), D (delete old pages)** are tracked in the consolidation doc.
+
 #### 9. AI Scheduling Intelligence
 **Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
 

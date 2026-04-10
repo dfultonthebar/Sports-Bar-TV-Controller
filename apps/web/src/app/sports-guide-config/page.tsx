@@ -962,10 +962,6 @@ export default function SportsGuideConfigPage() {
               <Clock className="w-4 h-4 mr-2" />
               Scheduling
             </TabsTrigger>
-            <TabsTrigger value="leagues" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-              <Trophy className="w-4 h-4 mr-2" />
-              Leagues
-            </TabsTrigger>
           </TabsList>
 n          {/* API Configuration Tab */}
           <TabsContent value="api" className="space-y-6">
