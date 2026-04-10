@@ -187,6 +187,14 @@ For tonight's Brewers game:
 - Bucks games on Rail with station `FSWI` correctly land on channel 40, not 308
 - Total program count went from 36 → 41 after the fallback injected 5 additional local games
 
+### 5e. League label mismatch between Rail Media and ESPN sync blocked all Rail-sourced scheduling
+
+**Symptom (post 5d):** After fixing `tvOutputIds` to be optional, scheduling from the Guide tab still failed with 404 "No matching game schedule found" for Rail-sourced programs (Yankees @ Rays, Bucks vs Nets, etc.) — but worked fine for the Brewers game injected by the `game_schedules` fallback.
+
+**Root cause:** The bartender-schedule route matches the UI's `gameInfo` to an existing `game_schedules` row using team names + league + time window. The Rail Media API returns league labels like `"MLB Baseball"`, `"NBA Basketball"`, `"NHL Hockey"` (from `listing_groups[].group_title`), but the ESPN sync writes lowercase short codes like `"mlb"`, `"nba"`, `"nhl"`. The `eq(schema.gameSchedules.league, gameInfo.league)` check compared `"mlb" === "MLB Baseball"` and failed every time.
+
+**Fix:** Dropped the `league` field from the match criteria entirely. Team names + a ±1 hour start time window are unique enough — two different teams named "Tampa Bay Rays" and "New York Yankees" playing each other at the same hour is not a realistic collision. The comment in the code explains the mismatch for future readers.
+
 ### 5d. Guide tab schedule button broke after the earlier bartender-schedule tightening
 
 Fix #3 above added `tvOutputIds: z.array(...).min(1)` to the `bartender-schedule` POST schema. But the Guide tab's schedule flow intentionally POSTs without `tvOutputIds` — it creates the allocation first, then PATCHes in the TV outputs auto-copied from a previous allocation on the same device. My `.min(1)` requirement broke this, so the Guide tab's Schedule button silently failed with a validation error.

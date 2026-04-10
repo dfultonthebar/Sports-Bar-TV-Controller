@@ -104,15 +104,18 @@ export async function POST(request: NextRequest) {
         .get()
     }
 
-    // If not found, try to find by teams and time
+    // If not found, try to find by teams and time window.
+    // League is deliberately NOT part of the match criteria because data sources
+    // use different labels for the same league: The Rail Media returns "MLB Baseball"
+    // while our ESPN sync stores "mlb" (lowercase). Team names + a ±1 hour start
+    // time window are unique enough in practice.
     if (!gameSchedule) {
       const results = await db.select().from(schema.gameSchedules)
         .where(
           and(
             eq(schema.gameSchedules.homeTeamName, gameInfo.homeTeam),
             eq(schema.gameSchedules.awayTeamName, gameInfo.awayTeam),
-            eq(schema.gameSchedules.league, gameInfo.league),
-            gte(schema.gameSchedules.scheduledStart, startTimeUnix - 3600), // Within 1 hour
+            gte(schema.gameSchedules.scheduledStart, startTimeUnix - 3600),
             lte(schema.gameSchedules.scheduledStart, startTimeUnix + 3600)
           )
         )
