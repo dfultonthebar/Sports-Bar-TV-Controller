@@ -15,7 +15,9 @@
 # Requires: adb, curl, sqlite3, git (all included in ISO v3.0)
 #
 
-set -euo pipefail
+set -uo pipefail
+# NOTE: NOT using set -e because parallel network scans and probe failures
+# would cause the script to exit. Each function handles its own errors.
 
 # ─── Colors & Formatting ────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -43,8 +45,9 @@ DONE_MARKER="/var/lib/sports-bar-wizard-done"
 WIZARD_VERSION="3.0"
 
 # Scan settings
-SCAN_TIMEOUT=1        # seconds per probe
-MAX_CONCURRENT=30     # parallel probes
+SCAN_TIMEOUT=1        # seconds per TCP probe
+HTTP_TIMEOUT=2        # seconds per HTTP identification
+MAX_CONCURRENT=50     # parallel probes
 SCAN_SUBNET=""        # detected during wizard_network
 LOCAL_IP=""           # detected during wizard_network
 
@@ -237,131 +240,138 @@ detect_subnet() {
 
 # ─── Network Scanner ────────────────────────────────────────────────────────
 
-# Probe a single IP on all device ports, write results to temp dir
-scan_single_ip() {
+# Phase 1: Fast TCP port probe for a single IP + single port
+# Writes "ip|port" to results file if port is open
+probe_single() {
     local ip="$1"
-    local tmpdir="$2"
-
-    # Wolf Pack HTTP (port 80)
-    if probe_port "$ip" 80; then
-        local body
-        body=$(http_get "http://${ip}/login.php" 2>/dev/null || true)
-        if [[ "$body" == *"Wolf"* ]] || [[ "$body" == *"HDMI"* ]] || [[ "$body" == *"Matrix"* ]]; then
-            echo "wolfpack|${ip}|80|HTTP OK" >> "${tmpdir}/results"
-        fi
+    local port="$2"
+    local tmpfile="$3"
+    if timeout "$SCAN_TIMEOUT" bash -c "echo >/dev/tcp/${ip}/${port}" 2>/dev/null; then
+        echo "${ip}|${port}" >> "$tmpfile"
     fi
+}
 
-    # Global Cache iTach (port 4998)
-    if probe_port "$ip" 4998; then
-        echo "globalcache|${ip}|4998|Connected" >> "${tmpdir}/results"
-    fi
+# Phase 2: Identify what type of device is at ip:port
+identify_device() {
+    local ip="$1"
+    local port="$2"
+    local tmpfile="$3"
 
-    # Atlas IED (port 5321)
-    if probe_port "$ip" 5321; then
-        echo "atlas|${ip}|5321|Connected" >> "${tmpdir}/results"
-    fi
-
-    # DirecTV SHEF (port 8080)
-    if probe_port "$ip" 8080; then
-        local resp
-        resp=$(http_get "http://${ip}:8080/info/getVersion" 2>/dev/null || true)
-        if [[ "$resp" == *"status"* ]] || [[ "$resp" == *"accessCardId"* ]] || [[ "$resp" == *"version"* ]]; then
-            echo "directv|${ip}|8080|SHEF OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # Fire TV ADB (port 5555)
-    if probe_port "$ip" 5555; then
-        echo "firetv|${ip}|5555|ADB Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Samsung TV SmartView (port 8001)
-    if probe_port "$ip" 8001; then
-        local resp
-        resp=$(http_get "http://${ip}:8001/api/v2/" 2>/dev/null || true)
-        if [[ "$resp" == *"device"* ]] || [[ "$resp" == *"name"* ]] || [[ "$resp" == *"Samsung"* ]]; then
-            echo "samsung|${ip}|8001|SmartView OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # Roku ECP (port 8060)
-    if probe_port "$ip" 8060; then
-        local resp
-        resp=$(http_get "http://${ip}:8060/query/device-info" 2>/dev/null || true)
-        if [[ "$resp" == *"device-info"* ]] || [[ "$resp" == *"model"* ]]; then
-            echo "roku|${ip}|8060|ECP OK" >> "${tmpdir}/results"
-        fi
-    fi
-
-    # LG WebOS (port 3000 or 3001 — LG uses 3000 for WebSocket)
-    if probe_port "$ip" 3000; then
-        echo "lg|${ip}|3000|WebOS Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Vizio SmartCast (port 7345 or 9000)
-    if probe_port "$ip" 7345; then
-        echo "vizio|${ip}|7345|SmartCast Port Open" >> "${tmpdir}/results"
-    fi
-
-    # Crestron Telnet (port 41795 CTP)
-    if probe_port "$ip" 41795; then
-        echo "crestron|${ip}|41795|CTP OK" >> "${tmpdir}/results"
-    elif probe_port "$ip" 41794; then
-        echo "crestron|${ip}|41794|CIP OK" >> "${tmpdir}/results"
-    fi
-
-    # BSS BLU (port 1023)
-    if probe_port "$ip" 1023; then
-        echo "bss|${ip}|1023|HiQnet OK" >> "${tmpdir}/results"
-    fi
-
-    # dbx ZonePRO (port 3804)
-    if probe_port "$ip" 3804; then
-        echo "dbx|${ip}|3804|Connected" >> "${tmpdir}/results"
-    fi
+    case "$port" in
+        80)
+            local body
+            body=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}/login.php" 2>/dev/null || true)
+            if [[ "$body" == *"Wolf"* ]] || [[ "$body" == *"HDMI"* ]] || [[ "$body" == *"Matrix"* ]] || [[ "$body" == *"wolf"* ]]; then
+                echo "wolfpack|${ip}|80|HTTP OK" >> "$tmpfile"
+            fi
+            ;;
+        4998)
+            echo "globalcache|${ip}|4998|Connected" >> "$tmpfile"
+            ;;
+        5321)
+            echo "atlas|${ip}|5321|Connected" >> "$tmpfile"
+            ;;
+        8080)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8080/info/getVersion" 2>/dev/null || true)
+            if [[ -n "$resp" ]] && [[ "$resp" != *"404"* ]]; then
+                echo "directv|${ip}|8080|SHEF OK" >> "$tmpfile"
+            fi
+            ;;
+        5555)
+            echo "firetv|${ip}|5555|ADB Port Open" >> "$tmpfile"
+            ;;
+        8001)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8001/api/v2/" 2>/dev/null || true)
+            if [[ "$resp" == *"device"* ]] || [[ "$resp" == *"name"* ]] || [[ "$resp" == *"Samsung"* ]]; then
+                echo "samsung|${ip}|8001|SmartView OK" >> "$tmpfile"
+            fi
+            ;;
+        8060)
+            local resp
+            resp=$(curl -s --connect-timeout "$HTTP_TIMEOUT" --max-time 3 "http://${ip}:8060/query/device-info" 2>/dev/null || true)
+            if [[ "$resp" == *"device-info"* ]] || [[ "$resp" == *"model"* ]]; then
+                echo "roku|${ip}|8060|ECP OK" >> "$tmpfile"
+            fi
+            ;;
+        3000)
+            echo "lg|${ip}|3000|WebOS Port Open" >> "$tmpfile"
+            ;;
+        7345)
+            echo "vizio|${ip}|7345|SmartCast Port Open" >> "$tmpfile"
+            ;;
+        41795)
+            echo "crestron|${ip}|41795|CTP OK" >> "$tmpfile"
+            ;;
+        41794)
+            echo "crestron|${ip}|41794|CIP OK" >> "$tmpfile"
+            ;;
+        1023)
+            echo "bss|${ip}|1023|HiQnet OK" >> "$tmpfile"
+            ;;
+        3804)
+            echo "dbx|${ip}|3804|Connected" >> "$tmpfile"
+            ;;
+    esac
 }
 
 scan_subnet_full() {
     local subnet="$1"
     local tmpdir
     tmpdir=$(mktemp -d)
-    touch "${tmpdir}/results"
+    local open_ports="${tmpdir}/open_ports"
+    local results="${tmpdir}/results"
+    touch "$open_ports" "$results"
 
-    echo -e "  Scanning ${BOLD}${subnet}.1-254${NC} on 13 device ports..."
-    echo -e "  ${DIM}(timeout: ${SCAN_TIMEOUT}s per probe, ${MAX_CONCURRENT} concurrent)${NC}"
-    echo ""
+    # Device ports to scan
+    local PORTS=(80 4998 5321 8080 5555 8001 8060 3000 7345 41795 41794 1023 3804)
 
-    local count=0
-    local total=254
+    # ── Phase 1: Fast TCP sweep ──────────────────────────────────────────
+    echo -e "  ${BOLD}Phase 1:${NC} Fast port sweep on ${subnet}.1-254..."
+    echo -e "  ${DIM}(${#PORTS[@]} ports × 254 IPs, ${SCAN_TIMEOUT}s timeout, ${MAX_CONCURRENT} concurrent)${NC}"
 
+    # Build list of all ip:port pairs and scan in parallel via xargs
+    local probe_list="${tmpdir}/probe_list"
     for i in $(seq 1 254); do
         local ip="${subnet}.${i}"
-        scan_single_ip "$ip" "$tmpdir" &
+        for port in "${PORTS[@]}"; do
+            echo "${ip} ${port}"
+        done
+    done > "$probe_list"
 
-        ((count++))
-        # Throttle concurrency
-        if (( count % MAX_CONCURRENT == 0 )); then
-            wait
-            # Progress indicator
-            local pct=$(( count * 100 / total ))
-            local bars=$(( pct / 4 ))
-            local spaces=$(( 25 - bars ))
-            printf "\r  [${GREEN}%${bars}s${NC}%${spaces}s] %d/%d" "" "" "$count" "$total" | tr ' ' '=' | sed "s/=\(.\)/\1/g"
-            printf "\r  [${GREEN}"
-            printf '=%.0s' $(seq 1 $bars)
-            printf "${NC}"
-            printf ' %.0s' $(seq 1 $spaces) 2>/dev/null || true
-            printf "] %d/%d" "$count" "$total"
-        fi
-    done
-    wait
+    local total
+    total=$(wc -l < "$probe_list")
+    echo "  Probing ${total} targets with xargs -P ${MAX_CONCURRENT}..."
 
-    printf "\r  [${GREEN}"
-    printf '=%.0s' $(seq 1 25)
-    printf "${NC}] 254/254\n\n"
+    export -f probe_single
+    export SCAN_TIMEOUT
+    cat "$probe_list" | xargs -P "${MAX_CONCURRENT}" -n 2 bash -c '
+        probe_single "$1" "$2" "'"$open_ports"'"
+    ' _
+
+    echo "  Scanning... 254/254 IPs — done!"
+
+    local hits
+    hits=$(wc -l < "$open_ports" 2>/dev/null || echo 0)
+    log "Found ${hits} open port(s)"
+
+    # ── Phase 2: Identify devices on open ports ──────────────────────────
+    if [[ "$hits" -gt 0 ]]; then
+        echo -e "  ${BOLD}Phase 2:${NC} Identifying ${hits} device(s)..."
+
+        while IFS='|' read -r ip port; do
+            ( identify_device "$ip" "$port" "$results" ) &
+        done < "$open_ports"
+        wait || true
+
+        log "Device identification complete"
+    fi
+    echo ""
 
     # Parse results into arrays
     while IFS='|' read -r type ip port status; do
+        [[ -z "$type" ]] && continue
         case "$type" in
             wolfpack)    FOUND_WOLFPACK+=("${ip}|${port}|${status}") ;;
             globalcache) FOUND_GLOBALCACHE+=("${ip}|${port}|${status}") ;;
@@ -376,7 +386,7 @@ scan_subnet_full() {
             bss)         FOUND_BSS+=("${ip}|${port}|${status}") ;;
             dbx)         FOUND_DBX+=("${ip}|${port}|${status}") ;;
         esac
-    done < "${tmpdir}/results"
+    done < "$results"
 
     rm -rf "$tmpdir"
 }
@@ -614,9 +624,10 @@ configure_globalcache() {
         # Try to detect ports by sending getdevices command
         local num_ports=3  # Default: iTach IP2IR has 3 IR ports
         local port_response
-        port_response=$(echo -e "getdevices\r" | timeout 2 nc -q1 "$ip" 4998 2>/dev/null || true)
+        port_response=$( (echo -e "getdevices\r"; sleep 1) | nc "$ip" 4998 2>/dev/null || true)
         if [[ "$port_response" == *"IR"* ]]; then
-            num_ports=$(echo "$port_response" | grep -c "IR" || echo 3)
+            num_ports=$(echo "$port_response" | grep -oP 'IR' | wc -l)
+            [[ "$num_ports" -eq 0 ]] && num_ports=3
             log "Detected ${num_ports} IR port(s)"
         else
             num_ports=$(prompt_input "Number of IR ports on this device" "3")
@@ -1402,15 +1413,74 @@ main() {
     local gateway
     gateway=$(detect_gateway)
 
+    # Detect primary network interface
+    local net_iface
+    net_iface=$(ip -o -4 addr show | grep -v '127.0.0.1' | grep -E '(eth|enp|eno)' | awk '{print $2}' | head -1)
+    net_iface="${net_iface:-$(ip -o -4 addr show | grep -v '127.0.0.1' | awk '{print $2}' | head -1)}"
+
     echo -e "  Detected network:"
+    echo -e "    Interface:   ${BOLD}${net_iface:-unknown}${NC}"
     echo -e "    IP Address:  ${BOLD}${LOCAL_IP}${NC}"
     echo -e "    Subnet:      ${BOLD}${SCAN_SUBNET}.0/24${NC}"
     echo -e "    Gateway:     ${BOLD}${gateway:-unknown}${NC}"
+    echo -e "    Type:        ${BOLD}$(grep -q 'dhcp' /etc/netplan/*.yaml 2>/dev/null && echo 'DHCP' || echo 'Static')${NC}"
     echo ""
 
     if ! prompt_yes_no "Is this correct?" "y"; then
         LOCAL_IP=$(prompt_input "Enter your IP address" "$LOCAL_IP")
         SCAN_SUBNET=$(detect_subnet "$LOCAL_IP")
+        gateway=$(prompt_input "Enter gateway" "$gateway")
+    fi
+
+    # Offer to set static IP
+    echo ""
+    if prompt_yes_no "Set a static IP address? (recommended for servers)" "y"; then
+        local static_ip
+        static_ip=$(prompt_input "Static IP address" "$LOCAL_IP")
+        local static_gateway
+        static_gateway=$(prompt_input "Gateway" "${gateway:-${SCAN_SUBNET}.1}")
+        local static_dns
+        static_dns=$(prompt_input "DNS server" "8.8.8.8")
+        local static_iface
+        static_iface=$(prompt_input "Network interface" "${net_iface}")
+
+        if [[ "$DRY_RUN" == true ]]; then
+            info "DRY RUN: Would set static IP ${static_ip} on ${static_iface}"
+        else
+            # Write netplan config (600 permissions required by netplan)
+            cat > /etc/netplan/01-static.yaml << NETPLANEOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${static_iface}:
+      dhcp4: no
+      addresses:
+        - ${static_ip}/24
+      routes:
+        - to: default
+          via: ${static_gateway}
+      nameservers:
+        addresses:
+          - ${static_dns}
+          - 8.8.4.4
+NETPLANEOF
+            chmod 600 /etc/netplan/01-static.yaml
+            # Remove any DHCP config
+            rm -f /etc/netplan/00-installer-config.yaml 2>/dev/null || true
+            rm -f /etc/netplan/01-netcfg.yaml 2>/dev/null || true
+
+            log "Applying static IP ${static_ip}..."
+            netplan apply 2>&1 || warn "netplan apply failed — may need manual fix"
+            sleep 2
+
+            # Update our variables
+            LOCAL_IP="$static_ip"
+            SCAN_SUBNET=$(detect_subnet "$LOCAL_IP")
+            log "Static IP set: ${static_ip} on ${static_iface}"
+        fi
+    else
+        info "Keeping current network configuration (DHCP)"
     fi
 
     configure_env

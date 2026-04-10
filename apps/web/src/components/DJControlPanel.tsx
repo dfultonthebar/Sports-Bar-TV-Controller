@@ -110,7 +110,7 @@ export default function DJControlPanel() {
       try {
         const res = await fetch('/api/audio-processor')
         const data = await res.json()
-        if (data.success && data.processors?.length > 0) {
+        if (data.processors?.length > 0) {
           const processor = data.processors[0]
           setProcessorId(processor.id)
           setProcessorIp(processor.ipAddress)

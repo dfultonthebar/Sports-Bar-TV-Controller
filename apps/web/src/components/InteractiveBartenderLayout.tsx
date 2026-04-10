@@ -10,8 +10,8 @@
  * - Clean, modern appearance
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { Monitor, X, Tv, Grid2X2, Maximize } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Monitor, X, Tv, Grid2X2, Maximize, Power } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
 
 interface Room {
@@ -59,6 +59,7 @@ interface Props {
     deviceType: string
     inputLabel: string
   }>
+  onRefreshRoutes?: () => Promise<void>
 }
 
 export default function InteractiveBartenderLayout({
@@ -66,12 +67,17 @@ export default function InteractiveBartenderLayout({
   onInputSelect,
   currentSources,
   inputs,
-  currentChannels = {}
+  currentChannels = {},
+  onRefreshRoutes
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
   const [multiViewMode, setMultiViewMode] = useState<number>(0)
   const [multiViewLoading, setMultiViewLoading] = useState(false)
+  const [imageAspectRatio, setImageAspectRatio] = useState<number>(4 / 3)
+  const [powerLoading, setPowerLoading] = useState<number | null>(null) // outputNumber being toggled
+  const [powerMessage, setPowerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const layoutImageRef = useRef<HTMLImageElement>(null)
 
   const rooms = layout.rooms || []
 
@@ -130,14 +136,40 @@ export default function InteractiveBartenderLayout({
 
   const handleZoneClick = (zone: Zone) => {
     setSelectedZone(zone)
+    setPowerMessage(null)
+    // Refresh routes so the highlighted input is up-to-date
+    onRefreshRoutes?.()
   }
 
   const handleInputSelect = (inputNumber: number) => {
     if (selectedZone) {
       onInputSelect(inputNumber, selectedZone.outputNumber)
-      setSelectedZone(null) // Close modal
+      setSelectedZone(null)
     }
   }
+
+  const handlePowerToggle = useCallback(async (outputNumber: number) => {
+    setPowerLoading(outputNumber)
+    setPowerMessage(null)
+    try {
+      const response = await fetch(`/api/tv-control/by-output/${outputNumber}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle' })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setPowerMessage({ type: 'success', text: `${data.tvName || `TV ${outputNumber}`} power toggled` })
+      } else {
+        setPowerMessage({ type: 'error', text: data.error || 'Power control failed' })
+      }
+    } catch (error) {
+      logger.error('[LAYOUT] Power toggle failed:', error)
+      setPowerMessage({ type: 'error', text: 'Failed to send power command' })
+    } finally {
+      setPowerLoading(null)
+    }
+  }, [])
 
   const getCurrentInputLabel = (outputNumber: number): string | null => {
     if (!currentSources) return null
@@ -184,9 +216,9 @@ export default function InteractiveBartenderLayout({
   return (
     <>
       {/* Modern Layout Display */}
-      <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8">
+      <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-3 sm:p-4">
         {/* Header */}
-        <div className="mb-6">
+        <div className="mb-2 sm:mb-4">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2">{layout.name}</h2>
           <p className="text-slate-300">
             <span className="inline-flex items-center space-x-2">
@@ -244,15 +276,22 @@ export default function InteractiveBartenderLayout({
           </div>
         )}
 
-        {/* Layout Container - Responsive sizing for all devices */}
-        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl" style={{ paddingBottom: '75%' }}>
+        {/* Layout Container - aspect ratio matches actual image so zones align */}
+        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl max-h-[calc(100vh-200px)]" style={{ aspectRatio: String(imageAspectRatio) }}>
           {/* Background Floor Plan Image */}
           {imageUrl && (
             <img
+              ref={layoutImageRef}
               src={imageUrl}
               alt="Floor plan"
-              className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-fill opacity-40 pointer-events-none"
               draggable={false}
+              onLoad={(e) => {
+                const img = e.currentTarget
+                if (img.naturalWidth && img.naturalHeight) {
+                  setImageAspectRatio(img.naturalWidth / img.naturalHeight)
+                }
+              }}
             />
           )}
 
@@ -343,19 +382,45 @@ export default function InteractiveBartenderLayout({
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
             {/* Modal Header */}
             <div className="backdrop-blur-xl bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-b border-white/10 px-6 py-5 flex items-center justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-                  Select Source for {selectedZone.label || `TV ${selectedZone.outputNumber}`}
+                  {selectedZone.label || `TV ${selectedZone.outputNumber}`}
                 </h3>
-                <p className="text-slate-300 text-sm mt-1">Choose an input to display on this TV</p>
+                <p className="text-slate-300 text-sm mt-1">Select source or toggle power</p>
               </div>
-              <button
-                onClick={() => setSelectedZone(null)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6 text-slate-300" />
-              </button>
+              <div className="flex items-center gap-3 ml-4">
+                {/* Power Toggle Button */}
+                <button
+                  onClick={() => handlePowerToggle(selectedZone.outputNumber)}
+                  disabled={powerLoading === selectedZone.outputNumber}
+                  className={`flex items-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm transition-all
+                    ${powerLoading === selectedZone.outputNumber
+                      ? 'bg-yellow-500/20 border border-yellow-500/30 text-yellow-400'
+                      : 'bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 active:scale-95'
+                    }`}
+                >
+                  <Power className={`w-5 h-5 ${powerLoading === selectedZone.outputNumber ? 'animate-spin' : ''}`} />
+                  {powerLoading === selectedZone.outputNumber ? 'Sending...' : 'Power'}
+                </button>
+                {/* Close Button */}
+                <button
+                  onClick={() => setSelectedZone(null)}
+                  className="p-3 hover:bg-white/10 rounded-xl transition-colors"
+                >
+                  <X className="w-6 h-6 text-slate-300" />
+                </button>
+              </div>
             </div>
+            {/* Power feedback message */}
+            {powerMessage && (
+              <div className={`mx-6 mt-3 px-4 py-2 rounded-lg text-sm ${
+                powerMessage.type === 'success'
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+              }`}>
+                {powerMessage.text}
+              </div>
+            )}
 
             {/* Input List */}
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">

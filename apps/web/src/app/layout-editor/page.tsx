@@ -7,7 +7,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Upload, Scan, Save, RefreshCw, Download, Trash2, Move, Check, X, Eye, Sparkles } from 'lucide-react'
+import { Upload, Scan, Save, RefreshCw, Download, Trash2, Move, Check, X, Eye, Sparkles, Wand2, Bot, Cloud } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 import { logger } from '@sports-bar/logger'
@@ -42,6 +42,8 @@ export default function LayoutEditorPage() {
   const [uploading, setUploading] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [enhancing, setEnhancing] = useState(false)
+  const [enhanceProvider, setEnhanceProvider] = useState<'ollama' | 'claude' | 'none'>('ollama')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Zone editing state
@@ -195,6 +197,45 @@ export default function LayoutEditorPage() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleEnhanceLayout = async () => {
+    if (!layout.imageUrl || layout.zones.length === 0) return
+
+    setEnhancing(true)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/bartender/layout/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: enhanceProvider })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setLayout({ ...layout, professionalImageUrl: data.professionalImageUrl } as any)
+        // Switch preview to show the professional image
+        setPreviewUrl(data.professionalImageUrl)
+        setMessage({
+          type: 'success',
+          text: `Professional floor plan generated! Drag TV zones to adjust positions. Save when done.`
+        })
+      } else {
+        setMessage({
+          type: 'error',
+          text: data.error || 'Enhancement failed'
+        })
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: 'Error enhancing layout'
+      })
+    } finally {
+      setEnhancing(false)
     }
   }
 
@@ -398,6 +439,68 @@ export default function LayoutEditorPage() {
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* AI Enhance Section */}
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 border border-slate-700/50">
+              <h3 className="text-lg font-semibold text-white mb-3">
+                <Wand2 className="w-4 h-4 inline mr-2 text-purple-400" />
+                AI Enhance
+              </h3>
+              <p className="text-xs text-slate-400 mb-3">
+                Generate a professional floor plan using AI to analyze your layout image
+              </p>
+
+              <div className="space-y-2 mb-3">
+                <button
+                  onClick={() => setEnhanceProvider('ollama')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-all ${
+                    enhanceProvider === 'ollama'
+                      ? 'bg-purple-600/30 border border-purple-500 text-purple-200'
+                      : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  <Bot className="w-4 h-4" />
+                  Ollama (Local AI)
+                </button>
+                <button
+                  onClick={() => setEnhanceProvider('claude')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-all ${
+                    enhanceProvider === 'claude'
+                      ? 'bg-blue-600/30 border border-blue-500 text-blue-200'
+                      : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  <Cloud className="w-4 h-4" />
+                  Claude (Cloud AI)
+                </button>
+                <button
+                  onClick={() => setEnhanceProvider('none')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-all ${
+                    enhanceProvider === 'none'
+                      ? 'bg-slate-600/30 border border-slate-500 text-slate-200'
+                      : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Basic (No AI)
+                </button>
+              </div>
+
+              <Button
+                onClick={handleEnhanceLayout}
+                disabled={!layout.imageUrl || layout.zones.length === 0 || enhancing}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                {enhancing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                {enhancing ? 'Enhancing...' : 'Generate Professional Layout'}
+              </Button>
+
+              {(layout as any).professionalImageUrl && (
+                <div className="mt-3 p-2 bg-green-900/30 border border-green-700/50 rounded text-xs text-green-300">
+                  Professional layout generated. Save to apply.
+                </div>
+              )}
             </div>
 
             {/* Edit Mode Section */}

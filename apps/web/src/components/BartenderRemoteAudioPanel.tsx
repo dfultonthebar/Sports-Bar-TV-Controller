@@ -51,6 +51,22 @@ export default function BartenderRemoteAudioPanel({
   const [selectedHtdDevice, setSelectedHtdDevice] = useState<HTDDevice | null>(null)
   const [htdExpanded, setHtdExpanded] = useState(true)
 
+  const [useGroups, setUseGroups] = useState(false)
+
+  // Check if processor has active groups
+  useEffect(() => {
+    if (!processorIp) return
+    fetch(`/api/atlas/groups?processorIp=${encodeURIComponent(processorIp)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.groups) {
+          const activeGroups = data.groups.filter((g: any) => g.isActive === true)
+          if (activeGroups.length > 0) setUseGroups(true)
+        }
+      })
+      .catch(() => {})
+  }, [processorIp])
+
   // Fetch HTD settings and devices
   const fetchHTDSettings = useCallback(async () => {
     try {
@@ -202,13 +218,13 @@ export default function BartenderRemoteAudioPanel({
               </h3>
 
               <div className="w-full">
-                {processorId ? (
-                  <AtlasZoneControl
-                    processorId={processorId}
+                {!processorId || useGroups ? (
+                  <AtlasGroupsControl
                     processorIp={processorIp}
                   />
                 ) : (
-                  <AtlasGroupsControl
+                  <AtlasZoneControl
+                    processorId={processorId}
                     processorIp={processorIp}
                   />
                 )}

@@ -290,6 +290,18 @@ log "Installing adb and cec-utils..."
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends adb 2>&1 || true"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cec-utils 2>&1 || true"
 
+# Realtek WiFi drivers + wireless tools
+log "Installing Realtek WiFi drivers and wireless tools..."
+chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    linux-firmware \
+    rtl8821ce-dkms \
+    r8168-dkms \
+    wpasupplicant \
+    wireless-tools \
+    rfkill \
+    2>&1 || true"
+# Note: rtl8812au-dkms fails in chroot (needs running kernel) — installed on first boot instead
+
 log "Installing Node.js 22 (NodeSource)..."
 chr "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"
@@ -360,6 +372,7 @@ step "Step 5/10: Installing first-boot systemd service"
 install -m 755 "${SCRIPTS_SOURCE}/first-boot-fresh.sh"    "${CHROOT_DIR}/usr/local/bin/first-boot-fresh.sh"
 install -m 755 "${SCRIPTS_SOURCE}/first-boot-snapshot.sh" "${CHROOT_DIR}/usr/local/bin/first-boot-snapshot.sh"
 install -m 755 "${SCRIPTS_SOURCE}/location-setup-wizard.sh" "${CHROOT_DIR}/usr/local/bin/location-setup-wizard.sh"
+install -m 755 "${SCRIPTS_SOURCE}/disk-installer.sh"       "${CHROOT_DIR}/usr/local/bin/disk-installer.sh"
 
 # Dispatcher script: reads kernel cmdline to pick fresh vs snapshot
 cat > "${CHROOT_DIR}/usr/local/bin/sports-bar-first-boot.sh" << 'DISPATCHER_EOF'
@@ -385,6 +398,14 @@ MODE=$(grep -oP 'sports_bar_mode=\K\S+' /proc/cmdline || echo "fresh")
 echo "[$(date)] Boot mode: $MODE"
 
 case "$MODE" in
+    install)
+        # Disk install mode — launch interactive installer on tty1
+        echo "[$(date)] Install mode detected — launching disk installer on tty1"
+        # The disk-installer systemd service handles TTY access
+        systemctl start sports-bar-disk-installer.service 2>/dev/null || \
+            /usr/local/bin/disk-installer.sh
+        exit 0
+        ;;
     snapshot)
         exec /usr/local/bin/first-boot-snapshot.sh
         ;;
@@ -418,7 +439,30 @@ SERVICE_EOF
 # Enable the service
 chr "systemctl enable sports-bar-first-boot.service"
 
-log "First-boot service installed and enabled."
+# Disk installer service (interactive on tty1, for install mode)
+cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-disk-installer.service" << 'DISKEOF'
+[Unit]
+Description=Sports Bar TV Controller - Disk Installer
+After=multi-user.target
+ConditionKernelCommandLine=sports_bar_mode=install
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/disk-installer.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+DISKEOF
+
+chr "systemctl enable sports-bar-disk-installer.service"
+
+log "First-boot and disk-installer services installed and enabled."
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 6: Snapshot - Bake in App Code + Database
@@ -522,8 +566,8 @@ fi
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "1. Install  (GitHub pull + setup wizard)" {
-    linux  /casper/vmlinuz boot=casper quiet splash sports_bar_mode=fresh ---
+menuentry "1. Install to Disk  (full OS + app install)" {
+    linux  /casper/vmlinuz boot=casper quiet splash sports_bar_mode=install ---
     initrd /casper/initrd
 }
 
@@ -533,7 +577,7 @@ menuentry "2. Live (No Install)  - boot into RAM for testing" {
 }
 
 menuentry "3. Safe Mode  (nomodeset, for display issues)" {
-    linux  /casper/vmlinuz boot=casper nomodeset quiet splash sports_bar_mode=fresh ---
+    linux  /casper/vmlinuz boot=casper nomodeset quiet splash sports_bar_mode=install ---
     initrd /casper/initrd
 }
 GRUB_EOF
@@ -586,9 +630,9 @@ PROMPT 0
 MENU TITLE Sports Bar TV Controller v3.0
 
 LABEL install
-  MENU LABEL 1. Install  (GitHub pull + setup wizard)
+  MENU LABEL 1. Install to Disk  (full OS + app install)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper quiet splash sports_bar_mode=fresh ---
+  APPEND initrd=/casper/initrd boot=casper quiet splash sports_bar_mode=install ---
 
 LABEL live
   MENU LABEL 2. Live (No Install) - boot into RAM

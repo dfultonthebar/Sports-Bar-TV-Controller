@@ -54,6 +54,7 @@ export interface SoundtrackSoundZone {
 export interface NowPlaying {
   nowPlaying?: {
     track?: {
+      id: string
       title: string
       artist: string
       album?: string
@@ -666,6 +667,7 @@ export class SoundtrackYourBrandAPI {
         query GetNowPlaying($id: ID!) {
           nowPlaying(soundZone: $id) {
             track {
+              id
               name
               artists {
                 name
@@ -695,9 +697,10 @@ export class SoundtrackYourBrandAPI {
       }
 
       // Return just the inner object for the component
-      // Component expects: { track: { title, artist, album }, startedAt }
+      // Component expects: { track: { id, title, artist, album }, startedAt }
       return {
         track: {
+          id: nowPlaying.track?.id || '',
           title: nowPlaying.track?.name || '',
           artist: nowPlaying.track?.artists?.map((a: any) => a.name).join(', ') || '',
           album: nowPlaying.track?.album?.name,
@@ -709,6 +712,53 @@ export class SoundtrackYourBrandAPI {
       logger.error('[Soundtrack] getNowPlaying exception:', error)
       return null
     }
+  }
+
+  async skipTrack(soundZoneId: string): Promise<void> {
+    const mutation = `
+      mutation SkipTrack($input: SkipTrackInput!) {
+        skipTrack(input: $input) {
+          status
+        }
+      }
+    `
+
+    const result = await this.graphql(mutation, {
+      input: { soundZone: soundZoneId }
+    })
+
+    if (result.errors) {
+      logger.error('[Soundtrack] skipTrack error:', { data: JSON.stringify(result.errors, null, 2) })
+      throw new Error(result.errors[0]?.message || 'Failed to skip track')
+    }
+
+    logger.info(`[Soundtrack] Skipped track for zone ${soundZoneId}, status: ${result.data?.skipTrack?.status}`)
+  }
+
+  async blockTrack(soundZoneId: string, trackId: string, reason: 'dislike' | 'explicit' | 'bad_context' | 'other' = 'dislike'): Promise<void> {
+    const mutation = `
+      mutation BlockTrack($input: BlockTrackInput!) {
+        blockTrack(input: $input) {
+          parent
+          source
+        }
+      }
+    `
+
+    const result = await this.graphql(mutation, {
+      input: {
+        parent: soundZoneId,
+        source: trackId,
+        reasons: [reason]
+      }
+    })
+
+    if (result.errors) {
+      logger.error('[Soundtrack] blockTrack error:', { data: JSON.stringify(result.errors, null, 2) })
+      throw new Error(result.errors[0]?.message || 'Failed to block track')
+    }
+
+    logger.info(`[Soundtrack] Blocked track ${trackId} for zone ${soundZoneId}, reason: ${reason}`)
   }
 }
 
