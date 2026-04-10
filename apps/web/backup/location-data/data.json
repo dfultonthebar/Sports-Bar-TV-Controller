@@ -10,9 +10,9 @@
       "zipCode": "54942",
       "timezone": "America/Chicago",
       "isActive": 1,
-      "metadata": "{\"gitBranch\":\"location/stoneyard-greenville\",\"updatedAt\":\"2026-04-07T22:54:51.140Z\"}",
+      "metadata": "{\"gitBranch\":\"location/stoneyard-greenville\",\"updatedAt\":\"2026-04-10T16:02:17.009Z\"}",
       "createdAt": "2026-04-07T19:58:06.831Z",
-      "updatedAt": "2026-04-07T22:54:51.140Z"
+      "updatedAt": "2026-04-10T16:02:17.009Z"
     }
   ],
   "MatrixConfiguration": [
@@ -1378,22 +1378,22 @@
       "outputNum": 2,
       "isActive": 1,
       "createdAt": "2026-04-07T20:57:47.895Z",
-      "updatedAt": "2026-04-07T20:57:47.897Z",
-      "manualOverrideUntil": "2026-04-08T00:57:47.898Z",
+      "updatedAt": "2026-04-10T15:53:44.791Z",
+      "manualOverrideUntil": "2026-04-11T02:10:00.001Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T20:57:47.897Z"
+      "lastManualChangeAt": "2026-04-10T15:53:44.791Z"
     },
     {
       "id": "57c23947-5ed5-409a-94e4-80144567df7d",
       "chassisId": "wp-stoneyard-combined",
-      "inputNum": 2,
+      "inputNum": 3,
       "outputNum": 1,
       "isActive": 1,
       "createdAt": "2026-04-07T21:29:30.307Z",
-      "updatedAt": "2026-04-07T21:54:07.371Z",
-      "manualOverrideUntil": "2026-04-08T01:54:07.372Z",
+      "updatedAt": "2026-04-09T17:09:14.929Z",
+      "manualOverrideUntil": "2026-04-09T21:09:14.930Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T21:54:07.371Z"
+      "lastManualChangeAt": "2026-04-09T17:09:14.929Z"
     },
     {
       "id": "05dcb71c-11c2-416c-8178-8577450fe85d",
@@ -1402,10 +1402,10 @@
       "outputNum": 3,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:09.798Z",
-      "updatedAt": "2026-04-07T22:33:09.800Z",
-      "manualOverrideUntil": "2026-04-08T02:33:09.801Z",
+      "updatedAt": "2026-04-09T19:26:39.834Z",
+      "manualOverrideUntil": "2026-04-10T02:40:00.001Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:09.800Z"
+      "lastManualChangeAt": "2026-04-09T19:26:39.834Z"
     },
     {
       "id": "b386d838-b2d1-45d2-a79f-b3a80dd6ec71",
@@ -1414,22 +1414,22 @@
       "outputNum": 5,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:12.523Z",
-      "updatedAt": "2026-04-07T22:33:12.524Z",
-      "manualOverrideUntil": "2026-04-08T02:33:12.529Z",
+      "updatedAt": "2026-04-09T19:27:09.436Z",
+      "manualOverrideUntil": "2026-04-10T02:40:00.001Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:12.524Z"
+      "lastManualChangeAt": "2026-04-09T19:27:09.436Z"
     },
     {
       "id": "6515ae1e-49fe-4d1e-a35d-6ec5938636a8",
       "chassisId": "wp-stoneyard-combined",
-      "inputNum": 1,
+      "inputNum": 4,
       "outputNum": 7,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:15.652Z",
-      "updatedAt": "2026-04-07T22:33:15.654Z",
-      "manualOverrideUntil": "2026-04-08T02:33:15.656Z",
+      "updatedAt": "2026-04-09T00:40:33.441Z",
+      "manualOverrideUntil": "2026-04-09T01:40:33.444Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:15.654Z"
+      "lastManualChangeAt": "2026-04-09T00:40:33.441Z"
     },
     {
       "id": "3e644c9e-88bb-411e-89b6-6d31a8ebb4b3",
@@ -1438,22 +1438,22 @@
       "outputNum": 11,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:24.381Z",
-      "updatedAt": "2026-04-07T22:33:24.382Z",
-      "manualOverrideUntil": "2026-04-08T02:33:24.385Z",
+      "updatedAt": "2026-04-09T17:06:51.790Z",
+      "manualOverrideUntil": "2026-04-09T21:10:00.001Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:24.382Z"
+      "lastManualChangeAt": "2026-04-09T17:06:51.790Z"
     },
     {
       "id": "813248bb-8ed5-43b9-a1a5-d819a2de58cc",
       "chassisId": "wp-stoneyard-combined",
-      "inputNum": 1,
+      "inputNum": 4,
       "outputNum": 13,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:29.130Z",
-      "updatedAt": "2026-04-07T22:33:29.132Z",
-      "manualOverrideUntil": "2026-04-08T02:33:29.134Z",
+      "updatedAt": "2026-04-09T21:06:40.236Z",
+      "manualOverrideUntil": "2026-04-10T01:06:40.239Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:29.132Z"
+      "lastManualChangeAt": "2026-04-09T21:06:40.236Z"
     },
     {
       "id": "8cd75090-3012-4e3b-92f4-a1f6f407ca07",
@@ -1462,10 +1462,10 @@
       "outputNum": 16,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:31.543Z",
-      "updatedAt": "2026-04-07T22:33:31.545Z",
-      "manualOverrideUntil": "2026-04-08T02:33:31.549Z",
+      "updatedAt": "2026-04-10T15:53:38.277Z",
+      "manualOverrideUntil": "2026-04-11T02:10:00.002Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:33:31.545Z"
+      "lastManualChangeAt": "2026-04-10T15:53:38.277Z"
     },
     {
       "id": "6b5df7c4-579e-4e7d-a82d-aba22c84cadc",
@@ -1474,22 +1474,106 @@
       "outputNum": 15,
       "isActive": 1,
       "createdAt": "2026-04-07T22:33:36.421Z",
-      "updatedAt": "2026-04-07T22:38:25.687Z",
-      "manualOverrideUntil": "2026-04-08T02:38:25.688Z",
+      "updatedAt": "2026-04-07T23:17:53.210Z",
+      "manualOverrideUntil": "2026-04-08T03:17:53.211Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:38:25.687Z"
+      "lastManualChangeAt": "2026-04-07T23:17:53.210Z"
     },
     {
       "id": "92f5d0db-c90f-4dae-9b86-ecf6dee8c237",
       "chassisId": "wp-stoneyard-combined",
-      "inputNum": 1,
+      "inputNum": 2,
       "outputNum": 6,
       "isActive": 1,
       "createdAt": "2026-04-07T22:38:47.777Z",
-      "updatedAt": "2026-04-07T22:38:47.779Z",
-      "manualOverrideUntil": "2026-04-08T02:38:47.782Z",
+      "updatedAt": "2026-04-10T15:57:40.494Z",
+      "manualOverrideUntil": "2026-04-10T19:57:40.497Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:38:47.779Z"
+      "lastManualChangeAt": "2026-04-10T15:57:40.494Z"
+    },
+    {
+      "id": "bd01cd10-6da2-4198-8d1d-cd530d256653",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 3,
+      "outputNum": 9,
+      "isActive": 1,
+      "createdAt": "2026-04-07T23:18:01.917Z",
+      "updatedAt": "2026-04-09T17:09:12.593Z",
+      "manualOverrideUntil": "2026-04-09T21:09:12.594Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-09T17:09:12.593Z"
+    },
+    {
+      "id": "08dc5aa1-837c-4759-ad0b-1983326f291b",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 3,
+      "outputNum": 4,
+      "isActive": 1,
+      "createdAt": "2026-04-08T00:25:29.791Z",
+      "updatedAt": "2026-04-10T01:57:19.750Z",
+      "manualOverrideUntil": "2026-04-10T05:57:19.750Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-10T01:57:19.750Z"
+    },
+    {
+      "id": "bfd9bbb4-35a1-481e-92b7-c471d40332d9",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 1,
+      "outputNum": 8,
+      "isActive": 1,
+      "createdAt": "2026-04-08T01:35:43.536Z",
+      "updatedAt": "2026-04-10T15:53:41.054Z",
+      "manualOverrideUntil": "2026-04-11T02:10:00.003Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-10T15:53:41.054Z"
+    },
+    {
+      "id": "b43e1c8a-38ef-4a78-a0be-446c04339fa9",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 5,
+      "outputNum": 10,
+      "isActive": 1,
+      "createdAt": "2026-04-08T15:31:55.624Z",
+      "updatedAt": "2026-04-08T15:32:06.539Z",
+      "manualOverrideUntil": "2026-04-08T19:32:06.540Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-08T15:32:06.539Z"
+    },
+    {
+      "id": "8e85fb37-7b23-4193-b4b2-715841ab5b02",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 1,
+      "outputNum": 14,
+      "isActive": 1,
+      "createdAt": "2026-04-08T15:51:27.754Z",
+      "updatedAt": "2026-04-09T17:06:49.884Z",
+      "manualOverrideUntil": "2026-04-09T21:10:00.002Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-09T17:06:49.884Z"
+    },
+    {
+      "id": "3ba5b68c-28fb-4805-aef9-b82efb19c665",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 1,
+      "outputNum": 12,
+      "isActive": 1,
+      "createdAt": "2026-04-08T15:51:35.685Z",
+      "updatedAt": "2026-04-09T17:08:34.674Z",
+      "manualOverrideUntil": "2026-04-10T02:40:00.000Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-09T17:08:34.674Z"
+    },
+    {
+      "id": "1524eecd-17f1-44a7-99ff-ca668b0bef67",
+      "chassisId": "wp-stoneyard-combined",
+      "inputNum": 1,
+      "outputNum": 20,
+      "isActive": 1,
+      "createdAt": "2026-04-08T18:20:14.623Z",
+      "updatedAt": "2026-04-08T18:20:14.625Z",
+      "manualOverrideUntil": "2026-04-09T02:00:00.281Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-08T18:20:14.625Z"
     }
   ],
   "AudioProcessor": [
@@ -1755,10 +1839,10 @@
       "keepAwakeStart": null,
       "keepAwakeEnd": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:09.880Z",
+      "lastSeen": "2026-04-10T16:00:07.541Z",
       "addedAt": null,
       "createdAt": "2026-04-07 20:44:44",
-      "updatedAt": "2026-04-07T22:53:09.880Z"
+      "updatedAt": "2026-04-10T16:00:07.541Z"
     },
     {
       "id": "firetv-2",
@@ -1780,10 +1864,10 @@
       "keepAwakeStart": null,
       "keepAwakeEnd": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:09.879Z",
+      "lastSeen": "2026-04-10T16:00:07.540Z",
       "addedAt": null,
       "createdAt": "2026-04-07 20:44:44",
-      "updatedAt": "2026-04-07T22:53:09.879Z"
+      "updatedAt": "2026-04-10T16:00:07.540Z"
     },
     {
       "id": "firetv-3",
@@ -1805,10 +1889,10 @@
       "keepAwakeStart": null,
       "keepAwakeEnd": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:09.878Z",
+      "lastSeen": "2026-04-10T16:00:07.540Z",
       "addedAt": null,
       "createdAt": "2026-04-07 20:44:44",
-      "updatedAt": "2026-04-07T22:53:09.878Z"
+      "updatedAt": "2026-04-10T16:00:07.540Z"
     }
   ],
   "GlobalCacheDevice": [
@@ -3499,14 +3583,14 @@
       "clientKey": "d54a21e81b0844c6a4114855d147da15",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.289Z",
+      "lastSeen": "2026-04-10T16:00:36.945Z",
       "matrixOutputId": "38813f9f-8f83-4377-b576-638dd0a2e12f",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.289Z"
+      "updatedAt": "2026-04-10T16:00:36.945Z"
     },
     {
       "id": "tv-2",
@@ -3520,14 +3604,14 @@
       "clientKey": "be14f5bbd9c9963a64321f5385014c7f",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.949Z",
       "matrixOutputId": "a7d1f3f3-9de0-469d-9b0c-75baa3b7522c",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.949Z"
     },
     {
       "id": "tv-3",
@@ -3541,14 +3625,14 @@
       "clientKey": "0e31841d0fd55d358c22614b87774e79",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.289Z",
+      "lastSeen": "2026-04-10T16:00:36.946Z",
       "matrixOutputId": "aca03f2e-ba4b-4e7a-8253-a44fed3e5807",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.289Z"
+      "updatedAt": "2026-04-10T16:00:36.946Z"
     },
     {
       "id": "tv-4",
@@ -3562,14 +3646,14 @@
       "clientKey": "c633ef64f4adf9bc1c6ee2f55090a5da",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.289Z",
+      "lastSeen": "2026-04-10T16:00:36.946Z",
       "matrixOutputId": "ff556106-7b46-4693-8307-84636f3be861",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.289Z"
+      "updatedAt": "2026-04-10T16:00:36.946Z"
     },
     {
       "id": "tv-5",
@@ -3583,14 +3667,14 @@
       "clientKey": "7ab29fcd287cec4841256f910bc938f7",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.946Z",
       "matrixOutputId": "905c90ef-df1f-40c1-91b9-5839c021164d",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.946Z"
     },
     {
       "id": "tv-6",
@@ -3604,14 +3688,14 @@
       "clientKey": "55a67bdf5b3f4f9e7cfe260c24a1d1d8",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.290Z",
+      "lastSeen": "2026-04-10T16:00:36.947Z",
       "matrixOutputId": "1948bac7-cf4d-4e84-804e-89f12a1e1f90",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.290Z"
+      "updatedAt": "2026-04-10T16:00:36.947Z"
     },
     {
       "id": "tv-7",
@@ -3625,14 +3709,14 @@
       "clientKey": "fb1568f936123bab7b8c7cd8c9ad66d7",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.294Z",
+      "lastSeen": "2026-04-10T16:00:36.947Z",
       "matrixOutputId": "01e2d615-9afb-4ab7-bc8d-374866056965",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.294Z"
+      "updatedAt": "2026-04-10T16:00:36.947Z"
     },
     {
       "id": "tv-8",
@@ -3646,14 +3730,14 @@
       "clientKey": "422dc7ab3aac5e381ef3704b80477148",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.290Z",
+      "lastSeen": "2026-04-10T16:00:36.947Z",
       "matrixOutputId": "5d37aff1-1be9-4f0d-a15a-2034293d4dfb",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.290Z"
+      "updatedAt": "2026-04-10T16:00:36.947Z"
     },
     {
       "id": "tv-9",
@@ -3667,14 +3751,14 @@
       "clientKey": "b735cc78c20befad53cdc7b94ed205b6",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.292Z",
+      "lastSeen": "2026-04-10T16:00:36.949Z",
       "matrixOutputId": "8f52f741-877b-4082-8ed1-8db93fad186d",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.292Z"
+      "updatedAt": "2026-04-10T16:00:36.949Z"
     },
     {
       "id": "tv-10",
@@ -3688,14 +3772,14 @@
       "clientKey": "e2c52a68fba2f05803bce55113fd4f9a",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.947Z",
       "matrixOutputId": "87cea6fc-389a-4d62-b27a-8af18a9e55a5",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.947Z"
     },
     {
       "id": "tv-11",
@@ -3709,14 +3793,14 @@
       "clientKey": "fb52f53761292734066ea6fbbbda718f",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.947Z",
       "matrixOutputId": "1bb8709b-31f3-47af-a92f-62a90d49c1e5",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.947Z"
     },
     {
       "id": "tv-12",
@@ -3730,14 +3814,14 @@
       "clientKey": "9424facff7cd87209ecb717d1bf15ae7",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "24cba8df-9a87-433b-b235-5259cf51f745",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-13",
@@ -3751,14 +3835,14 @@
       "clientKey": "b3c10a59eb16f2e5bed1c96897b3cda8",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.290Z",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "657f0312-abca-467a-81e9-3227a73364bd",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.290Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-14",
@@ -3772,14 +3856,14 @@
       "clientKey": "29b9a64eb07581f69c4f8904dc549159",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.291Z",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "b8e00670-2dff-4598-8ac7-c3e3d05065bc",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.291Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-15",
@@ -3793,14 +3877,14 @@
       "clientKey": "e37e0f6c158c1c975e29c893348c6334",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.290Z",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "17c246f4-5b22-46fc-a44b-3d4dd2695d1a",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.290Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-16",
@@ -3814,14 +3898,14 @@
       "clientKey": "15ca9601ab28ed2869845839d2bd91c0",
       "psk": null,
       "status": "online",
-      "lastSeen": "2026-04-07T22:53:39.292Z",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "23baa427-e2a9-4b42-9115-9d2c5b609a19",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:39.292Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-17",
@@ -3834,15 +3918,15 @@
       "authToken": null,
       "clientKey": "e3d341a9ade0cc5157686e3ede63e104",
       "psk": null,
-      "status": "offline",
-      "lastSeen": "2026-04-07T22:29:13.882Z",
+      "status": "online",
+      "lastSeen": "2026-04-10T16:00:36.949Z",
       "matrixOutputId": "74d21341-4ccd-43b8-94b1-247f1c8008b3",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:41.288Z"
+      "updatedAt": "2026-04-10T16:00:36.949Z"
     },
     {
       "id": "tv-18",
@@ -3855,15 +3939,15 @@
       "authToken": null,
       "clientKey": "42fc87ddde1f5f15384701880f009fae",
       "psk": null,
-      "status": "offline",
-      "lastSeen": "2026-04-07T22:29:12.208Z",
+      "status": "online",
+      "lastSeen": "2026-04-10T16:00:36.949Z",
       "matrixOutputId": "6e527a45-9ca0-4b8a-b019-41964fd2aeb1",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:41.289Z"
+      "updatedAt": "2026-04-10T16:00:36.949Z"
     },
     {
       "id": "tv-19",
@@ -3876,15 +3960,15 @@
       "authToken": null,
       "clientKey": "e519215a1ffb67f3a2e4b04a79c7ee15",
       "psk": null,
-      "status": "offline",
-      "lastSeen": "2026-04-07T22:29:11.220Z",
+      "status": "online",
+      "lastSeen": "2026-04-10T16:00:36.948Z",
       "matrixOutputId": "a78444c6-57e1-4356-a038-52e641bb92d3",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:41.290Z"
+      "updatedAt": "2026-04-10T16:00:36.948Z"
     },
     {
       "id": "tv-20",
@@ -3898,14 +3982,14 @@
       "clientKey": null,
       "psk": null,
       "status": "offline",
-      "lastSeen": null,
+      "lastSeen": "2026-04-10T15:28:08.647Z",
       "matrixOutputId": "e799096e-42fe-4529-8880-fbfcae3c7220",
       "currentInput": null,
       "supportsPower": 1,
       "supportsVolume": 1,
       "supportsInput": 1,
       "createdAt": "2026-04-07 20:46:40",
-      "updatedAt": "2026-04-07T22:53:41.293Z"
+      "updatedAt": "2026-04-10T16:00:38.946Z"
     }
   ],
   "CableBox": [
@@ -3974,10 +4058,10 @@
       "deviceType": "cable",
       "order": 53,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "3c6916d2-1061-453d-ba24-51c44496e3c4",
@@ -3986,10 +4070,10 @@
       "deviceType": "cable",
       "order": 55,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "e5f4b24d-9e2e-4862-a9cd-1ac5203876c5",
@@ -3998,10 +4082,10 @@
       "deviceType": "cable",
       "order": 7,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "d7113026-361f-4890-ba20-69a8c7e583ce",
@@ -4010,10 +4094,10 @@
       "deviceType": "cable",
       "order": 54,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "803617fa-959c-450a-aea6-f9357258706f",
@@ -4022,10 +4106,10 @@
       "deviceType": "cable",
       "order": 57,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "0cb7ddb3-93db-41f4-b994-a7c17841cc29",
@@ -4034,10 +4118,10 @@
       "deviceType": "cable",
       "order": 58,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "cbec7500-f647-496b-8131-ddec7599b4a4",
@@ -4046,10 +4130,10 @@
       "deviceType": "cable",
       "order": 56,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "dd1c28ca-4f62-4fcf-b4b6-f45c6e191440",
@@ -4058,10 +4142,10 @@
       "deviceType": "cable",
       "order": 19,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "9dda929e-7f76-4735-9b67-c71b5e78fb5e",
@@ -4070,10 +4154,10 @@
       "deviceType": "cable",
       "order": 41,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "57713771-e283-44c5-9e96-87f76b1fb858",
@@ -4082,10 +4166,10 @@
       "deviceType": "cable",
       "order": 9,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "e968b7ff-780a-4352-aec9-e8e1305bf6ec",
@@ -4094,10 +4178,10 @@
       "deviceType": "cable",
       "order": 12,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 2,
+      "lastUsed": "2026-04-10T02:00:57.126Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-10T02:00:57.126Z"
     },
     {
       "id": "29db4192-b9cd-433a-9039-00818388b831",
@@ -4106,10 +4190,10 @@
       "deviceType": "cable",
       "order": 43,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "42b7870c-714b-4c3d-ad58-b3208e5ce6e8",
@@ -4118,10 +4202,10 @@
       "deviceType": "cable",
       "order": 36,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "0e0a75ab-336e-4f36-9326-ad52ff29230f",
@@ -4130,10 +4214,10 @@
       "deviceType": "cable",
       "order": 3,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "ce352b31-9251-4e5a-b4cf-bee215adc89d",
@@ -4142,10 +4226,10 @@
       "deviceType": "cable",
       "order": 14,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "66aaaa1b-7208-41ac-ad67-907e74599933",
@@ -4154,10 +4238,10 @@
       "deviceType": "cable",
       "order": 47,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "a84e8156-3d98-4b69-bc7c-921cb80d157d",
@@ -4166,10 +4250,10 @@
       "deviceType": "cable",
       "order": 48,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "e721bc9e-d94c-437a-ad01-01a27c84e5f9",
@@ -4178,10 +4262,10 @@
       "deviceType": "cable",
       "order": 38,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "52f06c19-5708-418c-87eb-29e7c3e70883",
@@ -4190,10 +4274,10 @@
       "deviceType": "cable",
       "order": 46,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 2,
+      "lastUsed": "2026-04-09T00:42:52.556Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:52.556Z"
     },
     {
       "id": "9672c31c-e770-44e9-8ea6-d0087774728e",
@@ -4202,10 +4286,10 @@
       "deviceType": "cable",
       "order": 16,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "d7cd04c1-57c4-4ce4-8aac-3a85aefb2a26",
@@ -4214,10 +4298,10 @@
       "deviceType": "cable",
       "order": 25,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "04e96f81-c66c-45cd-a0e8-d1ec35b92e07",
@@ -4226,10 +4310,10 @@
       "deviceType": "cable",
       "order": 52,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "76e1f8b4-b669-4cbe-bfd2-fc86bafa5e82",
@@ -4238,10 +4322,10 @@
       "deviceType": "cable",
       "order": 6,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "9647eb0d-7560-4c0a-bff5-6c34b83a03db",
@@ -4250,10 +4334,10 @@
       "deviceType": "cable",
       "order": 22,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "31705bfa-b7c6-4ce1-b0d4-4cfab4b45f8b",
@@ -4262,10 +4346,10 @@
       "deviceType": "cable",
       "order": 50,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "da7cd333-f7b0-45cd-8cc6-c3797091a819",
@@ -4274,10 +4358,10 @@
       "deviceType": "cable",
       "order": 8,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "bc8ab7ca-e354-4320-8ea9-67299a96242f",
@@ -4286,10 +4370,10 @@
       "deviceType": "cable",
       "order": 11,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "a1a3fd88-49c6-485d-8a41-1302280863b9",
@@ -4298,10 +4382,10 @@
       "deviceType": "cable",
       "order": 10,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "c30faf43-0034-414c-ac94-31251ab4de29",
@@ -4310,10 +4394,10 @@
       "deviceType": "cable",
       "order": 13,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "6034cb7a-e920-4249-99fb-218746f60293",
@@ -4322,10 +4406,10 @@
       "deviceType": "cable",
       "order": 308,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "2ea68fcd-c904-43bd-85c3-b9a5f5383192",
@@ -4334,10 +4418,10 @@
       "deviceType": "cable",
       "order": 15,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "9f216672-1421-45b4-a604-3fd3038cf5e3",
@@ -4346,10 +4430,10 @@
       "deviceType": "cable",
       "order": 39,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "7141aa2f-94f8-4c10-8bff-aee2863e990a",
@@ -4358,10 +4442,10 @@
       "deviceType": "cable",
       "order": 20,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "cb59fc99-4d26-47fa-825b-0b08a48f6b80",
@@ -4370,10 +4454,10 @@
       "deviceType": "cable",
       "order": 5,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "d1be0141-8f3f-4dcb-a850-df3aadd11e2e",
@@ -4382,10 +4466,10 @@
       "deviceType": "cable",
       "order": 32,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "cb354656-f415-4184-9253-4ebeb8bd79ca",
@@ -4394,10 +4478,10 @@
       "deviceType": "cable",
       "order": 34,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "dc7c466c-9f25-44af-8ac6-03598f3d1907",
@@ -4406,10 +4490,10 @@
       "deviceType": "cable",
       "order": 26,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "344c0c5e-b58c-4e5b-9f3d-06af1b51244b",
@@ -4418,10 +4502,10 @@
       "deviceType": "cable",
       "order": 27,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "cad2b57a-fd39-464d-bdc1-8ea4bc8cced4",
@@ -4430,10 +4514,10 @@
       "deviceType": "cable",
       "order": 23,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "c164a367-e2c0-4d09-94ac-41c995512d66",
@@ -4442,10 +4526,10 @@
       "deviceType": "cable",
       "order": 0,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "9aaf1722-3c3f-4bef-a385-e0f850596da6",
@@ -4454,10 +4538,10 @@
       "deviceType": "cable",
       "order": 44,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "8e36acd6-4471-40c3-bf0a-6f9191c8fb73",
@@ -4466,10 +4550,10 @@
       "deviceType": "cable",
       "order": 2,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "c247fa2d-327b-4ddf-af5e-d3b41e200c04",
@@ -4478,10 +4562,10 @@
       "deviceType": "cable",
       "order": 17,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "8031c6da-7217-4bc2-819f-e7280dcc9b1a",
@@ -4490,10 +4574,10 @@
       "deviceType": "cable",
       "order": 40,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "009b547e-3c7f-41fb-82b6-7a49d8f98a45",
@@ -4502,10 +4586,10 @@
       "deviceType": "cable",
       "order": 35,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "21e5c0d2-2602-4ed3-953a-7709dea8828a",
@@ -4514,10 +4598,10 @@
       "deviceType": "cable",
       "order": 60,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "6c6bb182-4921-461d-955c-65ad4a8a3b69",
@@ -4526,10 +4610,10 @@
       "deviceType": "cable",
       "order": 309,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "a2654004-e91c-49a1-9d72-fec8c4bb0795",
@@ -4538,10 +4622,10 @@
       "deviceType": "cable",
       "order": 59,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "2fe7eeca-c8cd-4653-a32b-5a2cb614b186",
@@ -4550,10 +4634,10 @@
       "deviceType": "cable",
       "order": 18,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "f094b45a-8f03-496c-bf75-e8fa6be1b204",
@@ -4562,10 +4646,10 @@
       "deviceType": "cable",
       "order": 28,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "e5d53608-8c04-4b3f-8a32-b98f7989ab87",
@@ -4574,10 +4658,10 @@
       "deviceType": "cable",
       "order": 29,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "d0bdb4d4-b9a2-461e-a0cc-486a761f6105",
@@ -4586,10 +4670,10 @@
       "deviceType": "cable",
       "order": 31,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "61e06c15-b484-44ed-b8eb-ffb7a0e2755f",
@@ -4598,10 +4682,10 @@
       "deviceType": "cable",
       "order": 30,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "74f2383f-dab5-4ae2-af49-273d5c76b1ed",
@@ -4610,10 +4694,10 @@
       "deviceType": "cable",
       "order": 1,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "0814d0c3-43a0-479d-bd35-1d7f55df7468",
@@ -4622,10 +4706,10 @@
       "deviceType": "cable",
       "order": 21,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "84618d40-48e2-4c87-8142-b3edcdc7b53b",
@@ -4634,10 +4718,10 @@
       "deviceType": "cable",
       "order": 42,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "820132e7-da42-4e06-b86f-1139c3e67304",
@@ -4646,10 +4730,10 @@
       "deviceType": "cable",
       "order": 49,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "11ec5aa4-5942-464d-9257-2908ee4bc5d6",
@@ -4658,10 +4742,10 @@
       "deviceType": "cable",
       "order": 4,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "64558e45-af9d-46b7-a23f-48a0b0628f76",
@@ -4670,10 +4754,10 @@
       "deviceType": "cable",
       "order": 37,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "dc8efc4b-f9a2-4c1a-8c10-7d6f834eaa35",
@@ -4682,10 +4766,10 @@
       "deviceType": "cable",
       "order": 51,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "b90c496f-5868-443b-a6e6-a33d3ccbf887",
@@ -4694,10 +4778,10 @@
       "deviceType": "cable",
       "order": 24,
       "isActive": 1,
-      "usageCount": 0,
-      "lastUsed": null,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
       "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "updatedAt": "2026-04-09T00:42:50.764Z"
     },
     {
       "id": "f0aebf57-f4bc-472e-affa-e26294a1cf00",
@@ -4706,10 +4790,695 @@
       "deviceType": "cable",
       "order": 45,
       "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-07 21:06:34",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "48d7ae7c-da2a-4dc6-b14a-85af68bc84a0",
+      "name": "SEAM",
+      "channelNumber": "687",
+      "deviceType": "directv",
+      "order": 0,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "bbcff566-9987-4439-a589-0984278b2fa6",
+      "name": "BRAVE",
+      "channelNumber": "645",
+      "deviceType": "directv",
+      "order": 1,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "7130d7bc-fe7b-4cd9-9186-0ac828a66eb1",
+      "name": "MLB Network",
+      "channelNumber": "213",
+      "deviceType": "directv",
+      "order": 2,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "e7a15ecf-0133-452e-b678-f98aecbf6d76",
+      "name": "CLEVG",
+      "channelNumber": "662",
+      "deviceType": "directv",
+      "order": 3,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "81e4ed7e-85b0-4469-8c3f-ae74584afaf9",
+      "name": "KCROY",
+      "channelNumber": "671",
+      "deviceType": "directv",
+      "order": 4,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "9c973fca-a8c4-4562-a2d2-1a12701085f3",
+      "name": "MILBRE",
+      "channelNumber": "670",
+      "deviceType": "directv",
+      "order": 5,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "37859da0-5a5c-4470-ab0f-f7691e637e04",
+      "name": "STLCARD",
+      "channelNumber": "672",
+      "deviceType": "directv",
+      "order": 6,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "cd243a4d-963d-4b70-81ca-8f877934e1c8",
+      "name": "WASHNT",
+      "channelNumber": "641",
+      "deviceType": "directv",
+      "order": 7,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "75621aa4-ddac-4d39-82e0-8797556873ac",
+      "name": "MIAMAR",
+      "channelNumber": "655",
+      "deviceType": "directv",
+      "order": 8,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "677a81e9-0495-44c0-b490-e3c8d89b6235",
+      "name": "CINRED",
+      "channelNumber": "661",
+      "deviceType": "directv",
+      "order": 9,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "0272e736-5fbf-4f47-9a34-8d22d966de7c",
+      "name": "Fox Sports 1",
+      "channelNumber": "219",
+      "deviceType": "directv",
+      "order": 10,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "c98bf344-ccd3-4778-a760-56c92d6e6a0c",
+      "name": "DSN",
+      "channelNumber": "663.3",
+      "deviceType": "directv",
+      "order": 11,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "96eb8d29-5073-4465-b7b1-f42ad63602dc",
+      "name": "MNNT",
+      "channelNumber": "668.1",
+      "deviceType": "directv",
+      "order": 12,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "5702b546-cf5f-40d6-b14e-6c4910e7b971",
+      "name": "TBRAY",
+      "channelNumber": "652",
+      "deviceType": "directv",
+      "order": 13,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "3c368d8f-63ca-4887-ba61-f0636934e20b",
+      "name": "AppleTV+",
+      "channelNumber": "9528",
+      "deviceType": "directv",
+      "order": 14,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "299b3cb1-790d-416b-b175-42dd30d009a6",
+      "name": "IVC",
+      "channelNumber": "427",
+      "deviceType": "directv",
+      "order": 15,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "b720d8f3-9106-4cc6-8c10-6b9454afc6e7",
+      "name": "WLUK-TV",
+      "channelNumber": "11",
+      "deviceType": "directv",
+      "order": 16,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "28e02382-15ea-48e6-9824-bd74d4a1ea28",
+      "name": "WGBA",
+      "channelNumber": "26",
+      "deviceType": "directv",
+      "order": 17,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "e2567d6d-71be-456f-821e-9f80606c7fab",
+      "name": "TruTV",
+      "channelNumber": "246",
+      "deviceType": "directv",
+      "order": 18,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "cc9f55d8-c4c4-40f0-a303-2bae73abe219",
+      "name": "TBS",
+      "channelNumber": "247",
+      "deviceType": "directv",
+      "order": 19,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "cc2f7b6d-9b69-44dd-b75b-3d381c841393",
+      "name": "ACCN",
+      "channelNumber": "612",
+      "deviceType": "directv",
+      "order": 20,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "1a31dd45-127b-45a2-8a5d-2b09666a0d36",
+      "name": "SEC Network",
+      "channelNumber": "611",
+      "deviceType": "directv",
+      "order": 21,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "73b9e74f-c705-43e5-bb9b-59962cea5cee",
+      "name": "ESPN U",
+      "channelNumber": "208",
+      "deviceType": "directv",
+      "order": 22,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "72394459-c905-4034-9dec-581c76f4c3b9",
+      "name": "ESPN+",
+      "channelNumber": "9519",
+      "deviceType": "directv",
+      "order": 23,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "789061e8-e180-4a27-8d56-a3d82963364a",
+      "name": "ESPN2",
+      "channelNumber": "209",
+      "deviceType": "directv",
+      "order": 24,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "0032aed6-4c5a-4d49-b34c-0c5147a5e504",
+      "name": "Big 10",
+      "channelNumber": "610",
+      "deviceType": "directv",
+      "order": 25,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "037e3ede-5521-4051-b0da-c7ab4fb8f66d",
+      "name": "WCWF",
+      "channelNumber": "14",
+      "deviceType": "directv",
+      "order": 26,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "3df053b8-4298-4c26-bfc1-451e5c77b7b3",
+      "name": "ESPN",
+      "channelNumber": "206",
+      "deviceType": "directv",
+      "order": 27,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "bccb14b2-b18a-4705-8e3a-68c7de532117",
+      "name": "Fan Duel",
+      "channelNumber": "669",
+      "deviceType": "directv",
+      "order": 28,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "4e467458-93fd-467a-9ff6-5befdedc7a90",
+      "name": "Prime",
+      "channelNumber": "9549",
+      "deviceType": "directv",
+      "order": 29,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "6dbcc7fa-9eab-49b6-95cd-b3f87d05c5ba",
+      "name": "ESPN News",
+      "channelNumber": "207",
+      "deviceType": "directv",
+      "order": 30,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "402b758d-d198-450a-8356-17a03a68264c",
+      "name": "DTVPPV",
+      "channelNumber": "9539",
+      "deviceType": "directv",
+      "order": 31,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "3e9616b7-d394-4815-90c8-1a3b46f467f3",
+      "name": "WFRV",
+      "channelNumber": "5",
+      "deviceType": "directv",
+      "order": 32,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "1135aaaa-abba-45c2-ad6b-26a2375e1a0b",
+      "name": "KFMB",
+      "channelNumber": "395",
+      "deviceType": "directv",
+      "order": 33,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "30b01315-e9c3-432a-b82a-8154d6adbff8",
+      "name": "Golf",
+      "channelNumber": "218",
+      "deviceType": "directv",
+      "order": 34,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "3f2e9e9a-69d0-4813-91c1-5a440cedaff6",
+      "name": "CBS Sports Network",
+      "channelNumber": "221",
+      "deviceType": "directv",
+      "order": 35,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "2700c8ac-ddc7-40d8-add4-4baa85ca5db3",
+      "name": "MSG2",
+      "channelNumber": "635.3",
+      "deviceType": "directv",
+      "order": 36,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "dfc9a8d6-3831-4702-adc6-350785293525",
+      "name": "Fox Sports 2",
+      "channelNumber": "618",
+      "deviceType": "directv",
+      "order": 37,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "479b04d8-fda2-4f89-8647-bb4d124dc994",
+      "name": "TNT",
+      "channelNumber": "245",
+      "deviceType": "directv",
+      "order": 38,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "16e43dae-d677-46bc-a09f-164ebbcee010",
+      "name": "NHL Network",
+      "channelNumber": "215",
+      "deviceType": "directv",
+      "order": 39,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "75bfbd7c-ac01-4b46-bb94-1fb2406b4fa9",
+      "name": "Fox Sports Prime",
+      "channelNumber": "621",
+      "deviceType": "directv",
+      "order": 40,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "a4cdae38-d5f7-4143-bb57-5e50a3c6a9a3",
+      "name": "UEFA",
+      "channelNumber": "9454",
+      "deviceType": "directv",
+      "order": 41,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "e357b76e-e66a-4ab4-9210-a75ff21954ec",
+      "name": "UNI",
+      "channelNumber": "402",
+      "deviceType": "directv",
+      "order": 42,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "3ac948cb-90ad-486d-8675-515125b1b923",
+      "name": "TYC",
+      "channelNumber": "469",
+      "deviceType": "directv",
+      "order": 43,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "47217c49-1733-45dc-b93d-4920b9fd1e11",
+      "name": "OT",
+      "channelNumber": "305",
+      "deviceType": "directv",
+      "order": 44,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "ba53a57b-b412-4d42-90fd-4311750718e7",
+      "name": "CATV",
+      "channelNumber": "428",
+      "deviceType": "directv",
+      "order": 45,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "4eb8a2d6-27fb-4017-be85-467506811e9b",
+      "name": "USA Network",
+      "channelNumber": "242",
+      "deviceType": "directv",
+      "order": 46,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "69fc96e1-634a-420b-8f92-f23991cc8af9",
+      "name": "Peacock/NBC Sports",
+      "channelNumber": "220",
+      "deviceType": "directv",
+      "order": 47,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "b89e147c-8e1b-4c95-b896-627f873fa7c1",
+      "name": "NUE",
+      "channelNumber": "418",
+      "deviceType": "directv",
+      "order": 48,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "fea041ec-d8e3-46ca-ac9e-e1e68f062063",
+      "name": "NXTLVL",
+      "channelNumber": "623",
+      "deviceType": "directv",
+      "order": 49,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "43e5707c-b88a-4f82-8176-d2730d1e5a0c",
+      "name": "WDCW",
+      "channelNumber": "394",
+      "deviceType": "directv",
+      "order": 50,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "e471f4ca-c83b-4db8-a250-be243a3586da",
+      "name": "DTVppv",
+      "channelNumber": "123",
+      "deviceType": "directv",
+      "order": 51,
+      "isActive": 1,
+      "usageCount": 1,
+      "lastUsed": "2026-04-09T00:42:50.764Z",
+      "createdAt": "2026-04-08 09:00:02",
+      "updatedAt": "2026-04-09T00:42:50.764Z"
+    },
+    {
+      "id": "c4d5aa6b-404b-41fb-a48f-6d772396ba35",
+      "name": "NFLNet",
+      "channelNumber": "212",
+      "deviceType": "directv",
+      "order": 52,
+      "isActive": 1,
       "usageCount": 0,
       "lastUsed": null,
-      "createdAt": "2026-04-07 21:06:34",
-      "updatedAt": "2026-04-07 21:06:34"
+      "createdAt": "2026-04-09 09:00:02",
+      "updatedAt": "2026-04-09T09:00:02.650Z"
+    },
+    {
+      "id": "cf63498e-ca3d-4781-ba80-6cd358a0c572",
+      "name": "TVGL",
+      "channelNumber": "2134",
+      "deviceType": "directv",
+      "order": 53,
+      "isActive": 1,
+      "usageCount": 0,
+      "lastUsed": null,
+      "createdAt": "2026-04-09 09:00:02",
+      "updatedAt": "2026-04-09T09:00:02.656Z"
+    }
+  ],
+  "Schedule": [
+    {
+      "id": "6e9372dc-59ab-4f03-8158-83d093869461",
+      "name": "AI Game Monitor",
+      "deviceId": null,
+      "channelName": null,
+      "channelNumber": null,
+      "startTime": null,
+      "endTime": null,
+      "recurring": 0,
+      "daysOfWeek": null,
+      "enabled": 1,
+      "lastExecuted": "2026-04-10T16:01:06.967Z",
+      "executionCount": 1,
+      "lastResult": "{\"success\":false,\"message\":\"No TVs to control\",\"details\":{},\"gamesFound\":0,\"tvsControlled\":0,\"channelsSet\":0,\"errors\":[\"No outputs selected\"]}",
+      "createdAt": "2026-04-10 16:00:45",
+      "updatedAt": "2026-04-10 16:00:45",
+      "description": "Auto-created continuous home-team monitoring schedule. Edit to change priorities.",
+      "scheduleType": "continuous",
+      "executionTime": null,
+      "powerOnTVs": 1,
+      "powerOffTVs": 0,
+      "selectedOutputs": null,
+      "setDefaultChannels": 0,
+      "defaultChannelMap": null,
+      "inputDefaultChannels": null,
+      "autoFindGames": 1,
+      "monitorHomeTeams": 1,
+      "homeTeamIds": "[]",
+      "preferredProviders": null,
+      "executionOrder": null,
+      "delayBetweenCommands": null,
+      "nextExecution": null,
+      "audioSettings": null,
+      "fillWithSports": 1
     }
   ],
   "SoundtrackConfig": [
@@ -4757,7 +5526,26 @@
       "priority_rank": 80,
       "notes": null,
       "created_at": 1775601439,
-      "updated_at": 1775601439
+      "updated_at": 1775781074
+    },
+    {
+      "id": "939844a3-0cf3-4bbe-b953-0f7818f25e7f",
+      "name": "Cable 1",
+      "type": "cable",
+      "device_id": "ir-cable-1",
+      "connection_type": null,
+      "matrix_input_id": null,
+      "available_networks": "[]",
+      "installed_apps": null,
+      "max_quality": null,
+      "is_active": 1,
+      "currently_allocated": 0,
+      "current_channel": null,
+      "current_app": null,
+      "priority_rank": 80,
+      "notes": null,
+      "created_at": 1775673631,
+      "updated_at": 1775673631
     }
   ],
   "InputCurrentChannel": [
@@ -4767,15 +5555,15 @@
       "inputLabel": "A",
       "deviceType": "cable",
       "deviceId": "ir-cable-1",
-      "channelNumber": "308",
+      "channelNumber": "27",
       "channelName": null,
       "showName": null,
       "presetId": null,
-      "lastTuned": "2026-04-07T22:32:51.494Z",
-      "updatedAt": "2026-04-07T22:32:51.496Z",
-      "manualOverrideUntil": "2026-04-08T02:32:51.494Z",
+      "lastTuned": "2026-04-09T19:28:11.737Z",
+      "updatedAt": "2026-04-09T19:28:11.738Z",
+      "manualOverrideUntil": "2026-04-09T20:38:11.737Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:32:51.494Z"
+      "lastManualChangeAt": "2026-04-09T19:28:11.737Z"
     },
     {
       "id": "90f9da88-7a5e-4190-8321-f14dfe766628",
@@ -4783,15 +5571,47 @@
       "inputLabel": "D",
       "deviceType": "cable",
       "deviceId": "ir-cable-4",
-      "channelNumber": "326",
+      "channelNumber": "28",
       "channelName": null,
       "showName": null,
       "presetId": null,
-      "lastTuned": "2026-04-07T22:34:50.399Z",
-      "updatedAt": "2026-04-07T22:34:50.399Z",
-      "manualOverrideUntil": "2026-04-08T02:34:50.399Z",
+      "lastTuned": "2026-04-09T20:55:48.876Z",
+      "updatedAt": "2026-04-09T20:55:49.419Z",
+      "manualOverrideUntil": "2026-04-10T00:55:48.876Z",
       "lastManualChangeBy": "bartender",
-      "lastManualChangeAt": "2026-04-07T22:34:50.399Z"
+      "lastManualChangeAt": "2026-04-09T20:55:48.876Z"
+    },
+    {
+      "id": "e8a0c929-2d17-4ec4-94ed-1c55fc817704",
+      "inputNum": 2,
+      "inputLabel": "B",
+      "deviceType": "cable",
+      "deviceId": "ir-cable-2",
+      "channelNumber": "28",
+      "channelName": null,
+      "showName": null,
+      "presetId": null,
+      "lastTuned": "2026-04-08T01:53:07.977Z",
+      "updatedAt": "2026-04-08T01:53:07.980Z",
+      "manualOverrideUntil": "2026-04-08T02:23:07.977Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-08T01:53:07.977Z"
+    },
+    {
+      "id": "9ce0631e-5445-4e68-9dfb-59e83a0d3208",
+      "inputNum": 3,
+      "inputLabel": "C",
+      "deviceType": "cable",
+      "deviceId": "ir-cable-3",
+      "channelNumber": "28",
+      "channelName": "ESPN2",
+      "showName": null,
+      "presetId": "e968b7ff-780a-4352-aec9-e8e1305bf6ec",
+      "lastTuned": "2026-04-10T02:00:57.127Z",
+      "updatedAt": "2026-04-10T02:00:57.127Z",
+      "manualOverrideUntil": "2026-04-10T06:00:57.127Z",
+      "lastManualChangeBy": "bartender",
+      "lastManualChangeAt": "2026-04-10T02:00:57.127Z"
     }
   ],
   "WolfpackMatrixState": [
@@ -4830,6 +5650,60 @@
       "wolfpackInputLabel": "Cable 1",
       "channelInfo": "{\"deviceType\":\"CableBox\",\"inputType\":\"HDMI\"}",
       "routedAt": "2026-04-07 22:45:57"
+    },
+    {
+      "id": "45755b4b-c2e3-4e12-983f-f6dc0328755d",
+      "chassisId": null,
+      "matrixOutputNumber": 33,
+      "wolfpackInputNumber": 4,
+      "wolfpackInputLabel": "Cable 4",
+      "channelInfo": "{\"deviceType\":\"CableBox\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-07 23:07:59"
+    },
+    {
+      "id": "207f2cfc-bf68-4484-8a05-adcbcdf972b8",
+      "chassisId": null,
+      "matrixOutputNumber": 33,
+      "wolfpackInputNumber": 9,
+      "wolfpackInputLabel": "Wallplate",
+      "channelInfo": "{\"deviceType\":\"Other\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-07 23:09:10"
+    },
+    {
+      "id": "e0edbbc4-e67d-4466-ad50-a5e768e890b9",
+      "chassisId": null,
+      "matrixOutputNumber": 33,
+      "wolfpackInputNumber": 1,
+      "wolfpackInputLabel": "Cable 1",
+      "channelInfo": "{\"deviceType\":\"CableBox\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-07 23:17:08"
+    },
+    {
+      "id": "6a406a00-cb2f-43f6-9ea4-0bd5a6b3bf36",
+      "chassisId": null,
+      "matrixOutputNumber": 33,
+      "wolfpackInputNumber": 2,
+      "wolfpackInputLabel": "Cable 2",
+      "channelInfo": "{\"deviceType\":\"CableBox\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-08 21:01:31"
+    },
+    {
+      "id": "f22c09e3-efc1-4fc1-a66c-cec804a6efc0",
+      "chassisId": null,
+      "matrixOutputNumber": 34,
+      "wolfpackInputNumber": 9,
+      "wolfpackInputLabel": "Wallplate",
+      "channelInfo": "{\"deviceType\":\"Other\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-10 15:34:20"
+    },
+    {
+      "id": "0a77e2b1-ef9c-4c17-96d9-c0d0d9518001",
+      "chassisId": null,
+      "matrixOutputNumber": 34,
+      "wolfpackInputNumber": 1,
+      "wolfpackInputLabel": "Cable 1",
+      "channelInfo": "{\"deviceType\":\"CableBox\",\"inputType\":\"HDMI\"}",
+      "routedAt": "2026-04-10 15:34:30"
     }
   ],
   "WolfpackMatrixRouting": [
@@ -4837,13 +5711,25 @@
       "id": "a338fbed-44f1-4b47-bbab-addf6434fe99",
       "chassisId": null,
       "matrixOutputNumber": 33,
-      "wolfpackInputNumber": 1,
-      "wolfpackInputLabel": "Cable 1",
+      "wolfpackInputNumber": 2,
+      "wolfpackInputLabel": "Cable 2",
       "atlasInputLabel": "Matrix 33",
       "isActive": 1,
-      "lastRouted": "2026-04-07T22:45:57.053Z",
+      "lastRouted": "2026-04-08T21:01:31.726Z",
       "createdAt": "2026-04-07 20:49:39",
-      "updatedAt": "2026-04-07T22:45:57.054Z"
+      "updatedAt": "2026-04-08T21:01:31.728Z"
+    },
+    {
+      "id": "06df4ba8-90a2-4b31-b0e0-d13458c8451e",
+      "chassisId": null,
+      "matrixOutputNumber": 34,
+      "wolfpackInputNumber": 1,
+      "wolfpackInputLabel": "Cable 1",
+      "atlasInputLabel": "Matrix 34",
+      "isActive": 1,
+      "lastRouted": "2026-04-10T15:34:30.291Z",
+      "createdAt": "2026-04-10 15:34:20",
+      "updatedAt": "2026-04-10T15:34:30.292Z"
     }
   ]
 }

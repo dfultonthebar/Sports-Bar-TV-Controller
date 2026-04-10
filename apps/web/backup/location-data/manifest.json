@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "createdAt": "2026-04-07T22:54:51.661Z",
+  "createdAt": "2026-04-10T16:02:17.574Z",
   "location": {
     "id": "5510cdf5-542a-41ae-8f00-11a35fe80b4f",
     "name": "Stoneyard Greenville",
@@ -26,7 +26,7 @@
     },
     {
       "name": "MatrixRoute",
-      "rowCount": 10
+      "rowCount": 17
     },
     {
       "name": "AudioProcessor",
@@ -70,7 +70,11 @@
     },
     {
       "name": "ChannelPreset",
-      "rowCount": 62
+      "rowCount": 116
+    },
+    {
+      "name": "Schedule",
+      "rowCount": 1
     },
     {
       "name": "SoundtrackConfig",
@@ -82,20 +86,20 @@
     },
     {
       "name": "input_sources",
-      "rowCount": 1
-    },
-    {
-      "name": "InputCurrentChannel",
       "rowCount": 2
     },
     {
-      "name": "WolfpackMatrixState",
+      "name": "InputCurrentChannel",
       "rowCount": 4
     },
     {
+      "name": "WolfpackMatrixState",
+      "rowCount": 10
+    },
+    {
       "name": "WolfpackMatrixRouting",
-      "rowCount": 1
+      "rowCount": 2
     }
   ],
-  "totalRows": 337
+  "totalRows": 409
 }
