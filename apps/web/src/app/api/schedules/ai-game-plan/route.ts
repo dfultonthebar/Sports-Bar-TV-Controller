@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
@@ -646,8 +646,8 @@ export async function GET(request: NextRequest) {
   try {
     logger.info('[AI_GAME_PLAN] Fetching fresh game data from The Rail Media API')
 
-    // Get the AI Game Monitor schedule
-    const aiSchedule = await db
+    // Get the AI Game Monitor schedule (auto-create if missing)
+    let aiSchedule = await db
       .select()
       .from(schema.schedules)
       .where(eq(schema.schedules.scheduleType, 'continuous'))
@@ -655,10 +655,68 @@ export async function GET(request: NextRequest) {
       .get()
 
     if (!aiSchedule) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI Game Monitor schedule not found'
-      }, { status: 404 })
+      logger.info('[AI_GAME_PLAN] No continuous schedule found — auto-creating "AI Game Monitor"')
+
+      // Look up home team IDs for Packers, Bucks, Brewers, Badgers
+      let defaultHomeTeamIds: string[] = []
+      try {
+        const matchedTeams = await db
+          .select({ id: schema.homeTeams.id, teamName: schema.homeTeams.teamName })
+          .from(schema.homeTeams)
+          .where(
+            or(
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%packers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%bucks%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%brewers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%badgers%'`
+            )
+          )
+          .all()
+        defaultHomeTeamIds = matchedTeams.map((t) => t.id)
+        if (defaultHomeTeamIds.length === 0) {
+          logger.warn('[AI_GAME_PLAN] No matching home teams (Packers/Bucks/Brewers/Badgers) found in HomeTeam table — home-team prioritization will be inactive until teams are configured')
+        }
+      } catch (lookupErr: any) {
+        logger.warn('[AI_GAME_PLAN] Home team lookup failed during schedule auto-create:', lookupErr)
+        defaultHomeTeamIds = []
+      }
+
+      try {
+        await db
+          .insert(schema.schedules)
+          .values({
+            name: 'AI Game Monitor',
+            description: 'Auto-created continuous home-team monitoring schedule. Edit to change priorities.',
+            scheduleType: 'continuous',
+            enabled: true,
+            recurring: false,
+            monitorHomeTeams: true,
+            autoFindGames: true,
+            homeTeamIds: JSON.stringify(defaultHomeTeamIds),
+          })
+          .run()
+      } catch (insertErr: any) {
+        // Concurrency-safe: another request may have inserted one simultaneously.
+        logger.warn('[AI_GAME_PLAN] Insert of continuous schedule failed (possibly race); will re-fetch:', insertErr?.message || insertErr)
+      }
+
+      // Re-fetch (handles both our insert and any concurrent insert that won the race)
+      aiSchedule = await db
+        .select()
+        .from(schema.schedules)
+        .where(eq(schema.schedules.scheduleType, 'continuous'))
+        .limit(1)
+        .get()
+
+      if (!aiSchedule) {
+        logger.error('[AI_GAME_PLAN] Failed to auto-create continuous schedule')
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to auto-create AI Game Monitor schedule'
+        }, { status: 500 })
+      }
+
+      logger.info(`[AI_GAME_PLAN] Auto-created continuous 'AI Game Monitor' schedule with ${defaultHomeTeamIds.length} home teams`)
     }
 
     // Get home teams to identify which games are priority

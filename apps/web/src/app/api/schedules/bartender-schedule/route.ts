@@ -32,6 +32,12 @@ const bartenderScheduleSchema = z.object({
 
   // When to tune
   tuneAt: z.string(), // ISO timestamp - when to actually tune
+
+  // TV outputs to route this input to (matrix output channel numbers).
+  // Optional on POST: the bartender Guide tab flow creates the allocation first
+  // and then PATCHes tvOutputIds from a previous allocation on the same device.
+  // The AI-suggestion approve flow sends them inline. Either is fine.
+  tvOutputIds: z.array(z.number().int().min(0)).optional().default([]),
 })
 
 // POST - Create a scheduled channel tune from bartender
@@ -46,7 +52,7 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, bartenderScheduleSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const { deviceId, deviceType, deviceName, channelNumber, channelName, gameInfo, tuneAt, inputSourceId } = bodyValidation.data
+  const { deviceId, deviceType, deviceName, channelNumber, channelName, gameInfo, tuneAt, inputSourceId, tvOutputIds } = bodyValidation.data
 
   try {
     // 1. Find or get an input source
@@ -117,28 +123,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create game schedule if not found
+    // If still not found, fail explicitly rather than silently creating a phantom game row
     if (!gameSchedule) {
-      const newGameSchedule = {
-        id: crypto.randomUUID(),
-        espnEventId: gameInfo.espnEventId || `bartender-${Date.now()}`,
-        espnCompetitionId: gameInfo.espnEventId || `bartender-${Date.now()}`,
-        sport: getSportFromLeague(gameInfo.league),
-        league: gameInfo.league,
-        homeTeamEspnId: 'unknown',
-        awayTeamEspnId: 'unknown',
-        homeTeamName: gameInfo.homeTeam,
-        awayTeamName: gameInfo.awayTeam,
-        scheduledStart: startTimeUnix,
-        estimatedEnd: endTimeUnix,
-        status: 'scheduled',
-        seasonType: 2, // Regular season
-        seasonYear: new Date().getFullYear(),
-        primaryNetwork: channelName || null,
-      }
-      await db.insert(schema.gameSchedules).values(newGameSchedule)
-      gameSchedule = newGameSchedule
-      logger.info(`[BARTENDER-SCHEDULE] Created new game schedule: ${newGameSchedule.id}`)
+      const gameTime = new Date(gameInfo.startTime).toLocaleString()
+      const msg = `No matching game schedule found for ${gameInfo.awayTeam} @ ${gameInfo.homeTeam} at ${gameTime}. The MLB/sports sync may not have imported this game yet.`
+      logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+      return NextResponse.json(
+        { success: false, error: msg },
+        { status: 404 }
+      )
     }
 
     // 3. Check if there's already a pending allocation for this game on this input
@@ -171,8 +164,8 @@ export async function POST(request: NextRequest) {
       inputSourceType: deviceType,
       gameScheduleId: gameSchedule.id,
       channelNumber: channelNumber,
-      tvOutputIds: JSON.stringify([]), // Bartender doesn't specify outputs, they pick the input
-      tvCount: 0,
+      tvOutputIds: JSON.stringify(tvOutputIds), // Matrix output channel numbers the bartender assigned
+      tvCount: tvOutputIds.length,
       allocatedAt: tuneAtUnix, // When to actually tune
       expectedFreeAt: endTimeUnix,
       status: 'pending',

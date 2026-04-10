@@ -96,6 +96,54 @@ export async function register() {
     }
 
     try {
+      // Initialize ESPN game schedule sync (runs on startup + hourly)
+      // Syncs a 7-day window of games into game_schedules so the bartender
+      // channel guide has live game data to display.
+      const { espnSyncService } = await import('@sports-bar/scheduler')
+
+      const ESPN_SYNC_LEAGUES: Array<{ sport: string; league: string }> = [
+        { sport: 'baseball', league: 'mlb' },
+        { sport: 'basketball', league: 'nba' },
+        { sport: 'hockey', league: 'nhl' },
+        { sport: 'football', league: 'nfl' },
+        { sport: 'football', league: 'college-football' },
+        { sport: 'basketball', league: 'mens-college-basketball' },
+        { sport: 'basketball', league: 'womens-college-basketball' },
+      ]
+
+      const runEspnSyncAll = async () => {
+        for (const { sport, league } of ESPN_SYNC_LEAGUES) {
+          try {
+            const result = await espnSyncService.syncLeague(sport, league)
+            logger.info(
+              `[INSTRUMENTATION][ESPN SYNC] ${sport}/${league}: +${result.gamesAdded} new, ~${result.gamesUpdated} updated, ${result.errors.length} errors`
+            )
+          } catch (err) {
+            logger.error(`[INSTRUMENTATION][ESPN SYNC] ${sport}/${league} failed:`, err)
+          }
+        }
+      }
+
+      // Initial sync after 30s warm-up delay (lets DB/other services settle)
+      setTimeout(() => {
+        runEspnSyncAll().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Initial ESPN sync failed:', err)
+        })
+      }, 30_000)
+
+      // Recurring sync every hour
+      setInterval(() => {
+        runEspnSyncAll().catch((err: unknown) => {
+          logger.error('[INSTRUMENTATION] Recurring ESPN sync failed:', err)
+        })
+      }, 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ ESPN game schedule sync initialized (every 60 minutes)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize ESPN sync:', error)
+    }
+
+    try {
       // Initialize Atlas Audio AI learning cycle (every 6 hours, staggered 90s after wolfpack)
       const { runAtlasLearningCycle } = await import('@sports-bar/atlas')
 

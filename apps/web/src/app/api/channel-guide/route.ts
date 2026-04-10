@@ -207,6 +207,7 @@ export async function POST(request: NextRequest) {
       function normalizeStation(name: string): string {
         return name.toUpperCase()
           .replace(/\s+/g, '')
+          .replace(/-TV$/i, '')   // WLUK-TV, WGBA-TV → WLUK, WGBA
           .replace(/-/g, '')
           .replace(/HD$/i, '')
           .replace(/NETWORK$/i, '')
@@ -410,6 +411,144 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Fallback: augment with games from the local game_schedules table.
+      // The Rail Media API only covers nationally-carried games and a handful of
+      // RSN broadcasts — it omits many MLB/NBA/NHL games that air on team-specific
+      // streaming/RSN feeds (e.g. Brewers @ Nationals on Brewers.TV). We query our
+      // own ESPN-synced game_schedules table and inject any games whose
+      // broadcast_networks can be resolved to a user preset via the same
+      // stationToPreset map we already built.
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { and, gte, lte } = await import('drizzle-orm')
+
+        const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
+        const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
+
+        const localGames = await db
+          .select()
+          .from(schema.gameSchedules)
+          .where(
+            and(
+              gte(schema.gameSchedules.scheduledStart, windowStartSec),
+              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+            )
+          )
+          .all()
+
+        let gsInjected = 0
+        let gsSkippedNoChannel = 0
+        let gsSkippedDupe = 0
+
+        for (const game of localGames) {
+          // Skip games without real team matchups
+          if (!game.homeTeamName || !game.awayTeamName) continue
+
+          let broadcastNetworks: string[] = []
+          try {
+            if (game.broadcastNetworks) {
+              broadcastNetworks = JSON.parse(game.broadcastNetworks)
+            }
+          } catch {
+            broadcastNetworks = []
+          }
+          // Include primary network first in the walk order
+          if (game.primaryNetwork && !broadcastNetworks.includes(game.primaryNetwork)) {
+            broadcastNetworks.unshift(game.primaryNetwork)
+          }
+
+          // Walk the networks array and find the first one that maps to a preset
+          let resolvedPreset: { channelNumber: string; name: string } | undefined
+          let matchedStation = ''
+          for (const network of broadcastNetworks) {
+            if (!network) continue
+            const normalizedNetwork = normalizeStation(network)
+            // Direct preset lookup
+            let hit = stationToPreset.get(normalizedNetwork)
+            // Alias fallback
+            if (!hit) {
+              for (const [standard, aliases] of Object.entries(stationAliases)) {
+                if (aliases.some(a => normalizeStation(a) === normalizedNetwork)) {
+                  hit = stationToPreset.get(standard.toUpperCase())
+                  if (hit) break
+                }
+              }
+            }
+            if (hit) {
+              resolvedPreset = hit
+              matchedStation = network
+              break
+            }
+          }
+
+          if (!resolvedPreset) {
+            gsSkippedNoChannel++
+            continue
+          }
+
+          const startDate = new Date(game.scheduledStart * 1000)
+          const endDate = new Date(game.estimatedEnd * 1000)
+          const gameTimeLabel = startDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          }).toLowerCase()
+
+          // Dedupe: skip if we already have a Rail program for this channel at this time
+          // for the same matchup
+          const dupe = programs.some(p =>
+            p.channel?.number === resolvedPreset!.channelNumber &&
+            p.homeTeam === game.homeTeamName &&
+            p.awayTeam === game.awayTeamName
+          )
+          if (dupe) {
+            gsSkippedDupe++
+            continue
+          }
+
+          const channelInfo = {
+            id: `${deviceType}-${resolvedPreset.channelNumber}`,
+            name: resolvedPreset.name,
+            number: resolvedPreset.channelNumber,
+            type: deviceType,
+            cost: 'subscription',
+            platforms: [deviceType === 'satellite' ? 'DirecTV' : 'Cable'],
+            channelNumber: resolvedPreset.channelNumber,
+            deviceType: deviceType,
+            station: matchedStation,
+            presetName: resolvedPreset.name,
+          }
+          if (!channels.has(channelInfo.id)) {
+            channels.set(channelInfo.id, channelInfo)
+          }
+
+          programs.push({
+            id: `gs-${game.id}`,
+            league: game.league || 'Sports',
+            homeTeam: game.homeTeamName,
+            awayTeam: game.awayTeamName,
+            gameTime: gameTimeLabel,
+            startTime: startDate.toISOString(),
+            endTime: endDate.toISOString(),
+            channel: channelInfo,
+            description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''}`,
+            isSports: true,
+            isLive: false,
+            venue: game.venueName || '',
+            date: startDate.toDateString(),
+            station: matchedStation,
+          })
+          gsInjected++
+        }
+
+        if (gsInjected > 0 || gsSkippedNoChannel > 0 || gsSkippedDupe > 0) {
+          logInfo(`game_schedules fallback: +${gsInjected} injected, ${gsSkippedDupe} dedup, ${gsSkippedNoChannel} skipped (no channel match from broadcast_networks)`)
+        }
+      } catch (fallbackError: any) {
+        logger.error('[Channel-Guide-API] game_schedules fallback failed (non-fatal):', { error: fallbackError.message })
+      }
+
       // Filter out tournament-style events without team matchups (Golf, NASCAR, etc.)
       const preFilterCount = programs.length
       programs = programs.filter(p => p.homeTeam.trim() !== '' || p.awayTeam.trim() !== '')
@@ -417,7 +556,7 @@ export async function POST(request: NextRequest) {
         logInfo(`Filtered out ${preFilterCount - programs.length} programs without team matchups`)
       }
 
-      logInfo(`Processed ${programs.length} programs from Rail API for ${deviceType}`)
+      logInfo(`Processed ${programs.length} programs (Rail + local) for ${deviceType}`)
       logInfo(`Matched ${matchedCount} station listings to presets`)
       if (unmatchedStations.size > 0) {
         logInfo(`Unmatched stations (consider adding to presets): ${[...unmatchedStations].slice(0, 20).join(', ')}`)

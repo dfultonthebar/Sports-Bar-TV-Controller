@@ -207,7 +207,7 @@ const NETWORK_TO_CABLE: Record<string, string> = {
   'FOX Sports Wisconsin': '40',
   'FSWI': '40',
   'Bucks.TV': '40',
-  // Channel 308 = Bally Sports WI (Brewers only)
+  // Channel 308 = Brewers / Bally Sports WI+ feed on Spectrum Green Bay
   'Brewers.TV': '308',
   'Bally Sports WI+': '308',
   'Bally Sports Wisconsin+': '308',

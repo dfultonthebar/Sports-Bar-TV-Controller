@@ -57,6 +57,10 @@ const NETWORK_TO_DIRECTV: Record<string, string> = {
   'Amazon Prime Video': '9550', 'Prime Video': '9550',
   'Apple TV+': '9528', 'Paramount+': '247',
   'ABC': '7',
+  // Regional Sports Networks — Wisconsin (Bucks, Brewers)
+  'Bally Sports Wisconsin': '669', 'FanDuel SN WI': '669', 'FanDuel Sports WI': '669',
+  'FanDuel SN Wisconsin': '669', 'FOX Sports Wisconsin': '669',
+  'Bucks.TV': '669', 'Brewers.TV': '669', 'Nationals.TV': '642',
 }
 
 // ── Network → Cable (Spectrum) channel — Spectrum Appleton ──
@@ -216,12 +220,16 @@ function buildDashboardEntry(game: any, league: string) {
     timeZone: HARDWARE_CONFIG.venue.timezone,
   })
 
-  // Channel mappings
-  const direcTVChannel = primaryNetwork ? findChannel(primaryNetwork, NETWORK_TO_DIRECTV) : null
-  const cableChannel = primaryNetwork ? findChannel(primaryNetwork, NETWORK_TO_CABLE) : null
+  // Channel mappings — walk the full networks array, not just primaryNetwork.
+  // ESPN often returns placeholders like "MLB.TV" as the first entry when no
+  // concrete broadcast is assigned, but includes the real RSN later in the
+  // array (e.g. ["MLB.TV", "Brewers.TV", "Nationals.TV"]). We want the first
+  // entry that actually resolves to a channel number.
+  const direcTVChannel = findChannelFromNetworks(networks, NETWORK_TO_DIRECTV)
+  const cableChannel = findChannelFromNetworks(networks, NETWORK_TO_CABLE)
 
-  // Streaming app mapping
-  const streamingApp = primaryNetwork ? findStreamingApp(primaryNetwork) : null
+  // Streaming app mapping — same walk pattern
+  const streamingApp = findStreamingAppFromNetworks(networks)
 
   // Minutes until start
   const minutesUntilStart = Math.max(0, Math.round((gameDate.getTime() - Date.now()) / 60000))
@@ -266,6 +274,24 @@ function findStreamingApp(network: string): { appId: string; name: string; packa
   const lower = network.toLowerCase()
   for (const [key, value] of Object.entries(NETWORK_TO_STREAMING_APP)) {
     if (key.toLowerCase() === lower) return value
+  }
+  return null
+}
+
+function findChannelFromNetworks(networks: string[], mapping: Record<string, string>): string | null {
+  for (const network of networks) {
+    if (!network) continue
+    const hit = findChannel(network, mapping)
+    if (hit) return hit
+  }
+  return null
+}
+
+function findStreamingAppFromNetworks(networks: string[]): { appId: string; name: string; packageName: string } | null {
+  for (const network of networks) {
+    if (!network) continue
+    const hit = findStreamingApp(network)
+    if (hit) return hit
   }
   return null
 }

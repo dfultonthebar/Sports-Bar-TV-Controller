@@ -27,7 +27,15 @@ const STANDARD_ALIASES = [
   { standardName: 'ESPNEWS', aliases: ['ESPNWHD', 'ESPNEWS HD'] },
   { standardName: 'FS1', aliases: ['FS1HD', 'FOX SPORTS 1', 'FOX SPORTS1'] },
   { standardName: 'FS2', aliases: ['FS2HD', 'FOX SPORTS 2'] },
-  { standardName: 'FSN', aliases: ['FSNHD', 'FOX SPORTS NORTH', 'FSNWI', 'BSWI', 'BALLY WI', 'BSSWI', 'BSNOR'] },
+  { standardName: 'FSN', aliases: ['FSNHD', 'FOX SPORTS NORTH', 'FSNWI', 'BSNOR'] },
+  // Main Wisconsin RSN — preset name "Fan Duel" (channel 40 on Spectrum GB).
+  // Carries Bucks and general WI sports content. The Rail Media API returns
+  // these games under station code "FSWI".
+  { standardName: 'FanDuelWI', aliases: ['Fan Duel', 'FanDuel', 'FSWI', 'BSWI', 'Bally Sports Wisconsin', 'Bally Sports WI Main', 'FanDuel Sports Wisconsin', 'FanDuel SN WI', 'FanDuel SN Wisconsin', 'FOX Sports Wisconsin', 'Bucks.TV'] },
+  // Brewers-only overflow RSN — preset name "Bally Sports WI" (channel 308).
+  // Used when Brewers games air at the same time as something else on the main
+  // WI RSN. ESPN tags these broadcasts as "Brewers.TV".
+  { standardName: 'BallyWIPlus', aliases: ['Bally Sports WI', 'Bally Sports WI+', 'Bally Sports Wisconsin+', 'BSWI+', 'FSWI+', 'FanDuel SN WI+', 'FanDuel Sports WI+', 'Brewers.TV'] },
   { standardName: 'TNT', aliases: ['TNTHD', 'TNT HD', 'TNTDRAMA'] },
   { standardName: 'TBS', aliases: ['TBSHD', 'TBS HD'] },
   { standardName: 'BTN', aliases: ['BIG TEN NETWORK', 'BIG TEN', 'B10', 'BTNHD', 'BTN HD'] },
