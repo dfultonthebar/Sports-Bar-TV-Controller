@@ -7,10 +7,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 13,
       "id": "firetv_1764889208258_s1akqme5j",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2025-12-04T23:00:08.455Z",
       "updatedAt": "2025-12-04T23:00:08.455Z",
-      "lastSeen": "2026-04-02T16:51:22.747Z"
+      "lastSeen": "2026-04-08T17:16:47.405Z"
     },
     {
       "name": "Amazon 2",
@@ -19,10 +19,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 14,
       "id": "firetv_1764889234926_isxzuwh21",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2025-12-04T23:00:35.436Z",
       "updatedAt": "2025-12-04T23:00:35.436Z",
-      "lastSeen": "2026-04-02T16:51:22.771Z"
+      "lastSeen": "2026-04-08T17:16:47.405Z"
     },
     {
       "name": "Amazon 3",
@@ -31,10 +31,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 15,
       "id": "firetv_1764889262402_vgqlvyeub",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2025-12-04T23:01:02.522Z",
       "updatedAt": "2025-12-04T23:01:02.522Z",
-      "lastSeen": "2026-04-02T16:51:22.783Z"
+      "lastSeen": "2026-04-08T17:16:47.404Z"
     },
     {
       "name": "Amazon 4",
@@ -43,10 +43,10 @@
       "deviceType": "Fire TV Cube",
       "inputChannel": 16,
       "id": "firetv_1764889293768_3qkc8653t",
-      "isOnline": true,
+      "isOnline": false,
       "addedAt": "2025-12-04T23:01:34.198Z",
       "updatedAt": "2025-12-04T23:01:34.198Z",
-      "lastSeen": "2026-04-02T16:51:22.795Z"
+      "lastSeen": "2026-04-08T17:16:47.406Z"
     }
   ]
 }
