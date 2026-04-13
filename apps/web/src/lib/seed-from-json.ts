@@ -70,6 +70,20 @@ interface SeedResult {
   direcTV: { seeded: boolean; count: number }
   fireTV: { seeded: boolean; count: number }
   stationAliases: { seeded: boolean; count: number }
+  channelPresets: { seeded: boolean; count: number }
+}
+
+interface ChannelPresetSeedRow {
+  id: string
+  name: string
+  channelNumber: string
+  deviceType: string
+  order?: number
+  isActive?: boolean
+  usageCount?: number
+  lastUsed?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 /**
@@ -198,6 +212,59 @@ async function seedStationAliases(): Promise<{ seeded: boolean; count: number }>
   }
 }
 
+async function seedChannelPresets(): Promise<{ seeded: boolean; count: number }> {
+  try {
+    const count = await tableRowCount('ChannelPreset')
+    if (count > 0) {
+      logger.info(`[SEED] ChannelPreset table already has ${count} rows, skipping`)
+      return { seeded: false, count: 0 }
+    }
+
+    // Read both cable and directv seed files. Either may be missing on
+    // fresh main-branch installs — that's OK, we just skip the missing one.
+    const cableData = tryReadJson<{ presets: ChannelPresetSeedRow[] }>('channel-presets-cable.json')
+    const directvData = tryReadJson<{ presets: ChannelPresetSeedRow[] }>('channel-presets-directv.json')
+
+    const cableRows = Array.isArray(cableData?.presets) ? cableData!.presets : []
+    const directvRows = Array.isArray(directvData?.presets) ? directvData!.presets : []
+    const allRows = [...cableRows, ...directvRows]
+
+    if (allRows.length === 0) {
+      logger.info('[SEED] No channel presets to seed (both JSON files empty or missing)')
+      return { seeded: false, count: 0 }
+    }
+
+    logger.info(`[SEED] Seeding ${allRows.length} channel presets from JSON (cable=${cableRows.length}, directv=${directvRows.length})...`)
+    let inserted = 0
+    for (const row of allRows) {
+      if (!row.id || !row.name || !row.channelNumber || !row.deviceType) {
+        logger.warn(`[SEED]   Skipping invalid preset row: ${JSON.stringify(row)}`)
+        continue
+      }
+      await db.insert(schema.channelPresets).values({
+        id: row.id,
+        name: row.name,
+        channelNumber: row.channelNumber,
+        deviceType: row.deviceType,
+        order: row.order ?? 0,
+        isActive: row.isActive ?? true,
+        usageCount: row.usageCount ?? 0,
+        lastUsed: row.lastUsed ?? null,
+        ...(row.createdAt ? { createdAt: row.createdAt } : {}),
+        ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}),
+      }).onConflictDoNothing()
+      logger.info(`[SEED]   Preset: ${row.name} (${row.deviceType} ch ${row.channelNumber}${row.isActive === false ? ', inactive' : ''})`)
+      inserted++
+    }
+
+    logger.info(`[SEED] Channel preset seeding complete: ${inserted} presets`)
+    return { seeded: inserted > 0, count: inserted }
+  } catch (error) {
+    logger.error('[SEED] Failed to seed channel presets:', error)
+    return { seeded: false, count: 0 }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -208,10 +275,11 @@ export async function seedFromJson(): Promise<SeedResult> {
   const direcTV = await seedDirecTV()
   const fireTV = await seedFireTV()
   const stationAliases = await seedStationAliases()
+  const channelPresets = await seedChannelPresets()
 
-  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded) {
+  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !channelPresets.seeded) {
     logger.info('[SEED] All tables already populated, no seeding needed')
   }
 
-  return { direcTV, fireTV, stationAliases }
+  return { direcTV, fireTV, stationAliases, channelPresets }
 }

@@ -257,8 +257,9 @@ Device configuration has been migrated from JSON files to database tables:
 | Fire TV devices | `data/firetv-devices.json` | Database | `FireTVDevice` | `apps/web/src/lib/device-db.ts` |
 | Station aliases | Hardcoded in channel-guide route | Database | `station_aliases` | Cached DB query in channel-guide |
 | Channel overrides | Hardcoded in channel-guide route | Database | `local_channel_overrides` | Cached DB query in channel-guide |
+| Channel presets | Hardcoded dicts in routes | Database | `ChannelPreset` | Seeded from `data/channel-presets-{cable,directv}.json` |
 
-**Auto-Seed on First Startup:** When the app starts and device tables are empty, it automatically seeds from JSON files (`data/directv-devices.json`, `data/firetv-devices.json`). This ensures locations pulling the code update don't lose their devices. See `apps/web/src/lib/seed-from-json.ts`.
+**Auto-Seed on First Startup:** When the app starts and device/preset tables are empty, it automatically seeds from JSON files (`data/directv-devices.json`, `data/firetv-devices.json`, `data/channel-presets-cable.json`, `data/channel-presets-directv.json`). This ensures locations pulling the code update don't lose their devices or channel presets. See `apps/web/src/lib/seed-from-json.ts`. The channel-preset JSON files are per-location (committed on the location branch) and seed the `ChannelPreset` table only when it's empty — after that the DB is the source of truth.
 
 **Centralized Hardware Config:** `apps/web/src/lib/hardware-config.ts` contains all device IPs, ports, and processor IDs. Update this file when hardware changes — no more hunting through 15+ files.
 

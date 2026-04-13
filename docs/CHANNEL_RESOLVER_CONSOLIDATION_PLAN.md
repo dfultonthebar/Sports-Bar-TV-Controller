@@ -81,6 +81,8 @@ These are documented in `CLAUDE.md`, `docs/SCHEDULER_FIXES_APRIL_2026.md`, and `
 
 ## 4. Pre-work (before Phase 1 can start)
 
+> **⚠ Cross-plan ordering dependency:** Pre-work 1 below creates `apps/web/data/channel-presets-cable.json` and `apps/web/data/channel-presets-directv.json`. The **Auto-Update System Plan** (`AUTO_UPDATE_SYSTEM_PLAN.md`) references these paths in its `update_from_github.sh` `LOCATION_PATHS_OURS` conflict-resolution array. **This plan's Pre-work 1 MUST merge before the Auto-Update Plan's Pre-work 1.** If Auto-Update Pre-work 1 is done first, the shell script will reference files that don't exist yet — not a hard error (the `--ours` resolution is a no-op on missing paths) but it's a confusing code smell. Merge order: (1) this Pre-work 1, (2) Auto-Update Pre-work 1, then either plan's Phase 1+ can proceed independently.
+
 ### Pre-work 1: Channel presets seeding strategy
 
 **Problem:** `seed-from-json.ts` doesn't seed `channel_presets`. Fresh installs start empty. Once we delete the hardcoded dicts, a location with an empty presets table has no channel data at all.
@@ -127,12 +129,14 @@ Every phase is a separate commit. Every phase builds + restarts PM2 + runs a ver
 
 **Pre-step — STREAMING_STATION_MAP reconciliation (BLOCKING per plan review):**
 
-Three different files currently each define their own `STREAMING_STATION_MAP`:
-1. `apps/web/src/app/api/schedules/ai-game-plan/route.ts` — 12 entries, includes sport-specific codes (NBALP, NHLCI, MLBEI, etc.)
-2. `apps/web/src/app/api/channel-guide/route.ts` — also has one (reviewer flagged this; location may vary)
-3. The shared helper — currently has no streaming map at all
+**Corrected per second-pass review (local Plan agent, 2026-04-13):** there are **two** copies in the codebase today, not three:
+1. `apps/web/src/app/api/schedules/ai-game-plan/route.ts` line 22 — 14 entries (includes sport-specific codes NBALP, NHLCI, MLBEI, and NFHS)
+2. `apps/web/src/app/api/channel-guide/route.ts` line 76 — 15 entries (also includes NFHS)
+3. The shared helper `network-channel-resolver.ts` — has NO streaming map and exports zero streaming-related functions today.
 
-**Before implementing any new helper API**, explicitly diff all `STREAMING_STATION_MAP` occurrences in the codebase. Produce a single canonical union that includes every package-name + app-name pairing from both sources. If the two maps disagree (e.g., different package arrays for the same station code), the plan author must decide the canonical entry — do NOT silently pick one. Document the reconciliation in the commit message and in a code comment inside the helper.
+Phase 1 ADDS a third location (the canonical one in the helper) by writing `getStreamingAppForStation()` and reconciling the content of the two existing copies INTO it. The two existing maps have substantially similar content (both include NFHS) but differ in entry count and ordering. Before implementing the new helper API, `diff` the two existing maps side-by-side and produce a single canonical union that includes every package-name + app-name pairing from both sources. If the two maps disagree on any entry (e.g., different package arrays for the same station code), the plan author must decide the canonical entry — do NOT silently pick one. Document the reconciliation in the commit message and in a code comment inside the helper.
+
+**Verification at end of Phase 1:** grep for `STREAMING_STATION_MAP` across the codebase — should find exactly 1 location (the helper) once the Phase 5 channel-guide migration completes. During Phase 1 itself, grep finds 3 (2 old + 1 new canonical). During Phases 2-4 it finds 3. At end of Phase 5 it finds 1.
 
 **New API additions:**
 - `resolveChannelsForGame(game, options?)` — full game resolution including sport-gated streaming.
@@ -195,7 +199,7 @@ New file `apps/web/src/lib/__tests__/network-channel-resolver.test.ts` with test
 - Stoneyard: `LiveSportsDashboard` component on the bartender remote renders without visual regression.
 - Run against test game data to confirm `primaryNetwork` priority is preserved (MLB.TV first, then fall through to Brewers.TV).
 
-**Risk:** HIGH — bartender-facing via `LiveSportsDashboard` component. But the route is simple; most of the risk is "is the shared helper correct?" which Phase 1's test suite gates.
+**Risk:** MED — bartender-facing via `LiveSportsDashboard` (real *impact*), but *likelihood* is low: Phase 1's test suite is a hard gate — if the helper does not reproduce every dict entry this route currently resolves, Phase 2 does not merge. The route itself is simple (297 lines, 2 dicts). Downgraded from HIGH in v2 because contained-blast-radius × gated-correctness = MED. Worst case (blank live scores) is visible immediately on the dashboard widget and trivially reverted.
 
 **Rollback:** Revert the commit. Hardcoded dicts return. No DB impact.
 
@@ -333,7 +337,7 @@ If graystone or holmgren needs rollback AND the Madison-numbers bug needs to sta
 |---|---|---|---|---|
 | 0 (pre-work) | Seed file strategy + branch audit + schema validation | MED | New seed file affects fresh installs | Fresh install at a new location has no channel presets |
 | 1 (API scaffold + tests + MAP reconciliation) | Shared helper additions | LOW | Additive, test-covered, no route changes | No user-visible impact |
-| **2 (live-dashboard) — simple, pattern-prover** | One route, 2 dicts, ~80 lines removed | HIGH | Bartender-facing live scores | Live scores go blank — contained to the dashboard widget |
+| **2 (live-dashboard) — simple, pattern-prover** | One route, 2 dicts, ~80 lines removed | MED | Bartender-facing live scores, but gated by Phase 1 test suite | Live scores go blank — contained to the dashboard widget, trivial revert |
 | **3 (live-by-channel) — widest blast radius** | Four bartender remote variants consume it | HIGH | Bartender-facing preset grids | Preset buttons show no live game overlay |
 | **4 (ai-game-plan) — complex multi-tier** | Three-tier fallback + sport-gate + normalization | HIGH | Normalization behavior delta | AI Auto Pilot fails; Schedule tab shows wrong channels |
 | **5 (channel-guide) — hardest, last** | 914-line route, 4 resolution layers, Guide tab critical path | HIGHEST | Most complex route, largest bartender impact | Bartender remote Guide tab goes silent |

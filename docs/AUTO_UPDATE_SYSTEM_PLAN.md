@@ -146,6 +146,8 @@ The user wants: **4am every morning, each location automatically pulls latest ma
 
 ## 4. Pre-work (before Phase 1 can start)
 
+> **⚠ Cross-plan ordering dependency:** Auto-Update Pre-work 1 (below) adds `LOCATION_PATHS_OURS` logic that references `apps/web/data/channel-presets-cable.json` and `apps/web/data/channel-presets-directv.json`. Those files are created by **Channel Resolver Pre-work 1** (see `CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` §Pre-work). **Channel Resolver Pre-work 1 must land first** — if this plan's Pre-work 1 ships alone, the paths will be referenced in the conflict-resolution array but won't exist yet, which is harmless but confusing. Merge order: (1) Channel Resolver Pre-work 1, (2) Auto-Update Pre-work 1, then either plan's Phase 1+ can proceed independently.
+
 ### Pre-work 1: Fix the existing `update_from_github.sh` (branch awareness + correct DB path)
 
 The current script is unsafe even for manual use. Fix it FIRST as a standalone pre-work commit so every location has a working manual updater as a safety net before the auto-updater ships.
@@ -646,11 +648,25 @@ rollback_to_tag() {
   local tag=$1
   echo "[ROLLBACK] Resetting to $tag"
   git reset --hard "$tag"
-  rm -rf apps/web/.next
-  npm run build || {
-    echo "[ROLLBACK] CRITICAL: rollback build also failed"
+  # CRITICAL: re-install deps after reset. If the failed-forward run pulled new
+  # packages (new transitive deps, version bumps), node_modules now mismatches
+  # the old package-lock.json we just reset to. Without `npm ci`, the rollback
+  # build can succeed on a stale node_modules and then crash at runtime on a
+  # missing/mismatched module. `npm ci` is idempotent and fast on cache hits.
+  npm ci || {
+    echo "[ROLLBACK] CRITICAL: npm ci failed during rollback"
     return 99
   }
+  rm -rf apps/web/.next
+  # If we pre-cached .next.bak at Phase 5, prefer the instant-mv path.
+  if [ -d apps/web/.next.bak ]; then
+    mv apps/web/.next.bak apps/web/.next
+  else
+    npm run build || {
+      echo "[ROLLBACK] CRITICAL: rollback build also failed"
+      return 99
+    }
+  fi
   pm2 restart sports-bar-tv-controller --update-env
   sleep 10
   scripts/verify-install.sh || {
