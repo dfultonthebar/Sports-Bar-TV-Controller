@@ -99,9 +99,19 @@ export default function SmartSchedulingDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="tournaments">Tournaments</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 lg:w-[400px] bg-slate-900 border border-slate-700 p-1 h-auto">
+          <TabsTrigger
+            value="overview"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-300"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="tournaments"
+            className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-300"
+          >
+            Tournaments
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-6">
@@ -119,7 +129,7 @@ export default function SmartSchedulingDashboard() {
                 {allocations.map((alloc) => (
                   <div
                     key={alloc.allocation.id}
-                    className="bg-sportsBar-900/50 p-4 rounded-lg border border-sportsBar-600"
+                    className="bg-slate-800/50 p-4 rounded-lg border border-slate-600"
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -155,7 +165,7 @@ export default function SmartSchedulingDashboard() {
               {inputSources.map((source) => (
                 <div
                   key={source.id}
-                  className="bg-sportsBar-900/50 p-4 rounded-lg border border-sportsBar-600"
+                  className="bg-slate-800/50 p-4 rounded-lg border border-slate-600"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-semibold text-slate-100">{source.name}</h3>
@@ -189,7 +199,7 @@ export default function SmartSchedulingDashboard() {
               {upcomingGames.slice(0, 10).map((game) => (
                 <div
                   key={game.id}
-                  className="flex justify-between items-center p-3 bg-sportsBar-900/30 rounded-lg hover:bg-sportsBar-900/50 transition-colors"
+                  className="flex justify-between items-center p-3 bg-slate-800/30 rounded-lg hover:bg-slate-800/50 transition-colors"
                 >
                   <div>
                     <h4 className="font-medium text-slate-100">

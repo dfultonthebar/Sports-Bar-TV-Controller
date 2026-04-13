@@ -47,14 +47,34 @@ export default function LocationConfigPanel() {
   const loadConfiguration = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/sports-guide-config')
-      const result = await response.json()
+      // Load location/timezone from the sports-guide-config endpoint
+      // AND the update schedule from its dedicated settings endpoint.
+      // They live in different tables — see route comments for why.
+      const [cfgResponse, scheduleResponse] = await Promise.all([
+        fetch('/api/sports-guide-config'),
+        fetch('/api/settings/update-schedule'),
+      ])
+      const cfgResult = await cfgResponse.json()
+      const scheduleResult = await scheduleResponse.json()
 
-      if (result.success) {
-        if (result.data.configuration) {
-          setConfig(result.data.configuration)
-        }
+      const loadedConfig: Configuration = {
+        timezone: 'America/New_York',
+        updateSchedule: { enabled: true, time: '06:00', frequency: 'daily' },
       }
+
+      if (cfgResult.success && cfgResult.data?.configuration) {
+        const c = cfgResult.data.configuration
+        loadedConfig.zipCode = c.zipCode ?? undefined
+        loadedConfig.city = c.city ?? undefined
+        loadedConfig.state = c.state ?? undefined
+        if (c.timezone) loadedConfig.timezone = c.timezone
+      }
+
+      if (scheduleResult.success && scheduleResult.schedule) {
+        loadedConfig.updateSchedule = scheduleResult.schedule
+      }
+
+      setConfig(loadedConfig)
     } catch (error) {
       logger.error('[LocationConfigPanel] Error loading configuration:', error)
       setSaveMessage({ type: 'error', text: 'Failed to load configuration' })
@@ -68,32 +88,50 @@ export default function LocationConfigPanel() {
       setIsSaving(true)
       setSaveMessage(null)
 
-      // Read-modify-write: the POST endpoint deletes all providers and
-      // homeTeams before rewriting them from the request body, so we must
-      // fetch the current state and send it back alongside our local edits
-      // to avoid wiping data owned by other admin tabs.
+      // Read-modify-write: the sports-guide-config POST endpoint deletes all
+      // providers and homeTeams before rewriting them from the request body,
+      // so we must fetch the current state and send it back alongside our
+      // local edits to avoid wiping data owned by other admin tabs.
       const currentResponse = await fetch('/api/sports-guide-config')
       const currentData = await currentResponse.json()
       const currentProviders = currentData?.data?.providers || []
       const currentHomeTeams = currentData?.data?.homeTeams || []
 
-      const response = await fetch('/api/sports-guide-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...config,
-          providers: currentProviders,
-          homeTeams: currentHomeTeams,
+      // Save location/timezone via the legacy config endpoint, and the
+      // update schedule via its own dedicated settings endpoint. The legacy
+      // endpoint silently drops updateSchedule (no DB column) so it is
+      // intentionally not included in that body.
+      const [configResponse, scheduleResponse] = await Promise.all([
+        fetch('/api/sports-guide-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            zipCode: config.zipCode,
+            city: config.city,
+            state: config.state,
+            timezone: config.timezone,
+            providers: currentProviders,
+            homeTeams: currentHomeTeams,
+          })
+        }),
+        fetch('/api/settings/update-schedule', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config.updateSchedule || {
+            enabled: true, time: '06:00', frequency: 'daily',
+          })
         })
-      })
+      ])
 
-      const result = await response.json()
+      const configResult = await configResponse.json()
+      const scheduleResult = await scheduleResponse.json()
 
-      if (result.success) {
+      if (configResult.success && scheduleResult.success) {
         setSaveMessage({ type: 'success', text: 'Configuration saved successfully!' })
         setTimeout(() => setSaveMessage(null), 3000)
       } else {
-        setSaveMessage({ type: 'error', text: result.error || 'Failed to save configuration' })
+        const errMsg = configResult.error || scheduleResult.error || 'Failed to save configuration'
+        setSaveMessage({ type: 'error', text: errMsg })
       }
     } catch (error) {
       logger.error('[LocationConfigPanel] Error saving configuration:', error)
