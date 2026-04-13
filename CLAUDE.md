@@ -730,7 +730,11 @@ The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consol
 
 **Kept despite zero UI callers** (internal cron callers in `packages/scheduler/src/scheduler-service.ts`): `/api/sports-guide/cleanup-old` (line 516), `/api/scheduling/live-status` (line 885). Do not delete these without updating the caller.
 
-**Phases B (new consolidated page), C (nav flip + redirects), D (delete old pages)** are tracked in the consolidation doc.
+**Phase B completed in v2.4.0** — new `/sports-guide-admin` page with 8 tabs wrapping existing components. Old pages still live on disk unchanged.
+
+**Phase C completed in v2.4.1** — navigation consolidated to a single "Sports Guide" entry pointing at `/sports-guide-admin`. Next.js `redirects()` forward `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling` to the corresponding tabs (307 temporary redirects). Admin page honors `?tab=` query param for deep links. Dashboard home card updated.
+
+**Phase D (delete old pages + /system-admin Scheduler tab)** is deferred until after a full evening of bar operations on the new page. Tracked in the consolidation doc.
 
 #### 9. AI Scheduling Intelligence
 **Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)

@@ -11,7 +11,8 @@
 
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Calendar,
@@ -39,8 +40,50 @@ import LocationConfigPanel from '@/components/admin/LocationConfigPanel'
 
 export const dynamic = 'force-dynamic'
 
+const VALID_TABS = [
+  'guide',
+  'games',
+  'schedule',
+  'home-teams',
+  'channels',
+  'providers',
+  'configuration',
+  'logs',
+] as const
+
 export default function SportsGuideAdminPage() {
-  const [activeTab, setActiveTab] = useState('guide')
+  // useSearchParams() must be inside a Suspense boundary per Next.js build-time
+  // requirements (even with `dynamic = 'force-dynamic'`), so the body of the
+  // page lives in SportsGuideAdminContent and this outer component wraps it.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-300 p-6">Loading Sports Guide admin…</div>}>
+      <SportsGuideAdminContent />
+    </Suspense>
+  )
+}
+
+function SportsGuideAdminContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Initial tab from ?tab= query param (honored by redirects from old URLs).
+  // Default to 'guide' if missing or invalid.
+  const urlTab = searchParams?.get('tab') || ''
+  const initialTab = (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : 'guide'
+  const [activeTab, setActiveTab] = useState<string>(initialTab)
+
+  // Keep the URL in sync with the active tab so deep links work and browser
+  // back/forward moves between tabs cleanly. Uses replace to avoid piling up
+  // history entries on every click.
+  useEffect(() => {
+    const current = searchParams?.get('tab') || ''
+    if (current !== activeTab) {
+      const params = new URLSearchParams(searchParams?.toString() || '')
+      params.set('tab', activeTab)
+      router.replace(`/sports-guide-admin?${params.toString()}`, { scroll: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6">

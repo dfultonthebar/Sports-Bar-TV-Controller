@@ -149,11 +149,35 @@ Target: `apps/web/src/app/sports-guide-admin/page.tsx` as an 8-tab admin page th
 
 ---
 
-## Phase C — Flip navigation (separate commit)
+## Phase C — Flip navigation (v2.4.1, completed)
 
-- Update `navigation-items.tsx` to point "Sports Guide" at `/sports-guide-admin` and remove the separate "Smart Scheduler" and "AI Game Plan" entries.
-- Add Next.js `redirects()` rules from `/sports-guide`, `/sports-guide-config`, `/scheduling`, `/ai-gameplan` → the corresponding tab on `/sports-guide-admin`.
-- Leave the `/system-admin` "Scheduler" tab as-is for one trial period, then remove it in Phase D.
+**Completed changes:**
+
+1. **`apps/web/src/components/navigation-items.tsx`** — Consolidated three separate nav entries (AI Game Plan, Sports Guide, Smart Scheduler) into a single "Sports Guide" entry pointing at `/sports-guide-admin`. The Sports Guide item uses the Trophy icon (previously only on AI Game Plan) since the consolidated page covers everything the old three did plus more.
+
+2. **`apps/web/next.config.js`** — Added `async redirects()` returning four rules that forward old admin URLs to the corresponding tab on the consolidated page:
+   ```js
+   /sports-guide        → /sports-guide-admin?tab=guide
+   /sports-guide-config → /sports-guide-admin?tab=configuration
+   /ai-gameplan         → /sports-guide-admin?tab=schedule
+   /scheduling          → /sports-guide-admin?tab=games
+   ```
+   Redirects use `permanent: false` (HTTP 307) so bookmarks work without being burned into browser history, and so Phase D's reversibility story stays clean.
+
+3. **`apps/web/src/app/sports-guide-admin/page.tsx`** — Added `?tab=` query param handling using `useSearchParams()` and `useRouter()`. The initial tab is read from the URL on mount (validated against an allowlist of the 8 valid tab values; invalid or missing falls back to `'guide'`). The active tab is synced back to the URL via `router.replace()` on every tab change, so deep links, browser back/forward, and redirects from old URLs all land on the right tab cleanly.
+
+4. **`apps/web/src/app/page.tsx`** — Updated the dashboard home page's "Sports Guide" card to link directly at `/sports-guide-admin` (previously linked to `/sports-guide`). Saves a redirect hop and updates the card description to reflect the broader feature set.
+
+5. **`/system-admin` "Scheduler" tab — left in place.** Removed in Phase D after the trial period, not now.
+
+**What still works exactly as before (verified post-Phase C):**
+
+- Direct navigation to any old URL (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`) lands on the correct tab of the new page via HTTP 307 redirect.
+- The bartender remote at `/remote` is completely unaffected — it does not use any of the redirected URLs.
+- The `/api/*` endpoints (scheduled, bartender-schedule, channel-guide, ai-game-plan, home-teams, etc.) are not affected by the redirects, which only match page paths.
+- All v2.3.0 fixes remain load-bearing (auto-reallocator revert, ESPN sync, Auto Pilot auto-create, channel-guide fallback, Wisconsin RSN alias split, league-match loosening, HomeTeam seeding).
+
+**Rollback:** Revert the Phase C commit. The four redirect rules disappear, the nav item goes back to three entries pointing at the old URLs, the `?tab=` handling becomes a no-op (the page still works with its internal useState default). Old pages are still on disk and immediately navigable again.
 
 ## Phase D — Delete old pages after trial period (future)
 
