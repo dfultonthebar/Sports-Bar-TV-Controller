@@ -22,7 +22,6 @@ import {
   ListTodo,
   LayoutGrid,
   MapPin,
-  Calendar,
   BarChart3,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -38,7 +37,6 @@ import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 import LocationSettings from '@/components/LocationSettings'
-import { SchedulerLogsDashboard } from '@/components/SchedulerLogsDashboard'
 import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 import EmbeddedLayoutManager from '@/components/EmbeddedLayoutManager'
 
@@ -416,10 +414,6 @@ export default function SystemAdminPage() {
               <FileText className="w-4 h-4 mr-2" />
               Logs
             </TabsTrigger>
-            <TabsTrigger value="scheduler" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-              <Calendar className="w-4 h-4 mr-2" />
-              Scheduler
-            </TabsTrigger>
             <TabsTrigger value="backup" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <HardDrive className="w-4 h-4 mr-2" />
               Backup
@@ -477,11 +471,6 @@ export default function SystemAdminPage() {
               </h3>
               <LogAnalyticsDashboard />
             </div>
-          </TabsContent>
-
-          {/* Scheduler Tab */}
-          <TabsContent value="scheduler" className="space-y-6">
-            <SchedulerLogsDashboard />
           </TabsContent>
 
           {/* Backup/Restore Tab */}

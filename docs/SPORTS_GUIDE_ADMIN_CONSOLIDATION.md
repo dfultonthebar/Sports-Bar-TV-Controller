@@ -179,15 +179,51 @@ Target: `apps/web/src/app/sports-guide-admin/page.tsx` as an 8-tab admin page th
 
 **Rollback:** Revert the Phase C commit. The four redirect rules disappear, the nav item goes back to three entries pointing at the old URLs, the `?tab=` handling becomes a no-op (the page still works with its internal useState default). Old pages are still on disk and immediately navigable again.
 
-## Phase D — Delete old pages after trial period (future)
+## Phase D — Delete old pages (v2.4.4, completed)
 
-After one full evening of bar operations running on the new page without issues, delete:
-- `apps/web/src/app/sports-guide/page.tsx`
-- `apps/web/src/app/sports-guide-config/page.tsx`
-- `apps/web/src/app/ai-gameplan/page.tsx`
-- `apps/web/src/app/scheduling/page.tsx`
-- Old component files only used by the above
-- `/system-admin` Scheduler tab entry
+Trial period (full weekend April 11-12, 2026) passed with zero scheduler errors and zero warnings across 1,492 log entries. The v2.4.0 auto-reallocator revert fired correctly once (Rangers/Dodgers game Saturday 00:18 — Cable 4 tuned back to channel 14 Golf). Bartenders used the new admin page and the bartender remote without complaint.
+
+**Deleted old page files:**
+- `apps/web/src/app/sports-guide/page.tsx` (entire directory)
+- `apps/web/src/app/sports-guide-config/page.tsx` (entire directory, ~2,500 lines of inline JSX)
+- `apps/web/src/app/ai-gameplan/page.tsx` (entire directory)
+- `apps/web/src/app/scheduling/page.tsx` (entire directory)
+
+**Deleted orphan component:**
+- `apps/web/src/components/admin/LegacySchedulingManager.tsx` (1,314 lines). Was extracted by the Phase B agent in case the legacy cron-style schedule manager was needed in the new admin page, but the Schedule tab instead uses `<AIGamePlanDashboard />`. Zero consumers — confirmed by grep before deletion.
+
+**Deleted `/system-admin` Scheduler tab:**
+- `apps/web/src/app/system-admin/page.tsx` — removed the `SchedulerLogsDashboard` import, the "Scheduler" TabsTrigger, the Scheduler TabsContent block, and the now-unused `Calendar` lucide icon import. The `SchedulerLogsDashboard` component itself stays — it's mounted on the new `/sports-guide-admin` Logs tab.
+
+**Preserved (still needed by the new admin page or bartender remote):**
+- `SportsGuide.tsx` — used by /sports-guide-admin Guide tab
+- `SportsGuideConfig.tsx` — used by /sports-guide-admin Configuration tab
+- `ScheduledGamesPanel.tsx` — used by /remote (bartender remote)
+- `AIGamePlanModal.tsx` — used by /remote (bartender remote) and ScheduledGamesPanel
+- `ChannelPresetsPanel.tsx` — used by /sports-guide-admin Channels tab AND /device-config
+- `SchedulerLogsDashboard.tsx` — used by /sports-guide-admin Logs tab
+
+**Preserved — Next.js redirects kept in place:**
+
+Even though the page files are gone, the `redirects()` rules in `next.config.js` still need to fire for bookmark compatibility. Next.js evaluates redirects BEFORE route resolution, so deleting the page file does not affect the redirect behavior. Old bookmarks to `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, and `/scheduling` continue to work — they just land on the corresponding tab of `/sports-guide-admin`.
+
+**Verification post-deletion:**
+```
+/sports-guide        -> HTTP 307 -> /sports-guide-admin?tab=guide
+/sports-guide-config -> HTTP 307 -> /sports-guide-admin?tab=configuration
+/ai-gameplan         -> HTTP 307 -> /sports-guide-admin?tab=schedule
+/scheduling          -> HTTP 307 -> /sports-guide-admin?tab=games
+/sports-guide-admin  -> HTTP 200
+/sports-guide-admin?tab=games      -> HTTP 200
+/sports-guide-admin?tab=home-teams -> HTTP 200
+/sports-guide-admin?tab=logs       -> HTTP 200
+/system-admin                      -> HTTP 200 (no Scheduler tab)
+/remote                            -> HTTP 200 (bartender remote unaffected)
+/api/schedules/ai-game-plan        -> returns games
+/api/home-teams                    -> returns 31 teams intact
+```
+
+**Phase D totals:** 4 page directories + 1 orphan component deleted; `/system-admin` tab removed. Redirects preserved. Zero regressions. Build clean. Consolidation complete.
 
 ---
 
