@@ -8,6 +8,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter';
 import { validateQueryParams, z } from '@/lib/validation';
 import { espnSyncService } from '@/lib/scheduling/espn-sync-service';
 import { priorityCalculator } from '@/lib/scheduling/priority-calculator';
+import { resolveChannelsForNetworks } from '@/lib/network-channel-resolver';
 
 // GET - Get games with optional filters
 export async function GET(request: NextRequest) {
@@ -69,13 +70,35 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(schema.gameSchedules.scheduledStart))
       .limit(100);
 
+    // Resolve cable + directv channel numbers for each game by walking its
+    // broadcast_networks array against the station_aliases + channel_presets
+    // tables. This is what makes the Games tab show "ch 308" for Brewers
+    // games instead of just "MLB.TV, Brewers.TV" with no channel. Resolver
+    // caches the alias/preset lookup for 5 min internally so this loop is
+    // cheap even for 100 games.
+    const enrichedGames = await Promise.all(
+      games.map(async (g) => {
+        const broadcastNetworks: string[] = (() => {
+          try { return JSON.parse(g.broadcastNetworks || '[]') } catch { return [] }
+        })()
+        const resolved = await resolveChannelsForNetworks(broadcastNetworks, g.primaryNetwork)
+        return {
+          ...g,
+          broadcastNetworks,
+          cableChannel: resolved.cable?.channelNumber || null,
+          cablePresetName: resolved.cable?.presetName || null,
+          cableMatchedNetwork: resolved.cable?.matchedNetwork || null,
+          direcTVChannel: resolved.directv?.channelNumber || null,
+          direcTVPresetName: resolved.directv?.presetName || null,
+          direcTVMatchedNetwork: resolved.directv?.matchedNetwork || null,
+        }
+      })
+    )
+
     logger.api.response('GET', '/api/scheduling/games', 200, { count: games.length });
     return NextResponse.json({
       success: true,
-      games: games.map(g => ({
-        ...g,
-        broadcastNetworks: JSON.parse(g.broadcastNetworks || '[]'),
-      })),
+      games: enrichedGames,
     });
   } catch (error: any) {
     logger.api.error('GET', '/api/scheduling/games', error);

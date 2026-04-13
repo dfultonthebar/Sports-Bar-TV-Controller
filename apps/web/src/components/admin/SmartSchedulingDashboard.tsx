@@ -15,6 +15,15 @@ interface GameSchedule {
   broadcastNetworks: string[];
   calculatedPriority: number;
   isPriorityGame: boolean;
+  // Enriched by /api/scheduling/games via network-channel-resolver.
+  // cableChannel is the local Spectrum channel number matching one of
+  // the broadcast_networks (e.g. "308" for Brewers.TV -> Bally Sports WI).
+  cableChannel?: string | null;
+  cablePresetName?: string | null;
+  cableMatchedNetwork?: string | null;
+  direcTVChannel?: string | null;
+  direcTVPresetName?: string | null;
+  direcTVMatchedNetwork?: string | null;
 }
 
 interface InputSource {
@@ -139,6 +148,13 @@ export default function SmartSchedulingDashboard() {
                         <p className="text-sm text-slate-400">
                           {alloc.game.broadcastNetworks.join(', ')}
                         </p>
+                        {alloc.game.cableChannel && (
+                          <p className="text-xs text-blue-300 mt-1">
+                            Spectrum ch {alloc.game.cableChannel}
+                            {alloc.game.cablePresetName ? ` · ${alloc.game.cablePresetName}` : ''}
+                            {alloc.game.cableMatchedNetwork ? ` (via ${alloc.game.cableMatchedNetwork})` : ''}
+                          </p>
+                        )}
                         <p className="text-sm text-slate-500 mt-1">
                           Allocated: {formatTime(alloc.allocation.allocatedAt)}
                         </p>
@@ -208,6 +224,12 @@ export default function SmartSchedulingDashboard() {
                     <p className="text-sm text-slate-400">
                       {game.broadcastNetworks.join(', ') || 'Network TBD'}
                     </p>
+                    {game.cableChannel && (
+                      <p className="text-xs text-blue-300 mt-0.5">
+                        Spectrum ch {game.cableChannel}
+                        {game.cablePresetName ? ` · ${game.cablePresetName}` : ''}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-slate-300">{formatTime(game.scheduledStart)}</p>
