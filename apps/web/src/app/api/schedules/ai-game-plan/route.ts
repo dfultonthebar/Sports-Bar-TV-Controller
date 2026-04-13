@@ -15,6 +15,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
+import { resolveChannelsForNetworks, invalidateNetworkChannelResolverCache } from '@/lib/network-channel-resolver'
 
 // Streaming station codes to app mapping
 // Maps Rail Media station codes to Fire TV app package names and display names
@@ -450,8 +451,36 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // FALLBACK: If network name matching didn't work, try direct channel number matching
-        // Extract cable channels and match against presets
+        // FALLBACK 1: station_aliases lookup via the shared resolver.
+        // The inline map above only matches preset names directly (so a
+        // Rail Media station code like "MILBRE" won't hit "Bally Sports WI").
+        // The shared resolver walks the station_aliases table which CAN
+        // link "MILBRE" to the BallyWIPlus bundle and then to the cable
+        // preset "Bally Sports WI" at channel 308.
+        if ((!cableChannelNumber || !directvChannelNumber) && listing.stations) {
+          const stationsArray: string[] = Array.isArray(listing.stations)
+            ? listing.stations
+            : Object.values(listing.stations).filter((s): s is string => typeof s === 'string')
+          if (stationsArray.length > 0) {
+            try {
+              const resolved = await resolveChannelsForNetworks(stationsArray)
+              if (!cableChannelNumber && resolved.cable) {
+                cableChannelNumber = resolved.cable.channelNumber
+                logger.debug(`[AI_GAME_PLAN] station_aliases matched "${resolved.cable.matchedNetwork}" to cable ch ${cableChannelNumber} (${resolved.cable.presetName})`)
+              }
+              if (!directvChannelNumber && resolved.directv) {
+                directvChannelNumber = resolved.directv.channelNumber
+                logger.debug(`[AI_GAME_PLAN] station_aliases matched "${resolved.directv.matchedNetwork}" to DirecTV ch ${directvChannelNumber} (${resolved.directv.presetName})`)
+              }
+            } catch (resolverErr: any) {
+              logger.warn(`[AI_GAME_PLAN] station_aliases resolver failed, continuing with legacy fallbacks: ${resolverErr?.message}`)
+            }
+          }
+        }
+
+        // FALLBACK 2: direct channel number matching against our presets.
+        // Extract cable channels from Rail Media's CAB lineup and match
+        // against our local cable preset channel numbers.
         if (!cableChannelNumber && listing.channel_numbers?.CAB) {
           const cabChannels = listing.channel_numbers.CAB
           for (const providerChannels of Object.values(cabChannels)) {
@@ -472,14 +501,16 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Extract satellite/DirecTV channels and match against presets (fallback)
-        if (!directvChannelNumber && listing.channel_numbers?.SAT) {
-          const satChannels = listing.channel_numbers.SAT
-          for (const providerChannels of Object.values(satChannels)) {
+        // Rail Media uses "DRTV" as the DirecTV lineup key (not "SAT" as
+        // some docs suggest). Previously this fallback checked `.SAT` which
+        // never matched anything; fixed to `.DRTV` to match actual Rail API
+        // response shape.
+        if (!directvChannelNumber && listing.channel_numbers?.DRTV) {
+          const drtvChannels = listing.channel_numbers.DRTV
+          for (const providerChannels of Object.values(drtvChannels)) {
             const channels = providerChannels as any
             const channelList = Array.isArray(channels) ? channels : [channels]
 
-            // Find first channel that exists in our DirecTV presets
             for (const ch of channelList) {
               if (ch) {
                 const chStr = String(ch).toLowerCase()
@@ -530,7 +561,31 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
             ? stationList
             : Object.values(stationList).filter((s): s is string => typeof s === 'string')
 
+          // Sport-gate the streaming app match so we don't mislabel hockey
+          // games with MLB.TV just because Rail Media put "MLBEI" (MLB Extra
+          // Innings) in the station list as a generic out-of-market code.
+          // League-specific streaming packages (MLBEI, NHLCI, NBALP, MLSDK)
+          // only count when the game's league matches. Generic streaming
+          // (Peacock, Prime, ESPN+, Apple TV+, etc.) works for any sport.
+          const leagueLower = (group.group_title || '').toLowerCase()
+          const isBaseballGame = leagueLower.includes('mlb') || leagueLower.includes('baseball')
+          const isHockeyGame = leagueLower.includes('nhl') || leagueLower.includes('hockey')
+          const isBasketballGame = leagueLower.includes('nba') || leagueLower.includes('basketball')
+          const isSoccerGame = leagueLower.includes('soccer') || leagueLower.includes('mls')
+
+          const sportSpecificPackages: Record<string, boolean> = {
+            MLBEI: isBaseballGame,
+            NHLCI: isHockeyGame,
+            NBALP: isBasketballGame,
+            MLSDK: isSoccerGame,
+          }
+
           for (const station of stations) {
+            const stationUpper = station.toUpperCase()
+            // Skip sport-specific streaming codes when they don't match the game's league
+            if (stationUpper in sportSpecificPackages && !sportSpecificPackages[stationUpper]) {
+              continue
+            }
             const appInfo = getStreamingAppInfo(station)
             if (appInfo) {
               streamingApp = appInfo.appName
@@ -891,7 +946,13 @@ export async function GET(request: NextRequest) {
           })
 
           if (gameOnChannel) {
-            // We found a game on this channel - add it to the map
+            // We found a game on this channel - add it to the map.
+            // Propagate cableChannel/directvChannel/streamingApp from the
+            // matched fresh game so the UI's getChannelMapping helper can
+            // render "Bally Sports WI -> Ch 308 (Cable)" instead of
+            // "No channel available". Without these fields the Brewers
+            // game would show as "No channel available" even though it
+            // correctly resolved to cable 308 upstream.
             const gameEntry: any = {
               inputLabel: channelInfo.inputLabel || input.label,
               inputNumber: input.channelNumber,
@@ -902,6 +963,10 @@ export async function GET(request: NextRequest) {
               gameTime: gameOnChannel.gameTime,
               channelNumber: channelInfo.channelNumber,
               channelName: channelInfo.channelName,
+              cableChannel: gameOnChannel.cableChannel || '',
+              directvChannel: gameOnChannel.directvChannel || '',
+              streamingApp: gameOnChannel.streamingApp || null,
+              streamingPackages: gameOnChannel.streamingPackages || [],
               venue: gameOnChannel.venue,
               startTime: gameOnChannel.startTime,
               isHomeTeamGame: gameOnChannel.isHomeTeamGame,

@@ -34,8 +34,9 @@ const STANDARD_ALIASES = [
   { standardName: 'FanDuelWI', aliases: ['Fan Duel', 'FanDuel', 'FSWI', 'BSWI', 'Bally Sports Wisconsin', 'Bally Sports WI Main', 'FanDuel Sports Wisconsin', 'FanDuel SN WI', 'FanDuel SN Wisconsin', 'FOX Sports Wisconsin', 'Bucks.TV'] },
   // Brewers-only overflow RSN — preset name "Bally Sports WI" (channel 308).
   // Used when Brewers games air at the same time as something else on the main
-  // WI RSN. ESPN tags these broadcasts as "Brewers.TV".
-  { standardName: 'BallyWIPlus', aliases: ['Bally Sports WI', 'Bally Sports WI+', 'Bally Sports Wisconsin+', 'BSWI+', 'FSWI+', 'FanDuel SN WI+', 'FanDuel Sports WI+', 'Brewers.TV'] },
+  // WI RSN. ESPN tags these broadcasts as "Brewers.TV"; The Rail Media API
+  // uses the station code "MILBRE".
+  { standardName: 'BallyWIPlus', aliases: ['Bally Sports WI', 'Bally Sports WI+', 'Bally Sports Wisconsin+', 'BSWI+', 'FSWI+', 'FanDuel SN WI+', 'FanDuel Sports WI+', 'Brewers.TV', 'MILBRE'] },
   { standardName: 'TNT', aliases: ['TNTHD', 'TNT HD', 'TNTDRAMA'] },
   { standardName: 'TBS', aliases: ['TBSHD', 'TBS HD'] },
   { standardName: 'BTN', aliases: ['BIG TEN NETWORK', 'BIG TEN', 'B10', 'BTNHD', 'BTN HD'] },
