@@ -1,8 +1,15 @@
 # Channel Resolver Consolidation Plan
 
-**Status:** Plan only, awaiting approval. No code changes yet.
+**Status:** v2 — post Plan-review corrections applied. Approved by user. No code changes yet.
 **Target version:** 2.5.0 (minor bump — architectural change)
 **Scope:** Consolidate six separate channel-resolution code paths into a single source of truth backed by the `channel_presets` + `station_aliases` tables, fixing the channel-number divergence across location branches as a side effect.
+
+**Changes from v1 (2026-04-13 Plan-review pass):**
+- Swapped Phase 2 and Phase 4: migration now starts with `live-dashboard` (simplest route, 297 lines, 2 hardcoded dicts) and ends with `channel-guide` (most complex route, 914 lines, 4 resolution layers). The easier route proves the pattern in production before the hard one is touched.
+- Added explicit `STREAMING_STATION_MAP` reconciliation step to Phase 1 — three different copies of this map exist in the codebase today and must be merged into one canonical version before any consumer is migrated.
+- Added transitional DB-empty fallback to the shared resolver so a corrupted/wiped `channel_presets` table doesn't silently blank every live-sports UI.
+- Moved unit test delivery into Phase 1 (was deferred to a separate "testing requirements" section).
+- Clarified Phase 6 rollback semantics: per-location branch state tracing after a merge revert.
 
 ---
 
@@ -114,129 +121,199 @@ The audit says graystone/holmgren still have Madison numbers hardcoded in `live-
 
 Every phase is a separate commit. Every phase builds + restarts PM2 + runs a verification checklist before the next phase starts. All phases happen on `main` first; each location branch gets them by merging `main` in.
 
-### Phase 1 — Expand the shared resolver API
+### Phase 1 — Expand the shared resolver API + unit tests + STREAMING_STATION_MAP reconciliation
 
-**Files changed:** `apps/web/src/lib/network-channel-resolver.ts` only.
+**Files changed:** `apps/web/src/lib/network-channel-resolver.ts`, `apps/web/src/lib/__tests__/network-channel-resolver.test.ts` (new), and a one-time reconciliation step for `STREAMING_STATION_MAP` before it lands in the helper.
 
-**Additions:**
+**Pre-step — STREAMING_STATION_MAP reconciliation (BLOCKING per plan review):**
+
+Three different files currently each define their own `STREAMING_STATION_MAP`:
+1. `apps/web/src/app/api/schedules/ai-game-plan/route.ts` — 12 entries, includes sport-specific codes (NBALP, NHLCI, MLBEI, etc.)
+2. `apps/web/src/app/api/channel-guide/route.ts` — also has one (reviewer flagged this; location may vary)
+3. The shared helper — currently has no streaming map at all
+
+**Before implementing any new helper API**, explicitly diff all `STREAMING_STATION_MAP` occurrences in the codebase. Produce a single canonical union that includes every package-name + app-name pairing from both sources. If the two maps disagree (e.g., different package arrays for the same station code), the plan author must decide the canonical entry — do NOT silently pick one. Document the reconciliation in the commit message and in a code comment inside the helper.
+
+**New API additions:**
 - `resolveChannelsForGame(game, options?)` — full game resolution including sport-gated streaming.
 - `findLocalChannelOverride(teamName)` — reads `local_channel_overrides` table, 5-min cache.
-- `getStreamingAppForStation(station, gameLeague)` — sport-gated streaming app lookup. Moves `STREAMING_STATION_MAP` from `ai-game-plan/route.ts` into the helper.
-- `getStationToPresetMaps()` — exposes the internal lookup maps for consumers that need to walk them directly (channel-guide's listing loop).
+- `getStreamingAppForStation(station, gameLeague)` — sport-gated streaming app lookup, using the reconciled canonical `STREAMING_STATION_MAP`.
+- `getStationToPresetMaps()` — exposes internal lookup maps for consumers that need to walk them directly (channel-guide's listing loop). **Return type:** `{cable: Map<string, {channelNumber, name}>, directv: Map<string, {channelNumber, name}>}` where keys are the pre-normalized station-to-preset resolution strings. Both the raw `channel_presets` rows and the `station_aliases`-derived entries populate these maps. The contract is documented in the helper's TSDoc so future consumers know what shape to expect.
 
-**No route changes in this phase.** The helper gets richer APIs; nothing consumes them yet. This is the additive scaffolding phase.
+**Transitional DB-empty fallback (added per plan review):**
 
-**Verification:** `npx tsc` clean, all existing tests pass, `/api/scheduling/games` still returns the same shape it does today.
+The helper's `loadResolverData()` function now logs a WARN and serves an in-memory fallback when `channel_presets` returns zero rows. The fallback is a small hardcoded set of "universal safe defaults" (MLB Network, ESPN, ESPN2, Fox) that keeps the bartender remote partially functional while a human reseeds the DB. The WARN includes a clear message: `[CHANNEL-RESOLVER] channel_presets table is empty — serving in-memory fallback. Seed the table via seed-from-json.ts or the admin UI.` This prevents a corrupted/wiped DB from silently blanking every live-sports UI.
 
-**Risk:** LOW. Pure additions, no deletions.
+**Unit tests in the same commit as the API additions (per plan review — NOT deferred):**
+
+New file `apps/web/src/lib/__tests__/network-channel-resolver.test.ts` with test cases:
+- Direct preset match: `Brewers.TV` → cable 308 (via `BallyWIPlus` alias)
+- Wisconsin RSN split: `Bucks.TV` → cable 40, `Brewers.TV` → cable 308, must be different entries
+- `-TV` suffix strip: `WLUK-TV` → `WLUK` preset, `WGBA-TV` → `WGBA` preset
+- Primary network priority: `primaryNetwork: "MLB.TV"` fallthrough to array for `Brewers.TV`
+- Empty inputs: `resolveChannelsForNetworks([])` → `{cable: null, directv: null}` without error
+- Sport-gated streaming: hockey game with `MLBEI` station → no streaming app, but baseball game with same station → MLB.TV
+- DB-empty fallback: when mock DB returns 0 presets, helper logs WARN and returns fallback entries
+- `local_channel_overrides` lookup by team name
+- Cache TTL: same call within 5 min hits cache, call after expiry re-fetches
+
+**No route changes in this phase.** The helper gets richer APIs and a test suite; nothing consumes them yet. This is the additive scaffolding phase.
+
+**Verification:**
+- `npx tsc` clean across all packages
+- `npm test apps/web/src/lib/__tests__/network-channel-resolver.test.ts` — all tests pass
+- `/api/scheduling/games` (the only existing consumer of the v2.4.8 helper) still returns the same shape
+- Grep confirms three `STREAMING_STATION_MAP` locations have been reduced to one canonical definition
+
+**Risk:** LOW. Pure additions + test coverage.
 
 **Rollback:** Revert the single commit.
 
-### Phase 2 — Migrate `/api/channel-guide`
+### Phase 2 — Migrate `/api/sports-guide/live-dashboard` (SIMPLE ROUTE FIRST)
 
-**Files changed:** `apps/web/src/app/api/channel-guide/route.ts`.
-
-**Changes:**
-- Delete the inline `normalizeStation` function (lines 207-215). Import from helper.
-- Delete the inline `stationToPreset` builder (lines 216-236). Use `getStationToPresetMaps()`.
-- Keep the Rail Media loop structure, but replace the station-matching logic (lines 252-340) with direct map lookups from the helper.
-- Keep the `local_channel_overrides` injection block (lines 344-412) BUT replace its inline team-name check with `findLocalChannelOverride()`.
-- Keep the `game_schedules` fallback block (lines 421-550) BUT replace its inline `stationToPreset` usage with `resolveChannelsForNetworks()`.
-- Delete `STREAMING_STATION_MAP` from this file. Import `getStreamingAppForStation()` from helper.
-
-**Verification checklist:**
-- `/api/channel-guide` returns the same program count for a test query (Stoneyard expected: ~41 programs including Brewers on 308).
-- Brewers game still shows channel 308 (via `Brewers.TV` → `BallyWIPlus` alias → preset).
-- Bucks game still shows channel 40 (via `Bucks.TV` → `FanDuelWI` alias → preset). **Critical regression check — the Wisconsin RSN split must survive.**
-- Yankees game still shows channel 326 (MLB Network direct preset match).
-- WLUK-TV-labeled game still matches WLUK preset (the `-TV` strip).
-- Fire TV streaming path still returns packages for MLB.TV, Peacock, etc.
-- The bartender remote's Guide tab renders and is clickable.
-
-**Risk:** HIGH. Biggest behavioral delta of any phase. Bartender-facing. Must be tested on Stoneyard before merging to main.
-
-**Rollback:** Revert the commit. Old inline logic comes back. DB data unchanged.
-
-### Phase 3 — Migrate `/api/schedules/ai-game-plan`
-
-**Files changed:** `apps/web/src/app/api/schedules/ai-game-plan/route.ts`.
-
-**Changes:**
-- Delete the inline `normalizeNetworkName` function (lines 343-351). This function diverges from the canonical helper (lowercases instead of uppercases, omits `-TV` strip). Replacing it with `normalizeStation` will fix latent bugs for local broadcast stations.
-- Delete the inline `networkToCableChannel`/`networkToDirectvChannel` maps (lines 353-368).
-- Delete the Tier 1 station matching loop (lines 420-451). Replace with a single `resolveChannelsForGame(listing)` call.
-- Delete `STREAMING_STATION_MAP` from this file (lines 20-36). Use `getStreamingAppForStation()`.
-- Delete the inline sport-gate code (lines 571-599). It's now in the helper.
-- Keep the Rail Media HTTP call (line 377) and the Tier 3 channel-number fallback (lines 484-525) since those serve a different purpose.
-- Fix the inline normalization divergence: any test that matches on `-tv` suffix or case sensitivity may behave differently after migration.
-
-**Verification checklist:**
-- `/api/schedules/ai-game-plan` still returns the same game count (currently ~60).
-- Brewers game still resolves to cable 308 (via shared helper → BallyWIPlus alias).
-- Hockey games still have 0 `MLB.TV` mislabelings (v2.4.9 sport-gate fix must survive the helper migration).
-- The "currently showing" games array still includes `cableChannel`, `directvChannel`, `streamingApp` fields (v2.4.9 fix).
-- `AIGamePlanDashboard` UI renders correctly with the same channel info it showed before.
-
-**Risk:** HIGH. Bartender-facing via `AIGamePlanModal` + `ScheduledGamesPanel`. The Tier 1 normalization change is a behavioral delta.
-
-**Rollback:** Revert the commit.
-
-### Phase 4 — Migrate `/api/sports-guide/live-dashboard`
+*(Was Phase 4 in v1 of this plan. Swapped with `channel-guide` per plan review: start the migration with the simplest route to prove the pattern in production before touching the complex one.)*
 
 **Files changed:** `apps/web/src/app/api/sports-guide/live-dashboard/route.ts`.
+
+**Why this is the best starting point:**
+- Only 297 lines, pure two-dict lookup, no multi-tier fallback chain.
+- Hardcoded `NETWORK_TO_DIRECTV` (42 entries) and `NETWORK_TO_CABLE` (38 entries) are the entire resolution logic. Deleting them is mechanical.
+- On Stoneyard, the data these dicts contain already matches the `channel_presets` table (pre-work 1 ensures this).
+- On Graystone and Holmgren the hardcoded dicts are WRONG (they still have Madison numbers). This phase automatically fixes those locations as a side effect when the branches are merged in Phase 6.
 
 **Changes:**
 - **Delete `NETWORK_TO_DIRECTV` dict (lines 36-64).** Use `resolveChannelsForNetworks()`.
 - **Delete `NETWORK_TO_CABLE` dict (lines 67-89).** Use `resolveChannelsForNetworks()`.
-- **Keep `NETWORK_TO_STREAMING_APP` dict (lines 91-116).** Until Phase 1's `getStreamingAppForStation` is proven safe and covers these 16 entries; if it does, delete this too and import.
-- Delete the helper functions `findChannelFromNetworks`, `findStreamingAppFromNetworks`, `findChannel`, `findStreamingApp`. Replace with helper calls.
-- The route's response shape stays the same (`{liveNow, comingUp, todaySchedule}` with per-game channel fields).
+- **Keep `NETWORK_TO_STREAMING_APP` dict (lines 91-116) in this phase** — Phase 1 reconciled `STREAMING_STATION_MAP` which is a superset; this dict can be removed in a follow-up micro-commit after confirming `getStreamingAppForStation()` covers all 16 entries.
+- Delete helper functions `findChannelFromNetworks`, `findStreamingAppFromNetworks`, `findChannel`, `findStreamingApp`. Replace with shared helper calls.
+- Response shape stays the same (`{liveNow, comingUp, todaySchedule}` with per-game channel fields).
 
 **Verification checklist:**
-- Stoneyard's live-dashboard response still returns the right channels for today's games.
-- Brewers game shows cable 308.
-- Bucks game shows cable 40.
-- ESPN game shows cable 27.
-- **CRITICAL:** After merging to main, this change automatically fixes graystone/holmgren wrong-Madison-numbers bug. Verify this by running the route on graystone with its DB and confirming Green Bay numbers come back.
+- Stoneyard: Brewers game shows cable 308 (via `Brewers.TV` → `BallyWIPlus` alias). **Wisconsin RSN split must survive.**
+- Stoneyard: Bucks game shows cable 40 (via `Bucks.TV` → `FanDuelWI` alias).
+- Stoneyard: ESPN game shows cable 27.
+- Stoneyard: `LiveSportsDashboard` component on the bartender remote renders without visual regression.
+- Run against test game data to confirm `primaryNetwork` priority is preserved (MLB.TV first, then fall through to Brewers.TV).
 
-**Risk:** HIGH — bartender-facing via `LiveSportsDashboard` component.
-**Blast radius:** Stoneyard, graystone, holmgren-way (all Green Bay Spectrum area). Lucky's still fine because its DB has Madison numbers.
+**Risk:** HIGH — bartender-facing via `LiveSportsDashboard` component. But the route is simple; most of the risk is "is the shared helper correct?" which Phase 1's test suite gates.
 
-**Rollback:** Revert the commit. Hardcoded dicts return. Note: revert does NOT restore the Madison-numbers bug at graystone/holmgren because the code change is per-branch and the merge conflict will surface it.
+**Rollback:** Revert the commit. Hardcoded dicts return. No DB impact.
 
-### Phase 5 — Migrate `/api/sports-guide/live-by-channel`
+### Phase 3 — Migrate `/api/sports-guide/live-by-channel` (MED-COMPLEXITY ROUTE)
 
 **Files changed:** `apps/web/src/app/api/sports-guide/live-by-channel/route.ts`.
 
 **Changes:**
-- Delete `NETWORK_TO_DIRECTV` dict (lines 25-134).
-- Delete `NETWORK_TO_CABLE` dict (lines 136-227).
-- Delete the inline `networkMapping[network]` lookup + case-insensitive fallback (lines 355-378). Use the helper.
+- Delete `NETWORK_TO_DIRECTV` dict (lines 25-134, 55 entries).
+- Delete `NETWORK_TO_CABLE` dict (lines 136-227, 52 entries).
+- Delete the inline `networkMapping[network]` lookup + case-insensitive fallback (lines 355-378). Use the shared helper.
 - **Keep** the `presetChannels` post-filter (line 375). The shared helper resolves, but the route needs to filter to only channels that exist in user's preset grid — that filter stays in the route.
-- Keep the DirecTV guide fetch path (lines 406-447) — that's a different concern.
+- Keep the DirecTV guide fetch path (lines 406-447) — different concern.
 
 **Verification checklist:**
-- Stoneyard's `ChannelPresetGrid` still shows live game overlays on the correct channels.
-- Lucky's Madison preset grid still shows correct Madison channels.
-- **CRITICAL:** This route is consumed by four different bartender remote variants (`ChannelPresetGrid` → `EnhancedChannelGuideBartenderRemote`, `BartenderRemoteSelector`, `BartenderRemoteSelector-Enhanced`, `BartenderRemoteControl`). Test all four.
+- Stoneyard: `ChannelPresetGrid` still shows live game overlays on the correct channels.
+- Lucky's (Madison): Preset grid still shows correct Madison channels via its own DB presets.
+- **CRITICAL:** This route is consumed by **four** different bartender remote variants (`ChannelPresetGrid` → `EnhancedChannelGuideBartenderRemote`, `BartenderRemoteSelector`, `BartenderRemoteSelector-Enhanced`, `BartenderRemoteControl`). Test all four variants on Stoneyard before merging.
 
-**Risk:** HIGH — widest blast radius of any route.
+**Risk:** HIGH — widest blast radius of any route, but the change is conceptually the same as Phase 2's `live-dashboard` migration (swap hardcoded dict for DB-backed resolver).
 
-**Rollback:** Revert.
+**Rollback:** Revert the commit.
+
+### Phase 4 — Migrate `/api/schedules/ai-game-plan` (COMPLEX, MULTI-TIER FALLBACK)
+
+**Files changed:** `apps/web/src/app/api/schedules/ai-game-plan/route.ts`.
+
+**Changes:**
+- Delete the inline `normalizeNetworkName` function (lines 343-351). This function diverges from the canonical helper (lowercases instead of uppercases, omits `-TV` strip). Replacing it with the shared `normalizeStation` fixes latent bugs for local broadcast stations like `WLUK-TV` / `WGBA-TV`.
+- Delete the inline `networkToCableChannel` / `networkToDirectvChannel` maps (lines 353-368).
+- Delete the Tier 1 station matching loop (lines 420-451). Replace with a single `resolveChannelsForGame(listing)` call from the shared helper.
+- Delete `STREAMING_STATION_MAP` from this file (lines 20-36) — Phase 1 reconciled it into the helper; this file now imports `getStreamingAppForStation()`.
+- Delete the inline sport-gate code (lines 571-599). Now in the helper.
+- **Keep** the Rail Media HTTP call (line 377) and the Tier 3 channel-number direct-match fallback (lines 484-525) — those serve a different purpose (raw Rail channel numbers vs network name resolution).
+- **Preserve** the v2.4.9 fix that propagates `cableChannel`/`directvChannel`/`streamingApp` onto the "currently showing" game objects.
+
+**Verification checklist:**
+- `/api/schedules/ai-game-plan` still returns ~60 games on a typical day.
+- Brewers game still resolves to cable 308 (regression check after moving from inline normalization to canonical).
+- Hockey games still have 0 `MLB.TV` mislabelings (v2.4.9 sport-gate fix must survive).
+- Schedule tab + AIGamePlanModal both render correctly with no visual regression.
+
+**Risk:** HIGH. Bartender-facing via `AIGamePlanModal` + `ScheduledGamesPanel`. The inline-to-canonical normalization switch is a behavioral delta — tests must confirm every current Stoneyard game still resolves the same way.
+
+**Rollback:** Revert the commit.
+
+### Phase 5 — Migrate `/api/channel-guide` (HARDEST ROUTE, LAST)
+
+*(Was Phase 2 in v1 of this plan. Moved to last per plan review: this is the most complex route with the highest bartender-facing blast radius. By the time we get here, Phases 2-4 have proven the shared helper in production and we have confidence in all its edge cases.)*
+
+**Files changed:** `apps/web/src/app/api/channel-guide/route.ts`.
+
+**Why this is last, not first:**
+- 914 lines, 4 resolution layers (station name → `stationToPreset` → aliases → `local_channel_overrides` → `game_schedules` fallback).
+- Has its own `normalizeStation`, `stationToPreset` builder, `local_channel_overrides` injection block (70 lines), and `game_schedules` fallback block (130 lines).
+- On the bartender remote's critical path — the Guide tab is what bartenders use constantly.
+- If anything goes wrong here, the bartender remote Guide tab goes silent.
+
+**Changes:**
+- Delete the inline `normalizeStation` function (lines 207-215). Import from helper.
+- Delete the inline `stationToPreset` builder (lines 216-236). Use `getStationToPresetMaps()` from the helper.
+- Keep the Rail Media loop structure, but replace the station-matching logic (lines 252-340) with direct map lookups from `getStationToPresetMaps()`.
+- Keep the `local_channel_overrides` injection block (lines 344-412) BUT replace its inline team-name check with `findLocalChannelOverride()`.
+- Keep the `game_schedules` fallback block (lines 421-550) BUT replace its inline `stationToPreset` usage with `resolveChannelsForNetworks()`.
+- Delete `STREAMING_STATION_MAP` from this file (Phase 1 reconciled it). Import `getStreamingAppForStation()`.
+
+**Verification checklist:**
+- `/api/channel-guide` returns the same program count for a test query (Stoneyard expected: ~41 programs including Brewers on 308).
+- Brewers game still shows channel 308 (via `Brewers.TV` → `BallyWIPlus` alias → preset). **CRITICAL — the route that the bartender remote depends on most heavily.**
+- Bucks game still shows channel 40 (via `Bucks.TV` → `FanDuelWI` alias → preset). Wisconsin RSN split must survive.
+- Yankees game still shows channel 326 (MLB Network direct preset match).
+- `WLUK-TV`-labeled game still matches `WLUK` preset (the `-TV` strip).
+- Fire TV streaming path still returns package lists for MLB.TV, Peacock, etc.
+- `local_channel_overrides` injection path still works (test with at least one override row in the DB).
+- `game_schedules` fallback path still injects Brewers when Rail doesn't carry it.
+- The bartender remote Guide tab renders and is fully interactive.
+
+**Risk:** HIGHEST. Biggest route in the codebase, most bartender-facing blast radius. Must be tested on Stoneyard for a full evening of operation before merging to main.
+
+**Rollback:** Revert the commit. Old inline logic comes back. DB data unchanged.
 
 ### Phase 6 — Merge main → location branches
 
 **Process:**
 1. Merge `main` → `location/stoneyard-greenville`. Test at Stoneyard.
-2. Merge `main` → `location/graystone`. Test at Graystone (verify the Madison-numbers bug is now fixed).
+2. Merge `main` → `location/graystone`. Test at Graystone (verify the Madison-numbers bug is now fixed — `live-dashboard` now reads from the graystone DB's Green Bay presets, not the deleted hardcoded dict).
 3. Merge `main` → `location/holmgren-way`. Test at Holmgren (same verification).
-4. Merge `main` → `location/lucky-s-1313`. Test at Lucky's (verify Madison numbers still work — they're now coming from the DB, not the hardcoded dict).
+4. Merge `main` → `location/lucky-s-1313`. Test at Lucky's (verify Madison numbers still work — they're now coming from lucky-s's own DB `channel_presets`, not the previously-hardcoded dict).
 
-**Conflict resolution rule:** On any conflict involving `apps/web/data/channel-presets-{cable,directv}.json`, ALWAYS `git checkout --ours` — location-specific data wins.
+**Conflict resolution rules:**
+- `apps/web/data/channel-presets-cable.json`, `apps/web/data/channel-presets-directv.json`: always `git checkout --ours` (location's version wins).
+- `apps/web/data/tv-layout.json`, `directv-devices.json`, `firetv-devices.json`, etc.: `--ours` (existing convention).
+- `package-lock.json`: always `git checkout --theirs` then re-run `npm ci`. Using `--ours` would lose any new dependencies main added since the last sync.
+- Route files (`channel-guide/route.ts`, `live-dashboard/route.ts`, etc.): `--theirs` (main's version wins because those are the files being migrated in Phases 2-5 and location branches have no legitimate customizations in them).
 
-**Risk:** HIGH for graystone/holmgren where the behavior will change immediately (wrong Madison → correct Green Bay) and someone needs to visually verify.
+**Risk:** HIGH for graystone/holmgren where the `live-dashboard` behavior changes the moment the merge completes (wrong Madison numbers → correct Green Bay numbers). Someone needs to visually verify each location immediately after its merge.
 
-**Rollback:** Per-location. Each merge is a separate merge commit; revert the merge on whichever location breaks.
+**Rollback semantics (per plan review — explicit branch state tracing):**
+
+A Phase 6 merge on a given location branch is a single merge commit. Reverting it with `git revert -m 1 <merge-sha>` has these effects per branch:
+
+- **location/stoneyard-greenville:** Revert restores the pre-merge state of stoneyard-greenville, which is the branch state before Phases 1-5 landed on main. But Phases 1-5 only landed on main — stoneyard was the target of merge, not the source. Reverting the merge removes Phases 1-5 from stoneyard's effective state even though they remain on main. The bartender remote at stoneyard reverts to pre-consolidation behavior. **Result:** stoneyard works exactly as it did before the consolidation started.
+- **location/graystone:** Same pattern. Reverting the merge removes Phases 1-5's changes from graystone's effective state. **Important:** this ALSO means graystone goes back to its pre-merge state where `live-dashboard/route.ts` still has the hardcoded Madison numbers — the production bug returns. This is not a new break; it's a restoration of the pre-consolidation state. The plan acknowledges this: reverting Phase 6 at graystone re-exposes a latent pre-existing bug, it does not create a new one. To fix the Madison-numbers bug WITHOUT running the consolidation, someone would have to manually cherry-pick the dict-deletion portion of Phase 2's commit onto graystone — that's a separate operation outside this plan.
+- **location/holmgren-way:** Same as graystone.
+- **location/lucky-s-1313:** Same pattern, but the pre-merge state is correct for Madison (lucky-s's hardcoded dict has Madison numbers). Reverting the merge at lucky-s restores working Madison-number behavior. **Result:** lucky-s still works after a revert.
+
+**Per-location rollback procedure:**
+```bash
+# On the broken location's server:
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git revert -m 1 <merge-commit-sha>
+rm -rf apps/web/.next
+npm run build
+pm2 restart sports-bar-tv-controller
+scripts/verify-install.sh  # from the auto-update plan pre-work 2
+```
+
+If graystone or holmgren needs rollback AND the Madison-numbers bug needs to stay fixed, do a manual cherry-pick of Phase 2's dict deletion onto those branches separately — don't revert the full consolidation to fix a downstream bug.
 
 ### Phase 7 — Documentation + cleanup
 
@@ -250,18 +327,20 @@ Every phase is a separate commit. Every phase builds + restarts PM2 + runs a ver
 
 **Risk:** NONE. Docs only.
 
-## 6. Risk summary
+## 6. Risk summary (phase ordering per v2)
 
-| Phase | Risk | Why | Worst-case failure |
-|---|---|---|---|
-| 0 (pre-work) | MED | New seed file affects fresh installs | Fresh install at a new location has no channel presets |
-| 1 (API scaffold) | LOW | Additive only | No user-visible impact |
-| 2 (channel-guide) | HIGH | Bartender-facing, most complex route | Guide tab blank, bartender can't see games |
-| 3 (ai-game-plan) | HIGH | Bartender-facing, normalization behavior delta | AI Auto Pilot fails; Schedule tab shows wrong channels |
-| 4 (live-dashboard) | HIGH | Bartender-facing live scores | Live scores go blank |
-| 5 (live-by-channel) | HIGH | Four bartender remote variants | Preset buttons show no live game overlay |
-| 6 (branch merges) | HIGH | Each location becomes a real-world test | Per-location breakage visible at that bar |
-| 7 (docs) | NONE | Docs only | N/A |
+| Phase | Scope | Risk | Why | Worst-case failure |
+|---|---|---|---|---|
+| 0 (pre-work) | Seed file strategy + branch audit + schema validation | MED | New seed file affects fresh installs | Fresh install at a new location has no channel presets |
+| 1 (API scaffold + tests + MAP reconciliation) | Shared helper additions | LOW | Additive, test-covered, no route changes | No user-visible impact |
+| **2 (live-dashboard) — simple, pattern-prover** | One route, 2 dicts, ~80 lines removed | HIGH | Bartender-facing live scores | Live scores go blank — contained to the dashboard widget |
+| **3 (live-by-channel) — widest blast radius** | Four bartender remote variants consume it | HIGH | Bartender-facing preset grids | Preset buttons show no live game overlay |
+| **4 (ai-game-plan) — complex multi-tier** | Three-tier fallback + sport-gate + normalization | HIGH | Normalization behavior delta | AI Auto Pilot fails; Schedule tab shows wrong channels |
+| **5 (channel-guide) — hardest, last** | 914-line route, 4 resolution layers, Guide tab critical path | HIGHEST | Most complex route, largest bartender impact | Bartender remote Guide tab goes silent |
+| 6 (branch merges) | Per-location cutover | HIGH | Each location becomes a real-world test | Per-location breakage visible at that bar |
+| 7 (docs + cleanup) | Non-behavioral | LOW | Content migration only | Future readers lose context on the WI RSN split warning |
+
+**Why the phase order changed (v1 → v2):** v1 put the hardest route (`channel-guide`) first as Phase 2. v2 puts the simplest route (`live-dashboard`) first, proves the shared helper works in production for a week, then progressively tackles more complex routes. If anything blows up in Phase 2 it's a small, contained widget — not the main bartender workflow.
 
 ## 7. Rollback strategy
 
