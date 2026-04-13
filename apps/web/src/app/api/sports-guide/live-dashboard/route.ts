@@ -13,6 +13,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // ── ESPN sports (same list as live-by-channel) ──────────────────────────
 const ESPN_SPORTS = [
@@ -32,61 +33,20 @@ const ESPN_SPORTS = [
   { sport: 'racing', league: 'f1', name: 'Formula 1' },
 ]
 
-// ── Network → DirecTV channel ───────────────────────────────────────────
-const NETWORK_TO_DIRECTV: Record<string, string> = {
-  'ESPN': '206', 'ESPN2': '209', 'ESPNU': '208', 'ESPNEWS': '207', 'ESPN+': '206',
-  'ESPN Deportes': '466',
-  'FOX': '11', 'FS1': '219', 'FS2': '618', 'FOX Sports 1': '219', 'FOX Sports 2': '618',
-  'Fox Deportes': '463', 'FOX Deportes': '463',
-  'CBS': '5', 'NBC': '2', 'CBS Sports Network': '221', 'CBSSN': '221',
-  'Peacock': '206',
-  'TNT': '245', 'TBS': '247', 'truTV': '246', 'TruTV': '246',
-  'NFL Network': '212', 'NFL RedZone': '211', 'Red Zone': '211', 'NFLN': '212',
-  'NBA TV': '216', 'NBATV': '216',
-  'MLB Network': '213', 'MLBN': '213',
-  'NHL Network': '215', 'NHLN': '215',
-  'Big Ten Network': '610', 'BTN': '610',
-  'SEC Network': '611', 'SECN': '611',
-  'ACC Network': '612', 'ACCN': '612',
-  'Pac-12 Network': '613', 'Pac-12': '613',
-  'USA': '242', 'USA Network': '242',
-  'Golf Channel': '218', 'Golf': '218', 'GOLF': '218',
-  'Tennis Channel': '217', 'Tennis': '217', 'TENNIS': '217',
-  'NBCSN': '220', 'NBC Sports': '220',
-  'beIN Sports': '620', 'beIN SPORTS': '620', 'BEIN': '620',
-  'Amazon Prime Video': '9550', 'Prime Video': '9550',
-  'Apple TV+': '9528', 'Paramount+': '247',
-  'ABC': '7',
-  // Regional Sports Networks — Wisconsin (Bucks, Brewers)
-  'Bally Sports Wisconsin': '669', 'FanDuel SN WI': '669', 'FanDuel Sports WI': '669',
-  'FanDuel SN Wisconsin': '669', 'FOX Sports Wisconsin': '669',
-  'Bucks.TV': '669', 'Brewers.TV': '669', 'Nationals.TV': '642',
-}
-
-// ── Network → Cable (Spectrum) channel — Spectrum Appleton ──
-const NETWORK_TO_CABLE: Record<string, string> = {
-  'ESPN': '27', 'ESPN2': '28', 'ESPNU': '303', 'ESPNEWS': '305', 'ESPN+': '27',
-  'FOX': '12', 'FS1': '75', 'FS2': '328', 'FOX Sports 1': '75', 'FOX Sports 2': '328',
-  'CBS': '6', 'NBC': '13', 'ABC': '3',
-  'CBS Sports Network': '322', 'CBSSN': '322',
-  'Peacock': '38', 'NBC Sports': '38', 'NBCSN': '38',
-  'TNT': '29', 'TBS': '25', 'truTV': '74', 'TruTV': '74',
-  'NBA TV': '325', 'NBATV': '325',
-  'MLB Network': '326', 'MLBN': '326',
-  'NHL Network': '324', 'NHLN': '324',
-  'Big Ten Network': '39', 'BTN': '39',
-  'SEC Network': '65', 'SECN': '65',
-  'ACC Network': '348', 'ACCN': '348',
-  'USA': '53', 'USA Network': '53',
-  'Golf Channel': '14', 'Golf': '14', 'GOLF': '14',
-  'Tennis Channel': '327', 'Tennis': '327', 'TENNIS': '327',
-  'beIN Sports': '337', 'beIN SPORTS': '337', 'BEIN': '337',
-  'NFL Network': '346', 'NFLN': '346',
-  'NFL RedZone': '347', 'Red Zone': '347',
-  'Bally Sports Wisconsin': '40', 'FanDuel SN WI': '40', 'FanDuel Sports WI': '40', 'FSWI': '40', 'Bucks.TV': '40',
-  'Brewers.TV': '308',
-  'Bally Sports North': '310', 'FanDuel SN North': '310', 'FanDuel Sports North': '310', 'FDNOR': '310',
-}
+// ── Network → Cable / DirecTV channel resolution ────────────────────────
+//
+// As of v2.5.0 (Phase 2 of channel-resolver consolidation), the hardcoded
+// NETWORK_TO_CABLE and NETWORK_TO_DIRECTV dicts that used to live here have
+// been removed. Cable + DirecTV resolution is now handled by the shared
+// `resolveChannelsForGame()` helper in `@/lib/network-channel-resolver`,
+// which reads from the `channel_presets` + `station_aliases` tables. This
+// preserves the Wisconsin RSN split (FanDuelWI ch 40 for Bucks vs
+// BallyWIPlus ch 308 for Brewers) and removes per-location channel-number
+// drift. See docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md.
+//
+// Streaming (NETWORK_TO_STREAMING_APP) is still resolved locally because
+// the bartender remote needs the full {appId, name, packageName} shape for
+// Fire TV app launch, which the shared helper does not yet provide.
 
 // ── Network → Streaming app ID (for Fire TV launch) ────────────────────
 const NETWORK_TO_STREAMING_APP: Record<string, { appId: string; name: string; packageName: string }> = {
@@ -159,7 +119,7 @@ export async function GET(request: NextRequest) {
         if (seenGameIds.has(gameId)) continue
         seenGameIds.add(gameId)
 
-        const entry = buildDashboardEntry(game, cfg.name)
+        const entry = await buildDashboardEntry(game, cfg.name, cfg.sport)
         const gameTime = new Date(game.date).getTime()
         const isLive = espnScoreboardAPI.isLive(game)
         const isCompleted = espnScoreboardAPI.isCompleted(game)
@@ -206,7 +166,7 @@ export async function GET(request: NextRequest) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function buildDashboardEntry(game: any, league: string) {
+async function buildDashboardEntry(game: any, league: string, sport?: string) {
   const networks = espnScoreboardAPI.getAllNetworks(game)
   const primaryNetwork = networks[0] || null
   const isLive = espnScoreboardAPI.isLive(game)
@@ -220,15 +180,32 @@ function buildDashboardEntry(game: any, league: string) {
     timeZone: HARDWARE_CONFIG.venue.timezone,
   })
 
-  // Channel mappings — walk the full networks array, not just primaryNetwork.
-  // ESPN often returns placeholders like "MLB.TV" as the first entry when no
-  // concrete broadcast is assigned, but includes the real RSN later in the
-  // array (e.g. ["MLB.TV", "Brewers.TV", "Nationals.TV"]). We want the first
-  // entry that actually resolves to a channel number.
-  const direcTVChannel = findChannelFromNetworks(networks, NETWORK_TO_DIRECTV)
-  const cableChannel = findChannelFromNetworks(networks, NETWORK_TO_CABLE)
+  // Channel mappings — resolved via the shared DB-backed helper. Walks the
+  // full networks array, primary first (preserving the "ESPN often returns
+  // a placeholder like 'MLB.TV' as the first entry but the real RSN like
+  // 'Brewers.TV' later" behavior — `resolveChannelsForGame` orders
+  // primaryNetwork first, then iterates through the rest).
+  //
+  // Wisconsin RSN safety: the helper preserves the FanDuelWI ch 40 (Bucks)
+  // vs BallyWIPlus ch 308 (Brewers) split via the station_aliases table.
+  // This cannot be verified live without an active Bucks/Brewers game in
+  // the response, but is covered by the helper's unit tests
+  // (apps/web/src/lib/__tests__/network-channel-resolver.test.ts).
+  const resolved = await resolveChannelsForGame(
+    {
+      networks,
+      primaryNetwork,
+      league,
+      sport: sport ?? null,
+    },
+    ['cable', 'directv']
+  )
+  const cableChannel = resolved.cableChannel
+  const direcTVChannel = resolved.directvChannel
 
-  // Streaming app mapping — same walk pattern
+  // Streaming app mapping — still uses the local hardcoded map because the
+  // bartender remote needs the {appId, name, packageName} shape for Fire TV
+  // app launch, which the shared helper does not yet expose.
   const streamingApp = findStreamingAppFromNetworks(networks)
 
   // Minutes until start
@@ -260,29 +237,11 @@ function buildDashboardEntry(game: any, league: string) {
   }
 }
 
-function findChannel(network: string, mapping: Record<string, string>): string | null {
-  if (mapping[network]) return mapping[network]
-  const lower = network.toLowerCase()
-  for (const [key, value] of Object.entries(mapping)) {
-    if (key.toLowerCase() === lower) return value
-  }
-  return null
-}
-
 function findStreamingApp(network: string): { appId: string; name: string; packageName: string } | null {
   if (NETWORK_TO_STREAMING_APP[network]) return NETWORK_TO_STREAMING_APP[network]
   const lower = network.toLowerCase()
   for (const [key, value] of Object.entries(NETWORK_TO_STREAMING_APP)) {
     if (key.toLowerCase() === lower) return value
-  }
-  return null
-}
-
-function findChannelFromNetworks(networks: string[], mapping: Record<string, string>): string | null {
-  for (const network of networks) {
-    if (!network) continue
-    const hit = findChannel(network, mapping)
-    if (hit) return hit
   }
   return null
 }
