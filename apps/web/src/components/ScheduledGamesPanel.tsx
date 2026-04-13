@@ -539,11 +539,16 @@ export default function ScheduledGamesPanel() {
     setApprovingId(suggestion.gameId)
     try {
       const outputIds = modifyOutputs[suggestion.gameId] ?? suggestion.suggestedOutputs
+      // Send BOTH inputSourceId and deviceId when available — the
+      // bartender-schedule route accepts either and the ai-suggest route
+      // does its best to resolve the matching input source for us.
       const res = await fetch('/api/schedules/bartender-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inputSourceId: suggestion.suggestedInputId || undefined,
+          deviceId: (suggestion as any).suggestedDeviceId || undefined,
+          deviceName: suggestion.suggestedInput || undefined,
           deviceType: 'cable',
           channelNumber: suggestion.channelNumber,
           channelName: suggestion.channelName,
