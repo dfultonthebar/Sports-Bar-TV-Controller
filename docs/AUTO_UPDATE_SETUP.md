@@ -176,18 +176,70 @@ only the first two exist.
 
 ## 4. Claude Code CLI dependency
 
-Auto-update requires the `claude` CLI to be installed, authenticated, and
-reachable from the cron environment. Pre-work 3 of `AUTO_UPDATE_SYSTEM_PLAN`
-covers the headless verification of this. Cron does NOT source `~/.bashrc`
-or `~/.profile`, so an `ANTHROPIC_API_KEY` set in those files is invisible
-to cron. The key MUST live in `/etc/environment` (system-wide, sourced by
-PAM and inherited by cron) or in a systemd `EnvironmentFile=` directive if
-the cron unit is replaced by a systemd timer. **If Pre-work 3 fails to
-confirm Claude Code works from a minimal cron-like environment, the
-auto-update feature cannot ship** — Claude Code is a required active monitor
-per user direction, not a post-hoc bonus check. See §5 of
-`AUTO_UPDATE_SYSTEM_PLAN.md` for the three checkpoints where Claude Code is
-invoked during a run.
+Auto-update requires the `claude` CLI to be installed and reachable from the
+cron environment. **Pre-work 3 is complete and PASSED** against the live
+Stoneyard host on 2026-04-13.
+
+### Empirical findings (Stoneyard, 2026-04-13)
+
+| Finding | Value |
+|---------|-------|
+| Binary path | `/home/ubuntu/.local/bin/claude` → `/home/ubuntu/.local/share/claude/versions/2.1.105` (symlink) |
+| Version | `2.1.105 (Claude Code)` |
+| Works with bare cron PATH (`/usr/bin:/bin`) | **No** — not on default cron PATH |
+| Works with `PATH=/home/ubuntu/.local/bin:/usr/bin:/bin` | **Yes** |
+| Needs `~/.bashrc` or `~/.profile` sourcing | **No** |
+| Needs interactive auth / TTY | **No** — prior session auth persists |
+| Needs `ANTHROPIC_API_KEY` env var | **No** — persistent login handles it |
+| Headless `claude -p "..."` response time | ~3-4 seconds for short prompts |
+| Structured JSON response | Works — `claude -p "Reply with JSON..."` returns valid JSON |
+
+### Required crontab configuration
+
+The only thing needed to make Claude Code work from cron on this host:
+
+```crontab
+SHELL=/bin/bash
+PATH=/home/ubuntu/.local/bin:/usr/bin:/bin
+30 2 * * *  ubuntu  /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh >> /home/ubuntu/sports-bar-data/logs/auto-update.log 2>&1
+```
+
+No API key export, no `source ~/.bashrc`, no wrapper script. Just set PATH at
+the top of the crontab and Claude Code resolves correctly in the sanitized
+environment cron provides.
+
+### Verification
+
+Run the diagnostic anytime (after system updates, Claude Code upgrades, or on
+new location deployments):
+
+```bash
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/test-claude-cron-env.sh
+```
+
+Expected output: `[TEST] Claude Code cron-env: PASS (4/4 checks)`.
+
+The script runs 4 checks: binary exists, resolves via cron-minimal PATH,
+headless `claude -p` returns expected text in under 60s, structured JSON
+response parses correctly. Per-check exit codes 10-14 let the operator
+diagnose which layer failed.
+
+### Per-location notes
+
+On new location deployments, verify Claude Code is installed in the same path
+(`/home/ubuntu/.local/bin/claude`). If the ISO differs and Claude Code lives
+elsewhere, update `CLAUDE_BIN` and `CRON_PATH` at the top of
+`scripts/test-claude-cron-env.sh` and re-run to confirm before enabling
+auto-update.
+
+### What "Pre-work 3 failed" would have looked like
+
+If this host had no authenticated Claude Code session, the headless call
+would have prompted for `/login` and hung — cron has no TTY, so the timeout
+would have fired and the auto-update would have failed at Checkpoint A
+before any state change. That's a soft-fail (safe), but it means operators
+must run `claude` interactively at least once on a fresh install to seed the
+auth cache before enabling auto-update.
 
 ---
 
