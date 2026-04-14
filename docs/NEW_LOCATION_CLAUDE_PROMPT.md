@@ -282,6 +282,34 @@ For headless hosts (no active login session), also run ONCE (needs sudo):
 Without enable-linger, the user systemd instance shuts down when the
 last login session ends and the timer never fires.
 
+## Step 10b — Install the PM2 systemd auto-start unit (REQUIRED)
+
+**Without this step, the app does not come back after a reboot.** We
+discovered this the hard way at Stoneyard Appleton: after a power cycle,
+PM2 had no processes running, the bartender remote returned Connection
+refused on both port 3001 and 3002, and the bar was down until an
+operator ran `pm2 resurrect` manually. The saved dump at
+`~/.pm2/dump.pm2` exists because we ran `pm2 save` earlier, but nothing
+was wired to invoke it on boot.
+
+Run this once, per host, after the first successful `pm2 save`:
+
+  sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu
+
+This installs `/etc/systemd/system/pm2-ubuntu.service`, enables it for
+`multi-user.target`, and from the next boot onward systemd will run
+`pm2 resurrect` at startup which restores whatever was in the saved
+dump (sports-bar-tv-controller + bartender-proxy).
+
+Verify:
+
+  systemctl status pm2-ubuntu
+  # Should show: Loaded: loaded (enabled; vendor preset: enabled)
+
+To regenerate the saved dump after a subsequent `pm2 start` /
+`pm2 restart` / adding a new process, just run `pm2 save` again —
+the systemd unit reads the dump on boot.
+
 ## Step 11 — Browser verification
 
 From a laptop or tablet on the same LAN, point a browser at:

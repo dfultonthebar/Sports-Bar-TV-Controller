@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
-import { invalidateRoutesCache } from '@/app/api/matrix/routes/route'
+import { updateRoutesCache } from '@/app/api/matrix/routes/route'
 
 
 export async function POST(request: NextRequest) {
@@ -67,10 +67,18 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Invalidate the /api/matrix/routes cache so the bartender remote's
-    // next GET returns a fresh query reflecting this new route, not the
-    // pre-change state the 10s TTL would otherwise hold.
-    invalidateRoutesCache()
+    // Update the /api/matrix/routes cache in-place with the new state we
+    // just applied, and refresh its TTL. This means the bartender remote's
+    // next poll (which fires every 15s while the Video or Routing tab is
+    // open) returns the already-correct state from cache and does NOT hit
+    // the Wolf Pack hardware again — eliminating the double-beep pattern
+    // where a click caused one beep for the route command itself and a
+    // second beep seconds later when the client polled and the cache was
+    // invalidated. We know the new state locally; no need to re-ask the
+    // Wolf Pack and no need for the o2ox read-query quirk to risk a
+    // 0xFFFF settling-window sentinel that could briefly blank the
+    // Routing tab checkmark.
+    updateRoutesCache(outputNum, inputNum)
 
     // Track routing in MatrixRoute table and set manual override for bartender changes
     try {

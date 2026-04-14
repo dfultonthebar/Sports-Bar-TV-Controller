@@ -439,6 +439,103 @@ deployment. As soon as the venue is live:
 ### Bartender remote won't load on port 3002
 → Start the nginx or node proxy. See `apps/web/bartender-proxy.js`.
 
+### Bartender remote returns Connection refused after a reboot
+→ The PM2 systemd auto-start unit was never installed. On the target
+  host run:
+
+    sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu
+
+  This installs `/etc/systemd/system/pm2-ubuntu.service`. Immediately
+  recover with `pm2 resurrect` which restores from `~/.pm2/dump.pm2`
+  (must be populated via a prior `pm2 save`). All new installs should
+  do this as part of the runbook — see
+  `docs/NEW_LOCATION_CLAUDE_PROMPT.md` Step 10b.
+
+### Wolf Pack beeps twice on every bartender route click
+→ Fixed in v2.5.x. Symptom: bartender taps to route an input to an
+  output, Wolf Pack beeps for the route command (expected), then beeps
+  again ~5 seconds later for seemingly no reason. The second beep was
+  our `/api/matrix/routes` cache being invalidated on the successful
+  POST, forcing the next 15s poll to re-query the hardware. Fix: the
+  POST handler now calls `updateRoutesCache(outputNum, inputNum)`
+  instead of `invalidateRoutesCache()`, mutating the cached entry in
+  place with the already-known new state and refreshing the TTL so the
+  next poll returns cached data without touching the Wolf Pack.
+
+  If you still see double-beeps, either the cache wasn't populated yet
+  (first route after a restart, expected once) or there are multiple
+  clients hitting the endpoint simultaneously. Check
+  `/api/matrix/routes` returns `"source":"cache-hit"` on back-to-back
+  GETs within the 30s TTL.
+
+### Routing tab checkmark disappears for a few seconds after a click
+→ Fixed in v2.5.x alongside the double-beep. Symptom: click to route
+  an input to an output, the green checkmark appears briefly, then
+  disappears, then reappears 10–15 seconds later. This was the Wolf
+  Pack's 0xFFFF "settling window" sentinel leaking through: for ~500ms
+  after a route command, the read-only `o2ox` query can return 65535
+  for the just-changed output, which our server normalizes to -1 and
+  filters out of the response. The client then did a fresh
+  `new Map()` replace and any output missing from the response got
+  dropped from `currentSources`, blanking the checkmark.
+
+  Fix: `loadCurrentRoutes()` now MERGES into the existing map rather
+  than replacing — missing outputs preserve their last-known value.
+
+  Combined with the beep-fix above, a bartender click now fires one
+  beep (the actual route), updates the UI instantly from local state,
+  and the next 30s of polls are cache-hits with no Wolf Pack traffic.
+
+### Samsung TV keeps turning itself off
+Investigate in this order, easiest first:
+
+1. **Eco Solution settings** (most common). Samsung → **Settings** →
+   **General** → **System Manager** → **Eco Solution**. Turn OFF:
+   - **Auto Power Off** (time-based N-hour idle shutoff)
+   - **No Signal Power Off** (shuts down on black HDMI input; default
+     ~15 min on 2021+ models)
+   - **Ambient Light Detection** (dims then offs in dark rooms)
+
+2. **Time menu schedules**. Samsung → **Settings** → **System** (or
+   **General**) → **Time**. Turn OFF:
+   - **Sleep Timer** (one-shot N-minute countdown — easy to leave on
+     accidentally via the remote)
+   - **On/Off Timer** (daily schedule — can shut off at 2 AM even in
+     mid-service)
+
+3. **Anynet+ (HDMI-CEC)**. Samsung → **Settings** → **General** →
+   **External Device Manager** → **Anynet+ (HDMI-CEC)** → **Off**.
+   With Anynet+ on, the TV follows CEC standby messages from the
+   Wolf Pack matrix or any cable box in the chain. Some Wolf Pack
+   firmwares emit CEC standby when a routing change happens, which
+   will power-cycle every TV with Anynet+ enabled.
+
+4. **Our app is sending unwanted commands**. Grep the PM2 log:
+
+       grep -E '10\.40\.10\.X' /home/ubuntu/.pm2/logs/sports-bar-tv-controller-out.log | \
+         grep -E 'Power toggle|KEY_POWER|bulk-power'
+
+   Count the entries. A `KEY_POWER` is a TOGGLE on Samsung, so if our
+   app sends it when the TV is on the TV turns off. Look for patterns
+   that don't correspond to operator-initiated bulk-power or per-TV
+   taps.
+
+5. **`sendKey('KEY_POWER')` vs `sendKey('KEY_POWEROFF')`**. Samsung's
+   `sendKey` API does NOT expose a non-toggle `KEY_POWEROFF` —
+   `KEY_POWER` is the only verb and it's a toggle. For explicit "off"
+   the bulk-power route uses `KEY_POWER` with a pre-probe against
+   `/api/v2/`. For explicit "on" it now delegates to
+   `SamsungTVClient.powerOn()` which sends WoL first and then a
+   conditional `KEY_POWER` only if the post-WoL probe reports
+   `standby`. See commit `946655e4`.
+
+### Fire TV `adb connect` shows "unauthorized" after every reboot
+→ The host's `~/.android/adbkey` was deleted or the filesystem is
+  ephemeral. Each Fire TV's authorization is keyed to the host's RSA
+  key pair — wipe the keys, every TV re-prompts. Preserve
+  `~/.android/adbkey` and `~/.android/adbkey.pub` across any OS
+  reinstall. See §8a "Install and authorize ADB for Fire TV control".
+
 ## Quick reference
 
 - **Admin login** → `/login` with the admin PIN

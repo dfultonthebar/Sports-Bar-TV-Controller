@@ -56,15 +56,46 @@ const CACHE_TTL_MS = 30_000
 
 /**
  * Invalidate the cache for a specific chassis IP, or all chassis if no IP is
- * provided. Exported so POST /api/matrix/route can call it after a successful
- * route change — the next GET will then query the hardware for fresh state
- * instead of returning the pre-change cache.
+ * provided. Prefer `updateRoutesCache()` when you already know the post-change
+ * state — invalidation forces the next GET to hit hardware, which means another
+ * login + o2ox round trip and another audible Wolf Pack beep. Only use this
+ * when the new state is unknowable (e.g., out-of-band firmware error).
  */
 export function invalidateRoutesCache(chassisIp?: string): void {
   if (chassisIp) {
     cache.delete(chassisIp)
   } else {
     cache.clear()
+  }
+}
+
+/**
+ * Update the cached routes in place with a single output→input change and
+ * refresh the TTL. Called by POST /api/matrix/route after a successful route
+ * so the next GET returns the post-change state from cache without re-querying
+ * the Wolf Pack. This kills the "beep on click, beep again 5 seconds later
+ * when the UI polls" double-beep pattern.
+ *
+ * If the cache is empty for this chassis (e.g., first-ever route after a
+ * restart), the update is a no-op and the next GET will populate fresh.
+ * We don't create a cache entry out of a single-route update because we don't
+ * know the full state of the other 35 outputs — better to let the next query
+ * populate everything.
+ */
+export function updateRoutesCache(outputNum: number, inputNum: number): void {
+  const now = Date.now()
+  for (const [, cached] of cache.entries()) {
+    const idx = cached.routes.findIndex(r => r.outputNum === outputNum)
+    const entry = { inputNum, outputNum, isActive: true as const }
+    if (idx >= 0) {
+      cached.routes[idx] = entry
+    } else {
+      cached.routes.push(entry)
+    }
+    // Refresh expiry so the updated cache lives for a full TTL from this
+    // known-good state. Without this, an old entry that was about to expire
+    // would force the next poll to re-query hardware.
+    cached.expiry = now + CACHE_TTL_MS
   }
 }
 
