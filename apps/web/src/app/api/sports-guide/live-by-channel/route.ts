@@ -20,225 +20,7 @@ import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { fetchDirecTVGuide } from '@/lib/directv-guide-service'
 import { getDirecTVDeviceFromConfig } from '@/lib/directv-device-loader'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
-
-// DirecTV channel mapping for broadcast networks
-const NETWORK_TO_DIRECTV: Record<string, string> = {
-  // ESPN family
-  'ESPN': '206',
-  'ESPN2': '209',
-  'ESPNU': '208',
-  'ESPNEWS': '207',
-  'ESPN+': '206',
-  'ESPN Deportes': '466',
-
-  // Fox Sports
-  'FOX': '11',  // Local Fox
-  'FS1': '219',
-  'FS2': '618',
-  'FOX Sports 1': '219',
-  'FOX Sports 2': '618',
-  'Fox Deportes': '463',
-  'FOX Deportes': '463',
-
-  // CBS/NBC
-  'CBS': '5',  // Local CBS
-  'NBC': '2',  // Local NBC
-  'CBS Sports Network': '221',
-  'CBSSN': '221',
-  'Peacock': '206', // Fallback - games on Peacock often simulcast
-
-  // Turner
-  'TNT': '245',
-  'TBS': '247',
-  'truTV': '246',
-  'TruTV': '246',
-
-  // Other sports
-  'NFL Network': '212',
-  'NFL RedZone': '211',
-  'Red Zone': '211',
-  'NFLN': '212',
-  'NBA TV': '216',
-  'NBATV': '216',
-  'MLB Network': '213',
-  'MLBN': '213',
-  'NHL Network': '215',
-  'NHLN': '215',
-  'Big Ten Network': '610',
-  'BTN': '610',
-  'SEC Network': '611',
-  'SECN': '611',
-  'ACC Network': '612',
-  'ACCN': '612',
-  'Pac-12 Network': '613',
-  'Pac-12': '613',
-
-  // USA Network (for sports)
-  'USA': '242',
-  'USA Network': '242',
-
-  // Golf
-  'Golf Channel': '218',
-  'Golf': '218',
-  'GOLF': '218',
-
-  // Tennis
-  'Tennis Channel': '217',
-  'Tennis': '217',
-  'TENNIS': '217',
-
-  // Racing
-  'NBCSN': '220',
-  'NBC Sports': '220',
-
-  // Soccer
-  'beIN Sports': '620',
-  'beIN SPORTS': '620',
-  'BEIN': '620',
-  'Fox Soccer': '619',
-  'FOX Soccer Plus': '619',
-  'Univision': '402',
-  'TUDN': '464',
-
-  // Bally / Fan Duel Sports (RSNs)
-  'Bally Sports North': '668.1',
-  'Fan Duel Sports North': '668.1',
-  'FanDuel SN North': '668.1',
-  'FanDuel Sports North': '668.1',
-  'FDNOR': '668.1',
-  // Channel 669 = Fan Duel Sports WI on DirecTV (Bucks, general sports)
-  'Bally Sports Wisconsin': '669',
-  'Fan Duel Sports Wisconsin': '669',
-  'FanDuel SN WI': '669',
-  'FanDuel Sports WI': '669',
-  'FanDuel SN Wisconsin': '669',
-  'FOX Sports Wisconsin': '669',
-  'Bucks.TV': '669',
-  // Brewers use a separate channel on DirecTV
-  'Brewers.TV': '669',
-
-  // Local stations (Green Bay area)
-  'TV32': '32',
-  'WACY': '32',
-  'WBAY': '2',
-  'WFRV': '5',
-  'WLUK': '11',
-  'WCWF': '14',
-  'WGBA': '26',
-
-  // Streaming (map to likely simulcast channels)
-  'Amazon Prime Video': '9550',  // Thursday Night Football
-  'Prime Video': '9550',
-  'Apple TV+': '9528',
-  'Paramount+': '247',  // Often simulcasts CBS games
-}
-
-// Cable (Spectrum) channel mapping for broadcast networks
-// Green Bay area Spectrum channel numbers (Holmgren Way)
-const NETWORK_TO_CABLE: Record<string, string> = {
-  // ESPN family
-  'ESPN': '27',
-  'ESPN2': '28',
-  'ESPNU': '303',
-  'ESPNEWS': '305',
-  'ESPN+': '27',
-
-  // Fox Sports
-  'FOX': '12',   // Local Fox (WLUK-TV channel 12 on Spectrum Green Bay)
-  'FS1': '75',
-  'FS2': '328',
-  'FOX Sports 1': '75',
-  'FOX Sports 2': '328',
-
-  // CBS/NBC/ABC
-  'CBS': '6',    // Local CBS (WFRV channel 6 on Spectrum Green Bay)
-  'NBC': '13',   // Local NBC (WGBA channel 13 on Spectrum Green Bay)
-  'ABC': '3',    // Local ABC (WBAY channel 3 on Spectrum Green Bay)
-  'CBS Sports Network': '322',
-  'CBSSN': '322',
-  'Peacock': '38',
-  'NBC Sports': '38',
-  'NBCSN': '38',
-
-  // Turner
-  'TNT': '29',
-  'TBS': '25',
-  'truTV': '74',
-  'TruTV': '74',
-
-  // Other sports
-  'NBA TV': '325',
-  'NBATV': '325',
-  'MLB Network': '326',
-  'MLBN': '326',
-  'NHL Network': '324',
-  'NHLN': '324',
-  'Big Ten Network': '39',
-  'BTN': '39',
-  'SEC Network': '65',
-  'SECN': '65',
-
-  // USA Network (for sports)
-  'USA': '53',
-  'USA Network': '53',
-
-  // Golf
-  'Golf Channel': '14',
-  'Golf': '14',
-  'GOLF': '14',
-
-  // Soccer
-  'beIN Sports': '337',
-  'beIN SPORTS': '337',
-  'BEIN': '337',
-
-  // Bally / Fan Duel Sports (RSNs)
-  'Bally Sports North': '310',
-  'Fan Duel Sports North': '310',
-  'FanDuel SN North': '310',
-  'FanDuel Sports North': '310',
-  'FDNOR': '310',
-  // Channel 40 = Fan Duel Sports WI (Bucks, general sports)
-  'Bally Sports Wisconsin': '40',
-  'Fan Duel Sports Wisconsin': '40',
-  'FanDuel SN WI': '40',
-  'FanDuel Sports WI': '40',
-  'FanDuel SN Wisconsin': '40',
-  'FOX Sports Wisconsin': '40',
-  'FSWI': '40',
-  'Bucks.TV': '40',
-  // Channel 308 = Brewers / Bally Sports WI+ feed on Spectrum Green Bay
-  'Brewers.TV': '308',
-  'Bally Sports WI+': '308',
-  'Bally Sports Wisconsin+': '308',
-  'FanDuel SN WI+': '308',
-  'FanDuel Sports WI+': '308',
-  'Fox Sports Prime': '339',
-
-  // Local stations (Green Bay area on Spectrum)
-  'WBAY': '3',    // ABC
-  'WFRV': '6',    // CBS
-  'WCWF': '10',   // CW
-  'WLUK': '12',   // FOX
-  'WLUK-TV': '12',
-  'WGBA': '13',   // NBC
-  'WACY': '83',   // MyNetworkTV
-  'WACY-TV': '83',
-}
-
-// Function to get the appropriate channel mapping based on device type
-function getNetworkMapping(deviceType: string): Record<string, string> {
-  return deviceType === 'cable' ? NETWORK_TO_CABLE : NETWORK_TO_DIRECTV
-}
-
-// Reverse mapping: DirecTV channel to network names (for matching)
-const DIRECTV_TO_NETWORKS: Record<string, string[]> = {}
-for (const [network, channel] of Object.entries(NETWORK_TO_DIRECTV)) {
-  if (!DIRECTV_TO_NETWORKS[channel]) {
-    DIRECTV_TO_NETWORKS[channel] = []
-  }
-  DIRECTV_TO_NETWORKS[channel].push(network.toLowerCase())
-}
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // Sports to fetch from ESPN - OPTIMIZED for sports bar relevance
 // Reduced from 40+ to 15 core sports for faster response times
@@ -327,9 +109,6 @@ export async function GET(request: NextRequest) {
     // Build channel game map from ESPN data
     const channelGameMap: Record<string, any> = {}
 
-    // Get the appropriate network-to-channel mapping for this device type
-    const networkMapping = getNetworkMapping(deviceType)
-
     // Fetch games from ESPN for all major sports IN PARALLEL for performance
     const sportResults = await Promise.allSettled(
       ESPN_SPORTS.map(async (sportConfig) => {
@@ -338,7 +117,10 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    // Process results
+    // Process results — resolve channel via the shared DB-backed helper
+    // (`resolveChannelsForGame`), which walks presets → station aliases →
+    // local_channel_overrides and preserves the Wisconsin RSN split
+    // (FanDuelWI ch 40 Bucks vs BallyWIPlus ch 308 Brewers).
     for (const result of sportResults) {
       if (result.status === 'rejected') {
         // Error already logged by ESPN API
@@ -353,49 +135,46 @@ export async function GET(request: NextRequest) {
 
         // Get broadcast networks
         const networks = espnScoreboardAPI.getAllNetworks(game)
+        if (!networks || networks.length === 0) continue
+        const primaryNetwork = networks[0] ?? null
 
-        // Map each network to channel based on device type
-        for (const network of networks) {
-          let channelNumber = networkMapping[network]
+        // Resolve to channel for this device type
+        const resolved = await resolveChannelsForGame(
+          {
+            networks,
+            primaryNetwork,
+            league: sportConfig.league,
+            sport: sportConfig.sport,
+          },
+          [deviceType]
+        )
+        const channelNumber = deviceType === 'cable' ? resolved.cableChannel : resolved.directvChannel
+        if (!channelNumber) continue
 
-          if (!channelNumber) {
-            // Try case-insensitive match
-            const lowerNetwork = network.toLowerCase()
-            for (const [key, value] of Object.entries(networkMapping)) {
-              if (key.toLowerCase() === lowerNetwork) {
-                channelNumber = value
-                break
-              }
-            }
+        // Skip if not in our presets
+        if (!presetChannels.has(channelNumber)) continue
+
+        // Skip if specific channels requested and this isn't one
+        if (channelList.length > 0 && !channelList.includes(channelNumber)) continue
+
+        // Only keep the most relevant game for each channel (prefer live games)
+        const existingGame = channelGameMap[channelNumber]
+        if (existingGame) {
+          const existingIsLive = existingGame.liveData?.isLive
+          const newIsLive = espnScoreboardAPI.isLive(game)
+
+          // Keep live game over scheduled game
+          if (existingIsLive && !newIsLive) continue
+
+          // Keep earlier scheduled game
+          if (!existingIsLive && !newIsLive) {
+            const existingTime = new Date(existingGame.startTime).getTime()
+            const newTime = new Date(game.date).getTime()
+            if (existingTime < newTime) continue
           }
-
-          if (!channelNumber) continue
-
-          // Skip if not in our presets
-          if (!presetChannels.has(channelNumber)) continue
-
-          // Skip if specific channels requested and this isn't one
-          if (channelList.length > 0 && !channelList.includes(channelNumber)) continue
-
-          // Only keep the most relevant game for each channel (prefer live games)
-          const existingGame = channelGameMap[channelNumber]
-          if (existingGame) {
-            const existingIsLive = existingGame.liveData?.isLive
-            const newIsLive = espnScoreboardAPI.isLive(game)
-
-            // Keep live game over scheduled game
-            if (existingIsLive && !newIsLive) continue
-
-            // Keep earlier scheduled game
-            if (!existingIsLive && !newIsLive) {
-              const existingTime = new Date(existingGame.startTime).getTime()
-              const newTime = new Date(game.date).getTime()
-              if (existingTime < newTime) continue
-            }
-          }
-
-          channelGameMap[channelNumber] = buildGameData(game, sportConfig.name, channelNumber)
         }
+
+        channelGameMap[channelNumber] = buildGameData(game, sportConfig.name, channelNumber)
       }
     }
 

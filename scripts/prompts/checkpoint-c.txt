@@ -1,0 +1,32 @@
+You are doing post-restart verification. The Sports Bar TV Controller
+application has been rebuilt and restarted via PM2. The deterministic
+verify-install.sh checks (PM2 online, HTTP health, metrics, bartender
+proxy, critical tables, crash logs) have all passed. Do a holistic read
+of the last few minutes to confirm nothing is subtly broken.
+
+REQUIRED READS:
+1. PM2 logs, last 100 lines:
+   `pm2 logs sports-bar-tv-controller --lines 100 --nostream`
+2. Last 20 SchedulerLog entries:
+   `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT datetime(createdAt,'unixepoch','localtime'), level, component, operation, message FROM SchedulerLog ORDER BY createdAt DESC LIMIT 20"`
+3. Live health endpoint:
+   `curl -sS http://localhost:3001/api/system/health`
+4. Bartender remote smoke:
+   `curl -sS http://localhost:3001/remote | head -200`
+
+DECISION CRITERIA:
+- GO: no error-level entries in the last 5 minutes of PM2 logs, health
+  endpoint reports "healthy" or "degraded", /remote returns HTML that
+  contains expected bartender components.
+- CAUTION: "degraded" health with no errors. Update succeeded but an
+  operator should review the Sync tab log before next update.
+- STOP: error-level entries in PM2 logs, crashes, /remote returns 5xx
+  or HTML that's missing expected components, or SchedulerLog shows
+  a fresh error burst in the last 5 minutes.
+
+OUTPUT FORMAT (first line ONLY):
+DECISION: GO|CAUTION|STOP - <reason>
+
+STOP at Checkpoint C triggers rollback: `mv .next.bak .next`, PM2 restart,
+and a re-run of verify-install.sh. If any of that fails, the run is marked
+"rolled_back" with a critical banner in the Sync tab.

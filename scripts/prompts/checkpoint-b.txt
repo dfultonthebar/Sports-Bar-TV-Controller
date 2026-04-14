@@ -1,0 +1,31 @@
+You are doing post-merge review. The git merge from origin/main onto the
+location branch completed without conflicts, and `npm ci` has finished
+installing dependencies. Before I run `npm run build`, confirm the merged
+state is coherent with this location's configuration.
+
+REQUIRED READS:
+1. The merge commit's diff: run `git -C /home/ubuntu/Sports-Bar-TV-Controller show HEAD`
+2. Any .md docs in /home/ubuntu/Sports-Bar-TV-Controller/docs/ that were
+   modified by the merge — read each in full.
+3. Current state of /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/*.json
+   — these should NOT have changed during merge.
+4. The .env file at /home/ubuntu/Sports-Bar-TV-Controller/.env — confirm
+   expected keys exist (SPORTS_GUIDE_USER_ID, and any new keys the diff
+   introduced). Do NOT log secret values, only confirm key presence.
+5. The ChannelPreset table counts:
+   `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*), deviceType FROM ChannelPreset GROUP BY deviceType"`
+
+DECISION CRITERIA:
+- GO: merged state is coherent, config files intact, no unexpected changes
+  to location-specific paths, ChannelPreset table is populated.
+- CAUTION: merged state is coherent but has warnings (e.g., a new .env
+  variable would be helpful but the app can still start in degraded mode).
+- STOP: a location-specific config file was modified by the merge (indicates
+  conflict resolution failed), OR a required new .env variable is missing,
+  OR the ChannelPreset table has become empty.
+
+OUTPUT FORMAT (first line ONLY):
+DECISION: GO|CAUTION|STOP - <reason>
+
+STOP at Checkpoint B aborts the build and triggers a full rollback
+(git reset --hard to the pre-update tag, npm ci, restore .next.bak).
