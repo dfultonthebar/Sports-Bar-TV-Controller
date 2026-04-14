@@ -14,6 +14,13 @@ import { logger } from '@sports-bar/logger'
 // LocalStorage keys for persisting meter toggle settings
 const METERS_OUTPUT_KEY = 'bartender-audio-meters-output-enabled'
 const METERS_INPUT_KEY = 'bartender-audio-meters-input-enabled'
+// LocalStorage key for the expand/collapse state of the meters panel itself.
+// Default is collapsed — bartenders rarely need to see the meters, and having
+// them visible by default forces more vertical scrolling on iPad viewports
+// and also triggers continuous WebSocket traffic to the Atlas processor that
+// isn't needed unless someone is actively watching levels. Operators who DO
+// want meters open can click the header once and the state persists.
+const METERS_EXPANDED_KEY = 'bartender-audio-meters-expanded'
 
 interface HTDDevice {
   id: string
@@ -41,7 +48,7 @@ export default function BartenderRemoteAudioPanel({
   zoneControlsComponent,
   showMeters = true
 }: BartenderRemoteAudioPanelProps) {
-  const [metersExpanded, setMetersExpanded] = useState(true)
+  const [metersExpanded, setMetersExpanded] = useState(false)
   const [outputMetersEnabled, setOutputMetersEnabled] = useState(true)
   const [inputMetersEnabled, setInputMetersEnabled] = useState(true)
 
@@ -98,16 +105,29 @@ export default function BartenderRemoteAudioPanel({
     }
   }
 
-  // Load saved meter toggle preferences from localStorage
+  // Load saved meter toggle + expansion preferences from localStorage
   useEffect(() => {
     const savedOutput = localStorage.getItem(METERS_OUTPUT_KEY)
     const savedInput = localStorage.getItem(METERS_INPUT_KEY)
+    const savedExpanded = localStorage.getItem(METERS_EXPANDED_KEY)
     if (savedOutput !== null) setOutputMetersEnabled(savedOutput === 'true')
     if (savedInput !== null) setInputMetersEnabled(savedInput === 'true')
+    // Default is collapsed — only honor the saved value if it was explicitly
+    // set to 'true'. A missing key stays at the initial useState(false).
+    if (savedExpanded === 'true') setMetersExpanded(true)
 
     // Fetch HTD settings
     fetchHTDSettings()
   }, [fetchHTDSettings])
+
+  // Save meter expansion state so bartenders who open the panel stay opened.
+  const toggleMetersExpanded = () => {
+    setMetersExpanded(prev => {
+      const next = !prev
+      localStorage.setItem(METERS_EXPANDED_KEY, String(next))
+      return next
+    })
+  }
 
   // Save output meter preference
   const handleOutputToggle = (enabled: boolean) => {
@@ -145,7 +165,7 @@ export default function BartenderRemoteAudioPanel({
             {showMeters && (
               <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
                 <button
-                  onClick={() => setMetersExpanded(!metersExpanded)}
+                  onClick={toggleMetersExpanded}
                   className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                 >
                   <h3 className="text-lg font-bold flex items-center bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">
