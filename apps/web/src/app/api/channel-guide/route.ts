@@ -16,87 +16,35 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import {
+  getStationToPresetMaps,
+  resolveChannelsForNetworks,
+  findLocalChannelOverride,
+  getStreamingAppInfoForStation,
+  normalizeStation,
+} from '@/lib/network-channel-resolver'
 export const dynamic = 'force-dynamic'
 
-// Module-level cache for station aliases loaded from DB
-let _cachedStationAliases: Record<string, string[]> | null = null
-let _stationAliasesCacheTime = 0
-const STATION_ALIASES_TTL_MS = 5 * 60 * 1000 // 5 minutes
+// NFHS Network packages for detecting if device has NFHS login.
+// Kept local (not in shared resolver) because NFHS detection uses the package
+// list directly to check against device login status, not station-code lookup.
+const NFHS_PACKAGES = ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive']
 
-async function loadStationAliases(): Promise<Record<string, string[]>> {
-  const now = Date.now()
-  if (_cachedStationAliases && (now - _stationAliasesCacheTime) < STATION_ALIASES_TTL_MS) {
-    return _cachedStationAliases
-  }
-
-  try {
-    const { db } = await import('@/db')
-    const { schema } = await import('@/db')
-    const rows = await db.select().from(schema.stationAliases)
-
-    const aliasMap: Record<string, string[]> = {}
-    for (const row of rows) {
-      aliasMap[row.standardName] = JSON.parse(row.aliases)
-    }
-
-    _cachedStationAliases = aliasMap
-    _stationAliasesCacheTime = now
-    logger.info(`[Channel-Guide-API] Loaded ${rows.length} station alias entries from DB`)
-    return aliasMap
-  } catch (error) {
-    logger.error(`[Channel-Guide-API] Failed to load station aliases from DB, using cached or empty`, error)
-    // Return cached data if available, otherwise empty object
-    return _cachedStationAliases || {}
-  }
-}
-
-// Cache for local channel overrides (5-minute TTL)
-let _overridesCache: { data: { teamName: string; channelNumber: number; channelName: string }[]; ts: number } | null = null
-const OVERRIDES_TTL = 5 * 60 * 1000 // 5 minutes
-
-async function getLocalChannelOverrides(): Promise<{ teamName: string; channelNumber: number; channelName: string }[]> {
-  if (_overridesCache && Date.now() - _overridesCache.ts < OVERRIDES_TTL) {
-    return _overridesCache.data
-  }
+// Per-request fetch of local_channel_overrides rows — needed because the
+// override-injection block uses channelName (which the shared helper does not
+// expose). The shared helper has its own 5-min cache for the channel-number
+// lookup; this DB call returns the row-level data alongside it.
+async function getLocalChannelOverrideRows(): Promise<{ teamName: string; channelNumber: number; channelName: string }[]> {
   const { db } = await import('@/db')
   const { schema } = await import('@/db')
   const { eq } = await import('drizzle-orm')
   const rows = await db.select().from(schema.localChannelOverrides)
     .where(eq(schema.localChannelOverrides.isActive, true))
-  const data = rows.map(r => ({
+  return rows.map(r => ({
     teamName: r.teamName,
     channelNumber: r.channelNumber,
     channelName: r.channelName,
   }))
-  _overridesCache = { data, ts: Date.now() }
-  return data
-}
-
-// Streaming station codes to app mapping for Fire TV devices
-const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
-  'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
-  'NHLCI': { appName: 'NHL Center Ice', packages: ['com.nhl.gc', 'com.nhl.gc1415'] },
-  'MLBEI': { appName: 'MLB.TV', packages: ['com.mlb.android', 'com.mlb.atbat'] },
-  'ESPND': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'ESPN+': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'NBCUN': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PEACOCK': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PRIME': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'AMZN': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'FOXD': { appName: 'Fox Sports', packages: ['com.foxsports.android', 'com.foxsports.android.foxsportsgo'] },
-  'APPLETV': { appName: 'Apple TV+', packages: ['com.apple.atve.amazon.appletv'] },
-  'MLSDK': { appName: 'MLS Season Pass', packages: ['tv.mls', 'com.apple.atve.amazon.appletv'] },
-  'BSNOR+': { appName: 'Bally Sports', packages: ['com.bfrapp', 'com.ballysports.ftv'] },
-  'B10+': { appName: 'Big Ten+', packages: ['com.foxsports.bigten.android'] },
-  'NFHS': { appName: 'NFHS Network', packages: ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive'] },
-}
-
-// NFHS Network packages for detecting if device has NFHS login
-const NFHS_PACKAGES = ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive']
-
-// Get streaming app info for a station code
-function getStreamingAppInfo(station: string): { appName: string; packages: string[] } | null {
-  return STREAMING_STATION_MAP[station.toUpperCase()] || null
 }
 
 interface DeviceGuideRequest {
@@ -196,46 +144,21 @@ export async function POST(request: NextRequest) {
 
       logInfo(`Loaded ${presets.length} ${presetDeviceType} channel presets`)
 
-      // Build station name -> channel mapping (normalized names)
-      // Map common variations: ESPN, ESPN2, FS1, Fox Sports 1, B10, Big Ten Network, etc.
-      const stationToPreset = new Map<string, { channelNumber: string; name: string }>()
+      // Build station-name -> channel-number lookup via the shared resolver.
+      // The helper handles normalization, alias-bundle matching, and the
+      // Wisconsin RSN split (FanDuelWI ch 40 vs BallyWIPlus ch 308) — see
+      // packages/.../network-channel-resolver.ts and CLAUDE.md.
+      const { stationToCable, stationToDirectv } = await getStationToPresetMaps()
+      const stationLookup = presetDeviceType === 'directv' ? stationToDirectv : stationToCable
 
-      // Load station aliases from database (cached with 5-minute TTL)
-      const stationAliases = await loadStationAliases()
-
-      // Normalize station names for matching
-      function normalizeStation(name: string): string {
-        return name.toUpperCase()
-          .replace(/\s+/g, '')
-          .replace(/-TV$/i, '')   // WLUK-TV, WGBA-TV → WLUK, WGBA
-          .replace(/-/g, '')
-          .replace(/HD$/i, '')
-          .replace(/NETWORK$/i, '')
-          .replace(/CHANNEL$/i, '')
+      // Local channelNumber -> preset name map for downstream channelInfo
+      // construction (the helper map only returns channel numbers).
+      const channelNumberToPresetName = new Map<string, string>()
+      for (const p of presets) {
+        channelNumberToPresetName.set(p.channelNumber, p.name)
       }
 
-      // Build preset lookup
-      for (const preset of presets) {
-        const normalizedName = normalizeStation(preset.name)
-        stationToPreset.set(normalizedName, {
-          channelNumber: preset.channelNumber,
-          name: preset.name
-        })
-
-        // Also add by variations in preset name
-        for (const [standard, aliases] of Object.entries(stationAliases)) {
-          for (const alias of aliases) {
-            if (normalizeStation(alias) === normalizedName) {
-              stationToPreset.set(standard.toUpperCase(), {
-                channelNumber: preset.channelNumber,
-                name: preset.name
-              })
-            }
-          }
-        }
-      }
-
-      logInfo(`Built station lookup with ${stationToPreset.size} entries`)
+      logInfo(`Built station lookup with ${stationLookup.size} entries`)
 
       // NOW: Fetch guide data from Rail API
       const api = getSportsGuideApi()
@@ -256,38 +179,25 @@ export async function POST(request: NextRequest) {
           const channelNumbers = listing.channel_numbers?.[lineupKey]
           if (!channelNumbers) continue
 
-          // Get all stations and try to match them to presets
+          // Get all stations and try to match them to presets via the shared
+          // resolver lookup (handles normalization + aliases + WI RSN split).
           for (const [station, channelNums] of Object.entries(channelNumbers)) {
             const numArray = channelNums as (number | string)[]
             if (!numArray || numArray.length === 0) continue
 
-            // Try to find this station in user's presets
-            const normalizedStation = station.toUpperCase()
-            let presetMatch = stationToPreset.get(normalizedStation)
-
-            // Try aliases if direct match fails
-            if (!presetMatch) {
-              for (const [standard, aliases] of Object.entries(stationAliases)) {
-                if (aliases.some(a => normalizeStation(a) === normalizedStation)) {
-                  presetMatch = stationToPreset.get(standard.toUpperCase())
-                  if (presetMatch) break
-                }
-              }
-            }
-
-            // If no preset match, track and skip
-            if (!presetMatch) {
+            const userChannelNumber = stationLookup.get(normalizeStation(station))
+            if (!userChannelNumber) {
               unmatchedStations.add(station)
               continue
             }
 
+            const presetName = channelNumberToPresetName.get(userChannelNumber) || station
             matchedCount++
-            const userChannelNumber = presetMatch.channelNumber
 
             // Create channel info using USER's channel number
             const channelInfo = {
               id: `${deviceType}-${userChannelNumber}`,
-              name: presetMatch.name,
+              name: presetName,
               number: userChannelNumber,
               type: deviceType,
               cost: 'subscription',
@@ -295,7 +205,7 @@ export async function POST(request: NextRequest) {
               channelNumber: userChannelNumber,
               deviceType: deviceType,
               station: station,
-              presetName: presetMatch.name
+              presetName: presetName
             }
             channels.set(channelInfo.id, channelInfo)
 
@@ -339,20 +249,32 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Local channel overrides: inject local channels for teams with business carriage deals
-      // Loaded from DB table local_channel_overrides (cached 5-min TTL)
-      const localOverrides = await getLocalChannelOverrides()
+      // Local channel overrides: inject local channels for teams with business carriage deals.
+      // Row data (channelName + channelNumber) comes from a direct DB query;
+      // the team-name match itself goes through the shared resolver's
+      // findLocalChannelOverride() so the normalization rules stay in one place.
+      const localOverrideRows = await getLocalChannelOverrideRows()
 
-      if (deviceType !== 'satellite') {
+      if (deviceType !== 'satellite' && localOverrideRows.length > 0) {
         // Scan ALL listings (not just matched ones) for local override teams
         for (const group of guide.listing_groups || []) {
           for (const listing of group.listings || []) {
             const homeTeam = listing.data?.['home team'] || listing.data?.['team'] || ''
             const awayTeam = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+            if (!homeTeam.trim() && !awayTeam.trim()) continue
 
-            for (const override of localOverrides) {
-              if (!homeTeam.includes(override.teamName) && !awayTeam.includes(override.teamName)) continue
-              if (!homeTeam.trim() && !awayTeam.trim()) continue
+            // Use the shared helper to check both team names against the
+            // overrides table (it normalizes + does bidirectional substring match).
+            const homeOverride = homeTeam ? await findLocalChannelOverride(homeTeam) : null
+            const awayOverride = awayTeam ? await findLocalChannelOverride(awayTeam) : null
+            const cableOverrideChannel = homeOverride?.cable || awayOverride?.cable
+            if (!cableOverrideChannel) continue
+            const channelNumberInt = parseInt(cableOverrideChannel, 10)
+            if (Number.isNaN(channelNumberInt)) continue
+
+            // Loop kept for compatibility with original "for each override"
+            // structure — but we now resolve via the helper above.
+            for (const override of localOverrideRows.filter(o => o.channelNumber === channelNumberInt)) {
 
               // Check if this game already has a program entry on ch 308
               const alreadyHas308 = programs.some(p =>
@@ -416,8 +338,8 @@ export async function POST(request: NextRequest) {
       // RSN broadcasts — it omits many MLB/NBA/NHL games that air on team-specific
       // streaming/RSN feeds (e.g. Brewers @ Nationals on Brewers.TV). We query our
       // own ESPN-synced game_schedules table and inject any games whose
-      // broadcast_networks can be resolved to a user preset via the same
-      // stationToPreset map we already built.
+      // broadcast_networks can be resolved to a user preset via the shared
+      // network-channel-resolver helper.
       try {
         const { db } = await import('@/db')
         const { schema } = await import('@/db')
@@ -453,39 +375,23 @@ export async function POST(request: NextRequest) {
           } catch {
             broadcastNetworks = []
           }
-          // Include primary network first in the walk order
-          if (game.primaryNetwork && !broadcastNetworks.includes(game.primaryNetwork)) {
-            broadcastNetworks.unshift(game.primaryNetwork)
-          }
 
-          // Walk the networks array and find the first one that maps to a preset
-          let resolvedPreset: { channelNumber: string; name: string } | undefined
-          let matchedStation = ''
-          for (const network of broadcastNetworks) {
-            if (!network) continue
-            const normalizedNetwork = normalizeStation(network)
-            // Direct preset lookup
-            let hit = stationToPreset.get(normalizedNetwork)
-            // Alias fallback
-            if (!hit) {
-              for (const [standard, aliases] of Object.entries(stationAliases)) {
-                if (aliases.some(a => normalizeStation(a) === normalizedNetwork)) {
-                  hit = stationToPreset.get(standard.toUpperCase())
-                  if (hit) break
-                }
-              }
-            }
-            if (hit) {
-              resolvedPreset = hit
-              matchedStation = network
-              break
-            }
-          }
-
-          if (!resolvedPreset) {
+          // Resolve via the shared helper. This walks the networks array,
+          // does direct + alias lookup, and respects the WI RSN split.
+          const resolution = await resolveChannelsForNetworks(
+            broadcastNetworks,
+            game.primaryNetwork ?? null
+          )
+          const resolvedForDevice = presetDeviceType === 'directv' ? resolution.directv : resolution.cable
+          if (!resolvedForDevice) {
             gsSkippedNoChannel++
             continue
           }
+          const resolvedPreset = {
+            channelNumber: resolvedForDevice.channelNumber,
+            name: resolvedForDevice.presetName,
+          }
+          const matchedStation = resolvedForDevice.matchedNetwork
 
           const startDate = new Date(game.scheduledStart * 1000)
           const endDate = new Date(game.estimatedEnd * 1000)
@@ -644,24 +550,27 @@ export async function POST(request: NextRequest) {
               : Object.values(stationList).filter((s): s is string => typeof s === 'string')
 
             for (const station of stations) {
-              const appInfo = getStreamingAppInfo(station)
+              // Pass group_title as the sport hint so league-gated streaming
+              // codes (MLBEI, NHLCI, NBALP, MLSDK) resolve correctly. The
+              // helper's normalizeSport() handles MLB/NBA/NHL/MLS strings.
+              const appInfo = getStreamingAppInfoForStation(station, group.group_title)
               if (appInfo) {
                 // Check if the Fire TV device has this service LOGGED IN (not just installed)
                 const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
                 if (hasLoggedIn) {
                   channelInfo = {
-                    id: `stream-${appInfo.appName.replace(/\s+/g, '-').toLowerCase()}`,
-                    name: appInfo.appName,
+                    id: `stream-${appInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
+                    name: appInfo.app,
                     number: station,
                     type: 'streaming',
                     cost: 'subscription',
                     platforms: ['Fire TV', 'Streaming'],
                     channelNumber: station,
                     deviceType: 'streaming',
-                    streamingApp: appInfo.appName,
+                    streamingApp: appInfo.app,
                     packages: appInfo.packages
                   }
-                  logInfo(`Matched streaming station ${station} to app ${appInfo.appName} on device ${deviceId}`)
+                  logInfo(`Matched streaming station ${station} to app ${appInfo.app} on device ${deviceId}`)
                   break
                 }
               }

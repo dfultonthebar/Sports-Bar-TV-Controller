@@ -28,6 +28,7 @@ import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LogAnalyticsDashboard from '@/components/LogAnalyticsDashboard'
 import GitHubConfigSync from '@/components/GitHubConfigSync'
+import AutoUpdatePanel from '@/components/AutoUpdatePanel'
 import SystemControlPanel from '@/components/SystemControlPanel'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
@@ -679,6 +680,9 @@ export default function SystemAdminPage() {
             </Card>
 
             <GitHubConfigSync />
+
+            {/* Phase 3a: Auto Update System panel */}
+            <AutoUpdatePanel />
           </TabsContent>
 
           {/* Tests Tab */}
