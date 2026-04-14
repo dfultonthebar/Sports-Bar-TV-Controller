@@ -3,6 +3,7 @@ package com.sportsbar.scout
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
+import com.sportsbar.scout.BuildConfig
 import android.os.Bundle
 import android.provider.Settings
 import android.text.format.Formatter
@@ -20,9 +21,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
 
     companion object {
-        const val SERVER_URL = "http://10.40.10.248:3001/api/firestick-scout"
         const val HEARTBEAT_INTERVAL_MS = 30000L
-        const val VERSION = "1.8.0-stoneyard-20260407"
+        const val VERSION = "2.0.0-runtime-config"
+
+        fun getServerUrl(context: Context): String {
+            return context.getSharedPreferences("scout_config", Context.MODE_PRIVATE)
+                .getString("server_url", BuildConfig.SERVER_URL_DEFAULT)
+                ?: BuildConfig.SERVER_URL_DEFAULT
+        }
 
         // Android ID to Device ID mapping (primary - most reliable)
         private val ANDROID_ID_MAP = mapOf(
