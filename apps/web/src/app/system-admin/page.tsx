@@ -654,9 +654,9 @@ export default function SystemAdminPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold text-blue-900 mb-2">📊 Tracked Configurations</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-blue-500">
+                    <h4 className="font-semibold text-white mb-2">📊 Tracked Configurations</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Matrix routing settings</li>
                       <li>• Audio zone configurations</li>
                       <li>• IR device mappings</li>
@@ -664,10 +664,10 @@ export default function SystemAdminPage() {
                       <li>• TV layout positions</li>
                     </ul>
                   </div>
-                  
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                    <h4 className="font-semibold text-green-900 mb-2">⚡ Auto-Sync Features</h4>
-                    <ul className="text-sm text-green-800 space-y-1">
+
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-green-500">
+                    <h4 className="font-semibold text-white mb-2">⚡ Auto-Sync Features</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Real-time change detection</li>
                       <li>• Automatic commit generation</li>
                       <li>• Smart conflict resolution</li>
@@ -675,10 +675,10 @@ export default function SystemAdminPage() {
                       <li>• Version history tracking</li>
                     </ul>
                   </div>
-                  
-                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                    <h4 className="font-semibold text-purple-900 mb-2">🔄 Sync Benefits</h4>
-                    <ul className="text-sm text-purple-800 space-y-1">
+
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-purple-500">
+                    <h4 className="font-semibold text-white mb-2">🔄 Sync Benefits</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Configuration backup</li>
                       <li>• Multi-location sync</li>
                       <li>• Change auditing</li>
