@@ -11,8 +11,8 @@ android {
         applicationId "com.sportsbar.scout"
         minSdk 22
         targetSdk 33
-        versionCode 140
-        versionName "1.4.0-bar-20251205"
+        versionCode 190
+        versionName "1.9.0-stoneyard-appleton"
     }
 
     buildTypes {

@@ -20,9 +20,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
 
     companion object {
-        const val SERVER_URL = "http://10.40.10.248:3001/api/firestick-scout"
+        const val SERVER_URL = "http://10.40.10.100:3001/api/firestick-scout"
         const val HEARTBEAT_INTERVAL_MS = 30000L
-        const val VERSION = "1.8.0-stoneyard-20260407"
+        const val VERSION = "1.9.0-stoneyard-appleton"
 
         // Android ID to Device ID mapping (primary - most reliable)
         private val ANDROID_ID_MAP = mapOf(
