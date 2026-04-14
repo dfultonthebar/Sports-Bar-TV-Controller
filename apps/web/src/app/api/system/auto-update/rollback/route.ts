@@ -68,14 +68,20 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // SECURITY: rollbackTag is regex-validated above (digits + dashes only),
-    // so it cannot inject shell args. Script path is hardcoded.
-    const child = spawn(ROLLBACK_SCRIPT, [rollbackTag, 'manual_api'], {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: 'ignore',
-      env: process.env,
-    })
+    // Spawn via `setsid --fork` for the same reason as run-now: Node's
+    // own detached:true doesn't fully isolate from PM2's restart signals.
+    // SECURITY: rollbackTag is regex-validated above (digits + dashes
+    // only), so it cannot inject shell args. Script path is hardcoded.
+    const child = spawn(
+      'setsid',
+      ['--fork', ROLLBACK_SCRIPT, rollbackTag, 'manual_api'],
+      {
+        cwd: REPO_ROOT,
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+      }
+    )
 
     child.on('error', (err) => {
       logger.error('[AUTO_UPDATE_API] rollback spawn error:', err)
