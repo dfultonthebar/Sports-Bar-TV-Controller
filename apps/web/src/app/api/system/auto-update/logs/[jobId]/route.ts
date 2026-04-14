@@ -67,14 +67,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     let content: string
+    let tailed = false
     if (stat.size > MAX_INLINE_BYTES) {
       // Tail last 500 lines for large files
       const raw = await fs.readFile(logFile, 'utf-8')
       const lines = raw.split('\n')
       content = lines.slice(-TAIL_LINES).join('\n')
+      tailed = true
     } else {
       content = await fs.readFile(logFile, 'utf-8')
     }
+
+    logger.debug('[AUTO_UPDATE_API] logs read', {
+      jobId,
+      size: stat.size,
+      tailed,
+      contentBytes: content.length,
+    })
 
     return NextResponse.json({
       jobId,

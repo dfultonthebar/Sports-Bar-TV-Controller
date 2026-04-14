@@ -18,6 +18,7 @@
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { logger } from '@sports-bar/logger'
 
 export interface ResolvedChannel {
   channelNumber: string
@@ -62,15 +63,26 @@ interface StationToPresetCache {
 let _stationToPresetCache: StationToPresetCache | null = null
 
 async function loadResolverData(): Promise<CacheEntry> {
-  if (_cache && Date.now() - _cache.ts < TTL_MS) return _cache
+  if (_cache && Date.now() - _cache.ts < TTL_MS) {
+    logger.debug('[CHANNEL_RESOLVER] cache hit', {
+      ageSec: Math.round((Date.now() - _cache.ts) / 1000),
+      aliases: Object.keys(_cache.stationAliases).length,
+      cablePresets: _cache.cablePresets.length,
+      directvPresets: _cache.directvPresets.length,
+    })
+    return _cache
+  }
 
+  const t0 = Date.now()
   const aliasRows = await db.select().from(schema.stationAliases)
   const stationAliases: Record<string, string[]> = {}
+  let aliasParseErrors = 0
   for (const row of aliasRows) {
     try {
       stationAliases[row.standardName] = JSON.parse(row.aliases)
     } catch {
       stationAliases[row.standardName] = []
+      aliasParseErrors++
     }
   }
 
@@ -90,6 +102,13 @@ async function loadResolverData(): Promise<CacheEntry> {
   }
 
   _cache = { ts: Date.now(), stationAliases, cablePresets, directvPresets }
+  logger.info('[CHANNEL_RESOLVER] cache refresh', {
+    durationMs: Date.now() - t0,
+    aliases: Object.keys(stationAliases).length,
+    aliasParseErrors,
+    cablePresets: cablePresets.length,
+    directvPresets: directvPresets.length,
+  })
   return _cache
 }
 
@@ -207,6 +226,13 @@ export async function resolveChannelsForNetworks(
     }
     if (cableMatch && directvMatch) break
   }
+
+  logger.debug('[CHANNEL_RESOLVER] resolveChannelsForNetworks', {
+    networks: ordered.slice(0, 6),
+    primaryNetwork: primaryNetwork ?? null,
+    cable: cableMatch ? `${cableMatch.channelNumber} (${cableMatch.presetName} via ${cableMatch.matchedNetwork})` : null,
+    directv: directvMatch ? `${directvMatch.channelNumber} (${directvMatch.presetName} via ${directvMatch.matchedNetwork})` : null,
+  })
 
   return { cable: cableMatch, directv: directvMatch }
 }
@@ -550,6 +576,21 @@ export async function resolveChannelsForGame(
       }
     }
   }
+
+  logger.debug('[CHANNEL_RESOLVER] resolveChannelsForGame', {
+    networks: (game.networks ?? []).slice(0, 6),
+    primaryNetwork: game.primaryNetwork ?? null,
+    sport: game.sport ?? null,
+    league: game.league ?? null,
+    devices: deviceTypesAvailable,
+    result: {
+      cable: out.cableChannel,
+      directv: out.directvChannel,
+      streaming: out.streamingApp?.code ?? null,
+      via: out.resolvedVia,
+      matchedOn: out.primaryMatch,
+    },
+  })
 
   return out
 }
