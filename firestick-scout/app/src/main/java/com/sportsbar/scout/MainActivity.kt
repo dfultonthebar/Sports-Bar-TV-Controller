@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val HEARTBEAT_INTERVAL_MS = 30000L
-        const val VERSION = "2.0.0-runtime-config"
+        val VERSION: String get() = BuildConfig.VERSION_NAME
 
         fun getServerUrl(context: Context): String {
             return context.getSharedPreferences("scout_config", Context.MODE_PRIVATE)
