@@ -22,7 +22,13 @@ export const AUTH_CONFIG = {
   COOKIE_NAME: 'sports-bar-session',
   COOKIE_OPTIONS: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    // Set `Secure` only when explicitly enabled. The per-location LAN
+    // deployments run over plain HTTP on internal networks — browsers
+    // silently drop Secure cookies on http:// origins, which makes login
+    // appear to succeed (POST returns 200) but every subsequent request
+    // is unauthenticated. To opt in to Secure, set
+    // AUTH_COOKIE_SECURE=true in .env (only valid behind HTTPS/TLS).
+    secure: process.env.AUTH_COOKIE_SECURE === 'true',
     sameSite: 'lax' as const,
     path: '/',
     maxAge: 8 * 60 * 60, // 8 hours in seconds
