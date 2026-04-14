@@ -1,1 +1,18 @@
-{"chassis":[]}
+{
+  "chassis": [{
+    "id": "wp-stoneyard-combined",
+    "name": "Stoneyard Appleton",
+    "model": "WP-36X36",
+    "role": "combined",
+    "ipAddress": "10.40.10.101",
+    "protocol": "HTTP",
+    "tcpPort": 5000,
+    "httpPort": 80,
+    "credentials": {"username": "admin", "password": "admin"},
+    "isPrimary": true,
+    "totalInputs": 36,
+    "totalOutputs": 36,
+    "inputs": [],
+    "outputs": []
+  }]
+}
