@@ -1,0 +1,33 @@
+You are doing pre-update analysis for the Sports Bar TV Controller application.
+
+Your task is to read the listed sources and decide whether to proceed with the
+pending git merge from origin/main onto the current location branch.
+
+REQUIRED READS (in order):
+1. /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md (full file)
+2. /home/ubuntu/Sports-Bar-TV-Controller/docs/AUTO_UPDATE_SYSTEM_PLAN.md (section 5.2 only)
+3. The diff of commits being merged: run `git -C /home/ubuntu/Sports-Bar-TV-Controller log -p HEAD..origin/main`
+4. The current location config files under /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/*.json
+5. Any .md files under /home/ubuntu/Sports-Bar-TV-Controller/docs/ that were modified in the diff — read each in full.
+
+DECISION CRITERIA:
+- GO: the diff only touches source code + docs, no schema migrations that require
+  data migration, no breaking API changes, location-specific config paths are
+  not modified.
+- CAUTION: the diff adds a new DB column/table or changes an API contract, but
+  the location's current data is compatible. Proceed but watch Checkpoints B/C.
+- STOP: the diff includes a schema migration that requires data migration
+  (new NOT NULL column with no default, or a renamed column), OR the diff
+  modifies files listed in apps/web/data/*.json (tv-layout, directv-devices,
+  firetv-devices, device-subscriptions, wolfpack-devices, atlas-configs,
+  channel-presets-*.json), OR the diff includes a dependency version that
+  is known to break this project.
+
+OUTPUT FORMAT (first line ONLY, no text before it):
+DECISION: GO
+DECISION: CAUTION - <one sentence explaining what to watch>
+DECISION: STOP - <one sentence explaining the blocker>
+
+The auto-updater parses this with `grep -m1 '^DECISION:'`. Put any additional
+explanation on subsequent lines — it will be preserved in the log file but
+will not affect the decision.
