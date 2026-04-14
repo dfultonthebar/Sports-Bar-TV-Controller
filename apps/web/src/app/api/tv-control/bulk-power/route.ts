@@ -7,6 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq, inArray } from 'drizzle-orm'
 import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
 
 /**
  * Bulk TV Power Control API
@@ -257,6 +258,7 @@ async function controlDevicePower(
         await new Promise(resolve => setTimeout(resolve, 300))
         return result
       } finally {
+        await persistSamsungTokenIfChanged(device, client)
         client.disconnect()
       }
     }
