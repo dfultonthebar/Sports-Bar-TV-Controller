@@ -818,36 +818,79 @@ This system supports multiple sports bar locations. Each location runs its own i
 
 ### Location-Specific Files (empty templates on main)
 
-These files are replaced with real data on location branches:
-- `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
-- `apps/web/data/directv-devices.json` — DirecTV receiver configs (Seed-only input — DB is source of truth after first run)
-- `apps/web/data/firetv-devices.json` — Fire TV device configs (Seed-only input — DB is source of truth after first run)
-- `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
-- `apps/web/data/wolfpack-devices.json` — Wolf Pack multi-chassis configs (empty `{"chassis":[]}` on main)
-- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
+These files are replaced with real data on location branches. On `main`
+they exist as empty templates that `seed-from-json.ts` handles gracefully
+(no-ops) so a fresh clone starts clean. **Never commit populated versions
+to `main`** — see the reconciliation commit `7f13fbe7` (2026-04-14) for
+the history of what happens when this rule gets broken.
+
+- `apps/web/data/tv-layout.json` — `{"name":"Bar Layout","zones":[],"tvPositions":[],"rooms":[]}`
+- `apps/web/data/directv-devices.json` — `{"devices":[]}` (seed-only input; DB is source of truth after first run)
+- `apps/web/data/firetv-devices.json` — `{"devices":[]}` (seed-only input)
+- `apps/web/data/device-subscriptions.json` — `{"devices":[]}`
+- `apps/web/data/wolfpack-devices.json` — `{"chassis":[]}`
+- `apps/web/data/channel-presets-cable.json` — `{"presets":[]}` (seeds ChannelPreset table on first run, per-location)
+- `apps/web/data/channel-presets-directv.json` — `{"presets":[]}` (same)
+- `apps/web/data/everpass-devices.json` — `{"devices":[]}` (if present)
+- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored, never on main)
 - `apps/web/public/uploads/layouts/` — Floor plan images (gitignored)
-- `data/` mirrors — Root copies of the above
-- `.env` — `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+- `data/` mirrors at repo root — Root copies of the above (gitignored via `data/*.json` with `!data/*.template.json` exception)
+- `.env` — `LOCATION_ID`, `LOCATION_NAME`, `AUTH_COOKIE_SECURE`, `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+
+### Auth bootstrap (critical per-location step)
+
+Per-location install also requires seeding the `Location` row and
+`AuthPin` rows in `production.db`, plus setting `LOCATION_ID` in `.env`,
+or every login attempt returns "Invalid PIN". See
+`docs/NEW_LOCATION_SETUP.md` for the full runbook and use
+`scripts/bootstrap-new-location.sh` to automate steps 4-5:
+
+```bash
+bash scripts/bootstrap-new-location.sh \
+  --name "Your Bar Name" \
+  --admin-pin 7819 \
+  --staff-pin 1234
+```
+
+The script is idempotent — safe to re-run. It creates the Location row
+if missing, seeds STAFF and ADMIN PINs if missing, and writes
+`LOCATION_ID` / `AUTH_COOKIE_SECURE=false` into `.env`. `AUTH_COOKIE_SECURE`
+must be `false` on HTTP-only LAN deployments; browsers silently drop
+`Secure` cookies on `http://` origins, so setting it `true` on HTTP
+causes login to "succeed" but every subsequent request to look
+unauthenticated.
 
 ### Workflow: Pulling Code Updates to a Location
 
+**Preferred:** let `scripts/auto-update.sh` handle it. The orchestrator
+has a `LOCATION_PATHS_OURS` conflict auto-resolver that keeps the
+location's data files and applies main's software changes, backed up by
+Claude Code CLI review at three checkpoints. Configure and enable it
+via the Sync tab UI. See `docs/AUTO_UPDATE_SYSTEM_PLAN.md`.
+
+**Manual fallback** (when auto-update isn't available):
+
 ```bash
 git checkout location/<name>
-git merge main
-# On conflict with data files → keep the location version (git checkout --ours <file>)
-npm install
+git fetch origin
+git merge origin/main
+# On conflict with data files → keep the location version:
+#   git checkout --ours apps/web/data/<file>
+#   git checkout --theirs package-lock.json package.json
+npm ci
 npx drizzle-kit push --config drizzle.config.ts  # Create any new DB tables
 npm run build
-pm2 restart sports-bar-tv-controller
+pm2 restart sports-bar-tv-controller --update-env
 # Check logs for auto-seed: pm2 logs sports-bar-tv-controller --lines 20
 # Look for: "[SEED] Seeded X DirecTV devices from JSON"
 ```
 
-### Commit Strategy (IMPORTANT)
-- **Software changes** (code in `apps/web/src/`, `packages/`, docs) → commit to `main` branch, then merge into location branches
-- **Location-specific data** (device IPs, configs in `apps/web/data/*.json`, `.env`, layout images) → commit ONLY to location branch
+### Commit Strategy (IMPORTANT — this was broken historically and led to the v2.4.x drift)
+- **Software changes** (code in `apps/web/src/`, `packages/`, docs, scripts) → commit to `main` first, then merge into location branches
+- **Location-specific data** (device IPs, configs in `apps/web/data/*.json`, `.env`, layout images) → commit ONLY to the location branch
 - **Never merge location branches back into main** — location data must not leak to other locations
 - When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
+- **If you find yourself editing a software file on a location branch**, stop, cherry-pick the change to main first, push main, then merge main into location. The reconciliation work in commit `7f13fbe7` is what happens when you don't.
 
 ### Shared Location Reference Docs
 
