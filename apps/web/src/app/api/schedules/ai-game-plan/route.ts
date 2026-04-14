@@ -9,12 +9,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // Streaming station codes to app mapping
 // Maps Rail Media station codes to Fire TV app package names and display names
@@ -312,65 +313,18 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
         .map(p => p.channelNumber.toLowerCase())
     )
 
-    // Create cross-reference maps based on preset names
-    // This allows us to find the equivalent channel on the other device type
-    const cableChannelToName = new Map<string, string>()
-    const directvChannelToName = new Map<string, string>()
-    const nameToCableChannel = new Map<string, string>()
-    const nameToDirectvChannel = new Map<string, string>()
+    // As of v2.5.0 (Phase 4 of channel-resolver consolidation), the inline
+    // network-name lookup maps + cross-reference maps that used to be built
+    // here have been removed. Cable + DirecTV resolution is now handled by
+    // the shared `resolveChannelsForGame()` helper in
+    // `@/lib/network-channel-resolver`, which reads from the
+    // `channel_presets` + `station_aliases` tables and preserves the
+    // Wisconsin RSN split (FanDuelWI ch 40 Bucks vs BallyWIPlus ch 308
+    // Brewers). The `cableChannels` / `directvChannels` Sets above are
+    // STILL used by the Rail Media direct-channel-number fallback below.
+    // See docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md.
 
-    for (const preset of channelPresets) {
-      const normalizedName = preset.name.toLowerCase().trim()
-      const channelNum = preset.channelNumber.toLowerCase()
-
-      if (preset.deviceType === 'cable') {
-        cableChannelToName.set(channelNum, normalizedName)
-        // Only set if not already set (first match wins)
-        if (!nameToCableChannel.has(normalizedName)) {
-          nameToCableChannel.set(normalizedName, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        directvChannelToName.set(channelNum, normalizedName)
-        if (!nameToDirectvChannel.has(normalizedName)) {
-          nameToDirectvChannel.set(normalizedName, preset.channelNumber)
-        }
-      }
-    }
-
-    // Normalize network names for matching Rail Media station names to preset names
-    // Rail Media uses compact names like "NBATV", presets use names like "NBA TV"
-    const normalizeNetworkName = (name: string): string => {
-      return name
-        .toLowerCase()
-        .replace(/\s+/g, '') // Remove all spaces
-        .replace(/network/gi, '') // Remove "network"
-        .replace(/channel/gi, '') // Remove "channel"
-        .replace(/hd$/i, '') // Remove HD suffix
-        .trim()
-    }
-
-    // Build network name lookup maps (normalized name -> preset channel number)
-    const networkToCableChannel = new Map<string, string>()
-    const networkToDirectvChannel = new Map<string, string>()
-
-    for (const preset of channelPresets) {
-      const normalizedNetwork = normalizeNetworkName(preset.name)
-
-      if (preset.deviceType === 'cable') {
-        if (!networkToCableChannel.has(normalizedNetwork)) {
-          networkToCableChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        if (!networkToDirectvChannel.has(normalizedNetwork)) {
-          networkToDirectvChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      }
-    }
-
-    logger.info(`[AI_GAME_PLAN] Network lookup maps: ${networkToCableChannel.size} cable networks, ${networkToDirectvChannel.size} DirecTV networks`)
-
-    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets`)
-    logger.info(`[AI_GAME_PLAN] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`)
+    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets (used by Rail Media CAB/DRTV fallback)`)
 
     // Fetch sports guide data from The Rail Media API (1 day = today's games)
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -412,46 +366,54 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
         }
 
-        // Extract BOTH cable and DirecTV channel numbers
-        // PRIMARY METHOD: Use network/station name to look up channel from our presets
-        // FALLBACK: Try direct channel number matching if network name doesn't match
+        // Extract BOTH cable and DirecTV channel numbers via the shared
+        // resolver. This walks the station_aliases + channel_presets tables
+        // and preserves the Wisconsin RSN split (FanDuelWI ch 40 Bucks vs
+        // BallyWIPlus ch 308 Brewers). See network-channel-resolver.ts.
+        //
+        // FALLBACK below: Rail Media's own CAB/DRTV lineup channel numbers
+        // are matched directly against our preset Sets — this handles cases
+        // where a station has no name match but Rail provides the channel
+        // number explicitly.
         let cableChannelNumber = ''
         let directvChannelNumber = ''
         let matchedNetworkName = ''
 
-        // First, try to match by station/network name (most reliable method)
-        // Rail Media provides station names like "ESPN", "NBATV", "FOX", etc.
-        if (listing.stations && Array.isArray(listing.stations)) {
-          for (const station of listing.stations) {
-            const normalizedStation = normalizeNetworkName(station)
-
-            // Look up cable channel by network name
-            if (!cableChannelNumber) {
-              const cableChannel = networkToCableChannel.get(normalizedStation)
-              if (cableChannel) {
-                cableChannelNumber = cableChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to cable channel ${cableChannel}`)
+        // PRIMARY: shared resolver — preset/alias lookup keyed by station name.
+        if (listing.stations) {
+          const stationsArray: string[] = Array.isArray(listing.stations)
+            ? listing.stations
+            : Object.values(listing.stations).filter((s): s is string => typeof s === 'string')
+          if (stationsArray.length > 0) {
+            try {
+              const resolved = await resolveChannelsForGame(
+                {
+                  networks: stationsArray,
+                  primaryNetwork: stationsArray[0] ?? null,
+                  league: group.group_title ?? null,
+                  sport: group.group_title ?? null,
+                },
+                ['cable', 'directv']
+              )
+              if (resolved.cableChannel) {
+                cableChannelNumber = resolved.cableChannel
+                matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to cable ch ${cableChannelNumber} (via ${resolved.resolvedVia})`)
               }
-            }
-
-            // Look up DirecTV channel by network name
-            if (!directvChannelNumber) {
-              const directvChannel = networkToDirectvChannel.get(normalizedStation)
-              if (directvChannel) {
-                directvChannelNumber = directvChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to DirecTV channel ${directvChannel}`)
+              if (resolved.directvChannel) {
+                directvChannelNumber = resolved.directvChannel
+                if (!matchedNetworkName) matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to DirecTV ch ${directvChannelNumber} (via ${resolved.resolvedVia})`)
               }
+            } catch (resolverErr: any) {
+              logger.warn(`[AI_GAME_PLAN] resolveChannelsForGame failed, continuing with Rail Media lineup fallback: ${resolverErr?.message}`)
             }
-
-            // If we found both, stop looking
-            if (cableChannelNumber && directvChannelNumber) break
           }
         }
 
-        // FALLBACK: If network name matching didn't work, try direct channel number matching
-        // Extract cable channels and match against presets
+        // FALLBACK: direct channel number matching against our presets.
+        // Extract cable channels from Rail Media's CAB lineup and match
+        // against our local cable preset channel numbers.
         if (!cableChannelNumber && listing.channel_numbers?.CAB) {
           const cabChannels = listing.channel_numbers.CAB
           for (const providerChannels of Object.values(cabChannels)) {
@@ -472,14 +434,16 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Extract satellite/DirecTV channels and match against presets (fallback)
-        if (!directvChannelNumber && listing.channel_numbers?.SAT) {
-          const satChannels = listing.channel_numbers.SAT
-          for (const providerChannels of Object.values(satChannels)) {
+        // Rail Media uses "DRTV" as the DirecTV lineup key (not "SAT" as
+        // some docs suggest). Previously this fallback checked `.SAT` which
+        // never matched anything; fixed to `.DRTV` to match actual Rail API
+        // response shape.
+        if (!directvChannelNumber && listing.channel_numbers?.DRTV) {
+          const drtvChannels = listing.channel_numbers.DRTV
+          for (const providerChannels of Object.values(drtvChannels)) {
             const channels = providerChannels as any
             const channelList = Array.isArray(channels) ? channels : [channels]
 
-            // Find first channel that exists in our DirecTV presets
             for (const ch of channelList) {
               if (ch) {
                 const chStr = String(ch).toLowerCase()
@@ -493,29 +457,10 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Cross-reference: If we only have one channel type, try to find the equivalent for the other
-        // This allows games to be scheduled on either cable OR DirecTV inputs
-        if (cableChannelNumber && !directvChannelNumber) {
-          // We have cable, try to find matching DirecTV channel by preset name
-          const presetName = cableChannelToName.get(cableChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingDirectv = nameToDirectvChannel.get(presetName)
-            if (matchingDirectv) {
-              directvChannelNumber = matchingDirectv
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced cable ${cableChannelNumber} (${presetName}) to DirecTV ${directvChannelNumber}`)
-            }
-          }
-        } else if (directvChannelNumber && !cableChannelNumber) {
-          // We have DirecTV, try to find matching cable channel by preset name
-          const presetName = directvChannelToName.get(directvChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingCable = nameToCableChannel.get(presetName)
-            if (matchingCable) {
-              cableChannelNumber = matchingCable
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced DirecTV ${directvChannelNumber} (${presetName}) to cable ${cableChannelNumber}`)
-            }
-          }
-        }
+        // Cross-reference (cable<->DirecTV equivalent lookup) was removed in
+        // Phase 4: `resolveChannelsForGame()` already returns BOTH device
+        // types in a single call when both deviceTypesAvailable are passed,
+        // so the equivalent-by-preset-name fallback is no longer needed.
 
         // Check for streaming-only availability
         // Extract all station codes and check for streaming services
@@ -530,7 +475,31 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
             ? stationList
             : Object.values(stationList).filter((s): s is string => typeof s === 'string')
 
+          // Sport-gate the streaming app match so we don't mislabel hockey
+          // games with MLB.TV just because Rail Media put "MLBEI" (MLB Extra
+          // Innings) in the station list as a generic out-of-market code.
+          // League-specific streaming packages (MLBEI, NHLCI, NBALP, MLSDK)
+          // only count when the game's league matches. Generic streaming
+          // (Peacock, Prime, ESPN+, Apple TV+, etc.) works for any sport.
+          const leagueLower = (group.group_title || '').toLowerCase()
+          const isBaseballGame = leagueLower.includes('mlb') || leagueLower.includes('baseball')
+          const isHockeyGame = leagueLower.includes('nhl') || leagueLower.includes('hockey')
+          const isBasketballGame = leagueLower.includes('nba') || leagueLower.includes('basketball')
+          const isSoccerGame = leagueLower.includes('soccer') || leagueLower.includes('mls')
+
+          const sportSpecificPackages: Record<string, boolean> = {
+            MLBEI: isBaseballGame,
+            NHLCI: isHockeyGame,
+            NBALP: isBasketballGame,
+            MLSDK: isSoccerGame,
+          }
+
           for (const station of stations) {
+            const stationUpper = station.toUpperCase()
+            // Skip sport-specific streaming codes when they don't match the game's league
+            if (stationUpper in sportSpecificPackages && !sportSpecificPackages[stationUpper]) {
+              continue
+            }
             const appInfo = getStreamingAppInfo(station)
             if (appInfo) {
               streamingApp = appInfo.appName
@@ -646,8 +615,8 @@ export async function GET(request: NextRequest) {
   try {
     logger.info('[AI_GAME_PLAN] Fetching fresh game data from The Rail Media API')
 
-    // Get the AI Game Monitor schedule
-    const aiSchedule = await db
+    // Get the AI Game Monitor schedule (auto-create if missing)
+    let aiSchedule = await db
       .select()
       .from(schema.schedules)
       .where(eq(schema.schedules.scheduleType, 'continuous'))
@@ -655,10 +624,68 @@ export async function GET(request: NextRequest) {
       .get()
 
     if (!aiSchedule) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI Game Monitor schedule not found'
-      }, { status: 404 })
+      logger.info('[AI_GAME_PLAN] No continuous schedule found — auto-creating "AI Game Monitor"')
+
+      // Look up home team IDs for Packers, Bucks, Brewers, Badgers
+      let defaultHomeTeamIds: string[] = []
+      try {
+        const matchedTeams = await db
+          .select({ id: schema.homeTeams.id, teamName: schema.homeTeams.teamName })
+          .from(schema.homeTeams)
+          .where(
+            or(
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%packers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%bucks%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%brewers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%badgers%'`
+            )
+          )
+          .all()
+        defaultHomeTeamIds = matchedTeams.map((t) => t.id)
+        if (defaultHomeTeamIds.length === 0) {
+          logger.warn('[AI_GAME_PLAN] No matching home teams (Packers/Bucks/Brewers/Badgers) found in HomeTeam table — home-team prioritization will be inactive until teams are configured')
+        }
+      } catch (lookupErr: any) {
+        logger.warn('[AI_GAME_PLAN] Home team lookup failed during schedule auto-create:', lookupErr)
+        defaultHomeTeamIds = []
+      }
+
+      try {
+        await db
+          .insert(schema.schedules)
+          .values({
+            name: 'AI Game Monitor',
+            description: 'Auto-created continuous home-team monitoring schedule. Edit to change priorities.',
+            scheduleType: 'continuous',
+            enabled: true,
+            recurring: false,
+            monitorHomeTeams: true,
+            autoFindGames: true,
+            homeTeamIds: JSON.stringify(defaultHomeTeamIds),
+          })
+          .run()
+      } catch (insertErr: any) {
+        // Concurrency-safe: another request may have inserted one simultaneously.
+        logger.warn('[AI_GAME_PLAN] Insert of continuous schedule failed (possibly race); will re-fetch:', insertErr?.message || insertErr)
+      }
+
+      // Re-fetch (handles both our insert and any concurrent insert that won the race)
+      aiSchedule = await db
+        .select()
+        .from(schema.schedules)
+        .where(eq(schema.schedules.scheduleType, 'continuous'))
+        .limit(1)
+        .get()
+
+      if (!aiSchedule) {
+        logger.error('[AI_GAME_PLAN] Failed to auto-create continuous schedule')
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to auto-create AI Game Monitor schedule'
+        }, { status: 500 })
+      }
+
+      logger.info(`[AI_GAME_PLAN] Auto-created continuous 'AI Game Monitor' schedule with ${defaultHomeTeamIds.length} home teams`)
     }
 
     // Get home teams to identify which games are priority
@@ -833,7 +860,13 @@ export async function GET(request: NextRequest) {
           })
 
           if (gameOnChannel) {
-            // We found a game on this channel - add it to the map
+            // We found a game on this channel - add it to the map.
+            // Propagate cableChannel/directvChannel/streamingApp from the
+            // matched fresh game so the UI's getChannelMapping helper can
+            // render "Bally Sports WI -> Ch 308 (Cable)" instead of
+            // "No channel available". Without these fields the Brewers
+            // game would show as "No channel available" even though it
+            // correctly resolved to cable 308 upstream.
             const gameEntry: any = {
               inputLabel: channelInfo.inputLabel || input.label,
               inputNumber: input.channelNumber,
@@ -844,6 +877,10 @@ export async function GET(request: NextRequest) {
               gameTime: gameOnChannel.gameTime,
               channelNumber: channelInfo.channelNumber,
               channelName: channelInfo.channelName,
+              cableChannel: gameOnChannel.cableChannel || '',
+              directvChannel: gameOnChannel.directvChannel || '',
+              streamingApp: gameOnChannel.streamingApp || null,
+              streamingPackages: gameOnChannel.streamingPackages || [],
               venue: gameOnChannel.venue,
               startTime: gameOnChannel.startTime,
               isHomeTeamGame: gameOnChannel.isHomeTeamGame,
