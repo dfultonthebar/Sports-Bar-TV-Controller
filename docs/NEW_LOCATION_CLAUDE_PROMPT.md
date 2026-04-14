@@ -1,10 +1,55 @@
 # New Location Install — Claude Code One-Shot Prompt
 
-Copy-paste this entire prompt into a fresh Claude Code session running on
-the **new location's host machine**. It's self-contained — Claude needs
-no prior context about the project. Claude will walk you through the
-install, ask for the location name and admin PIN when it needs them, and
-verify everything works end-to-end before declaring done.
+## ⭐ Recommended: Two-phase prompt (shortest, uses this doc as the runbook)
+
+Fill in the three values and paste the ENTIRE block below into a fresh
+Claude Code session running on the **new location's host machine**.
+
+```
+You are installing the Sports Bar TV Controller on a fresh Ubuntu host
+for a new location. I'm going to give you the location-specific values
+first, then tell you where to find the full runbook.
+
+Location name:   <FILL IN — e.g. "Holmgren Way">
+Admin PIN:       <4 digits, 1000-9999>
+Staff PIN:       <4 digits, 1000-9999>
+Timezone:        America/Chicago
+(change timezone if this location is in a different tz — common options:
+America/New_York, America/Denver, America/Los_Angeles)
+
+Phase 1 — Pull the repo so you can read the runbook:
+
+  sudo apt update && sudo apt install -y git
+  cd /home/ubuntu
+  git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
+  cd Sports-Bar-TV-Controller
+  git checkout main
+
+Phase 2 — Read `docs/NEW_LOCATION_CLAUDE_PROMPT.md` in full, then follow
+every step from Step 1 through Step 12 in order. When you reach Step 6
+(bootstrap), pass the values I gave you above to
+scripts/bootstrap-new-location.sh via its CLI flags. At Step 10 install
+the auto-update systemd timer — we want nightly auto-updates enabled on
+this location.
+
+Report back when verify-install.sh shows PASS 6/6 and the login flow
+curl test returns {"authenticated":true,"role":"ADMIN"}. Stop and ask
+if any step fails so I can help debug before continuing.
+```
+
+That's it. Claude will clone the repo, read this file, and execute the
+runbook. Total install time: ~10-15 minutes depending on network speed.
+
+---
+
+## Reference: The full runbook (what Claude reads after the clone)
+
+This is what Claude executes starting at Step 1. You don't need to paste
+this — it's already in the repo after Phase 1 of the prompt above pulls
+it down.
+
+If you're doing a manual install without Claude, this is also the
+authoritative step list.
 
 **Prerequisites on the target host:**
 - Ubuntu 22.04+ with internet access
