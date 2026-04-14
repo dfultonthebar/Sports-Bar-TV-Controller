@@ -96,6 +96,9 @@ ecosystem.config.js
 *.bak
 *.backup
 *.backup.*
+*.backup[0-9]*
+*.orig
+*.old
 core
 
 # Git files
@@ -127,6 +130,17 @@ firestick-scout/gradle-dist/
 firestick-scout/gradle.zip
 firestick-scout/app/build/
 firestick-scout/local.properties
+
+# Binary blobs — never commit these
+*.apk
+*.zip
+*.sqlite
+*.sqlite-journal
+*.db-journal
+database_backups/
+
+# Claude Code session-local settings (per-user, never ship on main)
+.claude/settings.local.json
 
 # Playwright screenshots (regenerated during testing)
 playwright-screenshots/
