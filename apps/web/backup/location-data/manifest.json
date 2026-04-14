@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "createdAt": "2026-04-14T18:09:34.160Z",
+  "location": {
+    "id": "1bf4f8ab-c630-468a-afe4-6173e57299d2",
+    "name": "Stoneyard-Appleton",
+    "city": "Appleton",
+    "state": "WI"
+  },
+  "tables": [
+    {
+      "name": "Location",
+      "rowCount": 1
+    },
+    {
+      "name": "ChannelPreset",
+      "rowCount": 116
+    }
+  ],
+  "totalRows": 117
+}
