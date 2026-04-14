@@ -224,12 +224,20 @@ export default function AutoUpdatePanel() {
   })
   const logBodyRef = useRef<HTMLPreElement | null>(null)
 
+  const [needsAuth, setNeedsAuth] = useState(false)
+
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/system/auto-update/status', {
         credentials: 'include',
         cache: 'no-store',
       })
+      if (res.status === 401) {
+        setNeedsAuth(true)
+        setError(null)
+        setLoading(false)
+        return
+      }
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
       }
@@ -238,6 +246,7 @@ export default function AutoUpdatePanel() {
       setEnabledDraft(data.enabled)
       setTimeDraft(cronToTime(data.scheduleCron))
       setError(null)
+      setNeedsAuth(false)
     } catch (e: any) {
       setError(e?.message || 'Failed to load status')
     } finally {
@@ -247,9 +256,14 @@ export default function AutoUpdatePanel() {
 
   useEffect(() => {
     fetchStatus()
-    const t = setInterval(fetchStatus, 15000)
+    const t = setInterval(() => {
+      // Don't hammer the 401 endpoint; once unauthed, stop auto-polling
+      // and let the login-prompt handle the next attempt.
+      if (needsAuth) return
+      fetchStatus()
+    }, 15000)
     return () => clearInterval(t)
-  }, [fetchStatus])
+  }, [fetchStatus, needsAuth])
 
   const dirty =
     !!status &&
@@ -381,6 +395,27 @@ export default function AutoUpdatePanel() {
       <div className="rounded-lg border border-slate-700 p-6 flex items-center gap-3 text-slate-300">
         <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
         Loading auto-update status...
+      </div>
+    )
+  }
+
+  if (needsAuth) {
+    return (
+      <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-6 text-slate-300">
+        <div className="flex items-center gap-2 font-semibold mb-2 text-white">
+          <Power className="h-5 w-5 text-blue-400" /> Auto Update System
+        </div>
+        <div className="text-sm mb-4">
+          You must be signed in as an Admin to view or control the auto-update
+          system. The routes at <code className="text-blue-300">/api/system/auto-update/*</code> require an
+          active ADMIN session.
+        </div>
+        <a
+          href="/login"
+          className="inline-flex items-center gap-2 rounded-md border border-slate-600 px-4 py-2 text-sm hover:bg-slate-700"
+        >
+          Go to Login
+        </a>
       </div>
     )
   }
