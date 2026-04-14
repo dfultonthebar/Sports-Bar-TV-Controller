@@ -241,14 +241,34 @@ export default function BartenderRemotePage() {
     return () => clearInterval(interval)
   }, [activeTab])
 
-  // Poll routing + channel data every 15 seconds while on the Video or Routing tab
+  // Route state and channel data have different cost profiles and need
+  // different poll strategies:
+  //
+  // - loadCurrentRoutes() → hits /api/matrix/routes → on cache miss that
+  //   path queries the Wolf Pack over HTTP (login + index.php + o2ox), and
+  //   the Wolf Pack firmware beeps on every authenticated HTTP request.
+  //   With the iPad always on and the page always in the Video tab, a 15s
+  //   background interval here means a beep every 30-something seconds
+  //   (first poll misses cache, next hits, next misses...). Bartenders
+  //   understandably hate this. Fix: NO interval. Load once on mount and
+  //   on tab switch, then rely on:
+  //     * `routeInputToOutput` updating local `currentSources` on a route
+  //       click (no re-fetch needed),
+  //     * the server-side `updateRoutesCache()` in the POST handler
+  //       keeping the cache fresh when we know the new state,
+  //     * the existing Refresh button in the Routing tab for explicit
+  //       operator refreshes.
+  //
+  // - loadCurrentChannels() → hits /api/matrix/current-channels → pure
+  //   SQLite read from the InputCurrentChannel table, no hardware I/O.
+  //   Cheap, no beep. Polling every 15s here is fine — the bartender
+  //   wants to see live channel changes for scheduled games.
   useEffect(() => {
     if (activeTab !== 'routing' && activeTab !== 'video') return
 
     loadCurrentRoutes()
     loadCurrentChannels()
     const interval = setInterval(() => {
-      loadCurrentRoutes()
       loadCurrentChannels()
     }, 15000)
 
