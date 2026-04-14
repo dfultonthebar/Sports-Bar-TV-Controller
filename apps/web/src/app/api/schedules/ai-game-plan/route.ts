@@ -15,7 +15,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
-import { resolveChannelsForNetworks, invalidateNetworkChannelResolverCache } from '@/lib/network-channel-resolver'
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // Streaming station codes to app mapping
 // Maps Rail Media station codes to Fire TV app package names and display names
@@ -313,65 +313,18 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
         .map(p => p.channelNumber.toLowerCase())
     )
 
-    // Create cross-reference maps based on preset names
-    // This allows us to find the equivalent channel on the other device type
-    const cableChannelToName = new Map<string, string>()
-    const directvChannelToName = new Map<string, string>()
-    const nameToCableChannel = new Map<string, string>()
-    const nameToDirectvChannel = new Map<string, string>()
+    // As of v2.5.0 (Phase 4 of channel-resolver consolidation), the inline
+    // network-name lookup maps + cross-reference maps that used to be built
+    // here have been removed. Cable + DirecTV resolution is now handled by
+    // the shared `resolveChannelsForGame()` helper in
+    // `@/lib/network-channel-resolver`, which reads from the
+    // `channel_presets` + `station_aliases` tables and preserves the
+    // Wisconsin RSN split (FanDuelWI ch 40 Bucks vs BallyWIPlus ch 308
+    // Brewers). The `cableChannels` / `directvChannels` Sets above are
+    // STILL used by the Rail Media direct-channel-number fallback below.
+    // See docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md.
 
-    for (const preset of channelPresets) {
-      const normalizedName = preset.name.toLowerCase().trim()
-      const channelNum = preset.channelNumber.toLowerCase()
-
-      if (preset.deviceType === 'cable') {
-        cableChannelToName.set(channelNum, normalizedName)
-        // Only set if not already set (first match wins)
-        if (!nameToCableChannel.has(normalizedName)) {
-          nameToCableChannel.set(normalizedName, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        directvChannelToName.set(channelNum, normalizedName)
-        if (!nameToDirectvChannel.has(normalizedName)) {
-          nameToDirectvChannel.set(normalizedName, preset.channelNumber)
-        }
-      }
-    }
-
-    // Normalize network names for matching Rail Media station names to preset names
-    // Rail Media uses compact names like "NBATV", presets use names like "NBA TV"
-    const normalizeNetworkName = (name: string): string => {
-      return name
-        .toLowerCase()
-        .replace(/\s+/g, '') // Remove all spaces
-        .replace(/network/gi, '') // Remove "network"
-        .replace(/channel/gi, '') // Remove "channel"
-        .replace(/hd$/i, '') // Remove HD suffix
-        .trim()
-    }
-
-    // Build network name lookup maps (normalized name -> preset channel number)
-    const networkToCableChannel = new Map<string, string>()
-    const networkToDirectvChannel = new Map<string, string>()
-
-    for (const preset of channelPresets) {
-      const normalizedNetwork = normalizeNetworkName(preset.name)
-
-      if (preset.deviceType === 'cable') {
-        if (!networkToCableChannel.has(normalizedNetwork)) {
-          networkToCableChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        if (!networkToDirectvChannel.has(normalizedNetwork)) {
-          networkToDirectvChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      }
-    }
-
-    logger.info(`[AI_GAME_PLAN] Network lookup maps: ${networkToCableChannel.size} cable networks, ${networkToDirectvChannel.size} DirecTV networks`)
-
-    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets`)
-    logger.info(`[AI_GAME_PLAN] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`)
+    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets (used by Rail Media CAB/DRTV fallback)`)
 
     // Fetch sports guide data from The Rail Media API (1 day = today's games)
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -413,72 +366,52 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
         }
 
-        // Extract BOTH cable and DirecTV channel numbers
-        // PRIMARY METHOD: Use network/station name to look up channel from our presets
-        // FALLBACK: Try direct channel number matching if network name doesn't match
+        // Extract BOTH cable and DirecTV channel numbers via the shared
+        // resolver. This walks the station_aliases + channel_presets tables
+        // and preserves the Wisconsin RSN split (FanDuelWI ch 40 Bucks vs
+        // BallyWIPlus ch 308 Brewers). See network-channel-resolver.ts.
+        //
+        // FALLBACK below: Rail Media's own CAB/DRTV lineup channel numbers
+        // are matched directly against our preset Sets — this handles cases
+        // where a station has no name match but Rail provides the channel
+        // number explicitly.
         let cableChannelNumber = ''
         let directvChannelNumber = ''
         let matchedNetworkName = ''
 
-        // First, try to match by station/network name (most reliable method)
-        // Rail Media provides station names like "ESPN", "NBATV", "FOX", etc.
-        if (listing.stations && Array.isArray(listing.stations)) {
-          for (const station of listing.stations) {
-            const normalizedStation = normalizeNetworkName(station)
-
-            // Look up cable channel by network name
-            if (!cableChannelNumber) {
-              const cableChannel = networkToCableChannel.get(normalizedStation)
-              if (cableChannel) {
-                cableChannelNumber = cableChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to cable channel ${cableChannel}`)
-              }
-            }
-
-            // Look up DirecTV channel by network name
-            if (!directvChannelNumber) {
-              const directvChannel = networkToDirectvChannel.get(normalizedStation)
-              if (directvChannel) {
-                directvChannelNumber = directvChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to DirecTV channel ${directvChannel}`)
-              }
-            }
-
-            // If we found both, stop looking
-            if (cableChannelNumber && directvChannelNumber) break
-          }
-        }
-
-        // FALLBACK 1: station_aliases lookup via the shared resolver.
-        // The inline map above only matches preset names directly (so a
-        // Rail Media station code like "MILBRE" won't hit "Bally Sports WI").
-        // The shared resolver walks the station_aliases table which CAN
-        // link "MILBRE" to the BallyWIPlus bundle and then to the cable
-        // preset "Bally Sports WI" at channel 308.
-        if ((!cableChannelNumber || !directvChannelNumber) && listing.stations) {
+        // PRIMARY: shared resolver — preset/alias lookup keyed by station name.
+        if (listing.stations) {
           const stationsArray: string[] = Array.isArray(listing.stations)
             ? listing.stations
             : Object.values(listing.stations).filter((s): s is string => typeof s === 'string')
           if (stationsArray.length > 0) {
             try {
-              const resolved = await resolveChannelsForNetworks(stationsArray)
-              if (!cableChannelNumber && resolved.cable) {
-                cableChannelNumber = resolved.cable.channelNumber
-                logger.debug(`[AI_GAME_PLAN] station_aliases matched "${resolved.cable.matchedNetwork}" to cable ch ${cableChannelNumber} (${resolved.cable.presetName})`)
+              const resolved = await resolveChannelsForGame(
+                {
+                  networks: stationsArray,
+                  primaryNetwork: stationsArray[0] ?? null,
+                  league: group.group_title ?? null,
+                  sport: group.group_title ?? null,
+                },
+                ['cable', 'directv']
+              )
+              if (resolved.cableChannel) {
+                cableChannelNumber = resolved.cableChannel
+                matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to cable ch ${cableChannelNumber} (via ${resolved.resolvedVia})`)
               }
-              if (!directvChannelNumber && resolved.directv) {
-                directvChannelNumber = resolved.directv.channelNumber
-                logger.debug(`[AI_GAME_PLAN] station_aliases matched "${resolved.directv.matchedNetwork}" to DirecTV ch ${directvChannelNumber} (${resolved.directv.presetName})`)
+              if (resolved.directvChannel) {
+                directvChannelNumber = resolved.directvChannel
+                if (!matchedNetworkName) matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to DirecTV ch ${directvChannelNumber} (via ${resolved.resolvedVia})`)
               }
             } catch (resolverErr: any) {
-              logger.warn(`[AI_GAME_PLAN] station_aliases resolver failed, continuing with legacy fallbacks: ${resolverErr?.message}`)
+              logger.warn(`[AI_GAME_PLAN] resolveChannelsForGame failed, continuing with Rail Media lineup fallback: ${resolverErr?.message}`)
             }
           }
         }
 
-        // FALLBACK 2: direct channel number matching against our presets.
+        // FALLBACK: direct channel number matching against our presets.
         // Extract cable channels from Rail Media's CAB lineup and match
         // against our local cable preset channel numbers.
         if (!cableChannelNumber && listing.channel_numbers?.CAB) {
@@ -524,29 +457,10 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Cross-reference: If we only have one channel type, try to find the equivalent for the other
-        // This allows games to be scheduled on either cable OR DirecTV inputs
-        if (cableChannelNumber && !directvChannelNumber) {
-          // We have cable, try to find matching DirecTV channel by preset name
-          const presetName = cableChannelToName.get(cableChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingDirectv = nameToDirectvChannel.get(presetName)
-            if (matchingDirectv) {
-              directvChannelNumber = matchingDirectv
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced cable ${cableChannelNumber} (${presetName}) to DirecTV ${directvChannelNumber}`)
-            }
-          }
-        } else if (directvChannelNumber && !cableChannelNumber) {
-          // We have DirecTV, try to find matching cable channel by preset name
-          const presetName = directvChannelToName.get(directvChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingCable = nameToCableChannel.get(presetName)
-            if (matchingCable) {
-              cableChannelNumber = matchingCable
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced DirecTV ${directvChannelNumber} (${presetName}) to cable ${cableChannelNumber}`)
-            }
-          }
-        }
+        // Cross-reference (cable<->DirecTV equivalent lookup) was removed in
+        // Phase 4: `resolveChannelsForGame()` already returns BOTH device
+        // types in a single call when both deviceTypesAvailable are passed,
+        // so the equivalent-by-preset-name fallback is no longer needed.
 
         // Check for streaming-only availability
         // Extract all station codes and check for streaming services
