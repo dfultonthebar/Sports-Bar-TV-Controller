@@ -13,11 +13,58 @@ import { queryWolfpackRouteState } from '@sports-bar/wolfpack'
  * hardware directly via `/get_json_cmd.php?cmd=o2ox` (no `prm` — read-only) and
  * converts the 0-based array into 1-based { inputNum, outputNum } pairs.
  *
- * Falls back to the MatrixRoute table cache only if the hardware is unreachable
- * so the Routing tab still shows something useful during brief network blips.
- * Adds a `source: 'hardware' | 'cache'` field so the UI can show a warning
- * when it's reading from cache.
+ * ### Server-side TTL cache
+ *
+ * The bartender remote page polls this endpoint every 15 seconds while the
+ * Video or Routing tab is open. Without caching, every poll triggers a full
+ * login + index.php + o2ox round-trip against the Wolf Pack, and the Wolf
+ * Pack's firmware emits an audible beep on each authenticated HTTP request.
+ * That's one beep every 5 seconds (3 requests per poll) continuously as long
+ * as a bartender has the UI open — incredibly annoying in a live bar.
+ *
+ * The cache stores one routing array per active chassis IP with a 10-second
+ * TTL. Within the TTL, consecutive calls return the cached state without
+ * touching hardware. The cache is invalidated explicitly whenever the route
+ * POST handler (`/api/matrix/route`) successfully changes a route, so the
+ * next GET after a bartender click is always fresh.
+ *
+ * 10s is shorter than the client's 15s poll interval, which means the cache
+ * expires between polls — so live hardware changes (someone using the Wolf
+ * Pack's own front panel) show up within ~15s at worst.
+ *
+ * ### Hardware failure fallback
+ *
+ * If the live query fails (network blip, auth error), the handler falls back
+ * to the MatrixRoute DB cache and flags the response with `source: 'cache'`
+ * + a warning string so the UI can show a stale-state badge.
  */
+
+type CachedState = {
+  routes: Array<{ inputNum: number; outputNum: number; isActive: true }>
+  expiry: number
+  source: 'hardware'
+}
+
+// Module-level cache. Single-instance Node process, no cluster, so a plain
+// Map is fine. Keyed by chassis IP so if the operator ever runs two active
+// chassis they don't clobber each other's state.
+const cache = new Map<string, CachedState>()
+const CACHE_TTL_MS = 10_000
+
+/**
+ * Invalidate the cache for a specific chassis IP, or all chassis if no IP is
+ * provided. Exported so POST /api/matrix/route can call it after a successful
+ * route change — the next GET will then query the hardware for fresh state
+ * instead of returning the pre-change cache.
+ */
+export function invalidateRoutesCache(chassisIp?: string): void {
+  if (chassisIp) {
+    cache.delete(chassisIp)
+  } else {
+    cache.clear()
+  }
+}
+
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -38,6 +85,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const now = Date.now()
+    const cached = cache.get(activeConfig.ipAddress)
+    if (cached && cached.expiry > now) {
+      return NextResponse.json({
+        success: true,
+        source: 'cache-hit',
+        cachedAgeMs: CACHE_TTL_MS - (cached.expiry - now),
+        routes: cached.routes,
+      })
+    }
+
     const credentials = { username: 'admin', password: 'admin' }
 
     try {
@@ -47,11 +105,29 @@ export async function GET(request: NextRequest) {
       })
 
       const offset = activeConfig.outputOffset || 0
-      const routes = routingArray.map((input0Based, output0Based) => ({
-        inputNum: input0Based + 1,
-        outputNum: output0Based + 1 - offset,
-        isActive: true,
-      })).filter(r => r.outputNum >= 1 && r.outputNum <= activeConfig.outputCount)
+      // queryWolfpackRouteState normalizes the Wolf Pack 65535 firmware
+      // sentinel to -1. Drop those positions from the result — the UI
+      // should continue showing whatever it had before, which is exactly
+      // what "route missing from the list" produces via the currentSources
+      // Map fallback in the bartender remote page.
+      const routes = routingArray
+        .map((input0Based, output0Based) => ({
+          inputNum: input0Based + 1,
+          outputNum: output0Based + 1 - offset,
+          isActive: true as const,
+        }))
+        .filter(r =>
+          r.inputNum >= 1 &&
+          r.inputNum <= (activeConfig.inputCount || 36) &&
+          r.outputNum >= 1 &&
+          r.outputNum <= (activeConfig.outputCount || 36)
+        )
+
+      cache.set(activeConfig.ipAddress, {
+        routes,
+        expiry: now + CACHE_TTL_MS,
+        source: 'hardware',
+      })
 
       return NextResponse.json({
         success: true,
@@ -61,7 +137,7 @@ export async function GET(request: NextRequest) {
     } catch (hwError: any) {
       logger.warn(`[api/matrix/routes] hardware query failed, falling back to DB cache: ${hwError?.message ?? hwError}`)
 
-      const cached = await db.select()
+      const cachedDb = await db.select()
         .from(schema.matrixRoutes)
         .where(eq(schema.matrixRoutes.isActive, true))
         .orderBy(asc(schema.matrixRoutes.outputNum))
@@ -71,7 +147,7 @@ export async function GET(request: NextRequest) {
         success: true,
         source: 'cache',
         warning: `Live query failed (${hwError?.message ?? 'unknown'}); showing last-known DB state`,
-        routes: cached.map(r => ({
+        routes: cachedDb.map(r => ({
           inputNum: r.inputNum,
           outputNum: r.outputNum,
           isActive: r.isActive,

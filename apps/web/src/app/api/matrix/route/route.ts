@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { invalidateRoutesCache } from '@/app/api/matrix/routes/route'
 
 
 export async function POST(request: NextRequest) {
@@ -65,6 +66,11 @@ export async function POST(request: NextRequest) {
         success: false
       }, { status: 500 })
     }
+
+    // Invalidate the /api/matrix/routes cache so the bartender remote's
+    // next GET returns a fresh query reflecting this new route, not the
+    // pre-change state the 10s TTL would otherwise hold.
+    invalidateRoutesCache()
 
     // Track routing in MatrixRoute table and set manual override for bartender changes
     try {
