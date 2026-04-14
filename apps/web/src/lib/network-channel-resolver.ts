@@ -323,6 +323,31 @@ export function getStreamingAppForStation(
 }
 
 /**
+ * Like `getStreamingAppForStation()` but also returns the package list so
+ * Fire TV consumers can check device login status against installed packages.
+ *
+ * Sport-gating semantics are identical to `getStreamingAppForStation()`.
+ */
+export function getStreamingAppInfoForStation(
+  stationCode: string,
+  sport?: string | null
+): { app: string; code: string; packages: string[] } | null {
+  if (!stationCode) return null
+  const code = stationCode.toUpperCase()
+  const entry = STREAMING_STATION_MAP[code]
+  if (!entry) return null
+
+  if (code in SPORT_GATED_STREAMING_CODES) {
+    const requiredSport = SPORT_GATED_STREAMING_CODES[code]
+    if (normalizeSport(sport) !== requiredSport) {
+      return null
+    }
+  }
+
+  return { app: entry.appName, code, packages: entry.packages }
+}
+
+/**
  * Read the module-cached or freshly-loaded local_channel_overrides table.
  * 5-minute TTL aligned with the main resolver cache.
  */
