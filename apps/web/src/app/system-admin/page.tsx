@@ -88,6 +88,99 @@ const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'te
 type TabId = (typeof VALID_TABS)[number]
 
 /**
+ * Always-visible version strip at the top of the System Admin page.
+ * Hits /api/system/version on mount and shows the running version,
+ * commit SHA, commit date, build date, and branch. Refreshes once
+ * per minute in case a hot-redeploy happens while the operator's
+ * browser is open.
+ */
+function VersionBadge() {
+  const [info, setInfo] = useState<{
+    version?: string
+    branch?: string
+    commitShaShort?: string
+    commitDate?: string
+    commitSubject?: string
+    buildDate?: string | null
+    uptimeSecs?: number
+  } | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    const load = () =>
+      fetch('/api/system/version', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => mounted && setInfo(d))
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 60000)
+    return () => {
+      mounted = false
+      clearInterval(t)
+    }
+  }, [])
+
+  const fmtLocal = (iso?: string | null): string => {
+    if (!iso) return '—'
+    try {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return '—'
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return '—'
+    }
+  }
+
+  if (!info) {
+    return (
+      <div className="mb-2 text-xs text-slate-500 font-mono">
+        version: loading…
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between flex-wrap gap-2">
+      <span>
+        <span className="text-slate-200">v{info.version}</span>
+        {info.branch ? (
+          <>
+            {' · '}
+            <span className="text-blue-400">{info.branch}</span>
+          </>
+        ) : null}
+        {info.commitShaShort ? (
+          <>
+            {' · '}
+            <span className="text-amber-300">{info.commitShaShort}</span>
+          </>
+        ) : null}
+      </span>
+      <span className="text-slate-500">
+        commit: {fmtLocal(info.commitDate)}
+        {info.buildDate ? (
+          <>
+            {' · '}
+            build: {fmtLocal(info.buildDate)}
+          </>
+        ) : null}
+      </span>
+      {info.commitSubject ? (
+        <span className="basis-full text-slate-500 truncate" title={info.commitSubject}>
+          last commit: {info.commitSubject}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/**
  * Always-visible auth banner at the top of the System Admin page. Hits
  * /api/auth/whoami on mount and reports the session state regardless of
  * which tab is active, so operators can see whether their login cookie
@@ -501,6 +594,7 @@ export default function SystemAdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <VersionBadge />
         <AuthStatusBanner />
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
           <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
