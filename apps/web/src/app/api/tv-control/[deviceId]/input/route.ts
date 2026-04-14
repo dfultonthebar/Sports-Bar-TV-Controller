@@ -8,6 +8,7 @@ import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
 import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
 
 /**
  * TV HDMI Input Control API
@@ -83,6 +84,7 @@ export async function POST(
         try {
           result = await client.switchInput(inputNumber)
         } finally {
+          await persistSamsungTokenIfChanged(device, client)
           client.disconnect()
         }
         break
