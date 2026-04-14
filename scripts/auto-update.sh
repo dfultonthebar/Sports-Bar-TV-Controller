@@ -130,8 +130,9 @@ history_insert_start() {
   branch_esc=$(sql_escape "$BRANCH")
   local sha_esc
   sha_esc=$(sql_escape "$PRE_MERGE_SHA")
-  sql "INSERT INTO auto_update_history (started_at, result, commit_sha_before, branch, triggered_by) VALUES ('$RUN_STARTED_AT', 'in_progress', '$sha_esc', '$branch_esc', '$TRIGGERED_BY');"
-  HISTORY_ID=$(sql "SELECT last_insert_rowid();")
+  # INSERT + SELECT must share the same sqlite3 session, otherwise
+  # last_insert_rowid() runs in a fresh connection and returns 0.
+  HISTORY_ID=$(sql "INSERT INTO auto_update_history (started_at, result, commit_sha_before, branch, triggered_by) VALUES ('$RUN_STARTED_AT', 'in_progress', '$sha_esc', '$branch_esc', '$TRIGGERED_BY'); SELECT last_insert_rowid();")
 }
 
 history_update_result() {
