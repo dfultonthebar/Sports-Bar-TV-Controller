@@ -539,17 +539,29 @@ export async function queryWolfpackRouteState(
 
   // Wolf Pack firmware quirk: immediately after a route change, the o2ox array
   // can return 65535 (0xFFFF) at the just-changed output's index as a "pending /
-  // not yet committed" sentinel. If we pass that through to the UI it becomes
+  // not yet committed" sentinel while the internal HDMI crossbar settles
+  // (~500ms window per switch). If we pass that through to the UI it becomes
   // inputNum 65536, which matches no real input and makes the output look
-  // unrouted. Normalize 65535 to -1 so callers can explicitly decide what to do
-  // (filter it out, fall back to prior state, or mark as unknown).
+  // unrouted. Normalize 65535 to -1 so /api/matrix/routes can filter those
+  // positions out of its response.
+  //
+  // The sentinel is benign and self-clearing — the next query (once the
+  // firmware commits) returns the real input index. Logging was originally at
+  // WARN level while we were diagnosing the stuck-output-1 symptom at Stoneyard
+  // Appleton; now that we understand this is normal firmware behavior during
+  // the ~500ms post-route settling window, it's been demoted to DEBUG so it
+  // stops spamming the PM2 log. If you need to see it, set LOG_LEVEL=DEBUG in
+  // .env (ecosystem.config.js reads that through). Persistent 65535 (same
+  // output repeatedly across many seconds of queries with no route commands
+  // issued) WOULD indicate a real firmware hang and should be investigated —
+  // but you'll need to raise the log level to see it first.
   const rawArray = routingArray as number[]
   const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
   const sentinelIndices = rawArray
     .map((v, i) => (v === 65535 ? i + 1 : -1))
     .filter(i => i > 0)
   if (sentinelIndices.length > 0) {
-    logger.warn(`[WOLFPACK-HTTP] Query returned ${sentinelIndices.length} pending/0xFFFF sentinel(s) at ${config.ipAddress} for output(s) ${sentinelIndices.join(',')} — normalized to -1`)
+    logger.debug(`[WOLFPACK-HTTP] Query returned ${sentinelIndices.length} transient 0xFFFF sentinel(s) at ${config.ipAddress} for output(s) ${sentinelIndices.join(',')} — normalized to -1 (expected during ~500ms post-route settle window)`)
   }
 
   logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
