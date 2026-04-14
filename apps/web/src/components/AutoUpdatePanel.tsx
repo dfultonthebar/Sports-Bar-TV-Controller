@@ -339,10 +339,22 @@ export default function AutoUpdatePanel() {
               logBodyRef.current.scrollTop = logBodyRef.current.scrollHeight
             }
           })
-          // Idle detection
-          if (data.size === logIdleRef.current.lastSize) {
+          // Idle detection — stop polling only after the log has been
+          // silent for a LONG time. Checkpoint B and C invoke Claude
+          // Code CLI which can take 60-180s to respond, and during that
+          // window the log file doesn't grow. A short idle threshold
+          // would stop polling mid-run. 150 polls × 2s = 5 minutes of
+          // silence before we conclude the run is truly done.
+          // Also: don't count idleness until we've seen the file exist
+          // (first bytes written), so "waiting for script to start"
+          // doesn't count as idle.
+          if (!data.exists || data.size === 0) {
+            // Script hasn't written anything yet; reset counter and keep polling
+            logIdleRef.current.idleCount = 0
+            logIdleRef.current.lastSize = 0
+          } else if (data.size === logIdleRef.current.lastSize) {
             logIdleRef.current.idleCount++
-            if (logIdleRef.current.idleCount >= 5) {
+            if (logIdleRef.current.idleCount >= 150) {
               stopLogPolling()
             }
           } else {

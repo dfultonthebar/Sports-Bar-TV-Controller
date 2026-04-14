@@ -30,6 +30,27 @@ set -uo pipefail
 # pipes and `|| return` patterns we need for state-updating sub-calls.
 
 # ---------------------------------------------------------------------------
+# Detach from parent process group (CRITICAL)
+# ---------------------------------------------------------------------------
+# When the Next.js API route spawns this script via child_process.spawn
+# with detached:true, the child still shares the process group with the
+# Next.js server that spawned it. Later in the flow we run
+# `pm2 restart sports-bar-tv-controller` which kills and restarts that
+# Next.js server — and the kill signal propagates to the entire process
+# group, including THIS script. The bash EXIT trap never fires because
+# SIGKILL bypasses traps, so the history row stays "in_progress" forever
+# and the rollback never runs.
+#
+# Fix: re-exec via `setsid -f` to break into a new session and process
+# group before we do anything else. This way `pm2 restart` can kill
+# Next.js without touching us. Idempotent via the AUTO_UPDATE_DETACHED
+# env flag so re-execs don't loop.
+if [ -z "${AUTO_UPDATE_DETACHED:-}" ]; then
+  export AUTO_UPDATE_DETACHED=1
+  exec setsid -f "$0" "$@" </dev/null >/dev/null 2>&1
+fi
+
+# ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 REPO_ROOT="/home/ubuntu/Sports-Bar-TV-Controller"
