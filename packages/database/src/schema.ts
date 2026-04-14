@@ -2523,3 +2523,36 @@ export const stationAliases = sqliteTable('station_aliases', {
   aliases: text('aliases').notNull(), // JSON array of alias strings
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 })
+
+// Auto-Update singleton state (always id=1). Written by scripts/auto-update.sh
+// via sqlite3 CLI and read by the Sync tab UI via Drizzle. See
+// docs/AUTO_UPDATE_SETUP.md §2 for the state-location decision record.
+export const autoUpdateState = sqliteTable('auto_update_state', {
+  id: integer('id').primaryKey().default(1),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  scheduleCron: text('schedule_cron').notNull().default('30 2 * * *'),
+  lastRunAt: text('last_run_at'),
+  lastResult: text('last_result'), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  lastCommitShaBefore: text('last_commit_sha_before'),
+  lastCommitShaAfter: text('last_commit_sha_after'),
+  lastError: text('last_error'),
+  lastDurationSecs: integer('last_duration_secs'),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+
+// Auto-Update append-only history. Each run inserts one row on start, updates
+// it on each phase boundary, and finalizes it at success/fail/rollback. The
+// Sync tab UI pages through the last N rows for the history table.
+export const autoUpdateHistory = sqliteTable('auto_update_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  startedAt: text('started_at').notNull(),
+  finishedAt: text('finished_at'),
+  result: text('result').notNull(), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  commitShaBefore: text('commit_sha_before').notNull(),
+  commitShaAfter: text('commit_sha_after'),
+  branch: text('branch').notNull(),
+  durationSecs: integer('duration_secs'),
+  verifyResultJson: text('verify_result_json'),
+  errorMessage: text('error_message'),
+  triggeredBy: text('triggered_by').notNull(), // 'cron' | 'manual_api' | 'manual_cli'
+})
