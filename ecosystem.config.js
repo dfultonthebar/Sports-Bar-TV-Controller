@@ -1,3 +1,12 @@
+// Load per-location .env so LOCATION_ID (and any other location-specific env
+// vars) reach the PM2-managed process. Each location branch has its own .env
+// at the repo root. PM2's cwd is apps/web/, so Next.js's built-in dotenv
+// doesn't pick up the repo-root .env — we load it here explicitly.
+try {
+  require('dotenv').config({ path: __dirname + '/.env' })
+} catch (e) {
+  console.warn('[ecosystem] dotenv not available:', e && e.message)
+}
 
 module.exports = {
   apps: [{
@@ -22,7 +31,11 @@ module.exports = {
       // Sports Guide API (The Rail Media)
       SPORTS_GUIDE_API_KEY: '12548RK0000000d2bb701f55b82bfa192e680985919',
       SPORTS_GUIDE_USER_ID: '258351',
-      SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1'
+      SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1',
+      // Auth system — bind to the location row in the DB. Without this,
+      // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
+      // and every login fails with "Invalid PIN".
+      LOCATION_ID: process.env.LOCATION_ID || 'default-location'
     },
     // Use PM2's default log location for better log rotation support
     // Custom logs still work through the app's logger system
