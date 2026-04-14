@@ -1,1 +1,189 @@
-{"name":"Bar Layout","zones":[],"tvPositions":[],"rooms":[]}
+{
+  "name": "Stoneyard Greenville",
+  "zones": [
+    {
+      "id": "zone-1775599380553-8zgex7mrh",
+      "outputNumber": 1,
+      "x": 77.71,
+      "y": 80.65,
+      "width": 8,
+      "height": 8,
+      "label": "TV 01"
+    },
+    {
+      "id": "zone-1775599385857-vnnxk6xtv",
+      "outputNumber": 2,
+      "x": 62.03,
+      "y": 72.58,
+      "width": 8,
+      "height": 8,
+      "label": "TV 02"
+    },
+    {
+      "id": "zone-1775599391325-5mfkh21bc",
+      "outputNumber": 3,
+      "x": 48.22,
+      "y": 73.89,
+      "width": 8,
+      "height": 8,
+      "label": "TV 03"
+    },
+    {
+      "id": "zone-1775599399173-nax9p8zky",
+      "outputNumber": 4,
+      "x": 40.9,
+      "y": 73.66,
+      "width": 8,
+      "height": 8,
+      "label": "TV 04"
+    },
+    {
+      "id": "zone-1775599409875-hm1nmlg8f",
+      "outputNumber": 5,
+      "x": 34.43,
+      "y": 73.2,
+      "width": 8,
+      "height": 8,
+      "label": "TV 05"
+    },
+    {
+      "id": "zone-1775599417315-y77alosuq",
+      "outputNumber": 6,
+      "x": 26.79,
+      "y": 73.12,
+      "width": 8,
+      "height": 8,
+      "label": "TV 06"
+    },
+    {
+      "id": "zone-1775599423520-kflotczga",
+      "outputNumber": 7,
+      "x": 4.34,
+      "y": 65.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 07"
+    },
+    {
+      "id": "zone-1775599429784-d4eghok0n",
+      "outputNumber": 8,
+      "x": 5.1,
+      "y": 43.8,
+      "width": 8,
+      "height": 8,
+      "label": "TV 08"
+    },
+    {
+      "id": "zone-1775599438748-2f17mke96",
+      "outputNumber": 9,
+      "x": 5.2,
+      "y": 20.8,
+      "width": 8,
+      "height": 8,
+      "label": "TV 09"
+    },
+    {
+      "id": "zone-1775599444748-rfcloucjv",
+      "outputNumber": 10,
+      "x": 15.27,
+      "y": 17.22,
+      "width": 8,
+      "height": 8,
+      "label": "TV 10"
+    },
+    {
+      "id": "zone-1775599452933-a4une1383",
+      "outputNumber": 11,
+      "x": 23.38,
+      "y": 17.68,
+      "width": 8,
+      "height": 8,
+      "label": "TV 11"
+    },
+    {
+      "id": "zone-1775599460264-44rvu8z7r",
+      "outputNumber": 12,
+      "x": 32.35,
+      "y": 17.36,
+      "width": 8,
+      "height": 8,
+      "label": "TV 12"
+    },
+    {
+      "id": "zone-1775599466381-ib736p9a5",
+      "outputNumber": 13,
+      "x": 40.89,
+      "y": 17.4,
+      "width": 8,
+      "height": 8,
+      "label": "TV 13"
+    },
+    {
+      "id": "zone-1775599472313-ya5q3c37j",
+      "outputNumber": 14,
+      "x": 49.09,
+      "y": 16.99,
+      "width": 8,
+      "height": 8,
+      "label": "TV 14"
+    },
+    {
+      "id": "zone-1775599477702-ma8sswdd1",
+      "outputNumber": 15,
+      "x": 70.49,
+      "y": 23.82,
+      "width": 8,
+      "height": 8,
+      "label": "TV 15"
+    },
+    {
+      "id": "zone-1775599483138-ycf5yh89w",
+      "outputNumber": 16,
+      "x": 84.17,
+      "y": 12.86,
+      "width": 8,
+      "height": 8,
+      "label": "TV 16"
+    },
+    {
+      "id": "zone-1775599489032-c1yxfxyig",
+      "outputNumber": 17,
+      "x": 92,
+      "y": 27.75,
+      "width": 8,
+      "height": 8,
+      "label": "TV 17"
+    },
+    {
+      "id": "zone-1775599494808-9aiw91b28",
+      "outputNumber": 18,
+      "x": 91.59,
+      "y": 40.67,
+      "width": 8,
+      "height": 8,
+      "label": "TV 18"
+    },
+    {
+      "id": "zone-1775599500964-8oag55x6s",
+      "outputNumber": 19,
+      "x": 91.69,
+      "y": 54.24,
+      "width": 8,
+      "height": 8,
+      "label": "TV 19"
+    },
+    {
+      "id": "zone-1775599505342-3dlfru97j",
+      "outputNumber": 20,
+      "x": 0,
+      "y": 48.76,
+      "width": 8,
+      "height": 8,
+      "label": "TV 20"
+    }
+  ],
+  "rooms": [],
+  "imageUrl": "/api/uploads/layouts/layout_1775599362445.png",
+  "originalFileUrl": "/api/uploads/layouts/layout_1775599362445.png",
+  "professionalImageUrl": "/api/uploads/layouts/layout_professional_1775672277023.png"
+}
