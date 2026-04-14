@@ -87,6 +87,79 @@ interface TestSummary {
 const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos'] as const
 type TabId = (typeof VALID_TABS)[number]
 
+/**
+ * Always-visible auth banner at the top of the System Admin page. Hits
+ * /api/auth/whoami on mount and reports the session state regardless of
+ * which tab is active, so operators can see whether their login cookie
+ * was actually persisted and sent back to the server.
+ */
+function AuthStatusBanner() {
+  const [state, setState] = useState<{
+    loading: boolean
+    authenticated: boolean
+    role?: string
+    reason?: string
+  }>({ loading: true, authenticated: false })
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/auth/whoami', { credentials: 'include', cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!mounted) return
+        setState({
+          loading: false,
+          authenticated: !!data.authenticated,
+          role: data.role,
+          reason: data.reason,
+        })
+      })
+      .catch(() => mounted && setState({ loading: false, authenticated: false, reason: 'network error' }))
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  if (state.loading) {
+    return (
+      <div className="mb-6 rounded-lg border border-slate-700 bg-slate-900/40 p-3 text-slate-400 text-sm">
+        Checking session…
+      </div>
+    )
+  }
+
+  if (state.authenticated) {
+    return (
+      <div className="mb-6 rounded-lg border border-green-700 bg-green-900/20 p-3 text-green-300 text-sm flex items-center justify-between">
+        <span>
+          ✓ Signed in as <strong className="text-green-200">{state.role}</strong>
+        </span>
+        <a
+          href="/api/auth/logout"
+          className="text-xs text-green-400 hover:text-green-200 underline"
+        >
+          sign out
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-6 rounded-lg border border-amber-700 bg-amber-900/20 p-3 text-amber-200 text-sm flex items-center justify-between">
+      <span>
+        ⚠ Not signed in {state.reason ? `— ${state.reason}` : ''}. Admin-only
+        panels (Sync) will not load.
+      </span>
+      <a
+        href="/login?redirect=/system-admin%3Ftab%3Dsync"
+        className="text-xs bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded"
+      >
+        Log in
+      </a>
+    </div>
+  )
+}
+
 function readTabFromWindow(): TabId | null {
   if (typeof window === 'undefined') return null
   try {
@@ -428,6 +501,7 @@ export default function SystemAdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <AuthStatusBanner />
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
           <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
