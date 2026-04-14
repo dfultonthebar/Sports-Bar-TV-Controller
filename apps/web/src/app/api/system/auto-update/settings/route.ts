@@ -42,6 +42,13 @@ export async function PUT(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const { enabled, scheduleCron } = bodyValidation.data
 
+  logger.info('[AUTO_UPDATE_API] PUT /settings', {
+    role: authResult.role,
+    sessionId: authResult.sessionId,
+    enabled,
+    scheduleCron,
+  })
+
   try {
     // Upsert the singleton row (id=1)
     const existing = await db

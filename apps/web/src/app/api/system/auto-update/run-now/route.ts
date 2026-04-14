@@ -44,7 +44,12 @@ export async function POST(request: NextRequest) {
     const jobId = buildJobId(now)
     const logFile = path.join(LOG_DIR, `${jobId}.log`)
 
-    logger.info('[AUTO_UPDATE_API] spawning auto-update.sh', { jobId, logFile })
+    logger.info('[AUTO_UPDATE_API] POST /run-now → spawning auto-update.sh', {
+      jobId,
+      logFile,
+      role: authResult.role,
+      sessionId: authResult.sessionId,
+    })
 
     // Spawn detached so the child outlives this request. SECURITY: argv is
     // entirely hardcoded — no user input flows into spawn.

@@ -72,6 +72,16 @@ export async function GET(request: NextRequest) {
       // No PID file
     }
 
+    logger.debug('[AUTO_UPDATE_API] status', {
+      role: authResult.role,
+      enabled: state.enabled,
+      lastResult: state.lastResult,
+      lastRunAt: state.lastRunAt,
+      recentRunCount: recentRuns.length,
+      currentlyRunning,
+      currentPid,
+    })
+
     return NextResponse.json({
       enabled: state.enabled,
       scheduleCron: state.scheduleCron,
