@@ -3,14 +3,51 @@ You are doing pre-update analysis for the Sports Bar TV Controller.
 Decide whether the pending git merge from origin/main onto the current
 location branch is safe to proceed with.
 
-## EVIDENCE SOURCES — in priority order
+## How this fits into the update flow
 
-The ONLY source of truth for this decision is the actual diff output.
-Do not speculate about what "might" or "could" be in the merge based on
-general repo knowledge or documentation — only flag things that literally
-appear in the diff bytes.
+The auto-updater script (`scripts/auto-update.sh`) runs a 5-field
+`LOCATION_PATHS_OURS` auto-resolver BEFORE it ever tries to build. Any
+conflict on these paths is automatically resolved by keeping the
+LOCATION version (never the main version):
 
-### Step 1 — get the exact diff (REQUIRED; run before deciding)
+```
+LOCATION_PATHS_OURS=(
+  "apps/web/data/tv-layout.json"
+  "apps/web/data/directv-devices.json"
+  "apps/web/data/firetv-devices.json"
+  "apps/web/data/device-subscriptions.json"
+  "apps/web/data/wolfpack-devices.json"
+  "apps/web/data/atlas-configs"
+  "apps/web/data/channel-presets-cable.json"
+  "apps/web/data/channel-presets-directv.json"
+  "apps/web/public/uploads/layouts"
+  "data"
+  ".env"
+)
+```
+
+**This means:** modifications to files in the list above in the incoming
+diff are NOT a reason to STOP. The script will auto-resolve them by
+discarding main's changes and keeping the location's data. Flagging
+them is a false positive that wastes a run.
+
+The script separately takes `--theirs` (main's version) for:
+```
+LOCATION_PATHS_THEIRS=(
+  "package-lock.json"
+  "package.json"
+)
+```
+Those are dependency-lockfile sync files — main always wins here, again
+without human intervention needed.
+
+## Your actual job
+
+Read the REAL diff from origin/main and flag ONLY the things the script
+cannot auto-handle. Do not flag things in LOCATION_PATHS_OURS or
+LOCATION_PATHS_THEIRS — those are already handled.
+
+### Step 1 — run and read this diff
 
 ```
 cd /home/ubuntu/Sports-Bar-TV-Controller
@@ -19,77 +56,65 @@ git diff --stat HEAD..origin/main
 git log -p HEAD..origin/main
 ```
 
-Base your decision on what these commands actually output. If
-`git log --oneline HEAD..origin/main` is empty, there is nothing to merge
-→ return `DECISION: GO`.
+If `git log --oneline HEAD..origin/main` is empty, return `DECISION: GO`
+immediately (nothing to merge).
 
-### Step 2 — supporting context (optional, use to refine your reasoning)
+Base your decision ONLY on what appears in the `git log -p` output as
+`diff --git a/<path>` lines. Do not speculate from CLAUDE.md content or
+general repo knowledge.
 
-- `/home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md` — for vocabulary (e.g.
-  what "location-specific files" means). Do NOT treat CLAUDE.md as
-  evidence that a file IS or IS NOT being modified — only the diff shows
-  that.
-- Any `docs/*.md` files that `git diff --stat` actually shows as modified
-  in this merge — read those.
+### Step 2 — decide
 
-## DECISION CRITERIA
+`DECISION: GO` — default when none of the STOP conditions below are met.
+The diff only touches source code, docs, config, scripts, or
+location-auto-resolved data files.
 
-Base each rule ONLY on what appears in the `git log -p HEAD..origin/main`
-output as `diff --git a/<path>` lines.
+`DECISION: CAUTION - <reason>` — proceed but watch Checkpoints B/C:
+- The diff adds a new DB column or table (additive schema change).
+- The diff changes an API contract in a way that could affect callers.
+- The diff bumps a minor/patch dep with no documented breaking change.
 
-### DECISION: GO — default choice when nothing below triggers
-The diff is entirely code/docs/scripts with no schema migrations that
-require data migration, no contract-breaking API changes, and no
-modifications to the location-protected paths listed under STOP.
+`DECISION: STOP - <reason citing the exact diff --git path>` — abort
+before any on-disk change. Only return STOP when you see ONE of:
 
-### DECISION: CAUTION — proceed but monitor Checkpoints B/C
-- The diff adds a new DB column or table (additive schema change) and
-  the location's current data will remain compatible.
-- The diff changes an API response shape but old callers continue to
-  function because fields are only added.
-- The diff bumps a minor/patch dependency version and the changelog has
-  no breaking-change notes.
+1. **A non-additive Drizzle schema migration** in
+   `packages/database/src/schema.ts` or `apps/web/src/db/schema.ts` —
+   specifically: a new NOT NULL column without a default, a renamed
+   column, or a dropped table that still has rows on this location.
+   Additive changes (new nullable column, new table) are GO or CAUTION,
+   not STOP.
 
-### DECISION: STOP — abort before any on-disk change
+2. **A dependency bump with a known breaking change for this project.**
+   E.g., Next.js major version bump where the changelog explicitly
+   marks features this app uses as removed/changed. Minor/patch bumps
+   are not STOP.
 
-Only STOP when you have seen one of these in the actual diff output:
+3. **A diff line touching a path OUTSIDE all the LOCATION_PATHS lists
+   that looks like accidentally-committed secrets.** e.g.,
+   `config/prod-keys.json`, `*.pem`, hardcoded API tokens in source.
 
-1. A `diff --git a/<path>` header where `<path>` is exactly one of:
-   - `apps/web/data/tv-layout.json`
-   - `apps/web/data/directv-devices.json`
-   - `apps/web/data/firetv-devices.json`
-   - `apps/web/data/device-subscriptions.json`
-   - `apps/web/data/wolfpack-devices.json`
-   - `apps/web/data/atlas-configs/*`
-   - `apps/web/data/channel-presets-cable.json`
-   - `apps/web/data/channel-presets-directv.json`
-   - `apps/web/public/uploads/layouts/*`
-   - `.env`
-   (The auto-updater's merge step auto-resolves these with
-   `git checkout --ours`, so main actually modifying them would be a
-   cross-location data leak. That's the real blocker.)
+4. **An obvious pre-merge infrastructure problem** — e.g., the diff
+   deletes `scripts/verify-install.sh` or `scripts/auto-update.sh`
+   itself, or modifies `packages/auth/src/config.ts` in a way that
+   would lock out all admins.
 
-2. A Drizzle schema migration in `packages/database/src/schema.ts` or
-   `apps/web/src/db/schema.ts` that adds a NOT NULL column without a
-   default, or renames a column, or drops a table that still has rows
-   on this location.
+Do NOT STOP for:
+- Any path in LOCATION_PATHS_OURS being modified (auto-resolved)
+- Any path in LOCATION_PATHS_THEIRS being modified (auto-resolved)
+- New files being added (always safe)
+- Existing files being edited, even heavily, as long as they're
+  software not secrets
+- New routes, components, or packages appearing
+- docs/*.md files changing (they're just documentation)
 
-3. A package.json dependency bump where the changelog explicitly marks
-   a breaking change for this project's usage.
-
-If none of these are visible in the actual diff, you MUST NOT STOP.
-Hallucinated STOPs (based on CLAUDE.md general knowledge or pattern
-matching) are treated as infrastructure failures and cause the
-auto-updater to exit 2.
-
-## OUTPUT FORMAT — first line ONLY, no text before it
+## Output format — first line ONLY, no text before it
 
 ```
 DECISION: GO
-DECISION: CAUTION - <one-sentence reason, citing a diff line if applicable>
-DECISION: STOP - <one-sentence reason, citing the exact diff --git path>
+DECISION: CAUTION - <one-sentence reason with diff --git path if applicable>
+DECISION: STOP - <one-sentence reason citing the exact diff --git path>
 ```
 
-The auto-updater parses this with `grep -m1 '^DECISION:'`. You may add
-as much explanation as you like on subsequent lines — it will be
-preserved in the log file but will not affect the decision.
+The auto-updater parses this with `grep -m1 '^DECISION:'`. Put any
+additional reasoning on subsequent lines — the log preserves it but
+only the first line drives the decision.
