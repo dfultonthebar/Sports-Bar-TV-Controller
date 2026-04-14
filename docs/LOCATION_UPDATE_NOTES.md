@@ -39,6 +39,45 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — `8c148ce8` — auto-update: force NODE_ENV=development for npm ci
+
+**Risk:** HIGH (this was a blocker for every auto-update run before this fix)
+
+**What changed:**
+
+Both `scripts/auto-update.sh` and `scripts/rollback.sh` now run
+`NODE_ENV=development npm ci --include=dev` instead of plain `npm ci`.
+
+The plain version inherited PM2's `NODE_ENV=production` and silently
+skipped devDependencies, dropping `turbo` from node_modules. The next
+`npm run build` then died with `sh: 1: turbo: not found` and triggered
+an unnecessary rollback. First discovered on the first real end-to-end
+auto-update attempt tonight (history id=8, rolled back at 23:02:34).
+
+**What could break at a location:**
+
+- **None** — the fix makes auto-update WORK where previously it was
+  broken. Locations that have never successfully run auto-update
+  before this commit will now be able to. Locations that already
+  happen to have turbo installed (because they built outside the
+  auto-update flow) will be unaffected.
+- If a location is extremely disk-constrained, forcing devDependencies
+  to install adds ~100 MB to node_modules. Not an issue for any
+  current Sports Bar TV Controller deployment.
+
+**Manual steps required:** None. The fix is in the script itself —
+next run picks it up automatically.
+
+**Rollback notes:** `git revert 8c148ce8`. But you probably don't
+want to — reverting restores the broken state.
+
+**Affected files:**
+
+- `scripts/auto-update.sh` (npm_ci step)
+- `scripts/rollback.sh` (npm ci step)
+
+---
+
 ### 2026-04-14 — `726b766e` — Sign-out button uses POST fetch instead of GET link
 
 **Risk:** low
