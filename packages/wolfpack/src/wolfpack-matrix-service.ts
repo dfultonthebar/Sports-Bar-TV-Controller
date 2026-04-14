@@ -537,8 +537,20 @@ export async function queryWolfpackRouteState(
     throw new Error(`[WOLFPACK-HTTP] Query returned unexpected shape: ${queryResponse.body.slice(0, 200)}`)
   }
 
-  logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${routingArray.length} outputs`)
-  return routingArray as number[]
+  // Wolf Pack firmware quirk: immediately after a route change, the o2ox array
+  // can return 65535 (0xFFFF) at the just-changed output's index as a "pending /
+  // not yet committed" sentinel. If we pass that through to the UI it becomes
+  // inputNum 65536, which matches no real input and makes the output look
+  // unrouted. Normalize 65535 to -1 so callers can explicitly decide what to do
+  // (filter it out, fall back to prior state, or mark as unknown).
+  const normalized = (routingArray as number[]).map(v => (v === 65535 ? -1 : v))
+  const sentinelCount = normalized.filter(v => v === -1).length
+  if (sentinelCount > 0) {
+    logger.warn(`[WOLFPACK-HTTP] Query returned ${sentinelCount} pending/0xFFFF sentinel(s) at ${config.ipAddress} — these are normalized to -1 and should be ignored by callers`)
+  }
+
+  logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
+  return normalized
 }
 
 /**
