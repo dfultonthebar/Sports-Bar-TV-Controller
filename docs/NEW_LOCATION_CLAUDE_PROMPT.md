@@ -91,19 +91,30 @@ Run these checks before proceeding:
 
 If any of these fail, stop and tell the operator what's wrong.
 
-## Step 1 — Install system packages (one sudo step)
+## Step 1 — Install system packages (sudo required)
 
-Run:
-  sudo apt update && sudo apt install -y git nodejs npm sqlite3 build-essential curl jq
+First the plain apt packages:
+  sudo apt update && sudo apt install -y git sqlite3 build-essential curl jq
 
-After that:
+**Node.js ≥ 18.17 required.** Stock Ubuntu 22.04 ships Node 12, which is
+too old — you MUST install from NodeSource before continuing, otherwise
+`npm ci` will fail on modern lockfile syntax. If `node --version` already
+reports 20.x (or ≥18.17), you can skip this block.
+
+  sudo apt-get remove -y nodejs npm libnode-dev libnode72 >/dev/null 2>&1 || true
+  sudo apt-get autoremove -y >/dev/null 2>&1 || true
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+
+Then PM2 and sanity checks:
   sudo npm install -g pm2
-  node --version                 # Should be ≥ 18.17
+  node --version                 # Should be ≥ 20.x
   npm --version
   pm2 --version
 
-If node is older than 18.17, install nodesource's NodeSource Node.js 20.x
-following https://github.com/nodesource/distributions before continuing.
+If `node --version` still reports ≤ 18 after the NodeSource install, an
+older `/usr/local/bin/node` from a previous attempt is shadowing it —
+`which node` to find it and remove.
 
 ## Step 2 — Clone the repo
 
@@ -117,15 +128,26 @@ following https://github.com/nodesource/distributions before continuing.
 
   mkdir -p /home/ubuntu/sports-bar-data/{backups,update-logs,logs}
 
-## Step 4 — Install deps and do the first build
+## Step 4 — Install deps, create DB schema, and do the first build
 
   npm ci
+  npx drizzle-kit push --config drizzle.config.ts
   npm run build
 
-This takes 3-5 minutes on a fresh host because npm has no cache. If the
-build fails with `sh: 1: turbo: not found`, the turbo dev dependency wasn't
-installed — re-run `NODE_ENV=development npm ci --include=dev` and retry
-the build.
+Full run takes 3-5 minutes on a fresh host because npm has no cache.
+
+**Why `drizzle-kit push` before `npm run build`?** The production build
+does page-data collection for dynamic API routes, and `/api/atlas/ai-analysis`
+opens `/home/ubuntu/sports-bar-data/production.db` at build time to read
+its learning state. On a fresh host that DB file does not exist yet, so
+the build crashes with `Error: Database file not found`. Running
+`drizzle-kit push` first creates the schema from `apps/web/src/db/schema.ts`
+and materializes an empty `production.db` that the build can read from.
+The later `seed-from-json` pass at first app boot populates the tables.
+
+If the build fails with `sh: 1: turbo: not found`, the turbo dev dependency
+wasn't installed — re-run `NODE_ENV=development npm ci --include=dev` and
+retry the build.
 
 ## Step 5 — First app start via PM2
 
@@ -133,15 +155,21 @@ the build.
   sleep 8
   pm2 list
 
-You should see `sports-bar-tv-controller` in `online` status. If it's
-`errored`, run `pm2 logs sports-bar-tv-controller --lines 50 --nostream`
-and diagnose.
+You should see TWO apps in `online` status:
+  - `sports-bar-tv-controller` (the Next.js app on port 3001)
+  - `bartender-proxy` (the restricted proxy on port 3002)
 
-Verify the API responds:
+Both are defined in ecosystem.config.js so `pm2 start` brings them up
+together. If either shows `errored`, run
+`pm2 logs <name> --lines 50 --nostream` and diagnose.
+
+Verify both respond:
   curl -sS http://localhost:3001/api/system/health | head -c 200
+  curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3002/
 
-You should see JSON with `"status":"healthy"` or `"status":"degraded"`.
+The first should return JSON with `"status":"healthy"` or `"status":"degraded"`.
 Degraded is fine at this stage (hardware not configured yet).
+The second should return `302` (root redirects to /remote).
 
 ## Step 6 — Auth bootstrap (CRITICAL)
 
@@ -175,11 +203,23 @@ options: America/New_York, America/Denver, America/Los_Angeles.
 
 ## Step 7 — Restart PM2 with the new env
 
-  pm2 restart sports-bar-tv-controller --update-env
+  pm2 delete sports-bar-tv-controller bartender-proxy
+  pm2 start ecosystem.config.js
 
-This makes PM2 re-read ecosystem.config.js, which in turn re-reads .env
-via its dotenv shim. Without --update-env the new LOCATION_ID won't
-reach the Next.js process and every login will return "Invalid PIN".
+**Why delete + start instead of `pm2 restart --update-env`?** PM2's
+`--update-env` flag re-reads the env object from memory but does NOT
+re-execute the `require('dotenv').config(...)` at the top of
+ecosystem.config.js. That means the new `LOCATION_ID` from `.env`
+(written by the bootstrap script one step ago) never reaches the
+Next.js child process, and every login returns "Invalid PIN".
+
+`pm2 delete && pm2 start` force-evaluates the ecosystem file from
+scratch, which re-runs dotenv, which loads `.env`, which propagates
+`LOCATION_ID` into the env block.
+
+Confirm both apps come back up:
+  pm2 list
+Expected: sports-bar-tv-controller online, bartender-proxy online.
 
 ## Step 8 — Verify the login flow end-to-end
 

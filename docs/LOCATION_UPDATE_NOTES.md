@@ -39,6 +39,180 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — `ee9c63c0` — CAUTION: location-data reconciliation bug + install fixes
+
+**Risk:** CAUTION — one corrective data commit already applied to
+location/stoneyard-greenville; NO action needed on other location
+branches UNLESS an operator does a naive `git merge main` instead of
+running `scripts/auto-update.sh`.
+
+**What happened at Stoneyard (for context so you know what to watch for):**
+
+During the 2026-04-14 main-vs-location reconciliation session, I
+branched a `reconcile-main` branch FROM `location/stoneyard-greenville`'s
+tip, blanked the location-data files on it (tv-layout.json,
+wolfpack-devices.json, channel-presets-*.json), and force-pushed
+that as `main`. Later, when `main` was merged back into
+`location/stoneyard-greenville` via a plain `git merge main` that did
+NOT use the auto-update script's LOCATION_PATHS_OURS conflict
+resolver, git saw the blanking as a clean tree change (no conflict to
+trip on) and the location branch's real hardware data got wiped:
+
+  tv-layout.json           3843 → 61 bytes (20 TV zones erased)
+  wolfpack-devices.json     407 → 15 bytes (chassis config erased)
+  channel-presets-cable.json   17745 → 15 bytes (62 presets erased)
+  channel-presets-directv.json 15487 → 15 bytes (54 presets erased)
+
+Visible symptom: the bartender remote Video tab and /layout-editor
+page showed an empty TV map because the layout API reads
+tv-layout.json directly at request time.
+
+Fixed on Stoneyard by commit 54463a72 which restored all four files
+from 5fb25f19 (the commit immediately before reconcile). This commit
+is on location/stoneyard-greenville ONLY — never cherry-picked to
+main, and will never be because it contains Stoneyard-specific
+hardware data.
+
+**What this means for the other 3 locations (graystone, holmgren-way,
+lucky-s-1313):**
+
+- **You were NOT affected.** I audited all three branches on 2026-04-14:
+  none of them have the reconcile commit (7f13fbe7) in their ancestry,
+  and all three still have their real tv-layout.json / directv-devices
+  / firetv-devices data intact.
+
+- **But when you pull tonight's main for the first time, be careful.**
+  Main now has empty templates for tv-layout.json (61 bytes),
+  wolfpack-devices.json (15 bytes), channel-presets-cable.json (15
+  bytes), and channel-presets-directv.json (15 bytes). A naive
+  `git merge main` from a shell will overwrite your location's real
+  data the same way it happened to Stoneyard.
+
+- **The correct merge path** is to let `scripts/auto-update.sh` handle
+  it. That script has LOCATION_PATHS_OURS logic that runs
+  `git checkout --ours <path>` on every location-data file in the
+  merge conflict set, then `git add` + `git commit --no-edit` to
+  finalize. It preserves the location's real data and takes main's
+  software changes.
+
+- **If you must merge manually**, do this instead of a plain
+  `git merge main`:
+
+  ```
+  git merge origin/main --no-commit --no-ff
+  for f in apps/web/data/tv-layout.json \
+           apps/web/data/directv-devices.json \
+           apps/web/data/firetv-devices.json \
+           apps/web/data/device-subscriptions.json \
+           apps/web/data/wolfpack-devices.json \
+           apps/web/data/channel-presets-cable.json \
+           apps/web/data/channel-presets-directv.json; do
+    if [ -f "$f" ]; then git checkout HEAD -- "$f"; git add "$f"; fi
+  done
+  git commit --no-edit
+  ```
+
+  This explicitly restores each location-data file from your branch's
+  HEAD after the merge, guaranteeing main's empty templates never
+  land on your tree.
+
+- **After any merge, verify** that the TV map still renders on the
+  bartender remote Video tab AND that `apps/web/data/tv-layout.json`
+  is >500 bytes. If either check fails, restore from your branch
+  history the same way I restored Stoneyard:
+
+  ```
+  git log --oneline -- apps/web/data/tv-layout.json
+  git show <last-good-commit>:apps/web/data/tv-layout.json \
+    > apps/web/data/tv-layout.json
+  git add apps/web/data/tv-layout.json
+  git commit -m "data: restore tv-layout.json after merge"
+  ```
+
+**Other install fixes bundled in tonight's main** (safe to pull, no
+action required beyond using the correct merge path above):
+
+- `8445e47f` LG TVs now work with bartender All On/All Off (bulk-power
+  route was missing `case 'lg':`)
+- `ac58e3e4` ecosystem.config.js adds bartender-proxy as a second PM2
+  app, verify-install.sh treats empty ChannelPreset as WARN not FAIL,
+  runbook fixed to use `pm2 delete && pm2 start` instead of
+  `pm2 restart --update-env` for env reload
+
+**Manual steps required:** For each location pulling main for the
+first time:
+1. Use `scripts/auto-update.sh` (recommended) or the manual checkout
+   loop above — NOT a plain `git merge main`.
+2. After the merge, verify `apps/web/data/tv-layout.json` is >500
+   bytes and the bartender remote Video tab shows the TV map.
+3. If the bartender proxy on port 3002 wasn't running before,
+   `pm2 delete bartender-proxy 2>/dev/null || true; pm2 start
+   ecosystem.config.js` will pick up the new second app.
+
+**Rollback notes:** If a location pulls main and the layout disappears,
+the fix is `git show HEAD~1:apps/web/data/tv-layout.json >
+apps/web/data/tv-layout.json && git add ... && git commit`. The old
+data lives in git history — it's never permanently lost.
+
+**Affected files:**
+
+- `apps/web/data/tv-layout.json` (per-location, never to main)
+- `apps/web/data/wolfpack-devices.json` (per-location)
+- `apps/web/data/channel-presets-cable.json` (per-location)
+- `apps/web/data/channel-presets-directv.json` (per-location)
+
+---
+
+### 2026-04-14 — `8445e47f` — Bartender All On/All Off now works for LG TVs (was silently failing)
+
+**Risk:** MEDIUM — bug fix for a user-facing bartender action that had
+been broken for any location with LG brand TVs.
+
+**What changed:**
+
+`/api/tv-control/bulk-power` (the endpoint the bartender remote's
+"All On" / "All Off" buttons hit) previously had no `case 'lg':` in
+its `controlDevicePower()` brand switch. LG TVs fell through to the
+default branch which returned `${brand} not supported for bulk power`,
+so every LG TV silently failed and the bartender saw no effect on the
+wall.
+
+The single-TV route at /api/tv-control/[deviceId]/power already had
+a controlLGPower handler; this commit adds the same pattern to the
+bulk route. LGTVClient.powerOn() uses Wake-on-LAN via the device's
+MAC address (idempotent), LGTVClient.powerOff() uses WebSocket SSAP
+to send `ssap://system/turnOff`.
+
+Discovered on Stoneyard Greenville which has 19 LG TVs + 1 Samsung.
+The Samsung power commands were working; the 19 LG TVs were the
+visible problem.
+
+**What could break at a location:**
+
+- **None** — purely additive bug fix. Locations with LG TVs gain a
+  working All On / All Off. Locations without LG TVs see zero change
+  (the new case is brand-scoped).
+- If a location has LG TVs but no MAC address in the DB row, the
+  powerOn call will fail with "WOL failed: MAC required". Fix:
+  populate networkTVDevices.macAddress for each LG TV row via the
+  Device Config UI or the TV network discovery scan.
+
+**Manual steps required:** None — next auto-update picks it up, or
+re-run the build manually. Locations should verify MAC addresses are
+populated for their LG TV rows before expecting "All On" to work —
+WoL requires MAC.
+
+**Rollback notes:** `git revert 8445e47f` (but you probably don't
+want to — reverting restores the broken state where LG TVs silently
+fail every bulk power command).
+
+**Affected files:**
+
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts` — added LG case to
+  controlDevicePower() switch + added LGTVClient to imports
+
+---
+
 ### 2026-04-14 — `6f0a43d9` — 🎉 First successful end-to-end auto-update run (history id=14, 127s, pass)
 
 **Risk:** none (milestone entry, not a code change)
