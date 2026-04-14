@@ -39,6 +39,68 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — `6f0a43d9` — 🎉 First successful end-to-end auto-update run (history id=14, 127s, pass)
+
+**Risk:** none (milestone entry, not a code change)
+
+**What changed:**
+
+This is a marker entry for the first green auto-update run from
+Stoneyard Greenville, produced by the auto-update orchestrator
+itself (not an operator-typed commit). The merge commit
+`6f0a43d9 chore: auto-update merge 2026-04-14-11-42` is the
+output artifact of the orchestrator successfully flowing through
+every phase of the pipeline.
+
+Full 127-second run breakdown (history row id=14):
+- preflight + fetch: <1s
+- **checkpoint_a**: DECISION GO in 17s
+- backup (DB snapshot + rollback tag): <1s
+- merge with LOCATION_PATHS_OURS conflict auto-resolve: <1s
+- version_check: <1s
+- **npm ci --include=dev**: 10s, turbo present
+- **checkpoint_b**: DECISION GO in 55s
+- build (turbo cached): <1s
+- **pm2_restart**: 20s, script detached via `setsid --fork` and
+  survived the Next.js restart (PID still alive, PPID=1)
+- verify-install.sh: PASS 6/6 in 2s
+- **checkpoint_c**: DECISION GO in 22s (prompt now trusts
+  verify-install output and treats sandbox denials as GO)
+- finalize: <1s → history row transitioned from in_progress to pass
+
+Every bug uncovered during tonight's 13 prior test runs is fixed
+in the code paths exercised by this run:
+
+1. `NODE_ENV=development npm ci --include=dev` (run id=8) — turbo
+   installs despite PM2's NODE_ENV=production environment.
+2. API route spawns via `setsid --fork` (runs id=10 and id=12) —
+   auto-update.sh starts with PPID=1 in its own session/pgid and
+   cannot be killed by `pm2 restart sports-bar-tv-controller`.
+3. bash-level `exec setsid -f` as belt-and-suspenders for direct
+   shell invocation paths.
+4. Checkpoint A prompt trusts LOCATION_PATHS_OURS auto-resolve
+   (run id=11 would have been rolled back by the old prompt's
+   false-positive STOP on data-file modifications in the diff).
+5. Checkpoint C prompt treats sandbox denials as GO instead of
+   STOP, trusts verify-install.sh JSON output as authoritative
+   (runs id=11 and id=13 rolled back at this step under the old
+   prompt despite verify-install PASS 6/6).
+
+**What could break at a location:**
+
+- **None** — this entry is a milestone marker, not a code change.
+
+**Manual steps required:** None.
+
+**Rollback notes:** Not applicable.
+
+**Affected files:** None (the merge commit itself is a content
+no-op since location and main have the same tree — all the bug
+fixes had already been cherry-picked to both branches before the
+run started).
+
+---
+
 ### 2026-04-14 — `8c148ce8` — auto-update: force NODE_ENV=development for npm ci
 
 **Risk:** HIGH (this was a blocker for every auto-update run before this fix)
