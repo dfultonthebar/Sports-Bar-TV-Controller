@@ -1,1 +1,196 @@
-{"name":"Bar Layout","zones":[],"tvPositions":[],"rooms":[]}
+{
+  "name": "Bar Layout",
+  "zones": [
+    {
+      "id": "tv1",
+      "outputNumber": 1,
+      "x": 30,
+      "y": 57.35,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 1",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv2",
+      "outputNumber": 2,
+      "x": 29.31,
+      "y": 47.77,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 2",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "tv3",
+      "outputNumber": 3,
+      "x": 29.57,
+      "y": 38.96,
+      "width": 5.5,
+      "height": 5.5,
+      "label": "TV 3",
+      "confidence": 0.95,
+      "ocrMethod": "manual"
+    },
+    {
+      "id": "zone-1776194271217-2tfhcadwo",
+      "outputNumber": 4,
+      "x": 20.44,
+      "y": 15.56,
+      "width": 8,
+      "height": 8,
+      "label": "TV 04"
+    },
+    {
+      "id": "zone-1776194277303-b6m8sdyz4",
+      "outputNumber": 5,
+      "x": 86.09,
+      "y": 7.68,
+      "width": 8,
+      "height": 8,
+      "label": "TV 05"
+    },
+    {
+      "id": "zone-1776194287334-edofz5cgt",
+      "outputNumber": 6,
+      "x": 85.82,
+      "y": 27.41,
+      "width": 8,
+      "height": 8,
+      "label": "TV 06"
+    },
+    {
+      "id": "zone-1776194293419-175kvlifg",
+      "outputNumber": 7,
+      "x": 86.46,
+      "y": 38.62,
+      "width": 8,
+      "height": 8,
+      "label": "TV 07"
+    },
+    {
+      "id": "zone-1776194301055-3o7yu8rdt",
+      "outputNumber": 8,
+      "x": 86.11,
+      "y": 49.63,
+      "width": 8,
+      "height": 8,
+      "label": "TV 08"
+    },
+    {
+      "id": "zone-1776194307546-840vdm1lt",
+      "outputNumber": 9,
+      "x": 85.97,
+      "y": 61.78,
+      "width": 8,
+      "height": 8,
+      "label": "TV 09"
+    },
+    {
+      "id": "zone-1776194318867-5kl77rjxz",
+      "outputNumber": 10,
+      "x": 16.03,
+      "y": 79.43,
+      "width": 8,
+      "height": 8,
+      "label": "TV 10"
+    },
+    {
+      "id": "zone-1776194329447-bdemmyapt",
+      "outputNumber": 11,
+      "x": 16.7,
+      "y": 89.15,
+      "width": 8,
+      "height": 8,
+      "label": "TV 11"
+    },
+    {
+      "id": "zone-1776194337634-n8zygu0ve",
+      "outputNumber": 12,
+      "x": 7.95,
+      "y": 89.99,
+      "width": 8,
+      "height": 8,
+      "label": "TV 12"
+    },
+    {
+      "id": "zone-1776194348019-wp9sjjydd",
+      "outputNumber": 13,
+      "x": 0,
+      "y": 89.44,
+      "width": 8,
+      "height": 8,
+      "label": "TV 13"
+    },
+    {
+      "id": "zone-1776194355200-tpvykad4j",
+      "outputNumber": 14,
+      "x": 0.88,
+      "y": 78.78,
+      "width": 8,
+      "height": 8,
+      "label": "TV 14"
+    },
+    {
+      "id": "zone-1776194362254-caw6zo010",
+      "outputNumber": 15,
+      "x": 1.16,
+      "y": 69.01,
+      "width": 8,
+      "height": 8,
+      "label": "TV 15"
+    },
+    {
+      "id": "zone-1776194386260-unzmbpxjg",
+      "outputNumber": 16,
+      "x": 86.66,
+      "y": 81.58,
+      "width": 8,
+      "height": 8,
+      "label": "TV 16"
+    },
+    {
+      "id": "zone-1776194392386-k6hkew7vn",
+      "outputNumber": 17,
+      "x": 25.63,
+      "y": 67.45,
+      "width": 8,
+      "height": 8,
+      "label": "TV 17"
+    },
+    {
+      "id": "zone-1776194402234-vwar1pc7c",
+      "outputNumber": 18,
+      "x": 35.61,
+      "y": 68.03,
+      "width": 8,
+      "height": 8,
+      "label": "TV 18"
+    },
+    {
+      "id": "zone-1776194415644-4zt12ps14",
+      "outputNumber": 19,
+      "x": 34.27,
+      "y": 1.41,
+      "width": 8,
+      "height": 8,
+      "label": "TV 19"
+    },
+    {
+      "id": "zone-1776194423397-x1ryjcmu1",
+      "outputNumber": 20,
+      "x": 46.78,
+      "y": 1.05,
+      "width": 8,
+      "height": 8,
+      "label": "TV 20"
+    }
+  ],
+  "tvPositions": [],
+  "rooms": [],
+  "imageUrl": "/api/uploads/layouts/layout_1776194106972.png",
+  "originalFileUrl": "/api/uploads/layouts/layout_1776194106972.png",
+  "professionalImageUrl": "/api/uploads/layouts/layout_professional_1776194109322.png"
+}
