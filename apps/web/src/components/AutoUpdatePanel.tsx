@@ -225,6 +225,12 @@ export default function AutoUpdatePanel() {
   const logBodyRef = useRef<HTMLPreElement | null>(null)
 
   const [needsAuth, setNeedsAuth] = useState(false)
+  // Tracks whether the user has touched the form. Once true, background
+  // status polls stop overwriting the user's draft state — otherwise the
+  // 15-second poll would reset `enabledDraft` / `timeDraft` to the server
+  // values mid-edit, clearing the dirty flag and disabling the Save button
+  // before the user could click it.
+  const draftTouchedRef = useRef(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -243,8 +249,13 @@ export default function AutoUpdatePanel() {
       }
       const data: StatusResponse = await res.json()
       setStatus(data)
-      setEnabledDraft(data.enabled)
-      setTimeDraft(cronToTime(data.scheduleCron))
+      // Only sync draft values from the server if the user hasn't touched
+      // the form yet. Once they have, preserve their edits until they Save
+      // or explicitly refresh.
+      if (!draftTouchedRef.current) {
+        setEnabledDraft(data.enabled)
+        setTimeDraft(cronToTime(data.scheduleCron))
+      }
       setError(null)
       setNeedsAuth(false)
     } catch (e: any) {
@@ -288,6 +299,8 @@ export default function AutoUpdatePanel() {
         throw new Error(j?.error || `HTTP ${res.status}`)
       }
       setSaveMsg('Settings saved')
+      // Clear touched flag so the next poll re-syncs cleanly from server
+      draftTouchedRef.current = false
       await fetchStatus()
     } catch (e: any) {
       setSaveMsg(`Save failed: ${e?.message || 'unknown'}`)
@@ -538,7 +551,10 @@ export default function AutoUpdatePanel() {
             <div className="flex items-center gap-3 h-10">
               <Switch
                 checked={enabledDraft}
-                onCheckedChange={setEnabledDraft}
+                onCheckedChange={(v) => {
+                  draftTouchedRef.current = true
+                  setEnabledDraft(v)
+                }}
               />
               <span className="text-sm text-slate-300">
                 {enabledDraft ? 'On' : 'Off'}
@@ -553,7 +569,10 @@ export default function AutoUpdatePanel() {
             <Input
               type="time"
               value={timeDraft}
-              onChange={(e) => setTimeDraft(e.target.value)}
+              onChange={(e) => {
+                draftTouchedRef.current = true
+                setTimeDraft(e.target.value)
+              }}
               className="bg-slate-800 border-slate-600 text-white"
             />
             <p className="text-xs text-slate-500">
