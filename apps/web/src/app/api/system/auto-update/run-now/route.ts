@@ -53,14 +53,30 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Spawn detached so the child outlives this request. SECURITY: argv is
-    // entirely hardcoded — no user input flows into spawn.
-    const child = spawn(AUTO_UPDATE_SCRIPT, ['--triggered-by=manual_api'], {
-      cwd: REPO_ROOT,
-      detached: true,
-      stdio: 'ignore',
-      env: process.env,
-    })
+    // Spawn via `setsid --fork` so the child lives in a completely fresh
+    // session + process group. Node's own `detached: true` + `unref()`
+    // proved insufficient: when PM2 later runs
+    // `pm2 restart sports-bar-tv-controller` as part of the update
+    // flow, the child process died with Next.js even though it was
+    // supposed to be detached (observed on runs id=10 and id=12).
+    // `setsid --fork` is the bulletproof equivalent: we invoke the
+    // setsid binary directly, which forks a child into a brand-new
+    // session, the binary itself exits, and our script continues
+    // with PPID=1 (adopted by init) and its own SID/PGID. PM2 has
+    // no way to signal it through the old Next.js group.
+    //
+    // SECURITY: argv is entirely hardcoded — no user input flows
+    // into spawn. setsid is a standard util-linux binary.
+    const child = spawn(
+      'setsid',
+      ['--fork', AUTO_UPDATE_SCRIPT, '--triggered-by=manual_api'],
+      {
+        cwd: REPO_ROOT,
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+      }
+    )
 
     child.on('error', (err) => {
       logger.error('[AUTO_UPDATE_API] spawn error:', err)
