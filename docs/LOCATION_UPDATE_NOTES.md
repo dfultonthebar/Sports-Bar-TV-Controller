@@ -39,6 +39,70 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — `726b766e` — Sign-out button uses POST fetch instead of GET link
+
+**Risk:** low
+
+**What changed:**
+
+Clicking "sign out" on the System Admin auth banner returned HTTP 405
+because it was a plain `<a href="/api/auth/logout">` (GET) but the
+logout route only exports POST. Changed to a `<button>` with an
+onClick handler that fetches POST with credentials, then redirects
+to `/login`.
+
+**What could break at a location:**
+
+- **None** — purely a client-side UI fix in one component. No API
+  contract change, no schema change, no new files.
+
+**Manual steps required:** None.
+
+**Rollback notes:** `git revert 726b766e`.
+
+**Affected files:**
+
+- `apps/web/src/app/system-admin/page.tsx` (AuthStatusBanner sign-out handler)
+
+---
+
+### 2026-04-14 — `7cd30e3d` — Per-commit update notes + version badge on System Admin
+
+**Risk:** low
+
+**What changed:**
+
+- New `docs/LOCATION_UPDATE_NOTES.md` — per-commit changelog that
+  Claude reads at Checkpoint A to factor risk into the decision.
+- New `scripts/add-update-note.sh` — interactive helper to prepend
+  entries to the notes file.
+- Updated `scripts/prompts/checkpoint-a.txt` with Step 1.5 that
+  requires Claude to read the notes entry for every pending commit.
+- New `GET /api/system/version` endpoint returning package.json
+  version, git branch, commit SHA + date, build date, uptime.
+- New `<VersionBadge />` component at top of `/system-admin` that
+  polls `/api/system/version` every 60s and shows the current
+  running version.
+
+**What could break at a location:**
+
+- **None** — purely additive. New endpoint, new component, new docs,
+  updated prompt. No existing runtime paths touched.
+
+**Manual steps required:** None.
+
+**Rollback notes:** `git revert 7cd30e3d`.
+
+**Affected files:**
+
+- `docs/LOCATION_UPDATE_NOTES.md` (new)
+- `scripts/add-update-note.sh` (new, executable)
+- `scripts/prompts/checkpoint-a.txt` (Step 1.5 added)
+- `apps/web/src/app/api/system/version/route.ts` (new)
+- `apps/web/src/app/system-admin/page.tsx` (VersionBadge component added)
+
+---
+
 ### 2026-04-14 — `5380f7e7` — New-location bootstrap kit + doc + CLAUDE.md update
 
 **What changed:**
