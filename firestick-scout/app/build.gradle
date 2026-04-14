@@ -11,8 +11,9 @@ android {
         applicationId "com.sportsbar.scout"
         minSdk 22
         targetSdk 33
-        versionCode 190
-        versionName "1.9.0-stoneyard-appleton"
+        versionCode 200
+        versionName "2.0.0-runtime-config"
+        buildConfigField "String", "SERVER_URL_DEFAULT", "\"${project.findProperty('scoutServerUrl') ?: 'http://192.0.2.1:3001/api/firestick-scout'}\""
     }
 
     buildTypes {
@@ -20,6 +21,10 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
