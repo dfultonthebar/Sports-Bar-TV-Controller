@@ -89,27 +89,34 @@ interface TestSummary {
 const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos'] as const
 type TabId = (typeof VALID_TABS)[number]
 
-// Read the ?tab= query param without useSearchParams (which requires
-// Suspense / dynamic rendering). Runs only in the browser — during
-// SSR/static generation this returns the default tab.
-function readInitialTab(): TabId {
-  if (typeof window === 'undefined') return 'power'
+function readTabFromWindow(): TabId | null {
+  if (typeof window === 'undefined') return null
   try {
     const params = new URLSearchParams(window.location.search)
     const requested = params.get('tab') || ''
     return (VALID_TABS as readonly string[]).includes(requested)
       ? (requested as TabId)
-      : 'power'
+      : null
   } catch {
-    return 'power'
+    return null
   }
 }
 
 export default function SystemAdminPage() {
-  // Initial tab from ?tab=... query param (so /system-admin?tab=sync lands
-  // directly on the Sync tab after a login redirect). Initialized lazily
-  // so SSR returns the default and the client hydrates with the real value.
-  const [initialTab] = useState<TabId>(readInitialTab)
+  // Controlled tab state. The page is static-rendered at build time with
+  // 'power' as the default, then a post-mount useEffect reads ?tab=<id>
+  // from the current URL and switches the active tab on the client. This
+  // avoids the useSearchParams Suspense-boundary requirement and any
+  // hydration mismatch warnings.
+  const [activeTab, setActiveTab] = useState<TabId>('power')
+
+  useEffect(() => {
+    const fromUrl = readTabFromWindow()
+    if (fromUrl && fromUrl !== activeTab) {
+      setActiveTab(fromUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Backup state
   const [backups, setBackups] = useState<Backup[]>([])
@@ -423,7 +430,7 @@ export default function SystemAdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs defaultValue={initialTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
           <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
