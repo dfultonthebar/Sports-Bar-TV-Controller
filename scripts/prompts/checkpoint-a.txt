@@ -63,6 +63,41 @@ Base your decision ONLY on what appears in the `git log -p` output as
 `diff --git a/<path>` lines. Do not speculate from CLAUDE.md content or
 general repo knowledge.
 
+### Step 1.5 — read the per-commit update notes (REQUIRED)
+
+The file `docs/LOCATION_UPDATE_NOTES.md` is a curated per-commit
+"what could break at a location" changelog. Every significant push
+to main is supposed to have an entry keyed by commit SHA. Each entry
+has a "Risk" level, a "What changed" section, a "What could break at
+a location" section, a "Manual steps required" section, and an
+"Affected files" list.
+
+For EVERY commit in the output of `git log --oneline HEAD..origin/main`:
+
+1. Take the short SHA (the 7-8 char hex at the start of each line).
+2. Search `docs/LOCATION_UPDATE_NOTES.md` for an entry whose header
+   contains that SHA. Headers look like:
+   `### YYYY-MM-DD — \`SHA\` — one-line summary`
+3. If a matching entry exists, read it IN FULL. Pay specific attention
+   to the "What could break at a location" and "Manual steps required"
+   sections.
+4. If a matching entry does NOT exist, it means the author skipped
+   documenting that commit. This is not a STOP condition by itself,
+   but it lowers your confidence — note it in your reasoning.
+
+**The update-notes entries are authoritative for risk assessment.**
+If an entry says `Risk: high` and describes a breaking change that
+matches something in the diff, raise a CAUTION or STOP citing the
+entry's SHA. If all entries are `Risk: low` and describe additive
+changes, default to GO.
+
+If an entry says "Manual steps required" is anything other than
+"None", include that list in your response body (after the DECISION
+line) so the operator can see it when the run fails or during the
+post-update review. Do NOT STOP solely because manual steps are
+required — the script should still proceed; the operator runs the
+steps afterward.
+
 ### Step 2 — decide
 
 `DECISION: GO` — default when none of the STOP conditions below are met.

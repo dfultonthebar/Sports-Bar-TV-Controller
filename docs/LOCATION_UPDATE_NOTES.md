@@ -1,0 +1,242 @@
+# Location Update Notes
+
+**Purpose:** This file is the per-release "what you need to know before you
+update" changelog for location deployments. It is read by Claude Code during
+auto-update Checkpoint A as required context, so whatever is documented here
+will be factored into the GO/CAUTION/STOP decision on every location's
+update run.
+
+**Format:** newest entries at the top. Each entry documents a single push to
+`main` (or a coherent group of related pushes) with:
+
+- **Date + tip SHA** — for cross-reference with `git log`
+- **What changed** — one-line summary of the user-visible changes
+- **What could break at a location** — honest risk assessment per location
+- **Manual steps required** — anything the auto-updater CAN'T do automatically
+- **Rollback notes** — if this update proves bad, how to back out
+- **Affected files** — so Claude can correlate with the incoming diff
+
+**How to add an entry:**
+
+```bash
+bash scripts/add-update-note.sh
+```
+
+or manually prepend a new section below the "Current entries" marker.
+
+**How Claude uses it:**
+
+Checkpoint A reads the top 3-5 entries of this file (the most recent pushes
+since the location last updated). If any entry's "What could break" section
+mentions a risk that matches the incoming diff, Claude will flag it as
+CAUTION or STOP with a direct citation. This is the mechanism by which
+location-specific risks are surfaced BEFORE the merge touches disk.
+
+**Cutoff:** entries older than 30 days can be pruned. This is a living
+decision log, not a permanent archive. Git history is the archive.
+
+---
+
+## Current entries
+
+### 2026-04-14 — `5380f7e7` — New-location bootstrap kit + doc + CLAUDE.md update
+
+**What changed:**
+
+- Added `scripts/bootstrap-new-location.sh` — idempotent helper for
+  per-location auth bootstrap (creates `Location` row, seeds
+  `AuthPin` STAFF/ADMIN rows, writes `LOCATION_ID` to `.env`,
+  optionally creates the location git branch).
+- Added `docs/NEW_LOCATION_SETUP.md` — full cold-start runbook from
+  fresh Ubuntu host to auto-update enabled.
+- Updated `CLAUDE.md` Multi-Location Deployment section with the
+  corrected file list (including `channel-presets-*.json`), auth
+  bootstrap subsection, and a warning about the reconciliation
+  history.
+
+**What could break at a location:**
+
+- **Low risk** — purely additive (new script + new doc + CLAUDE.md
+  documentation update). No existing files removed, no runtime code
+  changes, no schema migrations.
+- Existing locations that run the auto-update will get these as new
+  files. None of the new files is imported or executed at runtime by
+  the app; they are operator tooling only.
+
+**Manual steps required:** None.
+
+**Rollback notes:** `git revert 5380f7e7` or, if rolling main back
+further, `git push origin main-archive-20260414:main --force-with-lease`.
+
+**Affected files:**
+
+- `scripts/bootstrap-new-location.sh` (new, executable)
+- `docs/NEW_LOCATION_SETUP.md` (new)
+- `CLAUDE.md` (Multi-Location Deployment section modified)
+
+---
+
+### 2026-04-14 — `7f13fbe7` — Reconcile main with location software state
+
+**What changed:**
+
+This is the catastrophic-scale reconciliation that brought `main`
+back in sync with `location/stoneyard-greenville` after months of
+drift. 81 files, 12K+ line changes.
+
+For locations that were on a pre-reconcile `main` (i.e., anything
+before this commit): the auto-update will pull in months of v2.4.x
+evolution in a single merge. For locations that were branched from
+`location/stoneyard-greenville` itself: this is a near-no-op because
+they already had the v2.4.x work.
+
+Specifically, the commit:
+
+1. Replaced `main`'s tree with `location/stoneyard-greenville`'s
+   software tree (all v2.4.0-2.4.9 work: Sports Guide Admin Phases
+   A-D, AI Game Plan features, Fire TV streaming panel, Crestron DM
+   matrix support, ESPN sync boot hook, scheduler fixes, channel-
+   resolver consolidation, auto-update system).
+2. Blanked location-data files to empty templates on `main`
+   (`tv-layout.json`, `directv-devices.json`, `firetv-devices.json`,
+   `device-subscriptions.json`, `wolfpack-devices.json`,
+   `channel-presets-cable.json`, `channel-presets-directv.json`).
+3. Deleted `apps/web/backup/location-data/` (stale DB backup that
+   was accidentally committed).
+4. Deleted `apps/web/src/app/api/matrix/config/route.ts.backup2`
+   (Prisma-era cruft).
+5. Hardened `.gitignore` with `*.apk`, `*.zip`, `*.sqlite`,
+   `database_backups/`, `.claude/settings.local.json`, variant
+   backup patterns.
+
+**What could break at a location:**
+
+- **MEDIUM risk** — the diff from a pre-reconcile `main` is enormous.
+  The auto-update script's `LOCATION_PATHS_OURS` conflict resolver
+  will handle the data files correctly (keeping the location's
+  version), but be aware of these specifically:
+  - `apps/web/src/lib/hardware-config.ts` — this file currently
+    contains Stoneyard's device IPs in code (pre-existing tech debt).
+    Locations that have customized this file locally WILL get a
+    conflict. Resolution: `git checkout --ours` to keep the local
+    version, then follow up by moving the constants to
+    `data/hardware.json` as a proper per-location file.
+  - `apps/web/data/*.json` — auto-resolved to `--ours` (location
+    keeps its data).
+  - `package-lock.json` + `package.json` — auto-resolved to
+    `--theirs` (main's version; dependency sync).
+- The v2.4.0 Sports Guide Admin consolidation deletes several old
+  scheduler/sports-guide-config routes. If a location has bookmarked
+  URLs, `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, and
+  `/scheduling` now redirect (via Next.js `redirects()`) to the new
+  `/sports-guide-admin` page.
+- The AuthPin login flow was fixed today — old cookies issued by the
+  pre-fix app will still work until they expire (8 hours).
+
+**Manual steps required:**
+
+- Run `npx drizzle-kit push --config drizzle.config.ts` after the
+  merge to apply any new DB tables. The v2.4.x work added
+  `auto_update_state` and `auto_update_history` (singleton + append-
+  only). Safe — they default to empty and gate on application logic.
+- If `.env` doesn't have `LOCATION_ID`, set it using the bootstrap
+  script or manually from the Location row's `id`.
+- If `.env` doesn't have `AUTH_COOKIE_SECURE`, add it as `false`
+  (required for HTTP LAN deployments).
+
+**Rollback notes:**
+
+The pre-reconcile state is preserved as `main-archive-20260414` on
+origin. If something breaks catastrophically post-merge:
+
+```bash
+git fetch origin
+git push origin main-archive-20260414:main --force-with-lease
+# Then each location:
+git checkout location/<name>
+git reset --hard origin/location/<name>  # revert local merge
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+**Affected files:**
+
+- 81 files across the entire tree — too many to list. `git diff --stat
+  main-archive-20260414..7f13fbe7` will show the full picture.
+- Highest-attention files: `apps/web/src/app/sports-guide-admin/page.tsx`
+  (new), all `apps/web/src/components/admin/*.tsx` (new), `.gitignore`,
+  all `apps/web/data/*.json` (blanked), `CLAUDE.md`.
+
+---
+
+### 2026-04-14 — `4bb259a8` — checkpoint-a prompt trusts LOCATION_PATHS_OURS
+
+**What changed:**
+
+Rewrote `scripts/prompts/checkpoint-a.txt` (the Claude Code CLI
+pre-update review prompt) to know about the auto-updater's
+`LOCATION_PATHS_OURS` conflict auto-resolve step. Previously the
+prompt treated any modification of a location-data file in the
+incoming diff as an automatic STOP, producing false positives on
+every run (including the reconciliation commit above, which modifies
+the location-data files to blank templates on main).
+
+The rewritten prompt:
+
+- Lists the full `LOCATION_PATHS_OURS` and `LOCATION_PATHS_THEIRS`
+  arrays at the top so Claude knows which paths are auto-handled.
+- Removes "STOP on location-data modification" from the criteria.
+- Refocuses STOP triggers on things the script CAN'T auto-handle:
+  non-additive schema migrations, known-breaking dep bumps,
+  accidental secrets, deletion of the script itself, auth lockout
+  changes.
+- Explicitly lists things that should NOT cause a STOP.
+
+**What could break at a location:**
+
+- **None** — this is prompt-only. The script itself is unchanged.
+- The only observable difference is that auto-update runs that
+  previously failed at Checkpoint A with a false-positive STOP will
+  now proceed to the merge+build+verify flow. This is the INTENDED
+  behavior.
+
+**Manual steps required:** None.
+
+**Rollback notes:** `git revert 4bb259a8` restores the old prompt.
+
+**Affected files:**
+
+- `scripts/prompts/checkpoint-a.txt` (rewritten)
+
+---
+
+### 2026-04-14 — `9bd78364` — AutoUpdatePanel: save button no longer fights with polling
+
+**What changed:**
+
+Fixed "can't enable or save settings" bug in the Sync tab Auto Update
+panel. The 15-second status poll was unconditionally resetting the
+user's in-progress draft (`enabledDraft`, `timeDraft`) to the
+server's value, wiping any edits before the user could click Save.
+Added a `draftTouchedRef` that pauses server-sync on the draft once
+the user interacts with the Switch or time picker; cleared after a
+successful save.
+
+**What could break at a location:**
+
+- **None** — pure UI state fix in a single component. No API contract
+  changes, no schema changes.
+
+**Manual steps required:** None.
+
+**Rollback notes:** `git revert 9bd78364`.
+
+**Affected files:**
+
+- `apps/web/src/components/AutoUpdatePanel.tsx` (modified)
+
+---
+
+## Archive
+
+Older entries (>30 days) are pruned from this file. The authoritative
+record is the git history.
