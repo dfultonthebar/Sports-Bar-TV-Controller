@@ -411,7 +411,7 @@ export default function AutoUpdatePanel() {
           active ADMIN session.
         </div>
         <a
-          href="/login"
+          href="/login?redirect=/system-admin"
           className="inline-flex items-center gap-2 rounded-md border border-slate-600 px-4 py-2 text-sm hover:bg-slate-700"
         >
           Go to Login

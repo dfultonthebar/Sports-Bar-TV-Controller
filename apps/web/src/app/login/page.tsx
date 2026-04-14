@@ -172,8 +172,7 @@ export default function LoginPage() {
 
         {/* Footer Info */}
         <div className="text-center text-gray-500 text-xs">
-          <p className="mb-1">Default PINs (change in production):</p>
-          <p>STAFF: 1234 • ADMIN: 9999</p>
+          <p>Contact an admin if you need access.</p>
         </div>
       </div>
     </div>
