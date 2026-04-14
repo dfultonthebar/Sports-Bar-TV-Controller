@@ -187,6 +187,158 @@ panel.
 The bartender remote for this location is at `http://<host-ip>:3001/remote`
 or through the restricted port-3002 proxy if installed.
 
+## 8a. Install and authorize ADB for Fire TV control
+
+Fire TV Cubes (and Amazon Fire TV sticks) are controlled via ADB by the
+`@sports-bar/firecube` package. There are two undocumented gotchas that
+will make Fire TV control silently fail on a fresh host — both bit us at
+Stoneyard Appleton — so do this BEFORE configuring Fire TVs in the UI.
+
+### Prereq: install the `adb` binary
+
+The `firecube` package shells out to the system `adb` binary. Ubuntu
+22.04 does NOT ship it by default. If it's missing, the package's
+`ADBClient` floods PM2 logs with `[ADB CLIENT] Connection error:` lines
+that have **empty error messages** (because `exec()` of a missing binary
+returns no useful stderr).
+
+```bash
+sudo apt install -y android-tools-adb
+adb version
+# Expect: Android Debug Bridge version 1.0.41 (or similar)
+```
+
+### First-time authorization (once per Fire TV)
+
+Each Fire TV on the LAN must be authorized ONCE before this host can
+control it. ADB authorization is per-(host-key, device) — the Fire TV
+has to physically display a confirmation popup and someone with the Fire
+TV remote must walk to each TV and accept it.
+
+1. **Start the ADB server on the host.** This auto-generates
+   `~/.android/adbkey` and `~/.android/adbkey.pub` (2048-bit RSA) the
+   first time it runs:
+
+   ```bash
+   adb start-server
+   ```
+
+2. **Try to connect to each Fire TV IP.** Expect `unauthorized` on the
+   first attempt — that's the trigger that fires the on-screen popup:
+
+   ```bash
+   adb connect 192.168.4.49:5555
+   # Expect: connected to 192.168.4.49:5555  (status: unauthorized)
+   ```
+
+3. **The Fire TV displays an on-screen dialog** titled "Allow USB
+   debugging from this computer?" showing the host's RSA key
+   fingerprint. The dialog times out after ~30 seconds — if it does,
+   re-run `adb connect` to re-show it.
+
+4. **Walk to each Fire TV with its physical remote.** This step cannot
+   be done from the host; it must be done at the TV:
+
+   - **CHECK the "Always allow from this computer" checkbox.** If you
+     skip this, the popup re-appears every time the Fire TV reboots and
+     the system effectively breaks every power cycle.
+   - Click **OK** / **Allow**.
+
+5. **Re-run `adb connect` from the host.** It should now succeed
+   cleanly:
+
+   ```bash
+   adb connect 192.168.4.49:5555
+   # Expect: connected to 192.168.4.49:5555
+   ```
+
+6. **Verify all Fire TVs are authorized:**
+
+   ```bash
+   adb devices
+   ```
+
+   Each authorized Fire TV must show as `device`. If it shows as
+   `unauthorized` or `offline`, repeat steps 2-5 for that IP.
+
+Repeat for every Fire TV / Fire Cube / Atmosphere TV at the location.
+For Holmgren Way that's 4 devices (192.168.4.48-.51); for a 20+ Fire TV
+install it's a per-TV walk — budget time for it.
+
+### Preserve `~/.android/` across reinstalls
+
+This is the part that bites you on a reprovision. The ADB key pair on
+the host (`~/.android/adbkey` + `~/.android/adbkey.pub`) IS the host's
+identity to every Fire TV it has ever been authorized against. If those
+files are deleted or regenerated, every Fire TV at the location must be
+re-authorized manually with the physical remote. For a 20+ TV install
+that's a full evening of walking around with a Fire TV remote.
+
+Things to know:
+
+- `~/.android/adbkey` (private) and `~/.android/adbkey.pub` (public)
+  together form the host's unique ADB identity. Lose either and you're
+  re-authorizing every TV.
+- A fresh OS install, a different Linux user account running adb, or
+  someone running `rm -rf ~/.android/` all wipe the identity.
+- The existing location backup flow (System Admin → Location → Backup
+  to Git) does **NOT** capture `~/.android/` — it lives outside the
+  repo and is a host-level concern that operators must handle
+  separately.
+- Back up `~/.android/` alongside `/home/ubuntu/sports-bar-data/`
+  during any system migration or reprovision.
+
+Suggested one-liner backup (run after the first-time authorization is
+complete and store the tarball somewhere durable — off-host, S3, USB,
+location's password manager, etc.):
+
+```bash
+tar czf ~/android-keys-backup-$(date +%Y%m%d).tar.gz \
+  ~/.android/adbkey ~/.android/adbkey.pub
+```
+
+To restore on a fresh host (BEFORE running `adb start-server` for the
+first time, otherwise it generates a new key pair you don't want):
+
+```bash
+mkdir -p ~/.android
+tar xzf ~/android-keys-backup-YYYYMMDD.tar.gz -C /
+chmod 600 ~/.android/adbkey
+adb start-server
+adb devices   # all previously-authorized TVs should come back as `device`
+```
+
+### Troubleshooting (Fire TV / ADB)
+
+- **`which adb` returns nothing** → `android-tools-adb` package isn't
+  installed. `sudo apt install -y android-tools-adb`.
+- **PM2 logs show `[ADB CLIENT] Connection error:` with an empty
+  message** → same root cause: the `adb` binary is missing. The
+  `firecube` package's `exec('adb connect ...')` call fails with no
+  stderr because the binary itself can't be found. Install
+  `android-tools-adb` and restart PM2.
+- **`unauthorized` persists after clicking OK on the TV** → either the
+  Fire TV display dimmed/timed out before the popup was tapped, or the
+  "Always allow from this computer" checkbox wasn't ticked. Re-run
+  `adb connect <ip>:5555` from the host (this re-shows the popup) and
+  re-tap with the checkbox ticked.
+- **`adb devices` shows `device offline`** → the keep-alive was
+  interrupted (Fire TV rebooted, network blip, etc.). Bounce the
+  connection:
+  ```bash
+  adb disconnect 192.168.4.49:5555 && adb connect 192.168.4.49:5555
+  ```
+- **All Fire TVs re-prompt for authorization after a host reboot** →
+  `~/.android/` got wiped, or a different Linux user account is running
+  adb than the one that did the original authorization. Check
+  `ls -la ~/.android/adbkey*`. If the files are gone, restore from
+  backup (above) before re-authorizing every TV by hand.
+
+### Reference links
+
+- Android Debug Bridge official docs: https://developer.android.com/tools/adb
+- `@sports-bar/firecube` package source: `packages/firecube/`
+
 ## 9. Configure hardware in the UI
 
 Use the UI to add your real hardware — NOT the JSON data files directly.
