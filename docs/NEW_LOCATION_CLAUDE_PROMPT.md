@@ -91,19 +91,30 @@ Run these checks before proceeding:
 
 If any of these fail, stop and tell the operator what's wrong.
 
-## Step 1 — Install system packages (one sudo step)
+## Step 1 — Install system packages (sudo required)
 
-Run:
-  sudo apt update && sudo apt install -y git nodejs npm sqlite3 build-essential curl jq
+First the plain apt packages:
+  sudo apt update && sudo apt install -y git sqlite3 build-essential curl jq
 
-After that:
+**Node.js ≥ 18.17 required.** Stock Ubuntu 22.04 ships Node 12, which is
+too old — you MUST install from NodeSource before continuing, otherwise
+`npm ci` will fail on modern lockfile syntax. If `node --version` already
+reports 20.x (or ≥18.17), you can skip this block.
+
+  sudo apt-get remove -y nodejs npm libnode-dev libnode72 >/dev/null 2>&1 || true
+  sudo apt-get autoremove -y >/dev/null 2>&1 || true
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+
+Then PM2 and sanity checks:
   sudo npm install -g pm2
-  node --version                 # Should be ≥ 18.17
+  node --version                 # Should be ≥ 20.x
   npm --version
   pm2 --version
 
-If node is older than 18.17, install nodesource's NodeSource Node.js 20.x
-following https://github.com/nodesource/distributions before continuing.
+If `node --version` still reports ≤ 18 after the NodeSource install, an
+older `/usr/local/bin/node` from a previous attempt is shadowing it —
+`which node` to find it and remove.
 
 ## Step 2 — Clone the repo
 
@@ -117,15 +128,26 @@ following https://github.com/nodesource/distributions before continuing.
 
   mkdir -p /home/ubuntu/sports-bar-data/{backups,update-logs,logs}
 
-## Step 4 — Install deps and do the first build
+## Step 4 — Install deps, create DB schema, and do the first build
 
   npm ci
+  npx drizzle-kit push --config drizzle.config.ts
   npm run build
 
-This takes 3-5 minutes on a fresh host because npm has no cache. If the
-build fails with `sh: 1: turbo: not found`, the turbo dev dependency wasn't
-installed — re-run `NODE_ENV=development npm ci --include=dev` and retry
-the build.
+Full run takes 3-5 minutes on a fresh host because npm has no cache.
+
+**Why `drizzle-kit push` before `npm run build`?** The production build
+does page-data collection for dynamic API routes, and `/api/atlas/ai-analysis`
+opens `/home/ubuntu/sports-bar-data/production.db` at build time to read
+its learning state. On a fresh host that DB file does not exist yet, so
+the build crashes with `Error: Database file not found`. Running
+`drizzle-kit push` first creates the schema from `apps/web/src/db/schema.ts`
+and materializes an empty `production.db` that the build can read from.
+The later `seed-from-json` pass at first app boot populates the tables.
+
+If the build fails with `sh: 1: turbo: not found`, the turbo dev dependency
+wasn't installed — re-run `NODE_ENV=development npm ci --include=dev` and
+retry the build.
 
 ## Step 5 — First app start via PM2
 
