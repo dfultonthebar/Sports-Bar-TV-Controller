@@ -485,8 +485,15 @@ fi
 # PHASE: NPM CI
 # ===========================================================================
 step "npm_ci"
-log "npm ci (install/sync node_modules to the merged lockfile)"
-npm ci 2>&1 | tee -a "$LOG_FILE"
+log "npm ci --include=dev (install/sync node_modules to the merged lockfile)"
+# CRITICAL: --include=dev (or equivalently, unsetting NODE_ENV) is required
+# because the auto-update script inherits PM2's env which has
+# NODE_ENV=production. npm ci under NODE_ENV=production skips
+# devDependencies, which means `turbo` (the build orchestrator for this
+# monorepo) gets dropped from node_modules, and `npm run build` then
+# fails with `sh: 1: turbo: not found`. Same applies to `next` CLI tools
+# and any other dev-only build machinery.
+NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   fail "npm ci failed" 4
 fi

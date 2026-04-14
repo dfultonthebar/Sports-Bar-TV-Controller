@@ -65,8 +65,12 @@ fi
 # If the failed-forward run pulled new packages, node_modules now mismatches
 # the lockfile we just reset to. Skipping npm ci would let the rollback build
 # succeed on stale node_modules and then crash at runtime on a missing module.
-log "npm ci (re-aligning node_modules with the reset lockfile)"
-npm ci 2>&1 | tee -a "$LOG_FILE"
+log "npm ci --include=dev (re-aligning node_modules with the reset lockfile)"
+# --include=dev required because PM2 env has NODE_ENV=production, which
+# would cause npm ci to skip devDependencies (including `turbo`, the
+# build orchestrator). Without dev deps, the rollback rebuild would
+# also fail on `sh: turbo: not found` — same bug the main script had.
+NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   critical "npm ci failed during rollback"
   exit 99
