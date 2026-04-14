@@ -22,15 +22,18 @@ import { queryWolfpackRouteState } from '@sports-bar/wolfpack'
  * That's one beep every 5 seconds (3 requests per poll) continuously as long
  * as a bartender has the UI open — incredibly annoying in a live bar.
  *
- * The cache stores one routing array per active chassis IP with a 10-second
+ * The cache stores one routing array per active chassis IP with a 30-second
  * TTL. Within the TTL, consecutive calls return the cached state without
  * touching hardware. The cache is invalidated explicitly whenever the route
  * POST handler (`/api/matrix/route`) successfully changes a route, so the
  * next GET after a bartender click is always fresh.
  *
- * 10s is shorter than the client's 15s poll interval, which means the cache
- * expires between polls — so live hardware changes (someone using the Wolf
- * Pack's own front panel) show up within ~15s at worst.
+ * The client polls every 15s, so a 30s TTL gives a cache hit every other
+ * poll — roughly a 50% reduction in Wolf Pack hits. Previously at 10s the
+ * TTL was shorter than the poll interval, which meant every poll missed
+ * and we were hitting the hardware 3× per 15s (login + index.php + o2ox).
+ * Out-of-band changes (someone using the Wolf Pack's own front panel) still
+ * show up within ~30s worst case, which is acceptable for a bar.
  *
  * ### Hardware failure fallback
  *
@@ -49,7 +52,7 @@ type CachedState = {
 // Map is fine. Keyed by chassis IP so if the operator ever runs two active
 // chassis they don't clobber each other's state.
 const cache = new Map<string, CachedState>()
-const CACHE_TTL_MS = 10_000
+const CACHE_TTL_MS = 30_000
 
 /**
  * Invalidate the cache for a specific chassis IP, or all chassis if no IP is
