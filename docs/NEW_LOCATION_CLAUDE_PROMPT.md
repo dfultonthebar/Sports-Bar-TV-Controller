@@ -133,15 +133,21 @@ the build.
   sleep 8
   pm2 list
 
-You should see `sports-bar-tv-controller` in `online` status. If it's
-`errored`, run `pm2 logs sports-bar-tv-controller --lines 50 --nostream`
-and diagnose.
+You should see TWO apps in `online` status:
+  - `sports-bar-tv-controller` (the Next.js app on port 3001)
+  - `bartender-proxy` (the restricted proxy on port 3002)
 
-Verify the API responds:
+Both are defined in ecosystem.config.js so `pm2 start` brings them up
+together. If either shows `errored`, run
+`pm2 logs <name> --lines 50 --nostream` and diagnose.
+
+Verify both respond:
   curl -sS http://localhost:3001/api/system/health | head -c 200
+  curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3002/
 
-You should see JSON with `"status":"healthy"` or `"status":"degraded"`.
+The first should return JSON with `"status":"healthy"` or `"status":"degraded"`.
 Degraded is fine at this stage (hardware not configured yet).
+The second should return `302` (root redirects to /remote).
 
 ## Step 6 — Auth bootstrap (CRITICAL)
 
@@ -175,11 +181,23 @@ options: America/New_York, America/Denver, America/Los_Angeles.
 
 ## Step 7 — Restart PM2 with the new env
 
-  pm2 restart sports-bar-tv-controller --update-env
+  pm2 delete sports-bar-tv-controller bartender-proxy
+  pm2 start ecosystem.config.js
 
-This makes PM2 re-read ecosystem.config.js, which in turn re-reads .env
-via its dotenv shim. Without --update-env the new LOCATION_ID won't
-reach the Next.js process and every login will return "Invalid PIN".
+**Why delete + start instead of `pm2 restart --update-env`?** PM2's
+`--update-env` flag re-reads the env object from memory but does NOT
+re-execute the `require('dotenv').config(...)` at the top of
+ecosystem.config.js. That means the new `LOCATION_ID` from `.env`
+(written by the bootstrap script one step ago) never reaches the
+Next.js child process, and every login returns "Invalid PIN".
+
+`pm2 delete && pm2 start` force-evaluates the ecosystem file from
+scratch, which re-runs dotenv, which loads `.env`, which propagates
+`LOCATION_ID` into the env block.
+
+Confirm both apps come back up:
+  pm2 list
+Expected: sports-bar-tv-controller online, bartender-proxy online.
 
 ## Step 8 — Verify the login flow end-to-end
 

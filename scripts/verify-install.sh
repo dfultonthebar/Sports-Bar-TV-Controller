@@ -322,13 +322,19 @@ check_critical_tables() {
         return 14
     fi
 
+    # ChannelPreset = 0 is EXPECTED on a fresh location install — main ships
+    # empty channel-presets-*.json templates, so the JSON→DB seeder has nothing
+    # to insert until the operator adds presets via the UI. Treat this as a
+    # WARN, not a FAIL. If the DB tables themselves were missing, we'd have
+    # bailed above on the ERR check.
     if [ "$presets" -le 0 ]; then
-        log_fail "ChannelPreset table is empty (count=${presets})"
-        record "critical_tables" 0 "ChannelPreset empty"
-        return 14
+        log_warn "ChannelPreset table is empty — expected on a fresh install, configure channels via the bartender remote"
     fi
+    # station_aliases is hardcoded in seed-from-json.ts (32 standard entries)
+    # and seeded on every first boot, so an empty count here genuinely means
+    # the seed function didn't run — that IS a failure worth blocking on.
     if [ "$aliases" -le 0 ]; then
-        log_fail "station_aliases table is empty (count=${aliases})"
+        log_fail "station_aliases table is empty (count=${aliases}) — seed-from-json.ts didn't run"
         record "critical_tables" 0 "station_aliases empty"
         return 14
     fi
