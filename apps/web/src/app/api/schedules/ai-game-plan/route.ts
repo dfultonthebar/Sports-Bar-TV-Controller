@@ -15,37 +15,15 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
-import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
+import { resolveChannelsForGame, getStreamingAppInfoForStation } from '@/lib/network-channel-resolver'
 
-// Streaming station codes to app mapping
-// Maps Rail Media station codes to Fire TV app package names and display names
-const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
-  'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
-  'NHLCI': { appName: 'NHL Center Ice', packages: ['com.nhl.gc', 'com.nhl.gc1415'] },
-  'MLBEI': { appName: 'MLB.TV', packages: ['com.mlb.android', 'com.mlb.atbat'] },
-  'ESPND': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'ESPN+': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'NBCUN': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PEACOCK': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PRIME': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'AMZN': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'FOXD': { appName: 'Fox Sports', packages: ['com.foxsports.android', 'com.foxsports.android.foxsportsgo'] },
-  'APPLETV': { appName: 'Apple TV+', packages: ['com.apple.atve.amazon.appletv'] },
-  'MLSDK': { appName: 'MLS Season Pass', packages: ['tv.mls', 'com.apple.atve.amazon.appletv'] },
-  'BSNOR+': { appName: 'Bally Sports', packages: ['com.bfrapp', 'com.ballysports.ftv'] },
-  'B10+': { appName: 'Big Ten+', packages: ['com.foxsports.bigten.android'] },
-}
-
-// Check if a station is streaming-only (no cable/satellite channel)
-function isStreamingStation(station: string): boolean {
-  const streamingOnly = ['NBALP', 'NHLCI', 'MLBEI', 'ESPND', 'ESPN+', 'MLSDK', 'BSNOR+', 'B10+', 'APPLETV', 'PRIME', 'AMZN']
-  return streamingOnly.includes(station.toUpperCase())
-}
-
-// Get streaming app info for a station
-function getStreamingAppInfo(station: string): { appName: string; packages: string[] } | null {
-  return STREAMING_STATION_MAP[station.toUpperCase()] || null
-}
+// Streaming station resolution is centralized in the shared helper via
+// `getStreamingAppInfoForStation(code, sport?)` from
+// `@/lib/network-channel-resolver`. This file used to maintain its own
+// STREAMING_STATION_MAP + isStreamingStation + getStreamingAppInfo helpers;
+// all deleted in Phase 4.5. The helper also handles sport-gating for
+// league-specific codes (MLBEI / NHLCI / NBALP / MLSDK), so the sport arg
+// is passed on the call site below.
 
 // Map league names to ESPN API parameters
 function mapLeagueToESPN(league: string): { sport: string; league: string } | null {
@@ -475,43 +453,21 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
             ? stationList
             : Object.values(stationList).filter((s): s is string => typeof s === 'string')
 
-          // Sport-gate the streaming app match so we don't mislabel hockey
-          // games with MLB.TV just because Rail Media put "MLBEI" (MLB Extra
-          // Innings) in the station list as a generic out-of-market code.
-          // League-specific streaming packages (MLBEI, NHLCI, NBALP, MLSDK)
-          // only count when the game's league matches. Generic streaming
-          // (Peacock, Prime, ESPN+, Apple TV+, etc.) works for any sport.
-          const leagueLower = (group.group_title || '').toLowerCase()
-          const isBaseballGame = leagueLower.includes('mlb') || leagueLower.includes('baseball')
-          const isHockeyGame = leagueLower.includes('nhl') || leagueLower.includes('hockey')
-          const isBasketballGame = leagueLower.includes('nba') || leagueLower.includes('basketball')
-          const isSoccerGame = leagueLower.includes('soccer') || leagueLower.includes('mls')
-
-          const sportSpecificPackages: Record<string, boolean> = {
-            MLBEI: isBaseballGame,
-            NHLCI: isHockeyGame,
-            NBALP: isBasketballGame,
-            MLSDK: isSoccerGame,
-          }
-
+          // The shared helper handles sport-gating for league-specific
+          // codes (MLBEI/NHLCI/NBALP/MLSDK) — pass group.group_title as
+          // the sport hint and it will return null for mismatched codes.
+          const sportHint = group.group_title || null
           for (const station of stations) {
-            const stationUpper = station.toUpperCase()
-            // Skip sport-specific streaming codes when they don't match the game's league
-            if (stationUpper in sportSpecificPackages && !sportSpecificPackages[stationUpper]) {
-              continue
-            }
-            const appInfo = getStreamingAppInfo(station)
+            const appInfo = getStreamingAppInfoForStation(station, sportHint)
             if (appInfo) {
-              streamingApp = appInfo.appName
+              streamingApp = appInfo.app
               streamingPackages = appInfo.packages
-              // Check if this is a streaming-only station (no traditional TV channel)
-              if (isStreamingStation(station)) {
-                isStreamingOnly = !cableChannelNumber && !directvChannelNumber
-              }
-              logger.debug(`[AI_GAME_PLAN] Found streaming option: ${station} -> ${appInfo.appName}`)
+              logger.debug(`[AI_GAME_PLAN] Found streaming option: ${station} -> ${appInfo.app}`)
               break // Use first matching streaming app
             }
           }
+          // Streaming-only if no linear channel was resolved for this listing
+          isStreamingOnly = !!streamingApp && !cableChannelNumber && !directvChannelNumber
         }
 
         // Add game if we have cable/satellite channel OR streaming availability
