@@ -222,17 +222,30 @@ function AuthStatusBanner() {
   }
 
   if (state.authenticated) {
+    const handleLogout = async () => {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+        })
+      } catch {
+        // Even if the POST fails, send the user to /login. The worst
+        // case is a stale cookie that's about to be reset on next login.
+      }
+      window.location.href = '/login'
+    }
     return (
       <div className="mb-6 rounded-lg border border-green-700 bg-green-900/20 p-3 text-green-300 text-sm flex items-center justify-between">
         <span>
           ✓ Signed in as <strong className="text-green-200">{state.role}</strong>
         </span>
-        <a
-          href="/api/auth/logout"
+        <button
+          type="button"
+          onClick={handleLogout}
           className="text-xs text-green-400 hover:text-green-200 underline"
         >
           sign out
-        </a>
+        </button>
       </div>
     )
   }
