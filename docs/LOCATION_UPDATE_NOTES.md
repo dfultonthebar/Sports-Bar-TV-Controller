@@ -39,6 +39,56 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — `8445e47f` — Bartender All On/All Off now works for LG TVs (was silently failing)
+
+**Risk:** MEDIUM — bug fix for a user-facing bartender action that had
+been broken for any location with LG brand TVs.
+
+**What changed:**
+
+`/api/tv-control/bulk-power` (the endpoint the bartender remote's
+"All On" / "All Off" buttons hit) previously had no `case 'lg':` in
+its `controlDevicePower()` brand switch. LG TVs fell through to the
+default branch which returned `${brand} not supported for bulk power`,
+so every LG TV silently failed and the bartender saw no effect on the
+wall.
+
+The single-TV route at /api/tv-control/[deviceId]/power already had
+a controlLGPower handler; this commit adds the same pattern to the
+bulk route. LGTVClient.powerOn() uses Wake-on-LAN via the device's
+MAC address (idempotent), LGTVClient.powerOff() uses WebSocket SSAP
+to send `ssap://system/turnOff`.
+
+Discovered on Stoneyard Greenville which has 19 LG TVs + 1 Samsung.
+The Samsung power commands were working; the 19 LG TVs were the
+visible problem.
+
+**What could break at a location:**
+
+- **None** — purely additive bug fix. Locations with LG TVs gain a
+  working All On / All Off. Locations without LG TVs see zero change
+  (the new case is brand-scoped).
+- If a location has LG TVs but no MAC address in the DB row, the
+  powerOn call will fail with "WOL failed: MAC required". Fix:
+  populate networkTVDevices.macAddress for each LG TV row via the
+  Device Config UI or the TV network discovery scan.
+
+**Manual steps required:** None — next auto-update picks it up, or
+re-run the build manually. Locations should verify MAC addresses are
+populated for their LG TV rows before expecting "All On" to work —
+WoL requires MAC.
+
+**Rollback notes:** `git revert 8445e47f` (but you probably don't
+want to — reverting restores the broken state where LG TVs silently
+fail every bulk power command).
+
+**Affected files:**
+
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts` — added LG case to
+  controlDevicePower() switch + added LGTVClient to imports
+
+---
+
 ### 2026-04-14 — `6f0a43d9` — 🎉 First successful end-to-end auto-update run (history id=14, 127s, pass)
 
 **Risk:** none (milestone entry, not a code change)
