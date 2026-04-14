@@ -65,10 +65,12 @@ let _stationToPresetCache: StationToPresetCache | null = null
 async function loadResolverData(): Promise<CacheEntry> {
   if (_cache && Date.now() - _cache.ts < TTL_MS) {
     logger.debug('[CHANNEL_RESOLVER] cache hit', {
-      ageSec: Math.round((Date.now() - _cache.ts) / 1000),
-      aliases: Object.keys(_cache.stationAliases).length,
-      cablePresets: _cache.cablePresets.length,
-      directvPresets: _cache.directvPresets.length,
+      data: {
+        ageSec: Math.round((Date.now() - _cache.ts) / 1000),
+        aliases: Object.keys(_cache.stationAliases).length,
+        cablePresets: _cache.cablePresets.length,
+        directvPresets: _cache.directvPresets.length,
+      },
     })
     return _cache
   }
@@ -103,11 +105,13 @@ async function loadResolverData(): Promise<CacheEntry> {
 
   _cache = { ts: Date.now(), stationAliases, cablePresets, directvPresets }
   logger.info('[CHANNEL_RESOLVER] cache refresh', {
-    durationMs: Date.now() - t0,
-    aliases: Object.keys(stationAliases).length,
-    aliasParseErrors,
-    cablePresets: cablePresets.length,
-    directvPresets: directvPresets.length,
+    data: {
+      durationMs: Date.now() - t0,
+      aliases: Object.keys(stationAliases).length,
+      aliasParseErrors,
+      cablePresets: cablePresets.length,
+      directvPresets: directvPresets.length,
+    },
   })
   return _cache
 }
@@ -228,10 +232,12 @@ export async function resolveChannelsForNetworks(
   }
 
   logger.debug('[CHANNEL_RESOLVER] resolveChannelsForNetworks', {
-    networks: ordered.slice(0, 6),
-    primaryNetwork: primaryNetwork ?? null,
-    cable: cableMatch ? `${cableMatch.channelNumber} (${cableMatch.presetName} via ${cableMatch.matchedNetwork})` : null,
-    directv: directvMatch ? `${directvMatch.channelNumber} (${directvMatch.presetName} via ${directvMatch.matchedNetwork})` : null,
+    data: {
+      networks: ordered.slice(0, 6),
+      primaryNetwork: primaryNetwork ?? null,
+      cable: cableMatch ? `${cableMatch.channelNumber} (${cableMatch.presetName} via ${cableMatch.matchedNetwork})` : null,
+      directv: directvMatch ? `${directvMatch.channelNumber} (${directvMatch.presetName} via ${directvMatch.matchedNetwork})` : null,
+    },
   })
 
   return { cable: cableMatch, directv: directvMatch }
@@ -578,17 +584,19 @@ export async function resolveChannelsForGame(
   }
 
   logger.debug('[CHANNEL_RESOLVER] resolveChannelsForGame', {
-    networks: (game.networks ?? []).slice(0, 6),
-    primaryNetwork: game.primaryNetwork ?? null,
-    sport: game.sport ?? null,
-    league: game.league ?? null,
-    devices: deviceTypesAvailable,
-    result: {
-      cable: out.cableChannel,
-      directv: out.directvChannel,
-      streaming: out.streamingApp?.code ?? null,
-      via: out.resolvedVia,
-      matchedOn: out.primaryMatch,
+    data: {
+      networks: (game.networks ?? []).slice(0, 6),
+      primaryNetwork: game.primaryNetwork ?? null,
+      sport: game.sport ?? null,
+      league: game.league ?? null,
+      devices: deviceTypesAvailable,
+      result: {
+        cable: out.cableChannel,
+        directv: out.directvChannel,
+        streaming: out.streamingApp?.code ?? null,
+        via: out.resolvedVia,
+        matchedOn: out.primaryMatch,
+      },
     },
   })
 

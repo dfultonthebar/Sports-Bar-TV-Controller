@@ -79,10 +79,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     logger.debug('[AUTO_UPDATE_API] logs read', {
-      jobId,
-      size: stat.size,
-      tailed,
-      contentBytes: content.length,
+      data: {
+        jobId,
+        size: stat.size,
+        tailed,
+        contentBytes: content.length,
+      },
     })
 
     return NextResponse.json({

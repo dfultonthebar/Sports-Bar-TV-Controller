@@ -43,10 +43,12 @@ export async function PUT(request: NextRequest) {
   const { enabled, scheduleCron } = bodyValidation.data
 
   logger.info('[AUTO_UPDATE_API] PUT /settings', {
-    role: authResult.role,
-    sessionId: authResult.sessionId,
-    enabled,
-    scheduleCron,
+    data: {
+      role: authResult.role,
+      sessionId: authResult.sessionId,
+      enabled,
+      scheduleCron,
+    },
   })
 
   try {
@@ -75,7 +77,7 @@ export async function PUT(request: NextRequest) {
         .where(eq(schema.autoUpdateState.id, 1))
     }
 
-    logger.info('[AUTO_UPDATE_API] settings updated', { enabled, scheduleCron })
+    logger.info('[AUTO_UPDATE_API] settings updated', { data: { enabled, scheduleCron } })
 
     // TODO(phase 2 systemd): per docs/AUTO_UPDATE_SYSTEM_PLAN.md "Implementation
     // note on /etc/cron.d/", the recommended path is a systemd user timer in

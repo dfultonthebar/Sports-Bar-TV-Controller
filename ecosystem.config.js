@@ -35,7 +35,11 @@ module.exports = {
       // Auth system — bind to the location row in the DB. Without this,
       // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
       // and every login fails with "Invalid PIN".
-      LOCATION_ID: process.env.LOCATION_ID || 'default-location'
+      LOCATION_ID: process.env.LOCATION_ID || 'default-location',
+      // Logger minimum level. Defaults to INFO in production, set
+      // LOG_LEVEL=DEBUG in .env to surface verbose traces from
+      // [CHANNEL_RESOLVER], [AUTO_UPDATE_API], and other component tags.
+      LOG_LEVEL: process.env.LOG_LEVEL || 'INFO'
     },
     // Use PM2's default log location for better log rotation support
     // Custom logs still work through the app's logger system
