@@ -29,6 +29,7 @@ export {
   routeWolfpackToMatrix,
   sendHTTPCommand,
   getMatrixRoutingState,
+  queryWolfpackRouteState,
   type MatrixConfiguration,
   type RoutingResult,
 } from './wolfpack-matrix-service'
