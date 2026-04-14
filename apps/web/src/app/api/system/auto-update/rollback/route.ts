@@ -59,11 +59,13 @@ export async function POST(request: NextRequest) {
     const logFile = path.join(LOG_DIR, `${jobId}.log`)
 
     logger.info('[AUTO_UPDATE_API] POST /rollback → spawning rollback.sh', {
-      jobId,
-      logFile,
-      rollbackTag,
-      role: authResult.role,
-      sessionId: authResult.sessionId,
+      data: {
+        jobId,
+        logFile,
+        rollbackTag,
+        role: authResult.role,
+        sessionId: authResult.sessionId,
+      },
     })
 
     // SECURITY: rollbackTag is regex-validated above (digits + dashes only),
