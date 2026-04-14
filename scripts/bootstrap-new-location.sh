@@ -216,6 +216,33 @@ seed_pin "STAFF" "$STAFF_PIN" "Staff/bartender PIN — rotate via Device Config"
 seed_pin "ADMIN" "$ADMIN_PIN" "Admin PIN — rotate via Device Config"
 
 # ---------------------------------------------------------------------------
+# 3b. Git identity (needed for UI backup commits + auto-update commits)
+# ---------------------------------------------------------------------------
+# The System Admin → Location tab's "Backup to git" button runs `git commit`
+# under the hood, and so does scripts/auto-update.sh on every scheduled run.
+# Both fail with "Author identity unknown" unless git user.name/user.email
+# are set in this repo. Set a deterministic per-location identity that
+# matches the existing sister-location convention.
+info ""
+info "=== Step 3b: git identity ==="
+
+existing_name=$(git -C "$REPO_ROOT" config --get user.name 2>/dev/null || true)
+if [ -z "$existing_name" ]; then
+  git -C "$REPO_ROOT" config user.name "$LOCATION_NAME"
+  info "  set git user.name = $LOCATION_NAME"
+else
+  info "  git user.name already set: $existing_name (not overwriting)"
+fi
+
+existing_email=$(git -C "$REPO_ROOT" config --get user.email 2>/dev/null || true)
+if [ -z "$existing_email" ]; then
+  git -C "$REPO_ROOT" config user.email "sports-bar-tv@${LOCATION_SLUG}.local"
+  info "  set git user.email = sports-bar-tv@${LOCATION_SLUG}.local"
+else
+  info "  git user.email already set: $existing_email (not overwriting)"
+fi
+
+# ---------------------------------------------------------------------------
 # 4. Optional: create git branch
 # ---------------------------------------------------------------------------
 if [ "$CREATE_BRANCH" -eq 1 ]; then
