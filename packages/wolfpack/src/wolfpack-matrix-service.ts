@@ -543,10 +543,13 @@ export async function queryWolfpackRouteState(
   // inputNum 65536, which matches no real input and makes the output look
   // unrouted. Normalize 65535 to -1 so callers can explicitly decide what to do
   // (filter it out, fall back to prior state, or mark as unknown).
-  const normalized = (routingArray as number[]).map(v => (v === 65535 ? -1 : v))
-  const sentinelCount = normalized.filter(v => v === -1).length
-  if (sentinelCount > 0) {
-    logger.warn(`[WOLFPACK-HTTP] Query returned ${sentinelCount} pending/0xFFFF sentinel(s) at ${config.ipAddress} — these are normalized to -1 and should be ignored by callers`)
+  const rawArray = routingArray as number[]
+  const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
+  const sentinelIndices = rawArray
+    .map((v, i) => (v === 65535 ? i + 1 : -1))
+    .filter(i => i > 0)
+  if (sentinelIndices.length > 0) {
+    logger.warn(`[WOLFPACK-HTTP] Query returned ${sentinelIndices.length} pending/0xFFFF sentinel(s) at ${config.ipAddress} for output(s) ${sentinelIndices.join(',')} — normalized to -1`)
   }
 
   logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
