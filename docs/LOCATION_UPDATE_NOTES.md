@@ -39,6 +39,56 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — docs: EXISTING_LOCATION_CLAUDE_PROMPT.md — manual catch-up runbook
+
+**Risk:** GO — docs only, no code change, no version bump.
+
+**What it is:**
+
+A new runbook at `docs/EXISTING_LOCATION_CLAUDE_PROMPT.md` that a
+Claude Code session running on any location's host can follow to
+manually bring that location up to current main. It's the
+command-line equivalent of the Sync-tab "Run Update Now" flow, for
+locations that:
+
+- Don't have `auto-update.sh` wired up yet (no systemd timer, no
+  checkpoint flow), or
+- Are too far behind main to trust their own stale auto-update.sh, or
+- Need a step-by-step recovery path with the operator in the loop
+
+The runbook walks through the same phases as auto-update.sh (fetch →
+merge with LOCATION_PATHS_OURS guard → npm ci → drizzle-kit push →
+build → pm2 delete+start → verify → install timer) but does each
+step explicitly with diagnostic snapshots before and after, so a
+Claude session with zero prior context can execute it cleanly.
+
+**When to reference this:**
+
+- Rolling out the first update at a location that was installed
+  before auto-update.sh became standard (Holmgren Way, Graystone,
+  Lucky's — as of 2026-04-15).
+- Any time a location's own `scripts/auto-update.sh` is broken or
+  missing features like the v2.8.1 schema-push phase.
+- Disaster recovery when the Sync tab refuses to start an update or
+  the checkpoint Claude instance fails to reach a decision.
+
+**How Claude at the remote location uses it:**
+
+The runbook contains both a short two-phase bootstrap prompt (what
+the operator pastes into a fresh Claude session) AND the full
+authoritative step list. The bootstrap fetches the file into `/tmp`
+so the remote Claude is reading from origin/main's version, not
+whatever stale copy is on the location's disk.
+
+**Affected files:**
+
+- `docs/EXISTING_LOCATION_CLAUDE_PROMPT.md` (new, ~550 lines)
+- `docs/LOCATION_UPDATE_NOTES.md` — this entry
+
+**No version bump** — docs-only addition, no code path changes.
+
+---
+
 ### 2026-04-15 — v2.8.1 — auto-update.sh now runs drizzle-kit push before build
 
 **Risk:** GO — this fix prevents the silent failure that v2.8.0 would
