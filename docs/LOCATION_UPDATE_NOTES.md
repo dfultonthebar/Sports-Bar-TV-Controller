@@ -39,6 +39,206 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — v2.7.0 — channel logos in bartender preset grid
+
+**Risk:** GO — additive UI only. Logos appear next to preset names in
+the bartender remote's preset grid. Falls back to a colored text badge
+for any preset name without a known logo, so unknown channels still
+display gracefully.
+
+**What changed:**
+
+`apps/web/src/lib/channel-logos.ts` (new, ~400 lines) — a name→logo
+lookup that maps a `ChannelPreset.name` to either:
+
+- A SimpleIcons CDN URL (https://cdn.simpleicons.org) for major brands
+  with a SimpleIcons entry (ESPN, NFL, NBA, MLB, NHL, FOX Sports,
+  Peacock, Paramount+, Prime Video, Apple TV+)
+- A colored text badge with brand colors for everything else (regional
+  sports nets, college conferences, broadcast affiliates, niche
+  channels)
+- A generic gray badge with the first 4 chars of the preset name as
+  the ultimate fallback
+
+`apps/web/src/components/ChannelPresetGrid.tsx` — renders the logo or
+badge inline next to each preset name. The image element has an
+onError handler that hides itself if the CDN hiccups, so a network
+failure on the SimpleIcons CDN never breaks the grid layout.
+
+**Coverage at Stoneyard Greenville (verified by smoke test):**
+
+All 17 tested preset names match correctly, including the
+previously-tricky cases: ESPN News (vs ESPNews), Peacock/NBC Sports
+(slash in name), Big 10, NFLNet/NHLNet abbreviations, MBL Network
+(typo of MLB), NESN, MSG2, beIN Sports, MLB Strike Zone, Fan Duel
+North, Cowboy Channel, and the Stoneyard-specific "Bally Sports WI"
+preset that maps to the channel 308 overflow feed per CLAUDE.md.
+
+**Coverage at other locations:** untested, but the fallback badge
+ensures no preset will render broken — at worst it displays a 4-char
+text badge in the grid color.
+
+**No DB schema change.** The lookup is pure computation from the
+existing `ChannelPreset.name` column. A future enhancement could add
+an optional `ChannelPreset.logoUrl` column for per-location overrides
+without touching this helper.
+
+**Affected files:**
+
+- `apps/web/src/lib/channel-logos.ts` — new
+- `apps/web/src/components/ChannelPresetGrid.tsx`
+- `package.json` — version bump 2.6.0 → 2.7.0 (minor: new feature)
+
+**Rollback:** trivial — `git revert <sha>` removes the logos and the
+grid falls back to text-only as before.
+
+---
+
+### 2026-04-14 — v2.6.0 — bartender Guide tab: Open Channel Guide button (cable only)
+
+**Risk:** GO — additive UI only. New button appears only for cable-box
+inputs, has no effect on any other code path.
+
+**What changed:**
+
+In the bartender remote's Guide tab
+(`EnhancedChannelGuideBartenderRemote.tsx`), when an input backed by
+an IR cable box is selected, a new "Open Channel Guide on TV" button
+appears under the input list. Tapping it sends the learned `Guide` IR
+command to that cable box, popping the on-screen Spectrum/cable guide
+up on whatever TV is currently routed to that input.
+
+The button is hidden for DirecTV, Fire TV, and EverPass inputs — they
+don't have a cable-style on-screen guide. DirecTV could be added later
+via the IP control GUIDE command if requested.
+
+**Prerequisite at each location:**
+
+Each cable box's IR device row must have a learned `Guide` command in
+the `IRCommand` table. Verify with:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, functionName FROM IRCommand WHERE LOWER(functionName)='guide';"
+```
+
+If any cable box is missing it, learn it via Device Config → IR tab →
+Learn IR (point the physical Spectrum remote at the Global Cache
+sensor, press Guide). Without this row, the button shows an error
+toast for that input but the rest of the UI still works fine.
+
+**Stoneyard Greenville:** all 4 cable boxes already have Guide learned
+(verified). Other locations need to spot-check.
+
+**Affected files:**
+
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `package.json` — version bump 2.5.4 → 2.6.0 (minor: new feature)
+
+**Rollback:** trivial — `git revert <sha>` removes the button.
+
+---
+
+### 2026-04-14 — v2.5.4 — kill phantom Fire TV row regeneration loop
+
+**Risk:** GO — defensive fix only, no surface change. Will eliminate
+existing per-second `Failed to connect to :5555` log noise at any
+location whose FireTVDevice table still has a phantom row.
+
+**What was happening:**
+
+The Fire TV connection manager's `updateDeviceStatus()` was using the
+`saveFireTVDevice()` upsert helper. When called with a deviceId that
+didn't exist in FireTVDevice (e.g., because something else fed it a
+DirecTV id), the upsert silently INSERTed a new row with empty
+ipAddress and `name='Unknown'`. That phantom row then survived manual
+DELETE: on the next health check, `loadFireTVDevices()` returned the
+empty row, the connection manager tried to connect to `:5555`, failed,
+and re-upserted the row — perpetuating itself indefinitely. At
+Stoneyard Greenville this produced ~30 reconnect attempts/minute
+forever and the bartender remote saw a phantom "Unknown" device.
+
+**What's fixed:**
+
+1. `firetv-connection-manager.ts::updateDeviceStatus` now uses a plain
+   `db.update().where()` instead of the upsert. If the device id has no
+   matching row, the update is a no-op and the manager logs a warning
+   but does NOT create a row. Phantom rows can no longer self-resurrect.
+2. `firetv-connection-manager.ts::initialize` skips devices with empty
+   `ipAddress`, so existing phantoms in the table don't get added to the
+   in-memory connection map at boot.
+3. `firetv-health-monitor.ts::checkDeviceHealth` skips devices with
+   empty `ipAddress`, killing the per-cycle reconnect noise.
+
+**One-time cleanup at any affected location** (if you see "Unknown"
+devices in `FireTVDevice` after pulling this fix):
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "DELETE FROM FireTVDevice WHERE ipAddress='' OR ipAddress IS NULL;"
+pm2 restart sports-bar-tv-controller
+```
+
+The new code is defensive enough that this cleanup is optional — even
+without it, no new connection attempts will fire against the phantom.
+
+**Affected files:**
+
+- `apps/web/src/services/firetv-connection-manager.ts`
+- `apps/web/src/services/firetv-health-monitor.ts`
+- `package.json` — version bump 2.5.3 → 2.5.4
+
+**Open question (NOT fixed in this commit):** the original injection
+path that fed DirecTV ids into Fire TV's connection manager has not
+been found. Search for `directv_holmgren_2` in PM2 logs at any location
+to see if an older code path is still pumping cross-table device ids.
+The defensive fix above blocks the symptom even if the original injector
+is still in place.
+
+---
+
+### 2026-04-14 — v2.5.3 — strip Holmgren defaults from shared package config
+
+**Risk:** GO — pure cleanup, no behavior change at any location.
+
+**What changed:**
+
+`packages/config/src/hardware-config.ts` used to be a "mirror" of
+`apps/web/src/lib/hardware-config.ts` and shipped Holmgren-specific
+defaults (Atlas IP `10.11.3.246`, processor ID `3641dcba…`, name
+"Holmgren Way", Wolf Pack audio output slots 37-40) to every new install
+via `@sports-bar/config`. Anything importing the package version got
+Holmgren defaults regardless of which location it was running on.
+
+Audited every import of `@sports-bar/config` HARDWARE_CONFIG — only two
+fields were ever read through the package: `ollama.baseUrl/model` (truly
+generic) and `venue.timezone` (same `America/Chicago` for all WI
+locations). All other fields (`atlas.*`, `wolfpack.*`, `api.*`,
+`venue.name`, `scheduler.*`) were dead weight nobody imported through the
+package — the real consumers all read from the app-level file directly.
+
+Stripped the package version down to those two fields and added a
+header comment explaining what does and does not belong in shared package
+code. Both fields now also honor env overrides (`OLLAMA_BASE_URL`,
+`OLLAMA_MODEL`, `LOCATION_TIMEZONE`).
+
+**What this fixes:**
+
+This was the source of the "I keep seeing Holmgren references at this
+location" class of bug. Even on a perfectly-configured Stoneyard install,
+anything routed through `@sports-bar/config` would surface Holmgren IPs
+or the venue name "Holmgren Way" in logs, AI prompts, and diagnostic
+output. That's gone now.
+
+**Affected files:**
+
+- `packages/config/src/hardware-config.ts` — rewritten (47 → ~50 lines)
+- `package.json` — version bump 2.5.2 → 2.5.3
+
+**Rollback:** trivial — `git revert <sha>` restores the old mirror.
+
+---
+
 ### 2026-04-14 — `ee9c63c0` — CAUTION: location-data reconciliation bug + install fixes
 
 **Risk:** CAUTION — one corrective data commit already applied to
