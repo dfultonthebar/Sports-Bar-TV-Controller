@@ -276,7 +276,9 @@ run_checkpoint() {
 
   # Per Pre-work 3 validation: `claude -p "<prompt>"` works in cron-minimal env
   # without ANTHROPIC_API_KEY (persistent login handles auth).
-  if ! timeout "$timeout_secs" claude -p "$prompt" >"$out_file" 2>&1; then
+  # --dangerously-skip-permissions: checkpoints need to run sqlite3/git/etc.
+  # without hanging on an interactive permission prompt in headless mode.
+  if ! timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
     rm -f "$out_file"
