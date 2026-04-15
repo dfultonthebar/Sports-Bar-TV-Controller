@@ -318,7 +318,7 @@ export default function ChannelPresetGrid({
                           src={src}
                           alt={alt}
                           title={alt}
-                          className="h-5 w-5 object-contain flex-shrink-0 opacity-90"
+                          className="h-10 w-10 object-contain flex-shrink-0 opacity-95 bg-white/10 rounded p-1"
                           loading="lazy"
                           onError={(e) => {
                             // CDN hiccup — hide the broken img and the
@@ -330,8 +330,8 @@ export default function ChannelPresetGrid({
                       ) : (
                         <span
                           title={alt}
-                          className="inline-flex items-center justify-center h-5 px-1.5 rounded text-[9px] font-bold flex-shrink-0 tracking-tight"
-                          style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '20px' }}
+                          className="inline-flex items-center justify-center h-10 px-2 rounded text-[11px] font-bold flex-shrink-0 tracking-tight"
+                          style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '40px' }}
                         >
                           {badge.text}
                         </span>
