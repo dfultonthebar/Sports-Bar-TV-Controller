@@ -39,6 +39,47 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.2 — fire TV send-command: DB fallback for missing ipAddress
+
+**Risk:** GO — bugfix, no schema change, no manual steps.
+
+**What changed:**
+
+`POST /api/firetv-devices/send-command` no longer requires `ipAddress`/`port`
+in the request body. When missing (or blank), the route now looks up the
+device row by `deviceId` from the `FireTVDevice` table and uses the DB values
+as the source of truth. Schema fields are marked `.optional()`.
+
+**Why:**
+
+Stoneyard Greenville reported "Amazon 2 can't be controlled" from the
+bartender iPad while Amazon 1 and 3 worked. Backend + physical device were
+healthy — every direct curl to the endpoint succeeded. Root cause was an
+iPad PWA cache holding a stale `/api/devices/all` response from back when
+the FireTV connection-manager UPSERT bug (fixed in v2.5.4) had briefly
+written a phantom row with empty `ipAddress`. The tablet's cached device
+list kept sending `ipAddress: ""` → Zod rejected → fire-and-forget silent
+failure in `FireTVRemote.tsx` → "nothing happens". Hard-refreshing the
+tablet clears the cache, but a permanent fix belongs on the server so no
+tablet can ever get wedged by stale client state again.
+
+**What could break at a location:** nothing — the schema change is strictly
+relaxing validation. Existing clients that DO send a valid ipAddress/port
+keep working unchanged. The only new behavior is the DB fallback on empty.
+
+**Manual steps required:** none. Auto-update handles it.
+
+**Rollback notes:** revert the single commit; no DB changes. Previous
+behavior (strict ipAddress) returns.
+
+**Affected files:**
+
+- `apps/web/src/app/api/firetv-devices/send-command/route.ts`
+- `package.json` (version bump)
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
 ### 2026-04-15 — docs: EXISTING_LOCATION_CLAUDE_PROMPT.md — manual catch-up runbook
 
 **Risk:** GO — docs only, no code change, no version bump.
