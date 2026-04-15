@@ -8,39 +8,25 @@ import { schema } from '@/db'
 import { eq, inArray } from 'drizzle-orm'
 import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
 import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
-import net from 'net'
+import { probeSamsungTV } from '@/lib/samsung-model-probe'
 
 /**
- * Probe a Samsung TV's real power state via the WebSocket control port (8002).
+ * Determine whether a Samsung TV's screen is actually on using the REST
+ * PowerState field at :8001/api/v2/.
  *
- * The REST endpoint on 8001 is NOT a reliable power signal — it keeps returning
- * `PowerState: "on"` (or responding with a reachable body and no field) for
- * several seconds after KEY_POWER, and some models leave it alive in a
- * "network standby" mode that looks identical to "on". Port 8002 hosts the
- * remote-control WebSocket: when the TV is truly off, no process is bound to
- * it and the TCP connection is refused/times out. When the TV is actually on
- * and ready to accept remote keys, the connection succeeds.
+ * Port 8002 (the WebSocket control port) is NOT a reliable "is the screen
+ * on" signal — modern Samsung TVs (e.g. 2024 DU7200 series) keep 8002
+ * open in network standby so Wake-on-LAN still works. Treating 8002 as
+ * "on" gives false positives for TVs whose screens are dark.
+ *
+ * REST PowerState:
+ *   - "on"      → screen is lit
+ *   - "standby" → screen is off, NIC alive (ready for WoL)
+ *   - missing/unreachable → fully off, NIC dead
  */
-async function isSamsungTVOn(ipAddress: string, timeoutMs = 1500): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const socket = new net.Socket()
-    let done = false
-    const finish = (result: boolean) => {
-      if (done) return
-      done = true
-      try { socket.destroy() } catch {}
-      resolve(result)
-    }
-    socket.setTimeout(timeoutMs)
-    socket.on('connect', () => finish(true))
-    socket.on('timeout', () => finish(false))
-    socket.on('error', () => finish(false))
-    try {
-      socket.connect(8002, ipAddress)
-    } catch {
-      finish(false)
-    }
-  })
+async function isSamsungTVOn(ipAddress: string): Promise<boolean> {
+  const result = await probeSamsungTV(ipAddress, 2000)
+  return result.powerState === 'on'
 }
 
 /**
