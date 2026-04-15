@@ -39,6 +39,51 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — v2.6.0 — bartender Guide tab: Open Channel Guide button (cable only)
+
+**Risk:** GO — additive UI only. New button appears only for cable-box
+inputs, has no effect on any other code path.
+
+**What changed:**
+
+In the bartender remote's Guide tab
+(`EnhancedChannelGuideBartenderRemote.tsx`), when an input backed by
+an IR cable box is selected, a new "Open Channel Guide on TV" button
+appears under the input list. Tapping it sends the learned `Guide` IR
+command to that cable box, popping the on-screen Spectrum/cable guide
+up on whatever TV is currently routed to that input.
+
+The button is hidden for DirecTV, Fire TV, and EverPass inputs — they
+don't have a cable-style on-screen guide. DirecTV could be added later
+via the IP control GUIDE command if requested.
+
+**Prerequisite at each location:**
+
+Each cable box's IR device row must have a learned `Guide` command in
+the `IRCommand` table. Verify with:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, functionName FROM IRCommand WHERE LOWER(functionName)='guide';"
+```
+
+If any cable box is missing it, learn it via Device Config → IR tab →
+Learn IR (point the physical Spectrum remote at the Global Cache
+sensor, press Guide). Without this row, the button shows an error
+toast for that input but the rest of the UI still works fine.
+
+**Stoneyard Greenville:** all 4 cable boxes already have Guide learned
+(verified). Other locations need to spot-check.
+
+**Affected files:**
+
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `package.json` — version bump 2.5.4 → 2.6.0 (minor: new feature)
+
+**Rollback:** trivial — `git revert <sha>` removes the button.
+
+---
+
 ### 2026-04-14 — v2.5.4 — kill phantom Fire TV row regeneration loop
 
 **Risk:** GO — defensive fix only, no surface change. Will eliminate
