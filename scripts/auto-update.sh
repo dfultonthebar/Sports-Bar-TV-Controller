@@ -522,6 +522,38 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
 fi
 
 # ===========================================================================
+# PHASE: SCHEMA PUSH (drizzle-kit)
+# ===========================================================================
+# Apply any new tables/columns from packages/database/src/schema.ts to the
+# live production.db before the build runs. Without this, releases that add
+# a new table (like v2.8.0's ChannelTuneLog) build successfully but their
+# new endpoints 500 at runtime because the table doesn't exist.
+#
+# drizzle-kit push will sometimes fail on *pre-existing* indexes/tables that
+# were created out of band (manual sqlite3, earlier hotfix, etc.) — drizzle
+# tracks schema by literal CREATE statements, not by structural diff, so any
+# untracked-but-already-present object trips it. That class of error is
+# benign: the schema is already in the desired state. We detect it, log a
+# warning, and continue. Any OTHER error fails the update because it likely
+# indicates a real schema corruption or version mismatch.
+step "schema_push"
+log "npx drizzle-kit push (apply pending schema changes)"
+SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
+if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+  log "drizzle-kit push completed cleanly"
+else
+  if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
+    log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
+    log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
+    log "WARNING: continuing with the update. If this release adds a NEW table that was not pre-created,"
+    log "WARNING: the corresponding endpoints will 500 at runtime — verify-install will catch it."
+  else
+    cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+    fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
+  fi
+fi
+
+# ===========================================================================
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"

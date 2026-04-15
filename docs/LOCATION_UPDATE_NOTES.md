@@ -39,6 +39,85 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.1 — auto-update.sh now runs drizzle-kit push before build
+
+**Risk:** GO — this fix prevents the silent failure that v2.8.0 would
+have caused at every other location. Read this entry BEFORE deciding on
+the v2.8.0 entry below.
+
+**Background — what was broken in v2.8.0:**
+
+v2.8.0 added a new `ChannelTuneLog` table to the schema. The runbook
+(`docs/NEW_LOCATION_CLAUDE_PROMPT.md` Step 4) explicitly tells fresh
+installs to run `npx drizzle-kit push` between `npm ci` and `npm run
+build`, but **`scripts/auto-update.sh` never had that step**. Result:
+locations pulling v2.8.0 via auto-update would build successfully, PM2
+would restart fine, verify-install would pass, but any call to the new
+`/api/channel-presets/tune/history` endpoints would 500 because the
+table doesn't exist.
+
+We caught it at Stoneyard Greenville during the v2.8.0 merge and
+created the table by hand with `sqlite3`. Without this v2.8.1 patch
+that workaround would be needed at Holmgren, Graystone, Lucky's, and
+every future install.
+
+**What changed in v2.8.1:**
+
+`scripts/auto-update.sh` — new `schema_push` phase between `npm_ci`
+and `checkpoint_b`. It runs `npx drizzle-kit push` and:
+
+- On clean success: logs and continues.
+- On the specific "index/table/column already exists" error class:
+  logs a WARNING and continues. This is the benign case where the DB
+  already has untracked indexes from a prior manual hotfix (e.g., the
+  `AiTvAvailability_matrixOutputId_idx` index that's currently
+  pre-existing at Greenville). drizzle tracks schema by literal CREATE
+  statements not by structural diff, so any untracked-but-present
+  object trips the push even though the schema is already correct.
+- On any OTHER error: aborts the update before checkpoint_b. Real
+  schema corruption / version mismatch / sqlite engine errors all fail
+  loudly so the rollback path triggers.
+
+`scripts/prompts/checkpoint-b.txt` — Claude is now told to:
+1. Read LOCATION_UPDATE_NOTES.md to see if the release added new tables
+2. Grep the run log for `[SCHEMA]` / `WARNING:` / `drizzle` lines
+3. If `packages/database/src/schema.ts` was in the merge diff, run
+   `sqlite3 production.db ".tables"` and verify each new table from
+   the diff actually exists. Missing tables → STOP, manual `sqlite3`
+   CREATE needed before the build is worth running.
+
+**What Claude on other location machines should look for after this
+patch ships:**
+
+1. `[SCHEMA]` lines in the auto-update run log — clean push or benign
+   warning are both fine. Anything else aborts before checkpoint_b.
+2. At checkpoint_b: ALWAYS list `.tables` and compare against any
+   `packages/database/src/schema.ts` changes in the merge diff. New
+   table missing → STOP.
+3. The "WARNING: drizzle-kit push reported pre-existing objects
+   (benign)" message is **expected** at Greenville and probably at
+   Holmgren too — both have manually-created indexes from earlier
+   hotfix sessions. Treat the warning as informational, not a failure.
+
+**Affected files:**
+
+- `scripts/auto-update.sh`
+- `scripts/prompts/checkpoint-b.txt`
+- `package.json` — version bump 2.8.0 → 2.8.1
+
+**Stoneyard Greenville:** the manual `ChannelTuneLog` table from the
+v2.8.0 merge is already in place, so this patch is purely preventative
+here. Other locations get the patch via their next auto-update run,
+which will then itself trigger the schema push for v2.8.0's table on
+the next run after that. (Order matters: v2.8.1 patches the auto-
+updater, then auto-updater can correctly handle v2.8.0+ schema
+changes.)
+
+**Rollback:** trivial — `git revert <sha>` restores the unpatched
+auto-update.sh and the longer checkpoint-b prompt.
+
+---
+
 ### 2026-04-15 — v2.8.0 — Samsung power-detection rewrite + tune-history + auto-update CLI fix
 
 **Risk:** CAUTION — most pieces are GO, but **one DB schema change**
