@@ -241,14 +241,34 @@ export default function BartenderRemotePage() {
     return () => clearInterval(interval)
   }, [activeTab])
 
-  // Poll routing + channel data every 15 seconds while on the Video or Routing tab
+  // Route state and channel data have different cost profiles and need
+  // different poll strategies:
+  //
+  // - loadCurrentRoutes() → hits /api/matrix/routes → on cache miss that
+  //   path queries the Wolf Pack over HTTP (login + index.php + o2ox), and
+  //   the Wolf Pack firmware beeps on every authenticated HTTP request.
+  //   With the iPad always on and the page always in the Video tab, a 15s
+  //   background interval here means a beep every 30-something seconds
+  //   (first poll misses cache, next hits, next misses...). Bartenders
+  //   understandably hate this. Fix: NO interval. Load once on mount and
+  //   on tab switch, then rely on:
+  //     * `routeInputToOutput` updating local `currentSources` on a route
+  //       click (no re-fetch needed),
+  //     * the server-side `updateRoutesCache()` in the POST handler
+  //       keeping the cache fresh when we know the new state,
+  //     * the existing Refresh button in the Routing tab for explicit
+  //       operator refreshes.
+  //
+  // - loadCurrentChannels() → hits /api/matrix/current-channels → pure
+  //   SQLite read from the InputCurrentChannel table, no hardware I/O.
+  //   Cheap, no beep. Polling every 15s here is fine — the bartender
+  //   wants to see live channel changes for scheduled games.
   useEffect(() => {
     if (activeTab !== 'routing' && activeTab !== 'video') return
 
     loadCurrentRoutes()
     loadCurrentChannels()
     const interval = setInterval(() => {
-      loadCurrentRoutes()
       loadCurrentChannels()
     }, 15000)
 
@@ -575,11 +595,30 @@ export default function BartenderRemotePage() {
       const response = await fetch('/api/matrix/routes')
       if (response.ok) {
         const data = await response.json()
-        const routeMap = new Map<number, number>()
-        data.routes?.forEach((route: any) => {
-          routeMap.set(route.outputNum, route.inputNum)
+        // MERGE into the existing currentSources map rather than replacing.
+        //
+        // When /api/matrix/routes transiently drops an entry for an output —
+        // which can happen if the Wolf Pack returns the 0xFFFF "settling"
+        // sentinel during the ~500ms window right after a route command, and
+        // the server-side filter strips that output from the response — a
+        // plain map-replace would wipe the checkmark from the UI for one
+        // poll cycle. Merging preserves the last-known-good value for any
+        // output missing from this particular response, so the UI stays
+        // stable while the hardware finishes settling.
+        //
+        // Trade-off: a genuinely-unrouted output (e.g., someone manually
+        // clears a route via the Wolf Pack's own front panel) will show the
+        // stale value until the next successful poll returns real data for
+        // it. For a bar that's a strictly better UX than the checkmark
+        // flicker this fixes — out-of-band unroutes are rare, transient
+        // sentinels under bartender-driven poll cadence are common.
+        setCurrentSources(prev => {
+          const next = new Map(prev)
+          data.routes?.forEach((route: any) => {
+            next.set(route.outputNum, route.inputNum)
+          })
+          return next
         })
-        setCurrentSources(routeMap)
       }
     } catch (error) {
       logger.error('Error loading routes:', error)

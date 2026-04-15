@@ -216,34 +216,18 @@ async function controlDevicePower(
       })
       try {
         if (action === 'on') {
-          // Fast power on: check state, send targeted command
-          // Don't use full powerOn() loop — too slow for bulk operations
-          let powerState: string | null = null
-          try {
-            const ctrl = new AbortController()
-            const t = setTimeout(() => ctrl.abort(), 2000)
-            const resp = await fetch(`http://${device.ipAddress}:8001/api/v2/`, { signal: ctrl.signal })
-            clearTimeout(t)
-            if (resp.ok) {
-              const data = await resp.json()
-              powerState = data?.device?.PowerState || null
-            }
-          } catch {}
-
-          if (powerState === 'on' || (powerState !== 'standby' && powerState !== null)) {
-            return { success: true, message: 'TV already on — skipped' }
-          }
-          if (powerState === 'standby') {
-            // NIC is alive, screen off — just send KEY_POWER
-            const result = await client.sendKey('KEY_POWER')
-            await new Promise(resolve => setTimeout(resolve, 300))
-            return result
-          }
-          // Unreachable — send WoL only (no slow polling loop)
-          if (device.macAddress) {
-            await client.powerOn()  // This sends WoL
-          }
-          return { success: true, message: 'WoL sent' }
+          // Samsung TVs in network standby (screen off, NIC alive) STILL
+          // report `PowerState: "on"` via /api/v2/ — the field is useless
+          // for detecting "is the screen actually on". A probe-then-decide
+          // approach will see "on" and skip the TV, leaving it dark.
+          //
+          // Delegate to SamsungTVClient.powerOn() which does the correct
+          // sequence: fire WoL (idempotent — harmless if already on), poll
+          // the REST API until the NIC is up, then send KEY_POWER only if
+          // the post-WoL state says "standby". That method runs per TV in
+          // parallel with the other TVs in this bulk call, so wall time
+          // is bounded by the slowest TV, not 20×.
+          return await client.powerOn()
         }
 
         if (action === 'off') {

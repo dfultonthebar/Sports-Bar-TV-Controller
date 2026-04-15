@@ -475,7 +475,103 @@ async function sendUDPCommand(
 }
 
 /**
- * Gets the current routing state for all Matrix outputs
+ * Query the Wolf Pack matrix for its full live routing state via the HTTP API.
+ *
+ * Calls `/get_json_cmd.php?cmd=o2ox` with NO `prm` parameter — on the Wolf Pack
+ * FM36S and similar, this is a read-only state query that returns the current
+ * routing array without toggling anything. When `prm` is present the command
+ * applies (or toggles) a route; when absent it reports.
+ *
+ * Returns an array of length `outputCount` where each element is the 0-based
+ * input currently routed to that 0-based output position. Callers convert to
+ * 1-based numbering and apply `outputOffset` themselves if needed.
+ *
+ * Throws on network failure, login failure, or malformed response so the
+ * caller can fall back to a DB cache or surface the error. Do NOT swallow
+ * errors here — the "Routing tab shows stale cache" problem we had before
+ * was exactly because failures were silently returning an empty state.
+ */
+export async function queryWolfpackRouteState(
+  config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
+): Promise<number[]> {
+  const creds = config.credentials || { username: 'admin', password: 'admin' }
+
+  const loginResponse = await httpRequest({
+    hostname: config.ipAddress,
+    path: '/login.php',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`,
+  })
+
+  const setCookieHeader = loginResponse.headers['set-cookie']
+  const setCookie = Array.isArray(setCookieHeader) ? setCookieHeader.join(', ') : (setCookieHeader || '')
+  const sessionMatch = setCookie.match(/PHPSESSID=([^;]+)/)
+  if (!sessionMatch) {
+    throw new Error(`[WOLFPACK-HTTP] Login failed - no PHPSESSID in response from ${config.ipAddress}`)
+  }
+  const sessionCookie = `PHPSESSID=${sessionMatch[1]}`
+
+  await httpRequest({
+    hostname: config.ipAddress,
+    path: '/index.php',
+    method: 'GET',
+    headers: { 'Cookie': sessionCookie },
+  })
+
+  const queryResponse = await httpRequest({
+    hostname: config.ipAddress,
+    path: '/get_json_cmd.php?cmd=o2ox',
+    method: 'GET',
+    headers: { 'Cookie': sessionCookie },
+  })
+
+  let routingArray: unknown
+  try {
+    routingArray = JSON.parse(queryResponse.body)
+  } catch {
+    throw new Error(`[WOLFPACK-HTTP] Query returned non-JSON body: ${queryResponse.body.slice(0, 200)}`)
+  }
+
+  if (!Array.isArray(routingArray) || routingArray.some(v => typeof v !== 'number')) {
+    throw new Error(`[WOLFPACK-HTTP] Query returned unexpected shape: ${queryResponse.body.slice(0, 200)}`)
+  }
+
+  // Wolf Pack firmware quirk: immediately after a route change, the o2ox array
+  // can return 65535 (0xFFFF) at the just-changed output's index as a "pending /
+  // not yet committed" sentinel while the internal HDMI crossbar settles
+  // (~500ms window per switch). If we pass that through to the UI it becomes
+  // inputNum 65536, which matches no real input and makes the output look
+  // unrouted. Normalize 65535 to -1 so /api/matrix/routes can filter those
+  // positions out of its response.
+  //
+  // The sentinel is benign and self-clearing — the next query (once the
+  // firmware commits) returns the real input index. Logging was originally at
+  // WARN level while we were diagnosing the stuck-output-1 symptom at Stoneyard
+  // Appleton; now that we understand this is normal firmware behavior during
+  // the ~500ms post-route settling window, it's been demoted to DEBUG so it
+  // stops spamming the PM2 log. If you need to see it, set LOG_LEVEL=DEBUG in
+  // .env (ecosystem.config.js reads that through). Persistent 65535 (same
+  // output repeatedly across many seconds of queries with no route commands
+  // issued) WOULD indicate a real firmware hang and should be investigated —
+  // but you'll need to raise the log level to see it first.
+  const rawArray = routingArray as number[]
+  const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
+  const sentinelIndices = rawArray
+    .map((v, i) => (v === 65535 ? i + 1 : -1))
+    .filter(i => i > 0)
+  if (sentinelIndices.length > 0) {
+    logger.debug(`[WOLFPACK-HTTP] Query returned ${sentinelIndices.length} transient 0xFFFF sentinel(s) at ${config.ipAddress} for output(s) ${sentinelIndices.join(',')} — normalized to -1 (expected during ~500ms post-route settle window)`)
+  }
+
+  logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
+  return normalized
+}
+
+/**
+ * Legacy 4-output state shim — kept for compatibility with older callers that
+ * only cared about the 4 Atlas-feed outputs. New callers should use
+ * queryWolfpackRouteState() directly and index by the full output range.
  */
 export async function getMatrixRoutingState(): Promise<{
   [matrixOutput: number]: {
@@ -483,8 +579,6 @@ export async function getMatrixRoutingState(): Promise<{
     inputLabel: string | null
   }
 }> {
-  // This would query the Wolfpack device for current routing state
-  // For now, return empty state
   return {
     1: { wolfpackInput: null, inputLabel: null },
     2: { wolfpackInput: null, inputLabel: null },
