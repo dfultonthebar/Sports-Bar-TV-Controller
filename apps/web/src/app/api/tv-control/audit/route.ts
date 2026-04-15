@@ -28,7 +28,13 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '100', 10), 1), 500)
     const actionParam = (url.searchParams.get('action') || 'all').toLowerCase()
 
-    const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+    // AuditLog.timestamp is stored in SQLite's CURRENT_TIMESTAMP format
+    // ("YYYY-MM-DD HH:MM:SS", UTC, space-separated). toISOString() would
+    // produce "YYYY-MM-DDTHH:MM:SS.sssZ" and fail the lexicographic
+    // comparison because space (0x20) < "T" (0x54). Match the stored
+    // format exactly.
+    const sinceDate = new Date(Date.now() - hours * 60 * 60 * 1000)
+    const sinceIso = sinceDate.toISOString().replace('T', ' ').slice(0, 19)
 
     const whereParts: any[] = [
       eq(schema.auditLogs.resource, 'tv_power'),
