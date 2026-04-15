@@ -170,6 +170,34 @@ export async function register() {
     }
 
     try {
+      // Refresh LG TV model catalog from live SSAP getSystemInfo probes.
+      // Replaces stale/generic strings like "LG WebOS" with the real
+      // modelName (e.g. "65UT8000AUA.BUSYLKR") so the UI shows accurate
+      // hardware. Requires each LG row to have a clientKey from a prior
+      // successful pairing. Staggered 15s after Samsung so both probes
+      // don't contend for DB writes at exactly the same tick.
+      const { refreshLGModelCatalog } = await import('./lib/lg-model-probe')
+
+      const runLGProbe = async () => {
+        try {
+          const r = await refreshLGModelCatalog()
+          logger.info(
+            `[INSTRUMENTATION][LG PROBE] probed=${r.probed}, updated=${r.updated}, unreachable=${r.unreachable}`
+          )
+        } catch (err) {
+          logger.error('[INSTRUMENTATION][LG PROBE] failed:', err)
+        }
+      }
+
+      setTimeout(runLGProbe, 60_000)
+      setInterval(runLGProbe, 4 * 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ LG TV model probe scheduled (every 4 hours)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize LG model probe:', error)
+    }
+
+    try {
       // Initialize Atlas Audio AI learning cycle (every 6 hours, staggered 90s after wolfpack)
       const { runAtlasLearningCycle } = await import('@sports-bar/atlas')
 
