@@ -11,6 +11,46 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 import { operationLogger } from '@sports-bar/data'
 
 
+type TuneLogEntry = {
+  inputNum: number | null
+  inputLabel: string | null
+  deviceType: string
+  deviceId: string | null
+  cableBoxId: string | null
+  channelNumber: string
+  channelName: string | null
+  presetId: string | null
+  success: boolean
+  errorMessage: string | null
+  durationMs: number
+  correlationId: string
+}
+
+async function appendTuneLog(entry: TuneLogEntry): Promise<void> {
+  try {
+    const { db } = await import('@/db')
+    await db.insert(schema.channelTuneLogs).values({
+      id: crypto.randomUUID(),
+      inputNum: entry.inputNum ?? undefined,
+      inputLabel: entry.inputLabel ?? undefined,
+      deviceType: entry.deviceType,
+      deviceId: entry.deviceId ?? undefined,
+      cableBoxId: entry.cableBoxId ?? undefined,
+      channelNumber: entry.channelNumber,
+      channelName: entry.channelName ?? undefined,
+      presetId: entry.presetId ?? undefined,
+      triggeredBy: 'bartender',
+      success: entry.success,
+      errorMessage: entry.errorMessage ?? undefined,
+      durationMs: entry.durationMs,
+      correlationId: entry.correlationId,
+      tunedAt: new Date().toISOString(),
+    })
+  } catch (logError) {
+    logger.error('[TUNE API] Failed to append ChannelTuneLog entry:', logError)
+  }
+}
+
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -175,6 +215,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Variables captured from channel tracking, reused for ChannelTuneLog below
+      let trackedInputNum: number | null = null
+      let trackedInputLabel: string | null = null
+      let trackedChannelName: string | null = null
+
       // Update current channel tracking for the input
       try {
         const { findFirst } = await import('@/lib/db-helpers')
@@ -299,6 +344,10 @@ export async function POST(request: NextRequest) {
           logger.info(`[MANUAL OVERRIDE] Input ${inputNum} protected until ${manualOverrideUntil.toISOString()} (${overrideResult.durationMinutes} minutes)`)
 
           logger.debug(`[Channel Tracking] Updated input ${inputNum} to channel ${channelNumberStr}${channelName ? ` (${channelName})` : ''}`)
+
+          trackedInputNum = inputNum
+          trackedInputLabel = inputLabel
+          trackedChannelName = channelName
         }
       } catch (error) {
         logger.error('[Channel Tracking] Failed to update current channel:', error)
@@ -318,6 +367,22 @@ export async function POST(request: NextRequest) {
         },
         user: 'bartender',
         success: true,
+      })
+
+      // Append to rolling tune history (success)
+      await appendTuneLog({
+        inputNum: trackedInputNum,
+        inputLabel: trackedInputLabel,
+        deviceType: deviceTypeStr,
+        deviceId: cableBoxIdStr || deviceIpStr || null,
+        cableBoxId: cableBoxIdStr || null,
+        channelNumber: channelNumberStr,
+        channelName: trackedChannelName,
+        presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
+        success: true,
+        errorMessage: null,
+        durationMs,
+        correlationId,
       })
 
       return NextResponse.json({
@@ -346,6 +411,22 @@ export async function POST(request: NextRequest) {
           presetId: presetId || null,
           details: result.details,
         }
+      })
+
+      // Append to rolling tune history (failure)
+      await appendTuneLog({
+        inputNum: null,
+        inputLabel: null,
+        deviceType: deviceTypeStr,
+        deviceId: cableBoxIdStr || deviceIpStr || null,
+        cableBoxId: cableBoxIdStr || null,
+        channelNumber: channelNumberStr,
+        channelName: null,
+        presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
+        success: false,
+        errorMessage: result.error || 'Failed to change channel',
+        durationMs,
+        correlationId,
       })
 
       return NextResponse.json(

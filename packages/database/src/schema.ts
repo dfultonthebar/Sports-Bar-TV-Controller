@@ -951,6 +951,32 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
 }))
 
+// Append-only history of every tune attempt (success or failure).
+// InputCurrentChannel holds only the latest channel per input, so older
+// tunes are lost. This table preserves the full rolling sequence so we can
+// answer "what changed on input N after 4pm?" after the fact.
+export const channelTuneLogs = sqliteTable('ChannelTuneLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inputNum: integer('inputNum'),
+  inputLabel: text('inputLabel'),
+  deviceType: text('deviceType').notNull(),
+  deviceId: text('deviceId'),
+  cableBoxId: text('cableBoxId'),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName'),
+  presetId: text('presetId'),
+  triggeredBy: text('triggeredBy').notNull().default('bartender'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  durationMs: integer('durationMs'),
+  correlationId: text('correlationId'),
+  tunedAt: timestamp('tunedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  tunedAtIdx: index('ChannelTuneLog_tunedAt_idx').on(table.tunedAt),
+  inputNumIdx: index('ChannelTuneLog_inputNum_idx').on(table.inputNum),
+  deviceTypeIdx: index('ChannelTuneLog_deviceType_idx').on(table.deviceType),
+}))
+
 // AI Gain Configuration Model
 export const aiGainConfigurations = sqliteTable('AIGainConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
