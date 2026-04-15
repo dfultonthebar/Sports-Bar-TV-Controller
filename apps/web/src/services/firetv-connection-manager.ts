@@ -7,7 +7,10 @@
 
 import { ADBClient } from '@/lib/firecube/adb-client'
 import { getFireTVConfig } from '@/config/firetv-config'
-import { loadFireTVDevices, saveFireTVDevice } from '@/lib/device-db'
+import { loadFireTVDevices } from '@/lib/device-db'
+import { db } from '@/db'
+import { fireTVDevices } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 
 import { logger } from '@sports-bar/logger'
 const config = getFireTVConfig()
@@ -94,6 +97,13 @@ class FireTVConnectionManager {
     
     // Pre-connect to all devices (non-blocking)
     for (const device of devices) {
+      // Skip rows that lack an IP — those are phantoms left by stale
+      // upserts from earlier code paths; trying to connect to ":5555"
+      // would just thrash the reconnect loop forever.
+      if (!device.ipAddress || device.ipAddress.trim() === '') {
+        logger.warn(`[CONNECTION MANAGER] Skipping device ${device.id} (${device.name || 'no name'}): no ipAddress`)
+        continue
+      }
       // Don't await - let connections happen in background
       this.getOrCreateConnection(device.id, device.ipAddress, device.port)
         .catch(error => {
@@ -431,15 +441,30 @@ class FireTVConnectionManager {
   }
 
   /**
-   * Update device online status in database
+   * Update device online status in database.
+   *
+   * Uses a plain UPDATE (not the upsert in saveFireTVDevice) so a status
+   * write for a device id that doesn't exist in FireTVDevice cannot
+   * stealth-create a phantom row. Phantom rows would then loop in the
+   * health monitor / reconnect path, regenerating themselves forever
+   * even after manual cleanup. See LOCATION_UPDATE_NOTES 2026-04-14.
    */
   private async updateDeviceStatus(deviceId: string, isOnline: boolean): Promise<void> {
     try {
-      await saveFireTVDevice({
-        id: deviceId,
-        isOnline,
-        lastSeen: new Date().toISOString(),
-      })
+      const result = await db
+        .update(fireTVDevices)
+        .set({
+          isOnline,
+          lastSeen: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(fireTVDevices.id, deviceId))
+
+      const affected = (result as any)?.changes ?? (result as any)?.rowsAffected ?? null
+      if (affected === 0) {
+        logger.warn(`[CONNECTION MANAGER] Skipped status update for unknown device ${deviceId} (no row in FireTVDevice)`)
+        return
+      }
       logger.info(`[CONNECTION MANAGER] Updated device ${deviceId} status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`)
     } catch (error) {
       logger.error('[CONNECTION MANAGER] Error updating device status:', error)
