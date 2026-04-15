@@ -39,6 +39,64 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — v2.5.4 — kill phantom Fire TV row regeneration loop
+
+**Risk:** GO — defensive fix only, no surface change. Will eliminate
+existing per-second `Failed to connect to :5555` log noise at any
+location whose FireTVDevice table still has a phantom row.
+
+**What was happening:**
+
+The Fire TV connection manager's `updateDeviceStatus()` was using the
+`saveFireTVDevice()` upsert helper. When called with a deviceId that
+didn't exist in FireTVDevice (e.g., because something else fed it a
+DirecTV id), the upsert silently INSERTed a new row with empty
+ipAddress and `name='Unknown'`. That phantom row then survived manual
+DELETE: on the next health check, `loadFireTVDevices()` returned the
+empty row, the connection manager tried to connect to `:5555`, failed,
+and re-upserted the row — perpetuating itself indefinitely. At
+Stoneyard Greenville this produced ~30 reconnect attempts/minute
+forever and the bartender remote saw a phantom "Unknown" device.
+
+**What's fixed:**
+
+1. `firetv-connection-manager.ts::updateDeviceStatus` now uses a plain
+   `db.update().where()` instead of the upsert. If the device id has no
+   matching row, the update is a no-op and the manager logs a warning
+   but does NOT create a row. Phantom rows can no longer self-resurrect.
+2. `firetv-connection-manager.ts::initialize` skips devices with empty
+   `ipAddress`, so existing phantoms in the table don't get added to the
+   in-memory connection map at boot.
+3. `firetv-health-monitor.ts::checkDeviceHealth` skips devices with
+   empty `ipAddress`, killing the per-cycle reconnect noise.
+
+**One-time cleanup at any affected location** (if you see "Unknown"
+devices in `FireTVDevice` after pulling this fix):
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "DELETE FROM FireTVDevice WHERE ipAddress='' OR ipAddress IS NULL;"
+pm2 restart sports-bar-tv-controller
+```
+
+The new code is defensive enough that this cleanup is optional — even
+without it, no new connection attempts will fire against the phantom.
+
+**Affected files:**
+
+- `apps/web/src/services/firetv-connection-manager.ts`
+- `apps/web/src/services/firetv-health-monitor.ts`
+- `package.json` — version bump 2.5.3 → 2.5.4
+
+**Open question (NOT fixed in this commit):** the original injection
+path that fed DirecTV ids into Fire TV's connection manager has not
+been found. Search for `directv_holmgren_2` in PM2 logs at any location
+to see if an older code path is still pumping cross-table device ids.
+The defensive fix above blocks the symptom even if the original injector
+is still in place.
+
+---
+
 ### 2026-04-14 — v2.5.3 — strip Holmgren defaults from shared package config
 
 **Risk:** GO — pure cleanup, no behavior change at any location.
