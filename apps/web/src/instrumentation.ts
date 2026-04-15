@@ -144,6 +144,32 @@ export async function register() {
     }
 
     try {
+      // Refresh Samsung TV model catalog from live :8001/api/v2/ probes.
+      // Replaces any stale/bogus model strings (e.g. "LG WebOS" on Samsung
+      // TVs) with the real modelName so the UI shows accurate hardware.
+      // Runs 45s after startup and every 4 hours.
+      const { refreshSamsungModelCatalog } = await import('./lib/samsung-model-probe')
+
+      const runSamsungProbe = async () => {
+        try {
+          const r = await refreshSamsungModelCatalog()
+          logger.info(
+            `[INSTRUMENTATION][SAMSUNG PROBE] probed=${r.probed}, updated=${r.updated}, unreachable=${r.unreachable}`
+          )
+        } catch (err) {
+          logger.error('[INSTRUMENTATION][SAMSUNG PROBE] failed:', err)
+        }
+      }
+
+      setTimeout(runSamsungProbe, 45_000)
+      setInterval(runSamsungProbe, 4 * 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ Samsung TV model probe scheduled (every 4 hours)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize Samsung model probe:', error)
+    }
+
+    try {
       // Initialize Atlas Audio AI learning cycle (every 6 hours, staggered 90s after wolfpack)
       const { runAtlasLearningCycle } = await import('@sports-bar/atlas')
 
