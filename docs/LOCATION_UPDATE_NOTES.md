@@ -39,6 +39,48 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — v2.5.3 — strip Holmgren defaults from shared package config
+
+**Risk:** GO — pure cleanup, no behavior change at any location.
+
+**What changed:**
+
+`packages/config/src/hardware-config.ts` used to be a "mirror" of
+`apps/web/src/lib/hardware-config.ts` and shipped Holmgren-specific
+defaults (Atlas IP `10.11.3.246`, processor ID `3641dcba…`, name
+"Holmgren Way", Wolf Pack audio output slots 37-40) to every new install
+via `@sports-bar/config`. Anything importing the package version got
+Holmgren defaults regardless of which location it was running on.
+
+Audited every import of `@sports-bar/config` HARDWARE_CONFIG — only two
+fields were ever read through the package: `ollama.baseUrl/model` (truly
+generic) and `venue.timezone` (same `America/Chicago` for all WI
+locations). All other fields (`atlas.*`, `wolfpack.*`, `api.*`,
+`venue.name`, `scheduler.*`) were dead weight nobody imported through the
+package — the real consumers all read from the app-level file directly.
+
+Stripped the package version down to those two fields and added a
+header comment explaining what does and does not belong in shared package
+code. Both fields now also honor env overrides (`OLLAMA_BASE_URL`,
+`OLLAMA_MODEL`, `LOCATION_TIMEZONE`).
+
+**What this fixes:**
+
+This was the source of the "I keep seeing Holmgren references at this
+location" class of bug. Even on a perfectly-configured Stoneyard install,
+anything routed through `@sports-bar/config` would surface Holmgren IPs
+or the venue name "Holmgren Way" in logs, AI prompts, and diagnostic
+output. That's gone now.
+
+**Affected files:**
+
+- `packages/config/src/hardware-config.ts` — rewritten (47 → ~50 lines)
+- `package.json` — version bump 2.5.2 → 2.5.3
+
+**Rollback:** trivial — `git revert <sha>` restores the old mirror.
+
+---
+
 ### 2026-04-14 — `ee9c63c0` — CAUTION: location-data reconciliation bug + install fixes
 
 **Risk:** CAUTION — one corrective data commit already applied to
