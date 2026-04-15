@@ -958,6 +958,23 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const handleGameClick = async (game: GameListing) => {
     const deviceType = getDeviceTypeForInput(selectedInput!)
 
+    // Fire-and-forget: record the Watch button click to the rolling tune history
+    // so we track intent regardless of which downstream path (cable/DirecTV/streaming)
+    // actually runs. Failures here must not block the tune.
+    if (game.channel.channelNumber) {
+      fetch('/api/channel-presets/tune/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelNumber: game.channel.channelNumber,
+          channelName: game.channel.name,
+          deviceType: deviceType || 'unknown',
+          inputNum: selectedInput ?? undefined,
+          triggeredBy: 'watch-button',
+        }),
+      }).catch(() => {})
+    }
+
     // Use IR control for cable inputs (all cable boxes now use IR control)
     if (deviceType === 'cable' && game.channel.channelNumber) {
       setLoading(true)

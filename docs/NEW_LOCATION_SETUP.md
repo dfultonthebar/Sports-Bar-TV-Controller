@@ -367,6 +367,95 @@ Once everything is configured, export the populated state to the
 location's JSON files (or just commit the updated files directly if
 you edit them) and push to the location branch for backup.
 
+## 9a. Probe Samsung TVs for real model + verify reachability
+
+Samsung TVs hand out their actual hardware identity over the REST API
+at `http://<tv-ip>:8001/api/v2/`. The response includes `modelName`
+(e.g. `UN55DU7200DXZA`), `PowerState`, MAC, firmware, etc. The app
+uses this to populate `NetworkTVDevice.model` and to make bulk-power
+decisions. **You should run the probe once after adding TVs to the
+UI** — it catches a few classes of bug early.
+
+Run the probe manually:
+
+```bash
+curl -sS -X POST http://localhost:3001/api/tv-discovery/probe-models \
+  | python3 -m json.tool
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "probed": 20,
+  "updated": 10,
+  "unreachable": 0
+}
+```
+
+- `probed` — total Samsung TV rows in the DB
+- `updated` — rows where the live `modelName` differed from what was
+  stored and was overwritten
+- `unreachable` — TVs that didn't respond on :8001 (fully off,
+  wrong IP, or behind a router)
+
+**If `unreachable` > 0**, either the TVs are powered off (fully, not
+standby — modern Samsungs keep :8001 alive in network standby), or
+their IP/MAC in `NetworkTVDevice` is wrong. For fully-off TVs, wake
+them first with a bulk power-on and re-run the probe:
+
+```bash
+curl -sS -X POST http://localhost:3001/api/tv-control/bulk-power \
+  -H "Content-Type: application/json" -d '{"action":"on"}'
+# wait ~5 seconds
+curl -sS -X POST http://localhost:3001/api/tv-discovery/probe-models \
+  | python3 -m json.tool
+```
+
+The probe runs automatically at startup (45s delay) and every 4 hours
+thereafter, so the model catalog self-heals over a day as TVs cycle
+through standby/on states. But running it manually on day-1 tells you
+immediately whether every configured IP is reachable.
+
+**Check the result:**
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT id, ipAddress, model, macAddress FROM NetworkTVDevice \
+   WHERE brand='samsung' ORDER BY CAST(SUBSTR(ipAddress, INSTR(ipAddress,'.')+1) AS INT);"
+```
+
+Every row should show a real Samsung model string like
+`UN55DU7200DXZA` or `UN65TU700DFXZA`. If any row still shows a bogus
+value like `LG WebOS` or `Samsung TV` (the latter being the literal
+default string, not a real model), that TV was unreachable during the
+probe — fix its IP/MAC and re-run.
+
+**MAC address sanity check.** Samsung's vendor-prefix OUIs are the
+first 6 hex chars of the MAC: common Samsung prefixes include
+`2c:99:75`, `1c:86:9a`, `28:af:42`, `c8:a6:ef`, `b8:b4:09`. A
+non-Samsung OUI on a row you believe to be a Samsung TV usually means
+the MAC was populated from a non-TV device on the same IP (wrong
+static lease, or a previous host) — WoL will fail silently. Fix the
+MAC via Device Config in the UI and re-run the probe.
+
+**What the probe protects against** (all hit in production):
+
+1. **Bogus `model` strings.** Stoneyard Appleton had 19 of 20 Samsung
+   TVs labeled `"LG WebOS"` in the DB — pasted in by an earlier
+   discovery path and never corrected. The probe overwrites them with
+   the real modelName.
+2. **Silent WoL failures.** If a TV's MAC in the DB has a non-Samsung
+   OUI, WoL magic packets go to the wrong device and the TV never
+   wakes. The MAC mismatch jumps out when you run the probe and see
+   the real `wifiMac` from the JSON response (visible in
+   `sqlite3 '...SELECT json FROM ...'` if you also dump the raw
+   response, but just comparing OUI prefixes catches most of it).
+3. **IP drift.** DHCP lease changes move a TV to a different IP; the
+   probe's `unreachable` count spikes and points at the row that
+   needs updating.
+
 ## 10. Commit location data to the location branch
 
 ```bash
@@ -522,12 +611,28 @@ Investigate in this order, easiest first:
 
 5. **`sendKey('KEY_POWER')` vs `sendKey('KEY_POWEROFF')`**. Samsung's
    `sendKey` API does NOT expose a non-toggle `KEY_POWEROFF` —
-   `KEY_POWER` is the only verb and it's a toggle. For explicit "off"
-   the bulk-power route uses `KEY_POWER` with a pre-probe against
-   `/api/v2/`. For explicit "on" it now delegates to
-   `SamsungTVClient.powerOn()` which sends WoL first and then a
-   conditional `KEY_POWER` only if the post-WoL probe reports
-   `standby`. See commit `946655e4`.
+   `KEY_POWER` is the only verb and it's a toggle. The bulk-power
+   route's off path:
+   - Pre-probes every Samsung TV via REST at `:8001/api/v2/`
+     (`probeSamsungTV` in `apps/web/src/lib/samsung-model-probe.ts`).
+   - Reads the `PowerState` field: `"on"` → send `KEY_POWER` to
+     toggle off; `"standby"` or REST unreachable → skip (already off).
+   - Waits 6 seconds, re-probes, and retries once on any Samsung that
+     didn't actually change state.
+
+   The "on" path delegates to `SamsungTVClient.powerOn()` which sends
+   WoL first and then a conditional `KEY_POWER` only if the post-WoL
+   probe reports `standby`. See commits `946655e4` (action=on
+   refactor) and `f54f25c0` (REST PowerState probe + model catalog).
+
+   **Do NOT probe port 8002 to decide if a TV is on.** 2024+ Samsung
+   models (e.g. DU7200 series) keep the WebSocket control port open
+   in network standby so WoL still works. A TCP connection to 8002
+   succeeding tells you only that the TV is network-reachable, not
+   that its screen is lit. This was the root cause of the
+   "bulk-power claims success but 7 TVs stay on" bug at Stoneyard
+   Appleton — the verification layer had been reading 8002 and
+   incorrectly concluding standby TVs were on.
 
 ### Fire TV `adb connect` shows "unauthorized" after every reboot
 → The host's `~/.android/adbkey` was deleted or the filesystem is

@@ -39,6 +39,119 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.0 — Samsung power-detection rewrite + tune-history + auto-update CLI fix
+
+**Risk:** CAUTION — most pieces are GO, but **one DB schema change**
+(ChannelTuneLog table) needs `drizzle-kit push` at every location after
+the merge. Auto-update.sh already runs `drizzle-kit push` before
+`npm run build` so a normal auto-update covers it. If you do a manual
+merge, run drizzle-kit push yourself before restarting PM2 or the new
+tune-history endpoints will 500.
+
+**What changed (6 commits cherry-picked from location/stoneyard-appleton
+where they were originally tested):**
+
+1. **Auto-update CLI permissions fix** (`971c377d`) —
+   `scripts/auto-update.sh` adds `--dangerously-skip-permissions` to
+   the headless `claude -p` calls. Previously checkpoint B was hanging
+   on interactive approval for a `sqlite3` command, parsing as
+   UNDETERMINED, and triggering rollback.
+
+2. **Fire TV health reporting fix** (`c09d705e`) — `/api/system/health`
+   was comparing `FireTVDevice.status` against the literal `'connected'`,
+   a value never written anywhere. Every Fire TV showed offline with
+   the absurd issue text "Status: online". Now reads from `isOnline`.
+   Also removed a duplicate `themeColor` from layout.tsx that Next.js
+   16 warns about.
+
+3. **Channel tune history (NEW FEATURE)** (`f8fae17c`) — append-only
+   rolling log of every channel-tune attempt. New table
+   `ChannelTuneLog`, new GET/POST `/api/channel-presets/tune/history`
+   endpoints, intent-event hook in EnhancedChannelGuideBartenderRemote
+   so Watch button clicks are logged independently of downstream
+   success. Cable boxes get a second row tagged `bartender` with
+   success/failure and durationMs.
+
+4. **Bulk-power TV state probe** (`ed6e03ed`) — bulk power-off was
+   reporting success even when Samsung TVs ignored the key. Now probes
+   port 8002 before sending and verifies post-send. **Then superseded**
+   by commit 5 below which replaced the lying 8002 probe with REST
+   PowerState.
+
+5. **Samsung REST PowerState rewrite + model probe** (`f54f25c0`) —
+   replaces port-8002 probe with REST `/api/v2/` `PowerState`. Standby
+   = off (skipped for action='off', WoL'd for action='on'). New model-
+   catalog probe `POST /api/tv-discovery/probe-models` + boot-time
+   refresh in instrumentation.ts (45s after start, every 4h). At
+   Stoneyard Appleton this updated 7 of 20 model rows to their real
+   identity (e.g. `UN55DU7200DXZA`).
+
+6. **NEW_LOCATION_SETUP doc update** (`5c87b7b1`) — adds §9a walking
+   the operator through running the model probe once after configuring
+   TVs, plus rewrites the "Samsung TV keeps turning itself off"
+   troubleshooting step with explicit "do not probe 8002" warning.
+
+**Per-location action after this merge:**
+
+```bash
+# auto-update.sh handles this automatically. Manual merge:
+npx drizzle-kit push --config drizzle.config.ts
+pm2 restart sports-bar-tv-controller
+# Samsung locations: trigger model probe to refresh catalog (after login)
+curl -sS -b cookiejar -X POST http://localhost:3001/api/tv-discovery/probe-models
+```
+
+**Affected files:**
+
+- `scripts/auto-update.sh`
+- `apps/web/src/app/api/system/health/route.ts`
+- `apps/web/src/app/layout.tsx`
+- `apps/web/src/app/api/channel-presets/tune/history/route.ts` (new)
+- `apps/web/src/app/api/channel-presets/tune/route.ts`
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts`
+- `apps/web/src/app/api/tv-discovery/probe-models/route.ts` (new)
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `apps/web/src/instrumentation.ts`
+- `apps/web/src/lib/samsung-model-probe.ts` (new)
+- `packages/database/src/schema.ts` — adds `channelTuneLog` table
+- `docs/NEW_LOCATION_SETUP.md`
+- `package.json` — version bump 2.7.1 → 2.8.0 (minor: new feature)
+
+**Stoneyard Appleton:** already running these commits (originated
+there). Cherry-picks land them on main with different SHAs — Appleton's
+next merge from main will resolve as duplicates cleanly.
+
+**Rollback:** non-trivial because of the schema change. Best path is
+`git revert <merge sha>` + `pm2 restart`. The new ChannelTuneLog table
+can stay (empty) without affecting anything else.
+
+---
+
+### 2026-04-14 — v2.7.1 — bigger preset logos + logos in input list
+
+**Risk:** GO — pure UI tweak. No behavior change.
+
+**What changed:**
+
+`ChannelPresetGrid.tsx` — preset grid logos went from 20px to 40px
+with a subtle white background tile so SimpleIcons white-monochrome
+variants stay visible against colored card gradients.
+
+`EnhancedChannelGuideBartenderRemote.tsx` — each input row in the
+Guide tab's left panel now shows the currently-tuned channel's logo
+(32px) next to the "Ch X • cable" label. Lookup uses
+`currentChannels[input].channelName` against the same channel-logos
+helper from v2.7.0. Hides on CDN error, falls back to text badge for
+unknown channels.
+
+**Affected files:**
+
+- `apps/web/src/components/ChannelPresetGrid.tsx`
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `package.json` — version bump 2.7.0 → 2.7.1
+
+---
+
 ### 2026-04-14 — v2.7.0 — channel logos in bartender preset grid
 
 **Risk:** GO — additive UI only. Logos appear next to preset names in
