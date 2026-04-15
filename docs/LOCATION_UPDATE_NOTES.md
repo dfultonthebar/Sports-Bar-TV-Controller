@@ -39,6 +39,71 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.3 — scheduler: bump updatedAt on ESPN sync, suppress benign WARN spam
+
+**Risk:** GO — two small bugfixes, no schema change, no manual steps.
+
+**What changed:**
+
+1. **`packages/scheduler/src/espn-sync-service.ts`** — the ESPN sync's
+   UPDATE path now bumps `updatedAt` alongside `lastSynced`. Drizzle's
+   schema default only applies at insert time, so `updated_at` was
+   frozen at row-creation and made staleness audits misleading (the
+   row would show "last updated 5 days ago" even when the sync loop
+   had touched it 30 seconds ago). `lastSynced` was always correct;
+   `updatedAt` now matches it on every sync cycle.
+2. **`packages/scheduler/src/scheduler-service.ts`** — the "No TVs to
+   control" message from the AI Game Monitor's 5-minute tick is no
+   longer logged at WARN. It's the expected steady state when no
+   bartender has set active allocations, and it was producing ~288
+   benign warnings per day, drowning real errors. Demoted to DEBUG
+   with a neutral message; real execution failures still warn.
+
+**Why this matters at a location:**
+
+- Monitoring tools and the audit subagent that compute "sync
+  staleness" from `game_schedules.updated_at` will finally show
+  accurate numbers. Previously, anyone running a diff query would
+  wrongly conclude ESPN sync had stalled when it was actually running
+  fine — `lastSynced` was the truth all along, but it's buried in the
+  schema and not the obvious column to check.
+- PM2 logs go from roughly 300 WARN entries/day to zero for this
+  condition, making real scheduler incidents visible.
+
+**What could break:** nothing. `updatedAt` was previously stale for
+every ESPN-synced row anyway; code that read it was either also
+broken or was reading `lastSynced` instead. The log change is pure
+verbosity reduction.
+
+**Manual cleanup (optional, per-location):** if `game_schedules`
+has legacy rows from pre-v2.3.0 with human-readable league labels
+like `"MLB Baseball"`, `"NBA Basketball"`, `"NCAA Hockey"`, they're
+orphaned and safe to delete. The current ESPN sync writes lowercase
+labels (`mlb`, `nba`, `nhl`) and will never touch the legacy rows.
+On Stoneyard Greenville today, those 5 orphan rows have been deleted
+as part of this cleanup. Other locations can check with:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT league, COUNT(*) FROM game_schedules GROUP BY league;"
+```
+
+and delete any row whose league is not a lowercase short code:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "DELETE FROM game_schedules WHERE league IN ('MLB Baseball','NBA Basketball','NCAA Hockey');"
+```
+
+**Affected files:**
+
+- `packages/scheduler/src/espn-sync-service.ts`
+- `packages/scheduler/src/scheduler-service.ts`
+- `package.json` (version bump)
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
 ### 2026-04-15 — v2.8.2 — fire TV send-command: DB fallback for missing ipAddress
 
 **Risk:** GO — bugfix, no schema change, no manual steps.
