@@ -9,6 +9,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { SamsungTVClient, RokuTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
 import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
 import { probeSamsungTV } from '@/lib/samsung-model-probe'
+import { logAuditAction } from '@sports-bar/auth'
 
 /**
  * Determine whether a Samsung TV's screen is actually on using the REST
@@ -241,6 +242,38 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[TV-CONTROL] Bulk power ${action} complete: ${successCount} success, ${failCount} failed, ${verifiedCount} verified, ${unverifiedCount} unverified`)
 
+    // Persist an audit trail row so "what time did the bartender turn off
+    // all the TVs last night?" is answerable after PM2 rotates its logs.
+    // Fire-and-forget — never let audit write failure block the response.
+    logAuditAction({
+      action: `TV_POWER_BULK_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceIds && deviceIds.length > 0 ? deviceIds.join(',') : 'all',
+      endpoint: '/api/tv-control/bulk-power',
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action, deviceIds: deviceIds || 'all' },
+      responseStatus: 200,
+      success: failCount === 0,
+      errorMessage: failCount > 0 ? `${failCount}/${devices.length} device(s) failed` : undefined,
+      metadata: {
+        totalDevices: devices.length,
+        successCount,
+        failCount,
+        verifiedCount,
+        unverifiedCount,
+        results: deviceResults.map((r: any) => ({
+          deviceId: r.deviceId,
+          brand: r.brand,
+          ipAddress: r.ipAddress,
+          success: r.success,
+          message: r.message || r.error,
+          powerVerified: r.powerVerified ?? null,
+        })),
+      },
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
+
     return NextResponse.json({
       success: failCount === 0,
       message: `Power ${action}: ${successCount}/${devices.length} succeeded`,
@@ -251,6 +284,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error('[TV-CONTROL] Bulk power error:', error)
+    logAuditAction({
+      action: `TV_POWER_BULK_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceIds && deviceIds.length > 0 ? deviceIds.join(',') : 'all',
+      endpoint: '/api/tv-control/bulk-power',
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action, deviceIds: deviceIds || 'all' },
+      responseStatus: 500,
+      success: false,
+      errorMessage: error.message || 'Bulk power control failed',
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
     return NextResponse.json(
       { success: false, error: error.message || 'Bulk power control failed' },
       { status: 500 }
@@ -328,10 +374,13 @@ async function controlDevicePower(
       // LG WebOS TVs: powerOn via Wake-on-LAN, powerOff via WebSocket SSAP.
       // The single-TV route already uses this pattern (see controlLGPower
       // in apps/web/src/app/api/tv-control/[deviceId]/power/route.ts).
+      // clientKey is REQUIRED — without it, register() falls back to
+      // PROMPT pairing which silently hangs in automated bulk operations.
       const client = new LGTVClient({
         ipAddress: device.ipAddress,
         port: device.port || 3001,
         brand: TVBrand.LG,
+        clientKey: device.clientKey || undefined,
         macAddress: device.macAddress,
       })
       try {

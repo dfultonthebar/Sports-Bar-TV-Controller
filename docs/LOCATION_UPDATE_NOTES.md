@@ -39,6 +39,107 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.4 — LG TV model probe + TV power audit trail + LG clientKey fix
+
+**Risk:** GO — additive features plus one latent-bug fix. No schema change.
+
+**What's in this release:**
+
+1. **LG TV model probe** (`apps/web/src/lib/lg-model-probe.ts` — new file)
+   - Mirror of `samsung-model-probe.ts`: walks every `NetworkTVDevice`
+     where `brand='lg'`, queries SSAP `ssap://system/getSystemInfo`
+     via port 3001 WebSocket using the stored `clientKey`, and
+     updates the `model` column with the real modelName (e.g.
+     `"65UT8000AUA.BUSYLKR"`). Unreachable/unpaired TVs are skipped;
+     previously-set model is never cleared.
+   - Wired into `instrumentation.ts` alongside Samsung probe. Runs
+     60s after boot, then every 4 hours. Staggered 15s behind Samsung
+     to avoid DB write contention.
+   - Manual trigger: `POST /api/tv-discovery/probe-lg-models`
+     (parallels `/api/tv-discovery/probe-models` for Samsung).
+   - **Requires first-run pairing.** Each LG TV must accept a pairing
+     dialog once to populate `clientKey`. Greenville's 19 LG TVs all
+     have keys stored already — verified. Locations adding new LG
+     TVs need to pair them via the bulk-power `on` command or the
+     single-TV power endpoint before the probe can read their model.
+
+2. **TV power audit trail** (reuses existing `AuditLog` table — no
+   schema change)
+   - `POST /api/tv-control/bulk-power` now writes one `AuditLog` row
+     per call with `action='TV_POWER_BULK_ON|OFF|TOGGLE'`,
+     `resource='tv_power'`, and `metadata` JSON containing the full
+     per-device result list (success/fail, brand, IP, message,
+     powerVerified). Fires on both success and error paths. Audit
+     write is fire-and-forget — it never blocks the response or
+     causes the power command to fail.
+   - `POST /api/tv-control/[deviceId]/power` same treatment with
+     `action='TV_POWER_ON|OFF|TOGGLE'`.
+   - New query endpoint: `GET /api/tv-control/audit?hours=24&action=off`
+     returns TV power events for the last N hours (max 30 days),
+     filterable by action family. Rows include parsed metadata for
+     easy "what time did the bartender turn off all the TVs last
+     night" lookups.
+   - Retention uses `cleanupOldAuditLogs()` from `@sports-bar/auth`
+     which already runs with `AUDIT_LOG_RETENTION_DAYS=90`.
+
+3. **LG clientKey latent bug fix** (silent, but real)
+   - Both `/api/tv-control/bulk-power/route.ts` and
+     `/api/tv-control/[deviceId]/power/route.ts` were constructing
+     `LGTVClient` without passing `device.clientKey`. This made
+     every LG power command fall back to PROMPT pairing, which
+     hangs waiting for a TV-side user approval that never comes in
+     automated contexts — commands appeared to "silently fail"
+     without a clear error. Now the clientKey is passed through
+     correctly. If any location has LG TVs where bulk power-off has
+     been unreliable, this is the fix.
+
+**Why this matters:**
+
+- Next time someone asks "what time did the bartender turn off all
+  the TVs last night?", it's answerable via a single API call —
+  the data survives PM2 log rotation indefinitely.
+- LG TV catalog at Greenville (and any LG-heavy location) will stop
+  showing generic "LG WebOS" and will show real model strings,
+  matching how Samsung locations already work.
+- LG power commands that have been unreliable since the client was
+  introduced will start working as intended.
+
+**Manual steps required:** none. Existing LG rows already have
+`clientKey` set from previous pairing; probe will run automatically
+on next startup.
+
+**Verification after update:**
+
+```bash
+# 1. Wait ~90 seconds after PM2 restart, then check LG probe ran:
+pm2 logs sports-bar-tv-controller --nostream --lines 100 | \
+  grep "LG PROBE"
+# Expected: "[INSTRUMENTATION][LG PROBE] probed=N, updated=N, unreachable=0"
+
+# 2. Check real model strings landed:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT id, name, ipAddress, model FROM NetworkTVDevice WHERE brand='lg';"
+# Expected: model column shows real strings like "65UT8000AUA.BUSYLKR"
+
+# 3. Smoke-test the audit trail query (after a bulk-power command fires):
+curl -s 'http://localhost:3001/api/tv-control/audit?hours=24' | \
+  head -c 2000
+# Expected: JSON with events array
+```
+
+**Affected files:**
+
+- `apps/web/src/lib/lg-model-probe.ts` (new)
+- `apps/web/src/app/api/tv-discovery/probe-lg-models/route.ts` (new)
+- `apps/web/src/app/api/tv-control/audit/route.ts` (new)
+- `apps/web/src/instrumentation.ts`
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts`
+- `apps/web/src/app/api/tv-control/[deviceId]/power/route.ts`
+- `package.json`
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
 ### 2026-04-15 — v2.8.3 — scheduler: bump updatedAt on ESPN sync, suppress benign WARN spam
 
 **Risk:** GO — two small bugfixes, no schema change, no manual steps.
