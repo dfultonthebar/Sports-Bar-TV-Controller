@@ -39,6 +39,61 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-14 — v2.7.0 — channel logos in bartender preset grid
+
+**Risk:** GO — additive UI only. Logos appear next to preset names in
+the bartender remote's preset grid. Falls back to a colored text badge
+for any preset name without a known logo, so unknown channels still
+display gracefully.
+
+**What changed:**
+
+`apps/web/src/lib/channel-logos.ts` (new, ~400 lines) — a name→logo
+lookup that maps a `ChannelPreset.name` to either:
+
+- A SimpleIcons CDN URL (https://cdn.simpleicons.org) for major brands
+  with a SimpleIcons entry (ESPN, NFL, NBA, MLB, NHL, FOX Sports,
+  Peacock, Paramount+, Prime Video, Apple TV+)
+- A colored text badge with brand colors for everything else (regional
+  sports nets, college conferences, broadcast affiliates, niche
+  channels)
+- A generic gray badge with the first 4 chars of the preset name as
+  the ultimate fallback
+
+`apps/web/src/components/ChannelPresetGrid.tsx` — renders the logo or
+badge inline next to each preset name. The image element has an
+onError handler that hides itself if the CDN hiccups, so a network
+failure on the SimpleIcons CDN never breaks the grid layout.
+
+**Coverage at Stoneyard Greenville (verified by smoke test):**
+
+All 17 tested preset names match correctly, including the
+previously-tricky cases: ESPN News (vs ESPNews), Peacock/NBC Sports
+(slash in name), Big 10, NFLNet/NHLNet abbreviations, MBL Network
+(typo of MLB), NESN, MSG2, beIN Sports, MLB Strike Zone, Fan Duel
+North, Cowboy Channel, and the Stoneyard-specific "Bally Sports WI"
+preset that maps to the channel 308 overflow feed per CLAUDE.md.
+
+**Coverage at other locations:** untested, but the fallback badge
+ensures no preset will render broken — at worst it displays a 4-char
+text badge in the grid color.
+
+**No DB schema change.** The lookup is pure computation from the
+existing `ChannelPreset.name` column. A future enhancement could add
+an optional `ChannelPreset.logoUrl` column for per-location overrides
+without touching this helper.
+
+**Affected files:**
+
+- `apps/web/src/lib/channel-logos.ts` — new
+- `apps/web/src/components/ChannelPresetGrid.tsx`
+- `package.json` — version bump 2.6.0 → 2.7.0 (minor: new feature)
+
+**Rollback:** trivial — `git revert <sha>` removes the logos and the
+grid falls back to text-only as before.
+
+---
+
 ### 2026-04-14 — v2.6.0 — bartender Guide tab: Open Channel Guide button (cable only)
 
 **Risk:** GO — additive UI only. New button appears only for cable-box
