@@ -46,8 +46,18 @@ DECISION CRITERIA:
   push step failed silently — needs manual `sqlite3` CREATE before the
   build is worth running).
 
-OUTPUT FORMAT (first line ONLY):
-DECISION: GO|CAUTION|STOP - <reason>
+OUTPUT FORMAT — STRICT. Your reply must BEGIN with exactly one of these
+three lines (literal text, no prefix, no additional words before "DECISION:"):
+
+  DECISION: GO - <one-line reason>
+  DECISION: CAUTION - <one-line reason>
+  DECISION: STOP - <one-line reason>
+
+You may add further paragraphs AFTER that first line, but the first line
+must match the literal form above. Do NOT write "GO confirmed" or
+"Decision: GO" (lowercase d) or any other variant — the auto-update
+script's parser only trusts the strict form. Getting this wrong will be
+interpreted as UNDETERMINED and trigger an unnecessary rollback.
 
 STOP at Checkpoint B aborts the build and triggers a full rollback
 (git reset --hard to the pre-update tag, npm ci, restore .next.bak).

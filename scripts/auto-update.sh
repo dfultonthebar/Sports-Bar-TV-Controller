@@ -292,26 +292,50 @@ run_checkpoint() {
     fail "Checkpoint $label: Claude Code CLI failure" 2
   fi
 
-  local decision
-  decision=$(grep -m1 '^DECISION:' "$out_file" || true)
-  log "Checkpoint $label: $decision"
+  # Parse the decision. Claude is SUPPOSED to emit "DECISION: GO|CAUTION|STOP - <reason>"
+  # as the first line, but in practice it sometimes rephrases ("GO confirmed. ...",
+  # "CAUTION: ...", etc.). Accept both the strict form and a leading-word form
+  # so a valid GO doesn't trigger a false rollback. STOP/CAUTION keywords must
+  # appear BEFORE any GO keyword on the first match line, to avoid a response
+  # like "I would STOP but actually GO" from being misread.
+  local decision decision_kind
+  decision=$(grep -m1 -E '^(DECISION:|GO\b|CAUTION\b|STOP\b)' "$out_file" || true)
+  if [ -z "$decision" ]; then
+    # Fallback: scan the whole response for an unambiguous keyword.
+    if grep -qiE '\bDECISION:\s*STOP\b|\bSTOP\s*[:\-]' "$out_file"; then
+      decision_kind="STOP"
+    elif grep -qiE '\bDECISION:\s*CAUTION\b|\bCAUTION\s*[:\-]' "$out_file"; then
+      decision_kind="CAUTION"
+    elif grep -qiE '\bDECISION:\s*GO\b|^GO\b|\bGO confirmed\b' "$out_file"; then
+      decision_kind="GO"
+    fi
+  else
+    # Normalise the first-line match to a bare kind.
+    case "$decision" in
+      "DECISION: GO"*|"DECISION:GO"*|"GO"*|"GO "*) decision_kind="GO" ;;
+      "DECISION: CAUTION"*|"DECISION:CAUTION"*|"CAUTION"*|"CAUTION "*) decision_kind="CAUTION" ;;
+      "DECISION: STOP"*|"DECISION:STOP"*|"STOP"*|"STOP "*) decision_kind="STOP" ;;
+    esac
+  fi
+
+  log "Checkpoint $label: decision=${decision_kind:-UNDETERMINED} line=\"$decision\""
   # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
 
-  case "$decision" in
-    "DECISION: GO"*)
+  case "${decision_kind:-UNDETERMINED}" in
+    GO)
       return 0
       ;;
-    "DECISION: CAUTION"*)
+    CAUTION)
       CAUTION_MODE=1
       log "Checkpoint $label: CAUTION — proceeding with extra monitoring"
       return 0
       ;;
-    "DECISION: STOP"*)
-      fail "Checkpoint $label: STOP — ${decision#DECISION: STOP}" 2
+    STOP)
+      fail "Checkpoint $label: STOP — ${decision}" 2
       ;;
     *)
       fail "Checkpoint $label: UNDETERMINED response from Claude Code" 2
