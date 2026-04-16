@@ -1188,17 +1188,19 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Video</span>
           </button>
           
-          <button
-            onClick={() => setActiveTab('audio')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'audio'
-                ? 'bg-purple-500/30 text-purple-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-            }`}
-          >
-            <Volume2 className="w-4 h-4" />
-            <span className="text-xs font-medium">Audio</span>
-          </button>
+          {audioProcessorIp && (
+            <button
+              onClick={() => setActiveTab('audio')}
+              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+                activeTab === 'audio'
+                  ? 'bg-purple-500/30 text-purple-300'
+                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+              }`}
+            >
+              <Volume2 className="w-4 h-4" />
+              <span className="text-xs font-medium">Audio</span>
+            </button>
+          )}
           
           <button
             onClick={() => setActiveTab('music')}

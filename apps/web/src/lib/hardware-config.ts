@@ -6,15 +6,15 @@
 
 export const HARDWARE_CONFIG = {
   atlas: {
-    processorIp: '10.40.10.102',
-    processorId: 'atlas-stoneyard',
+    processorIp: '',
+    processorId: '',
     tcpPort: 5321,
     httpPort: 80,
   },
   wolfpack: {
-    audioOutputStart: 33,
-    audioOutputCount: 4,
-    audioOutputSlots: [33, 34, 35, 36],
+    audioOutputStart: 0,
+    audioOutputCount: 0,
+    audioOutputSlots: [] as number[],
   },
   api: {
     port: parseInt(process.env.PORT || '3001', 10),
@@ -27,7 +27,7 @@ export const HARDWARE_CONFIG = {
   },
   venue: {
     timezone: 'America/Chicago',
-    name: 'Stoneyard Greenville',
+    name: 'Leg Lamp',
   },
   scheduler: {
     earlyBufferSeconds: 300,
