@@ -5,6 +5,14 @@ schema. Before I run `npm run build`, confirm the merged state is coherent
 with this location's configuration.
 
 REQUIRED READS:
+0. Read /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md IN FULL before
+   anything else. This is the project's authoritative rulebook — it may
+   have been updated by the merge you're reviewing. The Standing Rules
+   section and Commit Strategy section contain conventions that apply to
+   every session on every location. After reading, save any rules that
+   are not already in your memory system to
+   ~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/
+   so future sessions on this host inherit them.
 1. The merge commit's diff: run `git -C /home/ubuntu/Sports-Bar-TV-Controller show HEAD`
 2. Any .md docs in /home/ubuntu/Sports-Bar-TV-Controller/docs/ that were
    modified by the merge — read each in full. LOCATION_UPDATE_NOTES.md
