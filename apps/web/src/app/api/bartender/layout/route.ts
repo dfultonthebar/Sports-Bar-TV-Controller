@@ -42,6 +42,10 @@ export async function GET(request: NextRequest) {
       const layout = {
         name: anyActive.name,
         zones: JSON.parse(anyActive.zones || '[]'),
+        // InteractiveBartenderLayout reads layout.imageUrl / .professionalImageUrl.
+        // Keep backgroundImage for older consumers (the layout-editor page).
+        imageUrl: anyActive.imageUrl || null,
+        professionalImageUrl: anyActive.professionalImageUrl || null,
         backgroundImage: anyActive.imageUrl || anyActive.professionalImageUrl || null,
         id: anyActive.id,
       }
@@ -51,6 +55,8 @@ export async function GET(request: NextRequest) {
     const layout = {
       name: row.name,
       zones: JSON.parse(row.zones || '[]'),
+      imageUrl: row.imageUrl || null,
+      professionalImageUrl: row.professionalImageUrl || null,
       backgroundImage: row.imageUrl || row.professionalImageUrl || null,
       id: row.id,
     }
