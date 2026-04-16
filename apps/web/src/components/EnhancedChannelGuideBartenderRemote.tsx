@@ -1558,6 +1558,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   deviceType={getDeviceTypeForInput(selectedInput) === 'satellite' ? 'directv' : 'cable'}
                   onPresetClick={handlePresetClick}
                   maxVisible={6}
+                  matrixInputId={selectedInput}
                 />
               )}
 

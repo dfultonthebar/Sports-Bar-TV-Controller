@@ -951,6 +951,39 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
 }))
 
+// Per-input channel lists — each matrix input (especially DirecTV) can have
+// its own curated channel list. Falls back to global ChannelPreset if absent.
+export const inputChannelLists = sqliteTable('InputChannelList', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  matrixInputId: integer('matrixInputId').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+export const inputChannelListEntries = sqliteTable('InputChannelListEntry', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  listId: text('listId').notNull().references(() => inputChannelLists.id, { onDelete: 'cascade' }),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName').notNull(),
+  callsign: text('callsign'),
+  network: text('network'),
+  category: text('category').notNull().default('sports'),
+  isHD: integer('isHD', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  source: text('source').notNull().default('manual'),
+  lastVerified: text('lastVerified'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  listIdIdx: index('InputChannelListEntry_listId_idx').on(table.listId),
+  listChannelIdx: uniqueIndex('InputChannelListEntry_listId_channelNumber_key').on(table.listId, table.channelNumber),
+  isActiveIdx: index('InputChannelListEntry_isActive_idx').on(table.isActive),
+}))
+
 // Append-only history of every tune attempt (success or failure).
 // InputCurrentChannel holds only the latest channel per input, so older
 // tunes are lost. This table preserves the full rolling sequence so we can
@@ -2581,4 +2614,71 @@ export const autoUpdateHistory = sqliteTable('auto_update_history', {
   verifyResultJson: text('verify_result_json'),
   errorMessage: text('error_message'),
   triggeredBy: text('triggered_by').notNull(), // 'cron' | 'manual_api' | 'manual_cli'
+})
+
+// ============================================================================
+// EVERPASS DEVICE TABLE (replaces everpass-devices.json)
+// ============================================================================
+
+export const everpassDevices = sqliteTable('EverPassDevice', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  cecDevicePath: text('cecDevicePath').notNull(), // e.g. "/dev/ttyACM0"
+  inputChannel: integer('inputChannel').notNull(), // Matrix input number
+  deviceModel: text('deviceModel'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  lastSeen: timestamp('lastSeen'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// ============================================================================
+// DEVICE SUBSCRIPTION POLLING TABLE (replaces device-subscriptions.json)
+// ============================================================================
+
+export const deviceSubscriptions = sqliteTable('DeviceSubscription', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  deviceId: text('deviceId').notNull(),
+  deviceType: text('deviceType').notNull(), // 'firetv' | 'directv'
+  deviceName: text('deviceName').notNull(),
+  subscriptions: text('subscriptions').notNull().default('[]'), // JSON array
+  lastPolled: timestamp('lastPolled'),
+  pollStatus: text('pollStatus').notNull().default('pending'), // 'success' | 'error' | 'pending'
+  error: text('error'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  deviceIdIdx: uniqueIndex('DeviceSubscription_deviceId_idx').on(table.deviceId),
+  deviceTypeIdx: index('DeviceSubscription_deviceType_idx').on(table.deviceType),
+}))
+
+// ============================================================================
+// STREAMING CREDENTIALS TABLE (replaces streaming-credentials.json)
+// ============================================================================
+
+export const streamingCredentials = sqliteTable('StreamingCredential', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  platformId: text('platformId').notNull().unique(),
+  username: text('username').notNull(),
+  passwordHash: text('passwordHash').notNull(), // AES-256-GCM encrypted
+  encrypted: integer('encrypted', { mode: 'boolean' }).notNull().default(true),
+  encryptionVersion: text('encryptionVersion').notNull().default('aes-256-gcm'),
+  status: text('status').notNull().default('active'), // 'active' | 'expired' | 'error'
+  lastSync: timestamp('lastSync'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// ============================================================================
+// SUBSCRIBED STREAMING APPS TABLE (replaces subscribed-streaming-apps.json)
+// ============================================================================
+
+export const subscribedStreamingApps = sqliteTable('SubscribedStreamingApp', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  appId: text('appId').notNull().unique(), // Android package name
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  activityName: text('activityName'), // Android activity for launch
+  displayOrder: integer('displayOrder').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
