@@ -891,6 +891,7 @@ pm2 restart sports-bar-tv-controller --update-env
 - **Never merge location branches back into main** — location data must not leak to other locations
 - When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
 - **If you find yourself editing a software file on a location branch**, stop, cherry-pick the change to main first, push main, then merge main into location. The reconciliation work in commit `7f13fbe7` is what happens when you don't.
+- **Always pull before pushing to main** — run `git fetch origin main && git merge origin/main` before committing and pushing to `main`. Other locations or sessions may have pushed changes while you were working. Pushing without pulling risks rejected pushes or overwrites.
 
 ### Shared Location Reference Docs
 
