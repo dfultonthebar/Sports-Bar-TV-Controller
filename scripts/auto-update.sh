@@ -576,8 +576,9 @@ if [ -d "$REPO_ROOT/apps/web/.next" ]; then
   mv "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
 fi
 
-log "npm run build"
-npm run build 2>&1 | tee -a "$LOG_FILE"
+log "npm run build (--force to bypass Turbo cache for package changes)"
+rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
+npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   fail "npm run build failed" 4
 fi
