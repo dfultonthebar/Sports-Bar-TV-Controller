@@ -23,43 +23,51 @@ import * as path from 'path'
 const STANDARD_ALIASES = [
   { standardName: 'ESPN', aliases: ['ESPNHD', 'ESPN HD', 'ESPN1'] },
   { standardName: 'ESPN2', aliases: ['ESPN2HD', 'ESPN2 HD'] },
-  { standardName: 'ESPNU', aliases: ['ESPNUHD', 'ESPNU HD'] },
-  { standardName: 'ESPNEWS', aliases: ['ESPNWHD', 'ESPNEWS HD'] },
-  { standardName: 'FS1', aliases: ['FS1HD', 'FOX SPORTS 1', 'FOX SPORTS1'] },
-  { standardName: 'FS2', aliases: ['FS2HD', 'FOX SPORTS 2'] },
+  { standardName: 'ESPNU', aliases: ['ESPNUHD', 'ESPNU HD', 'ESPN U'] },
+  { standardName: 'ESPNEWS', aliases: ['ESPNWHD', 'ESPNEWS HD', 'ESPNews', 'ESPN News'] },
+  { standardName: 'FS1', aliases: ['FS1HD', 'FOX SPORTS 1', 'FOX SPORTS1', 'Fox Sports 1'] },
+  { standardName: 'FS2', aliases: ['FS2HD', 'FOX SPORTS 2', 'Fox Sports 2'] },
   { standardName: 'FSN', aliases: ['FSNHD', 'FOX SPORTS NORTH', 'FSNWI', 'BSNOR'] },
-  // Main Wisconsin RSN — preset name "Fan Duel" (channel 40 on Spectrum GB).
-  // Carries Bucks and general WI sports content. The Rail Media API returns
-  // these games under station code "FSWI".
-  { standardName: 'FanDuelWI', aliases: ['Fan Duel', 'FanDuel', 'FSWI', 'BSWI', 'Bally Sports Wisconsin', 'Bally Sports WI Main', 'FanDuel Sports Wisconsin', 'FanDuel SN WI', 'FanDuel SN Wisconsin', 'FOX Sports Wisconsin', 'Bucks.TV'] },
-  // Brewers-only overflow RSN — preset name "Bally Sports WI" (channel 308).
-  // Used when Brewers games air at the same time as something else on the main
-  // WI RSN. ESPN tags these broadcasts as "Brewers.TV"; The Rail Media API
-  // uses the station code "MILBRE".
-  { standardName: 'BallyWIPlus', aliases: ['Bally Sports WI', 'Bally Sports WI+', 'Bally Sports Wisconsin+', 'BSWI+', 'FSWI+', 'FanDuel SN WI+', 'FanDuel Sports WI+', 'Brewers.TV', 'MILBRE'] },
+  // Main Wisconsin RSN — preset name "Fan Duel" (channel 40 on Spectrum GB,
+  // channel 669 on DirecTV). Carries Bucks and general WI sports content.
+  // The Rail Media API returns these games under station code "FSWI".
+  { standardName: 'FanDuelWI', aliases: ['Fan Duel', 'FanDuel', 'FSWI', 'BSWI', 'Bally Sports Wisconsin', 'Bally Sports WI', 'FanDuel Sports Wisconsin', 'FanDuel Sports Network Wisconsin', 'FanDuel SN WI', 'FanDuel SN Wisconsin', 'FOX Sports Wisconsin', 'Bucks.TV'] },
+  // Brewers-only overflow RSN — preset name "Bally Sports WI" (channel 308
+  // on cable, channel 670 on DirecTV). Used when Brewers games air at the
+  // same time as something else on the main WI RSN. ESPN tags these
+  // broadcasts as "Brewers.TV"; The Rail Media API uses station code "MILBRE".
+  { standardName: 'BallyWIPlus', aliases: ['Bally Sports WI+', 'Bally Sports Wisconsin+', 'BSWI+', 'FSWI+', 'FanDuel SN WI+', 'FanDuel Sports WI+', 'Brewers.TV', 'MILBRE'] },
+  // North RSN — FanDuel Sports Network North (channel 310 on Spectrum GB,
+  // channel 668 on DirecTV). Carries Twins, Timberwolves, Wild content.
+  { standardName: 'FanDuelNorth', aliases: ['FanDuel SN North', 'FanDuel Sports Network North', 'Bally Sports North', 'Fan Duel North', 'BSNORTH', 'FSNORTH', 'FOX SPORTS NORTH'] },
+  // Midwest RSN — FanDuel Sports Network Midwest (channel 671 on DirecTV).
+  // Carries Cardinals, Blues, etc.
+  { standardName: 'FanDuelMidwest', aliases: ['FanDuel SN Midwest', 'FanDuel Sports Network Midwest', 'Bally Sports Midwest', 'BSMIDWEST', 'FSMIDWEST', 'FOX SPORTS MIDWEST'] },
   { standardName: 'TNT', aliases: ['TNTHD', 'TNT HD', 'TNTDRAMA'] },
   { standardName: 'TBS', aliases: ['TBSHD', 'TBS HD'] },
-  { standardName: 'BTN', aliases: ['BIG TEN NETWORK', 'BIG TEN', 'B10', 'BTNHD', 'BTN HD'] },
-  { standardName: 'NBCSN', aliases: ['NBC SPORTS', 'NBCSNHD', 'NBCSN HD'] },
-  { standardName: 'USA', aliases: ['USAHD', 'USA HD', 'USA NETWORK'] },
+  { standardName: 'BTN', aliases: ['BIG TEN NETWORK', 'BIG TEN', 'B10', 'Big 10', 'BTNHD', 'BTN HD'] },
+  { standardName: 'NBCSN', aliases: ['NBC SPORTS', 'NBC Sports', 'NBCSNHD', 'NBCSN HD', 'Peacock', 'PEACOCK', 'Peacock/NBC Sports'] },
+  { standardName: 'USA', aliases: ['USAHD', 'USA HD', 'USA NETWORK', 'USA Network'] },
   { standardName: 'ABC', aliases: ['ABCHD', 'WABC', 'ABC HD', 'WBAY'] },
   { standardName: 'NBC', aliases: ['NBCHD', 'NBC HD', 'WGBA'] },
   { standardName: 'CBS', aliases: ['CBSHD', 'CBS HD', 'WFRV'] },
-  { standardName: 'FOX', aliases: ['FOXHD', 'FOX HD', 'WLUK'] },
-  { standardName: 'MLBN', aliases: ['MLB', 'MLBNHD', 'MLB NETWORK', 'MLB NET'] },
-  { standardName: 'NFLN', aliases: ['NFL', 'NFLNHD', 'NFL NETWORK', 'NFL NET'] },
-  { standardName: 'NHLN', aliases: ['NHL', 'NHLNHD', 'NHL NETWORK', 'NHL NET'] },
-  { standardName: 'NBATV', aliases: ['NBA', 'NBATVHD', 'NBA TV'] },
-  { standardName: 'SEC', aliases: ['SECN', 'SEC NETWORK', 'SECNHD'] },
-  { standardName: 'ACC', aliases: ['ACCN', 'ACC NETWORK', 'ACCNHD'] },
+  { standardName: 'FOX', aliases: ['FOXHD', 'FOX HD', 'WLUK', 'Fox'] },
+  { standardName: 'MLBN', aliases: ['MLB', 'MLBNHD', 'MLB NETWORK', 'MLB NET', 'MLB Network', 'MLBNet'] },
+  { standardName: 'NFLN', aliases: ['NFL', 'NFLNHD', 'NFL NETWORK', 'NFL NET', 'NFL Network', 'NFLNet'] },
+  { standardName: 'NHLN', aliases: ['NHL', 'NHLNHD', 'NHL NETWORK', 'NHL NET', 'NHL Network', 'NHLNet'] },
+  { standardName: 'NBATV', aliases: ['NBA', 'NBATVHD', 'NBA TV', 'NBATV'] },
+  { standardName: 'SEC', aliases: ['SECN', 'SEC NETWORK', 'SEC Network', 'SECNHD'] },
+  { standardName: 'ACC', aliases: ['ACCN', 'ACC NETWORK', 'ACC Network', 'ACCNHD'] },
   { standardName: 'PAC12', aliases: ['PAC-12', 'PAC 12', 'PAC12HD'] },
-  { standardName: 'GOLF', aliases: ['GOLFHD', 'GOLF CHANNEL', 'GOLF CH'] },
+  { standardName: 'GOLF', aliases: ['GOLFHD', 'GOLF CHANNEL', 'GOLF CH', 'Golf Channel'] },
   { standardName: 'WACY', aliases: ['WACY32', 'MYN', 'MY NETWORK'] },
   { standardName: 'CW', aliases: ['CWHD', 'CW HD', 'WACY'] },
-  { standardName: 'PEACOCK', aliases: ['PCCK'] },
+  { standardName: 'PEACOCK', aliases: ['PCCK', 'Peacock'] },
   { standardName: 'BIG12', aliases: ['BIG 12', 'BIG12HD'] },
-  { standardName: 'CBSSN', aliases: ['CBS SPORTS', 'CBS SPORTS NETWORK', 'CBSSNHD'] },
-  { standardName: 'TRUTV', aliases: ['TRU TV', 'TRUTVHD'] },
+  { standardName: 'CBSSN', aliases: ['CBS SPORTS', 'CBS SPORTS NETWORK', 'CBS Sports Network', 'CBSSNHD'] },
+  { standardName: 'TRUTV', aliases: ['TRU TV', 'TRUTVHD', 'truTV'] },
+  { standardName: 'PARAMOUNT', aliases: ['Paramount', 'Paramount Network', 'PARMOUNT', 'PAR'] },
+  { standardName: 'MLBSZ', aliases: ['MLB Strike Zone', 'MLB STRIKE ZONE', 'Strike Zone'] },
 ]
 
 // ---------------------------------------------------------------------------
