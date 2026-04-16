@@ -276,15 +276,30 @@ export default function InteractiveBartenderLayout({
           </div>
         )}
 
-        {/* Layout Container - aspect ratio matches actual image so zones align */}
-        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl max-h-[calc(100vh-200px)]" style={{ aspectRatio: String(imageAspectRatio) }}>
-          {/* Background Floor Plan Image */}
+        {/* Layout Container — uses aspect-ratio with both max-w and max-h so
+            the browser picks the largest box that fits both constraints while
+            preserving image aspect ratio. The earlier version combined
+            `w-full` + `max-h` + `aspectRatio`, which let `w-full` win and
+            stretched the image horizontally when the derived height hit the
+            `max-h` cap (the "squeezed" look). */}
+        <div
+          className="relative mx-auto backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl"
+          style={{
+            aspectRatio: String(imageAspectRatio),
+            maxWidth: '100%',
+            maxHeight: 'calc(100vh - 200px)',
+          }}
+        >
+          {/* Background Floor Plan Image — `object-contain` is safe here
+              because the container aspect-ratio matches the image's, so the
+              result is identical to `object-fill` without the risk of
+              distortion if the ratios ever desync. */}
           {imageUrl && (
             <img
               ref={layoutImageRef}
               src={imageUrl}
               alt="Floor plan"
-              className="absolute inset-0 w-full h-full object-fill opacity-40 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none"
               draggable={false}
               onLoad={(e) => {
                 const img = e.currentTarget
@@ -334,12 +349,17 @@ export default function InteractiveBartenderLayout({
                       title={roomInfo.name}
                     />
                   )}
-                  {/* TV Icon - Compact sizing to prevent overlap */}
-                  <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
+                  {/* TV Icon — same footprint in every state. The active-input
+                      label used to stack BELOW the icon, which grew the button's
+                      vertical footprint whenever a TV was tuned (green state),
+                      making precise zone placement harder in the editor and
+                      crowding the layout in the Video tab. The label is now
+                      absolutely-positioned BELOW the icon so it overflows
+                      visually but does not affect the button's hit box. */}
+                  <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex items-center justify-center">
                     <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
-                    {/* Current Input Label - Compact text */}
                     {currentInput && (
-                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-0.5 px-1.5 py-0.5 bg-black/70 rounded text-[9px] sm:text-[10px] font-semibold text-white whitespace-nowrap pointer-events-none shadow-md">
                         {currentInput}
                       </div>
                     )}

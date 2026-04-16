@@ -489,6 +489,12 @@ LOCATION_PATHS_OURS=(
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
+  # PM2 config carries per-location Sports Guide credentials via process.env.
+  # Main historically hardcoded a location's values in this file, which means
+  # every merge from main overwrites the running location's creds. Keep the
+  # location's env-driven version across merges. When main eventually adopts
+  # the env-driven pattern, this entry becomes a no-op (content-identical).
+  "ecosystem.config.js"
 )
 
 # These paths always take the MAIN version (git checkout --theirs)
