@@ -386,7 +386,7 @@ log "History row id=$HISTORY_ID"
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
-run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 180
+run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 600
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -557,7 +557,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 180
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 600
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -615,7 +615,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 180
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 600
 
 # ===========================================================================
 # PHASE: FINALIZE
