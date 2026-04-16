@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
         name: anyActive.name,
         zones: JSON.parse(anyActive.zones || '[]'),
         rooms: JSON.parse((anyActive as any).rooms || '[]'),
+        imageUrl: anyActive.imageUrl || null,
+        professionalImageUrl: anyActive.professionalImageUrl || null,
         backgroundImage: anyActive.imageUrl || anyActive.professionalImageUrl || null,
         id: anyActive.id,
       }
@@ -53,6 +55,8 @@ export async function GET(request: NextRequest) {
       name: row.name,
       zones: JSON.parse(row.zones || '[]'),
       rooms: JSON.parse((row as any).rooms || '[]'),
+      imageUrl: row.imageUrl || null,
+      professionalImageUrl: row.professionalImageUrl || null,
       backgroundImage: row.imageUrl || row.professionalImageUrl || null,
       id: row.id,
     }
