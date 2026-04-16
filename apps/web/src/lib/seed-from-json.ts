@@ -277,6 +277,45 @@ async function seedChannelPresets(): Promise<{ seeded: boolean; count: number }>
 // Main entry point
 // ---------------------------------------------------------------------------
 
+async function seedBartenderLayout(): Promise<{ seeded: boolean; count: number }> {
+  const count = await tableRowCount('BartenderLayout')
+  if (count > 0) return { seeded: false, count }
+
+  const layoutPath = path.join(process.cwd(), 'apps/web/data/tv-layout.json')
+  if (!fs.existsSync(layoutPath)) {
+    // Try root data mirror
+    const altPath = path.join(process.cwd(), 'data/tv-layout.json')
+    if (!fs.existsSync(altPath)) return { seeded: false, count: 0 }
+  }
+
+  try {
+    const raw = fs.readFileSync(
+      fs.existsSync(layoutPath) ? layoutPath : path.join(process.cwd(), 'data/tv-layout.json'),
+      'utf-8'
+    )
+    const data = JSON.parse(raw)
+    const zones = data.zones || (Array.isArray(data) ? data : [])
+    if (zones.length === 0) return { seeded: false, count: 0 }
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    await db.insert(schema.bartenderLayouts).values({
+      name: data.name || 'Bar Layout',
+      zones: JSON.stringify(zones),
+      isDefault: true,
+      isActive: true,
+      displayOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    logger.info(`[SEED] Seeded BartenderLayout with ${zones.length} zones from tv-layout.json`)
+    return { seeded: true, count: 1 }
+  } catch (err) {
+    logger.error('[SEED] Error seeding BartenderLayout:', err)
+    return { seeded: false, count: 0 }
+  }
+}
+
 export async function seedFromJson(): Promise<SeedResult> {
   logger.info('[SEED] Checking if database needs seeding from JSON files...')
 
@@ -284,8 +323,9 @@ export async function seedFromJson(): Promise<SeedResult> {
   const fireTV = await seedFireTV()
   const stationAliases = await seedStationAliases()
   const channelPresets = await seedChannelPresets()
+  const bartenderLayout = await seedBartenderLayout()
 
-  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !channelPresets.seeded) {
+  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !channelPresets.seeded && !bartenderLayout.seeded) {
     logger.info('[SEED] All tables already populated, no seeding needed')
   }
 
