@@ -51,20 +51,18 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
   // Digit queue for rapid number entry - processes digits sequentially without blocking UI
   const digitQueueRef = useRef<string[]>([])
   const isProcessingDigitsRef = useRef<boolean>(false)
-  const DIGIT_DELAY_MS = 80 // Faster delay between digits for responsive channel entry
+  const DIGIT_DELAY_MS = 150 // Delay AFTER successful send so cable box has time to process each digit
 
-  // Fire-and-forget digit sender - queues digits and processes without blocking UI
+  // Digit sender - queues digits and processes sequentially
   const sendDigitCommand = (digit: string) => {
-    // Add digit to queue
     digitQueueRef.current.push(digit)
-
-    // Start processing if not already running
     if (!isProcessingDigitsRef.current) {
       processDigitQueue()
     }
   }
 
-  // Process digit queue sequentially with minimal delay
+  // Process digit queue sequentially - awaits each send to prevent overlapping TCP connections
+  // to the iTach (which only accepts one connection at a time on each IR port)
   const processDigitQueue = async () => {
     if (isProcessingDigitsRef.current) return
     isProcessingDigitsRef.current = true
@@ -73,17 +71,16 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
       const digit = digitQueueRef.current.shift()!
 
       try {
-        // Send digit via server-side IR command lookup (fire-and-forget style)
-        fetch('/api/ir/commands/send', {
+        // Await the fetch so digits don't stomp on each other
+        await fetch('/api/ir/commands/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             deviceId,
             commandName: digit
           })
-        }).catch(err => console.error('[CableBox] Digit send error:', err))
+        })
 
-        // Small delay between digits for IR receiver to process
         if (digitQueueRef.current.length > 0) {
           await new Promise(resolve => setTimeout(resolve, DIGIT_DELAY_MS))
         }

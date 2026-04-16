@@ -1,1 +1,89 @@
-{"name":"Bar Layout","zones":[],"rooms":[]}
+{
+  "name": "Bar Layout",
+  "zones": [
+    {
+      "id": "zone-1772742595797-kdnhvrv9s",
+      "outputNumber": 1,
+      "x": 12.2,
+      "y": 67.1,
+      "width": 8,
+      "height": 8,
+      "label": "TV 01"
+    },
+    {
+      "id": "zone-1772742617957-o0jkuvrrn",
+      "outputNumber": 3,
+      "x": 2.56,
+      "y": 34.4,
+      "width": 8,
+      "height": 8,
+      "label": "TV 03"
+    },
+    {
+      "id": "zone-1772742662385-grkx9ml3z",
+      "outputNumber": 4,
+      "x": 5.5,
+      "y": 16.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 04"
+    },
+    {
+      "id": "zone-1772742668320-eihfhlsq1",
+      "outputNumber": 5,
+      "x": 17.09,
+      "y": 15.72,
+      "width": 8,
+      "height": 8,
+      "label": "TV 05"
+    },
+    {
+      "id": "zone-1772742675090-jwqdqe6kj",
+      "outputNumber": 6,
+      "x": 25.9,
+      "y": 10.12,
+      "width": 8,
+      "height": 8,
+      "label": "TV 06"
+    },
+    {
+      "id": "zone-1772742680665-35mbzqpr6",
+      "outputNumber": 7,
+      "x": 63.33,
+      "y": 10.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 07"
+    },
+    {
+      "id": "zone-1772742910356-bqt76ixbc",
+      "outputNumber": 8,
+      "x": 57.11,
+      "y": 66.77,
+      "width": 8,
+      "height": 8,
+      "label": "TV 08"
+    },
+    {
+      "id": "zone-1772743348019-m6f4oqg7l",
+      "outputNumber": 10,
+      "x": 88.97,
+      "y": 63.78,
+      "width": 8,
+      "height": 8,
+      "label": "TV 10"
+    },
+    {
+      "id": "zone-1772743370179-0azwbje8u",
+      "outputNumber": 9,
+      "x": 72.86,
+      "y": 46.91,
+      "width": 8,
+      "height": 8,
+      "label": "TV 09"
+    }
+  ],
+  "rooms": [],
+  "imageUrl": "/api/uploads/layouts/layout_1772742575880.JPG",
+  "originalFileUrl": "/api/uploads/layouts/layout_1772742575880.JPG"
+}

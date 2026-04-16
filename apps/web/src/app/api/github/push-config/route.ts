@@ -92,9 +92,11 @@ export async function POST(request: NextRequest) {
       await git(['commit', '-m', finalCommitMessage], projectPath)
       operations.push('Committed changes')
 
-      // Push to remote
-      await git(['push', 'origin', 'main'], projectPath)
-      operations.push('Pushed to GitHub')
+      // Push to remote (use current branch, not hardcoded main)
+      const { stdout: currentBranch } = await git(['branch', '--show-current'], projectPath)
+      const branch = currentBranch.trim() || 'main'
+      await git(['push', 'origin', branch], projectPath)
+      operations.push(`Pushed to GitHub (${branch})`)
 
       // Get the latest commit info
       const { stdout: commitInfo } = await git(['log', '-1', '--pretty=format:%H|%s|%an|%ad', '--date=iso'], projectPath)

@@ -27,8 +27,18 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.gitCommitPush)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  // Extract validated data
-  const { message, branch = 'main', push = true } = bodyValidation.data
+  // Extract validated data — default branch to current branch, not hardcoded 'main'
+  const { message, branch: requestedBranch, push = true } = bodyValidation.data
+  let branch = requestedBranch
+  if (!branch) {
+    try {
+      const projectRoot = path.resolve(process.cwd())
+      const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: projectRoot })
+      branch = stdout.trim() || 'main'
+    } catch {
+      branch = 'main'
+    }
+  }
 
   try {
     const projectRoot = path.resolve(process.cwd())
