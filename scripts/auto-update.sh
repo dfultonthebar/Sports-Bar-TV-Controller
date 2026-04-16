@@ -572,15 +572,26 @@ log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
 
 # Iterative retry loop. drizzle-kit push is NOT atomic: it commits statements
-# one-at-a-time, so a conflict partway through leaves earlier CREATE INDEX
-# statements committed in the DB. The winning pattern is to drop only the
-# ONE conflicting index per iteration and retry — duplicate conflicts get
-# resolved one-by-one while successful CREATEs accumulate. Any pending
-# ALTER TABLE / CREATE TABLE statements eventually land once the duplicate
-# conflicts ahead of them are cleared. Cap iterations so a genuine
-# non-duplicate error can't trap us in an infinite loop.
+# one-at-a-time, so a conflict partway through leaves partial state in the
+# DB. We handle three classes of recoverable error per iteration; anything
+# else is surfaced and aborts.
+#
+# Recoverable errors:
+# 1. "index|table|column X already exists" — a pre-existing object (from a
+#    prior hotfix or partial push) collides with drizzle's CREATE. Drop it
+#    and retry; drizzle recreates it fresh on the next pass.
+# 2. "no such column: X" — drizzle is running its SQLite ADD-COLUMN
+#    workaround (create __new_Table, copy data, swap) and the SELECT is
+#    referencing a column that hasn't been added yet. The orphan
+#    __new_Table from the failed copy blocks retries. Drop every __new_*
+#    shadow and, if X appears in schema.ts, add it to the source table
+#    directly so the next push can complete without the shadow pattern.
+# 3. Convergence cap: 350 iterations max so a genuine schema bug can't
+#    trap us in an infinite loop.
 SCHEMA_MAX_ITERATIONS=350
 SCHEMA_ITER=0
+SCHEMA_FILE="$REPO_ROOT/packages/database/src/schema.ts"
+
 while [ "$SCHEMA_ITER" -lt "$SCHEMA_MAX_ITERATIONS" ]; do
   SCHEMA_ITER=$((SCHEMA_ITER + 1))
   if NODE_ENV=development npx drizzle-kit push > "$SCHEMA_PUSH_LOG" 2>&1; then
@@ -588,17 +599,55 @@ while [ "$SCHEMA_ITER" -lt "$SCHEMA_MAX_ITERATIONS" ]; do
     log "[SCHEMA] drizzle-kit push succeeded after $SCHEMA_ITER iteration(s)"
     break
   fi
-  # Identify the offending object: "index X already exists"
+
+  # Class 1: "X already exists"
   DUP_IDX=$(grep -oE "(index|table|column) [A-Za-z_][A-Za-z0-9_]* already exists" "$SCHEMA_PUSH_LOG" | head -1 | awk '{print $2}')
   if [ -n "$DUP_IDX" ]; then
-    # Drop the single offending object. Try both INDEX and TABLE forms —
-    # sqlite silently no-ops the one that doesn't match the object's type.
     sqlite3 "$DB_PATH" "DROP INDEX IF EXISTS \"$DUP_IDX\"; DROP TABLE IF EXISTS \"$DUP_IDX\";" >>"$LOG_FILE" 2>&1
-    # Log every 25 iterations so the log stays readable on long runs.
     [ $((SCHEMA_ITER % 25)) -eq 0 ] && log "[SCHEMA] iter=$SCHEMA_ITER last-dropped=$DUP_IDX"
     continue
   fi
-  # Non-duplicate error — surface it and abort.
+
+  # Class 2: "no such column: X" — stuck ADD-COLUMN workaround
+  MISSING_COL=$(grep -oE 'no such column: "[A-Za-z_][A-Za-z0-9_]*"' "$SCHEMA_PUSH_LOG" | head -1 | sed -E 's/no such column: "([^"]+)"/\1/')
+  if [ -n "$MISSING_COL" ]; then
+    # Drop any __new_* shadow tables that drizzle left behind from the
+    # failed copy. These block subsequent push attempts.
+    SHADOWS=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '__new_%';" 2>/dev/null)
+    if [ -n "$SHADOWS" ]; then
+      while read -r sh; do
+        [ -z "$sh" ] && continue
+        sqlite3 "$DB_PATH" "DROP TABLE IF EXISTS \"$sh\";" >>"$LOG_FILE" 2>&1
+        log "[SCHEMA] iter=$SCHEMA_ITER dropped shadow table $sh"
+      done <<< "$SHADOWS"
+    fi
+    # Find any tables in schema.ts that declare $MISSING_COL as a column
+    # and don't have it in the live DB. Add it directly so drizzle's next
+    # pass sees it and skips the shadow-table workaround.
+    TYPE_LINE=$(grep -nE "^[[:space:]]+${MISSING_COL}[[:space:]]*:[[:space:]]*(text|integer|real|blob|timestamp)[[:space:]]*\(" "$SCHEMA_FILE" | head -1)
+    if [ -n "$TYPE_LINE" ]; then
+      DRIZZLE_TYPE=$(printf '%s' "$TYPE_LINE" | grep -oE "(text|integer|real|blob|timestamp)" | head -1)
+      case "$DRIZZLE_TYPE" in
+        text|timestamp) SQL_TYPE="TEXT" ;;
+        integer)        SQL_TYPE="INTEGER" ;;
+        real)           SQL_TYPE="REAL" ;;
+        blob)           SQL_TYPE="BLOB" ;;
+        *)              SQL_TYPE="TEXT" ;;
+      esac
+      LINE_NUM=$(printf '%s' "$TYPE_LINE" | cut -d: -f1)
+      TARGET_TABLE=$(awk -v ln="$LINE_NUM" 'NR<=ln && /sqliteTable\(/ {match($0,/sqliteTable\(['"'"'"]([A-Za-z_][A-Za-z0-9_]*)['"'"'"]/,arr); if(arr[1]!="")tbl=arr[1]} END {print tbl}' "$SCHEMA_FILE")
+      if [ -n "$TARGET_TABLE" ]; then
+        IN_DB=$(sqlite3 "$DB_PATH" "PRAGMA table_info(\"$TARGET_TABLE\");" 2>/dev/null | awk -F'|' -v c="$MISSING_COL" '$2==c {print "yes"}')
+        if [ "$IN_DB" != "yes" ]; then
+          sqlite3 "$DB_PATH" "ALTER TABLE \"$TARGET_TABLE\" ADD COLUMN \"$MISSING_COL\" $SQL_TYPE;" >>"$LOG_FILE" 2>&1 \
+            && log "[SCHEMA] iter=$SCHEMA_ITER added $TARGET_TABLE.$MISSING_COL $SQL_TYPE (bypassing drizzle shadow-pattern)"
+        fi
+      fi
+    fi
+    continue
+  fi
+
+  # Anything else — surface and abort.
   cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
   fail "drizzle-kit push failed with an unrecognized error (iteration $SCHEMA_ITER) — see $SCHEMA_PUSH_LOG" 4
 done
