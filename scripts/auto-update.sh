@@ -574,10 +574,44 @@ if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee
   log "drizzle-kit push completed cleanly"
 else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
+    # Pre-existing-object error. DANGER: drizzle-kit push is atomic — hitting
+    # this error rolls back EVERY statement in the same transaction, which
+    # means any NEW ALTER TABLE / CREATE TABLE statements from the release
+    # silently never land. Past runs treated this as "benign and continue",
+    # which worked until a release (v2.11.7 BartenderLayout.rooms column)
+    # depended on a new ALTER that got silently dropped, causing runtime
+    # 500s. The fix: drop ALL user-defined indexes (they carry no data — only
+    # metadata) and re-run the push so drizzle can recreate them fresh as
+    # part of a clean transaction that also includes the new ALTERs/CREATEs.
     log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
-    log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
-    log "WARNING: continuing with the update. If this release adds a NEW table that was not pre-created,"
-    log "WARNING: the corresponding endpoints will 500 at runtime — verify-install will catch it."
+    log "WARNING: retrying after dropping all user-defined indexes so the atomic push can complete"
+
+    INDEX_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" 2>/dev/null || echo 0)
+    log "[SCHEMA] user-defined indexes to drop: $INDEX_COUNT"
+
+    # Build one BEGIN/COMMIT transaction that drops every non-autoindex.
+    DROP_SQL=$(mktemp)
+    {
+      echo "BEGIN;"
+      sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" \
+        | awk 'NF {printf "DROP INDEX IF EXISTS \"%s\";\n", $0}'
+      echo "COMMIT;"
+    } > "$DROP_SQL"
+    if ! sqlite3 "$DB_PATH" < "$DROP_SQL" >>"$LOG_FILE" 2>&1; then
+      rm -f "$DROP_SQL"
+      cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+      fail "failed to drop pre-existing indexes before drizzle-kit push retry" 4
+    fi
+    rm -f "$DROP_SQL"
+
+    SCHEMA_PUSH_LOG2="$LOG_DIR/drizzle-push-retry-$(date +%s).log"
+    if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG2" | tee -a "$LOG_FILE"; then
+      RECREATED=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" 2>/dev/null || echo 0)
+      log "[SCHEMA] retry succeeded — indexes recreated: $RECREATED (was $INDEX_COUNT before drop)"
+    else
+      cat "$SCHEMA_PUSH_LOG2" >> "$LOG_FILE"
+      fail "drizzle-kit push retry failed even after dropping pre-existing indexes — see $SCHEMA_PUSH_LOG2" 4
+    fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
