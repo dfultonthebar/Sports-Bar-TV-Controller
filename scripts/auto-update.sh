@@ -304,11 +304,25 @@ run_checkpoint() {
   # an API key in env it tries that path and rejects the skip-permissions
   # flag with "Invalid API key · Fix external API key", failing the
   # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
-    log "Checkpoint $label: Claude Code timed out or errored"
-    log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-    rm -f "$out_file"
-    fail "Checkpoint $label: Claude Code CLI failure" 2
+  # We check the CLI exit code AND the output file independently. The CLI can
+  # exit non-zero (e.g., SIGPIPE on timeout, or after flushing stdout right at
+  # the 180s mark) while still having written a valid DECISION line. Treating
+  # that as a hard failure wastes a run that actually produced a good answer.
+  set +e
+  env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1
+  local cli_rc=$?
+  set -e
+
+  if [ "$cli_rc" -ne 0 ]; then
+    # Check if the output contains a parseable DECISION before giving up.
+    if [ -s "$out_file" ] && grep -qE '^(DECISION:|GO\b|CAUTION\b|STOP\b)' "$out_file"; then
+      log "Checkpoint $label: CLI exited $cli_rc but output has a DECISION line — parsing anyway"
+    else
+      log "Checkpoint $label: Claude Code timed out or errored (exit $cli_rc)"
+      log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
+      rm -f "$out_file"
+      fail "Checkpoint $label: Claude Code CLI failure" 2
+    fi
   fi
 
   # Parse the decision. Claude is SUPPOSED to emit "DECISION: GO|CAUTION|STOP - <reason>"
@@ -441,7 +455,7 @@ log "History row id=$HISTORY_ID"
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
-run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 180
+run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 240
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -792,7 +806,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 180
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 240
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -850,7 +864,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 180
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 240
 
 # ===========================================================================
 # PHASE: FINALIZE
